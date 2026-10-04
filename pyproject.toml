@@ -1,0 +1,42 @@
+[project]
+name = "glados-assistant"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "ГЛаДОС: ассистентка на компьютере (разговор, зрение, слух, голос) и агент для RimWorld"
+
+# ============================================================
+#  Ruff: проверка кода (перенесено из GitS, подстроено под наш код)
+# ============================================================
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = [".claude", "mod", "docker", "agent/models", "agent/memory", "agent/resources"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "ASYNC"]
+ignore = [
+    "E501",   # длину строки не проверяем
+    "E701",   # однострочные if/for в старом коде
+    "E702",
+    "E741",   # имена l, I
+    "B008",
+    "B904",
+    "B007",
+    "E731",
+    "ASYNC109",   # параметр timeout в async-функциях: так устроены наши клиенты
+    "ASYNC110",
+    "ASYNC230",   # короткие записи файлов в async-коде
+    "ASYNC240",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"agent/tests/*.py" = ["E402"]    # sys.path правится до импортов проекта
+"agent/main.py" = ["E402"]       # путь и окружение настраиваются до импортов
+
+# ============================================================
+#  Pytest: тесты в agent/tests, асинхронные без декораторов
+# ============================================================
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["agent/tests"]
+pythonpath = ["agent"]

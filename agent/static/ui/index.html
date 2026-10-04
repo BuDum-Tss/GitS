@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ассистент</title>
+<!-- UI-кит: Tailwind (play CDN) + daisyUI 4. Сборки нет, всё подгружается по CDN. -->
+<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html, body { height: 100%; }
+  .scroll-y { overflow-y: auto; }
+  .bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+  <script src="/static/ui/vendor/vis-network.min.js"></script>
+</head>
+<body class="bg-base-200">
+<div class="flex flex-col h-full">
+
+  <!-- Шапка -->
+  <div class="navbar bg-base-100 border-b border-base-300 px-4 min-h-14">
+    <div class="flex-1 gap-3">
+      <span class="text-lg font-semibold">Ассистент</span>
+      <span id="badge-core" class="badge badge-outline">ядро…</span>
+      <span id="badge-game" class="badge badge-ghost">игра не запущена</span>
+      <span id="badge-quiet" class="badge badge-ghost hidden" title="Она сама не заговаривает">не отвлекать</span>
+      <span id="badge-auto" class="badge badge-warning hidden" title="Все действия выполняются без вопросов, кроме опасных">авто-разрешение</span>
+    </div>
+    <div class="flex-none gap-1">
+      <span id="badge-emotion" class="badge badge-ghost hidden sm:inline-flex"></span>
+      <button id="btn-theme" class="btn btn-ghost btn-sm" title="Тема">◐</button>
+    </div>
+  </div>
+
+  <!-- Запрос разрешения -->
+  <div id="approval" class="hidden px-4 pt-3">
+    <div role="alert" class="alert alert-warning shadow-sm">
+      <div class="flex-1">
+        <div class="font-semibold">Нужно твоё разрешение</div>
+        <div id="approval-text" class="text-sm bubble-text"></div>
+      </div>
+      <div class="flex gap-2">
+        <button id="approval-no" class="btn btn-sm">Запретить</button>
+        <button id="approval-yes" class="btn btn-sm btn-neutral">Разрешить</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="flex-1 min-h-0 grid gap-4 p-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+
+    <!-- Чат -->
+    <section class="card bg-base-100 shadow-sm min-h-0 flex flex-col">
+      <div class="card-body p-0 min-h-0 flex flex-col">
+        <div id="chat" class="flex-1 min-h-0 scroll-y p-4 space-y-1" aria-live="polite"></div>
+        <form id="chat-form" class="join p-3 border-t border-base-300">
+          <input id="chat-input" class="input input-bordered join-item flex-1" autocomplete="off"
+                 placeholder="Написать ассистенту…">
+          <button class="btn btn-neutral join-item" type="submit">Отправить</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Правая панель -->
+    <section class="min-h-0 flex flex-col gap-3">
+      <div role="tablist" class="tabs tabs-boxed bg-base-100 shadow-sm">
+        <a role="tab" class="tab tab-active" data-tab="status">Состояние</a>
+        <a role="tab" class="tab" data-tab="game">Игра</a>
+        <a role="tab" class="tab" data-tab="memory">Память</a>
+        <a role="tab" class="tab" data-tab="graph">Граф</a>
+        <a role="tab" class="tab" data-tab="caps">Возможности</a>
+        <a role="tab" class="tab" data-tab="events">События</a>
+        <a role="tab" class="tab" data-tab="settings">Настройки</a>
+      </div>
+
+      <!-- Состояние -->
+      <div id="tab-status" class="card bg-base-100 shadow-sm scroll-y min-h-0">
+        <div class="card-body gap-4">
+          <div>
+            <div class="font-medium mb-2">Что она видит</div>
+            <ul id="activity" class="space-y-2 text-sm"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Игра -->
+      <div id="tab-game" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
+        <div class="card-body gap-4">
+          <div id="game-off" role="alert" class="alert">
+            <span>RimWorld не запущена. Когда она появится, здесь будут колонисты и ресурсы.</span>
+          </div>
+          <div id="game-on" class="hidden space-y-4">
+            <div class="stats shadow w-full">
+              <div class="stat py-2"><div class="stat-title">Колония</div><div id="g-colony" class="stat-value text-lg"></div></div>
+              <div class="stat py-2"><div class="stat-title">Тик</div><div id="g-tick" class="stat-value text-lg"></div></div>
+            </div>
+            <div id="g-mode" class="alert items-start text-sm"></div>
+            <div id="g-ambition" class="alert alert-warning items-start"></div>
+            <div><div class="font-medium mb-2">Цели</div><ul id="g-goals" class="space-y-2 text-sm"></ul></div>
+            <div><div class="font-medium mb-2">Задачи</div><ul id="g-tasks" class="space-y-1 text-sm"></ul></div>
+            <div><div class="font-medium mb-2">Колонисты</div><div id="g-pawns" class="space-y-3"></div></div>
+            <div><div class="font-medium mb-2">Исследование</div><div id="g-research" class="text-sm"></div></div>
+            <div><div class="font-medium mb-2">Ресурсы</div><div class="overflow-x-auto"><table class="table table-sm"><tbody id="g-res"></tbody></table></div></div>
+            <div><div class="font-medium mb-2">Последние решения</div><ul id="g-decisions" class="space-y-2 text-sm"></ul></div>
+            <div><div class="font-medium mb-2">Потери</div><ul id="g-fates" class="text-sm"></ul></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Память -->
+      <div id="tab-memory" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
+        <div class="card-body gap-4">
+          <div>
+            <div class="font-medium mb-2">Что ассистентка помнит</div>
+            <div id="facts" class="space-y-3"></div>
+            <p class="text-xs opacity-60 mt-2">Можно и словами в чате: «забудь про …».</p>
+          </div>
+          <div class="divider my-0"></div>
+          <div>
+            <div class="font-medium mb-2">Отношения</div>
+            <ul id="relations" class="space-y-2 text-sm"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Граф памяти -->
+      <div id="tab-graph" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
+        <div class="card-body gap-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="font-medium">Граф памяти</div>
+            <input id="graph-search" class="input input-bordered input-sm w-48" placeholder="Найти узел…" list="graph-names">
+            <datalist id="graph-names"></datalist>
+            <label class="label cursor-pointer gap-2 py-0"><span class="label-text text-xs">устаревшее</span>
+              <input id="graph-old" type="checkbox" class="toggle toggle-sm"></label>
+            <button id="graph-fit" class="btn btn-sm btn-ghost">По центру</button>
+            <span id="graph-status" class="text-xs opacity-60 ml-auto"></span>
+          </div>
+          <div class="grid gap-3">
+            <div id="graph-canvas" class="rounded-box border border-base-300 bg-base-200" style="height:52vh;min-height:340px"></div>
+            <div id="graph-panel" class="rounded-box border border-base-300 p-3 text-sm overflow-auto" style="max-height:38vh">
+              <div class="opacity-60">Нажми на узел: здесь появятся его факты, связи и кнопка удаления неверного факта.</div>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-3 text-xs opacity-70">
+            <span><span style="color:#a855f7">●</span> ГЛаДОС</span><span><span style="color:#f59e0b">●</span> поселение</span>
+            <span><span style="color:#22c55e">●</span> колонист</span><span><span style="color:#3b82f6">●</span> человек, место, вещь</span>
+            <span><span style="color:#94a3b8">●</span> выбывший или устаревший</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Настройки -->
+      <div id="tab-settings" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
+        <div class="card-body gap-5">
+          <div id="settings-form" class="space-y-6"></div>
+        </div>
+      </div>
+
+      <!-- Возможности -->
+      <div id="tab-caps" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
+        <div class="card-body gap-4">
+          <p class="text-xs opacity-60">Всё, что ассистентка умеет, сгруппировано по окружениям. Любая просьба сначала проверяется по этому списку: если подходящего инструмента нет, она так и скажет.</p>
+          <div id="caps-list" class="space-y-4"></div>
+        </div>
+      </div>
+
+      <!-- События -->
+      <div id="tab-events" class="card bg-base-100 shadow-sm min-h-0 hidden flex flex-col">
+        <div class="card-body gap-3 min-h-0">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-medium">Протокол событий</span>
+            <select id="ev-kind" class="select select-bordered select-sm">
+              <option value="">Все</option>
+              <option value="user">Ты</option>
+              <option value="say">Ассистент</option>
+              <option value="proactive">Сама решила</option>
+              <option value="reflex">Реакции</option>
+              <option value="vision">Зрение</option>
+              <option value="hearing">Слух</option>
+              <option value="telegram">Telegram</option>
+              <option value="plan">План</option>
+              <option value="memory">Память</option>
+              <option value="game">Игра</option>
+              <option value="approval">Разрешения</option>
+              <option value="setting">Настройки</option>
+              <option value="error">Ошибки</option>
+            </select>
+          </div>
+          <ul id="ev-list" class="scroll-y min-h-0 space-y-2 text-sm"></ul>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const post = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+
+// ── тема ──
+const mq = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  let t = null; try { t = localStorage.getItem('theme'); } catch (e) {}
+  document.documentElement.dataset.theme = t || (mq.matches ? 'dark' : 'light');
+}
+mq.addEventListener('change', applyTheme); applyTheme();
+$('btn-theme').onclick = () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem('theme', next); } catch (e) {}
+  applyTheme();
+};
+
+// ── вкладки ──
+document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
+  document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('tab-active', t === tab));
+  ['status', 'game', 'memory', 'graph', 'caps', 'events', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
+  if (tab.dataset.tab === 'graph') { GR.sig = ''; loadGraph().then(() => GR.net && GR.net.fit()); }
+});
+
+// ── граф памяти ──
+const GR = {net: null, nodes: null, edges: null, data: null, sig: '', selected: null};
+const ATTR_REL = new Set(['НАВЫКИ', 'ЧЕРТЫ', 'СОСТОЯНИЕ']);     // служебные узлы колониста рисуем внутри панели, не на холсте
+const relName = r => String(r || '').toLowerCase().replaceAll('_', ' ');
+
+function graphModel(g, showOld) {
+  const all = [...(g.current || []), ...(g.outdated || [])];
+  const hidden = new Set(), owner = {}, facts = {};
+  all.forEach(e => {
+    (facts[e.from] ||= []).push(e); (facts[e.to] ||= []).push(e);
+    if (ATTR_REL.has(e.relation)) { hidden.add(e.to); owner[e.to] = e.from; }
+  });
+  const alive = new Set(all.filter(e => e.relation === 'КОЛОНИСТ' && !e.invalid_at).map(e => e.from));
+  const retired = new Set(all.filter(e => e.relation === 'КОЛОНИСТ' && e.invalid_at).map(e => e.from));
+  const places = new Set(all.filter(e => e.relation === 'КОЛОНИСТ').map(e => e.to));
+  const live = new Set(all.filter(e => !e.invalid_at).flatMap(e => [e.from, e.to]));
+  const kind = n => n === 'ГЛаДОС' ? 'glados' : places.has(n) ? 'place' : alive.has(n) ? 'colonist'
+    : (retired.has(n) || !live.has(n)) ? 'old' : 'thing';
+  const COLORS = {glados: '#a855f7', place: '#f59e0b', colonist: '#22c55e', old: '#94a3b8', thing: '#3b82f6'};
+  const names = new Set();
+  (g.nodes || []).forEach(n => { if (!hidden.has(n) && (showOld || live.has(n))) names.add(n); });
+  const edges = all.filter(e => !ATTR_REL.has(e.relation) && (showOld || !e.invalid_at) && names.has(e.from) && names.has(e.to));
+  const deg = {};
+  edges.forEach(e => { deg[e.from] = (deg[e.from] || 0) + 1; deg[e.to] = (deg[e.to] || 0) + 1; });
+  const fg = getComputedStyle(document.body).color;
+  const nodes = [...names].map(n => ({id: n, label: n, value: 8 + (deg[n] || 0) * 3, color: {background: COLORS[kind(n)], border: COLORS[kind(n)]},
+    font: {color: fg, size: 14}, shape: 'dot'}));
+  const vedges = edges.map(e => ({id: e.uuid, from: e.from, to: e.to, label: relName(e.relation), arrows: 'to', dashes: !!e.invalid_at,
+    color: {color: e.invalid_at ? '#94a3b8' : '#64748b'}, font: {size: 10, color: fg, strokeWidth: 0, align: 'middle'}, title: e.fact}));
+  return {nodes, edges: vedges, facts, owner, kind, hidden};
+}
+
+function showGraphNode(name) {
+  const m = GR.model; if (!m) return;
+  const own = Object.keys(m.owner).filter(a => m.owner[a] === name);
+  const rows = [...(m.facts[name] || [])];
+  own.forEach(a => (m.facts[a] || []).forEach(e => { if (!rows.includes(e)) rows.push(e); }));
+  const KIND = {glados: 'ГЛаДОС', place: 'поселение', colonist: 'колонист', old: 'выбыл или устарел', thing: 'человек, место или вещь'};
+  const uniq = [...new Map(rows.map(e => [e.uuid, e])).values()];
+  const neigh = [...new Set(uniq.filter(e => !ATTR_REL.has(e.relation)).flatMap(e => [e.from, e.to]).filter(n => n !== name && !m.hidden.has(n)))];
+  const fact = e => `<li class="flex items-start justify-between gap-2 ${e.invalid_at ? 'opacity-60' : ''}"><span>${esc(e.fact)}
+    <span class="text-xs opacity-60">(${esc(e.valid_at || '?')}${e.invalid_at ? ' – ' + esc(e.invalid_at) : ''})</span></span>
+    <button class="btn btn-ghost btn-xs" data-graph-uuid="${esc(e.uuid)}" title="Удалить факт">✕</button></li>`;
+  $('graph-panel').innerHTML = `<div class="text-lg font-medium">${esc(name)}</div>
+    <div class="badge badge-ghost badge-sm mb-2">${KIND[m.kind(name)]}</div>
+    <div class="font-medium mt-2 mb-1">Факты (${uniq.length})</div>
+    <ul class="space-y-2">${uniq.map(fact).join('') || '<li class="opacity-60">Фактов нет.</li>'}</ul>
+    ${neigh.length ? `<div class="font-medium mt-3 mb-1">Связан с</div><div class="flex flex-wrap gap-1">${neigh.map(n =>
+      `<button class="btn btn-xs btn-outline" data-graph-go="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}`;
+  $('graph-panel').querySelectorAll('[data-graph-uuid]').forEach(b => b.onclick = async () => {
+    await post('/api/graph/forget', {uuid: b.dataset.graphUuid}); GR.sig = ''; loadGraph();
+  });
+  $('graph-panel').querySelectorAll('[data-graph-go]').forEach(b => b.onclick = () => focusGraphNode(b.dataset.graphGo));
+  GR.selected = name;
+}
+
+function focusGraphNode(name) {
+  if (!GR.net || !GR.nodes.get(name)) return false;
+  GR.net.selectNodes([name]); GR.net.focus(name, {scale: 1.1, animation: true}); showGraphNode(name); return true;
+}
+
+async function loadGraph() {
+  if ($('tab-graph').classList.contains('hidden')) return;
+  const g = await (await fetch('/api/graph')).json();
+  $('graph-status').textContent = g.status || '';
+  if (!window.vis) { $('graph-canvas').innerHTML = '<div class="p-4 opacity-60">Не загрузилась библиотека рисования графа (файл static/ui/vendor/vis-network.min.js).</div>'; return; }
+  const m = graphModel(g, $('graph-old').checked);
+  GR.model = m;
+  const sig = JSON.stringify([m.nodes.map(n => [n.id, n.color.background]), m.edges.map(e => [e.id, e.dashes])]);
+  $('graph-names').innerHTML = m.nodes.map(n => `<option value="${esc(n.id)}">`).join('');
+  if (sig === GR.sig) { if (GR.selected) showGraphNode(GR.selected); return; }
+  GR.sig = sig;
+  if (!GR.net) {
+    GR.nodes = new vis.DataSet(); GR.edges = new vis.DataSet();
+    GR.net = new vis.Network($('graph-canvas'), {nodes: GR.nodes, edges: GR.edges}, {
+      physics: {solver: 'forceAtlas2Based', stabilization: {iterations: 150}}, interaction: {hover: true, tooltipDelay: 200},
+      nodes: {scaling: {min: 10, max: 34}}, edges: {smooth: {type: 'dynamic'}, width: 1.4}});
+    GR.net.on('click', p => { if (p.nodes.length) showGraphNode(p.nodes[0]); });
+    GR.net.on('stabilizationIterationsDone', () => GR.net.setOptions({physics: false}));
+    $('graph-fit').onclick = () => GR.net.fit({animation: true});
+    $('graph-old').onchange = () => { GR.sig = ''; loadGraph(); };
+    $('graph-search').onchange = e => focusGraphNode(e.target.value.trim());
+  }
+  const keepN = new Set(m.nodes.map(n => n.id)), keepE = new Set(m.edges.map(e => e.id));
+  GR.nodes.remove(GR.nodes.getIds().filter(i => !keepN.has(i))); GR.edges.remove(GR.edges.getIds().filter(i => !keepE.has(i)));
+  GR.nodes.update(m.nodes); GR.edges.update(m.edges);
+  GR.net.setOptions({physics: {enabled: true}}); GR.net.stabilize(80);
+  if (GR.selected && keepN.has(GR.selected)) showGraphNode(GR.selected);
+}
+setInterval(() => loadGraph().catch(() => {}), 6000);
+
+// ── чат ──
+let stick = true;
+$('chat').addEventListener('scroll', () => {
+  const c = $('chat'); stick = c.scrollHeight - c.scrollTop - c.clientHeight < 40;
+});
+function renderChat(dialogue, waiting) {
+  const html = dialogue.map(m => {
+    const mine = m.role === 'user';
+    const t = new Date(m.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    return `<div class="chat ${mine ? 'chat-end' : 'chat-start'}">
+      <div class="chat-header text-xs opacity-60">${mine ? 'Ты' : 'Ассистент'} <time>${t}</time></div>
+      <div class="chat-bubble ${mine ? 'chat-bubble-neutral' : ''} bubble-text">${esc(m.text)}</div></div>`;
+  }).join('') + (waiting ? `<div class="chat chat-start"><div class="chat-bubble"><span class="loading loading-dots loading-sm"></span></div></div>` : '');
+  if ($('chat').dataset.sig !== html) {
+    $('chat').dataset.sig = html; $('chat').innerHTML = html || '<p class="opacity-60 text-sm p-2">Напиши что-нибудь. Я отвечу здесь и в облачке питомца.</p>';
+    if (stick) $('chat').scrollTop = $('chat').scrollHeight;
+  }
+}
+$('chat-form').onsubmit = async e => {
+  e.preventDefault();
+  const text = $('chat-input').value.trim(); if (!text) return;
+  $('chat-input').value = '';
+  stick = true;
+  try { await post('/api/chat', {message: text}); } catch (err) {}
+  poll();
+};
+
+// ── разрешения ──
+$('approval-yes').onclick = async () => { await post('/api/approval', {allow: true}); poll(); };
+$('approval-no').onclick = async () => { await post('/api/approval', {allow: false}); poll(); };
+
+// ── настройки ──
+
+// ── настройки: описаны схемой, форма строится и обновляется из неё ──
+const HOTKEYS = ['Ctrl+Shift+Space', 'Alt+Shift+Space', 'Ctrl+Alt+A', 'Ctrl+Alt+Q'];
+const SETTINGS_SCHEMA = [
+  {title: 'Голос и питомец', items: [
+    {key: 'voice_muted', type: 'toggle', invert: true, label: 'Озвучка', hint: 'Выключает голос, текст остаётся в чате и в облачке. Горячая клавиша Ctrl+Alt+M.'},
+    {key: 'volume', type: 'range', label: 'Громкость', hint: 'Применяется со следующей фразы.'},
+    {key: 'pet_visible', type: 'toggle', label: 'Показывать питомца', hint: 'Голос работает и при скрытом питомце.'},
+    {key: 'pet_pinned', type: 'toggle', label: 'Закрепить питомца', hint: 'Окно нельзя сдвинуть мышью.'},
+    {key: 'hotkey_input', type: 'select', label: 'Клавиша строки быстрого ввода', hint: 'Глобальная клавиша, открывает строку, в которую пишешь ассистентке.',
+     options: HOTKEYS.map(h => [h, h])}]},
+  {title: 'Восприятие', items: [
+    {key: 'vision', type: 'toggle', label: 'Зрение', hint: 'Смотреть на активное окно. Всё обрабатывается локально, окна с паролями и банками пропускаются.'},
+    {key: 'game_model', type: 'select', label: 'Модель игрока (ходы и планирование)', options: [['haiku', 'Haiku: быстро и дёшево'], ['sonnet', 'Sonnet: думает глубже, дороже по лимиту']]},
+    {key: 'streamer', type: 'toggle', label: 'Режим стримера', hint: 'В игре она вслух ведёт стрим: что видит, о чём думает, планы, цель игры. Без него комментирует только заметные события.'},
+    {key: 'mic', type: 'toggle', label: 'Микрофон (разговор голосом)', hint: 'Слушает тебя и узнаёт по голосу. Звук идёт только на локальный сервер WhisperX (docker compose up whisperx), в облако не уходит.'},
+    {key: 'hearing', type: 'toggle', label: 'Слух', hint: 'Слушать системный звук (фильм, видео). Локально, звонки и мессенджеры не слушаются.'}]},
+  {title: 'Поведение', items: [
+    {key: 'chattiness', type: 'select', label: 'Разговорчивость', hint: 'Как часто она сама начинает разговор.',
+     options: [['quiet', 'Редко'], ['normal', 'Обычно'], ['chatty', 'Часто']]},
+    {key: 'graph_memory', type: 'toggle', label: 'Память-граф', hint: 'Запоминает факты о людях и жизни из разговора в граф (локально: Gemma и EmbeddingGemma в LM Studio, база FalkorDB в Docker). Без них отключается сама.'},
+    {key: 'claude_usage', type: 'select', label: 'Расход Claude', hint: 'Как часто работают игровые контуры на подписке Claude. Срочное (налёт, приказ) идёт сразу в любом режиме.',
+     options: [['frugal', 'Экономный'], ['normal', 'Обычный'], ['generous', 'Щедрый (как раньше)']]},
+    {key: 'dnd', type: 'quiet', label: 'Не отвлекать', hint: 'Она сама не заговаривает и не комментирует игру, пока включено. Включается и сама, если сказать «буду смотреть сериал».'}]},
+  {title: 'Telegram', items: [
+    {key: 'telegram', type: 'toggle', label: 'Публиковать мысли в канал', hint: 'Токен бота и канал задаются в agent/secrets.env.'},
+    {key: 'telegram_after_run', type: 'toggle', label: 'Пост-итог после каждого забега', hint: 'Когда колония погибает, она пишет в канал короткий итог.'},
+    {key: 'telegram_voice', type: 'toggle', label: 'Посты голосом', hint: 'Пост уходит голосовым сообщением её голосом, текст остаётся подписью.'},
+    {key: 'telegram_confirm', type: 'toggle', label: 'Спрашивать перед публикацией', hint: 'Если выключено, она публикует сама.'}]},
+  {title: 'Безопасность', danger: true, items: [
+    {key: 'auto_accept', type: 'toggle', label: 'Авто-разрешать все действия',
+     hint: 'Она будет выполнять действия без вопросов: команды, запись файлов, игровые команды. Всё равно спрашивается: удаление данных, файлы с секретами, установка программ, запись вне проекта. Включай, только если доверяешь всему, что она читает (страницы, файлы): такой текст может пытаться ею управлять. Включается только здесь и в трее, не из чата.'}]},
+];
+let settingsBuilt = false;
+const sid = k => 'st-' + k;
+function buildSettings() {
+  $('settings-form').innerHTML = SETTINGS_SCHEMA.map(sec => `
+    <section class="${sec.danger ? 'border border-warning rounded-lg p-3' : ''}">
+      <h3 class="font-semibold mb-2 ${sec.danger ? 'text-warning' : ''}">${esc(sec.title)}</h3>
+      <div class="space-y-4">${sec.items.map(it => {
+        let control = '';
+        if (it.type === 'toggle') control = `<input id="${sid(it.key)}" type="checkbox" class="toggle ${sec.danger ? 'toggle-warning' : ''}">`;
+        else if (it.type === 'range') control = `<span class="flex items-center gap-2"><input id="${sid(it.key)}" type="range" min="0" max="100" step="5" class="range range-xs w-32"><span id="${sid(it.key)}-v" class="text-xs w-8 text-right opacity-70"></span></span>`;
+        else if (it.type === 'select') control = `<select id="${sid(it.key)}" class="select select-bordered select-sm">${it.options.map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select>`;
+        else if (it.type === 'quiet') control = `<span class="flex items-center gap-2"><span id="${sid(it.key)}-t" class="text-xs opacity-70"></span><input id="${sid(it.key)}" type="checkbox" class="toggle"></span>`;
+        return `<div class="flex items-center justify-between gap-4"><span class="min-w-0"><span class="font-medium">${esc(it.label)}</span>${it.hint ? `<span class="block text-xs opacity-60">${esc(it.hint)}</span>` : ''}</span>${control}</div>`;
+      }).join('')}</div>
+    </section>`).join('');
+  SETTINGS_SCHEMA.forEach(sec => sec.items.forEach(it => {
+    const el = $(sid(it.key)); if (!el) return;
+    if (it.type === 'toggle') el.onchange = e => post('/api/settings', {[it.key]: it.invert ? !e.target.checked : e.target.checked});
+    else if (it.type === 'range') {
+      el.oninput = e => { $(sid(it.key) + '-v').textContent = e.target.value; };
+      el.onchange = e => post('/api/settings', {[it.key]: +e.target.value});
+    } else if (it.type === 'select') el.onchange = e => post('/api/settings', {[it.key]: e.target.value});
+    else if (it.type === 'quiet') el.onchange = e => post('/api/settings', e.target.checked ? {dnd: true} : {dnd: false, quiet_until: 0});
+  }));
+  settingsBuilt = true;
+}
+function renderSettings(s) {
+  if (!s) return;
+  if (!settingsBuilt) buildSettings();
+  SETTINGS_SCHEMA.forEach(sec => sec.items.forEach(it => {
+    const v = s[it.key], el = $(sid(it.key));
+    if (it.type === 'quiet') {
+      const left = (s.quiet_until || 0) - Date.now() / 1000;
+      $(sid(it.key) + '-t').textContent = left > 0 ? `до ${new Date(s.quiet_until * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : (s.dnd ? 'до выключения' : '');
+      if (document.activeElement !== el) el.checked = !!s.dnd || left > 0;
+    } else if (el && document.activeElement !== el) {
+      if (it.type === 'toggle') el.checked = it.invert ? !v : !!v;
+      else { el.value = v; if (it.type === 'range') $(sid(it.key) + '-v').textContent = v; }
+    }
+  }));
+}
+
+const EMO = {idle:'спокойно', action:'в деле', angry:'раздражена', question:'вопрос', looking:'присматривается',
+  sitting:'скучает', thinking:'думает', happy:'довольна', threat:'тревога', resting:'отдыхает',
+  sad:'грустно', scared:'испугана', proud:'гордится', surprised:'удивлена'};
+
+function renderActivity(list) {
+  $('activity').innerHTML = list.length ? list.slice().reverse().map(a => {
+    const mins = Math.max(0, Math.round((Date.now() / 1000 - a.ts) / 60));
+    return `<li class="flex gap-2"><span class="badge badge-ghost shrink-0">${esc(a.app)}</span>
+      <span class="min-w-0"><span class="bubble-text">${esc(a.summary)}</span>
+      <span class="block text-xs opacity-60">${mins} мин назад</span></span></li>`;
+  }).join('') : '<li class="opacity-60">Пока ничего не видела. Зрение включено, ждёт активного окна.</li>';
+}
+
+function renderMemory(core) {
+  const KIND_TITLE = {user: ['О тебе', 'badge-neutral'], self: ['О ней самой', 'badge-secondary'], plan: ['Планы', 'badge-warning'], episode: ['События', 'badge-ghost']};
+  const groups = ['user', 'self', 'plan', 'episode'].map(k => {
+    const items = (core.memories || []).filter(m => m.kind === k);
+    if (!items.length) return '';
+    return `<div><div class="mb-1"><span class="badge ${KIND_TITLE[k][1]} badge-sm">${KIND_TITLE[k][0]}</span></div><ul class="space-y-1">` +
+      items.map(m => `<li class="flex items-start justify-between gap-2"><span class="bubble-text">${esc(m.text)}${m.due ? ` <span class="text-xs opacity-60">(до ${new Date(m.due * 1000).toLocaleDateString()})</span>` : ''}</span>
+        <button class="btn btn-ghost btn-xs" data-forget-id="${esc(m.id)}" title="Забыть">✕</button></li>`).join('') + '</ul></div>';
+  }).join('');
+  $('facts').innerHTML = groups || '<li class="opacity-60 text-sm">Пока ничего. Расскажи о себе в чате или попроси «запомни, что…».</li>';
+  $('facts').querySelectorAll('[data-forget-id]').forEach(b => b.onclick = async () => {
+    await post('/api/memory/forget', {id: b.dataset.forgetId}); poll();
+  });
+  const BADGE = {pawn: ['игра', 'badge-success'], person: ['Telegram', 'badge-info'], player: ['ты', 'badge-neutral']};
+  $('relations').innerHTML = core.relations.length ? core.relations.map(r => {
+    const pct = Math.round((r.affinity + 100) / 2), b = BADGE[r.kind] || BADGE.pawn;
+    return `<li><div class="flex justify-between gap-2"><span class="flex items-center gap-2 min-w-0"><span class="badge ${b[1]} badge-sm shrink-0">${b[0]}</span>
+      <span class="truncate">${esc(r.name)}${r.alive ? '' : ' (мёртв)'}</span></span>
+      <span class="opacity-60 shrink-0">${esc(r.label)}</span></div>
+      ${r.last ? `<div class="text-xs opacity-60 truncate">«${esc(r.last)}»</div>` : ''}
+      <progress class="progress w-full ${r.kind === 'pawn' ? 'progress-success' : ''}" value="${pct}" max="100"></progress></li>`;
+  }).join('') : '<li class="opacity-60">Отношений пока нет.</li>';
+}
+
+// ── протокол событий ──
+const KIND = {user: ['Ты', 'badge-neutral'], say: ['Ассистент', 'badge-primary'], proactive: ['Сама', 'badge-secondary'],
+  reflex: ['Реакция', 'badge-accent'], vision: ['Зрение', 'badge-info'], hearing: ['Слух', 'badge-info'], telegram: ['Telegram', 'badge-secondary'], plan: ['План', 'badge-primary'], audit: ['Аудит', 'badge-warning'], memory: ['Память', 'badge-accent'], game: ['Игра', 'badge-success'],
+  approval: ['Разрешение', 'badge-warning'], setting: ['Настройка', 'badge-ghost'], error: ['Ошибка', 'badge-error']};
+function evDetails(e) {
+  const d = e.data || {}; const bits = [];
+  if (d.emotion) bits.push(EMO[d.emotion] || d.emotion);
+  if (d.action && d.action !== 'none') bits.push('команда: ' + d.action);
+  if (d.result) bits.push(d.result);
+  if (d.delta) bits.push('отношение ' + (d.delta > 0 ? '+' : '') + d.delta);
+  if (d.said === true) bits.push('заговорила'); if (d.said === false) bits.push('промолчала');
+  if (d.app) bits.push(d.app);
+  if (d.ms) bits.push(d.ms + ' мс');
+  return bits.join(' · ');
+}
+async function loadEvents() {
+  if ($('tab-events').classList.contains('hidden')) return;
+  const kind = $('ev-kind').value;
+  const r = await fetch('/api/events?limit=150' + (kind ? '&kind=' + kind : '')).then(x => x.json());
+  const html = r.events.slice().reverse().map(e => {
+    const [name, cls] = KIND[e.kind] || [e.kind, 'badge-ghost'];
+    const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+    const det = evDetails(e);
+    return `<li class="flex gap-2"><span class="badge ${cls} badge-sm shrink-0 mt-1">${esc(name)}</span>
+      <span class="min-w-0"><span class="text-xs opacity-60">${t}</span>
+      <span class="block bubble-text">${esc(e.text)}</span>${det ? `<span class="block text-xs opacity-60">${esc(det)}</span>` : ''}</span></li>`;
+  }).join('') || '<li class="opacity-60">Пока пусто.</li>';
+  if ($('ev-list').dataset.sig !== html) { $('ev-list').dataset.sig = html; $('ev-list').innerHTML = html; }
+}
+$('ev-kind').onchange = () => { $('ev-list').dataset.sig = ''; loadEvents(); };
+
+// ── возможности (окружения) ──
+const RISK = {auto: ['сразу', 'badge-ghost'], ask: ['с разрешением', 'badge-warning'], public: ['публично', 'badge-secondary']};
+async function loadCaps() {
+  if ($('tab-caps').classList.contains('hidden')) return;
+  const r = await fetch('/api/capabilities').then(x => x.json());
+  const html = r.environments.map(e => `
+    <div class="border border-base-300 rounded-lg p-3">
+      <div class="flex items-center justify-between gap-2">
+        <span class="font-medium">${esc(e.title)}</span>
+        <span class="badge ${e.ok ? 'badge-success' : 'badge-ghost'} badge-sm">${esc(e.ok ? 'доступно' : e.status)}</span>
+      </div>
+      <div class="text-xs opacity-60 mb-2">${esc(e.description)}</div>
+      <ul class="space-y-1 text-sm">${e.tools.map(t => `<li class="flex items-start gap-2">
+        <span class="badge ${(RISK[t.risk] || RISK.ask)[1]} badge-xs shrink-0 mt-1">${esc((RISK[t.risk] || RISK.ask)[0])}</span>
+        <span class="min-w-0"><span class="font-mono text-xs">${esc(t.name)}</span> <span class="opacity-70 bubble-text">${esc(t.description)}</span></span></li>`).join('') || '<li class="opacity-60">Инструментов нет.</li>'}</ul>
+    </div>`).join('') || '<p class="opacity-60 text-sm">Окружения ещё загружаются.</p>';
+  const errs = Object.entries(r.errors || {}).map(([f, m]) => `<div class="alert alert-warning text-xs"><span>${esc(f)}: ${esc(m)}</span></div>`).join('');
+  if ($('caps-list').dataset.sig !== html + errs) { $('caps-list').dataset.sig = html + errs; $('caps-list').innerHTML = html + errs; }
+}
+setInterval(() => loadCaps().catch(() => {}), 3000);
+
+// ── игра ──
+function renderGame(d) {
+  $('game-off').classList.toggle('hidden', d.connected);
+  $('game-on').classList.toggle('hidden', !d.connected);
+  if (!d.connected) return;
+  $('g-colony').textContent = d.colony_name || '—';
+  $('g-tick').textContent = d.tick != null ? d.tick.toLocaleString() : '—';
+  $('g-ambition').innerHTML = d.ambition
+    ? `<div class="w-full"><div class="text-xs uppercase opacity-70">Главная цель игры</div><div class="font-medium">${esc(d.ambition.title)}</div>
+       <div class="text-sm opacity-80">${esc(d.ambition.criteria)}</div><progress class="progress w-full mt-2" value="${d.ambition.progress || 0}" max="100"></progress></div>`
+    : '<span>Главной цели игры пока нет: она поставит её на ближайшем ходу.</span>';
+  $('g-goals').innerHTML = (d.goals || []).map(g => `<li><div class="flex justify-between gap-2"><span>${esc(g.title)}</span><span class="opacity-60">${g.progress || 0}%</span></div>
+    <progress class="progress w-full" value="${g.progress || 0}" max="100"></progress></li>`).join('') || '<li class="opacity-60">Целей пока нет.</li>';
+  const m = d.mode || {mode: 'observe', label: 'наблюдает', reason: ''};
+  $('g-mode').className = 'alert items-start text-sm ' + (m.mode === 'plan' ? 'alert-info' : m.mode === 'act' ? 'alert-success' : m.mode === 'tactic' ? 'alert-error' : '');
+  $('g-mode').innerHTML = `<div><b>Сейчас она ${esc(m.label)}</b>${m.reason ? ': ' + esc(m.reason) : ''}</div>`;
+  const taskMark = s => s === 'done' ? '✓' : s === 'in_progress' ? '▶' : '○';
+  const taskRow = (t, depth) => `<li style="margin-left:${depth * 1.1}rem"><div class="flex gap-2 ${t.status === 'done' ? 'opacity-50 line-through' : ''}"><span>${taskMark(t.status)}</span><span class="flex-1">${esc(t.text)}</span>${t.children.length ? `<span class="opacity-60">${t.progress}%</span>` : ''}</div></li>`
+    + t.children.map(c => taskRow(c, depth + 1)).join('');
+  $('g-tasks').innerHTML = (d.tasks || []).map(t => taskRow(t, 0)).join('') || '<li class="opacity-60">Задач пока нет.</li>';
+  $('g-pawns').innerHTML = (d.pawns || []).map(p => {
+    const hp = Math.round((p.health_pct ?? 1) * 100);
+    return `<div><div class="flex justify-between text-sm"><span class="font-medium">${esc(p.name || p.id)}</span><span class="opacity-60">${hp}%</span></div>
+      <progress class="progress ${hp < 40 ? 'progress-error' : 'progress-success'} w-full" value="${hp}" max="100"></progress>
+      <div class="text-xs opacity-60 bubble-text">${esc(p.job || 'idle')} · ${esc(p.mood_label || '')}</div></div>`;
+  }).join('') || '<p class="opacity-60 text-sm">Колонистов нет.</p>';
+  const r = d.research;
+  $('g-research').innerHTML = r && r.current
+    ? `<div>${esc(r.current)}</div><progress class="progress w-full" value="${Math.round((r.progress || 0) * 100)}" max="100"></progress>`
+    : '<span class="opacity-60">Ничего не исследуется.</span>';
+  const res = Object.entries(d.resources || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 14);
+  $('g-res').innerHTML = res.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="text-right ${v < 50 ? 'text-warning' : ''}">${v}</td></tr>`).join('')
+    || '<tr><td class="opacity-60">Нет данных</td></tr>';
+  $('g-decisions').innerHTML = (d.recent_decisions || []).slice(-8).reverse().map(x =>
+    `<li><div class="text-xs opacity-60">тик ${(x.tick || 0).toLocaleString()} · ${esc(x.event || '')}</div>
+     <div class="bubble-text">${esc((x.directive || '').slice(0, 200)) || '<span class="opacity-60">без реплики</span>'}</div>
+     ${(x.actions || []).length ? `<div class="flex flex-wrap gap-1 mt-1">${x.actions.map(a => `<span class="badge badge-sm badge-outline">${esc(a)}</span>`).join('')}</div>` : ''}</li>`
+  ).join('') || '<li class="opacity-60">Решений пока нет.</li>';
+  const dead = Object.values(d.pawn_fates || {}).filter(f => f.fate === 'dead');
+  $('g-fates').innerHTML = dead.map(f => `<li>${esc(f.name || '?')} <span class="opacity-60">— ${esc(f.cause || 'причина неизвестна')}</span></li>`).join('')
+    || '<li class="opacity-60">Потерь нет.</li>';
+}
+
+// ── опрос ──
+let polling = false;
+async function poll() {
+  if (polling) return; polling = true;
+  try {
+    const [st, core] = await Promise.all([fetch('/api/state').then(r => r.json()), fetch('/api/core').then(r => r.json())]);
+    $('badge-core').textContent = 'ядро работает'; $('badge-core').className = 'badge badge-success badge-outline';
+    $('badge-game').textContent = st.connected ? ('игра: ' + (st.colony_name || 'онлайн')) : 'игра не запущена';
+    $('badge-game').className = 'badge ' + (st.connected ? 'badge-info badge-outline' : 'badge-ghost');
+    const emo = st.emotion && st.emotion.emotion; const fresh = st.emotion && Date.now() / 1000 - st.emotion.ts < 45;
+    $('badge-emotion').textContent = emo && fresh ? EMO[emo] || emo : '';
+    $('badge-emotion').classList.toggle('hidden', !(emo && fresh));
+    renderSettings(st.settings);
+    $('badge-auto').classList.toggle('hidden', !(st.settings && st.settings.auto_accept));
+    $('badge-quiet').classList.toggle('hidden', !(st.settings && (st.settings.dnd || st.settings.quiet_until * 1000 > Date.now())));
+    const last = core.dialogue[core.dialogue.length - 1];
+    renderChat(core.dialogue, last && last.role === 'user' && Date.now() / 1000 - last.ts < 90);
+    renderActivity(core.activity); renderMemory(core); renderGame(st);
+    $('approval').classList.toggle('hidden', !core.approval.pending);
+    $('approval-text').textContent = core.approval.text;
+  } catch (e) {
+    $('badge-core').textContent = 'ядро недоступно'; $('badge-core').className = 'badge badge-error badge-outline';
+  }
+  polling = false;
+}
+poll(); setInterval(poll, 2000);
+setInterval(() => loadEvents().catch(() => {}), 2000);
+</script>
+</body>
+</html>

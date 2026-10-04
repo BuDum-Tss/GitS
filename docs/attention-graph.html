@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Граф внимания ГЛаДОС</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Unbounded:wght@500&display=swap">
+<style>
+/* Layout: одна колонка чтения, диаграммы и таблицы шире текста и прокручиваются сами */
+:root {
+  --bg: #f0f1f2;
+  --surface: #ffffff;
+  --fg: #1a1c1f;
+  --muted: #5d6268;
+  --line: #d3d6d9;
+  --accent: #b87500;
+  --accent-soft: #f6e6c4;
+  --ok: #2c7a4b;
+  --font-display: "Unbounded", "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --surface: #1c1f24; --fg: #e5e7e9; --muted: #9aa0a6;
+    --line: #2f343b; --accent: #f2b233; --accent-soft: #3a2d10; --ok: #5cc287;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161a; --surface: #1c1f24; --fg: #e5e7e9; --muted: #9aa0a6;
+  --line: #2f343b; --accent: #f2b233; --accent-soft: #3a2d10; --ok: #5cc287;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); line-height: 1.6; padding-inline: 16px; padding-block: 28px 64px; }
+main { max-width: 860px; margin-inline: auto; }
+h1 { font-family: var(--font-display); font-weight: 500; font-size: clamp(1.5rem, 4.5vw, 2.1rem); line-height: 1.2; margin: 0 0 12px; text-wrap: balance; }
+h2 { font-size: 1.3rem; margin: 48px 0 8px; text-wrap: balance; display: flex; gap: 10px; align-items: baseline; }
+h2 .tag { font-family: var(--font-mono); font-size: .75rem; color: var(--accent); letter-spacing: .06em; text-transform: uppercase; font-weight: 500; }
+h3 { font-size: 1rem; margin: 24px 0 6px; }
+p, li { max-width: 68ch; }
+p { margin: 8px 0; }
+.lede { font-size: 1.05rem; color: var(--muted); max-width: 62ch; }
+code, .mono { font-family: var(--font-mono); font-size: .86em; background: var(--surface); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+.scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin: 14px 0; }
+.diagram { padding: 16px; }
+.diagram pre { margin: 0; min-width: 640px; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .92rem; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { font-size: .75rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; margin: 16px 0; border-radius: 0 6px 6px 0; max-width: 68ch; }
+.pill { font-family: var(--font-mono); font-size: .72rem; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.pill.new { color: var(--accent); border-color: var(--accent); }
+.pill.have { color: var(--ok); border-color: var(--ok); }
+ul { padding-left: 1.2em; }
+li { margin: 4px 0; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 14px 0; }
+.cols > div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.cols h3 { margin-top: 0; }
+.decide li strong { color: var(--accent); }
+</style>
+
+</head><body>
+<main>
+<h1>Граф внимания ГЛаДОС</h1>
+<p class="lede">Проект: универсальный агент с минимальной задержкой реакции и способностью думать и планировать. Это дизайн перед реализацией на LangGraph. Код пока не написан, кроме быстрого слоя эмоций (<code>fast_brain.py</code>).</p>
+
+<h2><span class="tag">Идея</span>Один фокус, много фоновых процессов</h2>
+<p>Человек не может одновременно обдумывать сложное и говорить о другом, но ходит, моргает и вздрагивает параллельно. Агент делится так же:</p>
+<ul>
+  <li><strong>Фокус внимания</strong> один: в каждый момент активно одно состояние (наблюдает, обдумывает, говорит, действует). Это и есть граф.</li>
+  <li><strong>Рефлексы и эмоции</strong> работают всегда и параллельно, не занимая фокус.</li>
+  <li><strong>Медленные процессы</strong> (планирование, рефлексия) идут в фоне и кладут результат в общую память, а фокус подбирает его, когда свободен.</li>
+</ul>
+
+<h2><span class="tag">Схема</span>Три слоя</h2>
+<div class="scroll diagram">
+<pre class="mermaid">
+flowchart TB
+  subgraph L1["Рефлексы: всегда включены, параллельно, локальная LLM"]
+    S["Сенсоры: события игры, чат, таймеры"] --> A["Оценка: эмоция и срочность"]
+    A --> M["Эмоциональное состояние"]
+  end
+  A -->|"срочность"| W["Диспетчер внимания"]
+  subgraph L2["Фокус внимания: одно состояние за раз, граф LangGraph"]
+    W --> F["Состояния: наблюдает, реагирует, обдумывает, говорит, действует, слушает"]
+  end
+  subgraph L3["Фон: медленные процессы, сильная модель Claude"]
+    P["Планировщик"]
+    R["Рефлексия"]
+  end
+  MEM[("Общая память: планы, уроки, события, характер")]
+  P --> MEM
+  R --> MEM
+  MEM --> W
+  F --> MEM
+  M --> F
+</pre>
+</div>
+
+<h2><span class="tag">Граф</span>Состояния фокуса и переходы</h2>
+<div class="scroll diagram">
+<pre class="mermaid">
+flowchart LR
+  idle(["Наблюдает"])
+  react["Реагирует"]
+  think["Обдумывает"]
+  speak["Говорит"]
+  act["Действует"]
+  talk["Слушает игрока"]
+  idle -->|"срочное событие"| react
+  idle -->|"пора по плану или таймер"| think
+  idle -->|"сообщение в чат"| talk
+  react -->|"рефлекс выполнен"| idle
+  react -->|"нужен совет Claude"| think
+  talk --> think
+  think -->|"решение готово"| act
+  think -->|"есть что сказать"| speak
+  act -->|"шаг выполнен"| speak
+  act -->|"говорить нечего"| idle
+  speak -->|"фраза закончена"| idle
+  think -.->|"прервана"| react
+  speak -.->|"прервана"| react
+  act -.->|"прервано"| react
+</pre>
+</div>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Состояние</th><th>Что происходит</th><th>Кто думает</th><th>Задержка</th></tr></thead>
+<tbody>
+<tr><td>Наблюдает</td><td>Ничего срочного. Медленно «скучает», смотрит план, иногда бормочет.</td><td>правила</td><td>—</td></tr>
+<tr><td>Реагирует</td><td>Рефлекс на событие: draft при рейде, тушение пожара, эмоция и стикер.</td><td>локальная LLM + правила</td><td>~1–2 с</td></tr>
+<tr><td>Обдумывает</td><td>Анализ, выбор решения, уточнение плана. Может занять десятки секунд.</td><td>Claude</td><td>секунды–минуты</td></tr>
+<tr><td>Слушает игрока</td><td>Принимает сообщение из чата, понимает, что от неё хотят.</td><td>локальная LLM, при сложности Claude</td><td>~2 с</td></tr>
+<tr><td>Действует</td><td>Выполняет шаг плана через инструменты игры.</td><td>исполнитель</td><td>по инструменту</td></tr>
+<tr><td>Говорит</td><td>Реплика в облачке и озвучка по предложениям.</td><td>Claude (текст), TTS</td><td>по длине фразы</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2><span class="tag">Эмоции</span>Как они возникают и выбираются</h2>
+<h3>Оценка события</h3>
+<p>Каждое событие проходит быструю оценку: насколько оно хорошее или плохое (валентность), насколько срочное и возбуждающее (возбуждение), касается ли угрозы. Сейчас это делает <code>fast_brain.py</code>: локальная Gemma выбирает метку эмоции за ~1,6 с, а при недоступности модели срабатывают правила.</p>
+<h3>Два слоя настроения</h3>
+<ul>
+  <li><strong>Эмоция</strong> быстрая и короткая. Живёт секунды, затухает сама. Определяет стикер, голос и тон ближайшей фразы.</li>
+  <li><strong>Настроение</strong> медленное. Это скользящее среднее последних эмоций за минуты и часы: «колония в порядке», «всё горит». Меняет общий тон, склонность язвить и осторожность в решениях.</li>
+</ul>
+<h3>Выбор стикера</h3>
+<ul>
+  <li>Эмоция = вектор (валентность, возбуждение, угроза). Стикер выбирается ближайшим по этому вектору, а не прямой таблицей «событие → картинка».</li>
+  <li>Гистерезис: стикер держится минимум 2–3 секунды и не мигает от соседних событий.</li>
+  <li>Более сильная эмоция вытесняет слабую, иначе побеждает недавняя.</li>
+  <li>Затухание: через ~30 секунд без новых событий эмоция сползает к текущему настроению, а не сразу к <code>idle</code>.</li>
+</ul>
+<div class="scroll">
+<table>
+<thead><tr><th>Стикер</th><th>Когда</th><th>Статус</th></tr></thead>
+<tbody>
+<tr><td>idle, looking, thinking, sitting</td><td>спокойное наблюдение, интерес, раздумье, скука</td><td><span class="pill have">есть</span></td></tr>
+<tr><td>action, threat</td><td>активное действие, рейд и угроза</td><td><span class="pill have">есть</span></td></tr>
+<tr><td>angry, happy, question, resting</td><td>злость, радость, непонимание, пауза</td><td><span class="pill have">есть</span></td></tr>
+<tr><td>sad, scared, proud, surprised</td><td>потеря, паника, гордость за результат, неожиданность</td><td><span class="pill new">нужно дорисовать</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2><span class="tag">Прерывания</span>Как их реализовать</h2>
+<p>Событиям присваивается приоритет. Его проверяет диспетчер, а прервать можно только в безопасных точках.</p>
+<div class="scroll">
+<table>
+<thead><tr><th>Приоритет</th><th>Примеры</th><th>Что делает</th></tr></thead>
+<tbody>
+<tr><td>P0 критично</td><td>рейд, пожар, смерть колониста</td><td>прерывает всё, немедленно уводит в «Реагирует»</td></tr>
+<tr><td>P1 важно</td><td>сообщение игрока, тепловой удар</td><td>прерывает «Наблюдает» и «Обдумывает»; «Говорит» дослушивает фразу</td></tr>
+<tr><td>P2 обычно</td><td>письмо, караван, исследование завершено</td><td>ждёт, пока фокус освободится</td></tr>
+<tr><td>P3 фон</td><td>таймеры, скука</td><td>только когда «Наблюдает»</td></tr>
+</tbody>
+</table>
+</div>
+<ul>
+  <li><strong>Точки прерывания.</strong> Между узлами графа, между предложениями речи, между шагами плана. Посреди вызова инструмента не обрывается.</li>
+  <li><strong>Прерывание длинной мысли.</strong> Запрос к Claude отменяется (задача asyncio снимается). Недодуманное не теряется: кладётся в «отложенное» с отметкой времени и состояния игры.</li>
+  <li><strong>Возобновление.</strong> После реакции диспетчер проверяет отложенное. Если мир сильно изменился, мысль устарела и выбрасывается, иначе продолжается или перезапускается с новым контекстом.</li>
+  <li><strong>Речь.</strong> Озвучка уже режется на предложения и имеет счётчик поколений для отмены. Прерывание речи доводит текущее предложение, остальное отбрасывает или переносит.</li>
+</ul>
+<div class="note">Реакция идёт параллельно с мыслью: пока Claude думает, рефлексы уже сменили стикер и, если нужно, выполнили простое действие. Фокус же переключается только в безопасной точке.</div>
+
+<h2><span class="tag">Планы</span>Как они работают</h2>
+<p>У плана три горизонта. Он не список, а граф шагов с условиями.</p>
+<div class="cols">
+  <div><h3>Цели</h3><p>Долгие, часы игры. «Построить оборону», «изучить электричество». Пишет планировщик Claude раз в десятки минут.</p></div>
+  <div><h3>Задачи</h3><p>Средние, минуты. Набор шагов к цели, у каждого статус: ждёт, идёт, готово, сорвано, устарело.</p></div>
+  <div><h3>Текущий шаг</h3><p>Один шаг, который исполнитель выполняет прямо сейчас. Его и прерывают реакции.</p></div>
+</div>
+<ul>
+  <li>У шага есть <strong>предусловия</strong> (есть материал, колонист свободен) и <strong>срок годности</strong>.</li>
+  <li>В состоянии «Наблюдает» монитор плана проверяет, выполняются ли условия. Нарушены, значит шаг срывается и планировщик получает повод пересмотреть.</li>
+  <li>События тоже могут <strong>переписывать план</strong>: рейд ставит «оборону» в начало очереди, смерть колониста меняет распределение работ.</li>
+  <li>Исполнитель берёт следующий готовый шаг, выполняет и записывает результат. Мысль и действие связаны: у каждого шага остаётся запись, почему он был выбран.</li>
+</ul>
+<p>Сейчас в проекте уже есть цели и задачи (<code>set_goal</code>, <code>set_task</code>) и три контура планирования на таймерах. Новое здесь: статусы, предусловия, срок годности и проверка на каждом тике.</p>
+
+<h2><span class="tag">Глубина</span>Память, характер, поведение</h2>
+<div class="cols">
+  <div>
+    <h3>Память <span class="pill have">часть есть</span></h3>
+    <ul>
+      <li>Рабочая: текущее состояние, последние события.</li>
+      <li>Эпизодическая: что произошло и как она на это отреагировала.</li>
+      <li>Смысловая: уроки (<code>add_lesson</code>) и выводы рефлексии.</li>
+      <li><span class="pill new">новое</span> Отношения: что она думает о каждом колонисте, обиды и симпатии.</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Характер <span class="pill new">новое</span></h3>
+    <ul>
+      <li>Якорь личности: ценности, манера речи, запреты.</li>
+      <li>Устойчивые черты и «злопамятность»: смерть колониста влияет на тон ещё долго.</li>
+      <li>Проверка дрейфа: раз в N реплик сверять стиль с якорем.</li>
+      <li>Фирменные повторяющиеся шутки, которые помнит и развивает.</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Мотивы <span class="pill new">новое</span></h3>
+    <ul>
+      <li>Любопытство: тянется к неизвестному, ставит эксперименты.</li>
+      <li>Скука: при долгой тишине сама придумывает занятие или реплику.</li>
+      <li>Гордость: радуется результатам, которые сама планировала.</li>
+      <li>Внутренний монолог: короткая лента «что думаю и почему», видна в дашборде.</li>
+    </ul>
+  </div>
+</div>
+<p>Из известных проектов (Generative Agents, Letta/MemGPT, SwiftSage) эти же кирпичи дают убедительное поведение на часы. Глубину человека они не дают, и характер без явного якоря дрейфует. Поэтому якорь и проверка дрейфа включены с первого этапа.</p>
+
+<h2><span class="tag">LangGraph</span>Как это ляжет на код</h2>
+<ul>
+  <li><strong>Общее состояние графа:</strong> текущий фокус, эмоция и настроение, очередь событий с приоритетами, план, отложенные мысли, внутренний монолог.</li>
+  <li><strong>Узлы:</strong> наблюдает, реагирует, обдумывает, говорит, действует, слушает. Условные рёбра из диспетчера выбирают следующий узел по приоритету и состоянию плана.</li>
+  <li><strong>Прерывания:</strong> проверка очереди между узлами. Отмена долгого вызова модели через снятие задачи asyncio. Подробности API LangGraph (интерруты, чекпоинты) сверю с документацией перед реализацией.</li>
+  <li><strong>Рефлексы вне графа:</strong> отдельная асинхронная задача (<code>fast_brain</code>) пишет эмоцию в общее состояние и сразу выполняет разрешённые простые действия.</li>
+  <li><strong>Фон:</strong> планировщик и рефлексия остаются отдельными задачами на таймерах и пишут в память.</li>
+  <li><strong>Адаптер игры:</strong> события и инструменты RimWorld за интерфейсом. Для другой игры или задачи меняется адаптер, а граф остаётся.</li>
+</ul>
+
+<h2><span class="tag">Этапы</span>Порядок работ</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Этап</th><th>Что получаем</th></tr></thead>
+<tbody>
+<tr><td>1. Граф и диспетчер</td><td>Состояния, приоритеты, прерывания и возобновление поверх текущего контроллера. Эмоции из быстрого слоя уже подключены.</td></tr>
+<tr><td>2. Эмоции и настроение</td><td>Вектор эмоции, затухание, гистерезис, влияние на тон фразы и голос.</td></tr>
+<tr><td>3. Планы с условиями</td><td>Статусы шагов, предусловия, срок годности, перепланирование по событиям.</td></tr>
+<tr><td>4. Характер и память</td><td>Якорь личности, отношения с колонистами, мотивы, внутренний монолог.</td></tr>
+<tr><td>5. Новые стикеры</td><td>Грусть, страх, гордость, удивление.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2><span class="tag">Решить</span>Что нужно от тебя</h2>
+<ul class="decide">
+  <li><strong>Действия рефлексов.</strong> Может ли быстрый слой сам отдавать игре простые команды (draft при рейде, тушение пожара), или пока только менять эмоцию, а действует Claude?</li>
+  <li><strong>Характер.</strong> Остаётся ГЛаДОС (пассивно-агрессивная учёная) или добавляем больше теплоты и разнообразия настроения?</li>
+  <li><strong>Порядок.</strong> Начинаем с этапа 1 (граф и прерывания) или сначала с эмоций и стикеров?</li>
+  <li><strong>Где живёт код.</strong> Сейчас изменения лежат в рабочей копии (ветка <code>claude/split-image-emotions-5af010</code>), а запущенный агент берёт файлы из основной папки. Нужно решить, как их объединить.</li>
+</ul>
+</main>
+</body>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"default"});</script>
+</html>

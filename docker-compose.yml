@@ -1,0 +1,67 @@
+# Голосовые сервисы ГЛаДОС (локально, на GPU). Запуск: docker compose up -d fish-speech
+# Оба сервиса необязательны: без Fish Speech бот говорит запасным голосом edge-tts, без WhisperX слух использует
+# встроенный локальный Whisper. На видеокарте с 6 ГБ вместе с локальной моделью (LM Studio) и игрой видеопамяти может
+# не хватить, поэтому поднимай то, что нужно сейчас.
+services:
+  # База памяти-графа (Graphiti). Версия закреплена: образ latest (6.x) несовместим с текущим Graphiti.
+  graph:
+    image: falkordb/falkordb:v4.22.0
+    container_name: glados-graph
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${GRAPH_PORT:-6380}:6379"
+    volumes:
+      - graph_data:/var/lib/falkordb/data
+    mem_limit: 600m
+
+  fish-speech:
+    build:
+      context: .
+      dockerfile: docker/fish-speech/Dockerfile
+    image: fish-speech-custom:latest
+    container_name: glados-tts
+    restart: "no"
+    ports:
+      - "${FISH_HOST:-127.0.0.1}:${FISH_PORT:-8080}:8080"
+    volumes:
+      - ${FISH_CHECKPOINTS:-./agent/resources/tts/checkpoints}:/opt/fish-speech/checkpoints
+      - ./agent/resources/tts/references:/opt/fish-speech/references
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  whisperx:
+    build:
+      context: .
+      dockerfile: docker/whisperx/Dockerfile
+    image: whisperx-custom:latest
+    container_name: glados-stt
+    restart: "no"
+    ports:
+      - "${WHISPER_HOST:-127.0.0.1}:${WHISPER_PORT:-9000}:9000"
+    environment:
+      WHISPERX_MODEL: ${WHISPER_MODEL:-large-v3}
+      WHISPERX_LANGUAGE: ${WHISPER_LANGUAGE:-ru}
+      WHISPERX_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-float16}
+      WHISPERX_BATCH_SIZE: ${WHISPER_BATCH_SIZE:-16}
+      # HF-токен с принятыми условиями gated-моделей pyannote/speaker-diarization-3.1 и segmentation-3.0:
+      # без него диаризация (и голосовые отпечатки) не загрузится, обычная транскрипция работает.
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HUB_DISABLE_XET: "1"
+    volumes:
+      - whisper_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  whisper_cache:
+  graph_data:

@@ -1,0 +1,13 @@
+{
+  "ID": "5C3E7A1B9D2F4E6A8B0C1D2E3F4A5B6C",
+  "ActionKeyword": "@",
+  "IsGlobal": false,
+  "Name": "Ассистент",
+  "Author": "local",
+  "Version": "1.0.0",
+  "Language": "csharp",
+  "Website": "http://localhost:8766/",
+  "ExecuteFileName": "Community.PowerToys.Run.Plugin.Assistant.dll",
+  "IcoPathDark": "Images/assistant.dark.png",
+  "IcoPathLight": "Images/assistant.light.png"
+}

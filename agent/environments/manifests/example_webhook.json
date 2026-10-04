@@ -1,0 +1,20 @@
+{
+  "id": "notify",
+  "title": "Уведомления (пример вебхука)",
+  "description": "Пример исходящего вебхука: отправка сообщения во внешний сервис. Включить: enabled=true и задать переменные в agent/secrets.env.",
+  "enabled": false,
+  "sources": [
+    {
+      "type": "webhook_out",
+      "name": "send_notification",
+      "description": "Отправить уведомление в мессенджер через вебхук.",
+      "method": "POST",
+      "url": "{NOTIFY_WEBHOOK_URL}",
+      "headers": {"Authorization": "Bearer {NOTIFY_WEBHOOK_TOKEN}"},
+      "body": {"text": "{text}"},
+      "params": {"text": {"type": "string", "description": "текст уведомления"}},
+      "risk": "ask",
+      "keywords": ["уведомление", "оповести", "сообщение"]
+    }
+  ]
+}
