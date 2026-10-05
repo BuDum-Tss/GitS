@@ -231,6 +231,24 @@ async def handle_api_menu_click(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "result": str(e)})
 
 
+async def handle_api_appraisal_label(request: web.Request) -> web.Response:
+    """Отметка игрока по оценке события: пересылается агенту игры, у которого журнал."""
+    if not _is_local_json(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    import httpx
+    base = os.getenv("RIMWORLD_AGENT_URL", "http://127.0.0.1:8767")
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.post(f"{base}/api/appraisal_label", json=body)
+            return web.json_response(r.json(), status=r.status_code)
+    except Exception as e:
+        return web.json_response({"saved": False, "error": str(e)}, status=502)
+
+
 async def handle_api_web_search(request: web.Request) -> web.Response:
     """Общий поиск в интернете для других агентов (игра): {"query": "..."} -> {"answer": "..."}."""
     if not _is_local_json(request):
@@ -447,6 +465,7 @@ async def start_dashboard(
     app.router.add_post("/api/claude_usage", handle_api_claude_usage)
     app.router.add_post("/api/web_search", handle_api_web_search)
     app.router.add_post("/api/tool", handle_api_tool)
+    app.router.add_post("/api/appraisal_label", handle_api_appraisal_label)
     app.router.add_post("/api/menu_click", handle_api_menu_click)
     app.router.add_post("/api/mode", handle_api_mode_post)
     app.router.add_post("/api/approval", handle_api_approval)

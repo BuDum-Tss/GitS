@@ -143,6 +143,10 @@
                 <span class="inline-block rounded px-1.5 bg-secondary text-secondary-content">медитация</span></div>
               <div class="overflow-x-auto"><table class="table table-xs"><thead id="g-sched-head"></thead><tbody id="g-sched"></tbody></table></div>
             </div>
+            <div>
+              <div class="font-medium mb-1">Оценки событий <span class="text-xs opacity-60 font-normal">быстрая модель решений; отметь верно или нет: по отметкам считается точность</span></div>
+              <div class="overflow-x-auto"><table class="table table-xs"><tbody id="g-appr"></tbody></table></div>
+            </div>
             <div><div class="font-medium mb-2">Исследование</div><div id="g-research" class="text-sm"></div></div>
             <div><div class="font-medium mb-2">Ресурсы</div><div class="overflow-x-auto"><table class="table table-sm"><tbody id="g-res"></tbody></table></div></div>
             <div><div class="font-medium mb-2">Последние решения</div><ul id="g-decisions" class="space-y-2 text-sm"></ul></div>
@@ -759,6 +763,11 @@ async function loadCaps() {
 setInterval(() => loadCaps().catch(() => {}), 3000);
 
 // ── игра ──
+async function labelAppraisal(id, ok, correctKind) {
+  await fetch('/api/appraisal_label', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id, ok, correct_kind: correctKind})});
+  poll();
+}
+
 function renderGame(d) {
   $('game-off').classList.toggle('hidden', d.connected);
   $('game-on').classList.toggle('hidden', !d.connected);
@@ -778,6 +787,21 @@ function renderGame(d) {
   const taskRow = (t, depth) => `<li style="margin-left:${depth * 1.1}rem"><div class="flex gap-2 ${t.status === 'done' ? 'opacity-50 line-through' : ''}"><span>${taskMark(t.status)}</span><span class="flex-1">${esc(t.text)}</span>${t.children.length ? `<span class="opacity-60">${t.progress}%</span>` : ''}</div></li>`
     + t.children.map(c => taskRow(c, depth + 1)).join('');
   $('g-tasks').innerHTML = (d.tasks || []).map(t => taskRow(t, 0)).join('') || '<li class="opacity-60">Задач пока нет.</li>';
+  // оценки событий быстрой моделью и отметки игрока
+  const KIND_RU = {combat: 'бой', death: 'смерть', injury: 'ранение', fire: 'пожар', trade: 'торговля', social: 'общение', work: 'работа', resources: 'ресурсы', other: 'другое'};
+  const apr = d.appraisals || [];
+  $('g-appr').innerHTML = apr.map(a => {
+    const m = a.model || {}, k = (m.kind || {}), dv = a.derived || {}, lb = a.label;
+    const verdict = lb ? (lb.ok ? '<span class="badge badge-success badge-sm">верно</span>' : `<span class="badge badge-error badge-sm">нет${lb.correct_kind ? ': ' + esc(KIND_RU[lb.correct_kind] || lb.correct_kind) : ''}</span>`)
+      : `<span class="flex gap-1"><button class="btn btn-xs btn-ghost" data-apr="${esc(a.id)}" data-ok="1" title="Оценка верна">✓</button>
+         <select class="select select-xs select-bordered" data-apr-bad="${esc(a.id)}" title="Неверно: выбери правильную категорию"><option value="">✗</option>${Object.entries(KIND_RU).map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></span>`;
+    return `<tr><td class="max-w-[16rem] truncate" title="${esc(a.text)}">${esc(a.text)}</td>
+      <td class="whitespace-nowrap">${esc(KIND_RU[k.answer] || k.answer || '?')} ${k.confidence != null ? '(' + Math.round(k.confidence * 100) + '%)' : ''}</td>
+      <td class="whitespace-nowrap text-xs opacity-80">важн. ${dv.importance ?? '?'}, ${esc(dv.emotion || '')}${dv.action && dv.action !== 'none' ? ', ' + esc(dv.action) : ''}, ${esc(dv.comment || '')}</td>
+      <td class="text-xs opacity-70 max-w-[10rem] truncate" title="${esc(a.outcome || '')}">${esc(a.outcome || '')}</td><td>${verdict}</td></tr>`;
+  }).join('') || '<tr><td class="opacity-60">Событий пока не было.</td></tr>';
+  $('g-appr').querySelectorAll('[data-apr]').forEach(b => b.onclick = () => labelAppraisal(b.dataset.apr, true, ''));
+  $('g-appr').querySelectorAll('[data-apr-bad]').forEach(sel => sel.onchange = () => sel.value && labelAppraisal(sel.dataset.aprBad, false, sel.value));
   // режим дня: у кого какой час чем занят
   const SCOL = {Sleep: 'bg-info', Work: 'bg-success', Joy: 'bg-warning', Anything: 'bg-base-300', Meditate: 'bg-secondary'};
   const SLBL = {Sleep: 'сон', Work: 'работа', Joy: 'отдых', Anything: 'любое', Meditate: 'медитация'};
