@@ -3,6 +3,7 @@
     "title":  "RimWorld",
     "description":  "Игра-симулятор колонии: колонисты, строительство, исследования, бой.",
     "enabled":  true,
+    "module":  "rimworld",
     "requires_port":  8765,
     "sources":  [
                     {

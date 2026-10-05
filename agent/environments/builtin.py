@@ -317,6 +317,20 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None):
             raise ToolError("агент-помощник на Claude сбойнул")
         return result or "готово, добавить нечего"
 
+    async def web_search_tool(a):
+        import web_search
+        return await web_search.search(a["query"])
+
+    # общий для всех профилей: поиск нужен и ассистенту, и игре, и монтажу (module=core: включён всегда)
+    registry.add(Environment(
+        id="web", title="Интернет",
+        description="Поиск в интернете: вики, документация, форумы. Общий инструмент всех профилей.",
+        tools=[_tool("web", "search", "Найти в интернете ответ на вопрос и вернуть выжимку фактов со ссылками на источники. "
+                     "Для просьб «поищи», «узнай, как», «что такое», справки по играм и программам. Читает только страницы, ничего не меняет.",
+                     {"query": {"type": "string", "description": "что искать; для игр и программ лучше на английском"}},
+                     web_search_tool, informative=True,
+                     keywords=("поищи", "найди", "интернет", "гугл", "google", "вики", "wiki", "узнай", "как работает", "что такое"))]))
+
     system_env = Environment(
         id="system", title="Компьютер пользователя",
         description="Экран, звук, файлы, команды и интернет на этом компьютере, а также мышь, клавиатура и окна.",
@@ -345,6 +359,26 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None):
         if t.name == "take_screenshot":
             t.danger = _shot_danger
     system_env.tools += pc_control.make_tools(_tool)   # мышь, клавиатура, окна (всё с разрешением)
+
+    async def read_screen_tool(a):
+        import screen_operator
+        return await screen_operator.read_screen()
+
+    async def operate_screen_tool(a):
+        import screen_operator
+        return await screen_operator.operate(a["goal"], companion.say, int(a.get("max_steps") or 8))
+
+    system_env.tools += [
+        _tool("system", "read_screen", "Запасной уровень (по экрану): прочитать надписи на экране (OCR) с координатами в активном окне. "
+              "Для вопросов «что там написано» и чтобы выбрать, на что нажать.",
+              {}, read_screen_tool, informative=True, keywords=("прочитай", "написано", "экран", "надпись", "текст на экране")),
+        _tool("system", "operate_screen", "Запасной уровень (по экрану): выполнить цель в ЛЮБОЙ программе, нажимая мышью и клавиатурой "
+              "шаг за шагом по надписям на экране (ведёт локальная модель). Используй, только если у программы нет прямого инструмента.",
+              {"goal": {"type": "string", "description": "цель своими словами: «открой настройки звука и убавь громкость»"},
+               "max_steps": {"type": "integer", "required": False, "description": "не больше шагов (по умолчанию 8)"}},
+              operate_screen_tool, risk="ask", informative=True,
+              keywords=("открой", "нажми", "настрой", "включи", "выключи", "в программе", "в приложении", "кнопку", "меню")),
+    ]
     registry.add(system_env)
 
     # ── соцсети ────────────────────────────────────────────────────────────────

@@ -10,9 +10,20 @@
 <style>
   html, body { height: 100%; }
   .scroll-y { overflow-y: auto; }
+  #chat-pane { flex: 0 0 auto; }
+  #splitter { display: none; }
+  @media (min-width: 1024px) {
+    #chat-pane { flex: 0 0 var(--chat-w, 33.333%); min-width: 280px; }
+    #splitter { display: block; flex: 0 0 16px; cursor: col-resize; position: relative; touch-action: none; }
+    #splitter::after { content: ''; position: absolute; left: 7px; top: 12%; bottom: 12%; width: 2px; border-radius: 2px;
+      background: oklch(var(--bc) / 0.18); transition: background .15s, width .15s, left .15s; }
+    #splitter:hover::after, #splitter:focus-visible::after, #splitter.drag::after { background: oklch(var(--p)); width: 4px; left: 6px; }
+    #side-pane { min-width: 320px; }
+    body.dragging-split { cursor: col-resize; user-select: none; }
+  }
   .bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>
-  <script src="/static/ui/vendor/vis-network.min.js"></script>
+  <script src="/static/ui/vendor/cytoscape.min.js"></script>
 </head>
 <body class="bg-base-200">
 <div class="flex flex-col h-full">
@@ -23,6 +34,7 @@
       <span class="text-lg font-semibold">Ассистент</span>
       <span id="badge-core" class="badge badge-outline">ядро…</span>
       <span id="badge-game" class="badge badge-ghost">игра не запущена</span>
+      <span id="badge-battery" class="badge badge-outline gap-1" title="Заряд токенов Claude"></span>
       <span id="badge-quiet" class="badge badge-ghost hidden" title="Она сама не заговаривает">не отвлекать</span>
       <span id="badge-auto" class="badge badge-warning hidden" title="Все действия выполняются без вопросов, кроме опасных">авто-разрешение</span>
     </div>
@@ -46,10 +58,10 @@
     </div>
   </div>
 
-  <main class="flex-1 min-h-0 grid gap-4 p-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+  <main id="split" class="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 lg:gap-0 p-4">
 
     <!-- Чат -->
-    <section class="card bg-base-100 shadow-sm min-h-0 flex flex-col">
+    <section id="chat-pane" class="card bg-base-100 shadow-sm min-h-0 flex flex-col">
       <div class="card-body p-0 min-h-0 flex flex-col">
         <div id="chat" class="flex-1 min-h-0 scroll-y p-4 space-y-1" aria-live="polite"></div>
         <form id="chat-form" class="join p-3 border-t border-base-300">
@@ -60,32 +72,51 @@
       </div>
     </section>
 
+    <!-- Граница между чатом и панелью: тянуть мышью или стрелками, двойной клик возвращает размер -->
+    <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Граница между чатом и панелью" tabindex="0"
+         title="Тянуть: изменить ширину. Двойной клик: сбросить"></div>
+
     <!-- Правая панель -->
-    <section class="min-h-0 flex flex-col gap-3">
+    <section id="side-pane" class="min-h-0 flex flex-col gap-3 min-w-0 flex-1">
       <div role="tablist" class="tabs tabs-boxed bg-base-100 shadow-sm">
         <a role="tab" class="tab tab-active" data-tab="status">Состояние</a>
-        <a role="tab" class="tab" data-tab="game">Игра</a>
         <a role="tab" class="tab" data-tab="memory">Память</a>
-        <a role="tab" class="tab" data-tab="graph">Граф</a>
-        <a role="tab" class="tab" data-tab="caps">Возможности</a>
         <a role="tab" class="tab" data-tab="events">События</a>
-        <a role="tab" class="tab" data-tab="settings">Настройки</a>
+        <a role="tab" class="tab" data-tab="settings" title="Настройки" aria-label="Настройки" style="flex:0 0 auto;width:2rem;padding:0;margin-left:auto"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
       </div>
 
-      <!-- Состояние -->
+      <!-- Состояние: профили, что видит, возможности -->
       <div id="tab-status" class="card bg-base-100 shadow-sm scroll-y min-h-0">
         <div class="card-body gap-4">
           <div>
-            <div class="font-medium mb-2">Что она видит</div>
-            <ul id="activity" class="space-y-2 text-sm"></ul>
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="font-medium">Профили</div>
+              <span id="modes-current" class="badge badge-primary"></span>
+              <span id="modes-state" class="text-sm opacity-80"></span>
+              <label class="flex items-center gap-1 text-sm" title="Стример: в игре она вслух говорит мысли и планы (переключатель состояния, не профиль)"><span>Стример</span><input id="modes-streamer" type="checkbox" class="toggle toggle-sm"></label>
+              <span class="flex items-center gap-2 ml-auto"><span id="modes-battery"></span><button id="modes-refresh" class="btn btn-xs btn-ghost" title="Обновить заряд и профили">↻</button></span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mt-2">
+              <button id="modes-back" class="btn btn-sm btn-ghost hidden">← К профилям</button>
+              <select id="modes-select" class="select select-bordered select-sm">
+                <option value="auto">Выбирает сама</option><option value="assistant">Ассистент</option>
+                <option value="rimworld">RimWorld</option>
+              </select>
+              <button id="modes-fit" class="btn btn-sm btn-ghost">Вписать</button>
+              <span id="modes-msg" class="text-xs opacity-60"></span>
+            </div>
+            <div id="modes-when" class="text-xs opacity-70 mt-1"></div>
+            <p class="text-xs opacity-60 my-2">Ассистент в центре, вокруг профили: он сам переключается между ними (игра запущена: RimWorld, токены Claude кончились: сон). Клик по профилю открывает его подграф, а под ним всё, что относится к профилю (игра, возможности). Пунктир: профиль ещё не написан. Память и контекст общие.</p>
+            <div id="modes-canvas" style="height:50vh;min-height:320px" class="rounded-box border border-base-300 bg-base-100"></div>
           </div>
-        </div>
-      </div>
-
-      <!-- Игра -->
-      <div id="tab-game" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
-        <div class="card-body gap-4">
-          <div id="game-off" role="alert" class="alert">
+          <div id="modes-panel" class="hidden space-y-4">
+            <div class="divider my-0"></div>
+            <div id="panel-assistant" class="hidden">
+              <div class="font-medium mb-2">Что она видит</div>
+              <ul id="activity" class="space-y-2 text-sm"></ul>
+            </div>
+            <div id="panel-rimworld" class="hidden space-y-4">
+<div id="game-off" role="alert" class="alert">
             <span>RimWorld не запущена. Когда она появится, здесь будут колонисты и ресурсы.</span>
           </div>
           <div id="game-on" class="hidden space-y-4">
@@ -98,10 +129,22 @@
             <div><div class="font-medium mb-2">Цели</div><ul id="g-goals" class="space-y-2 text-sm"></ul></div>
             <div><div class="font-medium mb-2">Задачи</div><ul id="g-tasks" class="space-y-1 text-sm"></ul></div>
             <div><div class="font-medium mb-2">Колонисты</div><div id="g-pawns" class="space-y-3"></div></div>
+            <div>
+              <div class="font-medium mb-1">Приоритеты работ <span id="g-prio-mode" class="badge badge-ghost badge-sm ml-1"></span></div>
+              <div class="text-xs opacity-60 mb-2">1 высший, 4 низкий, пусто выключено. Точная настройка, как в окне «Работа».</div>
+              <div class="overflow-x-auto"><table class="table table-xs"><thead id="g-prio-head"></thead><tbody id="g-prio"></tbody></table></div>
+            </div>
             <div><div class="font-medium mb-2">Исследование</div><div id="g-research" class="text-sm"></div></div>
             <div><div class="font-medium mb-2">Ресурсы</div><div class="overflow-x-auto"><table class="table table-sm"><tbody id="g-res"></tbody></table></div></div>
             <div><div class="font-medium mb-2">Последние решения</div><ul id="g-decisions" class="space-y-2 text-sm"></ul></div>
             <div><div class="font-medium mb-2">Потери</div><ul id="g-fates" class="text-sm"></ul></div>
+          </div>
+            </div>
+            <div>
+              <div class="font-medium mb-1">Возможности профиля</div>
+              <p class="text-xs opacity-60 mb-2">Окружения и инструменты этого профиля. Любая просьба сначала проверяется по этому списку: если подходящего инструмента нет, она так и скажет.</p>
+              <div id="caps-list" class="space-y-4"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -119,13 +162,8 @@
             <div class="font-medium mb-2">Отношения</div>
             <ul id="relations" class="space-y-2 text-sm"></ul>
           </div>
-        </div>
-      </div>
-
-      <!-- Граф памяти -->
-      <div id="tab-graph" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
-        <div class="card-body gap-3">
-          <div class="flex flex-wrap items-center gap-3">
+          <div class="divider my-0"></div>
+                    <div class="flex flex-wrap items-center gap-3">
             <div class="font-medium">Граф памяти</div>
             <input id="graph-search" class="input input-bordered input-sm w-48" placeholder="Найти узел…" list="graph-names">
             <datalist id="graph-names"></datalist>
@@ -135,7 +173,7 @@
             <span id="graph-status" class="text-xs opacity-60 ml-auto"></span>
           </div>
           <div class="grid gap-3">
-            <div id="graph-canvas" class="rounded-box border border-base-300 bg-base-200" style="height:52vh;min-height:340px"></div>
+            <div id="graph-canvas" class="rounded-box border border-base-300 bg-base-100" style="height:52vh;min-height:340px"></div>
             <div id="graph-panel" class="rounded-box border border-base-300 p-3 text-sm overflow-auto" style="max-height:38vh">
               <div class="opacity-60">Нажми на узел: здесь появятся его факты, связи и кнопка удаления неверного факта.</div>
             </div>
@@ -152,14 +190,6 @@
       <div id="tab-settings" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-5">
           <div id="settings-form" class="space-y-6"></div>
-        </div>
-      </div>
-
-      <!-- Возможности -->
-      <div id="tab-caps" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
-        <div class="card-body gap-4">
-          <p class="text-xs opacity-60">Всё, что ассистентка умеет, сгруппировано по окружениям. Любая просьба сначала проверяется по этому списку: если подходящего инструмента нет, она так и скажет.</p>
-          <div id="caps-list" class="space-y-4"></div>
         </div>
       </div>
 
@@ -210,15 +240,233 @@ $('btn-theme').onclick = () => {
   applyTheme();
 };
 
+// ── граница между чатом и панелью ──
+(function () {
+  const split = $('split'), bar = $('splitter'), pane = $('chat-pane');
+  const MIN = 280, SIDE_MIN = 320;
+  const maxW = () => split.clientWidth - SIDE_MIN - bar.offsetWidth;
+  const set = px => { const w = Math.max(MIN, Math.min(px, maxW())); pane.style.setProperty('--chat-w', w + 'px'); return w; };
+  const save = w => { try { localStorage.setItem('chat-w', String(Math.round(w))); } catch (e) {} };
+  try { const w = parseInt(localStorage.getItem('chat-w'), 10); if (w) pane.style.setProperty('--chat-w', w + 'px'); } catch (e) {}
+  bar.addEventListener('pointerdown', e => {
+    bar.setPointerCapture(e.pointerId); bar.classList.add('drag'); document.body.classList.add('dragging-split');
+    const left = split.getBoundingClientRect().left + parseFloat(getComputedStyle(split).paddingLeft);
+    const move = ev => set(ev.clientX - left - bar.offsetWidth / 2);
+    const up = ev => {
+      bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up);
+      bar.classList.remove('drag'); document.body.classList.remove('dragging-split'); save(pane.getBoundingClientRect().width);
+      window.dispatchEvent(new Event('resize'));
+    };
+    bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up);
+  });
+  bar.addEventListener('dblclick', () => { pane.style.removeProperty('--chat-w'); try { localStorage.removeItem('chat-w'); } catch (e) {} window.dispatchEvent(new Event('resize')); });
+  bar.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault(); save(set(pane.getBoundingClientRect().width + (e.key === 'ArrowRight' ? 40 : -40)));
+    window.dispatchEvent(new Event('resize'));
+  });
+  window.addEventListener('resize', () => { const w = parseFloat(pane.style.getPropertyValue('--chat-w')); if (w) set(w); });
+})();
+
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('tab-active', t === tab));
-  ['status', 'game', 'memory', 'graph', 'caps', 'events', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
-  if (tab.dataset.tab === 'graph') { GR.sig = ''; loadGraph().then(() => GR.net && GR.net.fit()); }
+  ['status', 'memory', 'events', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
+  if (tab.dataset.tab === 'status') { loadModes().then(() => MD.cy && fitGraph(MD.cy)); }
+  if (tab.dataset.tab === 'memory') { loadGraph().then(() => GR.cy && fitGraph(GR.cy)); }
 });
 
+// ── графы на Cytoscape.js: цвета берутся из темы DaisyUI, поэтому графы вписаны в интерфейс ──
+const THEME = {key: '', c: {}};
+function themeColors() {
+  const probe = document.createElement('span'); probe.style.display = 'none'; document.body.appendChild(probe);
+  const FALLBACK = {p: '#6366f1', s: '#d946ef', a: '#14b8a6', su: '#22c55e', wa: '#f59e0b', er: '#ef4444', in: '#3b82f6',
+    b1: '#ffffff', b2: '#f3f4f6', b3: '#d1d5db', bc: '#1f2937', n: '#374151'};
+  const c = {}, px = document.createElement('canvas').getContext('2d', {willReadFrequently: true});
+  px.canvas.width = px.canvas.height = 1;
+  for (const k of Object.keys(FALLBACK)) {
+    // DaisyUI 4 хранит цвета как компоненты oklch; Cytoscape такой формат не знает, поэтому переводим в rgb через canvas
+    probe.style.color = ''; probe.style.color = `oklch(var(--${k}))`;
+    const v = probe.style.color ? getComputedStyle(probe).color : '';
+    px.clearRect(0, 0, 1, 1); px.fillStyle = '#000'; px.fillStyle = v || FALLBACK[k]; px.fillRect(0, 0, 1, 1);
+    const [r, g, b] = px.getImageData(0, 0, 1, 1).data;
+    c[k] = v ? `rgb(${r}, ${g}, ${b})` : FALLBACK[k];
+  }
+  probe.remove();
+  return c;
+}
+function themeKey() { return document.documentElement.dataset.theme + '|' + getComputedStyle(document.body).backgroundColor; }
+function alpha(rgb, a) { const m = String(rgb).match(/[\d.]+/g); return m ? `rgba(${m[0]},${m[1]},${m[2]},${a})` : rgb; }
+
+// стиль профильного графа: «таблетки», текущий узел залит зелёным, будущие профили пунктиром
+function profileStyle(c) {
+  return [
+    {selector: 'node', style: {shape: 'round-rectangle', label: 'data(label)', 'text-valign': 'center', 'text-halign': 'center',
+      'font-size': 14, 'font-family': 'inherit', color: c.bc, 'background-color': c.n, 'border-width': 1.5, 'border-color': alpha(c.bc, 0.35),
+      width: 'label', height: 'label', padding: '12px', 'text-wrap': 'none', 'transition-property': 'background-color, border-color, border-width, opacity',
+      'transition-duration': '300ms'}},
+    {selector: 'node.hub', style: {'background-color': alpha(c.p, 0.18), 'border-color': c.p, 'border-width': 2, 'font-size': 15, 'font-weight': 600, padding: '16px'}},
+    {selector: 'node.drill', style: {'border-color': c.in}},
+    {selector: 'node.planned', style: {'border-style': 'dashed', opacity: 0.55}},
+    {selector: 'node.current', style: {'background-color': c.su, 'border-color': c.su, color: '#fff', 'border-width': 3, opacity: 1}},
+    {selector: 'node.root', style: {'background-color': alpha(c.p, 0.18), 'border-color': c.p, 'border-width': 2}},
+    {selector: 'node.hover', style: {'border-color': c.p, 'border-width': 3}},
+    {selector: 'edge', style: {width: 2, 'line-color': alpha(c.bc, 0.35), 'curve-style': 'bezier', 'target-arrow-shape': 'none', 'arrow-scale': 1.1,
+      label: 'data(label)', 'font-size': 10, 'font-family': 'inherit', color: alpha(c.bc, 0.7), 'text-rotation': 'autorotate',
+      'text-background-color': c.b1, 'text-background-opacity': 1, 'text-background-padding': '2px'}},
+    {selector: 'edge.arrow', style: {'line-color': alpha(c.bc, 0.35), 'target-arrow-color': alpha(c.bc, 0.35), 'target-arrow-shape': 'triangle'}},
+  ];
+}
+// стиль графа памяти: точки по типу узла, размер по числу связей, устаревшее бледнее и пунктиром
+function memoryStyle(c) {
+  const kinds = {glados: c.s, place: c.wa, colonist: c.su, old: alpha(c.bc, 0.35), thing: c.in};
+  const st = [
+    {selector: 'node', style: {label: 'data(label)', 'font-size': 12, 'font-family': 'inherit', color: c.bc, 'text-valign': 'bottom', 'text-margin-y': 5,
+      'background-color': c.in, width: 'mapData(deg, 0, 10, 16, 42)', height: 'mapData(deg, 0, 10, 16, 42)', 'border-width': 2, 'border-color': c.b1,
+      'text-outline-color': c.b1, 'text-outline-width': 2, 'transition-property': 'background-color, border-color, border-width', 'transition-duration': '200ms'}},
+    {selector: 'node:selected', style: {'border-color': c.p, 'border-width': 4}},
+    {selector: 'edge', style: {width: 1.5, 'line-color': alpha(c.bc, 0.3), 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'target-arrow-color': alpha(c.bc, 0.3),
+      label: 'data(label)', 'font-size': 9, 'font-family': 'inherit', color: alpha(c.bc, 0.65), 'text-rotation': 'autorotate',
+      'text-background-color': c.b1, 'text-background-opacity': 0.9, 'text-background-padding': '1px'}},
+    {selector: 'edge.old', style: {'line-style': 'dashed', opacity: 0.5}},
+    {selector: 'edge:selected', style: {'line-color': c.p, 'target-arrow-color': c.p, width: 2.5}},
+  ];
+  for (const [k, col] of Object.entries(kinds)) st.push({selector: `node.${k}`, style: {'background-color': col}});
+  return st;
+}
+function makeGraph(container, styleFn, opts = {}) {
+  THEME.c = themeColors(); THEME.key = themeKey();
+  const cy = cytoscape({container, elements: [], style: styleFn(THEME.c), wheelSensitivity: 0.25, minZoom: 0.2, maxZoom: 2.5,
+    boxSelectionEnabled: false, autoungrabify: !!opts.fixed});
+  cy.styleFn = styleFn;
+  // размер контейнера меняется (вкладка, граница чата): подгоняем холст и, пока граф не двигали, вписываем в кадр
+  cy.on('pan zoom', () => { if (!cy.fitting) cy.userMoved = true; });
+  if (window.ResizeObserver) new ResizeObserver(() => { if (container.offsetWidth) { cy.resize(); if (!cy.userMoved) fitGraph(cy); } }).observe(container);
+  cy.on('mouseover', 'node', e => { e.target.addClass('hover'); container.style.cursor = 'pointer'; });
+  cy.on('mouseout', 'node', e => { e.target.removeClass('hover'); container.style.cursor = ''; });
+  return cy;
+}
+// привести граф к списку элементов: {group, data, classes}; возвращает true, если состав узлов изменился
+function syncGraph(cy, els) {
+  if (themeKey() !== THEME.key) { THEME.c = themeColors(); THEME.key = themeKey(); cy.style(cy.styleFn(THEME.c)); }
+  const want = new Map(els.map(e => [e.data.id, e]));
+  let changed = false;
+  cy.batch(() => {
+    cy.elements().forEach(e => { if (!want.has(e.id())) { e.remove(); changed = true; } });
+    for (const [id, e] of want) {
+      const ex = cy.getElementById(id);
+      if (ex.length) { ex.data(e.data); ex.classes(e.classes || ''); } else { cy.add(e); changed = true; }
+    }
+  });
+  return changed;
+}
+function fitGraph(cy) { cy.fitting = true; cy.resize(); cy.fit(undefined, 28); cy.fitting = false; }
+
+// ── профили и батарейка ──
+const MD = {cy: null, view: 'main', data: null, shape: '', caps: []};
+function batteryHtml(b, big) {
+  if (!b) return '';
+  const pct = Math.round((b.level || 0) * 100), color = pct > 40 ? '#16a34a' : pct > 15 ? '#f59e0b' : '#dc2626';
+  const w = big ? 34 : 22, h = big ? 16 : 11;
+  const t = ts => new Date(ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  const tip = `Токены Claude: потрачено ${(b.used / 1000).toFixed(0)} тыс. из ${(b.capacity / 1000).toFixed(0)} тыс. за окно 5 часов.` +
+    (b.blocked ? ' Лимит исчерпан.' : '') + batteryWhen(b);
+  return `<span class="inline-flex items-center gap-1" title="${esc(tip)}"><span style="display:inline-flex;align-items:center">
+    <span style="width:${w}px;height:${h}px;border:2px solid currentColor;border-radius:3px;padding:1px;display:inline-block;box-sizing:content-box">
+      <span style="display:block;height:100%;width:${pct}%;background:${color};border-radius:1px"></span></span>
+    <span style="width:3px;height:${h / 2}px;background:currentColor;border-radius:0 2px 2px 0"></span></span><span class="text-xs">${pct}%</span></span>`;
+}
+function batteryWhen(b) {
+  const t = ts => new Date(ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  if (b.sleeping && b.wake_at) return ` Проснётся около ${t(b.wake_at)}.`;
+  if (b.full_at) return ` Ближайшие ${(b.next_release_tokens / 1000).toFixed(0)} тыс. вернутся в ${t(b.next_release_at)}, полностью зарядится к ${t(b.full_at)}.`;
+  return ' Расхода за окно нет: заряд полный.';
+}
+function circle(n, r, from = -Math.PI / 2) { return Array.from({length: n}, (_, i) => ({x: r * Math.cos(from + 2 * Math.PI * i / n), y: r * Math.sin(from + 2 * Math.PI * i / n)})); }
+function viewModules() {
+  const n = MD.data && MD.data.nodes.find(x => x.id === MD.view);
+  return n ? n.modules : ['core'];
+}
+function modesElements(g) {
+  if (MD.view !== 'main') {
+    const prof = g.nodes.find(n => n.id === MD.view) || {}, sub = g.subgraphs && g.subgraphs[MD.view];
+    if (sub) {
+      const root = sub.nodes.find(n => n.root), rest = sub.nodes.filter(n => !n.root), pos = circle(rest.length, 150);
+      const live = sub.live !== false;
+      const els = rest.map((n, i) => ({group: 'nodes', data: {id: n.id, label: n.label, title: n.title}, position: pos[i], classes: n.current && live ? 'current' : ''}));
+      if (root) els.push({group: 'nodes', data: {id: root.id, label: root.label, title: root.title}, position: {x: 0, y: 0}, classes: 'root'});
+      sub.edges.forEach((e, i) => els.push({group: 'edges', data: {id: 's' + i, source: e.from, target: e.to, label: e.label || ''}, classes: 'arrow'}));
+      return els;
+    }
+    // профиль без своего агента: подграф из его окружений (инструменты живут в списке под графом)
+    const mods = prof.modules || [], envs = (MD.caps || []).filter(e => mods.includes(e.module || 'core'));
+    const pos = circle(envs.length, 150);
+    const els = envs.map((e, i) => ({group: 'nodes', data: {id: 'env:' + e.id, label: e.title, title: e.description}, position: pos[i], classes: e.ok ? 'current' : ''}));
+    els.push({group: 'nodes', data: {id: 'root', label: prof.label || '', title: prof.title || ''}, position: {x: 0, y: 0}, classes: 'root' + (prof.planned ? ' planned' : '')});
+    envs.forEach((e, i) => els.push({group: 'edges', data: {id: 'e' + i, source: 'root', target: 'env:' + e.id, label: ''}}));
+    return els;
+  }
+  const hub = g.nodes.find(n => n.hub), rest = g.nodes.filter(n => !n.hub), pos = circle(rest.length, 170);
+  const els = rest.map((n, i) => ({group: 'nodes', data: {id: n.id, label: n.label, title: n.title},
+    position: pos[i], classes: [n.current ? 'current' : '', n.planned ? 'planned' : '', 'drill'].join(' ')}));
+  els.push({group: 'nodes', data: {id: hub.id, label: hub.label, title: hub.title}, position: {x: 0, y: 0}, classes: 'hub' + (hub.current ? ' current' : '')});
+  g.edges.forEach((e, i) => els.push({group: 'edges', data: {id: 'm' + i, source: e.from, target: e.to, label: ''}}));
+  return els;
+}
+function stateLine(g) {
+  const sub = g.subgraphs && g.subgraphs[g.current];
+  const live = sub && sub.nodes.find(n => n.current && !n.root);
+  if (live) return live.label + (live.title ? ': ' + live.title : '');
+  return g.current === 'sleep' ? 'Токены кончились, жду, пока освободится окно лимита' : '';
+}
+async function loadModes() {
+  const g = await (await fetch('/api/modes')).json();
+  MD.data = g;
+  $('badge-battery').innerHTML = batteryHtml(g.battery, false);
+  $('badge-battery').style.cursor = 'pointer'; $('badge-battery').onclick = () => loadModes().catch(() => {});
+  if ($('tab-status').classList.contains('hidden')) return;
+  const cur = g.nodes.find(n => n.id === g.current) || {};
+  $('modes-current').textContent = (g.override && g.override === g.current ? 'вручную: ' : 'сейчас: ') + cur.label;
+  $('modes-state').textContent = stateLine(g);
+  $('modes-battery').innerHTML = batteryHtml(g.battery, true);
+  $('modes-when').textContent = batteryWhen(g.battery).trim();
+  if (document.activeElement !== $('modes-select')) $('modes-select').value = g.override || 'auto';
+  if (document.activeElement !== $('modes-streamer')) $('modes-streamer').checked = !!(g.flags && g.flags.streamer);
+  $('modes-back').classList.toggle('hidden', MD.view === 'main');
+  $('modes-panel').classList.toggle('hidden', MD.view === 'main');
+  $('panel-assistant').classList.toggle('hidden', MD.view !== 'assistant');
+  $('panel-rimworld').classList.toggle('hidden', MD.view !== 'rimworld');
+  if (MD.view !== 'main') await loadCaps().catch(() => {});
+  if (!window.cytoscape) { $('modes-canvas').innerHTML = '<div class="p-4 opacity-60">Не загрузилась библиотека графа (static/ui/vendor/cytoscape.min.js).</div>'; return; }
+  if (!MD.cy) {
+    MD.cy = makeGraph($('modes-canvas'), profileStyle, {fixed: true});
+    MD.cy.on('tap', 'node', e => {
+      const id = e.target.id(), n = (MD.data.nodes || []).find(x => x.id === id);
+      if (MD.view !== 'main' || !n) return;
+      MD.view = id; $('modes-msg').textContent = ''; loadModes();
+    });
+    $('modes-back').onclick = () => { MD.view = 'main'; $('modes-msg').textContent = ''; loadModes(); };
+    $('modes-fit').onclick = () => fitGraph(MD.cy);
+    $('modes-refresh').onclick = async e => { e.target.disabled = true; try { await loadModes(); } finally { e.target.disabled = false; } };
+    $('modes-select').onchange = async e => {
+      const r = await fetch('/api/mode', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode: e.target.value})});
+      $('modes-msg').textContent = r.ok ? '' : (await r.json()).error;
+      loadModes();
+    };
+    $('modes-streamer').onchange = e => fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({streamer: e.target.checked})});
+  }
+  const els = modesElements(g), shape = MD.view + '|' + els.map(e => e.data.id).sort().join(',');
+  const changed = syncGraph(MD.cy, els);
+  if (changed || shape !== MD.shape) {
+    MD.cy.nodes().forEach(n => { const p = els.find(e => e.data.id === n.id()); if (p && p.position) n.position(p.position); });
+    MD.shape = shape; fitGraph(MD.cy);
+  }
+}
+setInterval(() => loadModes().catch(() => {}), 3000);
+loadModes().catch(() => {});
+
 // ── граф памяти ──
-const GR = {net: null, nodes: null, edges: null, data: null, sig: '', selected: null};
+const GR = {cy: null, model: null, sig: '', selected: null};
 const ATTR_REL = new Set(['НАВЫКИ', 'ЧЕРТЫ', 'СОСТОЯНИЕ']);     // служебные узлы колониста рисуем внутри панели, не на холсте
 const relName = r => String(r || '').toLowerCase().replaceAll('_', ' ');
 
@@ -235,17 +483,13 @@ function graphModel(g, showOld) {
   const live = new Set(all.filter(e => !e.invalid_at).flatMap(e => [e.from, e.to]));
   const kind = n => n === 'ГЛаДОС' ? 'glados' : places.has(n) ? 'place' : alive.has(n) ? 'colonist'
     : (retired.has(n) || !live.has(n)) ? 'old' : 'thing';
-  const COLORS = {glados: '#a855f7', place: '#f59e0b', colonist: '#22c55e', old: '#94a3b8', thing: '#3b82f6'};
   const names = new Set();
   (g.nodes || []).forEach(n => { if (!hidden.has(n) && (showOld || live.has(n))) names.add(n); });
   const edges = all.filter(e => !ATTR_REL.has(e.relation) && (showOld || !e.invalid_at) && names.has(e.from) && names.has(e.to));
   const deg = {};
   edges.forEach(e => { deg[e.from] = (deg[e.from] || 0) + 1; deg[e.to] = (deg[e.to] || 0) + 1; });
-  const fg = getComputedStyle(document.body).color;
-  const nodes = [...names].map(n => ({id: n, label: n, value: 8 + (deg[n] || 0) * 3, color: {background: COLORS[kind(n)], border: COLORS[kind(n)]},
-    font: {color: fg, size: 14}, shape: 'dot'}));
-  const vedges = edges.map(e => ({id: e.uuid, from: e.from, to: e.to, label: relName(e.relation), arrows: 'to', dashes: !!e.invalid_at,
-    color: {color: e.invalid_at ? '#94a3b8' : '#64748b'}, font: {size: 10, color: fg, strokeWidth: 0, align: 'middle'}, title: e.fact}));
+  const nodes = [...names].map(n => ({group: 'nodes', data: {id: n, label: n, deg: deg[n] || 0}, classes: kind(n)}));
+  const vedges = edges.map(e => ({group: 'edges', data: {id: e.uuid, source: e.from, target: e.to, label: relName(e.relation)}, classes: e.invalid_at ? 'old' : ''}));
   return {nodes, edges: vedges, facts, owner, kind, hidden};
 }
 
@@ -267,44 +511,41 @@ function showGraphNode(name) {
     ${neigh.length ? `<div class="font-medium mt-3 mb-1">Связан с</div><div class="flex flex-wrap gap-1">${neigh.map(n =>
       `<button class="btn btn-xs btn-outline" data-graph-go="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}`;
   $('graph-panel').querySelectorAll('[data-graph-uuid]').forEach(b => b.onclick = async () => {
-    await post('/api/graph/forget', {uuid: b.dataset.graphUuid}); GR.sig = ''; loadGraph();
+    await post('/api/graph/forget', {uuid: b.dataset.graphUuid}); loadGraph();
   });
   $('graph-panel').querySelectorAll('[data-graph-go]').forEach(b => b.onclick = () => focusGraphNode(b.dataset.graphGo));
   GR.selected = name;
 }
 
 function focusGraphNode(name) {
-  if (!GR.net || !GR.nodes.get(name)) return false;
-  GR.net.selectNodes([name]); GR.net.focus(name, {scale: 1.1, animation: true}); showGraphNode(name); return true;
+  const n = GR.cy && GR.cy.getElementById(name);
+  if (!n || !n.length) return false;
+  GR.cy.elements().unselect(); n.select();
+  GR.cy.animate({center: {eles: n}, zoom: Math.max(GR.cy.zoom(), 1.1)}, {duration: 300});
+  showGraphNode(name); return true;
 }
 
 async function loadGraph() {
-  if ($('tab-graph').classList.contains('hidden')) return;
+  if ($('tab-memory').classList.contains('hidden')) return;
   const g = await (await fetch('/api/graph')).json();
   $('graph-status').textContent = g.status || '';
-  if (!window.vis) { $('graph-canvas').innerHTML = '<div class="p-4 opacity-60">Не загрузилась библиотека рисования графа (файл static/ui/vendor/vis-network.min.js).</div>'; return; }
+  if (!window.cytoscape) { $('graph-canvas').innerHTML = '<div class="p-4 opacity-60">Не загрузилась библиотека графа (static/ui/vendor/cytoscape.min.js).</div>'; return; }
   const m = graphModel(g, $('graph-old').checked);
   GR.model = m;
-  const sig = JSON.stringify([m.nodes.map(n => [n.id, n.color.background]), m.edges.map(e => [e.id, e.dashes])]);
-  $('graph-names').innerHTML = m.nodes.map(n => `<option value="${esc(n.id)}">`).join('');
-  if (sig === GR.sig) { if (GR.selected) showGraphNode(GR.selected); return; }
-  GR.sig = sig;
-  if (!GR.net) {
-    GR.nodes = new vis.DataSet(); GR.edges = new vis.DataSet();
-    GR.net = new vis.Network($('graph-canvas'), {nodes: GR.nodes, edges: GR.edges}, {
-      physics: {solver: 'forceAtlas2Based', stabilization: {iterations: 150}}, interaction: {hover: true, tooltipDelay: 200},
-      nodes: {scaling: {min: 10, max: 34}}, edges: {smooth: {type: 'dynamic'}, width: 1.4}});
-    GR.net.on('click', p => { if (p.nodes.length) showGraphNode(p.nodes[0]); });
-    GR.net.on('stabilizationIterationsDone', () => GR.net.setOptions({physics: false}));
-    $('graph-fit').onclick = () => GR.net.fit({animation: true});
-    $('graph-old').onchange = () => { GR.sig = ''; loadGraph(); };
+  $('graph-names').innerHTML = m.nodes.map(n => `<option value="${esc(n.data.id)}">`).join('');
+  if (!GR.cy) {
+    GR.cy = makeGraph($('graph-canvas'), memoryStyle);
+    GR.cy.on('tap', 'node', e => { showGraphNode(e.target.id()); });
+    $('graph-fit').onclick = () => fitGraph(GR.cy);
+    $('graph-old').onchange = () => { loadGraph(); };
     $('graph-search').onchange = e => focusGraphNode(e.target.value.trim());
   }
-  const keepN = new Set(m.nodes.map(n => n.id)), keepE = new Set(m.edges.map(e => e.id));
-  GR.nodes.remove(GR.nodes.getIds().filter(i => !keepN.has(i))); GR.edges.remove(GR.edges.getIds().filter(i => !keepE.has(i)));
-  GR.nodes.update(m.nodes); GR.edges.update(m.edges);
-  GR.net.setOptions({physics: {enabled: true}}); GR.net.stabilize(80);
-  if (GR.selected && keepN.has(GR.selected)) showGraphNode(GR.selected);
+  const changed = syncGraph(GR.cy, [...m.nodes, ...m.edges]);
+  if (changed) {
+    GR.cy.layout({name: 'cose', animate: false, fit: true, padding: 28, nodeRepulsion: () => 9000, idealEdgeLength: () => 90, randomize: !GR.laidOut}).run();
+    GR.laidOut = true;
+  }
+  if (GR.selected && GR.cy.getElementById(GR.selected).length) showGraphNode(GR.selected);
 }
 setInterval(() => loadGraph().catch(() => {}), 6000);
 
@@ -363,6 +604,8 @@ const SETTINGS_SCHEMA = [
     {key: 'graph_memory', type: 'toggle', label: 'Память-граф', hint: 'Запоминает факты о людях и жизни из разговора в граф (локально: Gemma и EmbeddingGemma в LM Studio, база FalkorDB в Docker). Без них отключается сама.'},
     {key: 'claude_usage', type: 'select', label: 'Расход Claude', hint: 'Как часто работают игровые контуры на подписке Claude. Срочное (налёт, приказ) идёт сразу в любом режиме.',
      options: [['frugal', 'Экономный'], ['normal', 'Обычный'], ['generous', 'Щедрый (как раньше)']]},
+    {key: 'claude_token_budget', type: 'select', label: 'Ёмкость батарейки Claude', hint: 'Сколько токенов Claude агент может потратить за окно лимита (5 часов). Когда заряд кончается, он уходит в сон. Подбери по опыту: точного числа подписка не отдаёт.',
+     options: [[1000000, '1 млн'], [3000000, '3 млн'], [10000000, '10 млн'], [30000000, '30 млн']]},
     {key: 'dnd', type: 'quiet', label: 'Не отвлекать', hint: 'Она сама не заговаривает и не комментирует игру, пока включено. Включается и сама, если сказать «буду смотреть сериал».'}]},
   {title: 'Telegram', items: [
     {key: 'telegram', type: 'toggle', label: 'Публиковать мысли в канал', hint: 'Токен бота и канал задаются в agent/secrets.env.'},
@@ -486,9 +729,11 @@ $('ev-kind').onchange = () => { $('ev-list').dataset.sig = ''; loadEvents(); };
 // ── возможности (окружения) ──
 const RISK = {auto: ['сразу', 'badge-ghost'], ask: ['с разрешением', 'badge-warning'], public: ['публично', 'badge-secondary']};
 async function loadCaps() {
-  if ($('tab-caps').classList.contains('hidden')) return;
+  if ($('tab-status').classList.contains('hidden')) return;
   const r = await fetch('/api/capabilities').then(x => x.json());
-  const html = r.environments.map(e => `
+  MD.caps = r.environments;
+  const mods = viewModules();
+  const html = r.environments.filter(e => mods.includes(e.module || 'core')).map(e => `
     <div class="border border-base-300 rounded-lg p-3">
       <div class="flex items-center justify-between gap-2">
         <span class="font-medium">${esc(e.title)}</span>
@@ -498,7 +743,7 @@ async function loadCaps() {
       <ul class="space-y-1 text-sm">${e.tools.map(t => `<li class="flex items-start gap-2">
         <span class="badge ${(RISK[t.risk] || RISK.ask)[1]} badge-xs shrink-0 mt-1">${esc((RISK[t.risk] || RISK.ask)[0])}</span>
         <span class="min-w-0"><span class="font-mono text-xs">${esc(t.name)}</span> <span class="opacity-70 bubble-text">${esc(t.description)}</span></span></li>`).join('') || '<li class="opacity-60">Инструментов нет.</li>'}</ul>
-    </div>`).join('') || '<p class="opacity-60 text-sm">Окружения ещё загружаются.</p>';
+    </div>`).join('') || '<p class="opacity-60 text-sm">Для этого профиля окружений пока нет.</p>';
   const errs = Object.entries(r.errors || {}).map(([f, m]) => `<div class="alert alert-warning text-xs"><span>${esc(f)}: ${esc(m)}</span></div>`).join('');
   if ($('caps-list').dataset.sig !== html + errs) { $('caps-list').dataset.sig = html + errs; $('caps-list').innerHTML = html + errs; }
 }
@@ -524,6 +769,21 @@ function renderGame(d) {
   const taskRow = (t, depth) => `<li style="margin-left:${depth * 1.1}rem"><div class="flex gap-2 ${t.status === 'done' ? 'opacity-50 line-through' : ''}"><span>${taskMark(t.status)}</span><span class="flex-1">${esc(t.text)}</span>${t.children.length ? `<span class="opacity-60">${t.progress}%</span>` : ''}</div></li>`
     + t.children.map(c => taskRow(c, depth + 1)).join('');
   $('g-tasks').innerHTML = (d.tasks || []).map(t => taskRow(t, 0)).join('') || '<li class="opacity-60">Задач пока нет.</li>';
+  // таблица приоритетов работ: у кого что и какой цифрой
+  const WORKS = ['Firefighter', 'Patient', 'Doctor', 'PatientBedRest', 'Childcare', 'BasicWorker', 'Warden', 'Handling', 'Cooking', 'Hunting',
+    'Construction', 'Growing', 'Mining', 'PlantCutting', 'Smithing', 'Tailoring', 'Art', 'Crafting', 'Hauling', 'Cleaning', 'Research'];
+  const TITLE = {Firefighter: 'Пожар', Patient: 'Пациент', Doctor: 'Врач', PatientBedRest: 'Отдых', Childcare: 'Няня', BasicWorker: 'Работа', Warden: 'Надзор',
+    Handling: 'Зверо', Cooking: 'Повар', Hunting: 'Охота', Construction: 'Стройка', Growing: 'Ферма', Mining: 'Шахта', PlantCutting: 'Сад', Smithing: 'Кузнец',
+    Tailoring: 'Портной', Art: 'Худож.', Crafting: 'Ремесло', Hauling: 'Носка', Cleaning: 'Уборка', Research: 'Учёный'};
+  const pr = (d.pawns || []).filter(p => p.work_priorities);
+  const cols = WORKS.filter(w => pr.some(p => w in p.work_priorities));
+  $('g-prio-mode').textContent = d.manual_priorities === false ? 'только вкл/выкл' : d.manual_priorities ? 'ручные приоритеты' : '';
+  $('g-prio-head').innerHTML = '<tr><th></th>' + cols.map(w => `<th class="text-center px-1" title="${esc(w)}">${esc(TITLE[w] || w)}</th>`).join('') + '</tr>';
+  const COL = {1: 'bg-success text-success-content', 2: 'bg-info text-info-content', 3: 'bg-base-300', 4: 'opacity-50'};
+  $('g-prio').innerHTML = pr.map(p => `<tr><td class="whitespace-nowrap">${esc(p.name)}</td>` + cols.map(w => {
+    const v = p.work_priorities[w];
+    return `<td class="text-center px-1"><span class="inline-block rounded px-1.5 ${COL[v] || ''}">${v ? v : ''}</span></td>`;
+  }).join('') + '</tr>').join('');
   $('g-pawns').innerHTML = (d.pawns || []).map(p => {
     const hp = Math.round((p.health_pct ?? 1) * 100);
     return `<div><div class="flex justify-between text-sm"><span class="font-medium">${esc(p.name || p.id)}</span><span class="opacity-60">${hp}%</span></div>

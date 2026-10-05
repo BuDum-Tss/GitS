@@ -17,6 +17,7 @@ from claude_agent_sdk import (
     PermissionResultAllow, PermissionResultDeny,
 )
 
+import claude_battery
 import claude_quota
 import events_log
 import safety
@@ -189,6 +190,7 @@ async def analyze(question: str, hours: float = 6.0, extra: str = "") -> dict:
                         if t:
                             answer = t.strip()
                 elif isinstance(msg, ResultMessage):
+                    claude_battery.record_result(msg, "analysis")
                     break
 
     try:

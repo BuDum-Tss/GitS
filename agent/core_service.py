@@ -16,7 +16,10 @@ import logging
 import time as _time
 from pathlib import Path
 
+import claude_battery
 import dashboard
+import gamenet
+import modes
 import fast_brain
 import settings
 from companion import Companion
@@ -112,7 +115,12 @@ async def _run(config: dict):
         return "Последние реплики:\n" + "\n".join(lines) if lines else ""
 
     companion.router = Router(registry, companion.say, recent_dialogue)
+    dashboard.set_router(companion.router)
     dashboard.set_registry(registry)
+    mode_manager = modes.ModeManager(game_running=lambda: gamenet.port_open(gamenet.PORT),
+                                     battery=claude_battery.status)
+    registry.gate = mode_manager.module_active
+    dashboard.set_modes(mode_manager)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
     asyncio.create_task(companion.proactive_loop())
 

@@ -109,6 +109,7 @@ class Environment:
     description: str
     tools: list[Tool] = field(default_factory=list)
     enabled: bool = True
+    module: str = "core"          # модуль режима (modes.py): вне его режима окружение выключено
     # () -> (доступно ли сейчас, пояснение)
     status: Callable[[], tuple[bool, str]] | None = None
 

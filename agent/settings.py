@@ -27,6 +27,7 @@ DEFAULTS = {
     "telegram_confirm": False,  # спрашивать разрешение перед каждым постом (False: публикует сама)
     "graph_memory": True,        # память-граф (Graphiti): факты из разговора; без базы и моделей тихо отключается
     "claude_usage": "normal",   # расход Claude: frugal / normal / generous (темп игровых контуров, см. claude_budget.py)
+    "claude_token_budget": 3000000,   # ёмкость «батарейки»: токенов Claude за окно лимита (5 часов), см. claude_battery.py
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
     "pet_visible": True,        # показывать окно питомца (голос при этом работает)
     "volume": 100,              # громкость озвучки, 0-100

@@ -9,6 +9,8 @@ from datetime import datetime
 from aiohttp import web
 
 import approvals
+import claude_battery
+import claude_quota
 import game_bridge
 from memory_store import MemoryStore
 import events_log
@@ -123,6 +125,122 @@ async def handle_api_capabilities(request: web.Request) -> web.Response:
     if _REGISTRY is None:
         return web.json_response({"environments": [], "errors": {}})
     return web.json_response({"environments": _REGISTRY.snapshot(), "errors": _REGISTRY.load_errors})
+
+
+_MODES = None   # менеджер режимов, ставится ядром
+
+
+def set_modes(manager):
+    global _MODES
+    _MODES = manager
+
+
+async def handle_api_modes(request: web.Request) -> web.Response:
+    """Граф режимов и модулей: состояния, переходы, подграфы активных модулей."""
+    if _MODES is None:
+        return web.json_response({"nodes": [], "edges": [], "current": None})
+    g = await _MODES.graph()
+    g["flags"] = {"streamer": bool(settings.load().get("streamer"))}   # стример: не профиль, а переключатель состояния
+    return web.json_response(g)
+
+
+async def handle_api_mode_post(request: web.Request) -> web.Response:
+    """Ручной выбор режима: {"mode": "game"} или {"mode": "auto"}."""
+    if not _is_local_json(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    if _MODES is None:
+        return web.json_response({"error": "режимы не подключены"}, status=503)
+    err = _MODES.set_override(body.get("mode"))
+    if err:
+        return web.json_response({"error": err}, status=400)
+    return web.json_response({"current": _MODES.current(), "override": _MODES.override})
+
+
+async def handle_api_claude_usage(request: web.Request) -> web.Response:
+    """Расход Claude от агента игры: {"tokens": 1234, "source": "turn"} или {"limit_text": "..."} при исчерпанном лимите."""
+    if not _is_local_json(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    if body.get("limit_text"):
+        claude_quota.note(str(body["limit_text"]))
+    claude_battery.record(int(body.get("tokens") or 0), str(body.get("source") or "game"))
+    return web.json_response({"ok": True})
+
+
+_ROUTER_HOLDER: dict = {}   # Router ядра: для вызова инструментов другими агентами
+_AGENT_TOOLS = {"system.read_screen", "system.click_text", "system.operate_screen", "system.press_key", "system.type_text",
+                "system.scroll", "system.list_windows", "system.focus_window"}   # что агентам игр доступно как запасной уровень
+
+
+def set_router(router):
+    _ROUTER_HOLDER["router"] = router
+
+
+async def handle_api_tool(request: web.Request) -> web.Response:
+    """Запасной уровень для агентов игр: {"tool": "system.click_text", "args": {...}} -> {"ok": bool, "result": "..."}.
+    Разрешение у пользователя спрашивает ассистентка, как для любого действия на ПК."""
+    if not _is_local_json(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    tool_id, router = str(body.get("tool") or ""), _ROUTER_HOLDER.get("router")
+    if tool_id not in _AGENT_TOOLS or router is None:
+        return web.json_response({"ok": False, "result": "этот инструмент агентам игр недоступен"}, status=403)
+    ok, result = await router.run_tool(tool_id, body.get("args") or {})
+    return web.json_response({"ok": ok, "result": result})
+
+
+_MENU_BUTTONS = ("быстрый запуск", "quick start", "продолжить", "continue", "загрузить", "load")   # только кнопки главного меню
+
+
+async def handle_api_menu_click(request: web.Request) -> web.Response:
+    """Нажать кнопку главного меню RimWorld без Claude и без вопроса: {"text": "Быстрый запуск"} (OCR по окну игры).
+    Узко и безопасно: только надписи из белого списка, только когда окно с RimWorld найдено."""
+    if not _is_local_json(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    text = str(body.get("text") or "").strip()
+    if text.lower() not in _MENU_BUTTONS:
+        return web.json_response({"ok": False, "result": "такой кнопки в списке разрешённых нет"}, status=403)
+    import perception
+    if perception.idle_seconds() < 120:       # мышь настоящая: не перехватываем её, пока пользователь за компьютером
+        return web.json_response({"ok": False, "result": "пользователь сейчас за компьютером: жду, пока отойдёт"})
+    from environments import pc_control
+    import asyncio
+
+    def work():
+        pc_control._focus_window("RimWorld")
+        import time as _t
+        _t.sleep(0.6)
+        return pc_control._click_text(text, "left", False)
+    try:
+        return web.json_response({"ok": True, "result": await asyncio.to_thread(work)})
+    except Exception as e:
+        return web.json_response({"ok": False, "result": str(e)})
+
+
+async def handle_api_web_search(request: web.Request) -> web.Response:
+    """Общий поиск в интернете для других агентов (игра): {"query": "..."} -> {"answer": "..."}."""
+    if not _is_local_json(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    import web_search
+    return web.json_response({"answer": await web_search.search(str(body.get("query") or ""))})
 
 
 async def handle_api_approval(request: web.Request) -> web.Response:
@@ -325,6 +443,12 @@ async def start_dashboard(
     app.router.add_get("/api/core", handle_api_core)
     app.router.add_get("/api/events", handle_api_events)
     app.router.add_get("/api/capabilities", handle_api_capabilities)
+    app.router.add_get("/api/modes", handle_api_modes)
+    app.router.add_post("/api/claude_usage", handle_api_claude_usage)
+    app.router.add_post("/api/web_search", handle_api_web_search)
+    app.router.add_post("/api/tool", handle_api_tool)
+    app.router.add_post("/api/menu_click", handle_api_menu_click)
+    app.router.add_post("/api/mode", handle_api_mode_post)
     app.router.add_post("/api/approval", handle_api_approval)
     app.router.add_post("/api/memory/forget", handle_api_forget)
     app.router.add_get("/api/graph", handle_api_graph)

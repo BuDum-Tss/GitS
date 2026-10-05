@@ -23,6 +23,7 @@ from claude_agent_sdk import (
 )
 
 import approvals
+import claude_battery
 import claude_quota
 import safety
 from claude_cli import _CLI_PATH
@@ -116,6 +117,7 @@ async def run_task(task: str, context: str, announce) -> str | None:
                                 return f"Claude сейчас недоступен: исчерпан лимит до {claude_quota.until_text()}."
                             answer = text.strip()
                 elif isinstance(msg, ResultMessage):
+                    claude_battery.record_result(msg, "assistant")
                     break
     except Exception as e:
         if claude_quota.note(str(e)):
