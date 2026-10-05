@@ -46,15 +46,14 @@ PROFILES: dict[str, Profile] = {p.id: p for p in (
 # Структура подграфа, пока агент профиля не отвечает: войти в подграф можно всегда. Живой граф берётся у агента.
 _DEFAULT_SUBGRAPHS = {
     "rimworld": {
-        "nodes": [{"id": "agent", "label": "Агент RimWorld", "root": True}, {"id": "observe", "label": "наблюдает"},
-                  {"id": "act", "label": "действует"}, {"id": "plan", "label": "планирует"},
-                  {"id": "tactic", "label": "в тактике (бой)"}],
-        "edges": [{"from": "observe", "to": "act", "label": "пришёл ход"}, {"from": "act", "to": "observe", "label": "ход закончен"},
-                  {"from": "observe", "to": "plan", "label": "пора раскладывать цели"},
-                  {"from": "plan", "to": "observe", "label": "задачи расписаны"},
-                  {"from": "observe", "to": "tactic", "label": "враги на карте"},
-                  {"from": "act", "to": "tactic", "label": "враги на карте"},
-                  {"from": "tactic", "to": "observe", "label": "бой окончен"}, {"from": "agent", "to": "observe", "label": "старт"}],
+        "nodes": [{"id": "agent", "label": "Агент RimWorld", "root": True, "tools": []},
+                  {"id": "observe", "label": "Наблюдение и управление"}, {"id": "people", "label": "Колонисты: работы и режим дня"},
+                  {"id": "build", "label": "Строительство"}, {"id": "economy", "label": "Хозяйство и ресурсы"},
+                  {"id": "combat", "label": "Бой и тревога"}, {"id": "health", "label": "Здоровье и настроение"},
+                  {"id": "explore", "label": "Разведка и знания"}, {"id": "show", "label": "Показ и камера"},
+                  {"id": "screen", "label": "Экран (запасной интерфейс)"}],
+        "edges": [{"from": "agent", "to": "observe", "label": "старт"}] +
+                 [{"from": "observe", "to": m, "label": ""} for m in ("people", "build", "economy", "combat", "health", "explore", "show", "screen")],
     },
 }
 
