@@ -134,6 +134,15 @@
               <div class="text-xs opacity-60 mb-2">1 высший, 4 низкий, пусто выключено. Точная настройка, как в окне «Работа».</div>
               <div class="overflow-x-auto"><table class="table table-xs"><thead id="g-prio-head"></thead><tbody id="g-prio"></tbody></table></div>
             </div>
+            <div>
+              <div class="font-medium mb-1">Режим дня</div>
+              <div class="text-xs opacity-60 mb-2">24 часа: <span class="inline-block rounded px-1.5 bg-info text-info-content">сон</span>
+                <span class="inline-block rounded px-1.5 bg-success text-success-content">работа</span>
+                <span class="inline-block rounded px-1.5 bg-warning text-warning-content">отдых</span>
+                <span class="inline-block rounded px-1.5 bg-base-300">любое</span>
+                <span class="inline-block rounded px-1.5 bg-secondary text-secondary-content">медитация</span></div>
+              <div class="overflow-x-auto"><table class="table table-xs"><thead id="g-sched-head"></thead><tbody id="g-sched"></tbody></table></div>
+            </div>
             <div><div class="font-medium mb-2">Исследование</div><div id="g-research" class="text-sm"></div></div>
             <div><div class="font-medium mb-2">Ресурсы</div><div class="overflow-x-auto"><table class="table table-sm"><tbody id="g-res"></tbody></table></div></div>
             <div><div class="font-medium mb-2">Последние решения</div><ul id="g-decisions" class="space-y-2 text-sm"></ul></div>
@@ -769,6 +778,13 @@ function renderGame(d) {
   const taskRow = (t, depth) => `<li style="margin-left:${depth * 1.1}rem"><div class="flex gap-2 ${t.status === 'done' ? 'opacity-50 line-through' : ''}"><span>${taskMark(t.status)}</span><span class="flex-1">${esc(t.text)}</span>${t.children.length ? `<span class="opacity-60">${t.progress}%</span>` : ''}</div></li>`
     + t.children.map(c => taskRow(c, depth + 1)).join('');
   $('g-tasks').innerHTML = (d.tasks || []).map(t => taskRow(t, 0)).join('') || '<li class="opacity-60">Задач пока нет.</li>';
+  // режим дня: у кого какой час чем занят
+  const SCOL = {Sleep: 'bg-info', Work: 'bg-success', Joy: 'bg-warning', Anything: 'bg-base-300', Meditate: 'bg-secondary'};
+  const SLBL = {Sleep: 'сон', Work: 'работа', Joy: 'отдых', Anything: 'любое', Meditate: 'медитация'};
+  const sp = (d.pawns || []).filter(p => p.schedule && p.schedule.length === 24);
+  $('g-sched-head').innerHTML = '<tr><th></th>' + Array.from({length: 24}, (_, h) => `<th class="text-center px-0 font-normal text-[10px]">${h}</th>`).join('') + '</tr>';
+  $('g-sched').innerHTML = sp.map(p => `<tr><td class="whitespace-nowrap">${esc(p.name)}</td>` + p.schedule.map((t, h) =>
+    `<td class="p-0.5" title="${h}:00 ${esc(SLBL[t] || t)}"><div class="h-4 rounded-sm ${SCOL[t] || 'bg-base-300'}"></div></td>`).join('') + '</tr>').join('');
   // таблица приоритетов работ: у кого что и какой цифрой
   const WORKS = ['Firefighter', 'Patient', 'Doctor', 'PatientBedRest', 'Childcare', 'BasicWorker', 'Warden', 'Handling', 'Cooking', 'Hunting',
     'Construction', 'Growing', 'Mining', 'PlantCutting', 'Smithing', 'Tailoring', 'Art', 'Crafting', 'Hauling', 'Cleaning', 'Research'];
