@@ -279,6 +279,9 @@ def test_tray_no_longer_starts_the_game_agent():
 
 def test_record_runs_is_a_shared_setting_with_a_form_field():
     assert settings.DEFAULTS["record_runs"] is False
+    # RW-7: все общие настройки из манифеста модуля игры есть в настройках ядра (иначе до модуля они не дойдут)
+    for key in ("streamer", "dnd", "quiet_until", "game_model", "claude_usage", "voice_muted", "telegram_after_run", "record_runs"):
+        assert key in settings.DEFAULTS, key
     html = (AGENT / "static" / "ui" / "index.html").read_text(encoding="utf-8")
     assert "key: 'record_runs'" in html
 
