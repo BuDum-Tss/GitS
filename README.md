@@ -22,8 +22,17 @@ pip install -r requirements.txt
 copy secrets.env.example secrets.env     # токены Telegram и т.д. (не в git)
 python main.py                           # ядро, дашборд на http://localhost:8766
 pythonw desktop_pet.py                   # питомец
-pythonw tray.py                          # трей: сам поднимает ядро, питомца и агента RimWorld (если он рядом)
+pythonw tray.py                          # трей: сам поднимает ядро, питомца и агента RimWorld (если он рядом); модули запускает ядро
 ```
+SDK модулей (`sdk/`, пакет `glados-module`) ядро берёт напрямую из репозитория (`agent/main.py` добавляет `sdk` в `sys.path`),
+ставить его не нужно. Для модуля в своём окружении: `pip install -e C:\MyProjects\GitS\sdk`.
+
+## Модули
+Ядро принимает модули по WebSocket (`ws://127.0.0.1:8766/module/ws`, токен в `%LOCALAPPDATA%\GLaDOS\module_token`) и само
+запускает их по `agent/modules.yaml` (супервизор). Включаются и выключаются во вкладке «Модули» дашборда (там же настройки,
+задачи и вопросы модулей). Профили поведения лежат в `agent/profiles/*.yaml`. Руководство автора модуля: [docs/MODULES.md](docs/MODULES.md),
+ТЗ: [docs/tz/](docs/tz/README.md). Первый тестовый модуль, `echo` (`sdk/examples/echo_module.py`), выключен по умолчанию.
+
 Docker (необязательно): `docker compose up -d` поднимает граф памяти (FalkorDB), Fish Speech и WhisperX.
 Локальная модель: LM Studio (`google/gemma-4-e4b` и эмбеддинги EmbeddingGemma).
 

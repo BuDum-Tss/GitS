@@ -92,3 +92,14 @@ def game_persona() -> str:
     b = behaviour().get("game", {})
     text = str(b.get("persona", "")).strip()
     return text + ("\n\n" + _rules() if _rules() else "") + "\n"
+
+
+def persona_card(max_chars: int = 2000) -> str:
+    """Карточка характера для модулей, которые сами генерируют текст (core.persona): кто она и как говорит.
+    Собирается только из prompt.yaml (изменяемая часть); конституция сюда не входит и не копируется."""
+    b = behaviour().get("companion", {})
+    setting = str(b.get("setting", "")).strip()
+    style = " ".join(str(b.get("style", "")).split())
+    parts = [f"Ты — ГЛаДОС, {setting}" if setting else "Ты — ГЛаДОС.", style[:1].upper() + style[1:] if style else ""]
+    card = " ".join(p for p in parts if p)
+    return card if len(card) <= max_chars else card[:max_chars - 1] + "…"

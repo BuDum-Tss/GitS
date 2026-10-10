@@ -70,7 +70,7 @@ class Attention:
         """Событие модуля (тело `event`, ТЗ 01 раздел 7.1)."""
         sender = event.get("sender") if isinstance(event.get("sender"), dict) else None
         reply = event.get("reply_channel") if isinstance(event.get("reply_channel"), dict) else None
-        events_log.log("module_event", str(event.get("text", ""))[:_TEXT_LOG], module=module_id, kind=event.get("kind"),
+        events_log.log("module_event", str(event.get("text", ""))[:_TEXT_LOG], module=module_id, event_kind=event.get("kind"),
                        urgency_hint=event.get("urgency_hint"), addressed_to_me=event.get("addressed_to_me"),
                        sender=(sender or {}).get("name") or (sender or {}).get("id"))
         text = str(event.get("text", ""))
@@ -108,10 +108,9 @@ class Attention:
         """Ход задачи модуля (тело `job.update`, ТЗ 01 раздел 9)."""
         key, state = (module_id, str(job.get("job_id"))), job.get("state")
         before = self._job_states.get(key)
-        if state in ("done", "failed", "cancelled"):
-            self._job_states.pop(key, None)
-        else:
-            self._job_states[key] = state
+        self._job_states[key] = state
+        if len(self._job_states) > 500:                     # старые задачи забываем: словарь не растёт без конца
+            self._job_states.pop(next(iter(self._job_states)))
         if state == before or state not in ("done", "failed"):
             return
         title = job.get("title") or job.get("job_id")

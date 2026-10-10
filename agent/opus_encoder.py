@@ -47,6 +47,11 @@ async def audio_file_to_ogg_opus(path: str) -> bytes:
     return await _run(["-v", "error", "-i", path, *_OUT])
 
 
+async def audio_file_to_wav_file(src: str, dst: str) -> None:
+    """Файл (mp3, ogg и т.п.) -> WAV-файл с нормальным заголовком (core.tts: длительность читается по заголовку)."""
+    await _run(["-v", "error", "-y", "-i", src, dst])
+
+
 async def audio_file_to_pcm16k(path: str) -> bytes:
     """Файл (wav, mp3) → сырой PCM int16 моно 16 кГц: нужен, чтобы отдать образец голоса на распознавание."""
     return await _run(["-v", "error", "-i", path, "-f", "s16le", "-ar", "16000", "-ac", "1", "pipe:1"])

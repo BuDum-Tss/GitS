@@ -1,0 +1,15 @@
+# Модули, которые ядро запускает само (ТЗ 02, раздел 7). Пути: абсолютные или относительно папки agent/.
+# {GITS} (корень репозитория GitS), {PYTHON} (интерпретатор ядра) и любые переменные окружения ядра в фигурных
+# скобках (после загрузки secrets.env) подставляются. Нет переменной: модуль помечается «не настроен» и не запускается.
+# Поля: id; cwd; command; args; autostart (запускать вместе с ядром, если модуль включён); restart (always | on-failure |
+# never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title.
+# Реальные модули добавляют ТЗ 10-14, 11, 20: telegram, rimworld, voice, pet, desktop, montage.
+modules:
+  - id: echo
+    title: Эхо
+    cwd: "{GITS}/sdk/examples"
+    command: "{PYTHON}"
+    args: ["-u", "echo_module.py"]
+    autostart: true
+    restart: on-failure
+    enabled: false       # тестовый модуль: выключен по умолчанию, включается в дашборде (вкладка «Модули»)

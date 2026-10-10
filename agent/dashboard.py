@@ -1,4 +1,5 @@
 """Веб-дашборд GLaDOS — оверлей для стримера. Порт 8766."""
+import asyncio
 import json
 import logging
 import os
@@ -96,7 +97,8 @@ async def handle_api_core(request: web.Request) -> web.Response:
         "activity":  _read_json("activity.json", [])[-5:],
         "memories":  sorted(MemoryStore(str(_MEMORY_DIR)).all(), key=lambda i: -i["ts"])[:150],
         "relations": relations,
-        "approval":  {"pending": approvals.has_pending(), "text": approvals.pending_text()},
+        "approval":  {"pending": approvals.has_pending(), "text": approvals.pending_text(),
+                      **{k: v for k, v in (approvals.pending_info() or {}).items() if k in ("kind", "options", "source", "queued")}},
     })
 
 
@@ -160,6 +162,7 @@ async def handle_api_mode_post(request: web.Request) -> web.Response:
     return web.json_response({"current": _MODES.current_id, "override": _MODES.override})
 
 
+# устаревший канал агента игры: удалить в ТЗ 11
 async def handle_api_claude_usage(request: web.Request) -> web.Response:
     """Расход Claude от агента игры: {"tokens": 1234, "source": "turn"} или {"limit_text": "..."} при исчерпанном лимите."""
     if not _is_local_json(request):
@@ -183,6 +186,7 @@ def set_router(router):
     _ROUTER_HOLDER["router"] = router
 
 
+# устаревший канал агента игры: удалить в ТЗ 11
 async def handle_api_tool(request: web.Request) -> web.Response:
     """Запасной уровень для агентов игр: {"tool": "system.click_text", "args": {...}} -> {"ok": bool, "result": "..."}.
     Разрешение у пользователя спрашивает ассистентка, как для любого действия на ПК."""
@@ -249,6 +253,7 @@ async def handle_api_appraisal_label(request: web.Request) -> web.Response:
         return web.json_response({"saved": False, "error": str(e)}, status=502)
 
 
+# устаревший канал агента игры: удалить в ТЗ 11
 async def handle_api_web_search(request: web.Request) -> web.Response:
     """Общий поиск в интернете для других агентов (игра): {"query": "..."} -> {"answer": "..."}."""
     if not _is_local_json(request):
@@ -268,6 +273,8 @@ async def handle_api_approval(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid json"}, status=400)
+    if "answer" in body:                      # choice: вариант, text: строка, approval: true/false
+        return web.json_response({"resolved": approvals.answer(body["answer"])})
     return web.json_response({"resolved": approvals.resolve(bool(body.get("allow")))})
 
 
@@ -345,6 +352,9 @@ async def handle_api_state(request: web.Request) -> web.Response:
         "pawn_fates":       game.get("pawn_fates", {}),
         "emotion":          _load_emotion(),
         "settings":         settings.load(),
+        "presence":         _PRESENCE.snapshot() if _PRESENCE is not None else None,     # как тема presence (CORE-39)
+        "modules":          ([{"id": m["id"], "connected": m["connected"], "enabled": m["enabled"]}
+                              for m in _MODULES.snapshot()] if _MODULES is not None else []),
     }
     return web.json_response(data)
 
@@ -401,6 +411,7 @@ def set_game_link(say=None, status=None, event=None):
     _SPEECH.update(say=say, status=status, event=event)
 
 
+# устаревший канал агента игры: удалить в ТЗ 11
 async def handle_api_say(request: web.Request) -> web.Response:
     """Агент игры просит сказать реплику: она проходит через компаньона (чат, питомец, озвучка)."""
     if not _is_local_json(request) or _SPEECH["say"] is None:
@@ -413,6 +424,7 @@ async def handle_api_say(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+# устаревший канал агента игры: удалить в ТЗ 11
 async def handle_api_speech_status(request: web.Request) -> web.Response:
     """Что агенту игры нужно знать, чтобы не перебивать: когда пользователь говорил, говорит ли она, что сказала, настройки."""
     if _SPEECH["status"] is None:
@@ -420,6 +432,7 @@ async def handle_api_speech_status(request: web.Request) -> web.Response:
     return web.json_response(_SPEECH["status"]())
 
 
+# устаревший канал агента игры: удалить в ТЗ 11
 async def handle_api_emotion(request: web.Request) -> web.Response:
     if not _is_local_json(request):
         return web.json_response({"error": "forbidden"}, status=403)
@@ -431,6 +444,7 @@ async def handle_api_emotion(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+# устаревший канал агента игры: удалить в ТЗ 11
 async def handle_api_event(request: web.Request) -> web.Response:
     """Прочие события игры: список колонистов для графа и отношений, итог забега для Telegram."""
     if not _is_local_json(request) or _SPEECH["event"] is None:
@@ -440,19 +454,179 @@ async def handle_api_event(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+# ── Модули и задачи (ТЗ 02, CORE-37) ───────────────────────────────────────────
+
+_MODULES = None       # ModuleRegistry
+_HUB = None           # ModuleHub
+_SUPERVISOR = None    # Supervisor
+_PRESENCE = None      # PresenceTracker
+_BG_TASKS: set = set()
+
+
+def set_modules(modules, hub, supervisor=None):
+    """Реестр модулей, шина и супервизор: ставит ядро."""
+    global _MODULES, _HUB, _SUPERVISOR
+    _MODULES, _HUB, _SUPERVISOR = modules, hub, supervisor
+
+
+def set_presence(presence):
+    global _PRESENCE
+    _PRESENCE = presence
+
+
+def _background(coro):
+    """Долгое дело (остановка процесса до 10 с) уходит в фон: кнопка в дашборде отвечает сразу."""
+    task = asyncio.get_running_loop().create_task(coro)
+    _BG_TASKS.add(task)
+    task.add_done_callback(_BG_TASKS.discard)
+
+
+async def _json_body(request: web.Request):
+    """Тело POST как объект или ответ-ошибка: (body, None) или (None, response)."""
+    if not _is_local_json(request):
+        return None, web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return None, web.json_response({"error": "invalid json"}, status=400)
+    if not isinstance(body, dict):
+        return None, web.json_response({"error": "тело должно быть объектом"}, status=400)
+    return body, None
+
+
+def _module_or_404(request: web.Request):
+    if _MODULES is None:
+        return None, web.json_response({"error": "модули не подключены"}, status=503)
+    rec = _MODULES.get(request.match_info["id"])
+    if rec is None:
+        return None, web.json_response({"error": "нет такого модуля"}, status=404)
+    return rec, None
+
+
+async def handle_api_modules(request: web.Request) -> web.Response:
+    """Модули: состояние, инструменты, настройки (CORE-37)."""
+    return web.json_response(_MODULES.snapshot() if _MODULES is not None else [])
+
+
+async def handle_api_module_enabled(request: web.Request) -> web.Response:
+    """{"enabled": bool}: включить или выключить модуль; процесс запускает или останавливает супервизор."""
+    body, err = await _json_body(request)
+    if err:
+        return err
+    rec, err = _module_or_404(request)
+    if err:
+        return err
+    if not isinstance(body.get("enabled"), bool):
+        return web.json_response({"error": "enabled должно быть true или false"}, status=400)
+    await asyncio.to_thread(lambda: settings.update(modules={rec.id: {"enabled": body["enabled"]}}))
+    _MODULES.invalidate()
+    if _HUB is not None:
+        await _HUB.refresh()                                  # модулю уходит тема module (MOD-14)
+    if _SUPERVISOR is not None and rec.id in _SUPERVISOR.specs:
+        _background(_SUPERVISOR.apply(rec.id))
+    return web.json_response({"ok": True, "enabled": body["enabled"]})
+
+
+async def handle_api_module_restart(request: web.Request) -> web.Response:
+    body, err = await _json_body(request)
+    if err:
+        return err
+    rec, err = _module_or_404(request)
+    if err:
+        return err
+    if _SUPERVISOR is None or rec.id not in _SUPERVISOR.specs:
+        return web.json_response({"error": "этот модуль запущен не ядром, перезапустить его можно только вручную"}, status=400)
+    _background(_SUPERVISOR.restart(rec.id))
+    return web.json_response({"ok": True})
+
+
+def _check_setting_value(spec: dict, value):
+    """Значение настройки по схеме модуля (ТЗ 01, 6.3): (значение, ошибка)."""
+    kind = spec.get("type")
+    if kind == "boolean":
+        ok = isinstance(value, bool)
+    elif kind == "integer":
+        ok = isinstance(value, int) and not isinstance(value, bool)
+    elif kind == "number":
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+    else:
+        ok = isinstance(value, str)
+    if not ok:
+        return None, f"значение должно быть типа {kind}"
+    if kind in ("integer", "number"):
+        if "min" in spec and value < spec["min"]:
+            return None, f"значение меньше {spec['min']}"
+        if "max" in spec and value > spec["max"]:
+            return None, f"значение больше {spec['max']}"
+    if spec.get("enum") and value not in spec["enum"]:
+        return None, f"значение должно быть одним из {spec['enum']}"
+    return value, None
+
+
+async def handle_api_module_settings(request: web.Request) -> web.Response:
+    """{"key": str, "value": any}: собственная настройка модуля по его settings_schema."""
+    body, err = await _json_body(request)
+    if err:
+        return err
+    rec, err = _module_or_404(request)
+    if err:
+        return err
+    schema = (rec.manifest or {}).get("settings_schema") or {}
+    key = body.get("key")
+    if key not in schema:
+        return web.json_response({"error": f"у модуля нет настройки «{key}»"}, status=400)
+    value, problem = _check_setting_value(schema[key], body.get("value"))
+    if problem:
+        return web.json_response({"error": problem}, status=400)
+    await asyncio.to_thread(lambda: settings.update(modules={rec.id: {key: value}}))
+    _MODULES.invalidate()
+    if _HUB is not None:
+        await _HUB.refresh()
+    return web.json_response({"ok": True, "module_settings": _MODULES.module_settings(rec.id)})
+
+
+async def handle_api_jobs(request: web.Request) -> web.Response:
+    """Задачи всех модулей."""
+    keys = ("module", "job_id", "title", "state", "stage", "progress", "text", "question", "artifacts", "updated")
+    rows = [{k: j.get(k) for k in keys} for j in (_MODULES.jobs_all() if _MODULES is not None else [])]
+    return web.json_response(rows)
+
+
+async def handle_api_job_cancel(request: web.Request) -> web.Response:
+    body, err = await _json_body(request)
+    if err:
+        return err
+    if _HUB is None:
+        return web.json_response({"error": "шина модулей не подключена"}, status=503)
+    conn = _HUB.connection(request.match_info["module"])
+    if conn is None:
+        return web.json_response({"error": "модуль не подключён"}, status=409)
+    from module_hub import ModuleError
+    try:
+        await conn.request("job.cancel", {"job_id": request.match_info["job_id"]}, timeout=15.0)
+    except ModuleError as e:
+        return web.json_response({"error": e.message, "code": e.code}, status=400)
+    return web.json_response({"ok": True})
+
+
+async def handle_api_job_answer(request: web.Request) -> web.Response:
+    """{"question_id": str, "answer": any}: ответ на вопрос задачи кнопкой; доходит до модуля как job.answer."""
+    body, err = await _json_body(request)
+    if err:
+        return err
+    if _HUB is None:
+        return web.json_response({"error": "шина модулей не подключена"}, status=503)
+    problem = await _HUB.answer_job(request.match_info["module"], request.match_info["job_id"],
+                                    str(body.get("question_id") or ""), body.get("answer"))
+    if problem:
+        return web.json_response({"error": problem}, status=400)
+    return web.json_response({"ok": True})
+
+
 # ── Server lifecycle ─────────────────────────────────────────────────────────
 
-async def start_dashboard(
-    memory_dir: str = "./memory",
-    port: int = 8766,
-    chat_callback=None,
-):
-    global _MEMORY_DIR, _CHAT_CALLBACK
-    _MEMORY_DIR = Path(memory_dir)
-    settings.init(memory_dir)
-    events_log.init(memory_dir)
-    _CHAT_CALLBACK = chat_callback
-
+def build_app() -> web.Application:
+    """Приложение дашборда: страницы, API и шина модулей (/module/ws)."""
     app = web.Application()
     app.router.add_get("/", handle_root)
     app.router.add_get("/api/state", handle_api_state)
@@ -477,12 +651,33 @@ async def start_dashboard(
     app.router.add_get("/api/speech_status", handle_api_speech_status)
     app.router.add_post("/api/emotion", handle_api_emotion)
     app.router.add_post("/api/event", handle_api_event)
-
+    app.router.add_get("/api/modules", handle_api_modules)
+    app.router.add_post("/api/modules/{id}/enabled", handle_api_module_enabled)
+    app.router.add_post("/api/modules/{id}/restart", handle_api_module_restart)
+    app.router.add_post("/api/modules/{id}/settings", handle_api_module_settings)
+    app.router.add_get("/api/jobs", handle_api_jobs)
+    app.router.add_post("/api/jobs/{module}/{job_id}/cancel", handle_api_job_cancel)
+    app.router.add_post("/api/jobs/{module}/{job_id}/answer", handle_api_job_answer)
+    if _HUB is not None:
+        _HUB.attach(app)
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
         app.router.add_static("/static", static_dir)
+    return app
 
-    runner = web.AppRunner(app)
+
+async def start_dashboard(
+    memory_dir: str = "./memory",
+    port: int = 8766,
+    chat_callback=None,
+):
+    global _MEMORY_DIR, _CHAT_CALLBACK
+    _MEMORY_DIR = Path(memory_dir)
+    settings.init(memory_dir)
+    events_log.init(memory_dir)
+    _CHAT_CALLBACK = chat_callback
+
+    runner = web.AppRunner(build_app())
     await runner.setup()
     site = web.TCPSite(runner, os.getenv("GLADOS_DASHBOARD_HOST", "127.0.0.1"), port)
     await site.start()

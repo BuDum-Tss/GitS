@@ -50,6 +50,7 @@
       <div class="flex-1">
         <div class="font-semibold">Нужно твоё разрешение</div>
         <div id="approval-text" class="text-sm bubble-text"></div>
+        <div id="approval-extra" class="flex flex-wrap gap-2 mt-2"></div>
       </div>
       <div class="flex gap-2">
         <button id="approval-no" class="btn btn-sm">Запретить</button>
@@ -81,6 +82,7 @@
       <div role="tablist" class="tabs tabs-boxed bg-base-100 shadow-sm">
         <a role="tab" class="tab tab-active" data-tab="status">Состояние</a>
         <a role="tab" class="tab" data-tab="memory">Память</a>
+        <a role="tab" class="tab" data-tab="modules">Модули</a>
         <a role="tab" class="tab" data-tab="events">События</a>
         <a role="tab" class="tab" data-tab="settings" title="Настройки" aria-label="Настройки" style="flex:0 0 auto;width:2rem;padding:0;margin-left:auto"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
       </div>
@@ -200,6 +202,14 @@
         </div>
       </div>
 
+      <!-- Модули и задачи -->
+      <div id="tab-modules" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
+        <div class="card-body gap-4">
+          <section><h3 class="font-semibold mb-2">Модули</h3><div id="mod-list" class="space-y-3"></div></section>
+          <section><h3 class="font-semibold mb-2">Задачи</h3><ul id="job-list" class="space-y-2 text-sm"></ul></section>
+        </div>
+      </div>
+
       <!-- Настройки -->
       <div id="tab-settings" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-5">
@@ -226,6 +236,10 @@
               <option value="game">Игра</option>
               <option value="approval">Разрешения</option>
               <option value="setting">Настройки</option>
+              <option value="module">Модули</option>
+              <option value="module_event">События модулей</option>
+              <option value="profile">Профили</option>
+              <option value="attention">Внимание</option>
               <option value="error">Ошибки</option>
             </select>
           </div>
@@ -285,8 +299,9 @@ $('btn-theme').onclick = () => {
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('tab-active', t === tab));
-  ['status', 'memory', 'events', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
+  ['status', 'memory', 'modules', 'events', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
   if (tab.dataset.tab === 'status') { loadModes().then(() => MD.cy && fitGraph(MD.cy)); }
+  if (tab.dataset.tab === 'modules') { loadModules().catch(() => {}); }
   if (tab.dataset.tab === 'memory') { loadGraph().then(() => GR.cy && fitGraph(GR.cy)); }
 });
 
@@ -465,6 +480,11 @@ async function loadModes() {
   $('modes-state').textContent = stateLine(g);
   $('modes-battery').innerHTML = batteryHtml(g.battery, true);
   $('modes-when').textContent = batteryWhen(g.battery).trim();
+  const selOpts = g.nodes.filter(n => !n.planned), selSig = selOpts.map(n => n.id).join(',');
+  if ($('modes-select').dataset.sig !== selSig) {     // профили приходят из agent/profiles/*.yaml
+    $('modes-select').dataset.sig = selSig;
+    $('modes-select').innerHTML = '<option value="auto">Выбирает сама</option>' + selOpts.map(n => `<option value="${esc(n.id)}">${esc(n.label)}</option>`).join('');
+  }
   if (document.activeElement !== $('modes-select')) $('modes-select').value = g.override || 'auto';
   if (document.activeElement !== $('modes-streamer')) $('modes-streamer').checked = !!(g.flags && g.flags.streamer);
   $('modes-back').classList.toggle('hidden', MD.view === 'main');
@@ -736,7 +756,8 @@ function renderMemory(core) {
 // ── протокол событий ──
 const KIND = {user: ['Ты', 'badge-neutral'], say: ['Ассистент', 'badge-primary'], proactive: ['Сама', 'badge-secondary'],
   reflex: ['Реакция', 'badge-accent'], vision: ['Зрение', 'badge-info'], hearing: ['Слух', 'badge-info'], telegram: ['Telegram', 'badge-secondary'], plan: ['План', 'badge-primary'], audit: ['Аудит', 'badge-warning'], memory: ['Память', 'badge-accent'], game: ['Игра', 'badge-success'],
-  approval: ['Разрешение', 'badge-warning'], setting: ['Настройка', 'badge-ghost'], error: ['Ошибка', 'badge-error']};
+  approval: ['Разрешение', 'badge-warning'], setting: ['Настройка', 'badge-ghost'],
+  module: ['Модуль', 'badge-accent'], module_event: ['Событие модуля', 'badge-accent'], profile: ['Профиль', 'badge-secondary'], attention: ['Внимание', 'badge-info'], error: ['Ошибка', 'badge-error']};
 function evDetails(e) {
   const d = e.data || {}; const bits = [];
   if (d.emotion) bits.push(EMO[d.emotion] || d.emotion);
@@ -872,6 +893,130 @@ function renderGame(d) {
     || '<li class="opacity-60">Потерь нет.</li>';
 }
 
+// ── модули и задачи (ТЗ 02, CORE-38) ──
+const MOD_STATUS = {connected: ['подключён', 'badge-success'], disabled: ['выключен', 'badge-ghost'],
+  running: ['запущен, ещё не подключился', 'badge-info'], starting: ['запускается', 'badge-info'],
+  backoff: ['перезапуск после сбоя', 'badge-warning'], crashed: ['остановлен после сбоев', 'badge-error'],
+  not_configured: ['не настроен', 'badge-warning'], manual: ['запущен вручную', 'badge-info'],
+  offline: ['не подключён', 'badge-ghost'], stopped: ['остановлен', 'badge-ghost']};
+const JOB_STATE = {queued: ['в очереди', 'badge-ghost'], running: ['идёт', 'badge-info'], waiting_user: ['ждёт ответа', 'badge-warning'],
+  done: ['готово', 'badge-success'], failed: ['сбой', 'badge-error'], cancelled: ['отменена', 'badge-ghost']};
+const JOB_FINISHED = ['done', 'failed', 'cancelled'];
+const MD2 = {sig: '', jobSig: ''};
+
+function modSettingControl(m, key, spec) {
+  const v = (m.module_settings || {})[key], a = `data-act="setting" data-id="${esc(m.id)}" data-key="${esc(key)}" data-type="${esc(spec.type)}"`;
+  let control;
+  if (spec.type === 'boolean') control = `<input type="checkbox" class="toggle toggle-sm" ${a} ${v ? 'checked' : ''}>`;
+  else if (spec.enum) control = `<select class="select select-bordered select-xs" ${a}>${spec.enum.map(o => `<option value="${esc(o)}" ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  else if (spec.type === 'string') control = `<input type="text" class="input input-bordered input-xs w-40" value="${esc(v)}" ${a}>`;
+  else control = `<input type="number" class="input input-bordered input-xs w-24" value="${esc(v)}" ${spec.min != null ? `min="${esc(spec.min)}"` : ''} ${spec.max != null ? `max="${esc(spec.max)}"` : ''} ${spec.type === 'integer' ? 'step="1"' : 'step="any"'} ${a}>`;
+  return `<div class="flex items-center justify-between gap-3"><span class="text-xs">${esc(spec.title || key)}</span>${control}</div>`;
+}
+
+function renderModule(m) {
+  const [label, cls] = MOD_STATUS[m.status] || [m.status_text || m.status, 'badge-ghost'];
+  const tools = (m.tools || []).map(t => `<li class="flex items-start gap-2"><span class="badge ${(RISK[t.risk] || RISK.ask)[1]} badge-xs shrink-0 mt-1">${esc((RISK[t.risk] || RISK.ask)[0])}</span>
+    <span class="min-w-0"><span class="font-mono text-xs">${esc(t.id)}</span> <span class="opacity-60 text-xs">${t.availability === 'profile' ? '(только в своём профиле)' : ''}</span>
+    <span class="opacity-70 bubble-text text-xs block">${esc(t.description)}</span></span></li>`).join('');
+  const schema = Object.entries(m.settings_schema || {});
+  const canRestart = m.status !== 'offline' || m.pid;
+  return `<div class="border border-base-300 rounded-lg p-3" data-module="${esc(m.id)}">
+    <div class="flex items-center justify-between gap-2">
+      <span class="font-medium min-w-0">${esc(m.title)} <span class="opacity-50 text-xs font-mono">${esc(m.id)} ${esc(m.version || '')}</span></span>
+      <span class="flex items-center gap-2 shrink-0">
+        <span class="badge ${cls} badge-sm" title="${esc(m.status_text || '')}">${esc(label)}</span>
+        <button class="btn btn-ghost btn-xs" data-act="restart" data-id="${esc(m.id)}" title="Перезапустить процесс" ${canRestart ? '' : 'disabled'}>↻</button>
+        <input type="checkbox" class="toggle toggle-sm" data-act="enable" data-id="${esc(m.id)}" ${m.enabled ? 'checked' : ''} title="Включить или выключить модуль">
+      </span></div>
+    <div class="text-xs opacity-70 bubble-text">${esc(m.description || '')}</div>
+    ${m.state_summary ? `<div class="text-xs mt-1">Сейчас: ${esc(m.state_summary)}</div>` : ''}
+    ${m.restarts ? `<div class="text-xs opacity-60">Перезапусков: ${esc(m.restarts)}</div>` : ''}
+    ${m.last_error ? `<pre class="text-xs bg-base-200 rounded p-2 mt-2 whitespace-pre-wrap" style="max-height:8rem;overflow:auto">${esc(m.last_error)}</pre>` : ''}
+    ${(m.capabilities || []).length ? `<div class="flex flex-wrap gap-1 mt-2">${m.capabilities.map(c => `<span class="badge badge-outline badge-xs">${esc(c)}</span>`).join('')}</div>` : ''}
+    ${tools ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Инструменты (${m.tools.length})</summary><ul class="space-y-1 mt-1">${tools}</ul></details>` : ''}
+    ${schema.length ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Настройки</summary><div class="space-y-2 mt-2">${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></details>` : ''}
+  </div>`;
+}
+
+function renderJob(j) {
+  const [label, cls] = JOB_STATE[j.state] || [j.state, 'badge-ghost'];
+  const pct = typeof j.progress === 'number' ? Math.round(j.progress * 100) : null;
+  let q = '';
+  if (j.state === 'waiting_user' && j.question) {
+    const a = `data-act="answer" data-module="${esc(j.module)}" data-job="${esc(j.job_id)}" data-q="${esc(j.question.question_id)}"`;
+    let controls = '';
+    if (j.question.kind === 'approval') controls = `<button class="btn btn-xs btn-neutral" ${a} data-answer="true">Да</button> <button class="btn btn-xs" ${a} data-answer="false">Нет</button>`;
+    else if (j.question.kind === 'choice') controls = (j.question.options || []).map(o => `<button class="btn btn-xs" ${a} data-answer="${esc(o)}">${esc(o)}</button>`).join(' ');
+    else controls = `<input class="input input-bordered input-xs" data-textanswer="${esc(j.job_id)}" placeholder="Ответ"> <button class="btn btn-xs btn-neutral" ${a} data-fromtext="1">Отправить</button>`;
+    q = `<div class="mt-2 p-2 rounded bg-warning/20"><div class="bubble-text">${esc(j.question.question)}</div><div class="flex flex-wrap gap-2 mt-1">${controls}</div></div>`;
+  }
+  const arts = (j.artifacts || []).map(x => `<code class="text-xs block bubble-text">${esc(x.kind ? x.kind + ': ' : '')}${esc(x.path)}</code>`).join('');
+  return `<li class="border border-base-300 rounded-lg p-2">
+    <div class="flex items-center justify-between gap-2"><span class="min-w-0"><span class="font-medium">${esc(j.title || j.job_id)}</span>
+      <span class="opacity-50 text-xs font-mono">${esc(j.module)} ${esc(j.job_id)}${j.stage ? ' · ' + esc(j.stage) : ''}</span></span>
+      <span class="flex items-center gap-2 shrink-0"><span class="badge ${cls} badge-sm">${esc(label)}</span>
+      ${JOB_FINISHED.includes(j.state) ? '' : `<button class="btn btn-ghost btn-xs" data-act="cancel" data-module="${esc(j.module)}" data-job="${esc(j.job_id)}" title="Отменить задачу">✕</button>`}</span></div>
+    ${pct !== null ? `<progress class="progress progress-info w-full mt-1" value="${pct}" max="100"></progress>` : ''}
+    ${j.text ? `<div class="text-xs opacity-80 bubble-text mt-1">${esc(j.text)}</div>` : ''}${q}${arts}</li>`;
+}
+
+async function loadModules() {
+  if ($('tab-modules').classList.contains('hidden')) return;
+  const [mods, jobs] = await Promise.all([fetch('/api/modules').then(r => r.json()), fetch('/api/jobs').then(r => r.json())]);
+  const typing = $('tab-modules').contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
+  const html = mods.map(renderModule).join('') || '<p class="opacity-60 text-sm">Модулей пока нет. Они подключаются сами или запускаются ядром (agent/modules.yaml).</p>';
+  const jhtml = jobs.map(renderJob).join('') || '<li class="opacity-60">Задач нет.</li>';
+  if (!typing && MD2.sig !== html) { MD2.sig = html; $('mod-list').innerHTML = html; }
+  if (!typing && MD2.jobSig !== jhtml) { MD2.jobSig = jhtml; $('job-list').innerHTML = jhtml; }
+}
+$('tab-modules').addEventListener('change', async e => {
+  const el = e.target, id = el.dataset.id;
+  if (el.dataset.act === 'enable') await post(`/api/modules/${encodeURIComponent(id)}/enabled`, {enabled: el.checked});
+  else if (el.dataset.act === 'setting') {
+    let value = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.dataset.type === 'integer') value = parseInt(value, 10); else if (el.dataset.type === 'number') value = parseFloat(value);
+    const r = await post(`/api/modules/${encodeURIComponent(id)}/settings`, {key: el.dataset.key, value});
+    const box = document.querySelector(`[data-err="${CSS.escape(id)}"]`);
+    if (box) box.textContent = r.ok ? '' : (await r.json()).error;
+  } else return;
+  MD2.sig = ''; loadModules().catch(() => {});
+});
+$('tab-modules').addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const act = el.dataset.act;
+  if (act === 'restart') await post(`/api/modules/${encodeURIComponent(el.dataset.id)}/restart`, {});
+  else if (act === 'cancel') await post(`/api/jobs/${encodeURIComponent(el.dataset.module)}/${encodeURIComponent(el.dataset.job)}/cancel`, {});
+  else if (act === 'answer') {
+    let answer = el.dataset.answer;
+    if (el.dataset.fromtext) { const inp = document.querySelector(`[data-textanswer="${CSS.escape(el.dataset.job)}"]`); answer = inp ? inp.value.trim() : ''; if (!answer) return; }
+    else if (answer === 'true') answer = true; else if (answer === 'false') answer = false;
+    await post(`/api/jobs/${encodeURIComponent(el.dataset.module)}/${encodeURIComponent(el.dataset.job)}/answer`, {question_id: el.dataset.q, answer});
+  } else return;
+  MD2.sig = MD2.jobSig = ''; setTimeout(() => loadModules().catch(() => {}), 300);
+});
+setInterval(() => loadModules().catch(() => {}), 2000);
+
+// ── вопросы с вариантами и свободным ответом (core.ask): кнопки в плашке разрешения ──
+function renderApprovalExtra(ap) {
+  const kind = ap.kind || 'approval', sig = kind + '|' + ap.text + '|' + (ap.options || []).join('|');
+  $('approval-yes').classList.toggle('hidden', kind !== 'approval');
+  $('approval-no').classList.toggle('hidden', kind !== 'approval');
+  if ($('approval-extra').dataset.sig === sig) return;
+  $('approval-extra').dataset.sig = sig;
+  if (kind === 'choice') {
+    $('approval-extra').innerHTML = (ap.options || []).map(o => `<button class="btn btn-sm" data-choice="${esc(o)}">${esc(o)}</button>`).join('');
+  } else if (kind === 'text') {
+    $('approval-extra').innerHTML = '<input id="approval-text-in" class="input input-bordered input-sm" placeholder="Ответ"> <button class="btn btn-sm btn-neutral" data-textsend="1">Отправить</button>';
+  } else $('approval-extra').innerHTML = '';
+}
+$('approval-extra').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  let answer = b.dataset.choice;
+  if (b.dataset.textsend) { answer = ($('approval-text-in') || {}).value; if (!answer || !answer.trim()) return; }
+  await post('/api/approval', {answer}); poll();
+});
+
 // ── опрос ──
 let polling = false;
 async function poll() {
@@ -892,6 +1037,7 @@ async function poll() {
     renderActivity(core.activity); renderMemory(core); renderGame(st);
     $('approval').classList.toggle('hidden', !core.approval.pending);
     $('approval-text').textContent = core.approval.text;
+    renderApprovalExtra(core.approval);
   } catch (e) {
     $('badge-core').textContent = 'ядро недоступно'; $('badge-core').className = 'badge badge-error badge-outline';
   }

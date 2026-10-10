@@ -1,6 +1,8 @@
 """Точка входа."""
 import logging
 import os
+import sys
+from pathlib import Path
 
 import nowindow  # noqa: F401  (побочный эффект: скрывает окна консоли)
 from dotenv import load_dotenv
@@ -11,6 +13,9 @@ load_dotenv("secrets.env")   # токены (не в git): TELEGRAM_BOT_TOKEN, T
 
 # Агент RimWorld живёт в отдельном репозитории (rimworld-agent); здесь только путь к его MCP-серверу для окружения «RimWorld»
 os.environ.setdefault("RIMWORLD_AGENT_DIR", r"C:\MyProjects\rimworld-agent")
+
+# до установки пакета glados-module (pip install -e ./sdk) SDK модулей берётся из репозитория
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sdk"))
 
 import core_service
 
