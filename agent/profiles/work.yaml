@@ -1,0 +1,16 @@
+id: work
+title: Работа и код
+description: "Пользователь работает в редакторе, терминале или IDE: говорить тихо и по делу."
+tone: >
+  Сейчас пользователь работает (код, терминал, редактор). Говори тихо и по делу, без шуток поверх чужой
+  сосредоточенности, предлагай помощь только если видишь конкретную проблему.
+focus_modules: [desktop]
+memory_scopes: [assistant]
+knowledge: []
+attention:
+  weights: {}
+activate:
+  foreground_apps: [code, devenv, pycharm64, idea64, rider64, windowsterminal, powershell, cmd, wt, claude]
+priority: 20
+sticky_s: 120
+planned: false

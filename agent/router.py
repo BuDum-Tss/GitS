@@ -35,7 +35,6 @@ _VERBS = ("напиш", "включ", "выключ", "найд", "сдела", 
           "скач", "установ", "запуст", "запуск", "стартуй", "поигра", "останов", "постав", "заказ", "купи", "переключ", "отключ",
           "поруч", "клод", "claude", "попроси", "отвлека", "нажм", "кликн", "набер", "напечата", "прокрут", "вспомн", "помниш", "запиши", "закаж", "оплат", "забронир", "отмен", "перезапуст", "обнови", "загруз", "видиш", "слыши", "подсматр", "подслуш", "слушай", "прочит", "сохран", "измени", "поменяй")
 _VERB_RE = re.compile(r"\b(" + "|".join(_VERBS) + ")", re.I)
-STEP_TIMEOUT = 150
 RESULT_CHARS = 600
 
 PLANNER = (
@@ -115,15 +114,17 @@ class Router:
 
     # ── исполнение ────────────────────────────────────────────────────────────
 
-    async def _run_step(self, step: dict, candidates: dict) -> tuple[bool, str, str]:
-        """(успех, название, результат/причина)."""
+    async def _step(self, step: dict, candidates: dict) -> tuple[bool, str, str, str | None]:
+        """(успех, название, результат/причина, код ошибки по MOD-9 или None)."""
         tool = candidates.get(str(step.get("tool", "")))
         if tool is None:
-            return False, str(step.get("tool", "?")), "такого инструмента у неё нет"
+            return False, str(step.get("tool", "?")), "такого инструмента у неё нет", "unknown"
         args, err = validate_args(tool, step.get("args"))
         if err:
-            return False, tool.name, f"неверные параметры: {err}"
+            return False, tool.name, f"неверные параметры: {err}", "bad_request"
         danger = tool.danger(args) if tool.danger else None
+        if tool.danger_check and tool.check is not None and not danger:
+            danger = await tool.check(args)       # модуль сам называет опасность (tool.check, CORE-35)
         needs_ask = bool(danger) or tool.risk == "ask" or (
             tool.risk == "public" and not tool.self_confirming and settings.load()["telegram_confirm"])
         if needs_ask:
@@ -132,27 +133,39 @@ class Router:
             if shown:
                 question += f" с параметрами: {shown[:200]}"
             if not await approvals.request(question + ".", self._say, danger=danger):
-                return False, tool.name, "пользователь не разрешил"
+                return False, tool.name, "пользователь не разрешил", "denied"
         try:
-            result = await asyncio.wait_for(tool.call(args), STEP_TIMEOUT)
+            # запас над timeout_s: модульный вызов сам вернёт понятную причину тайм-аута раньше (CORE-34)
+            result = await asyncio.wait_for(tool.call(args), tool.timeout_s + 2)
         except ToolError as e:
-            return False, tool.name, str(e)
+            return False, tool.name, str(e), getattr(e, "code", "unavailable")
         except asyncio.TimeoutError:
-            return False, tool.name, "не уложилась по времени"
+            return False, tool.name, "не уложилась по времени", "timeout"
         except Exception as e:
             logger.warning(f"Инструмент {tool.id}: {e}")
-            return False, tool.name, f"сбой: {e}"
-        return True, tool.name, str(result)[:RESULT_CHARS]
+            return False, tool.name, f"сбой: {e}", "internal"
+        return True, tool.name, str(result)[:RESULT_CHARS], None
+
+    async def _run_step(self, step: dict, candidates: dict) -> tuple[bool, str, str]:
+        """(успех, название, результат/причина)."""
+        ok, name, info, _code = await self._step(step, candidates)
+        return ok, name, info
 
     # ── главный вход ───────────────────────────────────────────────────────────
+
+    async def run_tool_ex(self, tool_id: str, args: dict) -> tuple[bool, str, str | None]:
+        """Как run_tool, но третьим значением возвращает код ошибки (MOD-9: unknown, bad_request, denied, unavailable,
+        timeout, internal) или None при успехе: так отвечает ядро на core.tool.call от модулей."""
+        tool = self.registry.get(tool_id)
+        if tool is None:
+            return False, "такого инструмента нет", "unknown"
+        ok, _name, result, code = await self._step({"tool": tool_id, "args": args}, {tool_id: tool})
+        return ok, result, code
 
     async def run_tool(self, tool_id: str, args: dict) -> tuple[bool, str]:
         """Выполнить один инструмент по id с обычным контролем: проверка параметров, вопрос о разрешении, опасное всегда спрашивается.
         Для других агентов (игра) через дашборд. Возвращает (успех, результат или причина)."""
-        tool = self.registry.get(tool_id)
-        if tool is None:
-            return False, "такого инструмента нет"
-        ok, _name, result = await self._run_step({"tool": tool_id, "args": args}, {tool_id: tool})
+        ok, result, _code = await self.run_tool_ex(tool_id, args)
         return ok, result
 
     async def handle(self, text: str, announce: bool = True) -> str | None:

@@ -8,8 +8,9 @@
 Зашитых веток под отдельные команды больше нет: новая возможность это новый инструмент
 в окружении (environments/), а не новая регулярка здесь.
 
-Реплики уходят в memory/say.json — оттуда дашборд отдаёт их питомцу,
-который показывает облачко и озвучивает (если не включена глушилка).
+Реплики уходят через вывод речи (speech_out.py): пока это прежний путь через питомца (memory/say.json, дашборд
+отдаёт реплику питомцу, он показывает облачко и озвучивает, если не включена глушилка). Обращения приходят из любых
+каналов (conversation_io.py), ответ уходит в канал обращения: голос и чат дашборда как раньше, модуль-канал через deliver.
 """
 import asyncio
 import json
@@ -23,9 +24,10 @@ import gamenet
 import events_log
 import fast_brain
 import perception
-import profiles
 import prompts
 import settings
+from conversation_io import DASHBOARD, VOICE, UserInput, current_channel
+from speech_out import LegacyPetSpeech, PresenceTracker, new_utterance_id
 from user_memory import UserMemory
 
 logger = logging.getLogger("companion")
@@ -34,13 +36,16 @@ PERSONA = prompts.companion_persona()   # конституция + prompt.yaml (
 
 _MIN_GAP = {"quiet": 30 * 60, "normal": 10 * 60, "chatty": 3 * 60}   # не говорить сама чаще
 _CONSULT = {"quiet": 10 * 60, "normal": 4 * 60, "chatty": 90}        # как часто спрашивать себя
-_YES = ("да", "ага", "разрешаю", "давай", "ок", "окей", "валяй", "можно", "yes", "конечно")
-_NO = ("нет", "не надо", "не разрешаю", "запрещаю", "отмена", "стоп", "no", "не нужно")
+
 
 class Companion:
     def __init__(self, memory_dir: str, rel, watcher: perception.ScreenWatcher | None = None,
-                 hearing=None):
+                 hearing=None, speech=None, presence: PresenceTracker | None = None):
         self._dir = Path(memory_dir)
+        self.presence = presence or PresenceTracker()          # тема presence (ставит слушателя ядро)
+        self.speech = speech or LegacyPetSpeech(memory_dir, self.presence)   # вывод речи (CORE-27)
+        self.io = None                                         # ConversationIO: доставка ответов в каналы модулей
+        self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
         self._rel = rel
         self._watcher = watcher
         self._hearing = hearing
@@ -51,10 +56,8 @@ class Companion:
         self.graph = None         # GraphMemory: факты о людях и жизни в графе
         self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
         self.last_voice = None    # последний говоривший голосом (для «запомни, это я»)
-        self._speak_until = 0.0   # до какого момента она, по расчёту, ещё говорит (микрофон закрыт)
         self.game_order = None  # async (text) -> bool: приказ в игру, ставит контроллер
         self._mem = UserMemory(memory_dir)
-        self._say_id = 0
         self._last_say = self._load_last_say()   # переживает перезапуски
         self._last_consult = time.time()
         self._away_since: float | None = None
@@ -73,26 +76,27 @@ class Companion:
 
     # ── вывод ────────────────────────────────────────────────────────────────
 
-    async def say(self, text: str, emotion: str | None = None):
-        """Сказать реплику: журнал, say.json для питомца, эмоция."""
+    async def say(self, text: str, emotion: str | None = None, priority: int = 50):
+        """Сказать реплику: журнал, вывод речи (питомец), эмоция. В канале модуля вместо речи идёт deliver."""
         from speech_text import clean_speech
         text = clean_speech(text)   # без разметки, ремарок в скобках и оборванного хвоста: это произносится вслух
         if not text:
             return
+        channel = current_channel.get()
         self._mem.add_dialogue("glados", text)
-        events_log.log("say", text, emotion=emotion)
+        events_log.log("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
         if self._hearing is not None:
             self._hearing.note_own_speech(text)   # свой голос в колонках не слушаем
-        self._say_id += 1
         self._last_say = time.time()
-        if not settings.load()["voice_muted"]:
-            self._speak_until = time.time() + len(text) * 0.075 + 1.5   # озвучка идёт в процессе питомца: оцениваем по длине
-        try:
-            (self._dir / "say.json").write_text(json.dumps(
-                {"id": self._say_id, "text": text, "ts": time.time()}, ensure_ascii=False),
-                encoding="utf-8")
-        except OSError as e:
-            logger.warning(f"say.json: {e}")
+        self.presence.update(last_say=text, last_say_ts=self._last_say)
+        if channel is not None and channel.kind == "module":
+            # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
+            if self.io is not None:
+                await self.io.deliver(channel, text)
+        else:
+            if emotion:
+                self.presence.update(emotion=emotion)
+            await self.speech.speak(new_utterance_id(), text, emotion, priority)
         if emotion:
             fast_brain.publish("say", {"emotion": emotion, "action": "none"})
         logger.info(f"[ГЛаДОС] {text}")
@@ -100,7 +104,7 @@ class Companion:
     # ── входящее сообщение ─────────────────────────────────────────────────────
 
     def is_speaking(self) -> bool:
-        return time.time() < self._speak_until
+        return self.speech.is_speaking()
 
     async def on_voice(self, text: str, speaker: dict):
         """Реплика, сказанная голосом: узнанный владелец идёт как обычное сообщение, остальным ставится пометка,
@@ -116,9 +120,23 @@ class Companion:
         if pid and not speaker.get("owner") and self._rel is not None and speaker.get("has_owner"):
             self._rel.ensure_person(f"voice:{pid}", name or f"голос {str(pid)[-4:]}", source="voice")
             self._rel.note(f"voice:{pid}", text)
-        await self.on_user_message(prefix + text)
+        await self.on_input(UserInput(prefix + text, VOICE, ts=time.time()))
 
-    async def on_user_message(self, text: str):
+    async def on_user_message(self, text: str, channel=None):
+        """Обращение текстом (чат дашборда, строка питомца); channel по умолчанию - дашборд."""
+        await self.on_input(UserInput(text, channel or DASHBOARD))
+
+    async def on_input(self, ui: UserInput):
+        """Единый вход обращений (CORE-24): ответ на него уходит в канал обращения (current_channel)."""
+        token = current_channel.set(ui.channel)
+        self.presence.update(busy=True)
+        try:
+            await self._handle_text(ui.text)
+        finally:
+            current_channel.reset(token)
+            self.presence.update(busy=False)
+
+    async def _handle_text(self, text: str):
         text = text.strip()
         if not text:
             return
@@ -127,9 +145,10 @@ class Companion:
         self._queue_graph(text)
         self._pending_memory += 1
         self._last_user_ts = time.time()
+        self.presence.update(last_user_ts=self._last_user_ts)
         fast_brain.publish("chat", {"emotion": "thinking", "action": "none"})   # сразу «задумалась», без вызова модели
 
-        if approvals.has_pending() and self._answer_approval(text):
+        if approvals.has_pending() and await self._answer_approval(text):
             return
         if self.game_order is not None:
             try:
@@ -166,25 +185,22 @@ class Companion:
         elif outcome is None and not after_chat:
             await self._converse(text)    # планировщик решил, что это всё-таки разговор
 
-    def _answer_approval(self, text: str) -> bool:
-        low = text.lower().strip(" .!")
-        if len(low.split()) > 4:
-            return False
-        if any(low == w or low.startswith(w + " ") for w in _YES):
-            approvals.resolve(True)
-            return True
-        if any(low == w or low.startswith(w + " ") for w in _NO):
-            approvals.resolve(False)
-            return True
-        return False
+    async def _answer_approval(self, text: str) -> bool:
+        """Реплика как ответ на открытый вопрос (да/нет, вариант, свободный текст): см. approvals.try_answer."""
+        return await approvals.try_answer(text)
 
     # ── разговор ───────────────────────────────────────────────────────────────
 
-    async def _speak_about(self, fact: str, user_text: str = "", must: bool = False):
+    async def _speak_about(self, fact: str, user_text: str = "", must: bool = False, question: bool = False):
         """Нет заготовленных фраз: ей сообщают факт, а говорить ли и что — решает сама.
         must=True для итога прямой просьбы пользователя: промолчать нельзя, он должен
-        узнать, что получилось (иначе непонятно, сработало ли)."""
-        if must:
+        узнать, что получилось (иначе непонятно, сработало ли).
+        question=True: факт - вопрос к пользователю (core.ask, вопрос задачи), его нужно задать своими словами."""
+        if question:
+            rule = ("Пользователю нужно задать вопрос, который описан в факте: задай его своими словами коротко, "
+                    "ничего не выдумывая и не отвечая за него. Промолчать нельзя. "
+                    'Ответь ТОЛЬКО JSON: {"say": true, "text": "<реплика>"}')
+        elif must:
             rule = ("Пользователь сам об этом попросил, поэтому обязательно коротко сообщи ему, "
                     "что получилось. Упомяни суть результата, не выдумывай деталей. "
                     'Ответь ТОЛЬКО JSON: {"say": true, "text": "<реплика>"}')
@@ -305,7 +321,7 @@ class Companion:
         """Обычный ответ обычным текстом, без JSON: так он приходит вдвое быстрее (локальная
         модель генерирует ~10-15 токенов в секунду, лишние поля стоят секунд).
         Возвращает True, если модель пометила сообщение как просьбу действовать."""
-        system = (PERSONA + " " + profiles.hint() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
+        system = (PERSONA + " " + self.profile_hint() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
                   "опубликовать, посмотреть), начни ответ с маркера [ДЕЙСТВИЕ] и коротко скажи, что сейчас "
                   "посмотришь, что можешь, БЕЗ выдуманного результата. Иначе просто ответь.")
         await self._refresh_graph(text)
@@ -541,7 +557,7 @@ class Companion:
             situation = self._digest(int(gap / 60))
         self._last_consult = now
 
-        system = (PERSONA + "\n" + profiles.hint() + "\nСама решай, стоит ли сейчас вмешаться. Говори, когда есть что-то уместное: "
+        system = (PERSONA + "\n" + self.profile_hint() + "\nСама решай, стоит ли сейчас вмешаться. Говори, когда есть что-то уместное: "
                   "наблюдение о том, что видишь, шутка про занятие, забота (долго сидит, поздно), вопрос. "
                   "Не навязывайся без повода: если пользователь сейчас занят (игра, работа, видео) или сказать "
                   "нечего, ответь say=false. Не возвращайся к темам, которые уже поднимала в последних "

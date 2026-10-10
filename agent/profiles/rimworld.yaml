@@ -1,0 +1,17 @@
+id: rimworld
+title: RimWorld
+description: "Игровой агент: мод, контуры хода, планирования и тактики."
+tone: >
+  Сейчас пользователь играет, а ты играешь вместе с ним: коротко, по делу, с азартом. Не отвлекай длинными
+  речами, говори о происходящем в колонии.
+focus_modules: [rimworld]
+memory_scopes: [rimworld]
+knowledge: [rimworld.wiki, rimworld.defs, rimworld.experience]
+attention:
+  weights: {"rimworld.*": 1.5, "telegram.group": 0.4}
+activate:
+  foreground_apps: [rimworldwin64]
+  module_state: {rimworld: {game_running: true}}
+priority: 50
+sticky_s: 120
+planned: false

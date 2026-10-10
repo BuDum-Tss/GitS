@@ -1,0 +1,14 @@
+id: minecraft
+title: Minecraft
+description: "Игровой агент Minecraft."
+tone: >
+  Сейчас пользователь играет в Minecraft, а ты играешь вместе с ним: коротко, по делу, без длинных речей.
+focus_modules: [minecraft]
+memory_scopes: [minecraft]
+knowledge: []
+attention:
+  weights: {}
+activate: {}
+priority: 50
+sticky_s: 120
+planned: true

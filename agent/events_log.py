@@ -14,6 +14,11 @@
   audit     — самоанализ: что нашла и какие выводы сохранила
   approval  — запрос и ответ на разрешение действия
   setting   — смена настроек (голос, зрение, громкость…)
+  module    — модули: подключение, отключение, отказ в рукопожатии, запуск и сбои процессов (только тип и размер
+              сообщений, содержимого нет)
+  module_event — событие модуля, принятое менеджером внимания (ТЗ 02/03)
+  profile   — смена активного профиля
+  attention — решение менеджера внимания по событию (ТЗ 03)
   error     — сбой
 
 Пишут все процессы (ядро, трей, питомец): режим WAL и таймаут ожидания блокировки делают одновременную запись
@@ -30,7 +35,7 @@ import uuid
 from pathlib import Path
 
 KINDS = ("user", "say", "proactive", "reflex", "vision", "hearing", "game", "telegram", "plan", "memory", "audit",
-         "approval", "setting", "error")
+         "approval", "setting", "module", "module_event", "profile", "attention", "error")
 KEEP_DAYS = 45
 KEEP_ROWS = 300_000
 _PRUNE_EVERY = 500            # раз в столько записей проверяем, не пора ли чистить

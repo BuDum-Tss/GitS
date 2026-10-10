@@ -127,7 +127,7 @@ async def handle_api_capabilities(request: web.Request) -> web.Response:
     return web.json_response({"environments": _REGISTRY.snapshot(), "errors": _REGISTRY.load_errors})
 
 
-_MODES = None   # менеджер режимов, ставится ядром
+_MODES = None   # ProfileManager (profile_manager.py), ставится ядром
 
 
 def set_modes(manager):
@@ -136,7 +136,7 @@ def set_modes(manager):
 
 
 async def handle_api_modes(request: web.Request) -> web.Response:
-    """Граф режимов и модулей: состояния, переходы, подграфы активных модулей."""
+    """Граф профилей: состояния, переходы, подграфы (живые - от модулей профиля)."""
     if _MODES is None:
         return web.json_response({"nodes": [], "edges": [], "current": None})
     g = await _MODES.graph()
@@ -145,7 +145,7 @@ async def handle_api_modes(request: web.Request) -> web.Response:
 
 
 async def handle_api_mode_post(request: web.Request) -> web.Response:
-    """Ручной выбор режима: {"mode": "game"} или {"mode": "auto"}."""
+    """Ручной выбор профиля: {"mode": "rimworld"} или {"mode": "auto"} (пишет настройку profile)."""
     if not _is_local_json(request):
         return web.json_response({"error": "forbidden"}, status=403)
     try:
@@ -157,7 +157,7 @@ async def handle_api_mode_post(request: web.Request) -> web.Response:
     err = _MODES.set_override(body.get("mode"))
     if err:
         return web.json_response({"error": err}, status=400)
-    return web.json_response({"current": _MODES.current(), "override": _MODES.override})
+    return web.json_response({"current": _MODES.current_id, "override": _MODES.override})
 
 
 async def handle_api_claude_usage(request: web.Request) -> web.Response:

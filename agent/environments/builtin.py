@@ -24,8 +24,9 @@ def _tool(env, name, description, params, call, risk="auto", keywords=(), self_c
                 informative=informative)
 
 
-def register(registry, companion, hearing, telegram, memory, tg_user=None):
-    """Собрать и добавить встроенные окружения. Все объекты живут в одном процессе ядра."""
+def register(registry, companion, hearing, telegram, memory, tg_user=None, profiles=None):
+    """Собрать и добавить встроенные окружения. Все объекты живут в одном процессе ядра.
+    profiles - ProfileManager (profile_manager.py): нужен инструменту assistant.set_profile."""
 
     # ── сама ассистентка: её настройки и память ───────────────────────────────
 
@@ -37,12 +38,15 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None):
         settings.update(vision=a["enabled"])
         return "зрение включено" if a["enabled"] else "зрение выключено, на экран больше не смотрит"
 
+    profile_ids = profiles.choices() if profiles is not None else ["auto"]
+
     async def set_profile(a):
-        import profiles
-        if a["mode"] not in ("auto", *[p.id for p in profiles.PROFILES]):
-            raise ToolError("режим один из: auto, game, work, stream, general")
-        settings.update(profile=a["mode"])
-        return "режим поведения: " + ("автоматически по активному окну" if a["mode"] == "auto" else profiles.current().title)
+        if profiles is None:
+            raise ToolError("профили не подключены")
+        err = profiles.set_override(a["mode"])
+        if err:
+            raise ToolError(err)
+        return "профиль выбирается автоматически" if a["mode"] == "auto" else f"профиль: {profiles.current().title}"
 
     async def set_streamer(a):
         settings.update(streamer=a["enabled"])
@@ -199,9 +203,9 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None):
             _tool("assistant", "set_vision", "Включить или выключить зрение: слежение за активным окном на экране.",
                   {"enabled": bool_p("true - смотреть на экран, false - не смотреть")}, set_vision,
                   keywords=("зрение", "экран", "смотри", "отвернись", "подглядывай")),
-            _tool("assistant", "set_profile", "Задать режим поведения: auto (сама по активному окну), game, work, stream, general. "
-                  "Для просьб «я работаю, веди себя тише», «режим игры», «определяй сама».",
-                  {"mode": {"type": "string", "description": "auto / game / work / stream / general", "enum": ["auto", "game", "work", "stream", "general"]}},
+            _tool("assistant", "set_profile", "Выбрать профиль (чем она сейчас занята): " + " / ".join(profile_ids) + ". "
+                  "auto: сама определяет по окну и играм. Для просьб «я работаю, веди себя тише», «режим игры», «определяй сама».",
+                  {"mode": {"type": "string", "description": " / ".join(profile_ids), "enum": profile_ids}},
                   set_profile, keywords=("режим", "работаю", "работа", "играю", "тише", "профиль")),
             _tool("assistant", "set_streamer", "Включить или выключить РЕЖИМ СТРИМЕРА: в игре она вслух ведёт стрим (что видит, "
                   "о чём думает, планы, цель, задачи). Для просьб «начинай стрим», «комментируй игру», «режим стримера», «хватит стримить».",
@@ -557,4 +561,36 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None):
                              "description": "true: голосовым сообщением её голосом; по умолчанию как в настройках"}},
                   telegram_post, risk="public", self_confirming=True, informative=True,
                   keywords=("пост", "телеграм", "канал", "опубликуй", "запости", "выложи", "тг")),
+        ]))
+
+
+def register_core_tools(registry, modules):
+    """Инструменты ядра про задачи модулей (окружение core, всегда видны, ТЗ 02 раздел 11).
+    modules - ModuleRegistry: jobs_all() и async cancel_job(module, job_id)."""
+
+    async def jobs(a):
+        rows = modules.jobs_all()
+        if not rows:
+            return "задач у модулей сейчас нет"
+        lines = []
+        for j in rows:
+            pct = f", {round(j['progress'] * 100)}%" if isinstance(j.get("progress"), (int, float)) else ""
+            stage = f", стадия {j['stage']}" if j.get("stage") else ""
+            lines.append(f"- {j['module']} {j['job_id']}: {j.get('title') or 'без названия'}, {j['state']}{stage}{pct}")
+        return "Задачи модулей:\n" + "\n".join(lines)
+
+    async def job_cancel(a):
+        return await modules.cancel_job(a["module"], a["job_id"])
+
+    registry.add(Environment(
+        id="core", title="Ядро: задачи модулей",
+        description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить.",
+        tools=[
+            _tool("core", "jobs", "Перечень задач всех модулей: модуль, название, состояние, стадия, прогресс. "
+                  "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",
+                  {}, jobs, informative=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),
+            _tool("core", "job_cancel", "Отменить задачу модуля (по модулю и номеру задачи из перечня задач).",
+                  {"module": {"type": "string", "description": "id модуля, например montage"},
+                   "job_id": {"type": "string", "description": "номер задачи вида j-xxxxxxxx"}},
+                  job_cancel, risk="ask", informative=True, keywords=("отмени", "останови", "задачу", "рендер")),
         ]))

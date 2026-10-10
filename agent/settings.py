@@ -5,6 +5,7 @@
 переживают перезапуск и работают одинаково из кнопки питомца, горячей
 клавиши, чата и дашборда.
 """
+import copy
 import json
 import os
 import time
@@ -16,7 +17,7 @@ DEFAULTS = {
     "voice_muted": False,       # глушилка: не озвучивать реплики (текст остаётся)
     "vision": True,             # смотреть на экран (локально)
     "game_model": "haiku",      # модель игровых ходов и планирования: haiku (быстро, дёшево) / sonnet (думает глубже, дороже)
-    "profile": "auto",          # режим поведения: auto (по активному окну) / game / work / stream / general
+    "profile": "auto",          # профиль: auto (сама выбирает) или id профиля из agent/profiles/ (ТЗ 02)
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (нужен docker compose up whisperx)
     "hearing": False,           # слушать системный звук (речь в колонках); по умолчанию выключено
@@ -37,7 +38,12 @@ DEFAULTS = {
     "pet_pinned": False,        # закрепить питомца: нельзя сдвинуть мышью
     "pet_x": None,              # запомненная позиция окна питомца (None — угол по умолчанию)
     "pet_y": None,
+    # модули (ТЗ 02, CORE-40): id -> {"enabled": bool, <имя собственной настройки>: значение}; нет записи — по умолчанию
+    # (включён; для модулей из modules.yaml берётся поле enabled оттуда)
+    "modules": {},
 }
+# словари, которые update() сливает на один уровень вглубь (modules.<id> целиком не затирается)
+_DEEP_KEYS = ("modules",)
 _dir = Path(os.getenv("MEMORY_DIR", "./memory"))
 
 
@@ -62,7 +68,24 @@ def load() -> dict:
         data = json.loads(_file().read_text(encoding="utf-8"))
     except Exception:
         data = {}
-    return {**DEFAULTS, **{k: v for k, v in data.items() if k in DEFAULTS}}
+    merged = {**DEFAULTS, **{k: v for k, v in data.items() if k in DEFAULTS}}
+    for k in _DEEP_KEYS:
+        if not isinstance(merged.get(k), dict):
+            merged[k] = copy.deepcopy(DEFAULTS[k])
+        else:
+            merged[k] = copy.deepcopy(merged[k])        # изменение результата не должно портить DEFAULTS
+    return merged
+
+
+def _merge_deep(old: dict, new: dict) -> dict:
+    """Слияние на один уровень: словари второго уровня (modules.<id>) дополняются, а не заменяются."""
+    out = dict(old)
+    for key, value in new.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = {**out[key], **value}
+        else:
+            out[key] = value
+    return out
 
 
 def update(**changes) -> dict:
@@ -70,7 +93,10 @@ def update(**changes) -> dict:
     before = dict(data)
     for k, v in changes.items():
         if k in DEFAULTS:
-            data[k] = v
+            if k in _DEEP_KEYS and isinstance(v, dict) and isinstance(data.get(k), dict):
+                data[k] = _merge_deep(data[k], v)
+            else:
+                data[k] = v
     diff = {k: v for k, v in data.items()
             if before.get(k) != v and k not in ("pet_x", "pet_y", "quiet_until")}
     if diff:

@@ -19,8 +19,8 @@ from pathlib import Path
 import claude_battery
 import dashboard
 import gamenet
-import modes
 import fast_brain
+import profile_manager
 import settings
 from companion import Companion
 from environments import builtin
@@ -28,6 +28,7 @@ from environments.registry import Registry
 from graph_memory import GraphMemory
 from hearing import Hearing
 from mic_listener import MicListener
+import perception
 from perception import ScreenWatcher
 from relationships import Relationships
 from router import Router
@@ -107,7 +108,30 @@ async def _run(config: dict):
     mic = MicListener(STTClient(), voices, companion.on_voice, companion.is_speaking, own_voice_sample)
     asyncio.create_task(mic.run())
     asyncio.create_task(tg_user.run())
-    builtin.register(registry, companion, hearing, telegram, memory, tg_user)
+
+    # профили (ТЗ 02): активное окно и состояние игры берутся из кэша, который обновляет фоновый опрос
+    sample = {"app": None, "game_running": False}
+
+    async def sampler():
+        while True:
+            try:
+                fg = await asyncio.to_thread(perception.foreground)
+                sample["app"] = (fg or {}).get("app")
+                sample["game_running"] = await asyncio.to_thread(gamenet.port_open, gamenet.PORT)
+            except Exception as e:
+                logger.debug(f"Опрос окна и игры: {e}")
+            await asyncio.sleep(2)
+
+    def module_state(module_id: str):
+        if module_id == "rimworld":      # устаревший канал агента игры: удалить в ТЗ 11 (до этого игра - порт мода)
+            return {"game_running": sample["game_running"]}
+        return None
+
+    profiles = profile_manager.ProfileManager(battery=claude_battery.status, foreground_app=lambda: sample["app"],
+                                              module_state=module_state)
+    profiles.evaluate()
+    companion.profile_hint = profiles.hint
+    builtin.register(registry, companion, hearing, telegram, memory, tg_user, profiles=profiles)
 
     def recent_dialogue() -> str:
         lines = [f"{'Пользователь' if m['role'] == 'user' else 'Ассистентка'}: {m['text']}"
@@ -117,10 +141,10 @@ async def _run(config: dict):
     companion.router = Router(registry, companion.say, recent_dialogue)
     dashboard.set_router(companion.router)
     dashboard.set_registry(registry)
-    mode_manager = modes.ModeManager(game_running=lambda: gamenet.port_open(gamenet.PORT),
-                                     battery=claude_battery.status)
-    registry.gate = mode_manager.module_active
-    dashboard.set_modes(mode_manager)
+    registry.focus = profiles.focus_modules
+    dashboard.set_modes(profiles)
+    asyncio.create_task(sampler())
+    asyncio.create_task(profiles.run())
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
     asyncio.create_task(companion.proactive_loop())
 

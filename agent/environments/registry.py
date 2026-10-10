@@ -26,10 +26,17 @@ class Registry:
     def __init__(self):
         self.envs: dict[str, Environment] = {}
         self.load_errors: dict[str, str] = {}
-        self.gate = None   # (модуль) -> включён ли в текущем режиме; None: всё включено
+        # () -> модули фокуса активного профиля (profile_manager); None: фокуса нет, видно всё (тесты)
+        self.focus = None
 
-    def _in_mode(self, env: Environment) -> bool:
-        return self.gate is None or self.gate(env.module)
+    def _focus_modules(self) -> set[str] | None:
+        return None if self.focus is None else set(self.focus())
+
+    def tool_visible(self, env: Environment, tool: Tool, focus: set[str] | None = None) -> bool:
+        """Виден ли инструмент планировщику (CORE-10): always - всегда; profile - когда модуль окружения в фокусе профиля."""
+        if self.focus is None or tool.availability == "always":
+            return True
+        return env.module in (focus if focus is not None else self._focus_modules())
 
     def add(self, env: Environment):
         self.envs[env.id] = env
@@ -62,6 +69,9 @@ class Registry:
                         problems.append(f"неизвестный тип источника {src['type']!r}")
                 except Exception as e:
                     problems.append(f"{src.get('type')}: {e}")
+            if env.module != "core":
+                for t in env.tools:       # окружение чужого модуля: инструменты видны только в фокусе профиля (CORE-10)
+                    t.availability = "profile"
         port = m.get("requires_port")
         if port:
             env.status = lambda port=port: (_port_open(port), "приложение не запущено (порт %s закрыт)" % port)
@@ -73,7 +83,8 @@ class Registry:
     # ── доступ ───────────────────────────────────────────────────────────────
 
     def active_tools(self) -> list[Tool]:
-        return [t for e in self.envs.values() if self._in_mode(e) and e.state()[0] for t in e.tools]
+        focus = self._focus_modules()
+        return [t for e in self.envs.values() if e.state()[0] for t in e.tools if self.tool_visible(e, t, focus)]
 
     def get(self, tool_id: str) -> Tool | None:
         for e in self.envs.values():
@@ -104,11 +115,13 @@ class Registry:
     def describe(self) -> str:
         """Честный перечень окружений и их состояния, для ответа «что ты умеешь / не могу»."""
         lines = []
+        focus = self._focus_modules()
         for e in self.envs.values():
             ok, why = e.state()
-            if not self._in_mode(e):
-                ok, why = False, "не включено в текущем режиме (включится, когда начнётся игра или нужная среда)"
-            names = ", ".join(t.name for t in e.tools[:8]) or "инструментов нет"
+            shown = [t for t in e.tools if self.tool_visible(e, t, focus)]
+            if ok and e.tools and not shown:
+                ok, why = False, "не в фокусе текущего профиля (включится, когда начнётся нужное занятие)"
+            names = ", ".join(t.name for t in (shown if ok else e.tools)[:8]) or "инструментов нет"
             lines.append(f"- {e.title}: {'доступно' if ok else 'недоступно (' + why + ')'}. {e.description} "
                          f"Умеет: {names}.")
         return "\n".join(lines)
@@ -116,13 +129,15 @@ class Registry:
     def snapshot(self) -> list[dict]:
         """Для дашборда."""
         out = []
+        focus = self._focus_modules()
         for e in self.envs.values():
             ok, why = e.state()
-            in_mode = self._in_mode(e)
+            in_mode = not e.tools or any(self.tool_visible(e, t, focus) for t in e.tools)
             if not in_mode:
-                ok, why = False, "не включено в текущем режиме"
+                ok, why = False, "не в фокусе текущего профиля"
             out.append({"module": e.module, "in_mode": in_mode, "id": e.id, "title": e.title, "description": e.description,
                         "enabled": e.enabled, "ok": ok, "status": why,
-                        "tools": [{"id": t.id, "name": t.name, "description": t.description,
-                                   "risk": t.risk} for t in e.tools]})
+                        "tools": [{"id": t.id, "name": t.name, "description": t.description, "risk": t.risk,
+                                   "availability": t.availability, "visible": self.tool_visible(e, t, focus)}
+                                  for t in e.tools]})
         return out

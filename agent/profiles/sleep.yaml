@@ -1,0 +1,15 @@
+# Сон выбирается особым правилом (CORE-19, шаг 1): нет заряда Claude. Условий activate нет.
+id: sleep
+title: Сон
+description: "Токены Claude кончились: никаких Claude-задач, только лёгкий разговор. Просыпается сама, когда окно лимита освободится."
+tone: >
+  Сейчас у тебя нет токенов Claude: сложных задач ты не берёшь, только лёгкий разговор. Говори спокойно и коротко.
+focus_modules: []
+memory_scopes: [assistant]
+knowledge: []
+attention:
+  weights: {}
+activate: {}
+priority: 0
+sticky_s: 0
+planned: false

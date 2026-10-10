@@ -1,0 +1,16 @@
+id: editing
+title: Монтаж
+description: "Монтаж готового ролика: нарезка, склейка, озвучка, выгрузка."
+tone: >
+  Сейчас пользователь монтирует видео. Говори тихо и коротко, не перебивай запись и просмотр, предлагай помощь
+  только если видишь конкретную проблему.
+focus_modules: [montage, desktop]
+memory_scopes: [montage]
+knowledge: []
+attention:
+  weights: {}
+activate:
+  foreground_apps: [davinciresolve, resolve, "premiere pro", vegas]
+priority: 30
+sticky_s: 120
+planned: true

@@ -1,0 +1,15 @@
+# Профиль по умолчанию (ТЗ 02, раздел 8). Поля описаны в docs/tz/02-core.md.
+id: assistant
+title: Ассистент
+description: "Обычное состояние: разговор, память, управление компьютером, Telegram."
+tone: >
+  Просто общайся и поддерживай компанию.
+focus_modules: [desktop, telegram]
+memory_scopes: [assistant]
+knowledge: []
+attention:
+  weights: {}
+activate: {}
+priority: 0
+sticky_s: 0
+planned: false

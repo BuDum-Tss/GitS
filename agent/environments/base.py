@@ -19,7 +19,13 @@ RISKS = ("auto", "ask", "public")
 
 
 class ToolError(Exception):
-    """Ожидаемый отказ инструмента (понятная причина, а не сбой кода)."""
+    """Ожидаемый отказ инструмента (понятная причина, а не сбой кода).
+
+    code - код ошибки по MOD-9 (у инструментов модулей приходит от модуля): по нему ядро отвечает на core.tool.call."""
+
+    def __init__(self, message: str = "", code: str = "unavailable"):
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass
@@ -44,6 +50,14 @@ class Tool:
     danger: Callable[[dict], str | None] | None = None
     # универсальный запасной инструмент (Claude-помощник): попадает к планировщику при любом отборе
     always: bool = False
+    # видимость планировщику (ТЗ 02, CORE-10): always - в любом профиле; profile - только когда модуль окружения входит
+    # в модули фокуса активного профиля
+    availability: str = "always"
+    timeout_s: int = 150          # сколько маршрутизатор ждёт результат шага (у инструментов модулей - из манифеста)
+    job: bool = False             # вызов запускает долгую задачу: результат придёт позже (job.update)
+    danger_check: bool = False    # перед вызовом спрашивается check (модуль сам называет опасность)
+    # () -> причина опасности или None; для danger_check (запрос tool.check к модулю, тайм-аут 2 с)
+    check: Callable[[dict], Awaitable[str | None]] | None = None
 
     def signature(self) -> str:
         """Описание для подсказки планировщику."""
@@ -55,7 +69,8 @@ class Tool:
             desc = f" - {p['description']}" if p.get("description") else ""
             parts.append(f"{name} ({kind}{opt}{enum}){desc}")
         args = "; ".join(parts) if parts else "без параметров"
-        return f"{self.id}: {self.description} Параметры: {args}. Риск: {self.risk}."
+        job = " Запускает долгую задачу: результат придёт позже." if self.job else ""
+        return f"{self.id}: {self.description}{job} Параметры: {args}. Риск: {self.risk}."
 
 
 _TRUE, _FALSE = {"true", "1", "да", "yes", "on", "вкл"}, {"false", "0", "нет", "no", "off", "выкл"}
@@ -109,7 +124,9 @@ class Environment:
     description: str
     tools: list[Tool] = field(default_factory=list)
     enabled: bool = True
-    module: str = "core"          # модуль режима (modes.py): вне его режима окружение выключено
+    # модуль окружения: у окружений модулей это id модуля; инструменты availability=profile видны, только когда модуль
+    # входит в модули фокуса активного профиля (profile_manager.py)
+    module: str = "core"
     # () -> (доступно ли сейчас, пояснение)
     status: Callable[[], tuple[bool, str]] | None = None
 

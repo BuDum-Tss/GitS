@@ -1,0 +1,14 @@
+id: programming
+title: Программирование
+description: "Работа с кодом: проекты, правки, проверки."
+tone: >
+  Сейчас идёт работа с кодом проекта. Говори тихо и по делу, без шуток поверх чужой сосредоточенности.
+focus_modules: [code]
+memory_scopes: [code]
+knowledge: []
+attention:
+  weights: {}
+activate: {}
+priority: 20
+sticky_s: 120
+planned: true
