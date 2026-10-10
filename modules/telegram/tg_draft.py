@@ -1,13 +1,14 @@
-"""Черновик поста для Telegram-канала: текст и приложенные скриншоты (memory/tg_draft.json).
+"""Черновик поста для Telegram-канала: текст и приложенные скриншоты (MEMORY_DIR/tg_draft.json).
 
 Она пишет черновик по частям, правит его и только потом публикует. Черновик переживает
 перезапуск; публикация идёт через TelegramChannel.publish (фильтр приватности, подтверждение).
+Снимки берутся из общей папки MEMORY_DIR/screenshots/ (shots.py): модуль их только читает.
 """
 import json
 import time
 from pathlib import Path
 
-import screenshots
+from shots import Shots
 
 MAX_PHOTOS = 4
 
@@ -15,17 +16,19 @@ MAX_PHOTOS = 4
 class TgDraft:
     def __init__(self, memory_dir: str):
         self._file = Path(memory_dir) / "tg_draft.json"
+        self.shots = Shots(memory_dir)
 
     def _load(self) -> dict:
         try:
             d = json.loads(self._file.read_text(encoding="utf-8"))
         except Exception:
             d = {}
-        return {"text": d.get("text", ""), "photos": [p for p in d.get("photos", []) if screenshots.resolve(p)],
+        return {"text": d.get("text", ""), "photos": [p for p in d.get("photos", []) if self.shots.resolve(p)],
                 "updated": d.get("updated", 0)}
 
     def _save(self, d: dict):
         d["updated"] = time.time()
+        self._file.parent.mkdir(parents=True, exist_ok=True)
         self._file.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def get(self) -> dict:
@@ -55,7 +58,7 @@ class TgDraft:
 
     def attach(self, name: str) -> str:
         """Приложить снимок (имя файла или «last»). Возвращает имя файла."""
-        path = screenshots.last() if name in ("", "last") else screenshots.resolve(name)
+        path = self.shots.last() if name in ("", "last") else self.shots.resolve(name)
         if path is None:
             raise ValueError("такого скриншота нет: сначала сделай снимок")
         d = self._load()

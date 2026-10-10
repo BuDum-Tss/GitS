@@ -3,8 +3,17 @@
 # скобках (после загрузки secrets.env) подставляются. Нет переменной: модуль помечается «не настроен» и не запускается.
 # Поля: id; cwd; command; args; autostart (запускать вместе с ядром, если модуль включён); restart (always | on-failure |
 # never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title.
-# Реальные модули добавляют ТЗ 10-14, 11, 20: telegram, rimworld, voice, pet, desktop, montage.
+# Реальные модули добавляют ТЗ 11-14, 20: rimworld, voice, pet, desktop, montage (telegram - ТЗ 10, ниже).
+# Модулям передаются GLADOS_MODULE_TOKEN, GLADOS_CORE_URL, GLADOS_MODULE_ID и MEMORY_DIR (абсолютный путь к папке памяти ядра).
 modules:
+  - id: telegram
+    title: Telegram
+    cwd: "{GITS}/modules/telegram"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure       # секреты (TELEGRAM_*) модуль читает сам из agent/secrets.env; без них он работает и пишет «не настроен»
+
   - id: echo
     title: Эхо
     cwd: "{GITS}/sdk/examples"

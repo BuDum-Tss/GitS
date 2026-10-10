@@ -81,7 +81,7 @@ def test_tools_registered_and_agent_allowlist():
     d = tempfile.mkdtemp()
     settings.init(d)
     reg = Registry()
-    builtin.register(reg, Dummy(), None, None, UserMemory(d))
+    builtin.register(reg, Dummy(), None, UserMemory(d))
     for tool_id in dashboard._AGENT_TOOLS:
         assert reg.get(tool_id) is not None, tool_id
     assert reg.get("system.operate_screen").risk == "ask" and "Запасной уровень" in reg.get("system.click_text").description

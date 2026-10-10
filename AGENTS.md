@@ -4,7 +4,7 @@
 в соответствие с нашим кодом.
 
 ## Что это за проект
-ГЛаДОС: ассистентка на компьютере (разговор, зрение, слух, голос, Telegram, управление ПК, память-граф). Игры живут в
+ГЛаДОС: ассистентка на компьютере (разговор, зрение, слух, голос, управление ПК, память-граф; Telegram это модуль `modules/telegram`). Игры живут в
 отдельных репозиториях и подключаются как агенты по localhost (первый: `rimworld-agent`, см. README). Всё на Python 3.12+,
 ввод-вывод асинхронный (`asyncio`); локальная модель (LM Studio) нужна для быстрых реплик и разбора намерений, Claude Code
 SDK для тяжёлых задач.
@@ -34,8 +34,8 @@ SDK для тяжёлых задач.
 | `fast_brain.py` | локальная модель: эмоции, разбор намерений, реплики |
 | `game_bridge.py` | мост к агенту игры (приказы, состояние для дашборда); `game_launcher.py`, `gamenet.py`: запуск игры |
 | `perception.py`, `hearing.py`, `mic_listener.py`, `voice_id.py`, `stt_client.py` | зрение, слух, микрофон, узнавание голосов |
-| `tts_engine.py`, `opus_encoder.py` | озвучка (Fish Speech, запасной edge-tts), OGG/Opus для Telegram |
-| `telegram_channel.py`, `telegram_user.py` | канал и бот, её аккаунт (Telethon) |
+| `tts_engine.py`, `opus_encoder.py` | озвучка (Fish Speech, запасной edge-tts), OGG/Opus для `core.tts` (копия `opus_encoder.py` лежит в `modules/telegram/`) |
+| `modules/telegram/` | модуль Telegram (ТЗ 10): `main.py`, `manifest.py`, `app.py` (инструменты, `deliver`, состояние), `telegram_channel.py` (канал и бот), `telegram_user.py` (её аккаунт, Telethon), `tg_draft.py`, `privacy.py` (личные слова от ядра), `tg_login.py` (вход вручную), тесты в `modules/telegram/tests/` |
 | `analysis.py`, `claude_cli.py`, `claude_quota.py`, `claude_budget.py` | глубокий анализ на Claude, путь к claude.exe, лимит и расход Claude |
 | `events_log.py` | протокол событий (SQLite `memory/events.db`) |
 | `memory_store.py`, `user_memory.py` | типизированная долговременная память (планы, напоминания) |
@@ -66,6 +66,14 @@ SDK для тяжёлых задач.
 `submit_speech`, а не `companion.say` напрямую. Классификатор только подсказывает: без сервиса `decider` всё работает по
 подсказкам модулей. Решения менеджера пишутся в `events_log` (вид `attention`) через `events_log.log_nowait` (запись в фоне:
 коммит SQLite стоит ~8 мс, на цикле событий ждать его нельзя).
+
+## Модули в монорепо (`modules/<id>/`)
+Модули GitS (первый: `telegram`, ТЗ 10) лежат в `modules/<id>/`: `main.py` (точка входа, одна строка добавляет в `sys.path` свою папку, `agent/` и `sdk/`),
+`manifest.py`, остальные файлы, `tests/` (идут в `check.ps1`). Из `agent/` модуль берёт только библиотеки без состояния ядра (`fast_brain`,
+`events_log`, `speech_text`, `prompts`, `claude_cli`); `companion`, `dashboard`, `router`, `core_service`, `settings`, `approvals`, `relationships`,
+`user_memory`, `graph_memory` не импортирует (настройки приходят от ядра, вопросы идут через `client.ask`, люди и память ведёт ядро по `sender` события,
+правило TG-14 в `attention.submit`). Данные модуля лежат в `MEMORY_DIR` (его передаёт супервизор), секреты модуль читает сам из `agent/secrets.env`
+(`GLADOS_SECRETS_FILE` заменяет путь в проверках). Тесты, которые поднимают супервизор с настоящим `modules.yaml`, обязаны оставлять только нужные модули.
 
 ## SDK модулей (`sdk/`)
 Контракт «ядро ↔ модуль» (ТЗ 01, `docs/tz/01-module-contract.md`) и пакет `glados-module` (импорт `glados_module`):

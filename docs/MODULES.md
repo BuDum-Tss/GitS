@@ -181,6 +181,10 @@ async with FakeCore() as core:
   `question_id` и вслух, и кнопками, ответ приходит `job.answer`. Тот же вопрос из `client.ask` попадает в общую очередь:
   одновременно пользователю задаётся один вопрос.
 
+## Модули в монорепо
+
+Модули GitS лежат в `modules/<id>/` (образец: `modules/telegram/`): `main.py`, `manifest.py`, свои файлы, `tests/`. Супервизор запускает их с `cwd` модуля и передаёт `MEMORY_DIR` (абсолютный путь папки памяти ядра); пакет `glados-module` берётся из `PYTHONPATH` (`GitS/sdk`) или из окружения, если он установлен.
+
 ## Проверка
 
-Из корня репозитория `.\check.ps1` запускает ruff и тесты ядра и SDK. Только SDK: `python -m pytest -q sdk/tests`.
+Из корня репозитория `.\check.ps1` запускает ruff и тесты ядра, SDK и модулей. Только SDK: `python -m pytest -q sdk/tests`; модуль Telegram: `python -m pytest -q modules/telegram/tests`.

@@ -12,7 +12,8 @@
 следит за здоровьем. Токен ядра сервису не передаётся.
 
 Вывод процесса (stdout и stderr вместе) пишется в `agent/logs/modules/<id>.log` (5 МБ, три файла). Токен ядра процессу
-передаётся в `GLADOS_MODULE_TOKEN`, в журналы он не попадает: похожие на токены места в выводе вырезаются.
+передаётся в `GLADOS_MODULE_TOKEN`, в журналы он не попадает: похожие на токены места в выводе вырезаются. Модулю также
+передаётся `MEMORY_DIR`: абсолютный путь к папке памяти ядра (модули хранят свои данные там же, ТЗ 10).
 """
 import asyncio
 import logging
@@ -185,11 +186,12 @@ class Supervisor:
                  python: str = sys.executable, env: dict | None = None,
                  sleep: Callable[[float], Awaitable] = asyncio.sleep, clock: Callable[[], float] = time.monotonic,
                  shutdown_wait: float = SHUTDOWN_WAIT_S, poll_manual: float = POLL_MANUAL_S,
-                 pythonpath: list[str] | None = None,
+                 pythonpath: list[str] | None = None, memory_dir: Path | str | None = None,
                  probe: Callable[[str], Awaitable[bool]] | None = None, health_interval: float = HEALTH_INTERVAL_S):
         """enabled(id) - включён ли модуль (ModuleRegistry.is_enabled); is_connected(id) - подключён ли он сейчас;
         send_shutdown(id) - послать модулю shutdown; sleep и clock подменяются в тестах (задержки перезапуска);
         pythonpath - что добавить в PYTHONPATH процессов (до установки пакета glados-module это GitS/sdk);
+        memory_dir - папка памяти ядра: модулям уходит как MEMORY_DIR (абсолютным путём; их рабочая папка другая);
         probe(url) -> отвечает ли сервис 200 (в тестах подменяется); health_interval - период опроса сервисов."""
         self.specs = {s.id: s for s in specs}
         self.token, self.core_url = token, core_url
@@ -201,6 +203,7 @@ class Supervisor:
         self.pythonpath = list(pythonpath if pythonpath is not None else [str(self.gits_root / "sdk")])
         self._probe = probe or self._http_probe
         self.health_interval = health_interval
+        self.memory_dir = Path(memory_dir).resolve() if memory_dir is not None else None
         self.state = {s.id: _Proc(s) for s in specs}
 
     @staticmethod
@@ -256,6 +259,8 @@ class Supervisor:
             return env
         env.update(GLADOS_MODULE_TOKEN=self.token, GLADOS_CORE_URL=self.core_url, GLADOS_MODULE_ID=module_id,
                    PYTHONUNBUFFERED="1")
+        if self.memory_dir is not None:
+            env["MEMORY_DIR"] = str(self.memory_dir)
         if self.pythonpath:            # до установки пакета glados-module модули находят SDK через PYTHONPATH
             env["PYTHONPATH"] = os.pathsep.join([*self.pythonpath, *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])])
         return env

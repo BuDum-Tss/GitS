@@ -48,7 +48,7 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
     port = free_port()
     companion, registry = WiredCompanion(), Registry()
     layer = core_service.wire_modules(companion, registry, port=port, battery=lambda: {"level": 1.0, "sleeping": False},
-                                      specs=load_specs())
+                                      specs=[x for x in load_specs() if x.id == "echo"])      # только эхо: Telegram в тесте не запускаем
     dashboard._MEMORY_DIR = tmp_path / "memory"
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     dashboard.set_presence(companion.presence)

@@ -1,12 +1,13 @@
 """Запросы модулей к ядру (ТЗ 02, раздел 10): `core.ask`, `core.tts`, `core.tool.call`, `core.persona`,
-`core.claude_usage`, `core.web_search`. Запросы памяти и справочника (`core.lookup`, `core.memory.*`,
-`core.experience.add`, `core.kb.ingest`) отвечают `unavailable` до ТЗ 04, `core.privacy_terms` - `unknown` до ТЗ 10.
+`core.claude_usage`, `core.web_search`, `core.privacy_terms` (ТЗ 10). Запросы памяти и справочника (`core.lookup`,
+`core.memory.*`, `core.experience.add`, `core.kb.ingest`) отвечают `unavailable` до ТЗ 04.
 
 Тело каждого запроса проверяется по схеме (CORE-32): обязательные поля и типы; ошибка - `bad_request`. Ответ ядра
 всегда значение для `result.value` или `ModuleError(code, message)`; сообщения по-русски, без секретов.
 """
 import asyncio
 import logging
+import re
 import secrets
 import tempfile
 import time
@@ -26,6 +27,31 @@ TTS_TEXT_MAX = 5000
 NAME = "ГЛаДОС"
 
 _TO_TZ04 = "появится в ТЗ 04"
+_NAME_FACT = re.compile(r"\s*(?:имя(?: пользователя)?|зовут)\s*[:\-]\s*(.+)", re.I)
+_NAME_WORD = re.compile(r"[А-Яа-яЁёA-Za-z]{3,}")
+
+
+def collect_privacy_terms(owner_name: str, people: list[str], facts: list[str]) -> list[str]:
+    """Личные слова для фильтров публикации модулей (TG-12): имя владельца, имена и ники людей из relationships и имена из
+    фактов о владельце вида «Имя: Аня» (то, что прежде проверял `leaks`). Без повторов, порядок сохраняется."""
+    terms: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str) -> None:
+        value = (value or "").strip()
+        if len(value) >= 3 and value.lower() not in seen:
+            seen.add(value.lower())
+            terms.append(value)
+
+    add(owner_name)
+    for person in people:
+        add(person)
+    for fact in facts:
+        m = _NAME_FACT.match(fact or "")
+        if m:
+            for word in _NAME_WORD.findall(m.group(1)):
+                add(word)
+    return terms
 
 
 def _bad(message: str) -> ModuleError:
@@ -58,11 +84,14 @@ def _nonempty_str(v: Any) -> bool:
 
 class CoreRequests:
     def __init__(self, *, attention=None, router=None, tts_dir: Path | None = None,
-                 synth: Callable[[str], str | None] | None = None):
+                 synth: Callable[[str], str | None] | None = None,
+                 privacy_terms: Callable[[], list[str]] | None = None):
         """attention - менеджер внимания (submit_question); router - Router (run_tool_ex); synth - синтез речи в файл
-        (по умолчанию tts_engine.synth_file); tts_dir - куда класть результаты core.tts."""
+        (по умолчанию tts_engine.synth_file); tts_dir - куда класть результаты core.tts; privacy_terms - () -> личные слова
+        (core.privacy_terms; ядро ставит после создания памяти)."""
         self.attention = attention
         self.router = router                      # ставится ядром после создания маршрутизатора
+        self.privacy_terms = privacy_terms
         self._tts_dir = tts_dir
         self._synth = synth
 
@@ -70,13 +99,14 @@ class CoreRequests:
         handler = {
             "core.ask": self._ask, "core.tts": self._tts, "core.tool.call": self._tool_call,
             "core.persona": self._persona, "core.claude_usage": self._claude_usage, "core.web_search": self._web_search,
+            "core.privacy_terms": self._privacy_terms,
         }.get(msg_type)
         if handler is not None:
             return await handler(conn, body)
         if msg_type in ("core.lookup", "core.memory.recall", "core.memory.remember", "core.experience.add",
                         "core.kb.ingest"):
             raise ModuleError("unavailable", f"запрос «{msg_type}» {_TO_TZ04}")
-        raise ModuleError("unknown", f"ядро не знает запрос «{msg_type}»")      # core.privacy_terms: ТЗ 10
+        raise ModuleError("unknown", f"ядро не знает запрос «{msg_type}»")
 
     # ── core.ask ────────────────────────────────────────────────────────────
 
@@ -190,6 +220,16 @@ class CoreRequests:
     async def _persona(self, conn: ModuleConnection, body: Any) -> dict:
         import prompts
         return {"name": NAME, "card": await asyncio.to_thread(prompts.persona_card, 2000)}
+
+    async def _privacy_terms(self, conn: ModuleConnection, body: Any) -> dict:
+        """TG-12: личные слова (имя владельца, имена знакомых, имена из фактов о владельце) для фильтров публикации."""
+        if self.privacy_terms is None:
+            raise ModuleError("unavailable", "список личных слов ещё не готов")
+        try:
+            return {"terms": await asyncio.to_thread(self.privacy_terms)}
+        except Exception as e:
+            logger.warning(f"core.privacy_terms: {e}")
+            raise ModuleError("internal", "не удалось собрать список личных слов") from e
 
     async def _claude_usage(self, conn: ModuleConnection, body: Any) -> dict:
         body = _check_fields(body, {

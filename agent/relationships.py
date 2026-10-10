@@ -124,6 +124,14 @@ class Relationships:
         self._save(data)
         return True
 
+    def people_terms(self) -> list[str]:
+        """Имена и ники живых собеседников (kind person): личные слова, которые нельзя публиковать (core.privacy_terms)."""
+        out = []
+        for name, rec in self._load().items():
+            if kind_of(name, rec) == "person":
+                out += [str(v) for v in (rec.get("name"), rec.get("handle")) if v]
+        return out
+
     def note(self, key: str, text: str):
         """Запомнить последнюю реплику человека (хранится до 5 штук)."""
         data = self._load()

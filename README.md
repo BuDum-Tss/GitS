@@ -1,7 +1,7 @@
 # GitS: ГЛаДОС, ассистентка на компьютере
 
 Всегда включённая ассистентка с характером GLaDOS: разговор, зрение (экран), слух (системный звук и микрофон),
-голос (Fish Speech, запасной edge-tts), Telegram (канал-дневник и её собственный аккаунт), память-граф (Graphiti +
+голос (Fish Speech, запасной edge-tts), Telegram (модуль `modules/telegram`: канал-дневник, бот и её собственный аккаунт), память-граф (Graphiti +
 FalkorDB), окружения с инструментами (управление ПК, приложения, MCP, вебхуки), питомец на рабочем столе, трей.
 
 Игры подключаются отдельными агентами. Первый из них: [rimworld-agent](../rimworld-agent) (мод, MCP-сервер, игровые
@@ -32,6 +32,11 @@ SDK модулей (`sdk/`, пакет `glados-module`) ядро берёт на
 запускает их по `agent/modules.yaml` (супервизор). Включаются и выключаются во вкладке «Модули» дашборда (там же настройки,
 задачи и вопросы модулей). Профили поведения лежат в `agent/profiles/*.yaml`. Руководство автора модуля: [docs/MODULES.md](docs/MODULES.md),
 ТЗ: [docs/tz/](docs/tz/README.md). Первый тестовый модуль, `echo` (`sdk/examples/echo_module.py`), выключен по умолчанию.
+
+**Telegram** это модуль `modules/telegram` (запускается ядром сам). Токен бота и канал (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL`) и ключи её
+аккаунта (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`) лежат в `agent/secrets.env`; свои настройки (Telegram-id владельца для разговора через
+Telegram, частота и часы постов) задаются во вкладке «Модули». Вход в её аккаунт один раз вручную: `python modules/telegram/tg_login.py`
+(телефон, код и пароль вводишь сам).
 
 Docker (необязательно): `docker compose up -d` поднимает граф памяти (FalkorDB), Fish Speech и WhisperX.
 Локальная модель: LM Studio (`google/gemma-4-e4b` и эмбеддинги EmbeddingGemma).

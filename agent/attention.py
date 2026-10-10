@@ -102,6 +102,8 @@ class Item:
     spoken: bool = False
     priority: float = 0.0
     decision: str = ""
+    first_contact: bool = False                 # TG-14: профиль отправителя заведён именно этим событием (для веса «неизвестный»)
+    memory_done: bool = False                   # TG-14: событие уже отдано в граф и память, в _act второй раз не отдаётся
 
 
 @dataclass
@@ -298,10 +300,11 @@ class Attention:
         self._register(item)
         cfg = self._settings()
         att = self._att(cfg)
+        to_conversation = self._is_owner_address(item)
+        self._note_sender(item, skip_memory=to_conversation)
 
         # R1: обращение владельца к ней - это не событие внимания, а реплика разговору (CORE-24)
-        if (item.sender and item.sender.get("is_owner") and item.reply_channel
-                and (item.addressed_to_me is True or item.kind.endswith(".dm"))):
+        if to_conversation:
             item.decision = "R1"
             self._spawn(self.io.from_module(item.text, item.reply_channel, item.sender))
             self._log_decision(item, att, rule="R1")
@@ -342,6 +345,38 @@ class Attention:
             return
         self._apply_classification(item, None, declared)
         await self._finish(item, cfg, att)
+
+    @staticmethod
+    def _is_owner_address(item: Item) -> bool:
+        """R1: владелец обращается к ней (addressed_to_me или личка) и ему есть куда ответить."""
+        return bool(item.sender and item.sender.get("is_owner") and item.reply_channel
+                    and (item.addressed_to_me is True or item.kind.endswith(".dm")))
+
+    def _note_sender(self, item: Item, *, skip_memory: bool) -> None:
+        """TG-14: общее правило для любых модулей. Если у события есть sender.id и sender.name: человек заводится в
+        relationships (ensure_person, source - модуль) и его реплика записывается (note). Если событие memorable: оно идёт в
+        очередь графа и фактом-эпизодом в память о пользователе (как прежний _contact в core_service). Всё до решения, чтобы
+        профиль и память не зависели от того, будет ли событие озвучено. Обращение владельца (R1) идёт разговором: его реплику
+        в граф и память кладёт сам разговор, второй раз не пишем. Сбой записи событие не останавливает."""
+        sender = item.sender
+        if not sender or not sender.get("id") or not sender.get("name"):
+            return
+        ident, name = str(sender["id"]), str(sender["name"])
+        try:
+            rel = getattr(self.companion, "_rel", None)
+            if rel is not None and hasattr(rel, "ensure_person"):
+                item.first_contact = bool(rel.ensure_person(ident, name, source=item.module))
+                rel.note(ident, item.text)
+            if item.memorable and not skip_memory:
+                mem = getattr(self.companion, "_mem", None)
+                if mem is not None:
+                    mem.add_fact(item.text[:300], kind="episode", importance=3)
+                graph = getattr(self.companion, "graph", None)
+                if graph is not None:
+                    graph.enqueue(name, item.text)
+                item.memory_done = True
+        except Exception as e:
+            logger.warning(f"Запись отправителя {ident} в relationships и память: {e}")
 
     async def _classify_and_finish(self, item: Item, cfg: dict, att: dict, declared: int | None) -> None:
         try:
@@ -414,14 +449,14 @@ class Attention:
         w = _longest_match({k: v for k, v in weights.items() if isinstance(v, (int, float))}, kind, 1.0)
         return float(w)
 
-    def _w_sender(self, sender: dict | None) -> float:
+    def _w_sender(self, sender: dict | None, first_contact: bool = False) -> float:
         if not sender:
             return 1.0
         if sender.get("is_owner"):
             return 1.5
         rel = getattr(self.companion, "_rel", None)
         rec = None
-        if rel is not None:
+        if rel is not None and not first_contact:        # первое сообщение человека: профиль заведён только что, он ещё «неизвестный»
             for key in (sender.get("id"), sender.get("name")):
                 if key:
                     rec = rel.get(str(key))
@@ -450,7 +485,7 @@ class Attention:
         now = self._clock()
         urgency = int(item.urgency if item.urgency is not None else 1)
         w_user, away = self._user_state(item, urgency, item.addressed_to_me, cfg, att)
-        parts = {"w_profile": self._w_profile(item.kind), "w_sender": self._w_sender(item.sender),
+        parts = {"w_profile": self._w_profile(item.kind), "w_sender": self._w_sender(item.sender, item.first_contact),
                  "w_rule": self.rules.weight(item.module, item.kind, self._sender_name(item.sender)), "w_user": w_user,
                  "freshness": 0.5 ** (max(0.0, now - item.created) / self._half_life(item.kind, att))}
         priority = urgency * 20.0
@@ -485,7 +520,7 @@ class Attention:
         """Что происходит по решению (ATT-10)."""
         if decision == "D0":
             return
-        if item.memorable:
+        if item.memorable and not item.memory_done:
             graph = getattr(self.companion, "graph", None)
             if graph is not None:
                 graph.enqueue(self._sender_name(item.sender) or item.module, item.text)

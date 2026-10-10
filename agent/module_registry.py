@@ -128,6 +128,19 @@ class ModuleRegistry:
             except Exception as e:
                 logger.warning(f"Реакция на state модуля: {e}")
 
+    def notes(self) -> list[str]:
+        """Строки для контекста разговора: что умеет каждый подключённый включённый модуль с инструментами и в каком он
+        состоянии (по сводке state). Это факты для неё, не готовые реплики."""
+        lines = []
+        for rec in sorted(self.records.values(), key=lambda r: r.id):
+            if rec.kind != "module" or not rec.connected or not rec.manifest or not (rec.manifest.get("tools")):
+                continue
+            if not self.is_enabled(rec.id):
+                continue
+            summary = ((rec.state or {}).get("summary") or "").strip()
+            lines.append(f"Модуль «{rec.title or rec.id}»: {rec.description}" + (f" Сейчас: {summary}." if summary else ""))
+        return lines
+
     def state_data(self, module_id: str) -> dict | None:
         """state.data подключённого модуля (для профилей) или None."""
         rec = self.records.get(module_id)

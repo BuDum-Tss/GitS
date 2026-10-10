@@ -562,7 +562,7 @@ async def test_core_ask_bad_body_is_bad_request_and_memory_requests_unavailable(
             for t in ("core.lookup", "core.memory.recall", "core.memory.remember", "core.experience.add", "core.kb.ingest"):
                 body = await raw.request(t, {})
                 assert body["error"]["code"] == "unavailable" and "ТЗ 04" in body["error"]["message"]
-            assert (await raw.request("core.privacy_terms", {}))["error"]["code"] == "unknown"
+            assert (await raw.request("core.privacy_terms", {}))["error"]["code"] == "unavailable"       # список ставит ядро (ТЗ 10)
             assert (await raw.request("core.tool.call", {"tool": 5}))["error"]["code"] == "bad_request"
             assert (await raw.request("core.tool.call", {"tool": "no.such"}))["error"]["code"] == "unknown"
             assert (await raw.request("core.web_search", {}))["error"]["code"] == "bad_request"

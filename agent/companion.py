@@ -55,9 +55,8 @@ class Companion:
         self._rel = rel
         self._watcher = watcher
         self._hearing = hearing
-        self.telegram = None   # TelegramChannel, ставится ядром после создания
         self.router = None     # Router, ставится ядром после создания реестра окружений
-        self.tg_user = None     # TelegramUser: её собственный аккаунт
+        self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (ModuleRegistry.notes, ставит ядро)
         self.voice_id = None      # VoiceIdentity: кто говорит голосом
         self.graph = None         # GraphMemory: факты о людях и жизни в графе
         self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
@@ -282,13 +281,10 @@ class Companion:
                  f"- Зрение: {'включено' if cfg['vision'] else 'выключено'}.",
                  f"- Слух (системный звук): {'включён' if cfg['hearing'] else 'выключен'}.",
                  f"- Голос: {'заглушён' if cfg['voice_muted'] else 'включён'}."]
-        if self.telegram is not None:
-            lines.append("- " + self.telegram.status_text())
+        lines += ["- " + note for note in self.module_notes()]
         lines.append("- Помощник Claude (Клод, Claude Code): ты можешь поручить ему сложные задачи на компьютере: "
                      "установку программ и библиотек, файлы, код, команды, интернет, анализ. Он сам спрашивает "
                      "разрешение на каждое изменение. Просьбы, которые тебе не по силам, уходят к нему.")
-        if self.tg_user is not None:
-            lines.append("- " + self.tg_user.status_text())
         if self.graph is not None:
             lines.append("- " + self.graph.status_text())
         note = self._claude_note()

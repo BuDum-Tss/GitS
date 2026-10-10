@@ -1,4 +1,4 @@
-"""Встроенные окружения (Python-плагины): сама ассистентка, система ПК, соцсети.
+"""Встроенные окружения (Python-плагины): сама ассистентка, система ПК.
 
 Каждое действие ассистентки, которое раньше было отдельной веткой кода (замолчи, посмотри на
 экран, напиши пост), теперь описано как инструмент и доступно через общий маршрутизатор.
@@ -17,6 +17,10 @@ from .base import Environment, Tool, ToolError
 from . import pc_control
 
 
+# настройки, которые модули меняют инструментом core.set_setting (TG-13): белый список, остальное только человек
+MODULE_SETTINGS = ("telegram", "telegram_after_run", "telegram_voice", "telegram_confirm")
+
+
 def _tool(env, name, description, params, call, risk="auto", keywords=(), self_confirming=False,
           informative=False):
     return Tool(id=f"{env}.{name}", env=env, name=name, description=description, params=params,
@@ -24,7 +28,7 @@ def _tool(env, name, description, params, call, risk="auto", keywords=(), self_c
                 informative=informative)
 
 
-def register(registry, companion, hearing, telegram, memory, tg_user=None, profiles=None):
+def register(registry, companion, hearing, memory, profiles=None):
     """Собрать и добавить встроенные окружения. Все объекты живут в одном процессе ядра.
     profiles - ProfileManager (profile_manager.py): нужен инструменту assistant.set_profile."""
 
@@ -62,16 +66,6 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None, profi
         settings.update(chattiness=a["level"])
         return {"quiet": "будет заговаривать сама редко", "normal": "будет заговаривать сама обычно",
                 "chatty": "будет заговаривать сама часто"}[a["level"]]
-
-    async def set_telegram_periodic(a):
-        settings.update(telegram=a["enabled"])
-        return ("периодические посты в Telegram включены" if a["enabled"]
-                else "периодические посты в Telegram выключены")
-
-    async def set_telegram_after_run(a):
-        settings.update(telegram_after_run=a["enabled"])
-        return ("после каждого забега (гибели колонии) будет писать пост-итог в канал" if a["enabled"]
-                else "постов-итогов после забега больше не будет")
 
     # ── самоаудит ───────────────────────────────────────────────────────────
 
@@ -195,7 +189,7 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None, profi
     bool_p = lambda d: {"type": "boolean", "description": d}
     registry.add(Environment(
         id="assistant", title="Сама ассистентка",
-        description="Её собственные настройки и память: голос, зрение, слух, разговорчивость, публикации.",
+        description="Её собственные настройки и память: голос, зрение, слух, разговорчивость.",
         tools=[
             _tool("assistant", "set_voice", "Заглушить или вернуть её ГОЛОС (озвучку ответов вслух). Для просьб «замолчи», «выключи голос», «без звука», «говори вслух».",
                   {"muted": bool_p("true - выключить озвучку, false - включить")}, set_voice,
@@ -218,13 +212,6 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None, profi
                   {"level": {"type": "string", "enum": ["quiet", "normal", "chatty"],
                              "description": "quiet - редко, normal - обычно, chatty - часто"}}, set_chattiness,
                   keywords=("болтай", "реже", "чаще", "приставай", "разговорчивость")),
-            _tool("assistant", "set_telegram_periodic", "Включить или выключить периодические посты-мысли в Telegram-канал.",
-                  {"enabled": bool_p("true - публиковать периодически, false - не публиковать")}, set_telegram_periodic,
-                  keywords=("телеграм", "канал", "публикуй", "мысли", "посты")),
-            _tool("assistant", "set_telegram_after_run", "Включить или выключить пост-итог в Telegram-канал после каждого "
-                  "забега (когда колония погибла). Для просьб «после каждого забега пиши пост».",
-                  {"enabled": bool_p("true - писать итог после забега, false - не писать")}, set_telegram_after_run,
-                  keywords=("забег", "после", "итог", "колония", "пост", "канал", "телеграм")),
             _tool("assistant", "deep_analysis", "ГЛУБОКИЙ АНАЛИЗ силами Claude: разбор протокола событий, причин гибели колонии "
                   "или провала, своей работы и ошибок. Для просьб «проанализируй себя / протокол / свою работу», «почему погибла "
                   "колония», «что пошло не так», «сделай выводы». Идёт в фоне несколько минут: Claude читает журналы и код, "
@@ -385,184 +372,6 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None, profi
     ]
     registry.add(system_env)
 
-    # ── соцсети ────────────────────────────────────────────────────────────────
-
-    async def telegram_post(a):
-        status, text = await telegram.post_on_request(a.get("topic") or "приветственный пост", a.get("voice"))
-        reasons = {
-            "not_configured": "Telegram не настроен: нет токена бота или канала в agent/secrets.env",
-            "not_verified": "связь с каналом не прошла проверку: токен неверный или бот не администратор канала",
-            "unsafe": "черновик не прошёл проверку приватности, ничего не опубликовано",
-            "declined": "пользователь не разрешил публикацию",
-            "failed": "Telegram вернул ошибку, пост не опубликован",
-        }
-        if status != "ok":
-            raise ToolError(reasons.get(status, "публикация не удалась"))
-        return f"опубликован пост: «{text}»"
-
-    # черновик поста: писать, править, прикладывать снимки, публиковать
-    async def draft_show(a):
-        return telegram.draft.preview()
-
-    async def draft_write(a):
-        text = (a.get("text") or "").strip()
-        if not text:
-            text = await telegram.compose(a.get("topic") or "приветственный пост", telegram.draft.get()["text"])
-        if not text:
-            raise ToolError("текст не получился или не прошёл проверку приватности")
-        telegram.draft.set_text(text)
-        events_log.log("telegram", "черновик написан: " + text)
-        return "черновик написан:\n" + text
-
-    async def draft_append(a):
-        text = (a.get("text") or "").strip()
-        if not text:
-            raise ToolError("нечего добавлять: текст пуст")
-        telegram.draft.append(text)
-        return "добавлено в конец черновика"
-
-    async def draft_edit(a):
-        current = telegram.draft.get()["text"]
-        if not current:
-            raise ToolError("черновик пуст, сначала его нужно написать")
-        text = await telegram.compose(a["instruction"], current)
-        if not text:
-            raise ToolError("правка не получилась или не прошла проверку приватности, черновик не изменён")
-        telegram.draft.set_text(text)
-        events_log.log("telegram", "черновик отредактирован: " + text)
-        return "черновик переписан:\n" + text
-
-    async def draft_replace(a):
-        if not telegram.draft.replace(a["find"], a["replace"]):
-            raise ToolError("такого фрагмента в черновике нет")
-        return "заменено"
-
-    async def draft_attach(a):
-        try:
-            name = telegram.draft.attach(a.get("shot") or "last")
-        except ValueError as e:
-            raise ToolError(str(e))
-        return f"снимок {name} приложен к черновику"
-
-    async def draft_detach(a):
-        n = telegram.draft.detach(a.get("shot") or "all")
-        return f"снято снимков: {n}"
-
-    async def draft_clear(a):
-        telegram.draft.clear()
-        return "черновик очищен"
-
-    async def draft_publish(a):
-        d = telegram.draft.get()
-        photos = [screenshots.resolve(n) for n in d["photos"]]
-        status, text = await telegram.publish(d["text"], [p for p in photos if p], a.get("voice"))
-        reasons = {
-            "not_configured": "Telegram не настроен: нет токена бота или канала в agent/secrets.env",
-            "not_verified": "связь с каналом не прошла проверку: токен неверный или бот не администратор канала",
-            "unsafe": "текст не прошёл проверку приватности, ничего не опубликовано",
-            "declined": "пользователь не разрешил публикацию",
-            "failed": "Telegram вернул ошибку, пост не опубликован",
-            "empty": "черновик пуст: ни текста, ни снимков",
-        }
-        if status != "ok":
-            raise ToolError(reasons.get(status, "публикация не удалась"))
-        telegram.draft.clear()
-        return "опубликовано из черновика" + (f" (со снимками: {len(photos)})" if photos else "") + (f": «{text}»" if text else "")
-
-    # её собственный аккаунт в Telegram (Telethon): читать чаты и писать как пользователь
-    async def tg_chats(a):
-        return await _tg_call(tg_user.chats(int(a.get("limit") or 20)))
-
-    async def tg_read(a):
-        return await _tg_call(tg_user.read(a["chat"], int(a.get("limit") or 15)))
-
-    async def tg_unread(a):
-        return tg_user.unread(int(a.get("limit") or 15))
-
-    async def tg_send(a):
-        return await _tg_call(tg_user.send(a["chat"], a["text"]))
-
-    async def _tg_call(coro):
-        try:
-            return await coro
-        except (ValueError, RuntimeError) as e:
-            raise ToolError(str(e))
-        except Exception as e:
-            raise ToolError(f"Telegram-аккаунт: {str(e)[:160]}")
-
-    def tg_account_state():
-        return tg_user.state() if tg_user is not None else (False, "модуль не подключён")
-
-    if tg_user is not None:
-        registry.add(Environment(
-            id="telegram_account", title="Её аккаунт в Telegram",
-            description="Её собственный аккаунт (не пользователя): читать чаты и писать как обычный человек.",
-            status=tg_account_state,
-            tools=[
-                _tool("telegram_account", "tg_chats", "Список диалогов её Telegram-аккаунта (личные, группы, каналы) с числом непрочитанных.",
-                      {"limit": {"type": "integer", "required": False, "description": "сколько диалогов, по умолчанию 20"}},
-                      tg_chats, informative=True, keywords=("телеграм", "чаты", "диалоги", "переписка", "аккаунт", "тг")),
-                _tool("telegram_account", "tg_read", "Прочитать последние сообщения чата её Telegram-аккаунта (чат по названию, @имени или id).",
-                      {"chat": {"type": "string", "description": "название чата, @имя или id"},
-                       "limit": {"type": "integer", "required": False, "description": "сколько сообщений, по умолчанию 15"}},
-                      tg_read, informative=True, keywords=("прочитай", "переписка", "сообщения", "чат", "телеграм", "тг")),
-                _tool("telegram_account", "tg_unread", "Что писали в её Telegram-аккаунт недавно (входящие, которые она заметила).",
-                      {"limit": {"type": "integer", "required": False, "description": "сколько последних, по умолчанию 15"}},
-                      tg_unread, informative=True, keywords=("новые", "входящие", "написали", "сообщения", "телеграм", "тг")),
-                _tool("telegram_account", "tg_send", "Написать сообщение с её Telegram-аккаунта в чат (по названию, @имени или id). "
-                      "Каждый раз спрашивает разрешение.",
-                      {"chat": {"type": "string", "description": "название чата, @имя или id"},
-                       "text": {"type": "string", "description": "текст сообщения"}},
-                      tg_send, risk="ask", informative=True, keywords=("напиши", "отправь", "ответь", "сообщение", "телеграм", "тг")),
-            ]))
-
-    def telegram_state():
-        if telegram is None or not telegram.configured():
-            return False, "не настроен: нет токена бота или канала в agent/secrets.env"
-        return True, "канал " + (f"«{telegram.title}»" if telegram.title else telegram._channel)
-
-    registry.add(Environment(
-        id="social", title="Соцсети",
-        description="Публикации в Telegram-канал.", status=telegram_state,
-        tools=[
-            _tool("social", "draft_show", "Показать текущий черновик поста для канала (текст и приложенные снимки).",
-                  {}, draft_show, informative=True, keywords=("черновик", "драфт", "пост", "покажи", "канал")),
-            _tool("social", "draft_write", "Написать черновик поста для Telegram-канала (заменяет текущий текст). "
-                  "Можно дать готовый text или тему topic: тогда она напишет сама, с учётом событий игры.",
-                  {"text": {"type": "string", "required": False, "description": "готовый текст поста"},
-                   "topic": {"type": "string", "required": False, "description": "о чём написать"}},
-                  draft_write, informative=True, keywords=("черновик", "драфт", "напиши", "пост", "заметка", "канал", "тг")),
-            _tool("social", "draft_edit", "Переписать текущий черновик по указанию («короче», «добавь шутку», «убери вторую фразу»).",
-                  {"instruction": {"type": "string", "description": "что изменить в черновике"}},
-                  draft_edit, informative=True, keywords=("отредактируй", "поправь", "перепиши", "короче", "добавь", "убери", "черновик", "драфт")),
-            _tool("social", "draft_append", "Дописать готовый текст в конец черновика.",
-                  {"text": {"type": "string", "description": "что дописать"}}, draft_append,
-                  keywords=("допиши", "добавь", "черновик")),
-            _tool("social", "draft_replace", "Точная замена фрагмента в черновике: первое вхождение find меняется на replace.",
-                  {"find": {"type": "string", "description": "что заменить"}, "replace": {"type": "string", "description": "на что"}},
-                  draft_replace, keywords=("замени", "исправь", "черновик")),
-            _tool("social", "draft_attach", "Приложить скриншот к черновику: shot — имя файла или last (последний снимок, по умолчанию).",
-                  {"shot": {"type": "string", "required": False, "description": "имя файла снимка или last"}},
-                  draft_attach, keywords=("приложи", "вставь", "скриншот", "снимок", "картинка", "черновик")),
-            _tool("social", "draft_detach", "Убрать снимок из черновика (shot — имя файла или all).",
-                  {"shot": {"type": "string", "required": False, "description": "имя файла или all"}},
-                  draft_detach, keywords=("убери", "сними", "скриншот", "черновик")),
-            _tool("social", "draft_clear", "Выбросить черновик целиком (текст и снимки).",
-                  {}, draft_clear, keywords=("очисти", "выброси", "удали", "черновик")),
-            _tool("social", "draft_publish", "Опубликовать черновик в Telegram-канал (текст и приложенные снимки).",
-                  {"voice": {"type": "boolean", "required": False,
-                             "description": "true: голосовым сообщением её голосом; по умолчанию как в настройках"}},
-                  draft_publish, risk="public", self_confirming=True, informative=True,
-                  keywords=("опубликуй", "выложи", "запости", "отправь", "черновик", "канал", "тг")),
-            _tool("social", "telegram_post", "Написать и опубликовать пост в Telegram-канал на заданную тему "
-                  "(если тема не названа, приветственный пост).",
-                  {"topic": {"type": "string", "description": "о чём пост, своими словами пользователя", "required": False},
-                   "voice": {"type": "boolean", "required": False,
-                             "description": "true: голосовым сообщением её голосом; по умолчанию как в настройках"}},
-                  telegram_post, risk="public", self_confirming=True, informative=True,
-                  keywords=("пост", "телеграм", "канал", "опубликуй", "запости", "выложи", "тг")),
-        ]))
-
 
 class _ModuleIds(list):
     """Допустимые значения параметра «модуль»: подключённые и объявленные в modules.yaml модули на момент вызова.
@@ -608,6 +417,15 @@ def register_core_tools(registry, modules, attention=None):
 
     async def job_cancel(a):
         return await modules.cancel_job(a["module"], a["job_id"])
+
+    async def set_setting(a):
+        key = a["key"]
+        if key not in MODULE_SETTINGS:
+            raise ToolError(f"настройку «{key}» модули менять не могут", code="denied")
+        if not isinstance(a["value"], bool):
+            raise ToolError("значение должно быть true или false", code="bad_request")
+        settings.update(**{key: a["value"]})
+        return f"настройка {key}: {'включена' if a['value'] else 'выключена'}"
 
     async def set_rule(a):
         return await attention.set_rule(module=a.get("module"), kind=a.get("kind"), sender=a.get("sender"),
@@ -656,11 +474,17 @@ def register_core_tools(registry, modules, attention=None):
     registry.add(Environment(
         id="core", title="Ядро: задачи модулей и внимание",
         description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "
-                    "«не отвлекай / выдели» и сводка накопившегося.",
+                    "«не отвлекай / выдели» и сводка накопившегося. Общие настройки Telegram для модулей.",
         tools=attention_tools + [
             _tool("core", "jobs", "Перечень задач всех модулей: модуль, название, состояние, стадия, прогресс. "
                   "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",
                   {}, jobs, informative=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),
+            _tool("core", "set_setting", "Включить или выключить общую настройку Telegram (для модулей): telegram (посты-мысли), "
+                  "telegram_after_run (пост-итог после забега), telegram_voice (посты голосом), telegram_confirm (спрашивать "
+                  "перед публикацией).",
+                  {"key": {"type": "string", "enum": list(MODULE_SETTINGS), "description": "какая настройка"},
+                   "value": {"type": "boolean", "description": "true - включить, false - выключить"}},
+                  set_setting, keywords=("настройка",)),
             _tool("core", "job_cancel", "Отменить задачу модуля (по модулю и номеру задачи из перечня задач).",
                   {"module": {"type": "string", "description": "id модуля, например montage"},
                    "job_id": {"type": "string", "description": "номер задачи вида j-xxxxxxxx"}},

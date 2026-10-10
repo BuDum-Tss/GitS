@@ -49,7 +49,7 @@ async def test_set_profile_tool_is_rebuilt_on_profiles(tmp_path):
     reg = Registry()
     pm = ProfileManager(battery=lambda: {}, foreground_app=lambda: None)
     pm.evaluate()
-    builtin.register(reg, FakeCompanion(), None, None, UserMemory(str(tmp_path)), profiles=pm)
+    builtin.register(reg, FakeCompanion(), None, UserMemory(str(tmp_path)), profiles=pm)
     tool = reg.get("assistant.set_profile")
     assert tool.params["mode"]["enum"] == pm.choices() and "planned" not in tool.description
     assert set(tool.params["mode"]["enum"]) == {"auto", "assistant", "work", "rimworld", "sleep"}
@@ -75,7 +75,7 @@ def test_core_tools_exist_and_are_always_visible():
             return "ок"
     builtin.register_core_tools(reg, Mods())
     reg.focus = lambda: set()
-    assert {t.id for t in reg.active_tools()} == {"core.jobs", "core.job_cancel"}
+    assert {t.id for t in reg.active_tools()} == {"core.jobs", "core.job_cancel", "core.set_setting"}
     assert reg.get("core.jobs").risk == "auto" and reg.get("core.jobs").informative
     assert reg.get("core.job_cancel").risk == "ask"
     assert asyncio.run(reg.get("core.jobs").call({})) == "задач у модулей сейчас нет"

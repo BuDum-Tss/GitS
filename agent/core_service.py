@@ -5,10 +5,10 @@
   - окружения (environments/): реестр инструментов, маршрутизатор «могу или нет», манифесты;
   - слух (hearing) и микрофон: речь в текст, узнавание голосов, локально;
   - компаньон (companion): разговор, память, проактивность, граф памяти;
-  - Telegram: канал-дневник и её собственный аккаунт;
   - дашборд (порт 8766, только localhost): состояние для питомца, чат, настройки;
   - шина модулей (ТЗ 02): модули подключаются сами по WebSocket (/module/ws в том же приложении), супервизор запускает и
-    перезапускает их процессы из agent/modules.yaml, профили в agent/profiles/ решают, какие инструменты видны.
+    перезапускает их процессы из agent/modules.yaml, профили в agent/profiles/ решают, какие инструменты видны. Telegram
+    (канал, бот, её аккаунт) это модуль modules/telegram (ТЗ 10): в процессе ядра его кода нет.
 
 Агент RimWorld до ТЗ 11 подключается по-старому: приказы идут через game_bridge, а он сам говорит через /api/say дашборда.
 """
@@ -31,6 +31,7 @@ import tool_search
 from attention import Attention
 from companion import Companion
 from conversation_io import ConversationIO
+import core_requests
 from core_requests import CoreRequests
 from environments import builtin
 from environments.registry import Registry
@@ -44,8 +45,6 @@ from perception import ScreenWatcher
 from relationships import Relationships
 from router import Router
 from stt_client import STTClient
-from telegram_channel import TelegramChannel
-from telegram_user import TelegramUser
 from user_memory import UserMemory
 from voice_id import VoiceIdentity
 
@@ -99,6 +98,7 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
     profiles.evaluate()
     registry.focus = profiles.focus_modules
     companion.profile_hint = profiles.hint
+    companion.module_notes = modules.notes                # что умеют подключённые модули и в каком они состоянии
 
     specs = supervisor_mod.load_specs() if specs is None else specs
     for spec in specs:
@@ -113,7 +113,7 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
 
     sup = supervisor_mod.Supervisor(specs, token=hub.token, core_url=f"ws://127.0.0.1:{port}/module/ws",
                                     enabled=modules.is_enabled, is_connected=hub.is_connected,
-                                    send_shutdown=send_shutdown)
+                                    send_shutdown=send_shutdown, memory_dir=settings.memory_dir())
     modules.supervisor = sup
     builtin.register_core_tools(registry, modules, attention)
 
@@ -137,8 +137,17 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
     return layer
 
 
+async def post_run_summary(router, prompt: str) -> bool:
+    """TG-15: пост-итог после забега. Публикует инструмент telegram.post модуля Telegram (через маршрутизатор: обычная проверка
+    параметров и доступности); тема берётся из data.prompt события run_ended. До ТЗ 11 событие приходит старым каналом."""
+    ok, text = await router.run_tool("telegram.post", {"topic": prompt})
+    if not ok:
+        events_log.log_nowait("telegram", f"пост-итог после забега не опубликован: {text}")
+    return ok
+
+
 async def _run(config: dict):
-    # httpx пишет в журнал полный URL запроса, а в нём токен Telegram-бота: журнал не должен его хранить
+    # httpx пишет в журнал полный URL запроса (в запросах к API бывают токены): журнал не должен его хранить
     for noisy in ("httpx", "httpcore", "aiohttp.access"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     mem_dir = config["memory_dir"]
@@ -185,21 +194,10 @@ async def _run(config: dict):
     asyncio.create_task(watcher.run())
     asyncio.create_task(hearing.run())
 
-    telegram = TelegramChannel(mem_dir, companion.say, lambda: [f["text"] for f in UserMemory(mem_dir).facts()])
-    companion.telegram = telegram
-    telegram.rel = rel
-    _um = UserMemory(mem_dir)
-
-    def _contact(name, text, new):
-        _um.add_fact(f"В Telegram-бот написал(а) {name}: «{text[:100]}»", kind="episode", importance=3)
-        companion.graph.enqueue(name, text)
-    telegram.on_contact = _contact
-    asyncio.create_task(telegram.run())
-
     # Окружения: встроенные плагины сразу, манифесты (MCP, вебхуки, RimWorld) подгружаются в фоне
     memory = UserMemory(mem_dir)
-    tg_user = TelegramUser(mem_dir, lambda: [f["text"] for f in UserMemory(mem_dir).facts()])
-    companion.tg_user = tg_user
+    layer.requests.privacy_terms = lambda: core_requests.collect_privacy_terms(
+        companion._owner_name(), rel.people_terms(), [f["text"] for f in memory.facts()])      # core.privacy_terms (TG-12)
     graph = GraphMemory(mem_dir, busy=lambda: _time.time() - companion._last_user_ts < 20 or companion.is_speaking())
     companion.graph = graph
     dashboard.set_graph(graph)
@@ -227,9 +225,8 @@ async def _run(config: dict):
     mic = MicListener(STTClient(), voices, companion.on_voice, companion.is_speaking, own_voice_sample,
                       on_speaking=layer.attention.set_user_speaking)
     asyncio.create_task(mic.run())
-    asyncio.create_task(tg_user.run())
 
-    builtin.register(registry, companion, hearing, telegram, memory, tg_user, profiles=layer.profiles)
+    builtin.register(registry, companion, hearing, memory, profiles=layer.profiles)
 
     def recent_dialogue() -> str:
         lines = [f"{'Пользователь' if m['role'] == 'user' else 'Ассистентка'}: {m['text']}"
@@ -261,7 +258,13 @@ async def _run(config: dict):
             rel.sync_colonists(pawns)
             await graph.sync_colonists(pawns, colony)
         elif kind == "run_ended" and settings.load().get("telegram_after_run"):
-            await telegram.post_on_request(str(data.get("prompt") or "Забег закончен. Напиши короткий пост-итог."))
+            # TG-15: пост-итог делает модуль Telegram (до ТЗ 11 событие приходит старым каналом); в фоне, пост может ждать ответа
+            task = asyncio.create_task(post_run_summary(
+                companion.router, str(data.get("prompt") or "Забег закончен. Напиши короткий пост-итог.")))
+            background.add(task)
+            task.add_done_callback(background.discard)
+
+    background: set[asyncio.Task] = set()
 
     dashboard.set_game_link(say=link_say, status=link_status, event=link_event)
     logger.info("Ядро запущено: зрение, компаньон, быстрый слой, шина модулей. Игра и модули подключатся, когда появятся.")
