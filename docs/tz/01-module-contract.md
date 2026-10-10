@@ -250,7 +250,7 @@
 | `core.kb.ingest` | да | ТЗ 04 | положить документы в свою коллекцию справочника |
 | `core.persona` | да | `{}` → `{"name": str, "card": str ≤ 2000}` | карточка характера для модулей, которые сами генерируют текст |
 | `core.privacy_terms` | да | `{}` → `{"terms": [str]}` | личные слова (имена, факты о владельце) для фильтров публикации; реализуется в ТЗ 10 (до этого — `unknown`) |
-| `core.claude_usage` | да | `{"tokens": int, "source": str}` → `{}` | учесть расход Claude в батарейке |
+| `core.claude_usage` | да | `{"tokens": int, "source": str, "limit_text"?: str}` → `{}` | учесть расход Claude в батарейке; `limit_text` — текст исчерпанного лимита (ядро: `claude_quota.note`) |
 | `core.web_search` | да | `{"query": str}` → `{"text": str}` | поиск в интернете (до ТЗ 04; после — синоним `core.lookup` с `allow_web`) |
 
 ### 7.1. Событие

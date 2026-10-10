@@ -23,58 +23,99 @@
 
 Не входит: дообучение классификатора; перенос модулей; изменение характера.
 
-## 3. Классификатор (`agent/decide.py`)
+## 3. Классификатор: общий сервис `decider` и клиент `agent/decide.py`
 
-- **ATT-1 (ОБЯЗАТЕЛЬНО).** Модель: GLiNER2.5-multi-Decide (287M, многоязычная) из семейства fastino GLiNER2.5. Точный
-  идентификатор на Hugging Face проверь на странице `https://huggingface.co/fastino` (в карточке
-  `fastino/GLiNER2.5-Decide` она названа «GLiNER2.5-multi-Decide»). Если многоязычной версии с таким именем нет —
-  остановись и спроси человека; английскую `GLiNER2.5-Decide` не подставлять. Библиотека: `gliner2` (в карточке:
-  `pip install "gliner2[local]"`, `from gliner2 import AutoExtractor`, `model.classify_text(text, schema)`). Загрузка
-  весов — внешнее действие: спроси человека перед первой загрузкой. Пакет добавить в `agent/requirements.txt`.
-- **ATT-2 (ОБЯЗАТЕЛЬНО).** Класс `Decider`:
-  - модель загружается в фоне при старте ядра (`asyncio.to_thread`), на CPU, один экземпляр;
-  - `async classify(text: str, schema: dict) -> dict | None` — выполняется в одном выделенном потоке (очередь, без
-    параллельных вызовов модели); возвращает `None`, если модель не загружена, выключена настройкой или упала
-    (исключение пишется в журнал, не бросается);
-  - вход обрезается до 600 символов;
-  - замер времени каждого вызова (для журнала решений).
-- **ATT-3 (ОБЯЗАТЕЛЬНО).** Схемы (метки на английском с описаниями — так рекомендует карточка модели для точности;
-  входной текст русский):
+Факты (проверено 2026-10-10 по `rimworld-agent` после слияния ветки `agent-startup`): там уже есть сервис
+`agent/decider_server.py` — GLiNER2.5-multi-Decide (`fastino/GLiNER2.5-multi-Decide`, Apache-2.0) на CPU в отдельном
+окружении Python 3.12 (`gliner2==2.0.0`, `torch==2.14.1+cpu`, `transformers==5.18.0`, `aiohttp`), порт 8768, протокол
+`POST /v1/systemone` и `GET /health`; клиент `agent/decider.py`; оценка `agent/eval_decider.py`. Веса уже скачаны в
+`C:\MyProjects\rimworld-agent\.claude\worktrees\agent-startup-068525\agent\models\decider\hf`, окружение — там же
+`agent\.venv-decider`. Проверка на живой модели (CHANGELOG rimworld): **категории модель различает уверенно, абстрактные
+порядковые вопросы («срочность 0–5») — почти случайно.** Поэтому классификатор отвечает только на категориальные
+вопросы, а срочность выводит код.
+
+Ядро работает на Python 3.14, где torch может не установиться, и модель не должна мешать ядру — поэтому классификатор
+остаётся отдельным процессом-сервисом, общим для ядра и `rimworld-module`.
+
+- **ATT-1 (ОБЯЗАТЕЛЬНО).** Перенести сервис в GitS: `GitS/services/decider/decider_server.py` (копия из
+  `C:\MyProjects\rimworld-agent\agent\decider_server.py` без изменения протокола), `GitS/services/decider/requirements.txt`
+  (точные версии выше), `README.md` сервиса (установка, запуск, протокол). Окружение
+  `GitS/services/decider/.venv` на Python 3.12 (`C:\Users\coffe\AppData\Local\Python\pythoncore-3.12-64\python.exe -m venv`);
+  установка пакетов разрешена владельцем (2026-10-10), torch — CPU-сборка с индекса PyTorch, как в исходном окружении
+  (проверь `pip freeze` исходного окружения и повтори). Веса не скачивать заново: скопировать каталог `hf` из
+  исходного места в `GitS/services/decider/hf` и задать `HF_HOME` на него (сервер уже делает `setdefault`; поправить путь
+  по умолчанию на папку сервиса). `.venv/` и `hf/` — в `.gitignore`.
+- **ATT-2 (ОБЯЗАТЕЛЬНО).** Сервисы в супервизоре (расширение ТЗ 02): в `modules.yaml` запись с `kind: service`
+  (по умолчанию `kind: module`) и `health_url`. Сервис не подключается по WebSocket; супервизор считает его «работает»,
+  когда `GET health_url` отвечает 200 (опрос раз в 10 с), перезапускает по той же политике `restart`, показывает во
+  вкладке «Модули» с пометкой «сервис». Если порт уже занят работающим сервисом (запущен не супервизором) — второй не
+  запускать, только следить за здоровьем. Запись:
+
+```yaml
+  - id: decider
+    kind: service
+    cwd: "{GITS}/services/decider"
+    command: "{GITS}/services/decider/.venv/Scripts/python.exe"
+    args: ["decider_server.py"]
+    health_url: "http://127.0.0.1:8768/health"
+    autostart: true
+    restart: on-failure
+```
+
+- **ATT-3 (ОБЯЗАТЕЛЬНО).** Клиент `agent/decide.py` — копия `rimworld-agent/agent/decider.py` (тот же протокол,
+  запоминание недоступности на 30 с, `GLADOS_DECIDER_URL`), плюс класс `Decider` с `async classify(text, questions) ->
+  dict | None` поверх него: вход обрезается до 600 символов, тайм-аут 1,0 с для событий и 1,5 с для обращений
+  пользователя, замер времени, `None` при недоступности или ошибке (в журнал, без исключений наружу). Настройка
+  `attention.classifier` выключает вызовы.
+- **ATT-4 (ОБЯЗАТЕЛЬНО).** Вопросы — только категориальные (`type: choice` или `noul`, формат протокола
+  `/v1/systemone`; метки на английском с описаниями — так точнее; входной текст русский). Константы в `decide.py`:
 
 ```python
-EVENT_SCHEMA = {
-    "urgency": ["0", "1", "2", "3", "4", "5"],
-    "needs_reply": {"labels": {
-        "yes": "the message expects an answer or an action from its recipient",
-        "no": "the message is informational and expects nothing"}},
-    "addressed": {"labels": {
+EVENT_QUESTIONS = {
+    "category": {"type": "choice", "options": {
+        "danger": "attack, raid, threat to life or property happening now",
+        "death_injury": "someone died, was badly hurt or fell ill",
+        "disaster": "fire, flood, breakdown, data loss or similar emergency",
+        "request_to_assistant": "someone asks the assistant to do something",
+        "question": "someone asks a question and waits for an answer",
+        "personal_message": "a personal message from a person to the recipient",
+        "news": "information, update, announcement",
+        "social": "small talk, jokes, greetings, chatter",
+        "routine": "status, progress, normal operation, nothing changed",
+        "spam": "advertising, scam, automated junk"}},
+    "addressed": {"type": "choice", "options": {
         "assistant": "the text speaks to the AI assistant GLaDOS directly",
         "user": "the text is meant for the human owner",
         "group": "the text is addressed to many people",
         "nobody": "a notification or status, not addressed to anyone"}},
+    "needs_reply": {"type": "noul", "instructions": "Does the message expect an answer or an action from its recipient?"},
 }
 
-INPUT_SCHEMA = {
-    "intent": {"labels": {
+INPUT_QUESTIONS = {
+    "intent": {"type": "choice", "options": {
         "chat": "small talk, opinion, sharing, joking; no task",
         "action": "asks to do something on the computer, in a game, in a messenger, or to find information",
         "about_self": "asks what the assistant can do, how she works, what she remembers",
         "approval": "answers yes or no to a question the assistant asked",
         "attention_rule": "asks to not disturb, to mute or to prioritize something for some time",
         "stop": "asks the assistant to be quiet or stop talking right now"}},
-    "needs_memory": {"labels": {
-        "yes": "the reply needs facts about people, past events or preferences",
-        "no": "the reply needs no memory"}},
+    "needs_memory": {"type": "noul", "instructions": "Does a good reply need facts about people, past events or preferences?"},
 }
+
+CATEGORY_URGENCY = {"danger": 5, "death_injury": 4, "disaster": 4, "request_to_assistant": 3, "question": 3,
+                    "personal_message": 3, "news": 1, "social": 1, "routine": 0, "spam": 0}
 ```
 
-  Схемы — константы в `decide.py`; меняются только там.
-- **ATT-4 (ОБЯЗАТЕЛЬНО).** Когда классификатор не вызывается (экономия задержки): у события есть `urgency_hint` И
+  Срочность события = `CATEGORY_URGENCY[category]`; ответ классификатора с `confidence < 0.35` не используется
+  (берутся подсказки модуля). Для `intent` порог уверенности 0.5: ниже — как будто классификатора нет. Пороги — в
+  настройках `attention` (`min_conf_event`, `min_conf_input`). Проверь точные значения поля `type` (`choice`, `noul`)
+  и формат `options` по `decider_server.py` (`_labels`).
+- **ATT-4a (ОБЯЗАТЕЛЬНО).** Когда классификатор не вызывается (экономия задержки): у события есть `urgency_hint` И
   `addressed_to_me` задан явно (модули игры, экрана, задачи) — берутся подсказки модуля. Классификатор вызывается для
   событий с текстом от людей (сообщения Telegram, речь, услышанная в колонках) и для всех обращений пользователя.
-- **ATT-5 (ЖЕЛАТЕЛЬНО).** Скрипт `agent/tools/export_decide_eval.py`: выгружает из `events.db` реплики пользователя и
-  итоги маршрутизатора (`plan`: chat / action / cannot) в JSONL для ручной разметки и считает точность `intent`
-  классификатора против этой разметки. Нужен для будущего дообучения и выбора порогов.
+- **ATT-5 (ЖЕЛАТЕЛЬНО).** Оценка: перенести `eval_decider.py` в `GitS/services/decider/` и добавить
+  `agent/tools/export_decide_eval.py`: выгрузка из `events.db` реплик пользователя и итогов маршрутизатора (`plan`:
+  chat / action / cannot) в JSONL и точность `intent` против этой разметки.
 
 ## 4. Событие внутри менеджера
 
@@ -111,7 +152,9 @@ class Item:
   - **R4 Критично.** `urgency_hint == 5` и `kind` объявлен в `emits` модуля с `default_urgency == 5` → `urgency = 5`
     без классификатора.
 - **ATT-8 (ОБЯЗАТЕЛЬНО).** Базовая срочность `urgency` (0–5): максимум из `urgency_hint` (или `default_urgency` из
-  манифеста) и `urgency` классификатора (если вызывался). `needs_reply` и `addressed` — от классификатора, если
+  манифеста) и срочности по категории классификатора (`CATEGORY_URGENCY`, ATT-4; если классификатор вызывался и
+  уверенность выше порога; категория `spam` даёт 0 независимо от подсказки). `needs_reply` и `addressed` — от
+  классификатора, если
   модуль не задал явно. Если классификатор вернул `None` — подсказки модуля, по умолчанию `urgency = 1`,
   `needs_reply = False`.
 
@@ -288,8 +331,8 @@ class Rule:
 
 - **ATT-31 (ОБЯЗАТЕЛЬНО).** Путь события без классификатора (правила, формула, решение) ≤ 5 мс. Классификатор: замерить
   p50 и p95 на 200 типичных текстах до 400 символов на машине пользователя и записать в отчёт и `CHANGELOG`. Цель
-  p95 ≤ 150 мс на CPU. Если цель не достигнута — сообщить в отчёте (не оптимизировать в рамках этого ТЗ).
-- **ATT-32 (ОБЯЗАТЕЛЬНО).** Ни один вызов классификатора не блокирует цикл событий (поток-исполнитель, ATT-2).
+  p95 ≤ 400 мс на CPU (в rimworld намерено ~300 мс на событие). Если цель не достигнута — сообщить в отчёте (не оптимизировать в рамках этого ТЗ).
+- **ATT-32 (ОБЯЗАТЕЛЬНО).** Ни один вызов классификатора не блокирует цикл событий (асинхронный HTTP-клиент с тайм-аутом, ATT-3).
   При очереди к классификатору длиннее 20 событий новые события без `urgency_hint` получают `urgency = 1` без
   классификатора (с пометкой в журнале).
 

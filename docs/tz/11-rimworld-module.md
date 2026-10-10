@@ -17,6 +17,10 @@
 
 ## 2. Предварительные условия (решает человек, до начала работы)
 
+**Статус на 2026-10-10:** работа по записи видео закоммичена (`aeb11e7`) и вместе с веткой `agent-startup` влита в
+`master` (`c9d7c81`, `22bfd42`; 111 тестов, мод собирается); переименование на GitHub через `gh repo rename`
+владелец разрешил; рабочие копии — чинить (`git worktree repair`), не удалять. Пункты ниже — для истории.
+
 Исполнитель проверяет эти пункты и, если хоть один не закрыт, останавливается и спрашивает человека:
 
 - **Незакоммиченная работа по записи видео** лежит в рабочей копии
@@ -151,10 +155,20 @@
 
 ## 8. Расход Claude и запросы к ядру
 
+- **RW-14a (ОБЯЗАТЕЛЬНО).** Живой подграф уже есть: `game_api.handle_api_graph` (`/api/graph`, режимы игры из
+  `game_modes.py`). Обработчик `graph.get` вызывает ту же функцию. `/api/graph` на :8767 остаётся для оверлея.
+- **RW-14b (ОБЯЗАТЕЛЬНО).** Отметки оценок событий: дашборд GitS пересылает `POST /api/appraisal_label` на
+  `:8767/api/appraisal_label` (`RIMWORLD_AGENT_URL`). Оставить пересылку по HTTP (это пульт), переменную
+  переименовать в `RIMWORLD_MODULE_URL` (старая — запасная, как в RW-2).
+- **RW-14c (ОБЯЗАТЕЛЬНО).** Классификатор: `main._start_decider` (запуск `decider_server.py` из `agent/.venv-decider`)
+  удалить — сервис запускает супервизор ядра (ТЗ 03 ATT-1/ATT-2). Клиент `decider.py` и `appraisal.py` остаются,
+  адрес прежний (`:8768`). `decider_server.py` и `eval_decider.py` удалить из модуля (они в `GitS/services/decider`).
 - **RW-15 (ОБЯЗАТЕЛЬНО).** После каждого запуска Claude в контурах игры (`glados_agent.py`, `executor_agent.py`, где
   есть `ResultMessage`) — `client.request("core.claude_usage", {"tokens": claude_battery.tokens_of(usage), "source":
-  "rimworld.<контур>"})` без ожидания результата в критическом пути (отдельной задачей). Если в модуле нет
-  `tokens_of` — скопировать функцию из GitS `claude_battery.py`.
+  "rimworld.<контур>"})` без ожидания результата в критическом пути (отдельной задачей). Сейчас это делает `usage_report.push(tokens, source,
+  limit_text)` (HTTP `POST /api/claude_usage`): заменить реализацию `usage_report` на `core.claude_usage` с теми же
+  полями (`limit_text` — текст исчерпанного лимита; ядро вызывает `claude_quota.note`, как нынешний
+  `/api/claude_usage`), вызывающий код не менять.
 - **RW-16 (ЖЕЛАТЕЛЬНО).** Запасной уровень управления игрой через экран и поиск в интернете из контуров игры —
   `core.tool.call("desktop.*")` и `core.web_search`, если контуры игры это где-то используют. Если не используют —
   ничего не делать.
@@ -175,6 +189,11 @@
   `environments/manifests/rimworld.json`; пункт трея «агент игры» (`start_game_agent`, `restart_game_agent`,
   `GAME_AGENT_DIR`); `_LINKED_SETTINGS`. Тесты, которые их проверяли, удалить или переписать на модуль.
 - **RW-19 (ОБЯЗАТЕЛЬНО).** Подграф RimWorld в `/api/modes` теперь через `graph.get` (ТЗ 02, CORE-22).
+
+## 10a. Медленные тесты
+
+- **RW-19a (ЖЕЛАТЕЛЬНО).** Два теста в `test_run_recorder.py` запускают настоящий ffmpeg (~55 с каждый). Пометить
+  `@pytest.mark.slow`, в `check.ps1` по умолчанию `-m "not slow"`, полный прогон — `.\check.ps1 -All`.
 
 ## 11. Тесты
 

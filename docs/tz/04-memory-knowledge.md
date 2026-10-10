@@ -175,7 +175,7 @@ CREATE VIRTUAL TABLE chunks_vec USING vec0(embedding float[DIM]);   -- rowid = c
 ## 8. RimWorld: справочник и опыт (в `rimworld-module`)
 
 - **KB-17 (ОБЯЗАТЕЛЬНО).** Манифест `rimworld-module`: `knowledge`: `rimworld.wiki` (reference, `lang: en`),
-  `rimworld.defs` (reference, `lang: en`), `rimworld.experience` (experience, `lang: ru`). Профиль `rimworld`
+  `rimworld.defs` (reference, `lang: en`), `rimworld.experience` (experience, `lang: ru`), `rimworld.web` (web, `lang: ru`). Профиль `rimworld`
   (`agent/profiles/rimworld.yaml`) уже ссылается на них (ТЗ 02).
 - **KB-18 (ОБЯЗАТЕЛЬНО).** Загрузка вики — скрипт `rimworld-module/agent/knowledge_ingest.py wiki` (ручной запуск, не
   при старте), только с разрешения человека (массовая загрузка с внешнего сайта):
@@ -203,6 +203,15 @@ CREATE VIRTUAL TABLE chunks_vec USING vec0(embedding float[DIM]);   -- rowid = c
 
 ## 9. Настройки, дашборд
 
+- **KB-20a (ОБЯЗАТЕЛЬНО).** В `rimworld-module` уже есть своя база знаний `agent/knowledge.py` (`memory/knowledge.json`:
+  записи с `source` `experience` или `web`, эмбеддинги EmbeddingGemma) и инструменты MCP `search_knowledge`,
+  `remember_knowledge` (базовые во всех режимах игры, `game_modes.CORE`). Перенос: скрипт `knowledge_ingest.py
+  knowledge` отправляет записи `experience` → `core.experience.add` (`scope rimworld`, `source reflection`,
+  `confidence 0.6`), `web` → `core.kb.ingest` в `rimworld.web` (`uri` — ссылка записи или `knowledge:<id>`).
+  Инструменты MCP остаются с теми же именами и описанием, но работают через ядро: `search_knowledge` →
+  `core.lookup` по `rimworld.*` без интернета; `remember_knowledge` → `core.experience.add` или `core.kb.ingest`
+  (`rimworld.web`) по `source`. Без ядра — прежняя локальная `knowledge.py` (запасной путь; запись в обе стороны не
+  нужна).
 - **KB-21 (ОБЯЗАТЕЛЬНО).** `settings.DEFAULTS["knowledge"]` (глубокое слияние): `{"min_cos": 0.60, "min_cos_bm25":
   0.45, "experience_boost": 1.2, "web_cache_days": 30, "chat_budget_ms": 300}`.
 - **KB-22 (ОБЯЗАТЕЛЬНО).** Вкладка «Память» дашборда — раздел «Справочник»: коллекции (название, область, вид,
