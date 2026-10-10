@@ -18,7 +18,8 @@
 | 12 | [12-voice-module.md](12-voice-module.md) | Модуль голоса: микрофон, STT, TTS, воспроизведение, слух | 2 | 01–03 |
 | 13 | [13-pet-module.md](13-pet-module.md) | Модуль питомца | 2 | 12 (делаются вместе) |
 | 14 | [14-desktop-module.md](14-desktop-module.md) | Модуль рабочего стола: экран, мышь и клавиатура, Claude-помощник | 2 | 01–03 |
-| 04 | [04-memory-knowledge.md](04-memory-knowledge.md) | Память трёх слоёв, справочник (RAG), опыт, `lookup` | 3 | 01–03, 11 |
+| 05 | [05-characters.md](05-characters.md) | Персонажи: код без имени персонажа, префиксы `CHARACTER_`/`GITS_`, SDK `gits-sdk`, несколько персонажей, память по персонажам | 3 (первым) | 01–03, 10–14 |
+| 04 | [04-memory-knowledge.md](04-memory-knowledge.md) | Память трёх слоёв, справочник (RAG), опыт, `lookup` | 3 | 01–03, 05, 11 |
 | 20 | [20-montage-module.md](20-montage-module.md) | Модуль монтажа (новый репозиторий) | 4 | 01–04, 12 |
 | 21 | [21-aperture-style.md](21-aperture-style.md) | Регламент монтажа в стиле Aperture Science | 4 | 20 |
 
