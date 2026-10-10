@@ -18,3 +18,7 @@ agent/resources/tts/checkpoints/
 
 .claude/
 .venv/
+
+
+# сборка SDK модулей
+*.egg-info/

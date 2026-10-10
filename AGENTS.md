@@ -42,6 +42,12 @@ SDK для тяжёлых задач.
 | `graph_memory.py` | память-граф: факты из разговора в Graphiti (FalkorDB), очередь, поиск |
 | `dashboard.py`, `tray.py`, `desktop_pet.py`, `settings.py` | интерфейс и настройки; дашборд принимает реплики и события агентов игр |
 
+## SDK модулей (`sdk/`)
+Контракт «ядро ↔ модуль» (ТЗ 01, `docs/tz/01-module-contract.md`) и пакет `glados-module` (импорт `glados_module`):
+`sdk/glados_module/protocol.py` (конверт, манифест, проверки; его же импортирует ядро, не копирует), `client.py` (`ModuleClient`),
+`testing.py` (`FakeCore` для тестов модулей), пример `sdk/examples/echo_module.py`, тесты `sdk/tests/` (идут в `check.ps1`).
+Руководство автора модуля: `docs/MODULES.md`. SDK зависит только от `aiohttp` и не импортирует `agent/`.
+
 ## Как добавить инструмент
 1. Опиши его в `environments/builtin.py` через `_tool(env, name, описание, параметры, функция, risk=..., keywords=...)`
    и добавь в нужное окружение. Описание читает планировщик: пиши, для каких просьб инструмент.
