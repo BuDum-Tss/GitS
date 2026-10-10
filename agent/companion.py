@@ -202,7 +202,9 @@ class Companion:
                 asyncio.create_task(fast_brain.react_chat(text, self._rel))
                 return
         intent = cls.intent if cls is not None else None
-        use_memory = not (cls is not None and cls.needs_memory is False)   # «память не нужна»: поиск в графе пропускается
+        # needs_memory классификатора пока смещён в «нет» (замеры ТЗ 03): по нему память не отключаем, только пишем в журнал.
+        # Поиск в графе пропускается лишь там, где память заведомо не нужна; вернуть needs_memory после дообучения.
+        use_memory = intent not in ("stop", "approval")
         async with self._busy:
             if intent == "about_self":
                 await self._converse(text, about_self=True, use_memory=use_memory)   # что она умеет: ответ по перечню окружений

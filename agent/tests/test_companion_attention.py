@@ -247,13 +247,17 @@ async def test_unavailable_classifier_keeps_the_old_behaviour(mk):
     assert len(r.llm_calls) == 1 and r.graph_queries == ["Привет"]    # память, как раньше, искалась
 
 
-async def test_needs_memory_no_skips_graph_search_for_this_reply(mk):
+async def test_needs_memory_no_does_not_skip_graph_search_until_classifier_is_tuned(mk):
+    # needs_memory смещён в «нет» (замеры ТЗ 03): память по нему не отключается
     r = mk(decider_answers=intent("chat", 0.9, memory="no"))
-    await r.say("Расскажи анекдот")
-    assert r.graph_queries == []
-    r.decider.answers = intent("chat", 0.9, memory="yes")
     await r.say("Что я говорил вчера про отпуск?")
     assert r.graph_queries == ["Что я говорил вчера про отпуск?"]
+
+
+async def test_stop_intent_skips_graph_search(mk):
+    r = mk(decider_answers=intent("stop", 0.9, memory="no"))
+    await r.say("Замолчи")
+    assert r.graph_queries == []
 
 
 async def test_approval_answer_still_wins_over_everything(mk):
