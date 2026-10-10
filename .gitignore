@@ -23,3 +23,7 @@ agent/resources/tts/checkpoints/
 # сборка SDK модулей
 *.egg-info/
 agent/logs/
+
+# сервис decider (ТЗ 03): окружение Python 3.12 и веса классификатора (1,1 ГБ), не в git
+services/decider/.venv/
+services/decider/hf/

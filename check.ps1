@@ -1,7 +1,7 @@
 # Проверка перед коммитом: линтер и тесты.  Запуск: .\check.ps1
 $ErrorActionPreference = "Continue"
 Write-Host "== ruff ==" -ForegroundColor Cyan
-python -m ruff check agent sdk
+python -m ruff check agent sdk services
 $lint = $LASTEXITCODE
 Write-Host "== pytest ==" -ForegroundColor Cyan
 python -m pytest -q
