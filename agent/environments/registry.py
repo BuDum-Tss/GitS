@@ -28,6 +28,7 @@ class Registry:
         self.load_errors: dict[str, str] = {}
         # () -> модули фокуса активного профиля (profile_manager); None: фокуса нет, видно всё (тесты)
         self.focus = None
+        self.embedder = None   # tool_search.ToolEmbeddings: отбор по смыслу (CORE-36); None - только по основам слов
 
     def _focus_modules(self) -> set[str] | None:
         return None if self.focus is None else set(self.focus())
@@ -109,6 +110,16 @@ class Registry:
         picked = [t for _, t in scored[:k]]
         picked += [t for t in tools if t.always and t not in picked]   # запасной путь не должен отсеиваться
         return picked
+
+    async def search_async(self, text: str, k: int = 14) -> list[Tool]:
+        """Как search, но сначала по смыслу (эмбеддинги описаний); недоступны или кэш ещё не собран - по основам слов."""
+        tools = self.active_tools()
+        if len(tools) <= k or self.embedder is None:
+            return self.search(text, k)
+        picked = await self.embedder.rank(text, tools, self.envs, k)
+        if picked is None:
+            return self.search(text, k)
+        return picked + [t for t in tools if t.always and t not in picked]    # запасной путь не должен отсеиваться
 
     # ── описание ──────────────────────────────────────────────────────────────
 

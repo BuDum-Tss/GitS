@@ -27,6 +27,7 @@ import profile_manager
 import settings
 import speech_out
 import supervisor as supervisor_mod
+import tool_search
 from attention import Attention
 from companion import Companion
 from conversation_io import ConversationIO
@@ -165,6 +166,7 @@ async def _run(config: dict):
         return None
 
     registry = Registry()
+    registry.embedder = tool_search.ToolEmbeddings(Path(mem_dir) / "tool_embeddings.json")     # отбор инструментов по смыслу
     layer = wire_modules(companion, registry, foreground_app=lambda: sample["app"], legacy_module_state=legacy_module_state)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     dashboard.set_presence(presence)

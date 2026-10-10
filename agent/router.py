@@ -169,7 +169,7 @@ class Router:
         return ok, result
 
     async def handle(self, text: str, announce: bool = True) -> str | None:
-        tools = self.registry.search(text)
+        tools = await self.registry.search_async(text)
         if not tools:
             return None
         plan = await self._plan(text, tools)
