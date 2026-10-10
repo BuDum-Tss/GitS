@@ -60,7 +60,7 @@ def core_running() -> bool:
 
 def _find(script: str, cwd: Path | None = None) -> list[psutil.Process]:
     """Процессы со скриптом в командной строке и рабочей папкой cwd (по умолчанию: папка ассистента).
-    Без проверки папки main.py ассистента путался бы с main.py агента RimWorld."""
+    Без проверки папки main.py ассистента путался бы с main.py других программ."""
     cwd = Path(cwd or HERE)
     found = []
     for p in psutil.process_iter(["cmdline"]):
@@ -70,33 +70,6 @@ def _find(script: str, cwd: Path | None = None) -> list[psutil.Process]:
         except (psutil.Error, OSError):
             pass
     return found
-
-
-# ── агент RimWorld: отдельный репозиторий (rimworld-agent), отдельный процесс ──
-# устаревший запуск агента игры: удалить в ТЗ 11 (дальше он модуль rimworld, его запускает супервизор ядра)
-
-GAME_AGENT_DIR = Path(os.getenv("RIMWORLD_AGENT_DIR", r"C:\MyProjects\rimworld-agent")) / "agent"
-
-
-def game_agent_available() -> bool:
-    return (GAME_AGENT_DIR / "main.py").exists()
-
-
-def start_game_agent(icon=None, item=None):
-    if not game_agent_available() or _find("main.py", GAME_AGENT_DIR):
-        return
-    mem = GAME_AGENT_DIR / "memory"
-    mem.mkdir(parents=True, exist_ok=True)
-    log = open(mem / "core.log", "ab")
-    exe = Path(sys.executable).with_name("python.exe")
-    subprocess.Popen([str(exe if exe.exists() else sys.executable), "-u", "main.py"], cwd=GAME_AGENT_DIR,
-                     stdout=log, stderr=log, env={**os.environ, "MEMORY_DIR": str(mem)}, creationflags=NO_WINDOW)
-
-
-def restart_game_agent(icon=None, item=None):
-    for p in _find("main.py", GAME_AGENT_DIR):
-        _kill_tree(p)
-    threading.Timer(2.0, start_game_agent).start()
 
 
 def start_core():
@@ -110,7 +83,6 @@ def start_core():
     subprocess.Popen([str(exe if exe.exists() else sys.executable), "-u", "main.py"], cwd=HERE,
                      stdout=log, stderr=log, env={**os.environ, "MEMORY_DIR": MEMORY_DIR},
                      creationflags=NO_WINDOW)
-    start_game_agent()          # агент игры идёт вместе с ассистентом (если репозиторий rimworld-agent на месте)
 
 
 def start_pet():
@@ -136,8 +108,6 @@ def stop_all():
     for script in ("main.py", "desktop_pet.py"):
         for p in _find(script):
             _kill_tree(p)
-    for p in _find("main.py", GAME_AGENT_DIR):
-        _kill_tree(p)
 
 
 def restart_core(icon=None, item=None):
@@ -243,7 +213,6 @@ def build_menu() -> pystray.Menu:
           checked=lambda it: settings.load()["auto_accept"]),
         M("Запускать с Windows", toggle_autostart, checked=lambda it: autostart_enabled()),
         M("Перезапустить ядро", restart_core),
-        M("Перезапустить агента RimWorld", restart_game_agent, visible=lambda it: game_agent_available()),
         M("Остановить ассистента", lambda i, it: (stop_all(), i.stop())),
         M("Закрыть трей (ассистент продолжит работать)", lambda i, it: i.stop()),
     )

@@ -688,6 +688,7 @@ const SETTINGS_SCHEMA = [
   {title: 'Telegram', items: [
     {key: 'telegram', type: 'toggle', label: 'Публиковать мысли в канал', hint: 'Токен бота и канал задаются в agent/secrets.env.'},
     {key: 'telegram_after_run', type: 'toggle', label: 'Пост-итог после каждого забега', hint: 'Когда колония погибает, она пишет в канал короткий итог.'},
+    {key: 'record_runs', type: 'toggle', label: 'Записывать забеги на видео', hint: 'Модуль RimWorld снимает каждый забег (нужен ffmpeg): сценарий, основное видео и вертикальные клипы лежат в папке памяти модуля.'},
     {key: 'telegram_voice', type: 'toggle', label: 'Посты голосом', hint: 'Пост уходит голосовым сообщением её голосом, текст остаётся подписью.'},
     {key: 'telegram_confirm', type: 'toggle', label: 'Спрашивать перед публикацией', hint: 'Если выключено, она публикует сама.'}]},
   {title: 'Безопасность', danger: true, items: [

@@ -8,9 +8,8 @@
   - дашборд (порт 8766, только localhost): состояние для питомца, чат, настройки;
   - шина модулей (ТЗ 02): модули подключаются сами по WebSocket (/module/ws в том же приложении), супервизор запускает и
     перезапускает их процессы из agent/modules.yaml, профили в agent/profiles/ решают, какие инструменты видны. Telegram
-    (канал, бот, её аккаунт) это модуль modules/telegram (ТЗ 10): в процессе ядра его кода нет.
-
-Агент RimWorld до ТЗ 11 подключается по-старому: приказы идут через game_bridge, а он сам говорит через /api/say дашборда.
+    (канал, бот, её аккаунт) это модуль modules/telegram (ТЗ 10): в процессе ядра его кода нет. Игра RimWorld это модуль rimworld
+    из отдельного репозитория rimworld-module (ТЗ 11): приказы идут его инструментом order, состояние и события приходят по шине.
 """
 import asyncio
 import logging
@@ -21,7 +20,6 @@ from types import SimpleNamespace
 import claude_battery
 import dashboard
 import events_log
-import gamenet
 import fast_brain
 import profile_manager
 import settings
@@ -35,7 +33,7 @@ import core_requests
 from core_requests import CoreRequests
 from environments import builtin
 from environments.registry import Registry
-from module_hub import ModuleHub
+from module_hub import ModuleError, ModuleHub
 from module_registry import ModuleRegistry
 from graph_memory import GraphMemory
 from hearing import Hearing
@@ -48,22 +46,19 @@ from stt_client import STTClient
 from user_memory import UserMemory
 from voice_id import VoiceIdentity
 
-import game_bridge
-
 logger = logging.getLogger("core")
 
 DASHBOARD_PORT = 8766
-# настройки для старого агента игры (GET /api/speech_status); новые модули получают shared_settings по манифесту (CORE-41)
-_LINKED_SETTINGS = ("streamer", "dnd", "quiet_until", "game_model", "claude_usage", "voice_muted", "telegram_after_run")
+ORDER_TIMEOUT_S = 15           # RW-11: сколько ждём, пока модуль игры примет приказ
+SUBGRAPH_TIMEOUT_S = 1.5       # CORE-22: подграф профиля от модуля для дашборда
 
 
-def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_module_state=lambda module_id: None,
-                 battery=claude_battery.status, specs=None, port: int = DASHBOARD_PORT) -> SimpleNamespace:
+def wire_modules(companion, registry, *, foreground_app=lambda: None, battery=claude_battery.status, specs=None,
+                 port: int = DASHBOARD_PORT) -> SimpleNamespace:
     """Слой модулей (ТЗ 02): каналы разговора, заглушка внимания, реестр и шина модулей, профили, супервизор.
 
     companion - Companion (или заменитель с теми же методами), registry - реестр окружений планировщика.
-    foreground_app() - имя процесса активного окна (до ТЗ 14, когда это знает модуль desktop); legacy_module_state(id) -
-    state.data для того, что ещё не стало модулем (игра RimWorld определяется по порту мода до ТЗ 11).
+    foreground_app() - имя процесса активного окна (до ТЗ 14, когда это знает модуль desktop).
     Ничего не запускает: старт и остановка - layer.start() и layer.stop()."""
     presence = companion.presence
     io = ConversationIO(companion)
@@ -79,9 +74,37 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
     attention.hub, attention.modules = hub, modules
     presence.listener = hub.broadcast_presence
 
-    def module_state(module_id: str):
-        data = modules.state_data(module_id)
-        return data if data is not None else legacy_module_state(module_id)
+    async def live_subgraph(profile):
+        """Подграф профиля от первого модуля фокуса с graph: true (запрос graph.get, CORE-22, RW-19); None, если такого нет."""
+        for module_id in profile.focus_modules:
+            rec = modules.get(module_id)
+            conn = hub.connection(module_id)
+            if rec is None or conn is None or not (rec.manifest or {}).get("graph") or not modules.is_enabled(module_id):
+                continue
+            return await conn.request("graph.get", {}, timeout=SUBGRAPH_TIMEOUT_S)
+        return None
+
+    async def game_order(text: str) -> bool:
+        """RW-11: приказ игроку-агенту. Каждому модулю из focus_modules активного профиля, у которого есть capabilities
+        ["game"] и инструмент order, отправляется tool.call order (тайм-аут 15 с); accepted: true - обращение обработано игрой."""
+        for module_id in profiles.current().focus_modules:
+            rec = modules.get(module_id)
+            manifest = (rec.manifest if rec is not None else None) or {}
+            if "game" not in (manifest.get("capabilities") or []) or not modules.is_enabled(module_id):
+                continue
+            if not any(isinstance(t, dict) and t.get("name") == "order" for t in manifest.get("tools") or []):
+                continue
+            conn = hub.connection(module_id)
+            if conn is None:
+                continue
+            try:
+                value = await conn.request("tool.call", {"tool": "order", "args": {"text": text}}, timeout=ORDER_TIMEOUT_S)
+            except ModuleError as e:
+                logger.info(f"Приказ модулю «{module_id}» не принят: {e.message}")
+                continue
+            if isinstance(value, dict) and value.get("accepted"):
+                return True
+        return False
 
     def foreground():
         data = modules.state_data("desktop") or {}
@@ -91,8 +114,8 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
         events_log.log("profile", f"{old} -> {new}", old=old, new=new)                # CORE-20
         hub.notify("profile", holder["profiles"].info())
 
-    profiles = profile_manager.ProfileManager(battery=battery, foreground_app=foreground, module_state=module_state,
-                                              on_change=on_profile_change)
+    profiles = profile_manager.ProfileManager(battery=battery, foreground_app=foreground, module_state=modules.state_data,
+                                              on_change=on_profile_change, subgraph=live_subgraph)
     holder["profiles"] = profiles
     attention.profiles = profiles
     profiles.evaluate()
@@ -118,7 +141,7 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
     builtin.register_core_tools(registry, modules, attention)
 
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, profiles=profiles,
-                            supervisor=sup, presence=presence, tasks=[])
+                            supervisor=sup, presence=presence, game_order=game_order, tasks=[])
 
     async def start():
         await hub.start()                                # токен в файл и фоновая сверка настроек
@@ -137,13 +160,15 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
     return layer
 
 
-async def post_run_summary(router, prompt: str) -> bool:
-    """TG-15: пост-итог после забега. Публикует инструмент telegram.post модуля Telegram (через маршрутизатор: обычная проверка
-    параметров и доступности); тема берётся из data.prompt события run_ended. До ТЗ 11 событие приходит старым каналом."""
-    ok, text = await router.run_tool("telegram.post", {"topic": prompt})
-    if not ok:
-        events_log.log_nowait("telegram", f"пост-итог после забега не опубликован: {text}")
-    return ok
+def make_colonists_handler(rel, graph):
+    """Обработчик события rimworld.colonists (RW-9): `data` = {"pawns": [...], "colony": "имя"}. Раньше это делал канал
+    /api/event агента игры (link_event)."""
+    async def on_colonists(item) -> None:
+        data = item.data or {}
+        pawns, colony = data.get("pawns") or [], data.get("colony") or "колония"
+        rel.sync_colonists(pawns)
+        await graph.sync_colonists(pawns, colony)
+    return on_colonists
 
 
 async def _run(config: dict):
@@ -159,29 +184,24 @@ async def _run(config: dict):
     presence = speech_out.PresenceTracker()
     companion = Companion(mem_dir, rel, watcher, hearing, speech=speech_out.LegacyPetSpeech(mem_dir, presence),
                           presence=presence)
-    companion.game_order = game_bridge.order
 
-    # профили: активное окно и состояние игры берутся из кэша, который обновляет фоновый опрос (без блокировки цикла)
-    sample = {"app": None, "game_running": False}
+    # профили: активное окно берётся из кэша, который обновляет фоновый опрос (без блокировки цикла); игра RimWorld
+    # (game_running) приходит состоянием модуля rimworld, порт мода ядро больше не опрашивает (ТЗ 11)
+    sample = {"app": None}
 
     async def sampler():
         while True:
             try:
                 fg = await asyncio.to_thread(perception.foreground)
                 sample["app"] = (fg or {}).get("app")
-                sample["game_running"] = await asyncio.to_thread(gamenet.port_open, gamenet.PORT)
             except Exception as e:
-                logger.debug(f"Опрос окна и игры: {e}")
+                logger.debug(f"Опрос окна: {e}")
             await asyncio.sleep(2)
-
-    def legacy_module_state(module_id: str):
-        if module_id == "rimworld":      # устаревший канал агента игры: удалить в ТЗ 11 (до этого игра - порт мода)
-            return {"game_running": sample["game_running"]}
-        return None
 
     registry = Registry()
     registry.embedder = tool_search.ToolEmbeddings(Path(mem_dir) / "tool_embeddings.json")     # отбор инструментов по смыслу
-    layer = wire_modules(companion, registry, foreground_app=lambda: sample["app"], legacy_module_state=legacy_module_state)
+    layer = wire_modules(companion, registry, foreground_app=lambda: sample["app"])
+    companion.game_order = layer.game_order              # RW-11: приказ игроку-агенту (инструмент order модуля игры)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     dashboard.set_attention(layer.attention)
     dashboard.set_presence(presence)
@@ -235,38 +255,13 @@ async def _run(config: dict):
 
     companion.router = Router(registry, companion.say, recent_dialogue)
     layer.requests.router = companion.router            # core.tool.call от модулей идёт тем же путём, что просьбы
-    dashboard.set_router(companion.router)
     dashboard.set_registry(registry)
     dashboard.set_modes(layer.profiles)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
     asyncio.create_task(companion.proactive_loop())
 
-    # ── связь с агентами игр ──
-    def link_status() -> dict:
-        recent = [m["text"] for m in memory.recent_dialogue(10) if m["role"] != "user"][-6:]
-        cfg = settings.load()
-        return {"user_ts": companion._last_user_ts, "speaking": companion.is_speaking(), "recent": recent,
-                "settings": {k: cfg.get(k) for k in _LINKED_SETTINGS}}
-
-    async def link_say(text: str, emotion=None):
-        # устаревший канал агента игры: удалить в ТЗ 11 (дальше игра говорит как модуль: say verbatim)
-        await layer.attention.submit_speech("rimworld", {"text": text, "mode": "verbatim", "emotion": emotion})
-
-    async def link_event(kind: str, data: dict):
-        if kind == "colonists":
-            pawns, colony = data.get("pawns") or [], data.get("colony") or "колония"
-            rel.sync_colonists(pawns)
-            await graph.sync_colonists(pawns, colony)
-        elif kind == "run_ended" and settings.load().get("telegram_after_run"):
-            # TG-15: пост-итог делает модуль Telegram (до ТЗ 11 событие приходит старым каналом); в фоне, пост может ждать ответа
-            task = asyncio.create_task(post_run_summary(
-                companion.router, str(data.get("prompt") or "Забег закончен. Напиши короткий пост-итог.")))
-            background.add(task)
-            task.add_done_callback(background.discard)
-
-    background: set[asyncio.Task] = set()
-
-    dashboard.set_game_link(say=link_say, status=link_status, event=link_event)
+    # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
+    layer.attention.kind_handlers["rimworld.colonists"] = make_colonists_handler(rel, graph)
     logger.info("Ядро запущено: зрение, компаньон, быстрый слой, шина модулей. Игра и модули подключатся, когда появятся.")
     try:
         await asyncio.Event().wait()

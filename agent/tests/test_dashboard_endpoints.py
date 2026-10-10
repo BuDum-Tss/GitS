@@ -110,40 +110,14 @@ async def test_dashboard_module_settings_mode_approval_and_job_endpoints(tmp_pat
         await runner.cleanup()
 
 
-async def test_legacy_http_channels_still_registered():
+async def test_core_dashboard_routes_remain_after_old_game_channels_were_removed():
     app = dashboard.build_app()
     routes = {(r.method, r.resource.canonical) for r in app.router.routes() if r.resource is not None}
-    for r in (("POST", "/api/say"), ("GET", "/api/speech_status"), ("POST", "/api/emotion"), ("POST", "/api/event"),
-              ("POST", "/api/tool"), ("POST", "/api/web_search"), ("POST", "/api/claude_usage"), ("GET", "/api/modes"),
-              ("POST", "/api/mode"), ("GET", "/api/state"), ("POST", "/api/chat"), ("POST", "/api/approval")):
+    for r in (("GET", "/api/modes"), ("POST", "/api/mode"), ("GET", "/api/state"), ("POST", "/api/chat"),
+              ("POST", "/api/approval"), ("POST", "/api/appraisal_label")):
         assert r in routes, r
     assert ("GET", "/api/modules") in routes and ("POST", "/api/modules/{id}/enabled") in routes
     assert ("POST", "/api/jobs/{module}/{job_id}/answer") in routes
-
-
-async def test_legacy_say_goes_through_attention_as_verbatim(tmp_path):
-    """CORE-42: /api/say агента игры вызывает attention.submit_speech('rimworld', verbatim)."""
-    companion, registry = WiredCompanion(), Registry()
-    layer = core_service.wire_modules(companion, registry, specs=[])
-    calls = []
-
-    async def spy(module_id, say):
-        calls.append((module_id, say))
-    layer.attention.submit_speech = spy
-
-    async def link_say(text, emotion=None):          # та же связка, что в core_service._run
-        await layer.attention.submit_speech("rimworld", {"text": text, "mode": "verbatim", "emotion": emotion})
-    dashboard.set_game_link(say=link_say)
-    dashboard._MEMORY_DIR = tmp_path / "memory"
-    runner = web.AppRunner(dashboard.build_app())
-    await runner.setup()
-    port = free_port()
-    await web.TCPSite(runner, "127.0.0.1", port).start()
-    try:
-        async with aiohttp.ClientSession() as http:
-            url = f"http://127.0.0.1:{port}/api/say"
-            async with http.post(url, json={"text": "Борис уснул", "emotion": "angry"}, headers=JSON) as r:
-                assert r.status == 200
-    finally:
-        await runner.cleanup()
-    assert calls == [("rimworld", {"text": "Борис уснул", "mode": "verbatim", "emotion": "angry"})]
+    # ТЗ 11, RW-18: каналы старого агента игры удалены (игра теперь модуль на шине)
+    for path in ("/api/say", "/api/speech_status", "/api/emotion", "/api/event", "/api/tool", "/api/web_search", "/api/claude_usage"):
+        assert not [m for m, p in routes if p == path], path

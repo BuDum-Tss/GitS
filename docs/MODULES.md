@@ -185,6 +185,16 @@ async with FakeCore() as core:
 
 Модули GitS лежат в `modules/<id>/` (образец: `modules/telegram/`): `main.py`, `manifest.py`, свои файлы, `tests/`. Супервизор запускает их с `cwd` модуля и передаёт `MEMORY_DIR` (абсолютный путь папки памяти ядра); пакет `glados-module` берётся из `PYTHONPATH` (`GitS/sdk`) или из окружения, если он установлен.
 
+## Модули в отдельных репозиториях
+
+Тяжёлые модули живут в своих репозиториях со своими зависимостями: первый, `rimworld-module` (игра RimWorld, ТЗ 11). Запись в
+`agent/modules.yaml` ссылается на его папку переменной (`{RIMWORLD_MODULE_DIR}`, ядро находит её само: `agent/module_dirs.py`),
+интерпретатор общий (`{PYTHON}`), если зависимостей модуля хватает в нём. Такой модуль хранит данные в своей папке, а не в
+`MEMORY_DIR` ядра (супервизор передаёт `MEMORY_DIR` всем, модуль RimWorld заменяет его своим `agent/memory`). Проверка у него своя:
+`.\check.ps1` в его репозитории, а тесты против `FakeCore` из этого SDK. Пример манифеста с `capabilities: ["game"]`, инструментом `order`
+(приказ игроку-агенту: ядро зовёт его у модулей фокуса с этой возможностью), `graph: true` (подграф профиля) и событиями: выше и в
+`agent/tests/test_rimworld_core.py`.
+
 ## Проверка
 
 Из корня репозитория `.\check.ps1` запускает ruff и тесты ядра, SDK и модулей. Только SDK: `python -m pytest -q sdk/tests`; модуль Telegram: `python -m pytest -q modules/telegram/tests`.

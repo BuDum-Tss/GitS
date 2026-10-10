@@ -10,9 +10,6 @@ from datetime import datetime
 from aiohttp import web
 
 import approvals
-import claude_battery
-import claude_quota
-import game_bridge
 from memory_store import MemoryStore
 import events_log
 import settings
@@ -162,47 +159,6 @@ async def handle_api_mode_post(request: web.Request) -> web.Response:
     return web.json_response({"current": _MODES.current_id, "override": _MODES.override})
 
 
-# устаревший канал агента игры: удалить в ТЗ 11
-async def handle_api_claude_usage(request: web.Request) -> web.Response:
-    """Расход Claude от агента игры: {"tokens": 1234, "source": "turn"} или {"limit_text": "..."} при исчерпанном лимите."""
-    if not _is_local_json(request):
-        return web.json_response({"error": "forbidden"}, status=403)
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid json"}, status=400)
-    if body.get("limit_text"):
-        claude_quota.note(str(body["limit_text"]))
-    claude_battery.record(int(body.get("tokens") or 0), str(body.get("source") or "game"))
-    return web.json_response({"ok": True})
-
-
-_ROUTER_HOLDER: dict = {}   # Router ядра: для вызова инструментов другими агентами
-_AGENT_TOOLS = {"system.read_screen", "system.click_text", "system.operate_screen", "system.press_key", "system.type_text",
-                "system.scroll", "system.list_windows", "system.focus_window"}   # что агентам игр доступно как запасной уровень
-
-
-def set_router(router):
-    _ROUTER_HOLDER["router"] = router
-
-
-# устаревший канал агента игры: удалить в ТЗ 11
-async def handle_api_tool(request: web.Request) -> web.Response:
-    """Запасной уровень для агентов игр: {"tool": "system.click_text", "args": {...}} -> {"ok": bool, "result": "..."}.
-    Разрешение у пользователя спрашивает ассистентка, как для любого действия на ПК."""
-    if not _is_local_json(request):
-        return web.json_response({"error": "forbidden"}, status=403)
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid json"}, status=400)
-    tool_id, router = str(body.get("tool") or ""), _ROUTER_HOLDER.get("router")
-    if tool_id not in _AGENT_TOOLS or router is None:
-        return web.json_response({"ok": False, "result": "этот инструмент агентам игр недоступен"}, status=403)
-    ok, result = await router.run_tool(tool_id, body.get("args") or {})
-    return web.json_response({"ok": ok, "result": result})
-
-
 _MENU_BUTTONS = ("быстрый запуск", "quick start", "продолжить", "continue", "загрузить", "load")   # только кнопки главного меню
 
 
@@ -235,8 +191,18 @@ async def handle_api_menu_click(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "result": str(e)})
 
 
+def _rimworld_url() -> str:
+    """Адрес API модуля RimWorld (пульт отметок оценок): RIMWORLD_MODULE_URL, запасная старая RIMWORLD_AGENT_URL (ТЗ 11, RW-14b)."""
+    if os.getenv("RIMWORLD_MODULE_URL"):
+        return os.environ["RIMWORLD_MODULE_URL"]
+    if os.getenv("RIMWORLD_AGENT_URL"):
+        logger.warning("Переменная RIMWORLD_AGENT_URL устарела: переименуй в RIMWORLD_MODULE_URL")
+        return os.environ["RIMWORLD_AGENT_URL"]
+    return "http://127.0.0.1:8767"
+
+
 async def handle_api_appraisal_label(request: web.Request) -> web.Response:
-    """Отметка игрока по оценке события: пересылается агенту игры, у которого журнал."""
+    """Отметка игрока по оценке события: пересылается модулю игры, у которого журнал (по HTTP: это пульт, не шина модулей)."""
     if not _is_local_json(request):
         return web.json_response({"error": "forbidden"}, status=403)
     try:
@@ -244,26 +210,13 @@ async def handle_api_appraisal_label(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "invalid json"}, status=400)
     import httpx
-    base = os.getenv("RIMWORLD_AGENT_URL", "http://127.0.0.1:8767")
+    base = _rimworld_url()
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             r = await client.post(f"{base}/api/appraisal_label", json=body)
             return web.json_response(r.json(), status=r.status_code)
     except Exception as e:
         return web.json_response({"saved": False, "error": str(e)}, status=502)
-
-
-# устаревший канал агента игры: удалить в ТЗ 11
-async def handle_api_web_search(request: web.Request) -> web.Response:
-    """Общий поиск в интернете для других агентов (игра): {"query": "..."} -> {"answer": "..."}."""
-    if not _is_local_json(request):
-        return web.json_response({"error": "forbidden"}, status=403)
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid json"}, status=400)
-    import web_search
-    return web.json_response({"answer": await web_search.search(str(body.get("query") or ""))})
 
 
 async def handle_api_approval(request: web.Request) -> web.Response:
@@ -327,7 +280,7 @@ async def handle_api_graph_forget(request: web.Request) -> web.Response:
 
 
 async def handle_api_state(request: web.Request) -> web.Response:
-    game = await game_bridge.game_state()          # {} если агент RimWorld не запущен
+    game = (_MODULES.state_data("rimworld") if _MODULES is not None else None) or {}    # state модуля игры; {} если он не подключён
     connected = bool(game.get("connected"))
 
     # Речь одна: питомец говорит и показывает ТОЛЬКО то, что прошло через компаньона (оно же в чате).
@@ -399,59 +352,6 @@ async def handle_api_chat_post(request: web.Request) -> web.Response:
 
 async def handle_api_chat_get(request: web.Request) -> web.Response:
     return web.json_response({"messages": _CHAT_LOG[-20:]})
-
-
-# ── Каналы от агента RimWorld (отдельный процесс, только localhost) ───────────
-
-_SPEECH = {"say": None, "status": None, "event": None}
-
-
-def set_game_link(say=None, status=None, event=None):
-    """say(text, emotion) -> корутина; status() -> dict; event(type, data) -> корутина. Ставит ядро."""
-    _SPEECH.update(say=say, status=status, event=event)
-
-
-# устаревший канал агента игры: удалить в ТЗ 11
-async def handle_api_say(request: web.Request) -> web.Response:
-    """Агент игры просит сказать реплику: она проходит через компаньона (чат, питомец, озвучка)."""
-    if not _is_local_json(request) or _SPEECH["say"] is None:
-        return web.json_response({"error": "unavailable"}, status=403)
-    body = await request.json()
-    text = str(body.get("text") or "").strip()
-    if not text:
-        return web.json_response({"error": "empty"}, status=400)
-    await _SPEECH["say"](text, body.get("emotion"))
-    return web.json_response({"ok": True})
-
-
-# устаревший канал агента игры: удалить в ТЗ 11
-async def handle_api_speech_status(request: web.Request) -> web.Response:
-    """Что агенту игры нужно знать, чтобы не перебивать: когда пользователь говорил, говорит ли она, что сказала, настройки."""
-    if _SPEECH["status"] is None:
-        return web.json_response({})
-    return web.json_response(_SPEECH["status"]())
-
-
-# устаревший канал агента игры: удалить в ТЗ 11
-async def handle_api_emotion(request: web.Request) -> web.Response:
-    if not _is_local_json(request):
-        return web.json_response({"error": "forbidden"}, status=403)
-    body = await request.json()
-    import fast_brain
-    if body.get("emotion") in fast_brain.EMOTIONS:
-        fast_brain.publish(str(body.get("event") or "game"), {"emotion": body["emotion"], "action": "none",
-                                                                "source": "game"})
-    return web.json_response({"ok": True})
-
-
-# устаревший канал агента игры: удалить в ТЗ 11
-async def handle_api_event(request: web.Request) -> web.Response:
-    """Прочие события игры: список колонистов для графа и отношений, итог забега для Telegram."""
-    if not _is_local_json(request) or _SPEECH["event"] is None:
-        return web.json_response({"error": "unavailable"}, status=403)
-    body = await request.json()
-    await _SPEECH["event"](str(body.get("type") or ""), body.get("data") or {})
-    return web.json_response({"ok": True})
 
 
 # ── Модули и задачи (ТЗ 02, CORE-37) ───────────────────────────────────────────
@@ -666,9 +566,6 @@ def build_app() -> web.Application:
     app.router.add_get("/api/events", handle_api_events)
     app.router.add_get("/api/capabilities", handle_api_capabilities)
     app.router.add_get("/api/modes", handle_api_modes)
-    app.router.add_post("/api/claude_usage", handle_api_claude_usage)
-    app.router.add_post("/api/web_search", handle_api_web_search)
-    app.router.add_post("/api/tool", handle_api_tool)
     app.router.add_post("/api/appraisal_label", handle_api_appraisal_label)
     app.router.add_post("/api/menu_click", handle_api_menu_click)
     app.router.add_post("/api/mode", handle_api_mode_post)
@@ -677,10 +574,6 @@ def build_app() -> web.Application:
     app.router.add_get("/api/graph", handle_api_graph)
     app.router.add_post("/api/graph/forget", handle_api_graph_forget)
     app.router.add_get("/api/chat", handle_api_chat_get)
-    app.router.add_post("/api/say", handle_api_say)
-    app.router.add_get("/api/speech_status", handle_api_speech_status)
-    app.router.add_post("/api/emotion", handle_api_emotion)
-    app.router.add_post("/api/event", handle_api_event)
     app.router.add_get("/api/modules", handle_api_modules)
     app.router.add_post("/api/modules/{id}/enabled", handle_api_module_enabled)
     app.router.add_post("/api/modules/{id}/restart", handle_api_module_restart)

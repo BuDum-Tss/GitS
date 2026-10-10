@@ -24,7 +24,7 @@ import secrets
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 import approvals
 import decide
@@ -156,6 +156,9 @@ class Attention:
             chattiness=lambda: str(self._settings().get("chattiness", "normal")), question_pending=approvals.has_pending,
             repeats=lambda text: bool(getattr(companion, "_repeats_recent", lambda t: False)(text)),
             on_drop=self._speech_dropped, on_played=self._speech_played, clock=clock)
+        # служебные события модулей, которые ядро обрабатывает само и не озвучивает: kind -> async (Item) -> None (ТЗ 11, RW-9:
+        # rimworld.colonists обновляет отношения и граф памяти). Такое событие в журнал внимания и очередь речи не попадает.
+        self.kind_handlers: dict[str, Callable[[Item], Awaitable[None]]] = {}
         self._items: dict[str, Item] = {}
         self._by_key: dict[tuple[str, str], Item] = {}
         self._digest: dict[str, deque] = {}
@@ -295,6 +298,10 @@ class Attention:
         sender_name = self._sender_name(item.sender)
         events_log.log_nowait("module_event", item.text[:TEXT_LOG], module=module_id, event_kind=item.kind,
                        urgency_hint=item.urgency_hint, addressed_to_me=item.addressed_to_me, sender=sender_name)
+        handler = self.kind_handlers.get(item.kind)
+        if handler is not None:
+            self._spawn(self._run_kind_handler(handler, item))
+            return
         if self._merge_duplicate(item, now):
             return
         self._register(item)
@@ -345,6 +352,13 @@ class Attention:
             return
         self._apply_classification(item, None, declared)
         await self._finish(item, cfg, att)
+
+    @staticmethod
+    async def _run_kind_handler(handler, item: Item) -> None:
+        try:
+            await handler(item)
+        except Exception as e:
+            logger.warning(f"Обработчик события «{item.kind}»: {e}")
 
     @staticmethod
     def _is_owner_address(item: Item) -> bool:

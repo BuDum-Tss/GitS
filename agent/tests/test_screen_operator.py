@@ -67,9 +67,13 @@ def test_model_garbage_and_render(monkeypatch):
     assert "0. «Кнопка» (5,6)" in text and "Окно: Окно" in text
 
 
+# запасной уровень игры: этот же список разрешён модулю RimWorld (rimworld-module, core_bridge.PC_TOOLS); после ТЗ 14 имена станут desktop.*
+GAME_SCREEN_TOOLS = ("system.read_screen", "system.click_text", "system.operate_screen", "system.press_key", "system.type_text",
+                     "system.scroll", "system.list_windows", "system.focus_window")
+
+
 def test_tools_registered_and_agent_allowlist():
     import tempfile
-    import dashboard
     import settings
     from environments import builtin
     from environments.registry import Registry
@@ -82,6 +86,6 @@ def test_tools_registered_and_agent_allowlist():
     settings.init(d)
     reg = Registry()
     builtin.register(reg, Dummy(), None, UserMemory(d))
-    for tool_id in dashboard._AGENT_TOOLS:
+    for tool_id in GAME_SCREEN_TOOLS:
         assert reg.get(tool_id) is not None, tool_id
     assert reg.get("system.operate_screen").risk == "ask" and "Запасной уровень" in reg.get("system.click_text").description

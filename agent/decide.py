@@ -2,7 +2,7 @@
 
 Модель GLiNER2.5-multi-Decide живёт в отдельном сервисе `services/decider` (порт 8768, свой Python 3.12 с torch CPU):
 ядро работает на Python 3.14, где torch может не ставиться, и модель не должна ему мешать. Здесь клиент того же
-протокола, что у `rimworld-agent/agent/decider.py` (`POST /v1/systemone`), и класс `Decider` поверх него.
+протокола, что у клиента в `rimworld-module/agent/decider.py` (`POST /v1/systemone`), и класс `Decider` поверх него.
 
 Протокол:
     запрос  {"state": "<текст>", "questions": {"id": {"type": "choice", "options": {"метка": "описание"}}}}

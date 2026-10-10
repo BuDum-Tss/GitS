@@ -4,16 +4,13 @@
 голос (Fish Speech, запасной edge-tts), Telegram (модуль `modules/telegram`: канал-дневник, бот и её собственный аккаунт), память-граф (Graphiti +
 FalkorDB), окружения с инструментами (управление ПК, приложения, MCP, вебхуки), питомец на рабочем столе, трей.
 
-Игры подключаются отдельными агентами. Первый из них: [rimworld-agent](../rimworld-agent) (мод, MCP-сервер, игровые
-контуры на Claude). Они общаются по localhost:
-
-| Направление | Как |
-|---|---|
-| ассистент -> игра | приказы `POST :8767/api/order`, состояние `GET :8767/api/game` (`agent/game_bridge.py`) |
-| игра -> ассистент | реплики `POST :8766/api/say`, эмоции `/api/emotion`, события `/api/event`, опрос `GET /api/speech_status` |
-| MCP | окружение «RimWorld» (`environments/manifests/rimworld.json`) запускает `rimworld_mcp.py` из репозитория агента игры (`RIMWORLD_AGENT_DIR`) |
-
-Без агента игры ассистентка работает как раньше, без игровой части.
+Игры подключаются модулями из отдельных репозиториев. Первый из них: [rimworld-module](../rimworld-module) (мод, MCP-сервер, игровые
+контуры на Claude; репозиторий раньше назывался rimworld-agent). Модуль `rimworld` подключается к ядру по шине модулей
+(WebSocket, контракт в [docs/MODULES.md](docs/MODULES.md)): его инструменты (из MCP-сервера игры) и приказ `order` видны планировщику,
+пока профиль RimWorld активен, состояние игры (`game_running`, колония, цели) идёт в `state`, события игры (набег, гибель, пожар,
+письмо, цель, итог забега) в менеджер внимания, реплики комментатора в очередь речи. Модуль запускает сам супервизор ядра
+(`agent/modules.yaml`); папку репозитория ядро ищет по `RIMWORLD_MODULE_DIR` (запасное старое имя `RIMWORLD_AGENT_DIR`, потом
+соседняя папка `rimworld-module` или `rimworld-agent`). Без модуля игры ассистентка работает как раньше, без игровой части.
 
 ## Запуск
 ```powershell
@@ -22,7 +19,7 @@ pip install -r requirements.txt
 copy secrets.env.example secrets.env     # токены Telegram и т.д. (не в git)
 python main.py                           # ядро, дашборд на http://localhost:8766
 pythonw desktop_pet.py                   # питомец
-pythonw tray.py                          # трей: сам поднимает ядро, питомца и агента RimWorld (если он рядом); модули запускает ядро
+pythonw tray.py                          # трей: сам поднимает ядро и питомца; модули (Telegram, RimWorld) запускает ядро
 ```
 SDK модулей (`sdk/`, пакет `glados-module`) ядро берёт напрямую из репозитория (`agent/main.py` добавляет `sdk` в `sys.path`),
 ставить его не нужно. Для модуля в своём окружении: `pip install -e C:\MyProjects\GitS\sdk`.

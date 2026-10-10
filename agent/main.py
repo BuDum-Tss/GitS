@@ -11,13 +11,11 @@ from dotenv import load_dotenv
 load_dotenv()
 load_dotenv("secrets.env")   # токены (не в git): TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL
 
-# Агент RimWorld живёт в отдельном репозитории (rimworld-agent); здесь только путь к его MCP-серверу для окружения «RimWorld»
-os.environ.setdefault("RIMWORLD_AGENT_DIR", r"C:\MyProjects\rimworld-agent")
-
 # до установки пакета glados-module (pip install -e ./sdk) SDK модулей берётся из репозитория
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sdk"))
 
 import core_service
+import module_dirs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,6 +30,8 @@ def main():
         "rimworld_api": os.getenv("RIMWORLD_API", "http://localhost:8765"),
         "memory_dir":   os.getenv("MEMORY_DIR", "./memory"),
     }
+    # модуль RimWorld живёт в отдельном репозитории (rimworld-module): {RIMWORLD_MODULE_DIR} в modules.yaml (ТЗ 11)
+    module_dirs.apply()
 
     core_service.run(config)
 

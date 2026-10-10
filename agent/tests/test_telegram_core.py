@@ -96,22 +96,11 @@ async def test_set_setting_direct_call_refuses_other_keys(tmp_path):
 
 
 # ── TG-15: пост-итог после забега ──────────────────────────────────────────────────────────────
+# С ТЗ 11 пост-итог запрашивает сам модуль игры (core.tool.call telegram.post, тесты в rimworld-module); в ядре его нет.
 
-async def test_post_run_summary_calls_the_module_tool_through_the_router():
+def test_core_no_longer_posts_run_summaries():
     import core_service
-
-    class FakeRouter:
-        def __init__(self, ok):
-            self.ok, self.calls = ok, []
-
-        async def run_tool(self, tool_id, args):
-            self.calls.append((tool_id, args))
-            return self.ok, "опубликован пост" if self.ok else "модуль не подключён"
-
-    router = FakeRouter(True)
-    assert await core_service.post_run_summary(router, "Колония погибла от голода. Напиши итог.") is True
-    assert router.calls == [("telegram.post", {"topic": "Колония погибла от голода. Напиши итог."})]
-    assert await core_service.post_run_summary(FakeRouter(False), "итог") is False               # сбой только в журнал
+    assert not hasattr(core_service, "post_run_summary")
 
 
 # ── TG-16: запись в modules.yaml, MEMORY_DIR ───────────────────────────────────────────────────

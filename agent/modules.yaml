@@ -3,7 +3,7 @@
 # скобках (после загрузки secrets.env) подставляются. Нет переменной: модуль помечается «не настроен» и не запускается.
 # Поля: id; cwd; command; args; autostart (запускать вместе с ядром, если модуль включён); restart (always | on-failure |
 # never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title.
-# Реальные модули добавляют ТЗ 11-14, 20: rimworld, voice, pet, desktop, montage (telegram - ТЗ 10, ниже).
+# Реальные модули добавляют ТЗ 12-14, 20: voice, pet, desktop, montage (telegram - ТЗ 10, rimworld - ТЗ 11, ниже).
 # Модулям передаются GLADOS_MODULE_TOKEN, GLADOS_CORE_URL, GLADOS_MODULE_ID и MEMORY_DIR (абсолютный путь к папке памяти ядра).
 modules:
   - id: telegram
@@ -13,6 +13,18 @@ modules:
     args: ["-u", "main.py"]
     autostart: true
     restart: on-failure       # секреты (TELEGRAM_*) модуль читает сам из agent/secrets.env; без них он работает и пишет «не настроен»
+
+  # RimWorld (ТЗ 11): отдельный репозиторий rimworld-module. {RIMWORLD_MODULE_DIR} ядро находит само (module_dirs.py: переменная
+  # RIMWORLD_MODULE_DIR, запасная RIMWORLD_AGENT_DIR, соседняя папка rimworld-module или rimworld-agent). Интерпретатор общий ({PYTHON}):
+  # зависимости игрового агента и пакет glados-module стоят в нём же, отдельного .venv у модуля нет. Данные модуля лежат в его папке
+  # agent/memory (RIMWORLD_MEMORY_DIR), а не в MEMORY_DIR ядра, который супервизор передаёт всем модулям.
+  - id: rimworld
+    title: RimWorld
+    cwd: "{RIMWORLD_MODULE_DIR}/agent"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
 
   - id: echo
     title: Эхо
