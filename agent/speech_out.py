@@ -79,6 +79,7 @@ class LegacyPetSpeech:
         self._speak_until = 0.0
         self._utterance: str | None = None
         self._text = ""
+        self._payload: dict = {}                    # последняя запись say.json: к ней добавляется метка остановки
         self._timer: asyncio.TimerHandle | None = None
 
     def _write(self, payload: dict):
@@ -94,7 +95,8 @@ class LegacyPetSpeech:
         if not muted:
             self._speak_until = now + len(text) * self.SECONDS_PER_CHAR + self.PAD_S   # озвучка идёт в процессе питомца
         # текст пишется и при заглушённом голосе: питомец показывает облачко
-        await asyncio.to_thread(self._write, {"id": self._say_id, "text": text, "ts": now})
+        self._payload = {"id": self._say_id, "text": text, "ts": now}
+        await asyncio.to_thread(self._write, self._payload)
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None
@@ -111,10 +113,14 @@ class LegacyPetSpeech:
             self.presence.update(speaking=False, utterance_id=None, segment="")
 
     async def stop(self, utterance_id: str | None = None) -> None:
-        """Прервать речь. Питомец свою очередь озвучки не отдаёт, поэтому здесь только снимается признак «говорит»
-        (настоящая остановка по границе предложения появится с модулем voice, ТЗ 12)."""
+        """Прервать речь (ATT-17, ATT-18). Снимается признак «говорит», а в say.json кладётся метка `stop`: питомец, увидев
+        новую метку, не озвучивает следующие предложения (идущее договаривает: остановка на границе предложения). Настоящая
+        остановка с эхо-защитой появится с модулем voice (ТЗ 12)."""
         if utterance_id is not None and utterance_id != self._utterance:
             return
+        if self._payload:
+            self._payload = {**self._payload, "stop": self._now()}
+            await asyncio.to_thread(self._write, self._payload)
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None

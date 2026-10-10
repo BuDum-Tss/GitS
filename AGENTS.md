@@ -46,7 +46,9 @@ SDK для тяжёлых задач.
 | `profile_manager.py`, `profiles/` | профили в YAML (тон, модули фокуса, условия автовыбора), выбор активного, граф для дашборда; заменили `modes.py` и `profiles.py` |
 | `conversation_io.py`, `speech_out.py` | каналы ввода и ответа разговора (голос, дашборд, модуль); интерфейс вывода речи и присутствие (`presence`) |
 | `tool_search.py` | отбор инструментов планировщику по смыслу (эмбеддинги описаний, кэш `memory/tool_embeddings.json`), откат на слова |
-| `attention.py` | менеджер внимания: сейчас заглушка с интерфейсом ТЗ 02 §9.4, полная реализация в ТЗ 03 |
+| `attention.py`, `speech_queue.py`, `attention_rules.py` | менеджер внимания (ТЗ 03): правила R1-R4, срочность и приоритет события, решения D0-D4, стек фокуса, сводка, вопросы; очередь речи (единственное место, откуда звучит речь); временные правила и их файл `memory/attention_rules.json`; инструменты `attention.*` лежат в `environments/builtin.py` |
+| `decide.py`, `services/decider/` | классификатор для внимания: клиент и класс `Decider` (вопросы EVENT_QUESTIONS и INPUT_QUESTIONS, только категориальные), общий сервис GLiNER2.5-multi-Decide на :8768 в своём окружении Python 3.12 (`kind: service` в `modules.yaml`, описание и установка в `services/decider/README.md`) |
+| `tools/export_decide_eval.py` | выгрузка реплик и итогов маршрутизатора из `events.db` и точность `intent` |
 
 ## Ядро и модули (ТЗ 02)
 Ядро принимает модули по WebSocket и само запускает их по `agent/modules.yaml` (супервизор); включение модулей во вкладке
@@ -55,7 +57,15 @@ SDK для тяжёлых задач.
 (`say`, `core.ask`, `core.tts`). Новый профиль: файл в `agent/profiles/` (поля описаны в `docs/tz/02-core.md`, раздел 8). Новый
 модуль: запись в `agent/modules.yaml` и руководство `docs/MODULES.md`. Старые каналы агента игры (`/api/say` и др.) помечены
 `# устаревший канал агента игры: удалить в ТЗ 11`. Ядро видит SDK через `sys.path` (`agent/main.py`, строка с комментарием
-«до установки пакета glados-module»).
+«до установки пакета glados-module»). Запись `modules.yaml` с `kind: service` и `health_url` это процесс без WebSocket (первый:
+классификатор `decider`): супервизор следит за ним по `GET health_url`, токен ядра ему не передаётся.
+
+## Внимание и речь (ТЗ 03)
+Вся самостоятельная и ответная речь идёт через очередь речи менеджера внимания: `Companion.say` и `_speak_about` кладут кандидата,
+а планировщик зовёт их с `direct=True`. Новые источники речи ставят кандидата (`attention.speech.new`) или зовут `submit` /
+`submit_speech`, а не `companion.say` напрямую. Классификатор только подсказывает: без сервиса `decider` всё работает по
+подсказкам модулей. Решения менеджера пишутся в `events_log` (вид `attention`) через `events_log.log_nowait` (запись в фоне:
+коммит SQLite стоит ~8 мс, на цикле событий ждать его нельзя).
 
 ## SDK модулей (`sdk/`)
 Контракт «ядро ↔ модуль» (ТЗ 01, `docs/tz/01-module-contract.md`) и пакет `glados-module` (импорт `glados_module`):

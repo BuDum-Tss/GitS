@@ -112,6 +112,26 @@
             <div id="modes-canvas" style="height:50vh;min-height:320px" class="rounded-box border border-base-300 bg-base-100"></div>
             <div id="modes-detail" class="hidden rounded-box border border-base-300 p-3 mt-2 text-sm"></div>
           </div>
+          <div id="att-box">
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="font-medium">Внимание</div>
+              <span id="att-focus" class="badge badge-ghost badge-sm" title="Чем она занята сейчас (стек фокуса)"></span>
+              <span id="att-queue" class="text-xs opacity-70" title="Очередь речи"></span>
+              <label class="flex items-center gap-1 text-sm ml-auto" title="Классификатор (сервис decider) подсказывает важность событий и намерение обращений; выключен: только подсказки модулей"><span>Классификатор</span><input id="att-classifier" type="checkbox" class="toggle toggle-sm"></label>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mt-2 text-xs">
+              <span class="opacity-70" title="Приоритет события 0-100: ниже 1-го порога выбрасывается, до 2-го уходит в сводку, до 3-го говорит при случае, до 4-го скоро, выше прерывает">Пороги решений</span>
+              <input id="att-th-0" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
+              <input id="att-th-1" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
+              <input id="att-th-2" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
+              <input id="att-th-3" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
+              <span class="opacity-70" title="На сколько приоритет нового события должен превышать приоритет текущего фокуса, чтобы прервать">запас прерывания</span>
+              <input id="att-margin" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
+              <span id="att-msg" class="text-error"></span>
+            </div>
+            <div class="text-xs opacity-70 mt-2" id="att-digest"></div>
+            <ul id="att-rules" class="space-y-1 text-sm mt-1"></ul>
+          </div>
           <div id="modes-panel" class="hidden space-y-4">
             <div class="divider my-0"></div>
             <div id="panel-assistant" class="hidden">
@@ -893,6 +913,44 @@ function renderGame(d) {
     || '<li class="opacity-60">Потерь нет.</li>';
 }
 
+// ── внимание (ТЗ 03, ATT-30): классификатор, пороги, действующие правила ──
+const ATT = {sig: ''};
+async function loadAttention() {
+  if ($('tab-status').classList.contains('hidden')) return;
+  const a = await fetch('/api/attention').then(r => r.json());
+  const s = a.settings || {}, top = (a.focus || []).slice(-1)[0] || {};
+  const typing = $('att-box').contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'number';
+  $('att-focus').textContent = top.kind && top.kind !== 'idle' ? `${top.kind}: ${top.topic || ''}`.slice(0, 60) : 'свободна';
+  $('att-queue').textContent = (a.queue || []).length ? `в очереди речи: ${a.queue.length}` : '';
+  const digest = Object.entries(a.digest || {}).map(([m, n]) => `${m}: ${n}`).join(', ');
+  $('att-digest').textContent = digest ? `В сводке накопилось: ${digest}. Спроси «что я пропустила?».` : 'Сводка пуста.';
+  if (!typing) {
+    $('att-classifier').checked = !!s.classifier;
+    (s.thresholds || []).forEach((v, i) => { $('att-th-' + i).value = v; });
+    $('att-margin').value = s.interrupt_margin ?? '';
+  }
+  const html = (a.rules || []).map(r => `<li class="flex items-center justify-between gap-2 border border-base-300 rounded px-2 py-1">
+    <span class="min-w-0"><span class="badge badge-sm badge-outline">${esc(r.effect)}</span> <span class="text-xs">${esc([r.module && 'модуль ' + r.module, r.kind && 'вид ' + r.kind, r.sender && 'от «' + r.sender + '»'].filter(Boolean).join(', '))}</span>
+      <span class="opacity-60 text-xs">ещё ${esc(r.minutes_left)} мин</span>${r.created_from ? `<span class="opacity-50 text-xs bubble-text block">«${esc(r.created_from)}»</span>` : ''}</span>
+    <button class="btn btn-ghost btn-xs shrink-0" data-att-clear="${esc(r.id)}" title="Снять правило">снять</button></li>`).join('')
+    || '<li class="opacity-60 text-xs">Временных правил нет. Скажи, например: «час не трогай меня чатами».</li>';
+  if (ATT.sig !== html) { ATT.sig = html; $('att-rules').innerHTML = html; }
+}
+$('att-classifier').onchange = e => post('/api/settings', {attention: {classifier: e.target.checked}});
+const attThresholds = () => {
+  const th = [0, 1, 2, 3].map(i => parseFloat($('att-th-' + i).value));
+  if (th.some(x => Number.isNaN(x)) || th.some((x, i) => i && x < th[i - 1])) { $('att-msg').textContent = 'Пороги: четыре числа по возрастанию'; return; }
+  $('att-msg').textContent = ''; post('/api/settings', {attention: {thresholds: th}});
+};
+[0, 1, 2, 3].forEach(i => { $('att-th-' + i).onchange = attThresholds; });
+$('att-margin').onchange = e => { const v = parseFloat(e.target.value); if (!Number.isNaN(v) && v >= 0) post('/api/settings', {attention: {interrupt_margin: v}}); };
+$('att-rules').addEventListener('click', async e => {
+  const el = e.target.closest('[data-att-clear]'); if (!el) return;
+  await post('/api/attention/rules/clear', {id: el.dataset.attClear}); ATT.sig = ''; loadAttention().catch(() => {});
+});
+setInterval(() => loadAttention().catch(() => {}), 3000);
+loadAttention().catch(() => {});
+
 // ── модули и задачи (ТЗ 02, CORE-38) ──
 const MOD_STATUS = {connected: ['подключён', 'badge-success'], disabled: ['выключен', 'badge-ghost'],
   running: ['запущен, ещё не подключился', 'badge-info'], starting: ['запускается', 'badge-info'],
@@ -915,7 +973,10 @@ function modSettingControl(m, key, spec) {
 }
 
 function renderModule(m) {
-  const [label, cls] = MOD_STATUS[m.status] || [m.status_text || m.status, 'badge-ghost'];
+  let [label, cls] = MOD_STATUS[m.status] || [m.status_text || m.status, 'badge-ghost'];
+  const service = m.kind === 'service';
+  if (service && m.status === 'running') [label, cls] = ['работает', 'badge-success'];        // сервис: «запущен» значит отвечает на health
+  if (service && m.status === 'offline') [label, cls] = ['не отвечает', 'badge-ghost'];
   const tools = (m.tools || []).map(t => `<li class="flex items-start gap-2"><span class="badge ${(RISK[t.risk] || RISK.ask)[1]} badge-xs shrink-0 mt-1">${esc((RISK[t.risk] || RISK.ask)[0])}</span>
     <span class="min-w-0"><span class="font-mono text-xs">${esc(t.id)}</span> <span class="opacity-60 text-xs">${t.availability === 'profile' ? '(только в своём профиле)' : ''}</span>
     <span class="opacity-70 bubble-text text-xs block">${esc(t.description)}</span></span></li>`).join('');
@@ -923,7 +984,7 @@ function renderModule(m) {
   const canRestart = m.status !== 'offline' || m.pid;
   return `<div class="border border-base-300 rounded-lg p-3" data-module="${esc(m.id)}">
     <div class="flex items-center justify-between gap-2">
-      <span class="font-medium min-w-0">${esc(m.title)} <span class="opacity-50 text-xs font-mono">${esc(m.id)} ${esc(m.version || '')}</span></span>
+      <span class="font-medium min-w-0">${esc(m.title)} ${service ? '<span class="badge badge-outline badge-xs" title="Процесс без связи по WebSocket: ядро следит за ним по health_url">сервис</span>' : ''} <span class="opacity-50 text-xs font-mono">${esc(m.id)} ${esc(m.version || '')}</span></span>
       <span class="flex items-center gap-2 shrink-0">
         <span class="badge ${cls} badge-sm" title="${esc(m.status_text || '')}">${esc(label)}</span>
         <button class="btn btn-ghost btn-xs" data-act="restart" data-id="${esc(m.id)}" title="Перезапустить процесс" ${canRestart ? '' : 'disabled'}>↻</button>

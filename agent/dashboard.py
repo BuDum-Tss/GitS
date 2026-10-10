@@ -623,6 +623,36 @@ async def handle_api_job_answer(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+# ── Внимание (ТЗ 03) ───────────────────────────────────────────────────────────
+
+_ATTENTION = None     # Attention (attention.py), ставит ядро
+
+
+def set_attention(attention):
+    global _ATTENTION
+    _ATTENTION = attention
+
+
+async def handle_api_attention(request: web.Request) -> web.Response:
+    """Правила, очередь речи, стек фокуса, сводка, последние решения и настройки внимания."""
+    if _ATTENTION is None:
+        return web.json_response({"rules": [], "queue": [], "focus": [], "digest": {}, "decisions": [], "settings": {}})
+    return web.json_response(_ATTENTION.snapshot())
+
+
+async def handle_api_attention_clear(request: web.Request) -> web.Response:
+    """{"id": "r-xxxxxx"} снять правило; без id снять все."""
+    body, err = await _json_body(request)
+    if err:
+        return err
+    if _ATTENTION is None:
+        return web.json_response({"error": "внимание не подключено"}, status=503)
+    rule_id = body.get("id")
+    if rule_id is not None and not isinstance(rule_id, str):
+        return web.json_response({"error": "id должен быть строкой"}, status=400)
+    return web.json_response({"ok": True, "text": await _ATTENTION.clear_rules(rule_id)})
+
+
 # ── Server lifecycle ─────────────────────────────────────────────────────────
 
 def build_app() -> web.Application:
@@ -655,6 +685,8 @@ def build_app() -> web.Application:
     app.router.add_post("/api/modules/{id}/enabled", handle_api_module_enabled)
     app.router.add_post("/api/modules/{id}/restart", handle_api_module_restart)
     app.router.add_post("/api/modules/{id}/settings", handle_api_module_settings)
+    app.router.add_get("/api/attention", handle_api_attention)
+    app.router.add_post("/api/attention/rules/clear", handle_api_attention_clear)
     app.router.add_get("/api/jobs", handle_api_jobs)
     app.router.add_post("/api/jobs/{module}/{job_id}/cancel", handle_api_job_cancel)
     app.router.add_post("/api/jobs/{module}/{job_id}/answer", handle_api_job_answer)

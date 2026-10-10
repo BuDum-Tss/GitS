@@ -68,6 +68,11 @@ class UtteranceSegmenter:
         self._silence_n, self._min, self._max = silence_frames, min_speech, max_frames
         self._reset()
 
+    @property
+    def active(self) -> bool:
+        """Идёт ли сейчас речь (реплика копится, тишина ещё не выдержана)."""
+        return self._active
+
     def _reset(self):
         self._frames: list[bytes] = []
         self._speech = 0
@@ -106,8 +111,10 @@ def _record_thread(stop: threading.Event, push, loop):
 
 
 class MicListener:
-    def __init__(self, stt, voice_id, on_voice, is_speaking, make_self_sample=None):
+    def __init__(self, stt, voice_id, on_voice, is_speaking, make_self_sample=None, on_speaking=None):
         self._stt, self._voices, self._on_voice, self._is_speaking = stt, voice_id, on_voice, is_speaking
+        self._on_speaking = on_speaking                # (bool) -> None: пользователь начал или закончил говорить (ТЗ 03)
+        self._user_speaking = False
         self._make_self_sample = make_self_sample      # () -> PCM 16 кГц её голоса, для регистрации «self»
         self._warned = 0.0
         self._tail_until = 0.0
@@ -156,7 +163,9 @@ class MicListener:
                     frame = await asyncio.wait_for(q.get(), 1.0)
                 except asyncio.TimeoutError:
                     continue
-                done = seg.feed(frame, self._gate())
+                gated = self._gate()
+                done = seg.feed(frame, gated)
+                self._note_speaking(seg.active and not gated)      # её собственный голос из колонок речью пользователя не считается
                 if done is None:
                     continue
                 audio, overlap = done
@@ -164,7 +173,16 @@ class MicListener:
                     asyncio.create_task(self.handle_utterance(audio))
         finally:
             stop.set()
+            self._note_speaking(False)
             events_log.log("hearing", "микрофон выключен")
+
+    def _note_speaking(self, speaking: bool) -> None:
+        if self._on_speaking is not None and speaking != self._user_speaking:
+            self._user_speaking = speaking
+            try:
+                self._on_speaking(speaking)
+            except Exception as e:
+                logger.debug(f"Признак «пользователь говорит»: {e}")
 
     async def _ensure_self_voice(self):
         """Зарегистрировать голос самой ГЛаДОС по образцу синтеза (если WhisperX уже умеет эмбеддинги)."""

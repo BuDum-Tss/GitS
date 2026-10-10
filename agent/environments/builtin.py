@@ -564,9 +564,36 @@ def register(registry, companion, hearing, telegram, memory, tg_user=None, profi
         ]))
 
 
-def register_core_tools(registry, modules):
-    """Инструменты ядра про задачи модулей (окружение core, всегда видны, ТЗ 02 раздел 11).
-    modules - ModuleRegistry: jobs_all() и async cancel_job(module, job_id)."""
+class _ModuleIds(list):
+    """Допустимые значения параметра «модуль»: подключённые и объявленные в modules.yaml модули на момент вызова.
+    Список динамический: модули приходят и уходят, а описание инструмента строится один раз."""
+
+    def __init__(self, modules):
+        super().__init__()
+        self._modules = modules
+
+    def _ids(self) -> list[str]:
+        return sorted(self._modules.records) if self._modules is not None else []
+
+    def __iter__(self):
+        return iter(self._ids())
+
+    def __contains__(self, item):
+        return item in self._ids()
+
+    def __len__(self):
+        return len(self._ids())
+
+    def __bool__(self):
+        return bool(self._ids())
+
+    def __repr__(self):
+        return repr(self._ids())
+
+
+def register_core_tools(registry, modules, attention=None):
+    """Инструменты ядра про задачи модулей (окружение core, всегда видны, ТЗ 02 раздел 11) и про внимание (ТЗ 03, ATT-24).
+    modules - ModuleRegistry: jobs_all() и async cancel_job(module, job_id); attention - менеджер внимания (attention.py)."""
 
     async def jobs(a):
         rows = modules.jobs_all()
@@ -582,10 +609,55 @@ def register_core_tools(registry, modules):
     async def job_cancel(a):
         return await modules.cancel_job(a["module"], a["job_id"])
 
+    async def set_rule(a):
+        return await attention.set_rule(module=a.get("module"), kind=a.get("kind"), sender=a.get("sender"),
+                                        effect=a["effect"], minutes=a.get("minutes") or 60)
+
+    async def rules(a):
+        return attention.rules_text()
+
+    async def clear_rules(a):
+        return await attention.clear_rules(a.get("id"))
+
+    async def digest(a):
+        return attention.take_digest(a.get("module"))
+
+    def attention_tool(name, description, params, call, informative=False, keywords=()):
+        # id attention.<имя>, а окружение core: Tool.id не обязан начинаться с id окружения
+        return Tool(id=f"attention.{name}", env="core", name=name, description=description, params=params, risk="auto",
+                    keywords=tuple(keywords), call=call, informative=informative, availability="always")
+
+    attention_tools = [] if attention is None else [
+        attention_tool(
+            "set_rule", "Временное правило внимания: пользователь просит не отвлекать, заглушить, выделить кого-то или что-то на "
+            "время: «пока играю, из телеги только мама», «час не трогай меня с чатами». Нужно указать хотя бы одно из: модуль, "
+            "вид события, отправитель.",
+            {"module": {"type": "string", "required": False, "enum": _ModuleIds(modules),
+                        "description": "id модуля, на который распространяется правило"},
+             "kind": {"type": "string", "required": False, "description": "шаблон вида события, например telegram.*"},
+             "sender": {"type": "string", "required": False, "description": "часть имени отправителя, например мама"},
+             "effect": {"type": "string", "enum": ["mute", "boost", "only", "normal"],
+                        "description": "mute - молчать (в сводку), boost - выделить, only - только это, остальное тише, "
+                                       "normal - снять прежние правила"},
+             "minutes": {"type": "integer", "required": False, "description": "на сколько минут, 1-1440, по умолчанию 60"}},
+            set_rule, keywords=("отвлекай", "не трогай", "заглуши", "выдели", "только", "на время", "час", "пока играю", "правило")),
+        attention_tool("rules", "Какие временные правила внимания действуют сейчас.", {}, rules, informative=True,
+                       keywords=("правила", "что заглушено", "не отвлекать")),
+        attention_tool("clear_rules", "Снять временные правила внимания: одно по номеру или все сразу.",
+                       {"id": {"type": "string", "required": False, "description": "номер правила вида r-xxxxxx; без него снимаются все"}},
+                       clear_rules, keywords=("сними", "отмени правило", "снова отвлекай")),
+        attention_tool("digest", "Что накопилось и не было сказано, пока не отвлекала: сводка событий модулей. Для просьб "
+                       "«что я пропустила», «что там было», «что накопилось». После выдачи сводка очищается.",
+                       {"module": {"type": "string", "required": False, "enum": _ModuleIds(modules),
+                                   "description": "id модуля; без него по всем"}},
+                       digest, informative=True, keywords=("пропустила", "накопилось", "сводка", "что было", "пока не отвлекала")),
+    ]
+
     registry.add(Environment(
-        id="core", title="Ядро: задачи модулей",
-        description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить.",
-        tools=[
+        id="core", title="Ядро: задачи модулей и внимание",
+        description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "
+                    "«не отвлекай / выдели» и сводка накопившегося.",
+        tools=attention_tools + [
             _tool("core", "jobs", "Перечень задач всех модулей: модуль, название, состояние, стадия, прогресс. "
                   "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",
                   {}, jobs, informative=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),

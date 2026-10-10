@@ -12,6 +12,7 @@
 Telegram: это обёртка над `ask(kind="approval")`. Нет ответа за TIMEOUT_SECS - отказ.
 """
 import asyncio
+import contextvars
 import logging
 import os
 import re
@@ -31,6 +32,9 @@ KINDS = ("approval", "choice", "text")
 
 YES = ("да", "ага", "разрешаю", "давай", "ок", "окей", "валяй", "можно", "yes", "конечно")
 NO = ("нет", "не надо", "не разрешаю", "запрещаю", "отмена", "стоп", "no", "не нужно")
+
+# истинно, пока вопрос озвучивается (announce): реплика, сказанная в это время, - сама формулировка вопроса (ТЗ 03, ATT-19)
+announcing: contextvars.ContextVar[bool] = contextvars.ContextVar("approval_announcing", default=False)
 
 _active: dict | None = None            # вопрос, который задан сейчас
 _waiters: deque = deque()              # будущие в очереди на право задать вопрос
@@ -71,6 +75,11 @@ def _leave():
 
 def has_pending() -> bool:
     return _active is not None
+
+
+def is_announcing() -> bool:
+    """Открытый вопрос ещё озвучивается (ответа от пользователя пока никто не ждёт)."""
+    return _active is not None and bool(_active.get("announcing"))
 
 
 def pending_text() -> str:
@@ -128,12 +137,7 @@ async def ask(kind: str, question: str, options: list[str] | None = None, timeou
         events_log.log("approval", f"запрос ({kind}, {source}): {question}")
         try:
             if announce is not None:
-                try:
-                    await announce(question_fact(kind, question, item["options"], source))
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.warning(f"Не удалось сообщить вопрос пользователю: {e}")
+                await _announce(item, announce, question_fact(kind, question, item["options"], source))
             try:
                 answer, by = await asyncio.wait_for(item["future"], timeout)
             except asyncio.TimeoutError:
@@ -144,6 +148,33 @@ async def ask(kind: str, question: str, options: list[str] | None = None, timeou
         return answer, by
     finally:
         _leave()
+
+
+async def _announce(item: dict, announce, fact: str) -> None:
+    """Озвучить вопрос. Пока он озвучивается (очередь речи может держать реплику), ответ кнопкой уже принимается:
+    тогда озвучка снимается, вопрос не ждёт её конца."""
+    item["announcing"] = True
+    token = announcing.set(True)
+    try:
+        task = asyncio.ensure_future(announce(fact))       # контекст копируется сейчас: announcing виден внутри announce
+    finally:
+        announcing.reset(token)
+    try:
+        await asyncio.wait({task, item["future"]}, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        task.cancel()
+        raise
+    finally:
+        item["announcing"] = False
+    if not task.done():
+        task.cancel()                                      # ответ пришёл раньше озвучки
+    try:
+        await task
+    except asyncio.CancelledError:
+        if not item["future"].done():
+            raise                                          # отменили саму задачу вопроса
+    except Exception as e:
+        logger.warning(f"Не удалось сообщить вопрос пользователю: {e}")
 
 
 async def request(text: str, announce, danger: str | None = None) -> bool:

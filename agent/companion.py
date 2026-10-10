@@ -11,6 +11,10 @@
 Реплики уходят через вывод речи (speech_out.py): пока это прежний путь через питомца (memory/say.json, дашборд
 отдаёт реплику питомцу, он показывает облачко и озвучивает, если не включена глушилка). Обращения приходят из любых
 каналов (conversation_io.py), ответ уходит в канал обращения: голос и чат дашборда как раньше, модуль-канал через deliver.
+
+Звучит речь только через очередь менеджера внимания (attention.py, ТЗ 03): `say` и `_speak_about` кладут кандидата в
+очередь, а сам планировщик зовёт их с direct=True. Без менеджера (атрибут `attention` пуст: тесты, запуск до сборки слоя
+модулей) они говорят сразу, как раньше. Ответ в канал модуля (Telegram) не речь: он доставляется сразу, мимо очереди.
 """
 import asyncio
 import json
@@ -45,6 +49,8 @@ class Companion:
         self.presence = presence or PresenceTracker()          # тема presence (ставит слушателя ядро)
         self.speech = speech or LegacyPetSpeech(memory_dir, self.presence)   # вывод речи (CORE-27)
         self.io = None                                         # ConversationIO: доставка ответов в каналы модулей
+        self.attention = None                                  # Attention: очередь речи и фокус (ТЗ 03); None - говорит сразу
+        self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
         self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
         self._rel = rel
         self._watcher = watcher
@@ -76,8 +82,32 @@ class Companion:
 
     # ── вывод ────────────────────────────────────────────────────────────────
 
-    async def say(self, text: str, emotion: str | None = None, priority: int = 50):
-        """Сказать реплику: журнал, вывод речи (питомец), эмоция. В канале модуля вместо речи идёт deliver."""
+    def _queued(self, direct: bool) -> bool:
+        """Идёт ли речь через очередь внимания: ответ в канал модуля (не речь) и прямой вызов планировщика идут мимо неё."""
+        if direct or self.attention is None:
+            return False
+        channel = current_channel.get()
+        return not (channel is not None and channel.kind == "module")
+
+    async def _wait_spoken(self, cand) -> None:
+        """Формулировка вопроса считается сказанной, когда она прозвучала (ATT-19); ответ раньше озвучки снимает кандидата."""
+        if cand.source == "question" and cand.done is not None:
+            try:
+                await cand.done
+            except asyncio.CancelledError:
+                self.attention.speech.discard(cand, "cancelled")
+                raise
+
+    async def say(self, text: str, emotion: str | None = None, priority: int | None = None, *, direct: bool = False,
+                  source: str | None = None):
+        """Сказать реплику: через очередь речи внимания (ATT-13) или сразу (direct=True: так зовёт сам планировщик)."""
+        if self._queued(direct):
+            await self._wait_spoken(self.attention.enqueue_say(text, emotion, priority, source=source))
+            return
+        await self._say_now(text, emotion, priority)
+
+    async def _say_now(self, text: str, emotion: str | None = None, priority: int | None = None):
+        """Журнал, вывод речи (питомец), эмоция. В канале модуля вместо речи идёт deliver."""
         from speech_text import clean_speech
         text = clean_speech(text)   # без разметки, ремарок в скобках и оборванного хвоста: это произносится вслух
         if not text:
@@ -96,7 +126,9 @@ class Companion:
         else:
             if emotion:
                 self.presence.update(emotion=emotion)
-            await self.speech.speak(new_utterance_id(), text, emotion, priority)
+            utterance = new_utterance_id()
+            self.last_utterance_id = utterance
+            await self.speech.speak(utterance, text, emotion, priority or 50)
         if emotion:
             fast_brain.publish("say", {"emotion": emotion, "action": "none"})
         logger.info(f"[ГЛаДОС] {text}")
@@ -129,12 +161,14 @@ class Companion:
     async def on_input(self, ui: UserInput):
         """Единый вход обращений (CORE-24): ответ на него уходит в канал обращения (current_channel)."""
         token = current_channel.set(ui.channel)
-        self.presence.update(busy=True)
+        if self.attention is None:
+            self.presence.update(busy=True)         # с менеджером внимания занятость определяет стек фокуса (ATT-23)
         try:
             await self._handle_text(ui.text)
         finally:
             current_channel.reset(token)
-            self.presence.update(busy=False)
+            if self.attention is None:
+                self.presence.update(busy=False)
 
     async def _handle_text(self, text: str):
         text = text.strip()
@@ -148,6 +182,10 @@ class Companion:
         self.presence.update(last_user_ts=self._last_user_ts)
         fast_brain.publish("chat", {"emotion": "thinking", "action": "none"})   # сразу «задумалась», без вызова модели
 
+        cls = None
+        if self.attention is not None:
+            await self.attention.on_user_input(text)          # фокус «разговор»; «замолчи» обрывает речь до любых вызовов модели
+            cls = await self.attention.classify_input(text)   # намерение (ATT-28); None - классификатора нет, всё как раньше
         if approvals.has_pending() and await self._answer_approval(text):
             return
         if self.game_order is not None:
@@ -163,11 +201,15 @@ class Companion:
                     text, must=True))
                 asyncio.create_task(fast_brain.react_chat(text, self._rel))
                 return
+        intent = cls.intent if cls is not None else None
+        use_memory = not (cls is not None and cls.needs_memory is False)   # «память не нужна»: поиск в графе пропускается
         async with self._busy:
-            if self.router is not None and self.router.looks_like_action(text):
+            if intent == "about_self":
+                await self._converse(text, about_self=True, use_memory=use_memory)   # что она умеет: ответ по перечню окружений
+            elif self.router is not None and (self.router.looks_like_action(text) or intent in ("action", "attention_rule")):
                 await self._act(text)          # просьба: планировщик, ответ после плана
             else:
-                flagged = await self._converse(text)   # болтовня: один вызов, ответ сразу
+                flagged = await self._converse(text, use_memory=use_memory)   # болтовня: один вызов, ответ сразу
                 if flagged and self.router is not None:
                     await self._act(text, after_chat=True)   # модель заподозрила просьбу, которую не распознали глаголы
         asyncio.create_task(fast_brain.react_chat(text, self._rel))   # эмоция и отношение: уже после ответа
@@ -191,11 +233,17 @@ class Companion:
 
     # ── разговор ───────────────────────────────────────────────────────────────
 
-    async def _speak_about(self, fact: str, user_text: str = "", must: bool = False, question: bool = False):
+    async def _speak_about(self, fact: str, user_text: str = "", must: bool = False, question: bool = False,
+                           direct: bool = False):
         """Нет заготовленных фраз: ей сообщают факт, а говорить ли и что — решает сама.
         must=True для итога прямой просьбы пользователя: промолчать нельзя, он должен
         узнать, что получилось (иначе непонятно, сработало ли).
-        question=True: факт - вопрос к пользователю (core.ask, вопрос задачи), его нужно задать своими словами."""
+        question=True: факт - вопрос к пользователю (core.ask, вопрос задачи), его нужно задать своими словами.
+        direct=False: факт кладётся в очередь речи внимания, реплику сформулирует планировщик, когда придёт очередь;
+        direct=True: планировщик уже выбрал этот факт - реплика формулируется и говорится сразу."""
+        if self._queued(direct):
+            await self._wait_spoken(self.attention.enqueue_fact(fact, user_text, must, question))
+            return
         if question:
             rule = ("Пользователю нужно задать вопрос, который описан в факте: задай его своими словами коротко, "
                     "ничего не выдумывая и не отвечая за него. Промолчать нельзя. "
@@ -218,7 +266,7 @@ class Companion:
             logger.warning(f"Не удалось решить, что сказать: {e}")
             return
         if data and data.get("say") and data.get("text"):
-            await self.say(str(data["text"]))
+            await self.say(str(data["text"]), direct=True)
 
     def _claude_note(self) -> str:
         import claude_quota
@@ -317,15 +365,21 @@ class Companion:
         except (asyncio.TimeoutError, Exception):
             self._graph_block = ""
 
-    async def _converse(self, text: str) -> bool:
+    async def _converse(self, text: str, about_self: bool = False, use_memory: bool = True) -> bool:
         """Обычный ответ обычным текстом, без JSON: так он приходит вдвое быстрее (локальная
         модель генерирует ~10-15 токенов в секунду, лишние поля стоят секунд).
         Возвращает True, если модель пометила сообщение как просьбу действовать."""
         system = (PERSONA + " " + self.profile_hint() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
                   "опубликовать, посмотреть), начни ответ с маркера [ДЕЙСТВИЕ] и коротко скажи, что сейчас "
                   "посмотришь, что можешь, БЕЗ выдуманного результата. Иначе просто ответь.")
-        await self._refresh_graph(text)
+        if use_memory:
+            await self._refresh_graph(text)
+        else:
+            self._graph_block = ""          # классификатор: для этой реплики факты о людях и прошлом не нужны (ATT-28)
         user = f"{self._context(query=text)}\n\nПользователь говорит: {text}"
+        if about_self and self.router is not None:
+            user += ("\n\nПользователь спрашивает о твоих возможностях. Отвечай строго по этому перечню, ничего не выдумывая:\n"
+                     + self.router.registry.describe())
         reply, escalate, action_request = "", False, False   # escalate: только если локальная модель недоступна
         try:
             reply = (await fast_brain._ask(system, user, timeout=60, max_tokens=140, temperature=0.7)).strip()
@@ -573,7 +627,7 @@ class Companion:
             self._last_say = now - _MIN_GAP.get(level, _MIN_GAP["normal"]) / 2
         elif data and data.get("say") and data.get("text"):
             emo = data.get("emotion") if data.get("emotion") in fast_brain.EMOTIONS else None
-            await self.say(str(data["text"]), emo)
+            await self.say(str(data["text"]), emo, source="proactive")
             events_log.log("proactive", situation, said=True)
         else:
             events_log.log("proactive", situation, said=False)

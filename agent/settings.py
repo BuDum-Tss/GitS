@@ -41,9 +41,20 @@ DEFAULTS = {
     # модули (ТЗ 02, CORE-40): id -> {"enabled": bool, <имя собственной настройки>: значение}; нет записи — по умолчанию
     # (включён; для модулей из modules.yaml берётся поле enabled оттуда)
     "modules": {},
+    # менеджер внимания (ТЗ 03, ATT-30): классификатор, пороги решений D0-D4, запас прерывания, когда пользователь считается
+    # отошедшим, период полураспада свежести по шаблону вида события; min_conf_* - порог уверенности классификатора
+    "attention": {
+        "classifier": True,
+        "thresholds": [15, 35, 60, 85],
+        "interrupt_margin": 15,
+        "away_after_s": 600,
+        "half_life": {"rimworld.*": 60, "telegram.*": 900, "desktop.*": 120, "*.job": 600, "*": 300},
+        "min_conf_event": 0.35,
+        "min_conf_input": 0.5,
+    },
 }
-# словари, которые update() сливает на один уровень вглубь (modules.<id> целиком не затирается)
-_DEEP_KEYS = ("modules",)
+# словари, которые update() сливает на один уровень вглубь (modules.<id> и attention.<ключ> целиком не затираются)
+_DEEP_KEYS = ("modules", "attention")
 _dir = Path(os.getenv("MEMORY_DIR", "./memory"))
 
 
@@ -57,6 +68,11 @@ def init(memory_dir: str):
     global _dir
     _dir = Path(memory_dir)
     events_log.init(memory_dir)
+
+
+def memory_dir() -> Path:
+    """Папка памяти ядра (там же лежат settings.json, правила внимания и др.)."""
+    return _dir
 
 
 def _file() -> Path:
@@ -73,7 +89,9 @@ def load() -> dict:
         if not isinstance(merged.get(k), dict):
             merged[k] = copy.deepcopy(DEFAULTS[k])
         else:
-            merged[k] = copy.deepcopy(merged[k])        # изменение результата не должно портить DEFAULTS
+            # недостающие ключи берутся из значений по умолчанию (частично сохранённый attention не теряет остальное);
+            # изменение результата не должно портить DEFAULTS
+            merged[k] = {**copy.deepcopy(DEFAULTS[k]), **copy.deepcopy(merged[k])}
     return merged
 
 

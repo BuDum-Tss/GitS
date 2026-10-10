@@ -28,6 +28,7 @@
 """
 import json
 import os
+import queue
 import sqlite3
 import threading
 import time
@@ -65,27 +66,29 @@ def init(memory_dir: str):
     _dir = Path(memory_dir)
 
 
-def _db_path() -> Path:
-    return _dir / "events.db"
+def _db_path(directory: Path | None = None) -> Path:
+    return (directory or _dir) / "events.db"
 
 
-def _connect() -> sqlite3.Connection:
-    _dir.mkdir(parents=True, exist_ok=True)
-    path = _db_path()
+def _connect(directory: Path | None = None) -> sqlite3.Connection:
+    directory = directory or _dir
+    directory.mkdir(parents=True, exist_ok=True)
+    path = _db_path(directory)
     conn = sqlite3.connect(path, timeout=10)
     if str(path) not in _ready:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(_SCHEMA)
         conn.commit()
         _ready.add(str(path))
-        _migrate_jsonl(conn)
+        _migrate_jsonl(conn, directory)
     return conn
 
 
-def _migrate_jsonl(conn: sqlite3.Connection):
+def _migrate_jsonl(conn: sqlite3.Connection, directory: Path | None = None):
     """Разовый перенос старого журнала (events.1.jsonl, events.jsonl) в базу."""
+    directory = directory or _dir
     for name in ("events.1.jsonl", "events.jsonl"):
-        f = _dir / name
+        f = directory / name
         claimed = f.with_name(name + ".migrating")
         try:
             os.replace(f, claimed)          # атомарно: второй процесс файл уже не найдёт
@@ -132,6 +135,75 @@ def log(kind: str, text: str = "", **data):
         pass
 
 
+# ── запись без ожидания (ТЗ 03, ATT-31): коммит SQLite стоит ~8 мс, на цикле событий столько ждать нельзя ──────────────────
+
+_pending: "queue.SimpleQueue" = queue.SimpleQueue()
+_writer: threading.Thread | None = None
+_writer_lock = threading.Lock()
+_unwritten = [0]                       # строк в очереди и в работе у писателя
+_idle = threading.Condition()
+_BATCH = 200
+
+
+def _write_batch(batch: list[tuple]) -> None:
+    """Строки одним коммитом; каждая пишется в ту папку памяти, которая действовала в момент log_nowait."""
+    by_dir: dict[Path, list[tuple]] = {}
+    for d, row in batch:
+        by_dir.setdefault(d, []).append(row)
+    for d, rows in by_dir.items():
+        try:
+            with _lock:
+                conn = _connect(d)
+                try:
+                    conn.executemany("INSERT INTO events(ts, kind, text, data, session) VALUES (?,?,?,?,?)", rows)
+                    conn.commit()
+                    _counter[0] += len(rows)
+                    if _counter[0] // _PRUNE_EVERY != (_counter[0] - len(rows)) // _PRUNE_EVERY:
+                        _prune(conn)
+                finally:
+                    conn.close()
+        except (OSError, sqlite3.Error, TypeError, ValueError):
+            pass
+
+
+def _writer_loop() -> None:
+    while True:
+        batch = [_pending.get()]
+        try:
+            while len(batch) < _BATCH:
+                batch.append(_pending.get_nowait())
+        except queue.Empty:
+            pass
+        _write_batch(batch)
+        with _idle:
+            _unwritten[0] -= len(batch)
+            _idle.notify_all()
+
+
+def log_nowait(kind: str, text: str = "", **data):
+    """Как log(), но запись уходит в фоновый поток: вызывающий не ждёт диск. Порядок строк сохраняется; чтение (tail, count,
+    export_jsonl) и flush() сначала дожидаются записи уже поставленных строк."""
+    global _writer
+    try:
+        row = (round(time.time(), 2), kind, str(text)[:500],
+               json.dumps(data, ensure_ascii=False, default=str) if data else None, _session)
+    except (TypeError, ValueError):
+        return
+    with _writer_lock:
+        if _writer is None or not _writer.is_alive():
+            _writer = threading.Thread(target=_writer_loop, daemon=True, name="events-writer")
+            _writer.start()
+        with _idle:
+            _unwritten[0] += 1
+        _pending.put((_dir, row))
+
+
+def flush(timeout: float = 5.0) -> bool:
+    """Дождаться записи всего, что поставлено log_nowait. True, если очередь пуста."""
+    with _idle:
+        return _idle.wait_for(lambda: _unwritten[0] <= 0, timeout)
+
+
 def _row(r) -> dict:
     rec = {"ts": r[0], "kind": r[1], "text": r[2]}
     if r[3]:
@@ -144,6 +216,7 @@ def _row(r) -> dict:
 
 def tail(limit: int = 200, kinds: set | None = None, since: float = 0.0) -> list[dict]:
     """Последние события (старые сверху): не больше limit, только указанных видов, не раньше since."""
+    flush()
     try:
         conn = _connect()
     except (OSError, sqlite3.Error):
@@ -164,6 +237,7 @@ def tail(limit: int = 200, kinds: set | None = None, since: float = 0.0) -> list
 
 
 def count(kind: str | None = None, since: float = 0.0) -> int:
+    flush()
     try:
         conn = _connect()
         try:

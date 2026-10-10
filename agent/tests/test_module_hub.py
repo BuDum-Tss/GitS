@@ -413,7 +413,7 @@ async def test_events_speech_emotion_state_reach_core(tmp_path, monkeypatch):
         raw = RawModule(core, manifest("tg", state=True))
         try:
             await raw.hello()
-            await raw.send("event", {"kind": "tg.ping", "text": "Пинг", "urgency_hint": 3})
+            await raw.send("event", {"kind": "tg.ping", "text": "Пинг", "urgency_hint": 1})       # D1: в сводку, не озвучивается
             await raw.send("event", {"kind": "other.ping", "text": "чужой вид"})          # вид другого модуля
             await raw.send("event", {"kind": "tg.bad", "text": ""})                        # неверное тело
             await raw.send("say", {"text": "Борис уснул.", "mode": "fact"})
@@ -427,8 +427,8 @@ async def test_events_speech_emotion_state_reach_core(tmp_path, monkeypatch):
             await raw.close()
         import events_log
         logged = events_log.tail(50, {"module_event"})
-        assert [e["data"]["event_kind"] for e in logged] == ["tg.ping"]                       # заглушка внимания: журнал
-        assert core.companion.about == [("Борис уснул.", False, False)]                 # fact -> _speak_about
+        assert [e["data"]["event_kind"] for e in logged] == ["tg.ping"]                       # журнал событий модулей
+        assert core.companion.about == [("Борис уснул.", False, False)]                 # fact -> очередь речи -> _speak_about
         assert published == [("module:tg", {"emotion": "happy", "action": "none", "source": "tg"})]
         assert core.modules.get("tg").state["summary"] == "всё хорошо"
 
@@ -541,6 +541,7 @@ async def test_core_ask_from_module_all_kinds(tmp_path):
         async with running_client(client, core):
             task = asyncio.create_task(client.ask("Удалить черновики?", kind="approval"))
             await core.wait_for(approvals.has_pending)
+            await core.wait_for(lambda: core.companion.about)                       # формулировка вопроса идёт через очередь речи
             assert core.companion.about[-1][2] is True and "echo" in core.companion.about[-1][0]
             approvals.resolve(True)
             assert await task is True

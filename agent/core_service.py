@@ -70,12 +70,14 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
     io = ConversationIO(companion)
     companion.io = io
     attention = Attention(companion, io)
+    companion.attention = attention                      # речь идёт через очередь внимания (ТЗ 03, ATT-13)
     requests = CoreRequests(attention=attention)
     holder: dict = {}                                    # profiles появится ниже, а реестру и шине он нужен уже при создании
     modules = ModuleRegistry(registry, on_state=lambda: holder["profiles"].poke())
     hub = ModuleHub(modules, attention=attention, requests=requests, battery_source=battery, presence=presence,
                     profile_source=lambda: holder["profiles"].info())
     io.hub = hub
+    attention.hub, attention.modules = hub, modules
     presence.listener = hub.broadcast_presence
 
     def module_state(module_id: str):
@@ -93,13 +95,14 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
     profiles = profile_manager.ProfileManager(battery=battery, foreground_app=foreground, module_state=module_state,
                                               on_change=on_profile_change)
     holder["profiles"] = profiles
+    attention.profiles = profiles
     profiles.evaluate()
     registry.focus = profiles.focus_modules
     companion.profile_hint = profiles.hint
 
     specs = supervisor_mod.load_specs() if specs is None else specs
     for spec in specs:
-        modules.declare(spec.id, title=spec.title, default_enabled=spec.enabled)
+        modules.declare(spec.id, title=spec.title, default_enabled=spec.enabled, kind=spec.kind)
 
     async def send_shutdown(module_id: str) -> bool:
         conn = hub.connection(module_id)
@@ -112,19 +115,21 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, legacy_mod
                                     enabled=modules.is_enabled, is_connected=hub.is_connected,
                                     send_shutdown=send_shutdown)
     modules.supervisor = sup
-    builtin.register_core_tools(registry, modules)
+    builtin.register_core_tools(registry, modules, attention)
 
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, profiles=profiles,
                             supervisor=sup, presence=presence, tasks=[])
 
     async def start():
         await hub.start()                                # токен в файл и фоновая сверка настроек
+        await attention.start()                          # планировщик речи, сроки фокуса, чистка правил
         layer.tasks.append(asyncio.get_running_loop().create_task(profiles.run()))
         await sup.start()
 
     async def stop():
         for task in layer.tasks:
             task.cancel()
+        await attention.stop()
         await sup.stop_all()                             # CORE-17: shutdown всем, через 10 с убить оставшихся
         await hub.stop()
 
@@ -169,6 +174,7 @@ async def _run(config: dict):
     registry.embedder = tool_search.ToolEmbeddings(Path(mem_dir) / "tool_embeddings.json")     # отбор инструментов по смыслу
     layer = wire_modules(companion, registry, foreground_app=lambda: sample["app"], legacy_module_state=legacy_module_state)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
+    dashboard.set_attention(layer.attention)
     dashboard.set_presence(presence)
     loop = asyncio.get_running_loop()
     await dashboard.start_dashboard(
@@ -218,7 +224,8 @@ async def _run(config: dict):
         finally:
             _os.unlink(path)
 
-    mic = MicListener(STTClient(), voices, companion.on_voice, companion.is_speaking, own_voice_sample)
+    mic = MicListener(STTClient(), voices, companion.on_voice, companion.is_speaking, own_voice_sample,
+                      on_speaking=layer.attention.set_user_speaking)
     asyncio.create_task(mic.run())
     asyncio.create_task(tg_user.run())
 

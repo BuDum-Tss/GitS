@@ -159,6 +159,7 @@ _state = {"mood": "idle",
 _lock            = threading.Lock()
 _last_spoken     = [""]          # текст последней озвучки
 _first_poll      = [True]        # первый опрос после запуска не озвучиваем
+_last_stop       = [None]        # метка последней остановки речи (say.json: stop), по ней озвучка обрывается
 _last_comment_ts = [time.time()] # когда последний раз менялся комментарий
 _pending_first_segment = [""]    # первый сегмент новой реплики, пока воркер TTS не проснулся
 
@@ -269,10 +270,12 @@ def _poll():
             mood = _mood_from(d)
             text = (say.get("text") or "").strip()
             say_key = say.get("ts")   # метка времени реплики: меняется только когда сказана новая
+            stop_key = say.get("stop")   # ядро просит замолчать (менеджер внимания, ATT-18): договорить предложение и всё
         except Exception:
             mood = "resting"
             text = ""
             say_key = None
+            stop_key = None
 
         now = time.time()
         if _first_poll[0]:
@@ -280,6 +283,10 @@ def _poll():
             # её не показываем и не озвучиваем
             _first_poll[0] = False
             _last_spoken[0] = say_key
+            _last_stop[0] = stop_key
+        if stop_key is not None and stop_key != _last_stop[0]:
+            _last_stop[0] = stop_key
+            tts_engine.stop_after_sentence()
         # Сказана новая реплика (даже дословно такая же, как прошлая): облачко и озвучка по предложениям
         if text and say_key is not None and say_key != _last_spoken[0]:
             _last_spoken[0] = say_key

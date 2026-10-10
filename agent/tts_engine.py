@@ -293,6 +293,17 @@ def speak_sequence(segments: list[str]):
         pass
 
 
+def stop_after_sentence():
+    """Прервать озвучку на границе предложения (ТЗ 03, ATT-17, ATT-18): идущий сегмент договаривается, остальные не звучат,
+    очередь очищается. Отличие от speak_sequence: процесс воспроизведения не убивается, фраза не обрывается на полуслове."""
+    _gen[0] += 1
+    try:
+        _q.get_nowait()
+        _q.task_done()
+    except queue.Empty:
+        pass
+
+
 def speak(text: str):
     """Озвучить один текст целиком (обратная совместимость)."""
     speak_sequence([text])

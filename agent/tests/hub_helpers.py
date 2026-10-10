@@ -7,6 +7,8 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
+import speech_out
+from conversation_io import current_channel
 from attention import Attention
 from core_requests import CoreRequests
 from environments.registry import Registry
@@ -17,24 +19,63 @@ from module_registry import ModuleRegistry
 from router import Router
 
 
+class FakeSpeech:
+    """Вывод речи в памяти: что произнесено, что остановлено; говорит ли она, задаётся тестом."""
+
+    def __init__(self):
+        self.spoken: list[tuple] = []
+        self.stopped: list = []
+        self.speaking = False
+
+    async def speak(self, utterance_id, text, emotion, priority):
+        self.spoken.append((utterance_id, text, emotion, priority))
+
+    async def stop(self, utterance_id=None):
+        self.stopped.append(utterance_id)
+        self.speaking = False
+
+    def is_speaking(self):
+        return self.speaking
+
+    def current_segment(self):
+        return ""
+
+
 class FakeCompanion:
-    """То, что нужно заглушке внимания от компаньона."""
+    """То, что нужно менеджеру внимания от компаньона."""
 
     def __init__(self):
         self.said: list[tuple] = []
         self.about: list[tuple] = []
-        self.speaking = False
+        self.speech = FakeSpeech()
+        self.presence = speech_out.PresenceTracker()
         self._last_user_ts = 0.0
         self.graph = None
+        self.last_utterance_id = None
+        self.repeats = False
+        self.about_channels: list = []                  # канал обращения, в котором вызван _speak_about
 
-    async def say(self, text, emotion=None, priority=50):
+    @property
+    def speaking(self):
+        return self.speech.speaking
+
+    @speaking.setter
+    def speaking(self, value):
+        self.speech.speaking = value
+
+    async def say(self, text, emotion=None, priority=None, *, direct=False, source=None):
         self.said.append((text, emotion))
+        self.last_utterance_id = "u-" + str(len(self.said))
 
-    async def _speak_about(self, fact, user_text="", must=False, question=False):
+    async def _speak_about(self, fact, user_text="", must=False, question=False, direct=False):
         self.about.append((fact, must, question))
+        self.about_channels.append(current_channel.get())
+
+    def _repeats_recent(self, text):
+        return self.repeats
 
     def is_speaking(self):
-        return self.speaking
+        return self.speech.is_speaking()
 
 
 class FakeIO:
@@ -54,7 +95,8 @@ class Core:
         self.modules = ModuleRegistry(self.envs, settings_source=lambda: self.settings_state)
         self.companion = FakeCompanion()
         self.io = FakeIO()
-        self.attention = Attention(self.companion, self.io)
+        self.attention = Attention(self.companion, self.io, idle_source=lambda: 0.0)       # не зависеть от простоя настоящего ввода
+        self.attention.hub, self.attention.modules = None, self.modules
         self.requests = CoreRequests(attention=self.attention, tts_dir=tmp_path / "tts")
         self.said: list[str] = []
         self.hub = ModuleHub(self.modules, attention=self.attention, requests=self.requests,
@@ -95,6 +137,7 @@ class Core:
         await self.hub.start()
 
     async def stop(self):
+        await self.attention.stop()
         await self.hub.stop()
         if self._runner is not None:
             await self._runner.cleanup()
