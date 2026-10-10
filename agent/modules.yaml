@@ -13,3 +13,16 @@ modules:
     autostart: true
     restart: on-failure
     enabled: false       # тестовый модуль: выключен по умолчанию, включается в дашборде (вкладка «Модули»)
+
+  # Сервисы (kind: service, ТЗ 03, ATT-2): процесс без связи по WebSocket; супервизор считает его работающим, пока health_url
+  # отвечает 200 (опрос раз в 10 с), и перезапускает по restart. Если порт занят уже работающим сервисом (запущен не
+  # супервизором), второй экземпляр не запускается, идёт только слежение за здоровьем.
+  - id: decider
+    title: Классификатор (decider)
+    kind: service
+    cwd: "{GITS}/services/decider"
+    command: "{GITS}/services/decider/.venv/Scripts/python.exe"      # Python 3.12 с torch CPU, см. services/decider/README.md
+    args: ["decider_server.py"]
+    health_url: "http://127.0.0.1:8768/health"
+    autostart: true
+    restart: on-failure

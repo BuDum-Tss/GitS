@@ -6,6 +6,11 @@
 вывода без токенов). Выключение: модулю уходит `shutdown`, через 10 с процесс убивается вместе с потомками. Вручную
 запущенный модуль (при разработке) принимается как обычный: пока он подключён, второй экземпляр не запускается.
 
+Сервис (ТЗ 03, ATT-2): запись `kind: service` с `health_url` - процесс без связи по WebSocket (первый: `decider`, классификатор
+внимания). Супервизор считает его работающим, пока `GET health_url` отвечает 200 (опрос раз в 10 с), перезапускает по той же
+политике `restart`, а если порт уже занят работающим сервисом (запущен не супервизором), второй экземпляр не запускает и только
+следит за здоровьем. Токен ядра сервису не передаётся.
+
 Вывод процесса (stdout и stderr вместе) пишется в `agent/logs/modules/<id>.log` (5 МБ, три файла). Токен ядра процессу
 передаётся в `GLADOS_MODULE_TOKEN`, в журналы он не попадает: похожие на токены места в выводе вырезаются.
 """
@@ -41,6 +46,9 @@ SHUTDOWN_WAIT_S = 10.0                # CORE-14, CORE-17
 TAIL_LINES = 20
 LOG_BYTES, LOG_FILES = 5 * 1024 * 1024, 3
 POLL_MANUAL_S = 5.0                   # как часто смотрим, не отключился ли вручную запущенный модуль
+HEALTH_INTERVAL_S = 10.0              # ATT-2: опрос health_url сервиса
+HEALTH_TIMEOUT_S = 2.0
+KINDS = ("module", "service")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 RESTART_POLICIES = ("always", "on-failure", "never")
 
@@ -59,6 +67,8 @@ class ModuleSpec:
     restart: str = "on-failure"
     enabled: bool = True             # включён ли, пока в настройках нет явного выбора
     title: str = ""
+    kind: str = "module"             # module: подключается по WebSocket; service: проверяется по health_url (ATT-2)
+    health_url: str = ""
 
 
 def load_specs(path: Path | str = MODULES_YAML) -> list[ModuleSpec]:
@@ -79,10 +89,16 @@ def load_specs(path: Path | str = MODULES_YAML) -> list[ModuleSpec]:
             args = raw.get("args") or []
             if not isinstance(args, list):
                 raise ValueError("args: список строк")
+            kind = raw.get("kind", "module")
+            if kind not in KINDS:
+                raise ValueError(f"kind: одно из {list(KINDS)}")
+            health_url = str(raw.get("health_url") or "")
+            if kind == "service" and not health_url.startswith(("http://", "https://")):
+                raise ValueError("для kind: service нужен health_url (http:// или https://)")
             specs.append(ModuleSpec(id=raw["id"], cwd=str(raw.get("cwd") or "."), command=str(raw["command"]),
                                     args=[str(a) for a in args], autostart=bool(raw.get("autostart", True)),
                                     restart=restart, enabled=bool(raw.get("enabled", True)),
-                                    title=str(raw.get("title") or "")))
+                                    title=str(raw.get("title") or ""), kind=kind, health_url=health_url))
         except (KeyError, ValueError) as e:
             logger.warning(f"modules.yaml, запись {i + 1}: {e}")
     return specs
@@ -152,6 +168,8 @@ class _Proc:
         self.reason = ""
         self.tail: deque[str] = deque(maxlen=TAIL_LINES)
         self.sink: _LogSink | None = None
+        self.healthy = False            # сервис: последний опрос health_url дал 200
+        self.external = False           # сервис работает, но запущен не супервизором
 
     @property
     def alive(self) -> bool:
@@ -167,10 +185,12 @@ class Supervisor:
                  python: str = sys.executable, env: dict | None = None,
                  sleep: Callable[[float], Awaitable] = asyncio.sleep, clock: Callable[[], float] = time.monotonic,
                  shutdown_wait: float = SHUTDOWN_WAIT_S, poll_manual: float = POLL_MANUAL_S,
-                 pythonpath: list[str] | None = None):
+                 pythonpath: list[str] | None = None,
+                 probe: Callable[[str], Awaitable[bool]] | None = None, health_interval: float = HEALTH_INTERVAL_S):
         """enabled(id) - включён ли модуль (ModuleRegistry.is_enabled); is_connected(id) - подключён ли он сейчас;
         send_shutdown(id) - послать модулю shutdown; sleep и clock подменяются в тестах (задержки перезапуска);
-        pythonpath - что добавить в PYTHONPATH процессов (до установки пакета glados-module это GitS/sdk)."""
+        pythonpath - что добавить в PYTHONPATH процессов (до установки пакета glados-module это GitS/sdk);
+        probe(url) -> отвечает ли сервис 200 (в тестах подменяется); health_interval - период опроса сервисов."""
         self.specs = {s.id: s for s in specs}
         self.token, self.core_url = token, core_url
         self._enabled, self._is_connected, self._send_shutdown = enabled, is_connected, send_shutdown
@@ -179,7 +199,20 @@ class Supervisor:
         self._sleep, self._clock = sleep, clock
         self.shutdown_wait, self.poll_manual = shutdown_wait, poll_manual
         self.pythonpath = list(pythonpath if pythonpath is not None else [str(self.gits_root / "sdk")])
+        self._probe = probe or self._http_probe
+        self.health_interval = health_interval
         self.state = {s.id: _Proc(s) for s in specs}
+
+    @staticmethod
+    async def _http_probe(url: str) -> bool:
+        """GET url отвечает 200 (ATT-2)."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=HEALTH_TIMEOUT_S)) as http:
+                async with http.get(url) as r:
+                    return r.status == 200
+        except Exception:
+            return False
 
     # ── разбор записи ───────────────────────────────────────────────────────
 
@@ -209,6 +242,8 @@ class Supervisor:
             cwd = self.agent_dir / cwd
         if not cwd.is_dir():
             return f"папка модуля не найдена: {cwd}"
+        if spec.kind == "service" and not Path(command).is_file() and not shutil.which(command):
+            return f"окружение сервиса не найдено: {command} (см. README сервиса)"      # чужой Python сервису не годится
         if spec.command.strip() != "{PYTHON}" and not Path(command).is_file() and not shutil.which(command):
             logger.warning(f"Модуль {module_id}: команда {command} не найдена, запускаю тем же Python, что и ядро")
             command = self.python
@@ -216,6 +251,9 @@ class Supervisor:
 
     def _process_env(self, module_id: str) -> dict:
         env = dict(self._env)
+        if self.specs[module_id].kind == "service":
+            env["PYTHONUNBUFFERED"] = "1"           # сервис не модуль: токен ядра и адрес шины ему не нужны
+            return env
         env.update(GLADOS_MODULE_TOKEN=self.token, GLADOS_CORE_URL=self.core_url, GLADOS_MODULE_ID=module_id,
                    PYTHONUNBUFFERED="1")
         if self.pythonpath:            # до установки пакета glados-module модули находят SDK через PYTHONPATH
@@ -230,7 +268,8 @@ class Supervisor:
             return None
         return {"status": m.status, "text": m.text, "pid": m.proc.pid if m.alive else None, "restarts": m.restarts,
                 "last_error": m.last_error or (m.reason if m.status == "not_configured" else ""),
-                "configured": m.status != "not_configured", "reason": m.reason}
+                "configured": m.status != "not_configured", "reason": m.reason, "kind": m.spec.kind,
+                "healthy": m.healthy}
 
     def log_path(self, module_id: str) -> Path:
         return self.logs_dir / f"{module_id}.log"
@@ -290,6 +329,7 @@ class Supervisor:
             except asyncio.CancelledError:
                 pass
         m.task = None
+        m.healthy = m.external = False
         if m.status not in ("crashed", "not_configured"):
             m.status, m.text = "stopped", "остановлен"
 
@@ -300,6 +340,13 @@ class Supervisor:
     async def _terminate(self, m: _Proc) -> None:
         proc = m.proc
         if proc is None or proc.returncode is not None:
+            return
+        if m.spec.kind == "service":                    # у сервиса нет канала shutdown: останавливаем процесс вместе с потомками
+            await asyncio.to_thread(kill_tree, proc.pid)
+            try:
+                await asyncio.wait_for(proc.wait(), 5)
+            except asyncio.TimeoutError:
+                pass
             return
         if self._send_shutdown is not None:
             try:
@@ -329,7 +376,15 @@ class Supervisor:
                     events_log.log("module", f"модуль {spec.id} не запущен: {resolved}", module=spec.id)
                     return
                 m.reason = ""
-                if self._is_connected(spec.id):         # CORE-16: запущен вручную, второй экземпляр не нужен
+                if spec.kind == "service":
+                    m.healthy = await self._probe(spec.health_url)
+                    if m.healthy:                       # ATT-2: порт занят работающим сервисом - второй не запускаем, следим
+                        m.external = True
+                        m.status, m.text = "running", "работает (запущен не супервизором)"
+                        await self._sleep(self.health_interval)
+                        continue
+                    m.external = False
+                elif self._is_connected(spec.id):       # CORE-16: запущен вручную, второй экземпляр не нужен
                     m.status, m.text = "manual", "запущен вручную"
                     await self._sleep(self.poll_manual)
                     continue
@@ -362,16 +417,36 @@ class Supervisor:
             logger.warning(f"Модуль {spec.id}: не удалось запустить: {e}")
             m.status, m.text = "backoff", "не удалось запустить"
             return 1
-        m.status, m.text = "running", "запущен"
-        events_log.log("module", f"запущен процесс модуля {spec.id} (pid {m.proc.pid})", module=spec.id)
+        service = spec.kind == "service"
+        m.status, m.text = ("starting", "запускается") if service else ("running", "запущен")
+        m.healthy = False
+        events_log.log("module", f"запущен процесс {'сервиса' if service else 'модуля'} {spec.id} (pid {m.proc.pid})",
+                       module=spec.id)
         pump = asyncio.get_running_loop().create_task(self._pump(m, m.proc))
-        code = await m.proc.wait()
+        health = asyncio.get_running_loop().create_task(self._watch_health(m)) if service else None
+        try:
+            code = await m.proc.wait()
+        finally:
+            if health is not None:
+                health.cancel()
+            m.healthy = False
         try:
             await asyncio.wait_for(pump, 3)             # дочитать хвост вывода
         except (asyncio.TimeoutError, asyncio.CancelledError):
             pump.cancel()
         await m.sink.flush()
         return code
+
+    async def _watch_health(self, m: _Proc) -> None:
+        """Пока процесс сервиса жив: опрос health_url раз в 10 с; 200 - «работает», иначе «не отвечает» (ATT-2)."""
+        while True:
+            ok = await self._probe(m.spec.health_url)
+            if ok != m.healthy:
+                events_log.log("module", f"сервис {m.spec.id}: {'работает' if ok else 'не отвечает'}", module=m.spec.id,
+                               healthy=ok)
+            m.healthy = ok
+            m.status, m.text = ("running", "работает") if ok else ("starting", "запущен, не отвечает на health")
+            await self._sleep(self.health_interval)
 
     async def _pump(self, m: _Proc, proc: asyncio.subprocess.Process) -> None:
         last_flush = time.monotonic()

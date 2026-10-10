@@ -37,6 +37,7 @@ class ModuleRecord:
     state: dict | None = None                       # {"summary": str, "data": dict, "ts": float}
     jobs: dict = field(default_factory=dict)        # job_id -> JobStatus (последний job.update + module + updated)
     default_enabled: bool = True                    # из modules.yaml, пока в настройках нет явного выбора
+    kind: str = "module"                            # service: процесс без WebSocket, жив по health_url (ТЗ 03, ATT-2)
 
 
 class ModuleRegistry:
@@ -55,11 +56,12 @@ class ModuleRegistry:
 
     # ── записи ──────────────────────────────────────────────────────────────
 
-    def declare(self, module_id: str, *, title: str = "", default_enabled: bool = True) -> ModuleRecord:
-        """Модуль, который ядро знает заранее (modules.yaml): запись есть и пока он не подключился."""
+    def declare(self, module_id: str, *, title: str = "", default_enabled: bool = True, kind: str = "module") -> ModuleRecord:
+        """Модуль или сервис, который ядро знает заранее (modules.yaml): запись есть и пока он не подключился."""
         rec = self.records.setdefault(module_id, ModuleRecord(module_id))
         rec.title = rec.title or title or module_id
         rec.default_enabled = default_enabled
+        rec.kind = kind
         return rec
 
     def get(self, module_id: str) -> ModuleRecord | None:
@@ -237,7 +239,7 @@ class ModuleRegistry:
         sup = self.supervisor.status(rec.id) if self.supervisor is not None else None
         if sup:
             return sup["status"], sup["text"]
-        return "offline", "не подключён"
+        return "offline", "не отвечает" if rec.kind == "service" else "не подключён"
 
     def describe(self, rec: ModuleRecord) -> dict:
         m = rec.manifest or {}
@@ -245,8 +247,10 @@ class ModuleRegistry:
         code, text = self.status_of(rec)
         tools = [{"id": f"{rec.id}.{t['name']}", "name": t["name"], "description": t["description"], "risk": t["risk"],
                   "availability": t["availability"]} for t in m.get("tools") or []]
+        service = rec.kind == "service"
         return {"id": rec.id, "title": rec.title or rec.id, "description": rec.description, "version": rec.version,
-                "enabled": self.is_enabled(rec.id), "connected": rec.connected,
+                "kind": rec.kind, "enabled": self.is_enabled(rec.id),
+                "connected": bool(sup.get("healthy")) if service else rec.connected,
                 "configured": sup.get("configured", True), "status": code, "status_text": text,
                 "pid": sup.get("pid") or rec.pid, "restarts": sup.get("restarts", 0),
                 "last_error": None if rec.connected else (sup.get("last_error") or rec.last_disconnect_reason),
