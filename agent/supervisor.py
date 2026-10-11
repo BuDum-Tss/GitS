@@ -214,13 +214,17 @@ class Supervisor:
                  sleep: Callable[[float], Awaitable] = asyncio.sleep, clock: Callable[[], float] = time.monotonic,
                  shutdown_wait: float = SHUTDOWN_WAIT_S, poll_manual: float = POLL_MANUAL_S,
                  pythonpath: list[str] | None = None, memory_dir: Path | str | None = None,
-                 probe: Callable[[str], Awaitable[bool]] | None = None, health_interval: float = HEALTH_INTERVAL_S):
+                 probe: Callable[[str], Awaitable[bool]] | None = None, health_interval: float = HEALTH_INTERVAL_S,
+                 announce: Callable[[str, str], Awaitable[None]] | None = None):
         """enabled(id) - включён ли модуль (ModuleRegistry.is_enabled); is_connected(id) - подключён ли он сейчас;
         send_shutdown(id) - послать модулю shutdown; sleep и clock подменяются в тестах (задержки перезапуска);
         pythonpath - что добавить в PYTHONPATH процессов (до установки пакета glados-module это GitS/sdk);
         memory_dir - папка памяти ядра: модулям уходит как MEMORY_DIR (абсолютным путём; их рабочая папка другая);
-        probe(url) -> отвечает ли сервис 200 (в тестах подменяется); health_interval - период опроса сервисов."""
+        probe(url) -> отвечает ли сервис 200 (в тестах подменяется); health_interval - период опроса сервисов;
+        announce(id, text) - объявление о запуске процесса модуля (правило 14: включили, перезапуск по кнопке, перезапуск
+        после сбоя); текст - факт, фразу строит модель. Без него объявлений нет (тесты, скрипты)."""
         self.specs = {s.id: s for s in specs}
+        self._announce = announce
         self.token, self.core_url = token, core_url
         self._enabled, self._is_connected, self._send_shutdown = enabled, is_connected, send_shutdown
         self.gits_root, self.agent_dir, self.logs_dir, self.python = Path(gits_root), Path(agent_dir), Path(logs_dir), python
@@ -337,7 +341,10 @@ class Supervisor:
         if module_id not in self.specs:
             return
         if self.should_run(module_id):
+            fresh = self.state[module_id].task is None or self.state[module_id].task.done()   # без надзора до сих пор
             self._launch(module_id)
+            if fresh:
+                await self._announce_launch(module_id, "его включили в настройках")
         else:
             await self.stop(module_id)
 
@@ -352,6 +359,19 @@ class Supervisor:
         m.status, m.text = "stopped", "остановлен"
         if self._enabled(module_id):
             self._launch(module_id)
+            await self._announce_launch(module_id, "перезапуск по кнопке в дашборде")
+
+    async def _announce_launch(self, module_id: str, why: str) -> None:
+        """Объявление о запуске процесса модуля (правило 14): факт «что запускается и зачем», фразу строит модель.
+        Не объявляется: сервисы (decider - внутренняя часть ядра), старт при загрузке ядра, модуль без настроек
+        (он не запустится, см. resolve)."""
+        spec = self.specs[module_id]
+        if self._announce is None or spec.kind == "service" or not isinstance(self.resolve(module_id), tuple):
+            return
+        try:
+            await self._announce(module_id, f"Запускаю модуль «{spec.title or module_id}»: {why}.")
+        except Exception as e:                       # объявление не должно мешать запуску
+            logger.warning(f"Объявление запуска модуля {module_id}: {e}")
 
     async def stop(self, module_id: str) -> None:
         """Остановить процесс, запущенный супервизором: shutdown, ожидание 10 с, затем убить дерево."""
@@ -541,4 +561,6 @@ class Supervisor:
         if not m.desired:
             return False
         m.restarts += 1
+        await self._announce_launch(spec.id, f"процесс упал с кодом {code}, перезапускаю (сбой {len(m.failures)} из "
+                                             f"{CRASH_LIMIT} за {CRASH_WINDOW_S // 60} минут)")
         return True

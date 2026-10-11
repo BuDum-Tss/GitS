@@ -76,7 +76,7 @@ async def test_manifest_is_valid_and_every_tool_has_a_handler(core):
         assert {n for n in names if n in client._checks} == {"take_screenshot", "type_text", "press_key"}
         by = {t["name"]: t for t in m["tools"]}
         assert by["claude_task"]["job"] and by["claude_task"]["fallback"] and by["claude_task"]["core_fills"] == ["context"]
-        assert {n for n, t in by.items() if t.get("announce")} == {"launch_app", "operate_screen", "claude_task"}
+        assert {n for n, t in by.items() if t.get("announce")} == {"launch_app", "operate_screen", "claude_task", "menu_click"}
         assert m["capabilities"] == ["screen.observe"] and m["state"] is True
     finally:
         await close(client, task)
@@ -261,6 +261,24 @@ async def test_menu_click_only_whitelisted_and_only_when_user_is_away(core, monk
         scene.idle = 300.0
         assert await core.call_tool("menu_click", {"text": "Продолжить"}) == "нажала"
         assert clicked == ["Продолжить"]
+    finally:
+        await close(client, task)
+
+
+async def test_full_screen_shot_is_announced_as_fact_game_shot_is_not(core, monkeypatch, tmp_path):
+    """Правило 14: снимок всего экрана объявляется (факт с announce); снимок окна игры - быстрая операция, не объявляется."""
+    from PIL import Image
+    shot = tmp_path / "shot.png"
+    Image.new("RGB", (4, 4)).save(shot)
+    monkeypatch.setattr(screenshots, "grab_screen", lambda: shot)
+    monkeypatch.setattr(screenshots, "grab_game", lambda focus: shot)
+    mod, scene, client, task = await connect(core)
+    try:
+        await core.call_tool("take_screenshot", {"target": "game"})
+        assert [m.body for m in core.messages_of("say")] == []
+        await core.call_tool("take_screenshot", {"target": "screen"})
+        said = await core.wait_message("say", lambda b: b.get("announce") is True)
+        assert said.body["mode"] == "fact" and "экран" in said.body["text"]
     finally:
         await close(client, task)
 
