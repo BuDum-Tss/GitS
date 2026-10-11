@@ -1,7 +1,6 @@
 """Ядро ГЛаДОС: всегда включённый сервис ассистента.
 
 Что работает всегда:
-  - зрение (perception): следит за активным окном, локально, OCR + Gemma;
   - окружения (environments/): реестр инструментов, маршрутизатор «могу или нет», манифесты;
   - компаньон (companion): разговор, память, проактивность, граф памяти;
   - дашборд (порт 8766, только localhost): состояние, чат, настройки;
@@ -38,8 +37,6 @@ from environments.registry import Registry
 from module_hub import ModuleError, ModuleHub
 from module_registry import ModuleRegistry
 from graph_memory import GraphMemory
-import perception
-from perception import ScreenWatcher
 from relationships import Relationships
 from router import Router
 from user_memory import UserMemory
@@ -51,17 +48,34 @@ ORDER_TIMEOUT_S = 15           # RW-11: сколько ждём, пока мод
 SUBGRAPH_TIMEOUT_S = 1.5       # CORE-22: подграф профиля от модуля для дашборда
 
 
-def wire_modules(companion, registry, *, foreground_app=lambda: None, battery=claude_battery.status, specs=None,
+def desktop_state(modules) -> dict:
+    """state.data модуля desktop (ТЗ 14, DESK-7): активное приложение, простой, текущая активность экрана.
+    Пусто, если модуль не подключён: тогда профиль по окну не выбирается, простоя нет, активности нет."""
+    return modules.state_data("desktop") or {}
+
+
+def make_activity_hook(companion):
+    """desktop.activity (ТЗ 14, DESK-3): итог анализа экрана пишется в память занятий (activity.json); событие само
+    идёт обычным путём внимания (urgency 1, как voice.heard)."""
+    async def on_activity(item) -> None:
+        data = item.data or {}
+        mem = getattr(companion, "_mem", None)
+        if mem is None or not data.get("app") or not data.get("summary"):
+            return
+        await asyncio.to_thread(mem.add_activity, str(data["app"]), str(data.get("category") or "other"), str(data["summary"]))
+    return on_activity
+
+
+def wire_modules(companion, registry, *, battery=claude_battery.status, specs=None,
                  port: int = DASHBOARD_PORT) -> SimpleNamespace:
     """Слой модулей (ТЗ 02): каналы разговора, заглушка внимания, реестр и шина модулей, профили, супервизор.
 
     companion - Companion (или заменитель с теми же методами), registry - реестр окружений планировщика.
-    foreground_app() - имя процесса активного окна (до ТЗ 14, когда это знает модуль desktop).
     Ничего не запускает: старт и остановка - layer.start() и layer.stop()."""
     presence = companion.presence
     io = ConversationIO(companion)
     companion.io = io
-    attention = Attention(companion, io)
+    attention = Attention(companion, io, idle_source=lambda: float(desktop_state(modules).get("idle_s") or 0.0))
     companion.attention = attention                      # речь идёт через очередь внимания (ТЗ 03, ATT-13)
     requests = CoreRequests(attention=attention)
     holder: dict = {}                                    # profiles появится ниже, а реестру и шине он нужен уже при создании
@@ -79,6 +93,7 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, battery=cl
     attention.silent_kinds |= VOICE_SILENT_KINDS
     attention.kind_handlers.update(make_voice_handlers(companion, attention, speech))
     attention.kind_hooks["voice.heard"] = make_heard_hook(companion)
+    attention.kind_hooks["desktop.activity"] = make_activity_hook(companion)
 
     async def live_subgraph(profile):
         """Подграф профиля от первого модуля фокуса с graph: true (запрос graph.get, CORE-22, RW-19); None, если такого нет."""
@@ -113,8 +128,7 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, battery=cl
         return False
 
     def foreground():
-        data = modules.state_data("desktop") or {}
-        return data.get("foreground_app") or foreground_app()
+        return desktop_state(modules).get("foreground_app")
 
     def on_profile_change(old: str, new: str):
         events_log.log("profile", f"{old} -> {new}", old=old, new=new)                # CORE-20
@@ -128,6 +142,10 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, battery=cl
     registry.focus = profiles.focus_modules
     companion.profile_hint = profiles.hint
     companion.module_notes = modules.notes                # что умеют подключённые модули и в каком они состоянии
+    companion.idle_seconds = lambda: float(desktop_state(modules).get("idle_s") or 0.0)     # простой (ТЗ 14, DESK-7)
+    companion.screen_activity = lambda: desktop_state(modules).get("activity")              # активность экрана (DESK-7)
+    companion.job_wait = modules.wait_job                                                  # итог задачи модуля (DESK-11)
+    modules.context_for = lambda query: companion._context(include_hearing=False, query=query)   # core_fills: context (DESK-12)
 
     specs = supervisor_mod.load_specs() if specs is None else specs
     for spec in specs:
@@ -245,28 +263,16 @@ async def _run(config: dict):
     settings.init(mem_dir)
     fast_brain.init(mem_dir)
     rel = Relationships(mem_dir)
-    watcher = ScreenWatcher(UserMemory(mem_dir))
     presence = speech_out.PresenceTracker()
     # речь: модуль voice, пока он подключён и включён (VOICE-15), иначе только текст в чате и в presence
     speech = speech_out.SpeechSelector(speech_out.VoiceModuleSpeech(presence), speech_out.TextOnlySpeech(presence))
-    companion = Companion(mem_dir, rel, watcher, speech=speech, presence=presence)
+    companion = Companion(mem_dir, rel, speech=speech, presence=presence)
 
-    # профили: активное окно берётся из кэша, который обновляет фоновый опрос (без блокировки цикла); игра RimWorld
-    # (game_running) приходит состоянием модуля rimworld, порт мода ядро больше не опрашивает (ТЗ 11)
-    sample = {"app": None}
-
-    async def sampler():
-        while True:
-            try:
-                fg = await asyncio.to_thread(perception.foreground)
-                sample["app"] = (fg or {}).get("app")
-            except Exception as e:
-                logger.debug(f"Опрос окна: {e}")
-            await asyncio.sleep(2)
-
+    # профили: активное окно и простой приходят состоянием модуля desktop (ТЗ 14), игра RimWorld (game_running) приходит
+    # состоянием модуля rimworld (ТЗ 11). Без модуля desktop данных нет, профиль по окну не выбирается
     registry = Registry()
     registry.embedder = tool_search.ToolEmbeddings(Path(mem_dir) / "tool_embeddings.json")     # отбор инструментов по смыслу
-    layer = wire_modules(companion, registry, foreground_app=lambda: sample["app"])
+    layer = wire_modules(companion, registry)
     companion.game_order = layer.game_order              # RW-11: приказ игроку-агенту (инструмент order модуля игры)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     dashboard.set_attention(layer.attention)
@@ -275,9 +281,7 @@ async def _run(config: dict):
     await dashboard.start_dashboard(
         memory_dir=mem_dir, chat_callback=lambda m: loop.create_task(layer.io.from_dashboard(m)))
     await layer.start()                  # токен модулей в файл, сверка настроек, профили, процессы модулей
-    asyncio.create_task(sampler())
     asyncio.create_task(fast_brain.warmup())
-    asyncio.create_task(watcher.run())
 
     # Окружения: встроенные плагины сразу, манифесты (MCP, вебхуки, RimWorld) подгружаются в фоне
     memory = UserMemory(mem_dir)
@@ -299,6 +303,7 @@ async def _run(config: dict):
 
     companion.router = Router(registry, companion.say, recent_dialogue)
     layer.requests.router = companion.router            # core.tool.call от модулей идёт тем же путём, что просьбы
+    dashboard.set_router(companion.router)              # POST /api/menu_click идёт инструментом desktop.menu_click (DESK-14)
     dashboard.set_registry(registry)
     dashboard.set_modes(layer.profiles)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))

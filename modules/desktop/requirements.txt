@@ -1,0 +1,8 @@
+# Зависимости модуля desktop (ТЗ 14). Модуль работает в окружении ядра ({PYTHON}); ставится так же, как requirements.txt ядра.
+# Экран, ввод и OCR работают в Windows. Claude Code SDK (claude-agent-sdk) уже в requirements.txt ядра.
+Pillow>=10.0.0
+numpy
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+rapidocr-onnxruntime
+psutil

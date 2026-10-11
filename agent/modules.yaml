@@ -4,7 +4,7 @@
 # Поля: id; cwd; command; args; autostart (запускать вместе с ядром, если модуль включён); restart (always | on-failure |
 # never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title и description
 # (как запись называется и описывается во вкладке «Модули»; перекрывают манифест); dev: true (запись видна во вкладке только при настройке dev_mode).
-# Реальные модули добавляют ТЗ 14, 20: desktop, montage (telegram - ТЗ 10, rimworld - ТЗ 11, voice - ТЗ 12, ниже).
+# Реальные модули добавляют ТЗ 20: montage (telegram - ТЗ 10, rimworld - ТЗ 11, voice - ТЗ 12, desktop - ТЗ 14, ниже).
 # Модулям передаются GLADOS_MODULE_TOKEN, GLADOS_CORE_URL, GLADOS_MODULE_ID и MEMORY_DIR (абсолютный путь к папке памяти ядра).
 modules:
   - id: telegram
@@ -20,6 +20,16 @@ modules:
   - id: voice
     title: Голос
     cwd: "{GITS}/modules/voice"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
+
+  # Компьютер (ТЗ 14): экран, приложения, мышь и клавиатура, Claude-помощник для задач на ПК. Зависимости модуля:
+  # modules/desktop/requirements.txt (в окружение ядра). Экран и ввод работают только в Windows.
+  - id: desktop
+    title: Компьютер
+    cwd: "{GITS}/modules/desktop"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
@@ -79,8 +89,5 @@ planned:
   - id: montage
     title: Монтаж видео
     tz: "ТЗ 20–22"
-  - id: desktop
-    title: "Компьютер: экран, мышь, клавиатура"
-    tz: "ТЗ 14"
   - id: minecraft
     title: Minecraft

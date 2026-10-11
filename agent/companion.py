@@ -25,10 +25,10 @@ import time
 from pathlib import Path
 
 import approvals
+import claude_quota
 import gamenet
 import events_log
 import fast_brain
-import perception
 import prompts
 import settings
 from conversation_io import DASHBOARD, VOICE, UserInput, current_channel
@@ -44,8 +44,7 @@ _CONSULT = {"quiet": 10 * 60, "normal": 4 * 60, "chatty": 90}        # как ч
 
 
 class Companion:
-    def __init__(self, memory_dir: str, rel, watcher: perception.ScreenWatcher | None = None,
-                 speech=None, presence: PresenceTracker | None = None):
+    def __init__(self, memory_dir: str, rel, speech=None, presence: PresenceTracker | None = None):
         self._dir = Path(memory_dir)
         self.presence = presence or PresenceTracker()          # тема presence (ставит слушателя ядро)
         self.speech = speech or TextOnlySpeech(self.presence)  # вывод речи (CORE-27, VOICE-15): ядро ставит выбор голос/текст
@@ -54,13 +53,15 @@ class Companion:
         self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
         self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
         self._rel = rel
-        self._watcher = watcher
         self.router = None    # Router, ставится ядром после создания реестра окружений
         self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (ModuleRegistry.notes, ставит ядро)
         self.graph = None        # GraphMemory: факты о людях и жизни в графе
         self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
         self._heard: collections.deque = collections.deque(maxlen=20)   # (время, сводка) услышанного в колонках (voice.heard)
         self.game_order = None  # async (text) -> bool: приказ в игру, ставит контроллер
+        self.idle_seconds = lambda: 0.0          # секунды простоя ввода (ставит ядро из state модуля desktop; без модуля 0: за компьютером)
+        self.screen_activity = lambda: None      # текущая активность экрана {app, category, summary, ...} (ставит ядро, ТЗ 14 DESK-7)
+        self.job_wait = None                     # async (module_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
         self._mem = UserMemory(memory_dir)
         self._last_say = self._load_last_say()   # переживает перезапуски
         self._last_consult = time.time()
@@ -511,10 +512,22 @@ class Companion:
             events_log.log("setting", f"режим «не отвлекать» на {mins} мин (по словам пользователя)")
 
     async def run_claude(self, task: str) -> str | None:
-        """Сложная задача на Claude с инструментами Claude Code (подтверждения на каждое
-        изменение). Услышанное в контекст не передаётся: в облако оно не уходит."""
-        import assistant_agent
-        return await assistant_agent.run_task(task, self._context(include_hearing=False, query=task), self.say)
+        """Сложная задача на Claude (модуль desktop, инструмент claude_task, ТЗ 14 DESK-11): запускается задачей и ждёт её итога.
+        Контекст разговора без услышанного подставляет ядро (core_fills). Возвращает итог, "" если добавить нечего,
+        None при сбое или если модуль desktop не подключён."""
+        if claude_quota.blocked():
+            return f"Claude сейчас недоступен: исчерпан лимит до {claude_quota.until_text()}."
+        if self.router is None or self.job_wait is None:
+            return None
+        ok, text, _code = await self.router.run_tool_ex("desktop.claude_task", {"task": task})
+        from module_registry import ModuleRegistry
+        job_id = ModuleRegistry.job_id_from(text) if ok else None
+        if job_id is None:
+            return None
+        job = await self.job_wait("desktop", job_id, 600)
+        if job.get("state") == "done":
+            return str(job.get("text") or "")
+        return None
 
     async def _escalate(self, task: str):
         """Запасной путь, когда локальная модель недоступна."""
@@ -578,7 +591,7 @@ class Companion:
         if self._pending_memory >= 2 and time.time() - self._last_user_ts > 8 * 60:
             asyncio.create_task(self._consolidate())   # пауза в разговоре: самое время осмыслить
         now = time.time()
-        idle = perception.idle_seconds()
+        idle = self.idle_seconds()
         # Пользователь отошёл / вернулся
         if idle > 600:
             if self._away_since is None:
@@ -600,7 +613,7 @@ class Companion:
             return   # только что разговаривали: сама не вклинивается
         if gamenet.port_open() and gap < 45 * 60:
             return   # идёт игра: про игру говорит игровой комментатор, а тут сама не лезет
-        cur = self._watcher.current if self._watcher and cfg["vision"] else None
+        cur = self.screen_activity() if cfg["vision"] else None
         if (cur and cur["category"] in ("media", "game") and now - cur["ts"] < 600
                 and gap < 45 * 60):
             return   # смотрит видео или играет: сама не лезет (если не слишком долго молчала)

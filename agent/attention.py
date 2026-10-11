@@ -191,11 +191,8 @@ class Attention:
 
     @staticmethod
     def _default_idle() -> float:
-        try:
-            import perception
-            return float(perception.idle_seconds())
-        except Exception:
-            return 0.0
+        """Без источника простоя (ядро ставит его из state модуля desktop, ТЗ 14 DESK-7) пользователь считается за компьютером."""
+        return 0.0
 
     def _spawn(self, coro) -> asyncio.Task:
         task = asyncio.get_running_loop().create_task(coro)

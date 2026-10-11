@@ -42,7 +42,8 @@ async def test_modules_are_grouped_by_kind_and_carry_titles():
     kinds = {r["id"]: r["kind"] for r in by_id.values()}
     assert kinds["voice"] == kinds["pet"] == kinds["telegram"] == kinds["rimworld"] == "module"
     assert kinds["decider"] == "service"
-    assert kinds["montage"] == kinds["desktop"] == kinds["minecraft"] == "planned"
+    assert kinds["desktop"] == "module"                                                     # модуль desktop (ТЗ 14)
+    assert kinds["montage"] == kinds["minecraft"] == "planned"
     for row in by_id.values():
         assert row["title"] and row["kind"] in ("module", "service", "planned")
     decider = by_id["decider"]
@@ -55,10 +56,9 @@ async def test_planned_modules_come_last_with_title_and_tz():
     wire()
     result = await rows()
     kinds = [r["kind"] for r in result]
-    assert kinds[-3:] == ["planned"] * 3 and "planned" not in kinds[:-3]                  # серые карточки в конце списка
+    assert kinds[-2:] == ["planned"] * 2 and "planned" not in kinds[:-2]                  # серые карточки в конце списка
     planned = {r["id"]: r for r in result if r["kind"] == "planned"}
     assert planned["montage"]["title"] == "Монтаж видео" and planned["montage"]["tz"] == "ТЗ 20–22"
-    assert planned["desktop"]["title"] == "Компьютер: экран, мышь, клавиатура" and planned["desktop"]["tz"] == "ТЗ 14"
     assert planned["minecraft"]["title"] == "Minecraft" and planned["minecraft"]["tz"] == ""
     assert "status" not in planned["montage"] and "enabled" not in planned["montage"]
 
@@ -78,7 +78,7 @@ async def test_echo_is_hidden_without_dev_mode_and_shown_with_it():
 def test_planned_modules_are_not_run_by_the_supervisor():
     layer = wire()
     planned = {p.id for p in load_planned()}
-    assert planned == {"montage", "desktop", "minecraft"}
+    assert planned == {"montage", "minecraft"}
     assert not planned & {s.id for s in load_specs()}                                    # в modules они не попадают
     assert not planned & set(layer.supervisor.specs)
     assert not planned & set(layer.modules.records)

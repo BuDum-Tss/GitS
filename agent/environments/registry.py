@@ -22,6 +22,15 @@ def _stems(text: str) -> set[str]:
     return {w.lower()[:5] for w in _WORD.findall(text)}
 
 
+# Прежние id инструментов экрана (ядро, до ТЗ 14) → новые в модуле desktop. Модуль RimWorld вызывает их через core.tool.call.
+_DESKTOP_NAMES = ("take_screenshot", "describe_screen", "read_screen", "operate_screen", "list_windows", "focus_window",
+                  "click_text", "click", "type_text", "press_key", "scroll", "launch_app", "list_apps", "add_app")
+LEGACY_TOOL_IDS = {f"system.{n}": f"desktop.{n}" for n in _DESKTOP_NAMES if n not in ("launch_app", "list_apps", "add_app")}
+LEGACY_TOOL_IDS.update({f"assistant.{n}": f"desktop.{n}" for n in ("launch_app", "list_apps", "add_app")})
+LEGACY_TOOL_IDS["system.ask_claude"] = "desktop.claude_task"
+_LEGACY_WARNED: set[str] = set()
+
+
 class Registry:
     def __init__(self):
         self.envs: dict[str, Environment] = {}
@@ -92,6 +101,12 @@ class Registry:
             for t in e.tools:
                 if t.id == tool_id:
                     return t
+        target = LEGACY_TOOL_IDS.get(tool_id)                # ТЗ 14, DESK-x: прежние id экранных инструментов
+        if target is not None:
+            if tool_id not in _LEGACY_WARNED:
+                _LEGACY_WARNED.add(tool_id)
+                logger.warning(f"инструмент «{tool_id}» переехал в модуль desktop: используется «{target}»")
+            return self.get(target)
         return None
 
     def search(self, text: str, k: int = 14) -> list[Tool]:
