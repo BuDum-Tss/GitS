@@ -2,7 +2,8 @@
 # {GITS} (корень репозитория GitS), {PYTHON} (интерпретатор ядра), {PYTHONW} (pythonw.exe рядом с ним) и любые переменные окружения ядра в фигурных
 # скобках (после загрузки secrets.env) подставляются. Нет переменной: модуль помечается «не настроен» и не запускается.
 # Поля: id; cwd; command; args; autostart (запускать вместе с ядром, если модуль включён); restart (always | on-failure |
-# never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title.
+# never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title и description
+# (как запись называется и описывается во вкладке «Модули»; перекрывают манифест); dev: true (запись видна во вкладке только при настройке dev_mode).
 # Реальные модули добавляют ТЗ 14, 20: desktop, montage (telegram - ТЗ 10, rimworld - ТЗ 11, voice - ТЗ 12, ниже).
 # Модулям передаются GLADOS_MODULE_TOKEN, GLADOS_CORE_URL, GLADOS_MODULE_ID и MEMORY_DIR (абсолютный путь к папке памяти ядра).
 modules:
@@ -48,7 +49,9 @@ modules:
     restart: on-failure
 
   - id: echo
-    title: Эхо
+    title: Пример модуля (для разработчиков)
+    description: повторяет текст; проверка протокола модулей
+    dev: true            # во вкладке «Модули» виден только при настройке dev_mode
     cwd: "{GITS}/sdk/examples"
     command: "{PYTHON}"
     args: ["-u", "echo_module.py"]
@@ -60,7 +63,8 @@ modules:
   # отвечает 200 (опрос раз в 10 с), и перезапускает по restart. Если порт занят уже работающим сервисом (запущен не
   # супервизором), второй экземпляр не запускается, идёт только слежение за здоровьем.
   - id: decider
-    title: Классификатор (decider)
+    title: Классификатор внимания
+    description: "часть ядра: быстрая оценка событий; работает отдельным процессом (Python 3.12 + torch)"
     kind: service
     cwd: "{GITS}/services/decider"
     command: "{GITS}/services/decider/.venv/Scripts/python.exe"      # Python 3.12 с torch CPU, см. services/decider/README.md
@@ -68,3 +72,15 @@ modules:
     health_url: "http://127.0.0.1:8768/health"
     autostart: true
     restart: on-failure
+
+# Запланированные модули: ядро их не запускает, вкладка «Модули» показывает серые карточки «ещё не установлен - запланирован».
+# Поля: id, title, tz (номер ТЗ, если оно есть). Когда модуль появится, запись переезжает в modules выше.
+planned:
+  - id: montage
+    title: Монтаж видео
+    tz: "ТЗ 20–22"
+  - id: desktop
+    title: "Компьютер: экран, мышь, клавиатура"
+    tz: "ТЗ 14"
+  - id: minecraft
+    title: Minecraft

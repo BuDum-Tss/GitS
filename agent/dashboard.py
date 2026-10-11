@@ -383,8 +383,12 @@ def _module_or_404(request: web.Request):
 
 
 async def handle_api_modules(request: web.Request) -> web.Response:
-    """Модули: состояние, инструменты, настройки (CORE-37)."""
-    return web.json_response(_MODULES.snapshot() if _MODULES is not None else [])
+    """Модули: состояние, инструменты, настройки (CORE-37). У каждой записи `kind`: module, service (компонент ядра) или
+    planned (ещё не установлен); записи для разработчиков (echo) отдаются только при настройке dev_mode."""
+    if _MODULES is None:
+        return web.json_response([])
+    dev_mode = bool(await asyncio.to_thread(lambda: settings.load().get("dev_mode")))
+    return web.json_response(_MODULES.dashboard_rows(dev_mode))
 
 
 async def handle_api_module_enabled(request: web.Request) -> web.Response:

@@ -70,6 +70,32 @@ class ModuleSpec:
     title: str = ""
     kind: str = "module"             # module: подключается по WebSocket; service: проверяется по health_url (ATT-2)
     health_url: str = ""
+    description: str = ""            # подпись для дашборда: перекрывает описание из манифеста подключившегося модуля
+    dev: bool = False                # для разработчиков: вкладка «Модули» показывает запись только при настройке dev_mode
+
+
+@dataclass
+class PlannedModule:
+    """Модуль, которого ещё нет (раздел `planned:` в modules.yaml): дашборд показывает серую карточку, супервизор не трогает."""
+    id: str
+    title: str
+    tz: str = ""
+
+
+def load_planned(path: Path | str = MODULES_YAML) -> list[PlannedModule]:
+    """Запланированные модули из modules.yaml. Неверная запись пропускается с предупреждением."""
+    try:
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as e:
+        logger.warning(f"modules.yaml не прочитан: {e}")
+        return []
+    rows: list[PlannedModule] = []
+    for i, raw in enumerate((data.get("planned") if isinstance(data, dict) else None) or []):
+        if not isinstance(raw, dict) or not isinstance(raw.get("id"), str) or not raw.get("title"):
+            logger.warning(f"modules.yaml, planned, запись {i + 1}: нужен объект с id и title")
+            continue
+        rows.append(PlannedModule(id=raw["id"], title=str(raw["title"]), tz=str(raw.get("tz") or "")))
+    return rows
 
 
 def load_specs(path: Path | str = MODULES_YAML) -> list[ModuleSpec]:
@@ -99,7 +125,8 @@ def load_specs(path: Path | str = MODULES_YAML) -> list[ModuleSpec]:
             specs.append(ModuleSpec(id=raw["id"], cwd=str(raw.get("cwd") or "."), command=str(raw["command"]),
                                     args=[str(a) for a in args], autostart=bool(raw.get("autostart", True)),
                                     restart=restart, enabled=bool(raw.get("enabled", True)),
-                                    title=str(raw.get("title") or ""), kind=kind, health_url=health_url))
+                                    title=str(raw.get("title") or ""), kind=kind, health_url=health_url,
+                                    description=str(raw.get("description") or ""), dev=bool(raw.get("dev", False))))
         except (KeyError, ValueError) as e:
             logger.warning(f"modules.yaml, запись {i + 1}: {e}")
     return specs

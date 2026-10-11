@@ -23,6 +23,14 @@ ENABLED_CACHE_S = 0.5            # как долго помнится чтени
 
 
 @dataclass
+class PlannedRecord:
+    """Модуль, которого ещё нет (modules.yaml, planned): только карточка во вкладке, процесса и записи в реестре нет."""
+    id: str
+    title: str
+    tz: str = ""
+
+
+@dataclass
 class ModuleRecord:
     id: str
     title: str = ""
@@ -38,6 +46,9 @@ class ModuleRecord:
     jobs: dict = field(default_factory=dict)        # job_id -> JobStatus (последний job.update + module + updated)
     default_enabled: bool = True                    # из modules.yaml, пока в настройках нет явного выбора
     kind: str = "module"                            # service: процесс без WebSocket, жив по health_url (ТЗ 03, ATT-2)
+    title_override: str = ""                        # title из modules.yaml: дашборд показывает его вместо названия из манифеста
+    description_override: str = ""                  # description из modules.yaml (пояснение для вкладки «Модули»)
+    dev: bool = False                               # для разработчиков: во вкладке только при настройке dev_mode
 
 
 class ModuleRegistry:
@@ -50,18 +61,26 @@ class ModuleRegistry:
         self.hub = None                    # ModuleHub, ставит ядро
         self.supervisor = None             # Supervisor, ставит ядро
         self.records: dict[str, ModuleRecord] = {}
+        self.planned: dict[str, PlannedRecord] = {}
         self._settings_source = settings_source
         self._module_envs: set[str] = set()
         self._enabled_cache: tuple[float, dict] = (0.0, {})
 
     # ── записи ──────────────────────────────────────────────────────────────
 
-    def declare(self, module_id: str, *, title: str = "", default_enabled: bool = True, kind: str = "module") -> ModuleRecord:
+    def declare(self, module_id: str, *, title: str = "", default_enabled: bool = True, kind: str = "module",
+                description: str = "", dev: bool = False) -> ModuleRecord:
         """Модуль или сервис, который ядро знает заранее (modules.yaml): запись есть и пока он не подключился."""
         rec = self.records.setdefault(module_id, ModuleRecord(module_id))
         rec.title = rec.title or title or module_id
         rec.default_enabled = default_enabled
         rec.kind = kind
+        rec.title_override, rec.description_override, rec.dev = title, description, dev
+        return rec
+
+    def declare_planned(self, module_id: str, *, title: str, tz: str = "") -> PlannedRecord:
+        """Запланированный модуль (modules.yaml, planned): виден в дашборде серой карточкой, ядро его не запускает."""
+        rec = self.planned[module_id] = PlannedRecord(module_id, title, tz)
         return rec
 
     def get(self, module_id: str) -> ModuleRecord | None:
@@ -261,7 +280,8 @@ class ModuleRegistry:
         tools = [{"id": f"{rec.id}.{t['name']}", "name": t["name"], "description": t["description"], "risk": t["risk"],
                   "availability": t["availability"]} for t in m.get("tools") or []]
         service = rec.kind == "service"
-        return {"id": rec.id, "title": rec.title or rec.id, "description": rec.description, "version": rec.version,
+        return {"id": rec.id, "title": rec.title_override or rec.title or rec.id,
+                "description": rec.description_override or rec.description, "version": rec.version,
                 "kind": rec.kind, "enabled": self.is_enabled(rec.id),
                 "connected": bool(sup.get("healthy")) if service else rec.connected,
                 "configured": sup.get("configured", True), "status": code, "status_text": text,
@@ -269,7 +289,14 @@ class ModuleRegistry:
                 "last_error": None if rec.connected else (sup.get("last_error") or rec.last_disconnect_reason),
                 "state_summary": (rec.state or {}).get("summary"), "tools": tools,
                 "capabilities": m.get("capabilities") or [], "settings_schema": m.get("settings_schema") or {},
-                "module_settings": self.module_settings(rec.id)}
+                "module_settings": self.module_settings(rec.id), "dev": rec.dev}
 
     def snapshot(self) -> list[dict]:
         return [self.describe(rec) for rec in sorted(self.records.values(), key=lambda r: r.id)]
+
+    def dashboard_rows(self, dev_mode: bool = False) -> list[dict]:
+        """Строки вкладки «Модули»: модули и сервисы (записи для разработчиков только при dev_mode), затем запланированные
+        (`kind: planned`: id, title, tz, без состояния)."""
+        rows = [row for row in self.snapshot() if dev_mode or not row["dev"]]
+        rows += [{"id": p.id, "title": p.title, "tz": p.tz, "kind": "planned"} for p in self.planned.values()]
+        return rows

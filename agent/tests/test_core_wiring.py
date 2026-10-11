@@ -70,6 +70,8 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
                 async with http.post(base + path, json=body, headers=JSON) as r:
                     return r.status, await r.json()
 
+            assert "echo" not in {m["id"] for m in await get("/api/modules")}                   # пример для разработчиков: только при dev_mode
+            settings.update(dev_mode=True)
             mods = {m["id"]: m for m in await get("/api/modules")}
             assert mods["echo"]["enabled"] is False and mods["echo"]["connected"] is False       # выключен по умолчанию
             assert mods["echo"]["status"] == "disabled" and mods["echo"]["configured"] is True

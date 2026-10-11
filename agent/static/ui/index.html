@@ -226,6 +226,7 @@
       <div id="tab-modules" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-4">
           <section><h3 class="font-semibold mb-2">Модули</h3><div id="mod-list" class="space-y-3"></div></section>
+          <section id="core-section" class="hidden"><h3 class="font-semibold mb-2">Ядро</h3><div id="core-list" class="space-y-3"></div></section>
           <section><h3 class="font-semibold mb-2">Задачи</h3><ul id="job-list" class="space-y-2 text-sm"></ul></section>
         </div>
       </div>
@@ -691,6 +692,8 @@ const SETTINGS_SCHEMA = [
     {key: 'record_runs', type: 'toggle', label: 'Записывать забеги на видео', hint: 'Модуль RimWorld снимает каждый забег (нужен ffmpeg): сценарий, основное видео и вертикальные клипы лежат в папке памяти модуля.'},
     {key: 'telegram_voice', type: 'toggle', label: 'Посты голосом', hint: 'Пост уходит голосовым сообщением её голосом, текст остаётся подписью.'},
     {key: 'telegram_confirm', type: 'toggle', label: 'Спрашивать перед публикацией', hint: 'Если выключено, она публикует сама.'}]},
+  {title: 'Для разработчиков', items: [
+    {key: 'dev_mode', type: 'toggle', label: 'Режим разработчика', hint: 'Во вкладке «Модули» показывает примеры для разработчиков (пример модуля на SDK).'}]},
   {title: 'Безопасность', danger: true, items: [
     {key: 'auto_accept', type: 'toggle', label: 'Авто-разрешать все действия',
      hint: 'Она будет выполнять действия без вопросов: команды, запись файлов, игровые команды. Всё равно спрашивается: удаление данных, файлы с секретами, установка программ, запись вне проекта. Включай, только если доверяешь всему, что она читает (страницы, файлы): такой текст может пытаться ею управлять. Включается только здесь и в трее, не из чата.'}]},
@@ -961,7 +964,7 @@ const MOD_STATUS = {connected: ['подключён', 'badge-success'], disabled
 const JOB_STATE = {queued: ['в очереди', 'badge-ghost'], running: ['идёт', 'badge-info'], waiting_user: ['ждёт ответа', 'badge-warning'],
   done: ['готово', 'badge-success'], failed: ['сбой', 'badge-error'], cancelled: ['отменена', 'badge-ghost']};
 const JOB_FINISHED = ['done', 'failed', 'cancelled'];
-const MD2 = {sig: '', jobSig: ''};
+const MD2 = {sig: '', jobSig: '', coreSig: ''};
 
 function modSettingControl(m, key, spec) {
   const v = (m.module_settings || {})[key], a = `data-act="setting" data-id="${esc(m.id)}" data-key="${esc(key)}" data-type="${esc(spec.type)}"`;
@@ -985,11 +988,11 @@ function renderModule(m) {
   const canRestart = m.status !== 'offline' || m.pid;
   return `<div class="border border-base-300 rounded-lg p-3" data-module="${esc(m.id)}">
     <div class="flex items-center justify-between gap-2">
-      <span class="font-medium min-w-0">${esc(m.title)} ${service ? '<span class="badge badge-outline badge-xs" title="Процесс без связи по WebSocket: ядро следит за ним по health_url">сервис</span>' : ''} <span class="opacity-50 text-xs font-mono">${esc(m.id)} ${esc(m.version || '')}</span></span>
+      <span class="font-medium min-w-0">${esc(m.title)} <span class="opacity-50 text-xs font-mono">${esc(m.id)} ${esc(m.version || '')}</span></span>
       <span class="flex items-center gap-2 shrink-0">
         <span class="badge ${cls} badge-sm" title="${esc(m.status_text || '')}">${esc(label)}</span>
         <button class="btn btn-ghost btn-xs" data-act="restart" data-id="${esc(m.id)}" title="Перезапустить процесс" ${canRestart ? '' : 'disabled'}>↻</button>
-        <input type="checkbox" class="toggle toggle-sm" data-act="enable" data-id="${esc(m.id)}" ${m.enabled ? 'checked' : ''} title="Включить или выключить модуль">
+        ${service ? '' : `<input type="checkbox" class="toggle toggle-sm" data-act="enable" data-id="${esc(m.id)}" ${m.enabled ? 'checked' : ''} title="Включить или выключить модуль">`}
       </span></div>
     <div class="text-xs opacity-70 bubble-text">${esc(m.description || '')}</div>
     ${m.state_summary ? `<div class="text-xs mt-1">Сейчас: ${esc(m.state_summary)}</div>` : ''}
@@ -998,6 +1001,15 @@ function renderModule(m) {
     ${(m.capabilities || []).length ? `<div class="flex flex-wrap gap-1 mt-2">${m.capabilities.map(c => `<span class="badge badge-outline badge-xs">${esc(c)}</span>`).join('')}</div>` : ''}
     ${tools ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Инструменты (${m.tools.length})</summary><ul class="space-y-1 mt-1">${tools}</ul></details>` : ''}
     ${schema.length ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Настройки</summary><div class="space-y-2 mt-2">${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></details>` : ''}
+  </div>`;
+}
+
+function renderPlanned(m) {
+  return `<div class="border border-base-300 rounded-lg p-3 opacity-50 bg-base-200" data-module="${esc(m.id)}" data-planned="1">
+    <div class="flex items-center justify-between gap-2">
+      <span class="font-medium min-w-0">${esc(m.title)}${m.tz ? ` <span class="opacity-70 text-xs">(${esc(m.tz)})</span>` : ''}</span>
+      <span class="badge badge-ghost badge-sm shrink-0">запланирован</span></div>
+    <div class="text-xs opacity-70">ещё не установлен — запланирован</div>
   </div>`;
 }
 
@@ -1027,9 +1039,15 @@ async function loadModules() {
   if ($('tab-modules').classList.contains('hidden')) return;
   const [mods, jobs] = await Promise.all([fetch('/api/modules').then(r => r.json()), fetch('/api/jobs').then(r => r.json())]);
   const typing = $('tab-modules').contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
-  const html = mods.map(renderModule).join('') || '<p class="opacity-60 text-sm">Модулей пока нет. Они подключаются сами или запускаются ядром (agent/modules.yaml).</p>';
+  const real = mods.filter(m => m.kind !== 'service' && m.kind !== 'planned'), core = mods.filter(m => m.kind === 'service'),
+    planned = mods.filter(m => m.kind === 'planned');
+  const html = real.map(renderModule).join('') + planned.map(renderPlanned).join('')
+    || '<p class="opacity-60 text-sm">Модулей пока нет. Они подключаются сами или запускаются ядром (agent/modules.yaml).</p>';
+  const chtml = core.map(renderModule).join('');
+  $('core-section').classList.toggle('hidden', !core.length);
   const jhtml = jobs.map(renderJob).join('') || '<li class="opacity-60">Задач нет.</li>';
   if (!typing && MD2.sig !== html) { MD2.sig = html; $('mod-list').innerHTML = html; }
+  if (!typing && MD2.coreSig !== chtml) { MD2.coreSig = chtml; $('core-list').innerHTML = chtml; }
   if (!typing && MD2.jobSig !== jhtml) { MD2.jobSig = jhtml; $('job-list').innerHTML = jhtml; }
 }
 $('tab-modules').addEventListener('change', async e => {
@@ -1042,7 +1060,7 @@ $('tab-modules').addEventListener('change', async e => {
     const box = document.querySelector(`[data-err="${CSS.escape(id)}"]`);
     if (box) box.textContent = r.ok ? '' : (await r.json()).error;
   } else return;
-  MD2.sig = ''; loadModules().catch(() => {});
+  MD2.sig = MD2.coreSig = ''; loadModules().catch(() => {});
 });
 $('tab-modules').addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
@@ -1055,7 +1073,7 @@ $('tab-modules').addEventListener('click', async e => {
     else if (answer === 'true') answer = true; else if (answer === 'false') answer = false;
     await post(`/api/jobs/${encodeURIComponent(el.dataset.module)}/${encodeURIComponent(el.dataset.job)}/answer`, {question_id: el.dataset.q, answer});
   } else return;
-  MD2.sig = MD2.jobSig = ''; setTimeout(() => loadModules().catch(() => {}), 300);
+  MD2.sig = MD2.jobSig = MD2.coreSig = ''; setTimeout(() => loadModules().catch(() => {}), 300);
 });
 setInterval(() => loadModules().catch(() => {}), 2000);
 

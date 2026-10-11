@@ -131,7 +131,10 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, battery=cl
 
     specs = supervisor_mod.load_specs() if specs is None else specs
     for spec in specs:
-        modules.declare(spec.id, title=spec.title, default_enabled=spec.enabled, kind=spec.kind)
+        modules.declare(spec.id, title=spec.title, default_enabled=spec.enabled, kind=spec.kind,
+                        description=spec.description, dev=spec.dev)
+    for planned in supervisor_mod.load_planned():
+        modules.declare_planned(planned.id, title=planned.title, tz=planned.tz)
 
     async def send_shutdown(module_id: str) -> bool:
         conn = hub.connection(module_id)

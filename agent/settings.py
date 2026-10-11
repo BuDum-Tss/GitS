@@ -32,6 +32,7 @@ DEFAULTS = {
     "claude_usage": "normal",   # расход Claude: frugal / normal / generous (темп игровых контуров, см. claude_budget.py)
     "claude_token_budget": 3000000,   # ёмкость «батарейки»: токенов Claude за окно лимита (5 часов), см. claude_battery.py
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
+    "dev_mode": False,          # режим разработчика: во вкладке «Модули» видны примеры для разработчиков (модуль echo)
     "pet_visible": True,        # показывать окно питомца (модуль pet при этом остаётся подключённым)
     "volume": 100,              # громкость озвучки, 0-100
     "hotkey_input": "Ctrl+Shift+Space",   # глобальная клавиша строки быстрого ввода
