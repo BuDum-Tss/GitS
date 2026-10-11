@@ -219,6 +219,12 @@ class Supervisor:
 
     # ── разбор записи ───────────────────────────────────────────────────────
 
+    def pythonw(self) -> str:
+        """{PYTHONW}: pythonw.exe из того же окружения (окна консоли нет; питомцу, PET-11), а если его нет - сам интерпретатор."""
+        exe = Path(self.python)
+        w = exe.with_name("pythonw.exe")
+        return str(w if w.exists() else exe)
+
     def _subst(self, text: str, missing: list[str]) -> str:
         def one(m: re.Match) -> str:
             name = m.group(1)
@@ -226,6 +232,8 @@ class Supervisor:
                 return str(self.gits_root)
             if name == "PYTHON":
                 return self.python
+            if name == "PYTHONW":
+                return self.pythonw()
             if name in self._env and self._env[name]:
                 return self._env[name]
             missing.append(name)
@@ -247,7 +255,7 @@ class Supervisor:
             return f"папка модуля не найдена: {cwd}"
         if spec.kind == "service" and not Path(command).is_file() and not shutil.which(command):
             return f"окружение сервиса не найдено: {command} (см. README сервиса)"      # чужой Python сервису не годится
-        if spec.command.strip() != "{PYTHON}" and not Path(command).is_file() and not shutil.which(command):
+        if spec.command.strip() not in ("{PYTHON}", "{PYTHONW}") and not Path(command).is_file() and not shutil.which(command):
             logger.warning(f"Модуль {module_id}: команда {command} не найдена, запускаю тем же Python, что и ядро")
             command = self.python
         return [command, *args], cwd

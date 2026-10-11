@@ -1,11 +1,8 @@
 """Каналы разговора и вывод речи (ТЗ 02, CORE-24…CORE-28) на настоящем Companion с заглушками речи и модуля-канала."""
-import asyncio
-import json
 
 from hub_helpers import RawModule, manifest, running_core
 
 import events_log
-import settings
 import speech_out
 from companion import Companion
 from conversation_io import DASHBOARD, VOICE, Channel, ConversationIO, UserInput, current_channel
@@ -122,43 +119,6 @@ async def test_user_input_defaults_and_channel_dict():
 
 
 # ── вывод речи и присутствие ──────────────────────────────────────────────────────
-
-async def test_legacy_pet_speech_writes_say_json_and_tracks_speaking(tmp_path):
-    seen = []
-    presence = speech_out.PresenceTracker(listener=lambda snap: seen.append(snap))
-    t = [1000.0]
-    sp = speech_out.LegacyPetSpeech(tmp_path, presence, now=lambda: t[0])
-    await sp.speak("u-00000001", "Привет, подопытный.", "happy", 50)
-    say = json.loads((tmp_path / "say.json").read_text(encoding="utf-8"))
-    assert say["text"] == "Привет, подопытный." and say["id"] == 1 and say["ts"] == 1000.0
-    assert sp.is_speaking() and sp.current_segment() == "Привет, подопытный."
-    assert presence.state["speaking"] and presence.state["utterance_id"] == "u-00000001" and presence.state["emotion"] == "happy"
-    t[0] += len("Привет, подопытный.") * 0.075 + 1.5 + 0.01                  # по длине текста
-    assert not sp.is_speaking() and sp.current_segment() == ""
-    await sp.speak("u-00000002", "Вторая", None, 50)
-    await sp.stop("u-00000001")                                            # чужая реплика: не трогаем
-    assert sp.is_speaking()
-    await sp.stop()
-    assert not sp.is_speaking() and presence.state["speaking"] is False and presence.state["utterance_id"] is None
-    assert len(seen) >= 3
-
-
-async def test_legacy_speech_end_is_announced_by_timer(tmp_path):
-    presence = speech_out.PresenceTracker()
-    sp = speech_out.LegacyPetSpeech(tmp_path, presence)
-    sp.PAD_S, sp.SECONDS_PER_CHAR = 0.05, 0.0
-    await sp.speak("u-1", "коротко", None, 50)
-    assert presence.state["speaking"]
-    await asyncio.sleep(0.2)
-    assert presence.state["speaking"] is False
-
-
-async def test_muted_voice_writes_text_but_is_not_speaking(tmp_path):
-    settings.update(voice_muted=True)
-    sp = speech_out.LegacyPetSpeech(tmp_path)
-    await sp.speak("u-1", "тихо", None, 50)
-    assert (tmp_path / "say.json").exists() and not sp.is_speaking()
-
 
 async def test_presence_updates_only_on_change_and_unknown_fields_ignored():
     calls = []

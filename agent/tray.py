@@ -2,19 +2,18 @@
 
 Запуск:  pythonw tray.py   (или python tray.py)
 
-Трей сам поднимает ядро (main.py) и питомца (desktop_pet.py, до ТЗ 13), если они не
-запущены. Модули (ТЗ 02) трей не запускает: их запускает и перезапускает супервизор ядра (agent/modules.yaml),
-включаются они в дашборде; процессы модулей дети ядра, поэтому остановка и перезапуск ядра (_kill_tree) их тоже
-останавливают. Меню:
+Трей сам поднимает ядро (main.py), если оно не запущено. Модули (ТЗ 02), в том числе голос и питомец (ТЗ 12, 13), трей не
+запускает: их запускает и перезапускает супервизор ядра (agent/modules.yaml), включаются они в дашборде; процессы модулей дети
+ядра, поэтому остановка и перезапуск ядра (_kill_tree) их тоже останавливают. Меню:
   - открыть дашборд;
-  - показать/скрыть питомца (голос при этом продолжает работать);
+  - показать/скрыть питомца (настройка pet_visible; модуль питомца при этом остаётся подключённым);
   - озвучка вкл/выкл и громкость;
   - зрение, разговорчивость;
   - запуск вместе с Windows (по твоему клику, сама ничего не включает);
   - перезапуск ядра, остановка ассистента.
 
-Настройки лежат в memory/settings.json — тот же файл читают ядро, дашборд
-и питомец, поэтому всё синхронно с чатом и кнопками.
+Настройки лежат в memory/settings.json — тот же файл читает ядро (дашборд и модули получают их от него), поэтому
+всё синхронно с чатом и кнопками.
 """
 import ctypes
 import os
@@ -85,12 +84,6 @@ def start_core():
                      creationflags=NO_WINDOW)
 
 
-def start_pet():
-    if not _find("desktop_pet.py"):
-        subprocess.Popen([_pythonw(), "desktop_pet.py"], cwd=HERE, creationflags=NO_WINDOW,
-                         env={**os.environ, "MEMORY_DIR": MEMORY_DIR})
-
-
 def _kill_tree(p: psutil.Process):
     """Остановить процесс вместе с потомками: иначе claude.exe от помощника остаётся жить сиротой."""
     try:
@@ -105,9 +98,8 @@ def _kill_tree(p: psutil.Process):
 
 
 def stop_all():
-    for script in ("main.py", "desktop_pet.py"):
-        for p in _find(script):
-            _kill_tree(p)
+    for p in _find("main.py"):                 # модули (голос, питомец, ...) дети ядра: _kill_tree останавливает и их
+        _kill_tree(p)
 
 
 def restart_core(icon=None, item=None):
@@ -153,11 +145,8 @@ def _toggle_quiet(icon, item):
 
 
 def _toggle_pet(icon, item):
-    """Показать/спрятать питомца; если процесс был закрыт, поднимаем его заново."""
-    show = not settings.load()["pet_visible"]
-    settings.update(pet_visible=show)
-    if show:
-        start_pet()
+    """Показать/спрятать питомца (PET-8): модуль питомца запускает супервизор ядра, он только скрывает или показывает окно."""
+    settings.update(pet_visible=not settings.load()["pet_visible"])
 
 
 def _set(key, value):
@@ -219,7 +208,7 @@ def build_menu() -> pystray.Menu:
 
 
 def _icon_image() -> Image.Image:
-    path = HERE / "static" / "stickers" / "idle.png"
+    path = HERE.parent / "modules" / "pet" / "static" / "stickers" / "idle.png"
     try:
         img = Image.open(path).convert("RGBA")
         img.thumbnail((64, 64))
@@ -243,7 +232,6 @@ def main():
     def setup(ic):
         ic.visible = True
         start_core()
-        start_pet()
 
     icon.run(setup)
 

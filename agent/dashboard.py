@@ -35,23 +35,6 @@ def _load_emotion() -> dict | None:
         return None
 
 
-def _read_say() -> dict | None:
-    """Последняя реплика компаньона (любого возраста): по её метке времени питомец понимает, что реплика новая."""
-    try:
-        return json.loads((_MEMORY_DIR / "say.json").read_text(encoding="utf-8"))
-    except Exception:
-        return None
-
-
-def _load_say() -> dict | None:
-    """Свежая реплика компаньона (companion.py) — приоритетнее игрового комментария."""
-    try:
-        say = json.loads((_MEMORY_DIR / "say.json").read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    return say if time.time() - say.get("ts", 0) < 90 else None
-
-
 def _is_local_json(request: web.Request) -> bool:
     """Защита от чужих запросов: только JSON (браузерный cross-site запрос так не
     отправить без CORS-разрешения) и только со своей же страницы."""
@@ -283,10 +266,8 @@ async def handle_api_state(request: web.Request) -> web.Response:
     game = (_MODULES.state_data("rimworld") if _MODULES is not None else None) or {}    # state модуля игры; {} если он не подключён
     connected = bool(game.get("connected"))
 
-    # Речь одна: питомец говорит и показывает ТОЛЬКО то, что прошло через компаньона (оно же в чате).
-    say = _read_say()
-    last_decision = ({"tick": None, "commentary": say["text"], "actions": [], "say_id": say.get("id")}
-                     if say and time.time() - say.get("ts", 0) < 90 else None)   # совместимость
+    # Реплика ассистентки (PET-10): файла реплики и полей say / last_decision больше нет; питомец и другие модули получают речь толчком,
+    # темой presence (speaking, segment, last_say), а не опросом этого эндпоинта.
     data = {
         "connected":        connected,
         "colony_name":      game.get("colony_name"),
@@ -294,8 +275,6 @@ async def handle_api_state(request: web.Request) -> web.Response:
         "pawns":            game.get("pawns", []),
         "resources":        game.get("resources", {}),
         "research":         game.get("research", {"current": None, "progress": 0.0}),
-        "last_decision":    last_decision,
-        "say":              say,
         "game_decision":    game.get("game_decision") if connected else None,
         "recent_decisions": game.get("recent_decisions", []),
         "ambition":         game.get("ambition"),

@@ -457,11 +457,11 @@ def test_core_process_has_no_audio_code_or_dependencies():
     from pathlib import Path
     agent = Path(__file__).resolve().parent.parent
     forbidden = {"tts_engine", "mic_listener", "hearing", "voice_id", "stt_client", "opus_encoder", "sounddevice",
-                 "soundcard", "faster_whisper", "edge_tts", "ormsgpack", "webrtcvad"}
+                 "soundcard", "faster_whisper", "edge_tts", "ormsgpack", "webrtcvad", "desktop_pet", "quick_input"}
     offenders = []
     for path in agent.rglob("*.py"):
         rel = path.relative_to(agent).parts
-        if rel[0] in ("memory", "models", "resources", "logs", ".venv", "tests") or path.name == "desktop_pet.py":
+        if rel[0] in ("memory", "models", "resources", "logs", ".venv", "tests"):
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             names = [a.name.split(".")[0] for a in node.names] if isinstance(node, ast.Import) else \

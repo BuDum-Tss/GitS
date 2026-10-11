@@ -3,7 +3,7 @@
 Реплику НЕ генерирует — комментарий по-прежнему пишет Claude (run_turn).
 Задача здесь одна: за секунду-две решить, какую эмоцию показать и нужна ли
 простая команда игре. Результат пишется в memory/emotion.json, откуда его
-берёт dashboard (/api/state → "emotion") и читает desktop_pet.
+берёт dashboard (/api/state → "emotion") и читает модуль pet (через presence: emotion и emotion_ts, PET-9).
 
 Простые команды (draft_colonists / undraft) исполняет reflex_actions — с
 проверкой по реальному состоянию игры. Отношения к колонистам и игроку

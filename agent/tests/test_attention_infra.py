@@ -20,7 +20,6 @@ import settings
 from environments import builtin
 from environments.base import ToolError, validate_args
 from environments.registry import Registry
-from speech_out import LegacyPetSpeech, PresenceTracker
 from supervisor import ModuleSpec, Supervisor, load_specs
 
 # ── сервис в супервизоре (ATT-2) ──────────────────────────────────────────────────────────────────
@@ -259,27 +258,6 @@ def test_attention_settings_deep_merge_keeps_other_keys():
     assert settings.DEFAULTS["attention"]["thresholds"] == [15, 35, 60, 85]            # результат load не портит значения по умолчанию
 
 
-# ── остановка речи питомца и признак «пользователь говорит» ──────────────────────────────────────
-
-async def test_pet_stop_writes_a_stop_marker_without_replaying_the_reply(tmp_path):
-    out = LegacyPetSpeech(tmp_path, PresenceTracker(), now=lambda: 500.0)
-    await out.speak("u-1", "Длинная реплика. Вторая фраза.", None, 50)
-    say = json.loads((tmp_path / "say.json").read_text(encoding="utf-8"))
-    assert say["text"] == "Длинная реплика. Вторая фраза." and "stop" not in say
-    await out.stop(None)
-    stopped = json.loads((tmp_path / "say.json").read_text(encoding="utf-8"))
-    assert stopped["stop"] == 500.0 and stopped["ts"] == say["ts"] and stopped["id"] == say["id"] and stopped["text"] == say["text"]
-    assert not out.is_speaking()                                         # питомец по метке перестанет озвучивать следующие предложения
-
-
-async def test_pet_stop_of_another_utterance_does_nothing(tmp_path):
-    out = LegacyPetSpeech(tmp_path, PresenceTracker(), now=lambda: 500.0)
-    await out.speak("u-1", "Фраза.", None, 50)
-    await out.stop("u-2")
-    assert "stop" not in json.loads((tmp_path / "say.json").read_text(encoding="utf-8"))
-    assert out.is_speaking()
-
-
 # ── дашборд ───────────────────────────────────────────────────────────────────────────────────────
 
 async def test_dashboard_attention_endpoints(tmp_path):
@@ -405,10 +383,8 @@ def test_log_nowait_is_fast_for_the_caller(tmp_path):
 
 async def test_wire_modules_connects_attention_everywhere(tmp_path):
     import core_service
-    import speech_out
     from test_core_wiring import WiredCompanion
     companion = WiredCompanion()
-    companion.speech = speech_out.LegacyPetSpeech(tmp_path, companion.presence)
     layer = core_service.wire_modules(companion, Registry(), specs=[], battery=lambda: {"level": 1.0, "sleeping": False})
     att = layer.attention
     assert companion.attention is att and att.hub is layer.hub and att.modules is layer.modules and att.profiles is layer.profiles
