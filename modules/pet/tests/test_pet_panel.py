@@ -4,7 +4,6 @@ import json
 
 from manifest import build_manifest
 from pet_logic import panel_blocks
-from glados_module import ModuleClient
 from glados_module.testing import FakeCore
 
 import bridge

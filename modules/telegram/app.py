@@ -133,7 +133,7 @@ class TelegramModule:
         ]
 
     async def run_state(self) -> None:
-        last_key, sent_at, panel_key = None, 0.0, None
+        last_key, sent_at = None, 0.0
         while True:
             try:
                 summary, data = await asyncio.to_thread(self.snapshot)

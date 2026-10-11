@@ -109,11 +109,40 @@ asyncio.run(main())
 | `await client.request("core.tts", {...}, timeout=60)` | любой запрос к ядру; `ToolError(code=...)` при ошибке, `asyncio.TimeoutError` без ответа |
 | `await client.job_update(job_id, state=..., stage=..., progress=..., text=...)` | ход долгой задачи (`new_job_id()` из `glados_module.protocol`); клиент хранит полное состояние и не шлёт прогресс чаще раза в 2 с |
 | `client.settings`, `client.module_settings`, `client.enabled`, `client.profile`, `client.battery` | то, что присылает ядро (обновляется само) |
+| `await client.panel.set(blocks)` | пространство модуля в дашборде (ТЗ 15): список блоков, до 64 КБ; не чаще раза в секунду (лишнее сливается), после переподключения шлётся заново |
+| `@client.panel_action(id)` | кнопка или строка пространства из `panel.actions` манифеста: `async (args) -> {ok, message?, open_url?}` |
 
 Обработчики: `@client.tool`, `@client.check`, `@client.on_topic`, `@client.on_job_answer`, `@client.on_job_cancel`,
 `@client.on_request("speak")` (прочие сообщения ядра), `@client.on_reconnect`, `@client.on_shutdown`.
 
 Выключенный модуль (`client.enabled == False`) остаётся подключённым, но события, речь и эмоции SDK отбрасывает сам.
+
+## Пространство модуля в дашборде (ТЗ 15)
+
+Модуль может показать свою вкладку в «Модули» дашборда. В манифесте объявляется поле `panel` (его ошибки не отклоняют
+модуль, а отбрасывают вкладку с предупреждением в журнал ядра):
+
+```json
+"panel": {"title": "Монтаж", "icon": "film", "order": 40,
+          "links": [{"id": "studio", "label": "Открыть в Remotion Studio", "kind": "tool", "tool": "open_studio",
+                     "args_from": "job", "open_result_url": true},
+                    {"id": "folder", "label": "Папка роликов", "kind": "reveal_path", "path_from": "output_dir"},
+                    {"id": "docs", "label": "Документация", "kind": "url", "url": "https://example.com/docs"}],
+          "actions": ["open_studio", "approve"],
+          "serve_dirs": ["C:\MyProjects\montage-module\jobs"], "embed_url": "http://127.0.0.1:3000"}
+```
+
+- `links`: `url` открывает адрес в новой вкладке; `tool` вызывает инструмент модуля с риском `auto` (аргумент `job_id`, если
+  `args_from: "job"`), адрес из результата (`open_result_url`) открывается; `reveal_path` открывает папку проводника, только
+  внутри `serve_dirs` (путь - `path` или поле `state.data` с именем `path_from`).
+- `serve_dirs`: каталоги, из которых ядро раздаёт артефакты задач (`GET /api/artifact`: видео с перемоткой, `.srt`,
+  `.json`, `.md` и т. п.). Без `..` и без симлинков наружу.
+- `embed_url`: своя страница модуля на `127.0.0.1` или `localhost`, показывается во вкладке (`iframe`).
+- Блоки (`client.panel.set`): `stats`, `table`, `list`, `text`, `progress`, `buttons`, `link`, `image`, `video`, `log`, `tabs`.
+  Текст выводится как текст (дашборд экранирует всё, HTML не исполняется). Кнопки и строки таблицы ссылаются на
+  `actions` из манифеста, нажатие приходит как `panel.action` (`@client.panel_action`).
+- Вкладка видна, пока модуль включён или подключён. Служебная секция «Служебное» (задачи, настройки, инструменты, события)
+  есть у каждого модуля.
 
 ## Правила
 
