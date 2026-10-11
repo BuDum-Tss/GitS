@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitS: архитектура и статус</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#14171c;--mut:#5b6470;--line:#d5dae1;--ok:#1f9d55;--wip:#d98a00;--plan:#8a94a3;--pause:#c2412d;--acc:#2b6fba;
+--ok-bg:#e3f5ea;--wip-bg:#fff2d6;--plan-bg:#eceff3;--pause-bg:#fbe5e1}
+@media(prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d2128;--ink:#e8ebf0;--mut:#98a2b0;--line:#323946;--ok:#46c47c;--wip:#f0b03a;--plan:#8a94a3;--pause:#ef7a68;--acc:#5fa3e8;
+--ok-bg:#16301f;--wip-bg:#3a2d10;--plan-bg:#262b33;--pause-bg:#3b1d19}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:34px 0 10px}h3{font-size:14px;margin:0 0 6px}
+.sub{color:var(--mut);margin:0 0 16px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin:10px 0 18px}
+.legend span::before{content:"";display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.layer{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0}
+.layer>h3{color:var(--mut);text-transform:uppercase;letter-spacing:.06em;font-size:12px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.box{border:1.5px solid var(--c);background:var(--b);border-radius:8px;padding:8px 10px;font-size:13px}
+.box b{display:block;font-size:14px}.box i{font-style:normal;color:var(--mut);font-size:12px}
+.ok{--c:var(--ok);--b:var(--ok-bg)}.wip{--c:var(--wip);--b:var(--wip-bg)}.plan{--c:var(--plan);--b:var(--plan-bg);border-style:dashed}.pause{--c:var(--pause);--b:var(--pause-bg)}
+.arrow{text-align:center;color:var(--mut);font-size:12px;padding:5px 0}
+.arrow::before{content:"\2195  "}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+tr:last-child td{border-bottom:0}
+.tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;border:1px solid var(--c);background:var(--b);white-space:nowrap}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.flow .box{min-width:120px}.flow .a{color:var(--mut)}
+code{background:var(--plan-bg);padding:1px 5px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>GitS: ядро и модули</h1>
+<p class="sub">Состояние на 2026-10-11. Ядро простое и быстрое, всё остальное подключается модулями-процессами по одному контракту. Персонаж (ГЛаДОС) это данные, а не код.</p>
+<div class="legend">
+<span style="--c:var(--ok)">готово, в master</span>
+<span style="--c:var(--wip)">в разработке</span>
+<span style="--c:var(--pause)">на паузе</span>
+<span style="--c:var(--plan)">запланировано</span>
+</div>
+
+<h2>Архитектура</h2>
+<div class="layer"><h3>Модули (отдельные процессы)</h3>
+<div class="row">
+<div class="box ok"><b>Telegram</b><i>переписка, ответы, пост-итоги</i></div>
+<div class="box ok"><b>Голос</b><i>микрофон, STT, TTS, слух, барж-ин</i></div>
+<div class="box ok"><b>Питомец</b><i>окно, эмоции, анимация речи</i></div>
+<div class="box ok"><b>Рабочий стол</b><i>экран, мышь, клавиатура, помощник Claude (ТЗ 14, влит)</i></div>
+<div class="box ok"><b>RimWorld</b><i>игровой агент, запись забегов (отдельный репозиторий, пока выключен)</i></div>
+<div class="box pause"><b>Монтаж</b><i>Remotion + Claude, стиль Aperture; шаг 2 остановлен, качество ролика не устроило</i></div>
+<div class="box plan"><b>Minecraft и др.</b><i>новые игры как модули со своей областью памяти</i></div>
+</div></div>
+<div class="arrow">контракт v1: WebSocket 127.0.0.1:8766/module/ws, токен, манифест, события, задачи, запросы core.*</div>
+<div class="layer"><h3>Ядро</h3>
+<div class="row">
+<div class="box ok"><b>module_hub / реестр</b><i>подключение, манифесты, инструменты</i></div>
+<div class="box ok"><b>Супервизор</b><i>запуск и перезапуск модулей и служб (modules.yaml)</i></div>
+<div class="box ok"><b>Профили</b><i>YAML: набор модулей и инструментов, always / profile</i></div>
+<div class="box ok"><b>Разговор и маршрутизатор</b><i>чат, голос, Telegram в одном пути</i></div>
+<div class="box ok"><b>Разрешения</b><i>approvals, опасные действия</i></div>
+<div class="box ok"><b>Дашборд</b><i>состояние, память, модули, события</i></div>
+</div></div>
+<div class="arrow">событие от модуля</div>
+<div class="layer"><h3>Внимание (что и когда делать)</h3>
+<div class="row">
+<div class="box ok"><b>Классификатор GLiNER2.5-multi-Decide</b><i>служба :8768; принимает событие, выдаёт категории и срочность, p95 около 0,6 с</i></div>
+<div class="box ok"><b>Менеджер внимания</b><i>важность × профиль × отправитель × правила; решения D0–D4, фокус, дайджест</i></div>
+<div class="box ok"><b>Очередь речи</b><i>объявления запусков (ANNOUNCE) всегда звучат</i></div>
+<div class="box wip"><b>Объявления запусков</b><i>ТЗ 16: аудит всех модулей</i></div>
+</div></div>
+<div class="arrow">решение: молчать, записать, ответить, действовать</div>
+<div class="layer"><h3>Мышление</h3>
+<div class="row">
+<div class="box ok"><b>Gemma (LM Studio)</b><i>речь, быстрые решения, извлечение фактов</i></div>
+<div class="box ok"><b>Claude (Agent SDK)</b><i>долгие задачи, планирование, помощник</i></div>
+<div class="box ok"><b>Выбор инструментов</b><i>tool_search, always / profile</i></div>
+<div class="box plan"><b>Политики поведения</b><i>ТЗ 11e: наблюдение, планирование, бой, ручное управление</i></div>
+</div></div>
+<div class="arrow">чтение и запись памяти, вызовы инструментов модулей</div>
+<div class="layer"><h3>Память</h3>
+<div class="row">
+<div class="box ok"><b>Долговременная личная</b><i>MemoryStore (JSON) + граф Graphiti / FalkorDB</i></div>
+<div class="box plan"><b>Рабочая (кратковременная)</b><i>ТЗ 04c: диалог, внимание, мир и события модуля; консолидация в эпизоды</i></div>
+<div class="box plan"><b>Области по модулям</b><i>ТЗ 04c: корень Module:RimWorld, Module:Minecraft; общая область core</i></div>
+<div class="box plan"><b>Справочник (RAG)</b><i>ТЗ 04, после сравнения 04a</i></div>
+<div class="box plan"><b>Опыт</b><i>ТЗ 04: уроки забегов и задач</i></div>
+</div></div>
+<div class="arrow">реплика, эмоция, сообщение</div>
+<div class="layer"><h3>Вывод</h3>
+<div class="row">
+<div class="box ok"><b>Голос</b><i>озвучка</i></div><div class="box ok"><b>Питомец</b><i>эмоция и речь</i></div><div class="box ok"><b>Telegram</b><i>сообщение</i></div><div class="box ok"><b>Дашборд</b><i>чат и состояние</i></div>
+</div></div>
+
+<h2>Путь события</h2>
+<div class="flow">
+<div class="box ok"><b>Событие</b><i>модуль → ядро</i></div><span class="a">→</span>
+<div class="box ok"><b>GLiNER</b><i>категории, срочность</i></div><span class="a">→</span>
+<div class="box ok"><b>Внимание</b><i>D0–D4, фокус</i></div><span class="a">→</span>
+<div class="box plan"><b>Политика</b><i>ТЗ 11e</i></div><span class="a">→</span>
+<div class="box ok"><b>Память</b><i>запрос по смыслу</i></div><span class="a">→</span>
+<div class="box ok"><b>Gemma / Claude</b><i>ответ или план</i></div><span class="a">→</span>
+<div class="box ok"><b>Инструмент</b><i>вызов в модуле</i></div><span class="a">→</span>
+<div class="box ok"><b>Речь / вывод</b><i>голос, питомец, чат</i></div>
+</div>
+<p class="sub" style="margin-top:8px">Эту схему в ТЗ 17 превратим в живую во вкладке «Состояние»: слои разными цветами, частота на рёбрах, подсветка пути хода, панели «что принял / что выдал».</p>
+
+<h2>Игровой агент RimWorld: политики (ТЗ 11e)</h2>
+<div class="cols">
+<div class="box plan"><b>Наблюдение</b><i>игра идёт, скорость растёт, думает локальная модель</i></div>
+<div class="box plan"><b>Планирование</b><i>пауза, глубокое размышление Claude, карта, ресурсы, самопроверка плана</i></div>
+<div class="box plan"><b>Боевая</b><i>пауза, мобилизация, приказы, короткий срез игры, снова пауза</i></div>
+<div class="box plan"><b>Ручное управление</b><i>принудительное назначение работы застрявшей задаче</i></div>
+</div>
+<p class="sub" style="margin-top:8px">Агент получает события, важность оценивает GLiNER, полный снимок мира не передаётся. Модель сама может объявлять правила наблюдения (например, ждать исследование и тогда перейти в планирование).</p>
+
+<h2>Что в работе и что дальше</h2>
+<table>
+<tr><th>Задача</th><th>Статус</th><th>Что это</th></tr>
+<tr><td>ТЗ 01–03, 10–13</td><td><span class="tag ok">готово</span></td><td>контракт и SDK, ядро, внимание, Telegram, RimWorld на контракте, голос, питомец</td></tr>
+<tr><td>ТЗ 11b–11d</td><td><span class="tag ok">готово</span></td><td>надёжная запись забегов, время не на паузе, чистый экран, ясные объявления</td></tr>
+<tr><td>ТЗ 14 рабочий стол</td><td><span class="tag ok">влит в master</span></td><td>экран и ввод ушли из ядра в модуль; ручная проверка на живом ядре ещё нужна</td></tr>
+<tr><td>ТЗ 15 подвкладки модулей</td><td><span class="tag wip">в работе</span></td><td>во вкладке «Модули» подвкладка на каждый модуль, у каждого своё пространство и ссылки</td></tr>
+<tr><td>ТЗ 16 объявления запусков</td><td><span class="tag wip">в работе</span></td><td>аудит и единые объявления долгих запусков</td></tr>
+<tr><td>ТЗ 20–23 монтаж</td><td><span class="tag pause">на паузе</span></td><td>шаблон Remotion и конвейер есть, первый черновик не устроил; разбираем отдельно</td></tr>
+<tr><td>ТЗ 05 персонажи</td><td><span class="tag plan">дальше</span></td><td>код без имени персонажа, CHARACTER_/GITS_, gits-sdk, память по персонажам</td></tr>
+<tr><td>ТЗ 11e политики</td><td><span class="tag plan">дальше</span></td><td>события вместо состояния мира, четыре политики, правила наблюдения от модели</td></tr>
+<tr><td>ТЗ 04a / 04 / 04c память</td><td><span class="tag plan">дальше</span></td><td>сравнение Graphiti, MemPalace, LightRAG; справочник; рабочая память и области модулей</td></tr>
+<tr><td>ТЗ 17 схема потока</td><td><span class="tag plan">дальше</span></td><td>проверка ядра без модулей и живая схема данных во вкладке «Состояние»</td></tr>
+</table>
+
+<h2>Принципы</h2>
+<table>
+<tr><td>Ядро</td><td>простое и быстрое, отзывчивое и проактивное; без LangGraph; тяжёлое уходит в модули</td></tr>
+<tr><td>Модели</td><td>Gemma для речи и плана, Claude для долгих задач, GLiNER для оценки событий</td></tr>
+<tr><td>Персонаж</td><td>данные: короткий якорный промпт и канонические воспоминания; в коде имени персонажа нет</td></tr>
+<tr><td>Озвучка запусков</td><td>долгие и заметные запуски объявляет персонаж; быстрые вспомогательные операции молчат</td></tr>
+<tr><td>Разработка</td><td>планирование и проверка на Opus, исполнители на Haiku, каждый шаг проверяется перед следующим</td></tr>
+</table>
+</main>
+</body>
+</html>
