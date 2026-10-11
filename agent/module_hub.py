@@ -324,6 +324,8 @@ class ModuleHub:
                     await self._reject(ws, env.id, mid, f"голосовой вывод уже занят модулем «{other.module_id}»")
                     return None
         spec = Manifest.from_dict(body["manifest"])
+        for warning in spec.panel_warnings:              # TZ 15: неверный panel не отклоняет модуль
+            logger.warning(f"Модуль {mid}: {warning}")
         conn = ModuleConnection(ws, body, spec)
         old = self._conns.get(mid)
         if old is not None:
@@ -364,7 +366,7 @@ class ModuleHub:
 
     # ── приём сообщений ─────────────────────────────────────────────────────────
 
-    _NOTES = ("event", "say", "emotion", "state", "job.update")
+    _NOTES = ("event", "say", "emotion", "state", "job.update", "panel.set")
 
     def _on_text(self, conn: ModuleConnection, data: str) -> None:
         try:
@@ -408,6 +410,18 @@ class ModuleHub:
                 logger.warning(f"Модуль {mid}: state неверный (summary строка до {P.STATE_SUMMARY_MAX}, data объект)")
                 return
             self.modules.set_state(mid, summary, data)
+            return
+        if t == "panel.set":                           # TZ 15: блоки пространства модуля
+            if not self._enabled(conn):
+                return
+            rec = self.modules.get(mid)
+            actions = set((rec.panel or {}).get("actions") or []) if rec is not None else set()
+            problems = P.validate_panel_set(body, actions)
+            if problems:
+                logger.warning(f"Модуль {mid}: panel.set неверен: {'; '.join(problems)}")
+                return
+            if not self.modules.set_panel(mid, body):
+                logger.debug(f"Модуль {mid}: panel.set отброшен (не объявлено panel или чаще раза в секунду)")
             return
         if t == "job.update":
             problems = P.validate_job_update(body)
