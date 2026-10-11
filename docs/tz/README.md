@@ -19,6 +19,7 @@
 | 13 | [13-pet-module.md](13-pet-module.md) | Модуль питомца | 2 | 12 (делаются вместе) |
 | 14 | [14-desktop-module.md](14-desktop-module.md) | Модуль рабочего стола: экран, мышь и клавиатура, Claude-помощник | 2 | 01–03 |
 | 05 | [05-characters.md](05-characters.md) | Персонажи: код без имени персонажа, префиксы `CHARACTER_`/`GITS_`, SDK `gits-sdk`, несколько персонажей, память по персонажам | 3 (первым) | 01–03, 10–14 |
+| 04a | [04a-memory-bakeoff.md](04a-memory-bakeoff.md) | Сравнение памяти на наших данных: Graphiti vs MemPalace (vs LightRAG), решение по цифрам | 3 (перед 04) | 05 |
 | 04 | [04-memory-knowledge.md](04-memory-knowledge.md) | Память трёх слоёв, справочник (RAG), опыт, `lookup` | 3 | 01–03, 05, 11 |
 | 11b | [11b-run-recording-fixes.md](11b-run-recording-fixes.md) | Запись забегов: звук на длинных забегах, быстрая нарезка, повторный монтаж записи | 4 | 11 |
 | 20 | [20-montage-module.md](20-montage-module.md) | Модуль монтажа (новый репозиторий) | 4 | 01–04, 12 |
