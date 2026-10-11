@@ -97,7 +97,7 @@ class Core:
         self.io = FakeIO()
         self.attention = Attention(self.companion, self.io, idle_source=lambda: 0.0)       # не зависеть от простоя настоящего ввода
         self.attention.hub, self.attention.modules = None, self.modules
-        self.requests = CoreRequests(attention=self.attention, tts_dir=tmp_path / "tts")
+        self.requests = CoreRequests(attention=self.attention)
         self.said: list[str] = []
         self.hub = ModuleHub(self.modules, attention=self.attention, requests=self.requests,
                              settings_source=lambda: self.settings_state, token_file=tmp_path / "module_token",

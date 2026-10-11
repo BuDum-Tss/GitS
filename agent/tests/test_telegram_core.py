@@ -181,7 +181,7 @@ def test_no_telegram_imports_in_core_sources():
     assert offenders == []
     for name in ("telegram_channel.py", "telegram_user.py", "tg_draft.py", "tg_login.py"):
         assert not (AGENT / name).exists(), name                                 # переехали в modules/telegram
-    assert (AGENT / "opus_encoder.py").exists()                                  # нужен core.tts до ТЗ 12
+    assert not (AGENT / "opus_encoder.py").exists()                              # перекодирование звука ушло в модуль voice (ТЗ 12)
 
 
 def test_core_import_does_not_pull_telegram_modules():

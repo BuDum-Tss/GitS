@@ -171,6 +171,8 @@ class ModuleHub:
         self.modules = modules
         self.attention = attention
         self.requests = requests
+        if requests is not None:
+            requests.hub = self                        # core.tts передаётся модулю голоса через шину (VOICE-16)
         self.token = token or P.new_token()
         self.token_file = token_file
         self._settings_source = settings_source

@@ -159,6 +159,11 @@ class Attention:
         # служебные события модулей, которые ядро обрабатывает само и не озвучивает: kind -> async (Item) -> None (ТЗ 11, RW-9:
         # rimworld.colonists обновляет отношения и граф памяти). Такое событие в журнал внимания и очередь речи не попадает.
         self.kind_handlers: dict[str, Callable[[Item], Awaitable[None]]] = {}
+        # то же для событий, которым нужно ещё и побочное действие (ТЗ 12, VOICE-14: voice.heard пишется в память занятий), но
+        # которые дальше идут обычным путём внимания: kind -> async (Item) -> None
+        self.kind_hooks: dict[str, Callable[[Item], Awaitable[None]]] = {}
+        # виды, которые не пишутся в журнал module_event: служебные и частые (voice.speech, voice.user_speaking)
+        self.silent_kinds: set[str] = set()
         self._items: dict[str, Item] = {}
         self._by_key: dict[tuple[str, str], Item] = {}
         self._digest: dict[str, deque] = {}
@@ -296,12 +301,16 @@ class Attention:
         now = self._clock()
         item = self._make_item(module_id, event, now)
         sender_name = self._sender_name(item.sender)
-        events_log.log_nowait("module_event", item.text[:TEXT_LOG], module=module_id, event_kind=item.kind,
-                       urgency_hint=item.urgency_hint, addressed_to_me=item.addressed_to_me, sender=sender_name)
+        if item.kind not in self.silent_kinds:
+            events_log.log_nowait("module_event", item.text[:TEXT_LOG], module=module_id, event_kind=item.kind,
+                           urgency_hint=item.urgency_hint, addressed_to_me=item.addressed_to_me, sender=sender_name)
         handler = self.kind_handlers.get(item.kind)
         if handler is not None:
             self._spawn(self._run_kind_handler(handler, item))
             return
+        hook = self.kind_hooks.get(item.kind)
+        if hook is not None:
+            self._spawn(self._run_kind_handler(hook, item))               # побочное действие; событие идёт дальше обычным путём
         if self._merge_duplicate(item, now):
             return
         self._register(item)
@@ -774,8 +783,11 @@ class Attention:
         return cls
 
     def set_user_speaking(self, speaking: bool) -> None:
-        """Микрофон (позже модуль voice) сообщает, говорит ли пользователь сейчас: нужно условию 2 очереди речи."""
+        """Модуль voice (событие `voice.user_speaking`, VOICE-8) сообщает, говорит ли пользователь сейчас: нужно условию 2
+        очереди речи. Когда человек закончил говорить, обновляется и `last_user_ts`."""
         self.presence.update(user_speaking=bool(speaking))
+        if not speaking:
+            self.presence.update(last_user_ts=self._clock())
 
     # ── речь: вход для компаньона ────────────────────────────────────────────
 

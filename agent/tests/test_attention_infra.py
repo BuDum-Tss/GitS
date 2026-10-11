@@ -5,7 +5,6 @@ import asyncio
 import json
 import textwrap
 import time
-from pathlib import Path
 from types import SimpleNamespace
 
 import aiohttp
@@ -21,7 +20,6 @@ import settings
 from environments import builtin
 from environments.base import ToolError, validate_args
 from environments.registry import Registry
-from mic_listener import MicListener, UtteranceSegmenter
 from speech_out import LegacyPetSpeech, PresenceTracker
 from supervisor import ModuleSpec, Supervisor, load_specs
 
@@ -280,37 +278,6 @@ async def test_pet_stop_of_another_utterance_does_nothing(tmp_path):
     await out.stop("u-2")
     assert "stop" not in json.loads((tmp_path / "say.json").read_text(encoding="utf-8"))
     assert out.is_speaking()
-
-
-def test_pet_poll_stops_tts_on_a_new_stop_marker(monkeypatch):
-    """Питомец (отдельный процесс) видит метку stop в say.json и просит озвучку договорить предложение и замолчать."""
-    pet_src = (Path(__file__).resolve().parents[1] / "desktop_pet.py").read_text(encoding="utf-8")
-    assert 'stop_key = say.get("stop")' in pet_src and "tts_engine.stop_after_sentence()" in pet_src
-    engine = (Path(__file__).resolve().parents[1] / "tts_engine.py").read_bytes().decode("utf-8")
-    assert "def stop_after_sentence" in engine and "_gen[0] += 1" in engine
-
-
-def test_segmenter_reports_activity():
-    frames = []
-    seg = UtteranceSegmenter(lambda f: f == b"s", silence_frames=2, min_speech=1)
-    assert not seg.active
-    seg.feed(b"s")
-    assert seg.active
-    seg.feed(b"-")
-    assert seg.active
-    assert seg.feed(b"-") is not None and not seg.active
-    assert frames == []
-
-
-def test_mic_reports_user_speaking_changes_once_and_survives_callback_errors():
-    seen = []
-    mic = MicListener(None, None, None, lambda: False, on_speaking=seen.append)
-    for v in (False, True, True, False, False):
-        mic._note_speaking(v)
-    assert seen == [True, False]
-    broken = MicListener(None, None, None, lambda: False, on_speaking=lambda v: 1 / 0)
-    broken._note_speaking(True)
-    MicListener(None, None, None, lambda: False)._note_speaking(True)             # без слушателя тоже тихо
 
 
 # ── дашборд ───────────────────────────────────────────────────────────────────────────────────────

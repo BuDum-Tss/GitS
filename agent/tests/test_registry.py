@@ -17,6 +17,6 @@ def test_search_always_includes_claude_helper(monkeypatch):
     monkeypatch.setenv("MEMORY_DIR", d)
     settings.init(d)
     reg = Registry()
-    builtin.register(reg, _Dummy(), None, UserMemory(d))
+    builtin.register(reg, _Dummy(), UserMemory(d))
     picked = reg.search("установи и настрой telethon telegram", k=3)
     assert "system.ask_claude" in [t.id for t in picked]

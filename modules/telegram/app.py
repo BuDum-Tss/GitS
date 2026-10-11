@@ -143,14 +143,14 @@ class TelegramModule:
                                   timeout=30)
 
     async def _voice_bytes(self, path) -> bytes | None:
-        """OGG/Opus из voice_path (TG-17): .ogg/.opus как есть, прочее перекодирует ffmpeg. Нет настройки или сбой: None."""
+        """OGG/Opus из voice_path (TG-17): только .ogg/.opus (OGG делает модуль голоса: core.tts, ТЗ 12). Другой формат, нет
+        настройки или сбой: None, ответ пойдёт текстом."""
         if not path or not self.client.settings.get("telegram_voice"):
             return None
         try:
-            if str(path).lower().endswith(VOICE_EXT):
-                return await asyncio.to_thread(Path(path).read_bytes)
-            import opus_encoder
-            return await opus_encoder.audio_file_to_ogg_opus(str(path))
+            if not str(path).lower().endswith(VOICE_EXT):
+                raise ValueError("нужен .ogg или .opus (перекодирования в модуле Telegram больше нет)")
+            return await asyncio.to_thread(Path(path).read_bytes)
         except Exception as e:
             events_log.log_nowait("error", "telegram: голос для ответа не подготовлен, пойдёт текстом: " + scrub(str(e))[:160])
             return None

@@ -232,14 +232,35 @@ async def classify(evt: dict, rel=None, timeout: float = TIMEOUT) -> dict:
     return result
 
 
+_listeners: list = []
+
+
+def add_listener(callback):
+    """Подписка на эмоции (PET-9): callback(emotion, ts) вызывается при каждой публикации. Ядро кладёт их в presence, а
+    шина модулей рассылает тему presence (питомец показывает стикер). Возвращает callback (для remove_listener)."""
+    _listeners.append(callback)
+    return callback
+
+
+def remove_listener(callback) -> None:
+    if callback in _listeners:
+        _listeners.remove(callback)
+
+
 def publish(evt_name: str, res: dict):
-    """Записать эмоцию для дашборда/питомца."""
+    """Записать эмоцию для дашборда и сообщить подписчикам (presence для модулей)."""
+    ts = time.time()
+    for callback in list(_listeners):
+        try:
+            callback(res["emotion"], ts)
+        except Exception as e:
+            logger.warning(f"Подписчик эмоций: {e}")
     if _EMOTION_FILE is None:
         return
     try:
         _EMOTION_FILE.write_text(json.dumps({
             "emotion": res["emotion"], "action": res.get("action", "none"),
-            "event": evt_name, "ts": time.time(),
+            "event": evt_name, "ts": ts,
             "source": res.get("source"), "ms": res.get("ms"),
         }, ensure_ascii=False), encoding="utf-8")
     except Exception as e:

@@ -17,6 +17,7 @@
 модулей) они говорят сразу, как раньше. Ответ в канал модуля (Telegram) не речь: он доставляется сразу, мимо очереди.
 """
 import asyncio
+import collections
 import json
 import logging
 import re
@@ -31,7 +32,7 @@ import perception
 import prompts
 import settings
 from conversation_io import DASHBOARD, VOICE, UserInput, current_channel
-from speech_out import LegacyPetSpeech, PresenceTracker, new_utterance_id
+from speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
 from user_memory import UserMemory
 
 logger = logging.getLogger("companion")
@@ -44,23 +45,21 @@ _CONSULT = {"quiet": 10 * 60, "normal": 4 * 60, "chatty": 90}        # как ч
 
 class Companion:
     def __init__(self, memory_dir: str, rel, watcher: perception.ScreenWatcher | None = None,
-                 hearing=None, speech=None, presence: PresenceTracker | None = None):
+                 speech=None, presence: PresenceTracker | None = None):
         self._dir = Path(memory_dir)
         self.presence = presence or PresenceTracker()          # тема presence (ставит слушателя ядро)
-        self.speech = speech or LegacyPetSpeech(memory_dir, self.presence)   # вывод речи (CORE-27)
+        self.speech = speech or TextOnlySpeech(self.presence)  # вывод речи (CORE-27, VOICE-15): ядро ставит выбор голос/текст
         self.io = None                                         # ConversationIO: доставка ответов в каналы модулей
         self.attention = None                                  # Attention: очередь речи и фокус (ТЗ 03); None - говорит сразу
         self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
         self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
         self._rel = rel
         self._watcher = watcher
-        self._hearing = hearing
-        self.router = None     # Router, ставится ядром после создания реестра окружений
+        self.router = None    # Router, ставится ядром после создания реестра окружений
         self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (ModuleRegistry.notes, ставит ядро)
-        self.voice_id = None      # VoiceIdentity: кто говорит голосом
-        self.graph = None         # GraphMemory: факты о людях и жизни в графе
+        self.graph = None        # GraphMemory: факты о людях и жизни в графе
         self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
-        self.last_voice = None    # последний говоривший голосом (для «запомни, это я»)
+        self._heard: collections.deque = collections.deque(maxlen=20)   # (время, сводка) услышанного в колонках (voice.heard)
         self.game_order = None  # async (text) -> bool: приказ в игру, ставит контроллер
         self._mem = UserMemory(memory_dir)
         self._last_say = self._load_last_say()   # переживает перезапуски
@@ -114,8 +113,6 @@ class Companion:
         channel = current_channel.get()
         self._mem.add_dialogue("glados", text)
         events_log.log("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
-        if self._hearing is not None:
-            self._hearing.note_own_speech(text)   # свой голос в колонках не слушаем
         self._last_say = time.time()
         self.presence.update(last_say=text, last_say_ts=self._last_say)
         if channel is not None and channel.kind == "module":
@@ -137,11 +134,19 @@ class Companion:
     def is_speaking(self) -> bool:
         return self.speech.is_speaking()
 
+    def note_heard(self, summary: str) -> None:
+        """Сводка услышанного в колонках (событие `voice.heard`, VOICE-14): в контекст разговора. Сырой текст остаётся в модуле
+        голоса (инструмент recent_audio отдаёт его по запросу)."""
+        self._heard.append((time.time(), summary))
+
+    def recent_heard(self, secs: int = 600) -> str:
+        cutoff = time.time() - secs
+        return " ".join(s for ts, s in self._heard if ts >= cutoff)[-900:]
+
     async def on_voice(self, text: str, speaker: dict):
         """Реплика, сказанная голосом: узнанный владелец идёт как обычное сообщение, остальным ставится пометка,
         кто говорит (имя или «незнакомый голос»), и заводится профиль человека."""
         pid, name = speaker.get("id"), speaker.get("name")
-        self.last_voice = speaker
         if speaker.get("owner") or not speaker.get("has_owner"):
             prefix = ""
         elif name:
@@ -295,10 +300,10 @@ class Companion:
     def _context(self, include_hearing: bool = True, query: str = "") -> str:
         """query: о чём сейчас речь. По нему из долговременной памяти берутся подходящие записи."""
         parts = [self._mem.context_block(dialogue=12, query=query), self._capabilities()]
-        if include_hearing and self._hearing is not None and settings.load()["hearing"]:
-            heard = self._hearing.recent_text()
+        if include_hearing and settings.load()["hearing"]:
+            heard = self.recent_heard()
             if heard:
-                parts.append("Что недавно было слышно из колонок (автоматическая расшифровка, "
+                parts.append("Что недавно было слышно из колонок (краткая сводка автоматической расшифровки, "
                              "возможны ошибки; это может быть фильм, видео, музыка, не слова "
                              "пользователя): " + heard)
         if self._graph_block:

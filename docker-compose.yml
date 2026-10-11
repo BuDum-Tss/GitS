@@ -1,6 +1,6 @@
 # Голосовые сервисы ГЛаДОС (локально, на GPU). Запуск: docker compose up -d fish-speech
-# Оба сервиса необязательны: без Fish Speech бот говорит запасным голосом edge-tts, без WhisperX слух использует
-# встроенный локальный Whisper. На видеокарте с 6 ГБ вместе с локальной моделью (LM Studio) и игрой видеопамяти может
+# Оба сервиса необязательны: без Fish Speech модуль voice говорит запасным голосом edge-tts, без WhisperX слух использует
+# встроенный локальный Whisper (веса Fish Speech по-прежнему в agent/resources/tts/checkpoints, референс голоса у модуля voice). На видеокарте с 6 ГБ вместе с локальной моделью (LM Studio) и игрой видеопамяти может
 # не хватить, поэтому поднимай то, что нужно сейчас.
 services:
   # База памяти-графа (Graphiti). Версия закреплена: образ latest (6.x) несовместим с текущим Graphiti.
@@ -25,7 +25,7 @@ services:
       - "${FISH_HOST:-127.0.0.1}:${FISH_PORT:-8080}:8080"
     volumes:
       - ${FISH_CHECKPOINTS:-./agent/resources/tts/checkpoints}:/opt/fish-speech/checkpoints
-      - ./agent/resources/tts/references:/opt/fish-speech/references
+      - ./modules/voice/resources/tts/references:/opt/fish-speech/references
     deploy:
       resources:
         reservations:

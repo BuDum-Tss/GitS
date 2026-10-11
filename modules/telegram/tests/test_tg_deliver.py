@@ -1,4 +1,6 @@
 """Доставка ответов ядра в Telegram: deliver (ТЗ 10: TG-17..TG-20)."""
+from pathlib import Path
+
 import pytest
 from tg_rig import Rig
 
@@ -69,18 +71,14 @@ async def test_voice_path_is_ignored_without_telegram_voice(tmp_path, monkeypatc
     assert rig.uploads == [] and rig.api_calls("sendMessage") == [{"chat_id": 555, "text": "Текстом."}]
 
 
-async def test_wav_voice_is_converted_with_opus_encoder(tmp_path, monkeypatch):
-    import opus_encoder
+async def test_wav_voice_is_not_converted_here_and_goes_as_text(tmp_path, monkeypatch):
+    """ТЗ 12: перекодирования в OGG в модуле Telegram больше нет (его делает модуль голоса, core.tts вернёт OGG)."""
     wav = tmp_path / "ответ.wav"
     wav.write_bytes(b"RIFF")
-
-    async def fake_ogg(path):
-        assert path == str(wav)
-        return b"OggS-converted"
-    monkeypatch.setattr(opus_encoder, "audio_file_to_ogg_opus", fake_ogg)
     async with Rig(tmp_path, monkeypatch, settings={"telegram_voice": True}) as rig:
         await deliver(rig, target="bot:555", text="Из wav.", voice_path=str(wav))
-    assert rig.uploads[0][2]["voice"][1] == b"OggS-converted"
+    assert rig.uploads == [] and rig.api_calls("sendMessage") == [{"chat_id": 555, "text": "Из wav."}]
+    assert not (Path(__file__).resolve().parent.parent / "opus_encoder.py").exists()
 
 
 async def test_voice_failure_falls_back_to_text(tmp_path, monkeypatch):

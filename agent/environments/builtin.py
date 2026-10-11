@@ -28,7 +28,7 @@ def _tool(env, name, description, params, call, risk="auto", keywords=(), self_c
                 informative=informative)
 
 
-def register(registry, companion, hearing, memory, profiles=None):
+def register(registry, companion, memory, profiles=None):
     """Собрать и добавить встроенные окружения. Все объекты живут в одном процессе ядра.
     profiles - ProfileManager (profile_manager.py): нужен инструменту assistant.set_profile."""
 
@@ -127,23 +127,6 @@ def register(registry, companion, hearing, memory, profiles=None):
         return ("анализ запущен в фоне (Claude читает журналы и код, это займёт несколько минут); "
                 "результат она проговорит сама, когда будет готов")
 
-    async def name_voice(a):
-        vid = getattr(companion, "voice_id", None)
-        last = getattr(companion, "last_voice", None)
-        if vid is None or not last or not last.get("id") or str(last["id"]).startswith("SPEAKER"):
-            raise ToolError("голос не узнан: микрофон выключен, сервер WhisperX не запущен или голоса пока не было")
-        name = a["name"].strip()
-        if not vid.set_name(last["id"], name):
-            raise ToolError("такого голоса нет в памяти")
-        if a.get("is_owner"):
-            vid.set_owner(last["id"])
-            memory.add_fact(f"Имя: {name}", kind="user", importance=5)
-            return f"запомнила: этот голос принадлежит тебе, тебя зовут {name}"
-        rel = getattr(companion, "_rel", None)
-        if rel is not None:
-            rel.ensure_person(f"voice:{last['id']}", name, source="voice")
-        return f"запомнила: этот голос принадлежит человеку по имени {name}"
-
     async def forget(a):
         n = memory.forget_matching(a["text"])
         if not n:
@@ -221,12 +204,6 @@ def register(registry, companion, hearing, memory, profiles=None):
                   deep_analysis, informative=True,
                   keywords=("анализ", "проанализируй", "разбери", "причины", "выводы", "протокол", "аудит", "самоанализ",
                             "почему", "ошибки", "гибель", "погибла", "что пошло не так")),
-            _tool("assistant", "name_voice", "Запомнить, чей это голос: тот, что говорил только что (через микрофон). "
-                  "is_owner=true, если это сам пользователь («запомни мой голос, я Аня»). Для просьб «запомни мой голос», "
-                  "«это голос Васи».",
-                  {"name": {"type": "string", "description": "имя человека"},
-                   "is_owner": {"type": "boolean", "required": False, "description": "true: это сам пользователь"}},
-                  name_voice, keywords=("голос", "запомни", "узнавай", "это", "меня", "зовут", "микрофон")),
             _tool("assistant", "launch_app", "Запустить любое установленное приложение по названию, как в Alt+Пробел "
                   "(меню «Пуск» и магазин Windows). RimWorld запускается с ожиданием мода. Для просьб «запусти римворлд», "
                   "«пойдём играть», «открой хром», «включи телеграм». Консоли, реестр и деинсталляторы недоступны.",
@@ -294,14 +271,6 @@ def register(registry, companion, hearing, memory, profiles=None):
             raise ToolError("локальная модель зрения не ответила")
         return seen["text"]
 
-    async def recent_audio(a):
-        if hearing is None or not settings.load()["hearing"]:
-            raise ToolError("слух выключен, системный звук не слушается")
-        text = hearing.recent_text(300)
-        if not text:
-            raise ToolError("за последние минуты речи в звуке не было")
-        return text
-
     async def ask_claude(a):
         result = await companion.run_claude(a["task"])
         if result is None:
@@ -337,8 +306,6 @@ def register(registry, companion, hearing, memory, profiles=None):
             _tool("system", "describe_screen", "Посмотреть на экран прямо сейчас и описать, что на нём (приложения, чем занят пользователь).",
                   {}, describe_screen, informative=True,
                   keywords=("экран", "видишь", "посмотри", "окно", "делаю", "открыто")),
-            _tool("system", "recent_audio", "Пересказать, что недавно звучало в колонках (речь в фильме, видео), если слух включён.",
-                  {}, recent_audio, informative=True, keywords=("слышишь", "услышала", "звучит", "говорят", "серия", "фильм", "видео")),
             _tool("system", "ask_claude", "Сложные задачи на компьютере: работа с файлами и кодом проекта, команды, поиск в интернете, "
                   "анализ. Выполняет Claude и сам спрашивает разрешение на каждое изменение.",
                   {"task": {"type": "string", "description": "что нужно сделать, своими словами пользователя"}}, ask_claude, informative=True,

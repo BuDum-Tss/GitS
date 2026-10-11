@@ -3,13 +3,15 @@
 Что работает всегда:
   - зрение (perception): следит за активным окном, локально, OCR + Gemma;
   - окружения (environments/): реестр инструментов, маршрутизатор «могу или нет», манифесты;
-  - слух (hearing) и микрофон: речь в текст, узнавание голосов, локально;
   - компаньон (companion): разговор, память, проактивность, граф памяти;
-  - дашборд (порт 8766, только localhost): состояние для питомца, чат, настройки;
+  - дашборд (порт 8766, только localhost): состояние, чат, настройки;
   - шина модулей (ТЗ 02): модули подключаются сами по WebSocket (/module/ws в том же приложении), супервизор запускает и
     перезапускает их процессы из agent/modules.yaml, профили в agent/profiles/ решают, какие инструменты видны. Telegram
     (канал, бот, её аккаунт) это модуль modules/telegram (ТЗ 10): в процессе ядра его кода нет. Игра RimWorld это модуль rimworld
     из отдельного репозитория rimworld-module (ТЗ 11): приказы идут его инструментом order, состояние и события приходят по шине.
+    Весь звук (микрофон, распознавание, узнавание голосов, синтез, воспроизведение, слух системного звука) это модуль voice
+    (modules/voice, ТЗ 12): речь уходит ему сообщением speak, а что сказал пользователь и когда говорит она, приходит событиями
+    voice.*. Питомец на экране это модуль pet (modules/pet, ТЗ 13): он показывает присутствие (тему presence).
 """
 import asyncio
 import logging
@@ -36,15 +38,11 @@ from environments.registry import Registry
 from module_hub import ModuleError, ModuleHub
 from module_registry import ModuleRegistry
 from graph_memory import GraphMemory
-from hearing import Hearing
-from mic_listener import MicListener
 import perception
 from perception import ScreenWatcher
 from relationships import Relationships
 from router import Router
-from stt_client import STTClient
 from user_memory import UserMemory
-from voice_id import VoiceIdentity
 
 logger = logging.getLogger("core")
 
@@ -73,6 +71,14 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, battery=cl
     io.hub = hub
     attention.hub, attention.modules = hub, modules
     presence.listener = hub.broadcast_presence
+    speech = getattr(companion, "speech", None)
+    if hasattr(speech, "attach"):
+        speech.attach(hub, modules)                      # VOICE-15: речь идёт модулю voice, пока он подключён
+    emotion_listener = fast_brain.add_listener(          # PET-9: каждая эмоция уходит в presence (стикер питомца)
+        lambda emotion, ts: presence.update(emotion=emotion, emotion_ts=ts))
+    attention.silent_kinds |= VOICE_SILENT_KINDS
+    attention.kind_handlers.update(make_voice_handlers(companion, attention, speech))
+    attention.kind_hooks["voice.heard"] = make_heard_hook(companion)
 
     async def live_subgraph(profile):
         """Подграф профиля от первого модуля фокуса с graph: true (запрос graph.get, CORE-22, RW-19); None, если такого нет."""
@@ -150,6 +156,7 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, battery=cl
         await sup.start()
 
     async def stop():
+        fast_brain.remove_listener(emotion_listener)
         for task in layer.tasks:
             task.cancel()
         await attention.stop()
@@ -158,6 +165,62 @@ def wire_modules(companion, registry, *, foreground_app=lambda: None, battery=cl
 
     layer.start, layer.stop = start, stop
     return layer
+
+
+VOICE_SILENT_KINDS = {"voice.speech", "voice.user_speaking", "voice.utterance"}      # частые и служебные: в module_event не пишутся
+
+
+def make_voice_handlers(companion, attention, speech) -> dict:
+    """События модуля голоса, которые ядро обрабатывает само, мимо оценки внимания (ТЗ 12): voice.utterance - реплика
+    пользователя в разговор с каналом voice (VOICE-6); voice.speech и voice.user_speaking - присутствие (VOICE-17, VOICE-8);
+    voice.named - голосу назначено имя, человек заводится в памяти и отношениях (раньше это делал инструмент name_voice)."""
+
+    async def on_utterance(item) -> None:
+        speaker = (item.data or {}).get("speaker")
+        if not isinstance(speaker, dict):
+            sender = item.sender or {}
+            speaker = {"id": str(sender.get("id", "")).removeprefix("voice:") or None, "name": sender.get("name"),
+                       "new": False, "owner": bool(sender.get("is_owner")), "has_owner": bool(sender.get("is_owner"))}
+        await companion.on_voice(item.text, speaker)
+
+    async def on_speech(item) -> None:
+        if hasattr(speech, "on_event"):
+            speech.on_event(item.data or {})
+
+    async def on_user_speaking(item) -> None:
+        attention.set_user_speaking(bool((item.data or {}).get("speaking")))
+
+    async def on_named(item) -> None:
+        data = item.data or {}
+        name, voice_id = str(data.get("name") or "").strip(), data.get("voice_id")
+        if not name or not voice_id:
+            return
+        if data.get("is_owner"):
+            mem = getattr(companion, "_mem", None)
+            if mem is not None:
+                await asyncio.to_thread(mem.add_fact, f"Имя: {name}", kind="user", importance=5)
+        else:
+            rel = getattr(companion, "_rel", None)
+            if rel is not None:
+                await asyncio.to_thread(rel.ensure_person, f"voice:{voice_id}", name, source="voice")
+
+    return {"voice.utterance": on_utterance, "voice.speech": on_speech, "voice.user_speaking": on_user_speaking,
+            "voice.named": on_named}
+
+
+def make_heard_hook(companion):
+    """VOICE-14: сводка услышанного в колонках дополнительно пишется в память занятий и в контекст разговора, а сам факт
+    «В колонках: ...» идёт обычным путём внимания (voice.heard, срочность 1: чаще всего в сводку)."""
+    async def on_heard(item) -> None:
+        summary = str((item.data or {}).get("summary") or item.text.removeprefix("В колонках:")).strip()
+        if not summary:
+            return
+        if hasattr(companion, "note_heard"):
+            companion.note_heard(summary)
+        mem = getattr(companion, "_mem", None)
+        if mem is not None:
+            await asyncio.to_thread(mem.add_activity, "звук", "audio", summary)
+    return on_heard
 
 
 def make_colonists_handler(rel, graph):
@@ -180,10 +243,10 @@ async def _run(config: dict):
     fast_brain.init(mem_dir)
     rel = Relationships(mem_dir)
     watcher = ScreenWatcher(UserMemory(mem_dir))
-    hearing = Hearing(UserMemory(mem_dir))
     presence = speech_out.PresenceTracker()
-    companion = Companion(mem_dir, rel, watcher, hearing, speech=speech_out.LegacyPetSpeech(mem_dir, presence),
-                          presence=presence)
+    # речь: модуль voice, пока он подключён и включён (VOICE-15), иначе только текст в чате и в presence
+    speech = speech_out.SpeechSelector(speech_out.VoiceModuleSpeech(presence), speech_out.TextOnlySpeech(presence))
+    companion = Companion(mem_dir, rel, watcher, speech=speech, presence=presence)
 
     # профили: активное окно берётся из кэша, который обновляет фоновый опрос (без блокировки цикла); игра RimWorld
     # (game_running) приходит состоянием модуля rimworld, порт мода ядро больше не опрашивает (ТЗ 11)
@@ -212,7 +275,6 @@ async def _run(config: dict):
     asyncio.create_task(sampler())
     asyncio.create_task(fast_brain.warmup())
     asyncio.create_task(watcher.run())
-    asyncio.create_task(hearing.run())
 
     # Окружения: встроенные плагины сразу, манифесты (MCP, вебхуки, RimWorld) подгружаются в фоне
     memory = UserMemory(mem_dir)
@@ -225,28 +287,7 @@ async def _run(config: dict):
     migrated = graph.migrate_from_store(UserMemory(mem_dir).store, companion._owner_name())
     if migrated:
         logger.info(f"Граф: в очередь на разбор поставлено {migrated} старых фактов о пользователе")
-    voices = VoiceIdentity(mem_dir)
-    companion.voice_id = voices
-
-    async def own_voice_sample():
-        """Образец её голоса для записи в voice_id: синтез и перевод в PCM 16 кГц."""
-        import asyncio as _a
-        import os as _os
-        import opus_encoder
-        import tts_engine
-        path = await _a.to_thread(tts_engine.synth_file, "Проверка голоса. Меня зовут ГЛаДОС. Это тест.")
-        if not path:
-            return b""
-        try:
-            return await opus_encoder.audio_file_to_pcm16k(path)
-        finally:
-            _os.unlink(path)
-
-    mic = MicListener(STTClient(), voices, companion.on_voice, companion.is_speaking, own_voice_sample,
-                      on_speaking=layer.attention.set_user_speaking)
-    asyncio.create_task(mic.run())
-
-    builtin.register(registry, companion, hearing, memory, profiles=layer.profiles)
+    builtin.register(registry, companion, memory, profiles=layer.profiles)
 
     def recent_dialogue() -> str:
         lines = [f"{'Пользователь' if m['role'] == 'user' else 'Ассистентка'}: {m['text']}"

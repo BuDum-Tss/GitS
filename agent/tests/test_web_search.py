@@ -20,7 +20,7 @@ def test_web_tool_is_registered_in_core_module(monkeypatch):
     monkeypatch.setenv("MEMORY_DIR", d)
     settings.init(d)
     reg = Registry()
-    builtin.register(reg, _Dummy(), None, UserMemory(d))
+    builtin.register(reg, _Dummy(), UserMemory(d))
     env = reg.envs["web"]
     assert env.module == "core" and [t.id for t in env.tools] == ["web.search"]
     assert reg.get("web.search").risk == "auto"

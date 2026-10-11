@@ -8,11 +8,6 @@
 import asyncio
 import logging
 import re
-import secrets
-import tempfile
-import time
-import wave
-from pathlib import Path
 from typing import Any, Callable
 
 from glados_module import protocol as P
@@ -21,8 +16,7 @@ from module_hub import ModuleConnection, ModuleError
 
 logger = logging.getLogger("core_requests")
 
-TTS_DIR_NAME = "glados_tts"
-TTS_KEEP_S = 3600
+TTS_TIMEOUT_S = 80            # синтез у модуля голоса: Fish Speech до 30 с на фразу плюс перекодирование
 TTS_TEXT_MAX = 5000
 NAME = "ГЛаДОС"
 
@@ -83,17 +77,13 @@ def _nonempty_str(v: Any) -> bool:
 
 
 class CoreRequests:
-    def __init__(self, *, attention=None, router=None, tts_dir: Path | None = None,
-                 synth: Callable[[str], str | None] | None = None,
-                 privacy_terms: Callable[[], list[str]] | None = None):
-        """attention - менеджер внимания (submit_question); router - Router (run_tool_ex); synth - синтез речи в файл
-        (по умолчанию tts_engine.synth_file); tts_dir - куда класть результаты core.tts; privacy_terms - () -> личные слова
-        (core.privacy_terms; ядро ставит после создания памяти)."""
+    def __init__(self, *, attention=None, router=None, privacy_terms: Callable[[], list[str]] | None = None):
+        """attention - менеджер внимания (submit_question); router - Router (run_tool_ex); privacy_terms - () -> личные слова
+        (core.privacy_terms; ядро ставит после создания памяти). Шина модулей (hub) нужна для core.tts: ставит ModuleHub."""
         self.attention = attention
         self.router = router                      # ставится ядром после создания маршрутизатора
         self.privacy_terms = privacy_terms
-        self._tts_dir = tts_dir
-        self._synth = synth
+        self.hub = None                           # ModuleHub: core.tts передаёт запрос модулю голоса
 
     async def handle(self, conn: ModuleConnection, msg_type: str, body: Any) -> Any:
         handler = {
@@ -125,74 +115,32 @@ class CoreRequests:
 
     # ── core.tts ────────────────────────────────────────────────────────────
 
-    def _out_dir(self) -> Path:
-        return self._tts_dir or Path(tempfile.gettempdir()) / TTS_DIR_NAME
-
-    @staticmethod
-    def _wav_ms(path: Path) -> int:
-        with wave.open(str(path), "rb") as w:
-            return round(w.getnframes() / float(w.getframerate()) * 1000)
-
-    def _sweep(self, directory: Path) -> None:
-        """Удалить файлы core.tts старше часа: модуль должен был забрать их давно."""
-        cutoff = time.time() - TTS_KEEP_S
-        for f in directory.glob("tts_*"):
-            try:
-                if f.stat().st_mtime < cutoff:
-                    f.unlink()
-            except OSError:
-                pass
+    def _voice_connection(self):
+        """Подключённый включённый модуль с voice.output (VOICE-16) или None."""
+        hub = self.hub
+        if hub is None:
+            return None
+        for conn in hub.connections():
+            if "voice.output" in (conn.manifest or {}).get("capabilities", []) and hub.modules.is_enabled(conn.module_id):
+                return conn
+        return None
 
     async def _tts(self, conn: ModuleConnection, body: Any) -> dict:
+        """VOICE-16: синтез её голосом делает модуль голоса (запрос tts.synthesize); ядро только передаёт запрос и ответ
+        {path, duration_ms}. Нет модуля голоса: unavailable."""
         body = _check_fields(body, {
             "text": (lambda v: _nonempty_str(v) and len(v) <= TTS_TEXT_MAX, True, f"непустая строка до {TTS_TEXT_MAX} символов"),
             "emotion": (lambda v: isinstance(v, str), False, "строка"),
             "format": (lambda v: v in ("wav", "ogg"), False, "wav или ogg"),
         })
-        fmt = body.get("format", "wav")
-        synth = self._synth
-        if synth is None:
-            import tts_engine
-            synth = tts_engine.synth_file
-        src = await asyncio.to_thread(synth, body["text"])           # блокирующий синтез (Fish Speech, запасной edge-tts)
-        if not src:
-            raise ModuleError("unavailable", "синтез речи не удался")
-        out = self._out_dir()
-        await asyncio.to_thread(out.mkdir, parents=True, exist_ok=True)
-        await asyncio.to_thread(self._sweep, out)
-        name = "tts_" + secrets.token_hex(6)
-        wav = out / (name + ".wav")
-        try:
-            if str(src).lower().endswith(".wav"):
-                await asyncio.to_thread(Path(src).replace, wav)
-                src = None
-            else:
-                import opus_encoder
-                await opus_encoder.audio_file_to_wav_file(str(src), str(wav))
-            duration = await asyncio.to_thread(self._wav_ms, wav)
-            if fmt == "wav":
-                return {"path": str(wav), "duration_ms": duration}
-            import opus_encoder
-            data = await opus_encoder.audio_file_to_ogg_opus(str(wav))
-            ogg = out / (name + ".ogg")
-            await asyncio.to_thread(ogg.write_bytes, data)
-            await asyncio.to_thread(wav.unlink)
-            return {"path": str(ogg), "duration_ms": duration}
-        except ModuleError:
-            raise
-        except Exception as e:
-            raise ModuleError("internal", f"не удалось подготовить звук: {e}") from e
-        finally:
-            if src:
-                await asyncio.to_thread(self._unlink, Path(src))
-
-    @staticmethod
-    def _unlink(path: Path) -> None:
-        try:
-            path.unlink()
-        except OSError:
-            pass
-
+        voice = self._voice_connection()
+        if voice is None:
+            raise ModuleError("unavailable", "модуль голоса не подключён или выключен")
+        value = await voice.request("tts.synthesize", {"text": body["text"], "emotion": body.get("emotion"),
+                                                       "format": body.get("format", "wav")}, timeout=TTS_TIMEOUT_S)
+        if not (isinstance(value, dict) and isinstance(value.get("path"), str) and _is_int(value.get("duration_ms"))):
+            raise ModuleError("internal", "модуль голоса вернул неверный ответ на tts.synthesize")
+        return {"path": value["path"], "duration_ms": value["duration_ms"]}
     # ── core.tool.call ───────────────────────────────────────────────────────
 
     async def _tool_call(self, conn: ModuleConnection, body: Any) -> dict:

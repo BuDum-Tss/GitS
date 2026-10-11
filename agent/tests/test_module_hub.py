@@ -1,7 +1,6 @@
 """Шина модулей (ТЗ 02, CORE-1…CORE-10, CORE-29…CORE-35): рукопожатие, защита, реестр, инструменты, задачи, запросы."""
 import asyncio
 import time
-import wave
 
 import aiohttp
 import pytest
@@ -618,36 +617,40 @@ async def test_core_persona_claude_usage_and_web_search(tmp_path, monkeypatch):
             assert await client.request("core.web_search", {"query": "размер комнаты"}) == {"text": "нашла: размер комнаты"}
 
 
-async def test_core_tts_wav_and_ogg(tmp_path, monkeypatch):
-    import opus_encoder
-    src = tmp_path / "synth.wav"
-    with wave.open(str(src), "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(16000)
-        w.writeframes(b"\x00\x00" * 8000)                                    # 0,5 с
-
-    def synth(text):
-        copy = tmp_path / f"s_{len(text)}.wav"
-        copy.write_bytes(src.read_bytes())
-        return str(copy)
-
-    async def fake_ogg(path):
-        return b"OggS-fake"
-    monkeypatch.setattr(opus_encoder, "audio_file_to_ogg_opus", fake_ogg)
+async def test_core_tts_is_forwarded_to_the_voice_module(tmp_path):
+    """VOICE-16: core.tts - это запрос tts.synthesize модулю voice; ядро само не синтезирует."""
+    from glados_module import ToolError
     async with running_core(tmp_path) as core:
-        core.requests._synth = synth
         client = build_client(interval=0.01, url=core.url, token=core.token)
         async with running_client(client, core):
-            r = await client.request("core.tts", {"text": "Привет", "format": "wav"})
-            assert r["duration_ms"] == 500 and r["path"].endswith(".wav") and (tmp_path / "tts").exists()
-            assert open(r["path"], "rb").read(4) == b"RIFF"
-            r = await client.request("core.tts", {"text": "Привет", "format": "ogg"})
-            assert r["duration_ms"] == 500 and r["path"].endswith(".ogg") and open(r["path"], "rb").read() == b"OggS-fake"
-            core.requests._synth = lambda text: None
-            with pytest.raises(__import__("glados_module").ToolError) as e:
+            with pytest.raises(ToolError) as e:                                   # модуля голоса нет
                 await client.request("core.tts", {"text": "Привет"})
-            assert e.value.code == "unavailable"
+            assert e.value.code == "unavailable" and "голоса" in e.value.message
+            voice = RawModule(core, manifest("voice", capabilities=["voice.output", "voice.input"]))
+            asked = []
+
+            def synthesize(body):
+                asked.append(body)
+                return {"path": str(tmp_path / "tts_1.ogg"), "duration_ms": 1234}
+            voice.handlers["tts.synthesize"] = synthesize
+            await voice.hello()
+            try:
+                r = await client.request("core.tts", {"text": "Привет", "emotion": "happy", "format": "ogg"})
+                assert r == {"path": str(tmp_path / "tts_1.ogg"), "duration_ms": 1234}
+                assert asked == [{"text": "Привет", "emotion": "happy", "format": "ogg"}]
+                await client.request("core.tts", {"text": "Ещё"})
+                assert asked[-1] == {"text": "Ещё", "emotion": None, "format": "wav"}
+                voice.handlers["tts.synthesize"] = lambda body: {"path": 5}
+                with pytest.raises(ToolError) as e:
+                    await client.request("core.tts", {"text": "Плохо"})
+                assert e.value.code == "internal"
+                core.settings_state["modules"] = {"voice": {"enabled": False}}      # выключенный модуль голоса не синтезирует
+                core.modules.invalidate()
+                with pytest.raises(ToolError) as e:
+                    await client.request("core.tts", {"text": "Выключен"})
+                assert e.value.code == "unavailable"
+            finally:
+                await voice.close()
 
 
 async def test_pending_requests_fail_with_unavailable_on_disconnect(tmp_path):
