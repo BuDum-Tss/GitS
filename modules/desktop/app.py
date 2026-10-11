@@ -11,6 +11,7 @@
 трогают экран, компьютер или Claude, отвечают `unavailable`. Манифест, состояние и подключение работают как обычно.
 """
 import asyncio
+import json
 import logging
 import os
 import time
@@ -64,6 +65,7 @@ class DesktopModule:
         self._last_state_at = 0.0
         self._obs: tuple = (None, 0.0, False)        # последнее наблюдение опроса: (окно, простой, чувствительное)
         self._last_screen_at = 0.0
+        self._last_panel_key: str | None = None      # последние блоки пространства (TZ 15): шлём только при изменении
         self._register()
 
     # ── запуск и остановка ───────────────────────────────────────────────────
@@ -154,6 +156,7 @@ class DesktopModule:
                 await self.screen.observe(win, idle, True)
         self._obs = (win, idle, sensitive)
         await self._send_state(now)
+        await self._send_panel()
 
     async def _send_state(self, now: float, force: bool = False) -> None:
         """`state` (ТЗ 14, DESK-6): при изменении не чаще раза в 2 с, без изменений - раз в 30 с.
@@ -172,6 +175,58 @@ class DesktopModule:
         data = {"foreground_app": app, "sensitive": sensitive, "idle_s": round(idle, 1), "activity": activity}
         await self.client.state(summary, data)
 
+    # ── пространство в дашборде (TZ 15, TAB-9) ──────────────────────────────
+
+    def _panel_blocks(self) -> list[dict]:
+        """Блоки вкладки «Компьютер»: активное окно (заголовок скрыт у чувствительных окон), разрешения, задачи помощника
+        Claude с кнопками остановки, последний вывод анализа экрана. Текст короткий: лимиты panel.set."""
+        win, idle, sensitive = self._obs
+        vision = bool(self.client.settings.get("vision"))
+        auto = bool(self.client.settings.get("auto_accept"))
+        if win is None:
+            app_text = "нет активного окна"
+        elif sensitive:
+            app_text = "скрыто (чувствительное окно)"
+        else:
+            app_text = f"{str(win.get('app', '?'))[:80]}: {str(win.get('title', ''))[:120]}"
+        blocks: list[dict] = [
+            {"type": "stats", "title": "Сейчас", "items": [
+                {"label": "Активное окно", "value": app_text},
+                {"label": "Простой, с", "value": int(idle // IDLE_BUCKET_S * IDLE_BUCKET_S)},
+                {"label": "Экран", "value": "смотрю" if vision else "не смотрю"}]},
+            {"type": "list", "title": "Разрешения", "items": [
+                {"text": "Наблюдение за экраном", "badge": "вкл" if vision else "выкл"},
+                {"text": "Обычные действия без вопросов", "sub": "опасные всё равно спрашиваются",
+                 "badge": "вкл" if auto else "выкл"}]},
+        ]
+        if self.fake:
+            blocks.append({"type": "text", "text": "Тестовый режим: экран, ввод и Claude не трогаются."})
+        rows = []
+        for job_id in self._jobs:
+            job = self.client.jobs.get(job_id) or {}
+            title = str(job.get("title") or job_id)[:120]
+            rows.append({"cells": [title, str(job.get("state") or "running")],
+                         "actions": [{"id": "cancel_task", "label": "Остановить", "args": {"job_id": job_id}}]})
+        if rows:
+            blocks.append({"type": "table", "title": "Задачи помощника Claude", "columns": ["Задача", "Состояние"],
+                           "rows": rows[:20]})
+            blocks.append({"type": "buttons", "items": [{"label": "Остановить все задачи", "action": "cancel_all",
+                                                         "style": "danger"}]})
+        else:
+            blocks.append({"type": "text", "title": "Задачи помощника Claude", "text": "Сейчас задач нет."})
+        activity = self.screen.current if vision else None
+        if activity:
+            blocks.append({"type": "text", "title": "Чем занят", "text": f"{activity['app']}: {activity['summary']}"[:900]})
+        return blocks
+
+    async def _send_panel(self) -> None:
+        blocks = self._panel_blocks()
+        key = json.dumps(blocks, ensure_ascii=False, sort_keys=True)
+        if key == self._last_panel_key:
+            return
+        if await self.client.panel.set(blocks):
+            self._last_panel_key = key
+
     # ── обработчики ─────────────────────────────────────────────────────────
 
     def _register(self) -> None:
@@ -188,6 +243,7 @@ class DesktopModule:
         @c.on_reconnect
         async def reconnected():
             self._last_key = None
+            self._last_panel_key = None                # пространство SDK пересылает само (TZ 15)
             await c.resend_jobs()                      # MOD-22: незавершённые задачи шлём заново
 
         @c.on_job_cancel
@@ -195,6 +251,24 @@ class DesktopModule:
             task = self._jobs.get(job_id)
             if task is not None:
                 task.cancel()
+
+        # ── кнопки пространства «Компьютер» (TZ 15) ─────────────────────────
+
+        @c.panel_action("cancel_task")
+        async def panel_cancel_task(args):
+            job_id = args.get("job_id")
+            task = self._jobs.get(job_id) if isinstance(job_id, str) else None
+            if task is None:
+                return {"ok": False, "message": "такой задачи уже нет"}
+            task.cancel()
+            return {"ok": True, "message": "задача остановлена"}
+
+        @c.panel_action("cancel_all")
+        async def panel_cancel_all(args):
+            tasks = list(self._jobs.values())
+            for task in tasks:
+                task.cancel()
+            return {"ok": True, "message": f"остановлено задач: {len(tasks)}"}
 
         # ── экран ───────────────────────────────────────────────────────────
 

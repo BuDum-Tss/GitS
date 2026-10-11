@@ -298,3 +298,66 @@ async def test_state_is_sent_on_connect_with_foreground_app(core):
         assert st.body["data"]["sensitive"] is False and st.body["data"]["activity"] is None
     finally:
         await close(client, task)
+
+
+# ── пространство «Компьютер» (TZ 15, TAB-9) ──────────────────────────────────
+
+async def test_panel_declared_and_shows_window_and_permissions(core):
+    mod, _scene, client, task = await connect(core)
+    try:
+        m = build_manifest()
+        assert validate_manifest(m) == [] and m["panel"]["actions"] == ["cancel_task", "cancel_all"]
+        await mod._tick()
+        blocks = (await core.wait_for(lambda: core.panels.get("desktop"))).get("blocks")
+        types = [b["type"] for b in blocks]
+        assert types[:2] == ["stats", "list"] and "text" in types            # окно, разрешения, задачи
+        assert blocks[0]["items"][0]["value"].startswith("notepad")         # активное окно
+        assert "Документ - Блокнот" in blocks[0]["items"][0]["value"]
+        assert [i["badge"] for i in blocks[1]["items"]] == ["вкл", "выкл"]   # vision вкл, auto_accept выкл
+        assert core.violations == []
+    finally:
+        await close(client, task)
+
+
+async def test_panel_lists_claude_tasks_with_stop_buttons(core, monkeypatch):
+    started = asyncio.Event()
+
+    async def forever(task, context, ask, usage_cb):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(appmod.assistant_agent, "run_task", forever)
+    mod, _scene, client, task = await connect(core)
+    try:
+        value = await core.call_tool("claude_task", {"task": "долго"})
+        await asyncio.wait_for(started.wait(), 5)
+        await mod._tick()
+        blocks = (await core.wait_for(
+            lambda: next((p for p in [core.panels.get("desktop")] if p and any(
+                b["type"] == "table" for b in p["blocks"])), None)))["blocks"]
+        table = next(b for b in blocks if b["type"] == "table")
+        action = table["rows"][0]["actions"][0]
+        assert action == {"id": "cancel_task", "label": "Остановить", "args": {"job_id": value["job_id"]}}
+        answer = await core.panel_action("cancel_task", {"job_id": value["job_id"]})
+        assert answer == {"ok": True, "message": "задача остановлена"}
+        await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b["state"] == "cancelled")
+        gone = await core.panel_action("cancel_task", {"job_id": value["job_id"]})
+        assert gone["ok"] is False
+    finally:
+        await close(client, task)
+
+
+async def test_panel_cancel_all_stops_every_task(core, monkeypatch):
+    async def forever(task, context, ask, usage_cb):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(appmod.assistant_agent, "run_task", forever)
+    mod, _scene, client, task = await connect(core)
+    try:
+        await core.call_tool("claude_task", {"task": "первое"})
+        await core.call_tool("claude_task", {"task": "второе"})
+        await core.wait_for(lambda: len(mod._jobs) == 2)
+        answer = await core.panel_action("cancel_all")
+        assert answer == {"ok": True, "message": "остановлено задач: 2"}
+    finally:
+        await close(client, task)

@@ -137,6 +137,8 @@ MANIFEST = {
     "tools": TOOLS,
     "emits": EMITS,
     "state": True,
+    # пространство в дашборде (TZ 15, TAB-6/TAB-9): активное окно, разрешения, задачи помощника Claude и их остановка
+    "panel": {"title": "Компьютер", "icon": "monitor", "order": 50, "actions": ["cancel_task", "cancel_all"]},
 }
 
 
