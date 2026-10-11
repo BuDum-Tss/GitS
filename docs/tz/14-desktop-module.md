@@ -60,6 +60,9 @@
 | `menu_click` | `POST /api/menu_click` | auto | params `text` (string); белый список `_MENU_BUTTONS` и правило простоя — без изменений; для модулей игр через `core.tool.call` |
 | `last_screenshot` | — (новое) | auto | → `{"path": str \| null}`: последний файл в `screenshots/`; для черновиков Telegram |
 
+- **DESK-3a (ОБЯЗАТЕЛЬНО).** `announce: true` (README, правило 14) у `launch_app`, `operate_screen`, `claude_task`,
+  `take_screenshot` с `target=screen`; у остальных (`describe_screen`, `read_screen`, `list_windows`, клики и ввод в рамках
+  `operate_screen`) — false.
 - **DESK-4 (ОБЯЗАТЕЛЬНО).** `assistant.set_vision` остаётся инструментом ядра (меняет общую настройку `vision`).
 - **DESK-5 (ОБЯЗАТЕЛЬНО).** Признак `always = True` у `ask_claude` (запасной инструмент, попадает к планировщику при
   любом отборе) сохраняется для `desktop.claude_task`: в манифест добавить поле `fallback: true` — ядро ставит
