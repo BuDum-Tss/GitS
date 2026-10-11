@@ -1,7 +1,8 @@
 """Манифест модуля desktop (ТЗ 14, разделы 4-5). Описания инструментов перенесены из прежних мест ядра
 (environments/builtin.py, environments/pc_control.py, сам tool-список app_launcher) без изменения смысла: их читает планировщик.
 
-Инструменты с `announce: true` (README, правило 14): launch_app, operate_screen, claude_task. take_screenshot объявляет
+Инструменты с `announce: true` (README, правило 14): launch_app, operate_screen, claude_task, menu_click (нажимает
+«Быстрый запуск» или «Продолжить»/«Загрузить»: запускает или загружает партию). take_screenshot объявляет
 себя сам только для target=screen (announce в манифесте не ставится: флаг относится ко всему инструменту)."""
 import copy
 
@@ -109,7 +110,7 @@ TOOLS = [
      "description": "Нажать кнопку главного меню RimWorld без Claude и без вопроса (OCR по окну игры). Только надписи из "
                     "белого списка («Быстрый запуск», «Продолжить», «Загрузить») и только когда пользователь не за компьютером.",
      "params": {"text": {"type": "string", "description": "надпись кнопки меню"}},
-     "risk": "auto", "availability": "always",
+     "risk": "auto", "availability": "always", "announce": True,
      "keywords": ["римворлд", "меню", "быстрый запуск", "продолжить", "загрузить"]},
     {"name": "last_screenshot",
      "description": "Путь к последнему сохранённому снимку экрана или игры, чтобы приложить его к черновику поста.",

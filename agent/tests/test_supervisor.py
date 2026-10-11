@@ -261,6 +261,84 @@ def test_redact_hides_token_like_text():
     assert redact("обычная строка 12345") == "обычная строка 12345"
 
 
+# живёт, пока не придёт shutdown (он ставит stop.flag); флаг снимает при старте, чтобы перезапущенный процесс не вышел сразу
+LIVE = textwrap.dedent('''
+    import time
+    from pathlib import Path
+    Path("stop.flag").unlink(missing_ok=True)
+    print("живу", flush=True)
+    while not Path("stop.flag").exists():
+        time.sleep(0.05)
+''')
+
+
+async def test_launch_announcements_for_enable_and_restart_button_but_not_boot_or_running(tmp_path):
+    """Правило 14: включили в настройках и «перезапустить» объявляются; старт при загрузке ядра и уже работающий модуль - нет."""
+    said = []
+
+    async def announce(module_id, text):
+        said.append((module_id, text))
+    sup, mod, flags = make(tmp_path, LIVE, announce=announce)
+    await sup.start()                                       # загрузка ядра
+    await wait_for(lambda: sup.status("fake")["status"] == "running")
+    assert said == []
+    await sup.apply("fake")                                 # уже под надзором: второй раз не объявляем
+    assert said == []
+    await sup.restart("fake")                               # кнопка «перезапустить»
+    await wait_for(lambda: sup.status("fake")["status"] == "running")
+    assert said == [("fake", "Запускаю модуль «fake»: перезапуск по кнопке в дашборде.")]
+    flags["enabled"] = False
+    await sup.apply("fake")                                 # выключили: процесс остановлен, ничего не запускаем
+    assert len(said) == 1 and sup.status("fake")["status"] == "stopped"
+    flags["enabled"] = True
+    await sup.apply("fake")                                 # включили: запуск объявляется фактом о настройке
+    await wait_for(lambda: sup.status("fake")["status"] == "running")
+    assert said[-1] == ("fake", "Запускаю модуль «fake»: его включили в настройках.") and len(said) == 2
+    await sup.stop_all()
+
+
+async def test_crash_restarts_are_announced_with_exit_code_and_count(tmp_path):
+    said = []
+
+    async def announce(module_id, text):
+        said.append(text)
+
+    async def fake_sleep(s):
+        pass
+    sup, mod, _ = make(tmp_path, CRASH, sleep=fake_sleep, announce=announce)
+    await sup.start()
+    await wait_for(lambda: sup.status("fake")["status"] == "crashed")
+    # четыре перезапуска объявляются (с номером сбоя); пятое падение - конец, и оно не запуск
+    assert len(said) == 4
+    assert said[0] == "Запускаю модуль «fake»: процесс упал с кодом 1, перезапускаю (сбой 1 из 5 за 10 минут)."
+    assert "сбой 4 из 5" in said[-1]
+    await sup.stop_all()
+
+
+async def test_service_restarts_and_unconfigured_modules_are_not_announced(tmp_path):
+    said = []
+
+    async def announce(module_id, text):
+        said.append(text)
+    sup, mod, _ = make(tmp_path, OK, announce=announce)
+    sup.specs["fake"].kind = "service"                      # сервис (decider) - внутренняя часть ядра
+    await sup._announce_launch("fake", "проверка")
+    assert said == []
+    sup.specs["fake"].kind = "module"
+    sup2, _, _ = make(tmp_path, OK, cwd="{RIMWORLD_MODULE_DIR_X}/agent", env={}, announce=announce)
+    await sup2._announce_launch("fake", "проверка")         # папки и переменной нет: модуль не запустится
+    assert said == []
+
+
+async def test_announcement_failure_does_not_stop_the_launch(tmp_path):
+    async def broken(module_id, text):
+        raise RuntimeError("очередь внимания недоступна")
+    sup, mod, _ = make(tmp_path, LIVE, announce=broken)
+    await sup.restart("fake")
+    await wait_for(lambda: sup.status("fake")["status"] == "running")
+    await sup.stop_all()
+
+
 async def test_real_echo_module_command_resolves_inside_repo():
     sup = Supervisor(load_specs(), token=TOKEN, core_url="ws://x")
     cmd, cwd = sup.resolve("echo")

@@ -129,3 +129,43 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
         if pid and psutil.pid_exists(pid):
             psutil.Process(pid).kill()
     assert settings.load()["modules"]["echo"]["enabled"] is False
+
+
+async def test_module_launch_from_the_dashboard_is_announced_through_attention(tmp_path):
+    """Правило 14: включение модуля в дашборде запускает процесс супервизором, и запуск уходит объявлением в очередь
+    внимания (факт о настройке; фразу строит модель). Проверка проводки `announce` супервизора в core_service."""
+    port = free_port()
+    companion, registry = WiredCompanion(), Registry()
+    layer = core_service.wire_modules(companion, registry, port=port, battery=lambda: {"level": 1.0, "sleeping": False},
+                                      specs=[x for x in load_specs() if x.id == "echo"])
+    said = []
+    submit = layer.attention.submit_announce
+
+    async def record(module_id, text, **kw):
+        said.append((module_id, text))
+        await submit(module_id, text, **kw)
+    layer.attention.submit_announce = record
+    dashboard._MEMORY_DIR = tmp_path / "memory"
+    dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
+    dashboard.set_presence(companion.presence)
+    dashboard.set_registry(registry)
+    dashboard.set_modes(layer.profiles)
+    runner = web.AppRunner(dashboard.build_app())
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", port).start()
+    await layer.start()
+    base = f"http://127.0.0.1:{port}"
+    try:
+        settings.update(dev_mode=True)
+        async with aiohttp.ClientSession() as http:
+            async with http.post(base + "/api/modules/echo/enabled", json={"enabled": True}, headers=JSON) as r:
+                assert r.status == 200
+            await wait_for(lambda: layer.hub.is_connected("echo"))
+            assert said == [("echo", "Запускаю модуль «Пример модуля (для разработчиков)»: его включили в настройках.")]
+            async with http.post(base + "/api/modules/echo/enabled", json={"enabled": False}, headers=JSON) as r:
+                assert r.status == 200
+            await wait_for(lambda: not layer.hub.is_connected("echo"), 12)
+        assert len(said) == 1                                                  # выключение не объявляется
+    finally:
+        await layer.stop()
+        await runner.cleanup()

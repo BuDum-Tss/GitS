@@ -161,9 +161,14 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         await conn.send("shutdown", {"reason": "модуль выключен или ядро останавливается"})
         return True
 
+    async def announce_launch(module_id: str, text: str) -> None:
+        """Запуск процесса модуля супервизором (правило 14): объявление идёт через очередь внимания, как у инструментов."""
+        await attention.submit_announce(module_id, text, data={"source": "supervisor"})
+
     sup = supervisor_mod.Supervisor(specs, token=hub.token, core_url=f"ws://127.0.0.1:{port}/module/ws",
                                     enabled=modules.is_enabled, is_connected=hub.is_connected,
-                                    send_shutdown=send_shutdown, memory_dir=settings.memory_dir())
+                                    send_shutdown=send_shutdown, memory_dir=settings.memory_dir(),
+                                    announce=announce_launch)
     modules.supervisor = sup
     builtin.register_core_tools(registry, modules, attention)
 
