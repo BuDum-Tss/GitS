@@ -143,6 +143,11 @@ asyncio.run(main())
   `actions` из манифеста, нажатие приходит как `panel.action` (`@client.panel_action`).
 - Вкладка видна, пока модуль включён или подключён. Служебная секция «Служебное» (задачи, настройки, инструменты, события)
   есть у каждого модуля.
+- Кнопка, которая меняет общую настройку ядра, идёт через `core.tool.call` с инструментом `core.set_setting` (пример: модуль
+  `pet`, действия `show` и `hide` меняют `pet_visible`). Модуль может менять только настройки из белого списка
+  `MODULE_SETTINGS` (`agent/environments/builtin.py`), значение должно быть `true` или `false`; остальные меняет только человек.
+  Белый список сейчас: `telegram`, `telegram_after_run`, `telegram_voice`, `telegram_confirm`, `pet_visible`. Новая настройка в
+  список добавляется решением владельца и тестом в `agent/tests/test_telegram_core.py`.
 
 ## Правила
 

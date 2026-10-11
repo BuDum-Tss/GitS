@@ -10,7 +10,7 @@ import queue
 import threading
 import time
 
-from glados_module import ModuleClient
+from glados_module import ModuleClient, ToolError
 from pet_logic import panel_blocks
 
 log = logging.getLogger("pet")
@@ -46,6 +46,24 @@ class ClientThread(threading.Thread):
         @c.on_topic("module")
         async def on_module(data):
             self.q.put(("enabled", bool(c.enabled)))
+
+        # кнопки пространства «Питомец» (TZ 15b): общая настройка pet_visible меняется через ядро (core.set_setting, TG-13)
+        @c.panel_action("show")
+        async def panel_show(args):
+            return await self._set_visible(True)
+
+        @c.panel_action("hide")
+        async def panel_hide(args):
+            return await self._set_visible(False)
+
+    async def _set_visible(self, visible: bool) -> dict:
+        """Показать или спрятать окно: инструмент ядра core.set_setting с ключом pet_visible. Ответ ядра - ok / сообщение."""
+        try:
+            await self.client.request("core.tool.call", {"tool": "core.set_setting",
+                                                         "args": {"key": "pet_visible", "value": visible}}, timeout=10)
+        except (ToolError, asyncio.TimeoutError) as e:
+            return {"ok": False, "message": str(e) or "ядро не ответило"}
+        return {"ok": True, "message": "питомец показан" if visible else "питомец скрыт"}
 
     async def _watch(self) -> None:
         """Связь, начальные настройки (welcome) и включённость не приходят темами: сверяем и сообщаем при изменении."""
