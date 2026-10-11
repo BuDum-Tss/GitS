@@ -99,7 +99,7 @@ async def handle_api_core(request: web.Request) -> web.Response:
 
 
 async def handle_api_events(request: web.Request) -> web.Response:
-    """Протокол событий: ?kind=say,user  &since=<ts>  &limit=200"""
+    """Протокол событий: ?kind=say,user  &since=<ts>  &limit=200  &module=<id> (события модуля по полю data.module, TZ 15)."""
     q = request.query
     kinds = {k for k in q.get("kind", "").split(",") if k} or None
     try:
@@ -107,6 +107,10 @@ async def handle_api_events(request: web.Request) -> web.Response:
         limit = max(1, min(int(q.get("limit", "200")), 500))
     except ValueError:
         return web.json_response({"error": "bad params"}, status=400)
+    module = q.get("module", "")
+    if module:
+        rows = [e for e in events_log.tail(1000, kinds, since) if (e.get("data") or {}).get("module") == module]
+        return web.json_response({"events": rows[-limit:]})
     return web.json_response({"events": events_log.tail(limit, kinds, since)})
 
 

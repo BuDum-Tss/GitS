@@ -399,3 +399,18 @@ def test_action_result_rules():
 def test_panel_spec_has_serve_dirs_for_core():
     spec = P.Manifest.from_dict(paneled(dict(PANEL, serve_dirs=[os.path.abspath(".")])))
     assert spec.panel.serve_dirs
+
+
+async def test_events_filter_by_module(monkeypatch):
+    """Журнал событий для вкладки модуля: только его события (по data.module), последние limit."""
+    import events_log
+    from aiohttp.test_utils import make_mocked_request
+    rows = [{"ts": 1.0, "kind": "module", "text": "a", "data": {"module": "montage"}},
+            {"ts": 2.0, "kind": "module", "text": "b", "data": {"module": "voice"}},
+            {"ts": 3.0, "kind": "module", "text": "c", "data": {"module": "montage"}}]
+    monkeypatch.setattr(events_log, "tail", lambda limit, kinds, since: list(rows))
+    resp = await dashboard.handle_api_events(make_mocked_request("GET", "/api/events?module=montage&limit=1"))
+    body = __import__("json").loads(resp.text)
+    assert [e["text"] for e in body["events"]] == ["c"]
+    resp = await dashboard.handle_api_events(make_mocked_request("GET", "/api/events?limit=5"))
+    assert len(__import__("json").loads(resp.text)["events"]) == 3

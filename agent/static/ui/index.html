@@ -226,9 +226,14 @@
       <!-- Модули и задачи -->
       <div id="tab-modules" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-4">
-          <section><h3 class="font-semibold mb-2">Модули</h3><div id="mod-list" class="space-y-3"></div></section>
-          <section id="core-section" class="hidden"><h3 class="font-semibold mb-2">Ядро</h3><div id="core-list" class="space-y-3"></div></section>
-          <section><h3 class="font-semibold mb-2">Задачи</h3><ul id="job-list" class="space-y-2 text-sm"></ul></section>
+          <!-- Подвкладки модулей (TZ 15): «Обзор» и по одной на модуль с пространством; основной ряд вкладок не меняется -->
+          <div id="mod-subtabs" role="tablist" aria-label="Вкладки модулей" class="tabs tabs-bordered flex-nowrap overflow-x-auto whitespace-nowrap w-full"></div>
+          <div id="mod-overview" class="space-y-4">
+            <section><h3 class="font-semibold mb-2">Модули</h3><div id="mod-list" class="space-y-3"></div></section>
+            <section id="core-section" class="hidden"><h3 class="font-semibold mb-2">Ядро</h3><div id="core-list" class="space-y-3"></div></section>
+            <section><h3 class="font-semibold mb-2">Задачи</h3><ul id="job-list" class="space-y-2 text-sm"></ul></section>
+          </div>
+          <div id="mod-page" class="hidden"></div>
         </div>
       </div>
 
@@ -1034,14 +1039,155 @@ function renderJob(j) {
     else controls = `<input class="input input-bordered input-xs" data-textanswer="${esc(j.job_id)}" placeholder="Ответ"> <button class="btn btn-xs btn-neutral" ${a} data-fromtext="1">Отправить</button>`;
     q = `<div class="mt-2 p-2 rounded bg-warning/20"><div class="bubble-text">${esc(j.question.question)}</div><div class="flex flex-wrap gap-2 mt-1">${controls}</div></div>`;
   }
-  const arts = (j.artifacts || []).map(x => `<code class="text-xs block bubble-text">${esc(x.kind ? x.kind + ': ' : '')}${esc(x.path)}</code>`).join('');
+  const arts = (j.artifacts || []).map(x => {
+    const name = String(x.path || '').split(/[\\/]/).pop();
+    const openable = MODTAB.serve.has(j.module) && OPENABLE.some(ext => name.toLowerCase().endsWith(ext));
+    return `<div class="flex items-center gap-2 min-w-0"><code class="text-xs bubble-text min-w-0">${esc(x.kind ? x.kind + ': ' : '')}${esc(x.path)}</code>${openable ? `<a class="link link-primary text-xs shrink-0" href="${esc(artifactUrl(j.module, j.job_id, name))}" target="_blank" rel="noopener">Открыть</a>` : ''}</div>`;
+  }).join('');
+  const jobLinks = (MODTAB.links[j.module] || []).filter(l => l.args_from === 'job');
+  const linkRow = jobLinks.length ? `<div class="flex flex-wrap gap-2 mt-1">${renderLinks(j.module, jobLinks, j.job_id)}</div>` : '';
   return `<li class="border border-base-300 rounded-lg p-2">
     <div class="flex items-center justify-between gap-2"><span class="min-w-0"><span class="font-medium">${esc(j.title || j.job_id)}</span>
       <span class="opacity-50 text-xs font-mono">${esc(j.module)} ${esc(j.job_id)}${j.stage ? ' · ' + esc(j.stage) : ''}</span></span>
       <span class="flex items-center gap-2 shrink-0"><span class="badge ${cls} badge-sm">${esc(label)}</span>
       ${JOB_FINISHED.includes(j.state) ? '' : `<button class="btn btn-ghost btn-xs" data-act="cancel" data-module="${esc(j.module)}" data-job="${esc(j.job_id)}" title="Отменить задачу">✕</button>`}</span></div>
     ${pct !== null ? `<progress class="progress progress-info w-full mt-1" value="${pct}" max="100"></progress>` : ''}
-    ${j.text ? `<div class="text-xs opacity-80 bubble-text mt-1">${esc(j.text)}</div>` : ''}${q}${arts}</li>`;
+    ${j.text ? `<div class="text-xs opacity-80 bubble-text mt-1">${esc(j.text)}</div>` : ''}${q}${linkRow}${arts}</li>`;
+}
+
+// ── пространство модуля (TZ 15): подвкладки во вкладке «Модули», страница модуля ──
+// Текст и адреса от модуля выводятся только через esc() (экранирование) или как значения атрибутов; HTML от модуля не исполняется.
+const MODTAB = {selected: 'overview', sig: '', pageSig: '', serve: new Set(), links: {}, tabSel: {}, open: {}, msg: {}, ev: {rows: [], id: '', at: 0}};
+const OPENABLE = ['.mp4', '.webm', '.srt', '.vtt', '.json', '.md', '.txt', '.png', '.jpg', '.jpeg'];
+const STYLE_CLS = {primary: 'btn-neutral', danger: 'btn-error', default: ''};
+function modTabStored() { try { return localStorage.getItem('glados.modulesTab') || 'overview'; } catch (_) { return 'overview'; } }
+function modTabSave(key) { try { localStorage.setItem('glados.modulesTab', key); } catch (_) { /* хранилище закрыто: выбор только на эту сессию */ } }
+MODTAB.selected = modTabStored();
+const panelModules = mods => mods.filter(m => m.kind === 'module' && m.panel && (m.enabled || m.connected));
+const safeHttp = url => /^https?:\/\//i.test(String(url || '')) ? esc(url) : '#';
+const artifactUrl = (module, job, name) => `/api/artifact?module=${encodeURIComponent(module)}&job=${encodeURIComponent(job)}&name=${encodeURIComponent(name)}`;
+const dotCls = m => m.connected ? 'bg-success' : (m.status === 'crashed' || m.status === 'backoff' || m.last_error) ? 'bg-error' : 'bg-base-300';
+
+function setModTab(key) {
+  MODTAB.selected = key; modTabSave(key); MODTAB.sig = ''; MODTAB.pageSig = '';
+}
+
+function renderSubtabs(mods, jobs) {
+  const tab = (key, dot, label, n, title) => `<a role="tab" class="tab flex-none gap-1 whitespace-nowrap ${MODTAB.selected === key ? 'tab-active' : ''}" data-mod-tab="${esc(key)}" title="${esc(title || '')}">${dot ? `<span class="inline-block w-2 h-2 rounded-full ${dot}"></span>` : ''}<span>${esc(label)}</span>${n ? ` <span class="badge badge-info badge-xs">${n}</span>` : ''}</a>`;
+  const html = tab('overview', '', 'Обзор', 0, '') + panelModules(mods).map(m => tab(
+    m.id, dotCls(m), m.panel.title || m.title,
+    jobs.filter(j => j.module === m.id && !JOB_FINISHED.includes(j.state)).length, m.status_text)).join('');
+  if (html !== MODTAB.sig) { MODTAB.sig = html; $('mod-subtabs').innerHTML = html; }
+}
+
+function renderLinks(module, links, job) {
+  return links.map(l => l.kind === 'url'
+    ? `<a class="btn btn-xs" href="${safeHttp(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}</a>`
+    : `<button class="btn btn-xs" data-panel-link="${esc(l.id)}" data-module="${esc(module)}"${job ? ` data-job="${esc(job)}"` : ''}>${esc(l.label)}</button>`).join(' ');
+}
+
+function actionButton(module, a, size, style) {
+  return `<button class="btn ${size || ''} ${STYLE_CLS[style] || ''}" data-panel-action="${esc(a.id)}" data-module="${esc(module)}" data-args="${esc(JSON.stringify(a.args || {}))}">${esc(a.label)}</button>`;
+}
+
+function panelBlocks(module, blocks, path) {
+  return (blocks || []).map((b, i) => {
+    const p = path ? `${path}.${i}` : `${i}`;
+    const head = b.title ? `<div class="text-sm font-medium mb-1 bubble-text">${esc(b.title)}</div>` : '';
+    return `<section class="space-y-1">${head}${panelBlock(module, b, p)}</section>`;
+  }).join('');
+}
+
+function panelBlock(module, b, p) {
+  switch (b.type) {
+    case 'stats':
+      return `<div class="grid grid-cols-2 gap-2">${(b.items || []).map(it => `<div class="rounded-box bg-base-200 p-2"><div class="text-xs opacity-60 bubble-text">${esc(it.label)}</div><div class="font-semibold bubble-text">${esc(it.value)}</div></div>`).join('')}</div>`;
+    case 'table': {
+      const rows = b.rows || [], acts = rows.some(r => (r.actions || []).length);
+      return `<div class="overflow-x-auto"><table class="table table-xs"><thead><tr>${(b.columns || []).map(c => `<th>${esc(c)}</th>`).join('')}${acts ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(r => `<tr>${(r.cells || []).map(c => `<td class="bubble-text">${esc(c)}</td>`).join('')}${acts ? `<td class="whitespace-nowrap">${(r.actions || []).map(a => actionButton(module, a, 'btn-xs')).join(' ')}</td>` : ''}</tr>`).join('')}</tbody></table></div>`;
+    }
+    case 'list':
+      return `<ul class="space-y-1">${(b.items || []).map(it => `<li class="flex items-start justify-between gap-2"><span class="min-w-0"><span class="bubble-text">${esc(it.text)}</span>${it.sub ? `<span class="block text-xs opacity-60 bubble-text">${esc(it.sub)}</span>` : ''}</span>${it.badge ? `<span class="badge badge-ghost badge-sm shrink-0">${esc(it.badge)}</span>` : ''}</li>`).join('')}</ul>`;
+    case 'text':
+      return `<div class="text-sm bubble-text">${esc(b.text)}</div>`;
+    case 'progress': {
+      const pct = Math.max(0, Math.min(100, Math.round((Number(b.value) || 0) * 100)));
+      return `<div>${b.label ? `<div class="text-xs opacity-70 bubble-text">${esc(b.label)}</div>` : ''}<progress class="progress progress-info w-full" value="${pct}" max="100"></progress></div>`;
+    }
+    case 'buttons':
+      return `<div class="flex flex-wrap gap-2">${(b.items || []).map(it => it.action
+        ? actionButton(module, {id: it.action, label: it.label, args: it.args}, 'btn-xs', it.style)
+        : `<a class="btn btn-xs" href="${safeHttp(it.url)}" target="_blank" rel="noopener noreferrer">${esc(it.label)}</a>`).join('')}</div>`;
+    case 'link':
+      return `<a class="link link-primary bubble-text" href="${safeHttp(b.url)}" target="_blank" rel="noopener noreferrer">${esc(b.label)}</a>`;
+    case 'image':
+      return `<img class="rounded-box max-h-64 bg-base-200" src="${esc(artifactUrl(module, (b.artifact || {}).job, (b.artifact || {}).name))}" alt="${esc(b.alt || '')}" loading="lazy">`;
+    case 'video':
+      return `<video class="w-full rounded-box bg-black" controls preload="metadata" src="${esc(artifactUrl(module, (b.artifact || {}).job, (b.artifact || {}).name))}"></video>`;
+    case 'log':
+      return `<pre class="text-xs bg-base-200 rounded p-2 whitespace-pre-wrap" style="max-height:14rem;overflow:auto">${esc((b.lines || []).join('\n'))}</pre>`;
+    case 'tabs': {
+      const tabs = b.tabs || [], key = `${module}:${p}`, sel = Math.min(MODTAB.tabSel[key] || 0, Math.max(tabs.length - 1, 0));
+      return `<div><div role="tablist" class="tabs tabs-bordered flex-nowrap overflow-x-auto whitespace-nowrap">${tabs.map((t, k) => `<a role="tab" class="tab flex-none ${k === sel ? 'tab-active' : ''}" data-panel-tab="${esc(key)}" data-index="${k}">${esc(t.label)}</a>`).join('')}</div><div class="mt-2">${panelBlocks(module, (tabs[sel] || {}).blocks, `${p}.${sel}`)}</div></div>`;
+    }
+    default:
+      return '';
+  }
+}
+
+function modEventRows(events) {
+  return events.map(e => `<li class="text-xs flex flex-wrap gap-x-2"><span class="opacity-60 font-mono">${esc(new Date(e.ts * 1000).toLocaleTimeString('ru-RU'))}</span><span class="badge badge-ghost badge-xs">${esc(e.kind)}</span><span class="bubble-text min-w-0">${esc(e.text)}</span></li>`).join('')
+    || '<li class="opacity-60 text-xs">Событий пока нет.</li>';
+}
+
+async function modEvents(id) {
+  if (MODTAB.ev.id !== id || Date.now() - MODTAB.ev.at > 5000) {
+    const rows = await fetch(`/api/events?module=${encodeURIComponent(id)}&limit=20`).then(r => r.json()).then(j => j.events || []).catch(() => []);
+    MODTAB.ev = {id, rows, at: Date.now()};
+  }
+  return MODTAB.ev.rows;
+}
+
+function modPageHtml(m, data, jobs, events) {
+  const panel = m.panel || {}, [label, cls] = MOD_STATUS[m.status] || [m.status_text || m.status, 'badge-ghost'];
+  const blocks = data.blocks || [], hasSpace = blocks.length > 0 || !!panel.embed_url;
+  const modLinks = (panel.links || []).filter(l => l.args_from !== 'job');
+  const svcOpen = MODTAB.open[m.id] ?? !hasSpace;
+  const schema = Object.entries(m.settings_schema || {});
+  const tools = (m.tools || []).map(t => `<li class="flex items-start gap-2"><span class="badge ${(RISK[t.risk] || RISK.ask)[1]} badge-xs shrink-0 mt-1">${esc((RISK[t.risk] || RISK.ask)[0])}</span><span class="min-w-0"><span class="font-mono text-xs">${esc(t.id)}</span><span class="opacity-70 bubble-text text-xs block">${esc(t.description)}</span></span></li>`).join('');
+  const msg = MODTAB.msg[m.id];
+  return `<div data-modpage="${esc(m.id)}" class="space-y-4">
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <div class="min-w-0"><div class="font-semibold bubble-text">${esc(panel.title || m.title)}</div><div class="text-xs opacity-60 font-mono">${esc(m.id)} ${esc(m.version || '')}</div></div>
+      <span class="flex items-center gap-2 shrink-0 flex-wrap"><span class="badge ${cls} badge-sm" title="${esc(m.status_text || '')}">${esc(label)}</span>
+        <button class="btn btn-ghost btn-xs" data-act="restart" data-id="${esc(m.id)}" title="Перезапустить процесс" ${m.status !== 'offline' || m.pid ? '' : 'disabled'}>Перезапустить</button>
+        <label class="label cursor-pointer gap-1 py-0"><span class="label-text text-xs">Включён</span><input type="checkbox" class="toggle toggle-sm" data-act="enable" data-id="${esc(m.id)}" ${m.enabled ? 'checked' : ''}></label></span>
+    </div>
+    ${m.last_error ? `<pre class="text-xs bg-base-200 rounded p-2 whitespace-pre-wrap" style="max-height:8rem;overflow:auto">${esc(m.last_error)}</pre>` : ''}
+    ${modLinks.length ? `<div class="flex flex-wrap gap-2">${renderLinks(m.id, modLinks, '')}</div>` : ''}
+    ${panel.embed_url ? `<iframe src="${esc(panel.embed_url)}" title="${esc(panel.title || m.title)}" class="w-full rounded-box border border-base-300 bg-base-100" style="height:60vh"></iframe>` : ''}
+    ${blocks.length ? `<div class="space-y-4">${panelBlocks(m.id, blocks, '')}</div>` : ''}
+    ${msg ? `<div class="text-xs bubble-text" data-panel-msg="${esc(m.id)}">${esc(msg)}</div>` : ''}
+    <details class="rounded-box border border-base-300 p-3" data-svc="${esc(m.id)}" ${svcOpen ? 'open' : ''}>
+      <summary class="cursor-pointer text-sm font-medium">Служебное</summary>
+      <div class="space-y-4 mt-3">
+        <section><div class="text-sm font-medium mb-2">Задачи модуля</div><ul class="space-y-2 text-sm">${jobs.map(renderJob).join('') || '<li class="opacity-60">Задач нет.</li>'}</ul></section>
+        ${schema.length ? `<section><div class="text-sm font-medium mb-2">Настройки</div><div class="space-y-2">${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></section>` : ''}
+        ${tools ? `<section><div class="text-sm font-medium mb-2">Инструменты (${m.tools.length})</div><ul class="space-y-1">${tools}</ul></section>` : ''}
+        <section><div class="text-sm font-medium mb-2">События модуля</div><ul class="space-y-1">${modEventRows(events)}</ul></section>
+      </div>
+    </details>
+  </div>`;
+}
+
+async function renderModPage(mods, jobs) {
+  const m = mods.find(x => x.id === MODTAB.selected);
+  if (!m) return;
+  const data = await fetch(`/api/modules/${encodeURIComponent(m.id)}/panel`).then(r => r.json()).catch(() => ({blocks: []}));
+  const events = await modEvents(m.id);
+  const html = modPageHtml(m, data, jobs.filter(j => j.module === m.id), events);
+  const typing = $('mod-page').contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
+  if (!typing && MODTAB.pageSig !== html) { MODTAB.pageSig = html; $('mod-page').innerHTML = html; }
 }
 
 async function loadModules() {
@@ -1054,11 +1200,53 @@ async function loadModules() {
     || '<p class="opacity-60 text-sm">Модулей пока нет. Они подключаются сами или запускаются ядром (agent/modules.yaml).</p>';
   const chtml = core.map(renderModule).join('');
   $('core-section').classList.toggle('hidden', !core.length);
+  MODTAB.serve = new Set(mods.filter(m => m.panel && (m.panel.serve_dirs || []).length).map(m => m.id));
+  MODTAB.links = Object.fromEntries(mods.filter(m => m.panel).map(m => [m.id, m.panel.links || []]));
   const jhtml = jobs.map(renderJob).join('') || '<li class="opacity-60">Задач нет.</li>';
   if (!typing && MD2.sig !== html) { MD2.sig = html; $('mod-list').innerHTML = html; }
   if (!typing && MD2.coreSig !== chtml) { MD2.coreSig = chtml; $('core-list').innerHTML = chtml; }
   if (!typing && MD2.jobSig !== jhtml) { MD2.jobSig = jhtml; $('job-list').innerHTML = jhtml; }
+  // выбранный модуль исчез (выключен, отключён или снят panel): возвращаемся на «Обзор»
+  if (MODTAB.selected !== 'overview' && !panelModules(mods).some(m => m.id === MODTAB.selected)) setModTab('overview');
+  renderSubtabs(mods, jobs);
+  const onPage = MODTAB.selected !== 'overview';
+  $('mod-overview').classList.toggle('hidden', onPage);
+  $('mod-page').classList.toggle('hidden', !onPage);
+  if (onPage && !typing) await renderModPage(mods, jobs);
 }
+
+async function showPanelReply(module, r) {
+  let data = {};
+  try { data = await r.json(); } catch (_) { /* ответ не JSON: покажем общий итог */ }
+  if (data.open_url) window.open(data.open_url, '_blank', 'noopener');
+  MODTAB.msg[module] = data.error || data.message || (r.ok && data.ok !== false ? 'Готово.' : 'Не получилось.');
+  MODTAB.pageSig = '';
+  loadModules().catch(() => {});
+}
+
+$('mod-subtabs').addEventListener('click', e => {
+  const t = e.target.closest('[data-mod-tab]'); if (!t) return;
+  setModTab(t.dataset.modTab); modTabSave(MODTAB.selected); loadModules().catch(() => {});
+});
+$('mod-page').addEventListener('toggle', e => {
+  const d = e.target; if (d.dataset && d.dataset.svc) MODTAB.open[d.dataset.svc] = d.open;
+}, true);
+$('mod-page').addEventListener('click', async e => {
+  const tab = e.target.closest('[data-panel-tab]');
+  if (tab) { MODTAB.tabSel[tab.dataset.panelTab] = Number(tab.dataset.index) || 0; MODTAB.pageSig = ''; loadModules().catch(() => {}); return; }
+  const act = e.target.closest('[data-panel-action]');
+  if (act) {
+    let args = {}; try { args = JSON.parse(act.dataset.args || '{}'); } catch (_) { args = {}; }
+    const r = await post(`/api/modules/${encodeURIComponent(act.dataset.module)}/panel/action`, {action_id: act.dataset.panelAction, args});
+    await showPanelReply(act.dataset.module, r); return;
+  }
+  const link = e.target.closest('[data-panel-link]');
+  if (link) {
+    const body = {link_id: link.dataset.panelLink}; if (link.dataset.job) body.job_id = link.dataset.job;
+    const r = await post(`/api/modules/${encodeURIComponent(link.dataset.module)}/panel/link`, body);
+    await showPanelReply(link.dataset.module, r);
+  }
+});
 $('tab-modules').addEventListener('change', async e => {
   const el = e.target, id = el.dataset.id;
   if (el.dataset.act === 'enable') await post(`/api/modules/${encodeURIComponent(id)}/enabled`, {enabled: el.checked});
