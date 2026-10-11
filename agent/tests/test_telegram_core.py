@@ -69,8 +69,9 @@ async def test_set_setting_changes_only_whitelisted_boolean_settings(tmp_path):
             await raw.hello()
             tool = core.envs.get("core.set_setting")
             assert tool.risk == "auto" and tool.availability == "always" and tool.env == "core"
-            assert tool.params["key"]["enum"] == ["telegram", "telegram_after_run", "telegram_voice", "telegram_confirm"]
-            for key in ("telegram", "telegram_after_run", "telegram_voice", "telegram_confirm"):
+            assert tool.params["key"]["enum"] == ["telegram", "telegram_after_run", "telegram_voice", "telegram_confirm",
+                                                  "pet_visible"]
+            for key in ("telegram", "telegram_after_run", "telegram_voice", "telegram_confirm", "pet_visible"):
                 body = await call_core_tool(raw, "core.set_setting", {"key": key, "value": True})
                 assert body["ok"] is True, body
                 assert settings.load()[key] is True
@@ -78,12 +79,32 @@ async def test_set_setting_changes_only_whitelisted_boolean_settings(tmp_path):
                 assert settings.load()[key] is False
             before = settings.load()
             for args in ({"key": "auto_accept", "value": True}, {"key": "voice_muted", "value": True},
-                         {"key": "telegram", "value": "возможно"}, {"key": "telegram"}, {"value": True}):
+                         {"key": "telegram", "value": "возможно"}, {"key": "telegram"}, {"value": True},
+                         {"key": "pet_visible", "value": "возможно"}, {"key": "pet_visible"}):
                 body = await call_core_tool(raw, "core.set_setting", args)
                 assert body["ok"] is False and body["error"]["code"] == "bad_request", args
             assert settings.load() == before                                # опасные настройки не тронуты
         finally:
             await raw.close()
+
+
+async def test_pet_visible_is_settable_by_modules_only_as_bool(tmp_path):
+    """TZ 15b: pet_visible в белом списке; окно питомца показывают и прячут кнопки его пространства."""
+    async with running_core(tmp_path) as core:
+        builtin.register_core_tools(core.envs, core.modules)
+        assert "pet_visible" in builtin.MODULE_SETTINGS
+        from environments.base import ToolError
+        with pytest.raises(ToolError) as e:
+            await core.envs.get("core.set_setting").call({"key": "pet_visible", "value": "нет"})
+        assert e.value.code == "bad_request"
+        await core.envs.get("core.set_setting").call({"key": "pet_visible", "value": False})
+        assert settings.load()["pet_visible"] is False
+        await core.envs.get("core.set_setting").call({"key": "pet_visible", "value": True})
+        assert settings.load()["pet_visible"] is True
+        # pet_pinned, dnd и прочее по-прежнему только человек
+        with pytest.raises(ToolError) as e:
+            await core.envs.get("core.set_setting").call({"key": "pet_pinned", "value": True})
+        assert e.value.code == "denied" and settings.load()["pet_pinned"] is False
 
 
 async def test_set_setting_direct_call_refuses_other_keys(tmp_path):

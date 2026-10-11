@@ -58,8 +58,8 @@ def sticker_for(presence: dict, now: float, connected: bool = True) -> str:
 
 
 def panel_blocks(settings: dict, presence: dict, now: float, connected: bool, enabled: bool) -> list[dict]:
-    """Пространство «Питомец» в дашборде (TZ 15, TAB-9): окно показано или скрыто, стикер, закреплён ли, позиция, связь.
-    Кнопок нет: видимость меняет только человек (core.set_setting не даёт модулям pet_visible, TG-13)."""
+    """Пространство «Питомец» в дашборде (TZ 15, TAB-9): окно показано или скрыто, стикер, закреплён ли, позиция, связь,
+    кнопки «Показать» и «Скрыть» (действия show и hide, TZ 15b: они ставят pet_visible через core.set_setting)."""
     x, y = settings.get("pet_x"), settings.get("pet_y")
     position = f"{int(x)}, {int(y)}" if isinstance(x, (int, float)) and isinstance(y, (int, float)) \
         and not isinstance(x, bool) and not isinstance(y, bool) else "угол по умолчанию"
@@ -71,6 +71,8 @@ def panel_blocks(settings: dict, presence: dict, now: float, connected: bool, en
             {"label": "Закреплён", "value": "да" if settings.get("pet_pinned") else "нет"},
             {"label": "Позиция", "value": position}]},
         {"type": "text", "title": "Модуль", "text": link + ("" if enabled else "; выключен")},
+        {"type": "buttons", "items": [{"label": "Показать", "action": "show"},
+                                      {"label": "Скрыть", "action": "hide"}]},
     ]
 
 
