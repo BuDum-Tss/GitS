@@ -13,4 +13,4 @@ activate:
   foreground_apps: [davinciresolve, resolve, "premiere pro", vegas]
 priority: 30
 sticky_s: 120
-planned: true
+planned: false

@@ -44,7 +44,7 @@ def test_files_cover_the_spec_table():
     assert profiles["rimworld"].attention["weights"] == {"rimworld.*": 1.5, "telegram.group": 0.4}
     assert profiles["editing"].focus_modules == ("montage", "desktop") and profiles["editing"].priority == 30
     assert profiles["editing"].activate["foreground_apps"] == ["davinciresolve", "resolve", "premiere pro", "vegas"]
-    assert [p for p in profiles if profiles[p].planned] == ["editing", "minecraft", "programming"]
+    assert [p for p in profiles if profiles[p].planned] == ["minecraft", "programming"]
     assert profiles["sleep"].focus_modules == () and not profiles["sleep"].activate
 
 
@@ -172,7 +172,7 @@ def test_set_override_writes_setting(tmp_path):
     assert "ещё не написан" in pm.set_override("minecraft")
     assert "нет такого" in pm.set_override("zzz")
     assert pm.set_override("auto") is None and settings.load()["profile"] == "auto" and pm.current_id == HUB
-    assert set(pm.choices()) == {"auto", "assistant", "work", "rimworld", "sleep"}
+    assert set(pm.choices()) == {"auto", "assistant", "work", "rimworld", "editing", "sleep"}
 
 
 def _tool(env, availability="always"):

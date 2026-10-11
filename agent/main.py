@@ -32,6 +32,7 @@ def main():
     }
     # модуль RimWorld живёт в отдельном репозитории (rimworld-module): {RIMWORLD_MODULE_DIR} в modules.yaml (ТЗ 11)
     module_dirs.apply()
+    module_dirs.apply_montage()                       # то же для модуля монтажа (ТЗ 20): {MONTAGE_MODULE_DIR}
 
     core_service.run(config)
 

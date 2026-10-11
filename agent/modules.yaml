@@ -4,7 +4,7 @@
 # Поля: id; cwd; command; args; autostart (запускать вместе с ядром, если модуль включён); restart (always | on-failure |
 # never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title и description
 # (как запись называется и описывается во вкладке «Модули»; перекрывают манифест); dev: true (запись видна во вкладке только при настройке dev_mode).
-# Реальные модули добавляют ТЗ 20: montage (telegram - ТЗ 10, rimworld - ТЗ 11, voice - ТЗ 12, desktop - ТЗ 14, ниже).
+# Реальные модули: telegram - ТЗ 10, rimworld - ТЗ 11, voice - ТЗ 12, desktop - ТЗ 14, montage - ТЗ 20 (ниже).
 # Модулям передаются GLADOS_MODULE_TOKEN, GLADOS_CORE_URL, GLADOS_MODULE_ID и MEMORY_DIR (абсолютный путь к папке памяти ядра).
 modules:
   - id: telegram
@@ -58,6 +58,17 @@ modules:
     autostart: true
     restart: on-failure
 
+  # Монтаж видео (ТЗ 20-22): отдельный репозиторий montage-module. {MONTAGE_MODULE_DIR} ядро находит само (module_dirs.py: переменная
+  # MONTAGE_MODULE_DIR, соседняя папка montage-module, запасной путь C:\MyProjects\montage-module). Окружение у модуля своё: .venv
+  # репозитория (Python 3.12, claude-agent-sdk, glados-module), поэтому интерпретатор не {PYTHON}. Нужны Node.js и ffmpeg.
+  - id: montage
+    title: Монтаж видео
+    cwd: "{MONTAGE_MODULE_DIR}/agent"
+    command: "{MONTAGE_MODULE_DIR}/.venv/Scripts/python.exe"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
+
   - id: echo
     title: Пример модуля (для разработчиков)
     description: повторяет текст; проверка протокола модулей
@@ -86,8 +97,5 @@ modules:
 # Запланированные модули: ядро их не запускает, вкладка «Модули» показывает серые карточки «ещё не установлен - запланирован».
 # Поля: id, title, tz (номер ТЗ, если оно есть). Когда модуль появится, запись переезжает в modules выше.
 planned:
-  - id: montage
-    title: Монтаж видео
-    tz: "ТЗ 20–22"
   - id: minecraft
     title: Minecraft
