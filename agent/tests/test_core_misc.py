@@ -52,7 +52,7 @@ async def test_set_profile_tool_is_rebuilt_on_profiles(tmp_path):
     builtin.register(reg, FakeCompanion(), UserMemory(str(tmp_path)), profiles=pm)
     tool = reg.get("assistant.set_profile")
     assert tool.params["mode"]["enum"] == pm.choices() and "planned" not in tool.description
-    assert set(tool.params["mode"]["enum"]) == {"auto", "assistant", "work", "rimworld", "sleep"}
+    assert set(tool.params["mode"]["enum"]) == {"auto", "assistant", "work", "rimworld", "editing", "sleep"}
     assert sum(t.name == "set_profile" for e in reg.envs.values() for t in e.tools) == 1      # не дублируется
     assert await tool.call({"mode": "work"}) == "профиль: Работа и код"
     assert settings.load()["profile"] == "work" and pm.current_id == "work"
