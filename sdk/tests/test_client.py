@@ -320,14 +320,18 @@ async def test_event_say_emotion_state(core):
                                   sender={"id": "d:1", "name": "Маша"}, memorable=True)
         assert await client.say("Борис уснул.", mode="verbatim", emotion="angry", key="demo.k")
         assert await client.say("Факт.")
+        assert await client.say("Запускаю монтаж.", announce=True)
+        assert await client.event("demo.launch", "Запускаю рендер", announce=True)
         assert await client.emotion("angry", "борис уснул")
         assert await client.state("всё хорошо", {"colonists": 3})
         await core.wait_message("state")
-    assert core.events == [{"kind": "demo.thing", "text": "Что-то случилось", "urgency_hint": 4, "data": {"x": 1},
-                            "sender": {"id": "d:1", "name": "Маша"}, "memorable": True}]
+    assert core.events[0] == {"kind": "demo.thing", "text": "Что-то случилось", "urgency_hint": 4, "data": {"x": 1},
+                              "sender": {"id": "d:1", "name": "Маша"}, "memorable": True}
     says = [m.body for m in core.messages_of("say")]
     assert says[0] == {"text": "Борис уснул.", "mode": "verbatim", "emotion": "angry", "key": "demo.k"}
     assert says[1] == {"text": "Факт.", "mode": "fact"}
+    assert says[2] == {"text": "Запускаю монтаж.", "mode": "fact", "announce": True}
+    assert core.events[-1] == {"kind": "demo.launch", "text": "Запускаю рендер", "announce": True}
     assert core.messages_of("emotion")[0].body == {"emotion": "angry", "cause": "борис уснул"}
     assert core.states["demo"] == {"summary": "всё хорошо", "data": {"colonists": 3}}
     assert core.messages_of("event")[0].id.startswith("m-")

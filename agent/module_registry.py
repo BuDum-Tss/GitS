@@ -20,6 +20,17 @@ logger = logging.getLogger("modules")
 FINISHED_JOBS_KEPT = 20          # завершённых задач модуля в реестре (ТЗ 01: job.list)
 CHECK_TIMEOUT_S = 2.0            # tool.check: ответ не позже чем за 2 с (CORE-35)
 ENABLED_CACHE_S = 0.5            # как долго помнится чтение настроек (is_enabled зовут часто)
+ANNOUNCE_DESC_MAX, ANNOUNCE_ARG_MAX, ANNOUNCE_ARGS_MAX = 140, 40, 160     # AN-3: сколько описания и аргументов уходит в факт
+
+
+def announce_text(spec, args: dict) -> str:
+    """Факт «запускаю <name>: <описание и короткие аргументы>» для инструмента с `announce: true` (AN-3). Формулирует модель."""
+    desc = " ".join(str(spec.description).split())
+    desc = desc.split(". ", 1)[0].rstrip(".")[:ANNOUNCE_DESC_MAX]
+    skip = set(spec.core_fills)
+    shown = "; ".join(f"{k}={' '.join(str(v).split())[:ANNOUNCE_ARG_MAX]}" for k, v in (args or {}).items()
+                      if k not in skip and v not in (None, ""))[:ANNOUNCE_ARGS_MAX]
+    return f"Запускаю {spec.name}: {desc}." + (f" Аргументы: {shown}." if shown else "")
 
 
 @dataclass
@@ -223,6 +234,12 @@ class ModuleRegistry:
                 raise ToolError("модуль не подключён")
             if not self.is_enabled(module_id):
                 raise ToolError("модуль выключен")
+            attention = getattr(self.hub, "attention", None)
+            if spec.announce and attention is not None:
+                try:
+                    await attention.submit_announce(module_id, announce_text(spec, args), data={"tool": spec.name})
+                except Exception as e:                  # объявление не должно мешать самому вызову
+                    logger.warning(f"Объявление запуска {spec.full_id(module_id)}: {e}")
             try:
                 value = await conn.request("tool.call", {"tool": spec.name, "args": args}, timeout=spec.timeout_s)
             except ModuleError as e:

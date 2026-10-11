@@ -329,7 +329,7 @@ def _check_tool(i: int, tool: Any, problems: list[str], seen: set[str]) -> None:
         problems.append(f"{where}.risk: одно из {list(RISKS)}")
     if tool.get("availability") not in AVAILABILITIES:
         problems.append(f"{where}.availability: одно из {list(AVAILABILITIES)}")
-    for flag in ("informative", "self_confirming", "danger_check", "job", "fallback"):
+    for flag in ("informative", "self_confirming", "danger_check", "job", "fallback", "announce"):
         if flag in tool and not isinstance(tool[flag], bool):
             problems.append(f"{where}.{flag}: должно быть true или false")
     if "timeout_s" in tool:
@@ -525,6 +525,7 @@ class ToolSpec:
     job: bool = False
     fallback: bool = False
     core_fills: list[str] = field(default_factory=list)
+    announce: bool = False          # долгое или заметное действие на ПК: ядро объявляет запуск до вызова (AN-3)
 
     def full_id(self, module_id: str) -> str:
         return f"{module_id}.{self.name}"
@@ -537,14 +538,15 @@ class ToolSpec:
             self_confirming=bool(d.get("self_confirming", False)),
             timeout_s=int(d.get("timeout_s", TIMEOUT_TOOL_DEFAULT)), keywords=list(d.get("keywords") or []),
             danger_check=bool(d.get("danger_check", False)), job=bool(d.get("job", False)),
-            fallback=bool(d.get("fallback", False)), core_fills=list(d.get("core_fills") or []))
+            fallback=bool(d.get("fallback", False)), core_fills=list(d.get("core_fills") or []),
+            announce=bool(d.get("announce", False)))
 
     def to_dict(self) -> dict:
         return {"name": self.name, "description": self.description, "params": self.params, "risk": self.risk,
                 "availability": self.availability, "informative": self.informative,
                 "self_confirming": self.self_confirming, "timeout_s": self.timeout_s, "keywords": self.keywords,
                 "danger_check": self.danger_check, "job": self.job, "fallback": self.fallback,
-                "core_fills": self.core_fills}
+                "core_fills": self.core_fills, "announce": self.announce}
 
 
 @dataclass
@@ -679,7 +681,7 @@ def validate_event(body: Any) -> list[str]:
     if "data" in body and not isinstance(body["data"], dict):
         problems.append("data: должен быть объектом")
     _check_urgency("", body, problems)
-    for flag in ("addressed_to_me", "memorable"):
+    for flag in ("addressed_to_me", "memorable", "announce"):
         if flag in body and not isinstance(body[flag], bool):
             problems.append(f"{flag}: должно быть true или false")
     if "sender" in body:
@@ -713,6 +715,8 @@ def validate_say(body: Any) -> list[str]:
     for key in ("emotion", "key"):
         if key in body and not isinstance(body[key], str):
             problems.append(f"{key}: должна быть строкой")
+    if "announce" in body and not isinstance(body["announce"], bool):
+        problems.append("announce: должно быть true или false")
     _check_urgency("", body, problems)
     _check_expires("", body, problems)
     return problems
@@ -799,6 +803,7 @@ class Event:
     dedupe_key: str | None = None
     expires_in_s: float | None = None
     memorable: bool | None = None
+    announce: bool | None = None      # объявление о долгом запуске (AN-2)
 
     @classmethod
     def from_body(cls, body: Any) -> Event:
@@ -821,6 +826,7 @@ class Say:
     urgency_hint: int | None = None
     expires_in_s: float | None = None
     key: str | None = None
+    announce: bool | None = None      # объявление о долгом запуске: звучит всегда (AN-2)
 
     @classmethod
     def from_body(cls, body: Any) -> Say:

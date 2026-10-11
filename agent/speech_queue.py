@@ -7,8 +7,11 @@
      он ждёт ответа, а не заканчивает фразу);
   3. нет заданного вопроса, на который ждут ответа (кроме кандидатов `conversation` и `question`);
   4. с последней самостоятельной реплики прошло не меньше `min_gap` (тихо 90 с, обычно 30, болтливо 10); не действует для
-     `conversation`, `question`, кандидатов с приоритетом 85 и выше и готовых реплик модулей (`module:*`, verbatim: модуль
-     сам задаёт им темп).
+     `conversation`, `question`, `announce`, кандидатов с приоритетом 85 и выше и готовых реплик модулей (`module:*`,
+     verbatim: модуль сам задаёт им темп).
+Объявления о запусках (`announce`, правило 14 ТЗ: каждое должно прозвучать): приоритет 75, срок 180 с, пауза между репликами и
+повторы недавно сказанного их не задерживают и не снимают, вопрос в ожидании не мешает; текущую реплику они не обрывают
+(кроме «болтовни»), а звучат сразу после неё.
 Лучший кандидат: больший приоритет, при равенстве старший. Устаревшие (`now > expires`) и повторы недавно сказанного
 удаляются с записью в журнал. Приоритет 85 и выше прерывает звучащую речь, если она ниже на запас прерывания и более; готовый
 к D3 кандидат (60 и выше) прерывает «болтовню» (звучащее ниже 35). Прерванный кандидат не возвращается.
@@ -32,8 +35,10 @@ INTERRUPT_P = 85                  # ATT-17: с такого приоритета
 CHATTER_P = 35                    # «болтовня»: звучащее ниже этого прерывается кандидатом D3 (priority >= 60)
 D3_P = 60
 
-SOURCES = ("conversation", "module", "attention", "proactive", "question")
-DEFAULT_TTL_S = {"conversation": 120.0, "verbatim": 20.0, "fact": 600.0, "proactive": 60.0, "question": 120.0}
+SOURCES = ("conversation", "module", "attention", "proactive", "question", "announce")
+DEFAULT_TTL_S = {"conversation": 120.0, "verbatim": 20.0, "fact": 600.0, "proactive": 60.0, "question": 120.0,
+                 "announce": 180.0}
+ANNOUNCE_P = 75                   # AN-1: выше болтовни и D2, ниже прерываний (>= 85)
 
 
 def new_candidate_id() -> str:
@@ -43,7 +48,7 @@ def new_candidate_id() -> str:
 @dataclass
 class SpeechCandidate:
     id: str
-    source: str                    # "conversation" | "module:<id>" | "attention:<item id>" | "proactive" | "question"
+    source: str                    # "conversation" | "module:<id>" | "attention:<item id>" | "proactive" | "question" | "announce:<id>"
     mode: str                      # "verbatim" | "fact"
     text: str
     emotion: str | None
@@ -115,8 +120,7 @@ class SpeechQueue:
         now = self._clock()
         if ttl is None:
             fam = source.split(":", 1)[0]
-            ttl = (DEFAULT_TTL_S["conversation"] if fam == "conversation" else DEFAULT_TTL_S["proactive"] if fam == "proactive"
-                   else DEFAULT_TTL_S["question"] if fam == "question" else DEFAULT_TTL_S[mode])
+            ttl = DEFAULT_TTL_S[fam] if fam in ("conversation", "proactive", "question", "announce") else DEFAULT_TTL_S[mode]
         return self.add(SpeechCandidate(new_candidate_id(), source, mode, text, emotion, max(0, min(100, int(priority))),
                                         now, now + ttl, key, **extra))
 
@@ -151,7 +155,7 @@ class SpeechQueue:
         return MIN_GAP_S.get(self._chattiness(), MIN_GAP_S["normal"])
 
     def gap_applies(self, cand: SpeechCandidate) -> bool:
-        if cand.family in ("conversation", "question") or cand.priority >= INTERRUPT_P:
+        if cand.family in ("conversation", "question", "announce") or cand.priority >= INTERRUPT_P:
             return False
         return not (cand.family == "module" and cand.mode == "verbatim")
 
@@ -170,7 +174,7 @@ class SpeechQueue:
             return "user_speaking"
         if not conv and now - float(p.get("last_user_ts") or 0.0) < USER_QUIET_S:
             return "user_just_spoke"
-        if cand.family not in ("conversation", "question") and self._question_pending():
+        if cand.family not in ("conversation", "question", "announce") and self._question_pending():
             return "question_pending"
         if self.gap_applies(cand) and now - self.last_initiative < self.min_gap() and not self._beats_chatter(cand):
             return "min_gap"
@@ -185,7 +189,7 @@ class SpeechQueue:
     def best(self) -> SpeechCandidate | None:
         """Лучший из тех, кого можно запускать по условиям 2-4 (повторы при выборе снимаются)."""
         for cand in sorted(self.items, key=lambda c: (-c.priority, c.created)):
-            if cand.family not in ("conversation", "question") and self._repeats(cand.text):
+            if cand.family not in ("conversation", "question", "announce") and self._repeats(cand.text):
                 self._drop(cand, "repeat")                   # ATT-16
                 continue
             if self.blocked_by(cand) is None:

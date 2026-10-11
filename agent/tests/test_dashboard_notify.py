@@ -24,14 +24,15 @@ async def serve():
     return f"http://127.0.0.1:{port}", att, runner
 
 
-async def test_notify_submits_fact_speech_with_urgency_three():
+async def test_notify_submits_an_announcement():
     base, att, runner = await serve()
     try:
         async with aiohttp.ClientSession() as http:
             async with http.post(base + "/api/notify", json={"text": " Запускаю RimWorld: тест ", "source": "rimworld-tests"},
                                  headers=JSON) as r:
                 assert r.status == 200 and (await r.json()) == {"ok": True}
-        assert att.speech == [("rimworld-tests", {"text": "Запускаю RimWorld: тест", "mode": "fact", "urgency_hint": 3})]
+        assert att.speech == [("rimworld-tests", {"text": "Запускаю RimWorld: тест", "mode": "fact", "urgency_hint": 3,
+                                                  "announce": True})]            # AN-2: объявление, а не обычная речь
     finally:
         dashboard.set_attention(None)
         await runner.cleanup()

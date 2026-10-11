@@ -544,7 +544,8 @@ _LOCAL_PEERS = ("127.0.0.1", "::1")
 
 async def handle_api_notify(request: web.Request) -> web.Response:
     """Объявление от внешнего скрипта или теста (не модуль): `{"text": str до 300 символов, "source": "rimworld-tests"}`.
-    Идёт как речь модуля `source` с фактом для персонажа (mode fact, срочность 3): текст она произнесёт своими словами.
+    Идёт как объявление о запуске (AN-2, `announce: true`) от `source`: мимо формулы важности, звучит всегда (коротко при
+    «не отвлекать», в сводку, если пользователь отошёл); текст она произнесёт своими словами.
     Только с этого же компьютера и только JSON."""
     if request.remote not in _LOCAL_PEERS:
         return web.json_response({"error": "forbidden"}, status=403)
@@ -558,7 +559,8 @@ async def handle_api_notify(request: web.Request) -> web.Response:
         return web.json_response({"error": "source: короткое имя из латиницы, цифр и _.-"}, status=400)
     if _ATTENTION is None:
         return web.json_response({"error": "внимание не подключено"}, status=503)
-    await _ATTENTION.submit_speech(source, {"text": text.strip(), "mode": "fact", "urgency_hint": 3})
+    await _ATTENTION.submit_speech(source, {"text": text.strip(), "mode": "fact", "urgency_hint": 3,
+                                                  "announce": True})
     return web.json_response({"ok": True})
 
 

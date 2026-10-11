@@ -101,7 +101,7 @@ asyncio.run(main())
 
 | Вызов | Что делает |
 |---|---|
-| `await client.event(kind, text, **поля)` | событие для менеджера внимания: `data`, `urgency_hint` 0-5, `addressed_to_me`, `sender`, `reply_channel`, `dedupe_key`, `expires_in_s`, `memorable` |
+| `await client.event(kind, text, **поля)` | событие для менеджера внимания: `data`, `urgency_hint` 0-5, `addressed_to_me`, `sender`, `reply_channel`, `dedupe_key`, `expires_in_s`, `memorable`, `announce` (объявление о долгом запуске: звучит всегда) |
 | `await client.say(text, mode="fact")` | просьба сказать; `mode="verbatim"`, если `text` уже готовая реплика в её характере |
 | `await client.emotion(emotion, cause)` | эмоция |
 | `await client.state(summary, data)` | сводка для дашборда и выбора профиля (до 300 символов) |

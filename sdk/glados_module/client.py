@@ -525,12 +525,12 @@ class ModuleClient:
 
     async def event(self, kind: str, text: str, **fields) -> bool:
         """Событие для менеджера внимания (раздел 7.1). Поля: data, urgency_hint, addressed_to_me, sender,
-        reply_channel, dedupe_key, expires_in_s, memorable. Возвращает True, если отправлено.
+        reply_channel, dedupe_key, expires_in_s, memorable, announce. Возвращает True, если отправлено.
 
         Выключенный модуль (`enabled == False`) событий не шлёт (MOD-14). Текст длиннее 1000 символов обрезается.
         """
         extra = set(fields) - {"data", "urgency_hint", "addressed_to_me", "sender", "reply_channel", "dedupe_key",
-                               "expires_in_s", "memorable"}
+                               "expires_in_s", "memorable", "announce"}
         if extra:
             raise TypeError("неизвестные поля события: " + ", ".join(sorted(extra)))
         body = {"kind": kind, "text": P.clip(str(text), P.EVENT_TEXT_MAX), **{k: v for k, v in fields.items()
@@ -546,8 +546,9 @@ class ModuleClient:
         return await self._notify("event", body)
 
     async def say(self, text: str, mode: str = "fact", **fields) -> bool:
-        """Просьба сказать (раздел 7.2). Поля: emotion, urgency_hint, expires_in_s, key. Выключенный модуль молчит."""
-        extra = set(fields) - {"emotion", "urgency_hint", "expires_in_s", "key"}
+        """Просьба сказать (раздел 7.2). Поля: emotion, urgency_hint, expires_in_s, key, announce (объявление о долгом
+        запуске: звучит всегда, правило 14). Выключенный модуль молчит."""
+        extra = set(fields) - {"emotion", "urgency_hint", "expires_in_s", "key", "announce"}
         if extra:
             raise TypeError("неизвестные поля say: " + ", ".join(sorted(extra)))
         body = {"text": str(text), "mode": mode, **{k: v for k, v in fields.items() if v is not None}}

@@ -70,9 +70,10 @@ def test_minimal_manifest_is_valid():
 
 
 def test_tool_with_all_optional_fields_is_valid():
-    t = tool(self_confirming=True, fallback=True, danger_check=True, job=True, timeout_s=120,
+    t = tool(self_confirming=True, fallback=True, danger_check=True, job=True, timeout_s=120, announce=True,
              core_fills=["context"], params={"text": {"type": "string"}, "context": {"type": "string"}})
     assert problems_of(make(tools=[t])) == []
+    assert P.Manifest.from_dict(make(tools=[t])).tools[0].announce is True            # AN-3
 
 
 @pytest.mark.parametrize("version", ["1.0.0", "0.12.345", "1.0.0-rc.1", "2.1.0+build5"])
@@ -146,6 +147,7 @@ def test_manifest_invalid(manifest, needle):
     ({"danger_check": "x"}, "danger_check"),
     ({"job": None}, "job"),
     ({"fallback": "true"}, "fallback"),
+    ({"announce": "да"}, "announce"),
     ({"timeout_s": 0}, "timeout_s"),
     ({"timeout_s": 121}, "timeout_s"),
     ({"timeout_s": 5.5}, "timeout_s"),
@@ -254,7 +256,7 @@ def test_manifest_dataclass_roundtrip():
 def test_manifest_dataclass_defaults_for_tool():
     m = P.Manifest.from_dict(make(tools=[tool(timeout_s=KeyError)]))
     t = m.tools[0]
-    assert t.timeout_s == 30 and not t.fallback and t.core_fills == [] and not t.self_confirming
+    assert t.timeout_s == 30 and not t.fallback and t.core_fills == [] and not t.self_confirming and not t.announce
 
 
 def test_manifest_dataclass_rejects_invalid():
@@ -453,8 +455,11 @@ def test_say_validation():
                            "expires_in_s": 30, "key": "rimworld.comment"}) == []
     assert P.Say.from_body({"text": "x"}).to_body() == {"text": "x", "mode": "fact"}
     for bad in ({"text": ""}, {"text": "x", "mode": "loud"}, {"text": "x", "emotion": 1},
-                {"text": "x", "urgency_hint": 9}, {"text": "x", "expires_in_s": -1}, {"text": "x", "key": 1}, []):
+                {"text": "x", "urgency_hint": 9}, {"text": "x", "expires_in_s": -1}, {"text": "x", "key": 1},
+                {"text": "x", "announce": "да"}, []):
         assert P.validate_say(bad), bad
+    assert P.validate_say({"text": "Запускаю игру.", "announce": True}) == []                          # AN-3
+    assert P.Say.from_body({"text": "x", "announce": True}).to_body() == {"text": "x", "mode": "fact", "announce": True}
 
 
 def test_ask_validation():

@@ -8,7 +8,10 @@
   3. приоритет 0-100 = срочность * 20 * вес профиля * вес отправителя * вес правил * вес состояния пользователя * свежесть
      (ATT-9) и решение D0-D4 по порогам (ATT-10): выбросить, в сводку, сказать при случае, сказать скоро, прервать;
   4. очередь речи (`speech_queue.py`) и стек фокуса (conversation, reaction, question поверх idle): ATT-13-ATT-23;
-  5. временные правила, сводка, быстрый путь «замолчи», классификация обращений пользователя (ATT-24-ATT-28).
+  5. временные правила, сводка, быстрый путь «замолчи», классификация обращений пользователя (ATT-24-ATT-28);
+  6. объявления о долгих запусках (AN-1-AN-3, правило 14 ТЗ): события `<модуль>.launch`, речь и `/api/notify` с пометкой
+     `announce`, инструменты с `announce: true` идут мимо формулы важности отдельным видом `announce` (приоритет 75, срок 180 с,
+     без `min_gap`): каждое объявление должно прозвучать.
 
 Классификатор только подсказывает: без него (сервис не запущен, настройка выключена, ошибка) всё работает по подсказкам
 модуля. Он вызывается асинхронно с коротким тайм-аутом и не блокирует цикл событий (ATT-32). Реплики формирует модель по
@@ -33,7 +36,7 @@ import settings
 from attention_rules import FILE_NAME as RULES_FILE
 from attention_rules import RuleStore
 from conversation_io import Channel, current_channel
-from speech_queue import INTERRUPT_P, SpeechCandidate, SpeechQueue
+from speech_queue import ANNOUNCE_P, INTERRUPT_P, SpeechCandidate, SpeechQueue
 
 logger = logging.getLogger("attention")
 
@@ -53,6 +56,8 @@ SPEECH_DEFAULT_URGENCY = 2           # речь модуля без urgency_hint
 PROACTIVE_P = 30                     # проактивная реплика - «болтовня»: звучит, когда больше нечего сказать
 CONVERSATION_P = 95                  # ATT-13
 QUESTION_ANNOUNCE_P = 80             # формулировка вопроса разрешения (approvals.request), сказанная вне submit_question
+ANNOUNCE_MERGE_S = 20.0              # AN-1: одинаковые объявления одного источника в этом окне склеиваются
+ANNOUNCE_DEFAULT_URGENCY = 3
 DEFAULT_HALF_LIFE = {"rimworld.*": 60, "telegram.*": 900, "desktop.*": 120, "*.job": 600, "*": 300}
 DEFAULT_THRESHOLDS = (15, 35, 60, 85)
 DECISION_NAMES = ("D0", "D1", "D2", "D3", "D4")
@@ -166,6 +171,7 @@ class Attention:
         self.silent_kinds: set[str] = set()
         self._items: dict[str, Item] = {}
         self._by_key: dict[tuple[str, str], Item] = {}
+        self._announces: dict[tuple[str, str], dict] = {}   # (модуль, текст) -> {item, cand, short} недавних объявлений (AN-1)
         self._digest: dict[str, deque] = {}
         self._cls_pending = 0
         self._job_states: dict[tuple[str, str], tuple] = {}
@@ -311,6 +317,10 @@ class Attention:
         hook = self.kind_hooks.get(item.kind)
         if hook is not None:
             self._spawn(self._run_kind_handler(hook, item))               # побочное действие; событие идёт дальше обычным путём
+        if self.is_announce_event(item.kind, event):
+            self._register(item)                                           # AN-2: мимо формулы, но с записью решения
+            await self._announce(item)
+            return
         if self._merge_duplicate(item, now):
             return
         self._register(item)
@@ -573,7 +583,7 @@ class Attention:
         return " ".join(parts)
 
     def _log_decision(self, item: Item, att: dict, *, score: dict | None = None, rule: str | None = None,
-                      ms: float | None = None, rule_id: str | None = None) -> None:
+                      ms: float | None = None, rule_id: str | None = None, **extra) -> None:
         """ATT-29: решение в журнале с множителями, приоритетом и временем классификатора."""
         score = score or {}
         record = {"item": item.id, "module": item.module, "event_kind": item.kind, "urgency": item.urgency,
@@ -581,7 +591,7 @@ class Attention:
                   "w_user": score.get("w_user"), "freshness": score.get("freshness"),
                   "priority": round(item.priority, 1) if score else None, "decision": item.decision,
                   "classifier_ms": ms, "rule": rule, "rule_id": rule_id, "count": item.count,
-                  "category": item.data.get("category") if isinstance(item.data, dict) else None}
+                  "category": item.data.get("category") if isinstance(item.data, dict) else None, **extra}
         self.last_decision = record
         self.decisions.append({**record, "text": item.text[:TEXT_LOG], "ts": item.created})
         events_log.log_nowait("attention", item.text[:TEXT_LOG], **{k: (round(v, 3) if isinstance(v, float) else v)
@@ -603,6 +613,10 @@ class Attention:
         item = Item(id="a-" + secrets.token_hex(4), module=module_id, kind=f"{module_id}.say", text=text[:TEXT_MAX], data={},
                     sender=None, reply_channel=None, addressed_to_me=None, urgency=hint, needs_reply=False,
                     memorable=False, created=now, expires=None, dedupe_key=None, urgency_hint=hint, updated=now)
+        if say.get("announce") is True:
+            self._register(item)
+            await self._announce(item, mode=mode, emotion=say.get("emotion"), ttl=ttl)      # AN-2
+            return
         cfg = self._settings()
         att = self._att(cfg)
         if self.rules.muted(module_id, item.kind, None) is not None:
@@ -627,6 +641,81 @@ class Attention:
                 self._reaction_focus[item.id] = focus.id
             self._kick()
         self._log_decision(item, att, score=score)
+
+    # ── объявления о запусках (AN-1, AN-2) ───────────────────────────────────
+
+    @staticmethod
+    def is_announce_event(kind: str, body: dict) -> bool:
+        """Событие - объявление о запуске: вид `<модуль>.launch` или явная пометка `announce: true`."""
+        return body.get("announce") is True or kind.endswith(".launch")
+
+    async def submit_announce(self, module_id: str, text: str, *, data: dict | None = None) -> None:
+        """Объявление о запуске от самого ядра (инструмент модуля с `announce: true`, AN-3): тот же путь, что у событий `.launch`."""
+        text = str(text).strip()
+        if not text:
+            return
+        now = self._clock()
+        item = Item(id="a-" + secrets.token_hex(4), module=module_id, kind=f"{module_id}.launch", text=text[:TEXT_MAX],
+                    data=dict(data or {}), sender=None, reply_channel=None, addressed_to_me=False,
+                    urgency=ANNOUNCE_DEFAULT_URGENCY, needs_reply=False, memorable=False, created=now, expires=None,
+                    dedupe_key=None, urgency_hint=ANNOUNCE_DEFAULT_URGENCY, updated=now)
+        self._register(item)
+        await self._announce(item)
+
+    async def _announce(self, item: Item, *, mode: str = "fact", emotion: str | None = None, ttl: float | None = None) -> None:
+        """Объявление о долгом запуске (AN-1, AN-2): формула важности, правила и пауза между репликами не применяются.
+        Пользователь просил не отвлекать - объявление звучит коротко; пользователь отошёл - уходит в сводку (и в журнал).
+        Одинаковые объявления одного источника в пределах 20 с склеиваются: остаётся одно, в факте счётчик."""
+        now = self._clock()
+        cfg = self._settings()
+        att = self._att(cfg)
+        key = (item.module, " ".join(item.text.split()).casefold())
+        self._announces = {k: v for k, v in self._announces.items() if now - v["item"].created <= ANNOUNCE_MERGE_S}
+        old = self._announces.get(key)
+        if old is not None:
+            self._merge_announce(old, now)
+            return
+        quiet = bool(cfg.get("dnd")) or now < float(cfg.get("quiet_until") or 0.0)
+        away = self._idle() > att["away_after_s"]
+        short = quiet and mode == "fact"                              # готовую реплику модуля сократить нельзя
+        item.urgency = item.urgency if item.urgency is not None else ANNOUNCE_DEFAULT_URGENCY
+        item.priority, item.decision = float(ANNOUNCE_P), "ANNOUNCE"
+        entry = {"item": item, "cand": None, "short": short, "mode": mode}
+        self._announces[key] = entry
+        if away:
+            route = "digest"                                          # сказать некому: сводка, не Telegram
+            self._digest_add(item)
+        else:
+            route = "short" if short else "speech"
+            fact = self._announce_fact(item, short) if mode == "fact" else item.text
+            entry["cand"] = self.speech.new(source=f"announce:{item.id}", mode=mode, text=fact, emotion=emotion,
+                                            priority=ANNOUNCE_P, ttl=ttl, must=True, item_id=item.id)
+            self._kick()
+        self._log_decision(item, att, score={"w_user": 0.3 if quiet else 1.0, "priority": float(ANNOUNCE_P), "away": away},
+                           rule="ANNOUNCE", route=route)
+
+    def _merge_announce(self, entry: dict, now: float) -> None:
+        old: Item = entry["item"]
+        old.count += 1
+        old.updated = now
+        cand = entry["cand"]
+        if cand is not None and cand in self.speech.items and entry["mode"] == "fact":
+            cand.text = self._announce_fact(old, entry["short"])        # ещё не звучало: счётчик в факте
+        for rec in self._digest.get(old.module, ()):
+            if rec["item"] == old.id:
+                rec["count"] = old.count
+        events_log.log_nowait("attention", old.text[:TEXT_LOG], item=old.id, module=old.module, event_kind=old.kind,
+                              merged=True, count=old.count, decision="ANNOUNCE")
+
+    def _announce_fact(self, item: Item, short: bool) -> str:
+        """Факт для реплики: что запускается и зачем (формулирует модель); пометка «коротко» при «не отвлекать»."""
+        parts = [f"Объявление о запуске (модуль «{self._module_title(item.module)}»): {item.text}",
+                 "Пользователь должен об этом узнать."]
+        if item.count > 1:
+            parts.append(f"(одно и то же объявление пришло {item.count} раз подряд, скажи один раз)")
+        if short:
+            parts.append("Коротко: пользователь просил не отвлекать, одна короткая фраза.")
+        return " ".join(parts)
 
     # ── задачи модулей ───────────────────────────────────────────────────────
 
@@ -850,7 +939,8 @@ class Attention:
         events_log.log_nowait("attention", cand.text[:TEXT_LOG], speech_dropped=reason, source=cand.source, priority=cand.priority)
         if cand.item_id:
             item = self._items.get(cand.item_id)
-            if item is not None and reason in ("expired", "overflow") and cand.family == "attention":
+            if item is not None and ((reason in ("expired", "overflow") and cand.family in ("attention", "announce"))
+                                     or (reason == "stopped" and cand.family == "announce")):
                 self._digest_add(item)                        # ATT-26: устаревшее нерассказанное попадает в сводку
             self._pop_reaction(cand.item_id)
 
