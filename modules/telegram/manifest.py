@@ -111,6 +111,8 @@ MANIFEST = {
         {"kind": "telegram.posted", "description": "Опубликован пост в канале", "default_urgency": 1},
     ],
     "state": True,
+    # пространство в дашборде (TZ 15, TAB-6/TAB-9): канал, аккаунт, последние диалоги без текста сообщений
+    "panel": {"title": "Telegram", "icon": "send", "order": 60},
 }
 
 
