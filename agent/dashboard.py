@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from datetime import datetime
@@ -536,6 +537,31 @@ async def handle_api_attention_clear(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "text": await _ATTENTION.clear_rules(rule_id)})
 
 
+NOTIFY_TEXT_MAX = 300
+_NOTIFY_SOURCE = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
+_LOCAL_PEERS = ("127.0.0.1", "::1")
+
+
+async def handle_api_notify(request: web.Request) -> web.Response:
+    """Объявление от внешнего скрипта или теста (не модуль): `{"text": str до 300 символов, "source": "rimworld-tests"}`.
+    Идёт как речь модуля `source` с фактом для персонажа (mode fact, срочность 3): текст она произнесёт своими словами.
+    Только с этого же компьютера и только JSON."""
+    if request.remote not in _LOCAL_PEERS:
+        return web.json_response({"error": "forbidden"}, status=403)
+    body, err = await _json_body(request)
+    if err:
+        return err
+    text, source = body.get("text"), body.get("source")
+    if not isinstance(text, str) or not text.strip() or len(text) > NOTIFY_TEXT_MAX:
+        return web.json_response({"error": f"text: непустая строка не длиннее {NOTIFY_TEXT_MAX} символов"}, status=400)
+    if not isinstance(source, str) or not _NOTIFY_SOURCE.match(source):
+        return web.json_response({"error": "source: короткое имя из латиницы, цифр и _.-"}, status=400)
+    if _ATTENTION is None:
+        return web.json_response({"error": "внимание не подключено"}, status=503)
+    await _ATTENTION.submit_speech(source, {"text": text.strip(), "mode": "fact", "urgency_hint": 3})
+    return web.json_response({"ok": True})
+
+
 # ── Server lifecycle ─────────────────────────────────────────────────────────
 
 def build_app() -> web.Application:
@@ -563,6 +589,7 @@ def build_app() -> web.Application:
     app.router.add_post("/api/modules/{id}/settings", handle_api_module_settings)
     app.router.add_get("/api/attention", handle_api_attention)
     app.router.add_post("/api/attention/rules/clear", handle_api_attention_clear)
+    app.router.add_post("/api/notify", handle_api_notify)
     app.router.add_get("/api/jobs", handle_api_jobs)
     app.router.add_post("/api/jobs/{module}/{job_id}/cancel", handle_api_job_cancel)
     app.router.add_post("/api/jobs/{module}/{job_id}/answer", handle_api_job_answer)
