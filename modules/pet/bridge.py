@@ -4,15 +4,19 @@ tkinter живёт в главном потоке и сюда не загляд�
 включённость), кладётся в `queue.Queue` сообщениями `(kind, data)`; окно разбирает очередь через `root.after`.
 """
 import asyncio
+import json
 import logging
 import queue
 import threading
+import time
 
 from glados_module import ModuleClient
+from pet_logic import panel_blocks
 
 log = logging.getLogger("pet")
 
 WATCH_EVERY_S = 0.1            # как часто сверять связь с ядром, настройки и включённость
+PANEL_EVERY_S = 2.0            # пространство «Питомец» в дашборде (TZ 15): проверка, отправка только при изменении
 
 
 class ClientThread(threading.Thread):
@@ -23,6 +27,8 @@ class ClientThread(threading.Thread):
         self.exit_code: int | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
         self._started = threading.Event()
+        self.last_presence: dict = {}                 # последнее presence для пространства в дашборде (TZ 15)
+        self._panel_key: str | None = None
         self._register()
 
     def _register(self) -> None:
@@ -30,6 +36,7 @@ class ClientThread(threading.Thread):
 
         @c.on_topic("presence")
         async def on_presence(data):
+            self.last_presence = dict(data)
             self.q.put(("presence", dict(data)))
 
         @c.on_topic("settings")
@@ -57,14 +64,31 @@ class ClientThread(threading.Thread):
                     self.q.put(("enabled", bool(enabled)))
             await asyncio.sleep(WATCH_EVERY_S)
 
+    async def _panel_loop(self) -> None:
+        """Пространство «Питомец» (TZ 15): окно, стикер, позиция и связь; шлётся только при изменении."""
+        c = self.client
+        while True:
+            try:
+                blocks = panel_blocks(dict(c.settings), self.last_presence, time.time(), c.connected, c.enabled)
+                key = json.dumps(blocks, ensure_ascii=False, sort_keys=True)
+                if key != self._panel_key and await c.panel.set(blocks):
+                    self._panel_key = key
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning("пространство питомца не обновлено: %s", e)
+            await asyncio.sleep(PANEL_EVERY_S)
+
     async def _main(self) -> int:
         self.loop = asyncio.get_running_loop()
         watcher = self.loop.create_task(self._watch())
+        panel = self.loop.create_task(self._panel_loop())
         self._started.set()
         try:
             return await self.client.run()
         finally:
             watcher.cancel()
+            panel.cancel()
             self.q.put(("connected", False))
 
     def run(self) -> None:

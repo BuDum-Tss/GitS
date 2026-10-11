@@ -11,6 +11,8 @@ MANIFEST = {
     "subscribe": ["presence", "settings", "module"],
     "shared_settings": ["voice_muted", "pet_visible", "pet_pinned", "pet_x", "pet_y", "hotkey_input", "dnd", "quiet_until"],
     "state": False,
+    # пространство в дашборде (TZ 15, TAB-6/TAB-9): окно, стикер, позиция, связь (без кнопок: pet_visible меняет только человек)
+    "panel": {"title": "Питомец", "icon": "smile", "order": 80},
 }
 
 
