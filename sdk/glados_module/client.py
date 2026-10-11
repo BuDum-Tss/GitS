@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
 import os
 import sys
@@ -34,11 +35,61 @@ _FATAL_REJECT_WORDS = ("протокол", "protocol", "манифест", "mani
 Handler = Callable[..., Awaitable[Any]]
 
 
+class PanelClient:
+    """Пространство модуля в дашборде (TZ 15, TAB-8): `await client.panel.set(blocks)`.
+
+    Блоки уходят ядру сообщением `panel.set`, не чаще раза в секунду: частые обновления сливаются, уходит последнее.
+    Блоки проверяются здесь же (`ValueError` при ошибке разработчика). Выключенный модуль молчит. После переподключения
+    последнее состояние шлётся заново.
+    """
+
+    def __init__(self, client: ModuleClient):
+        self._client = client
+        self.latest: dict | None = None         # последнее принятое тело {"blocks": [...]}
+        self._last_sent = float("-inf")
+        self._flush: asyncio.Task | None = None
+
+    async def set(self, blocks: list) -> bool:
+        body = {"blocks": blocks}
+        problems = P.validate_panel_set(body, self._client._panel_action_ids())
+        if problems:
+            raise ValueError("пространство модуля неверно: " + "; ".join(problems))
+        body = json.loads(json.dumps(body, ensure_ascii=False))     # снимок: модуль может менять свой список дальше
+        if not self._client.enabled:
+            log.debug("модуль выключен: пространство не обновлено")
+            return False
+        self.latest = body
+        if self._flush is not None and not self._flush.done():
+            return True                                   # уйдёт отложенная отправка с последним значением
+        wait = P.PANEL_SET_MIN_INTERVAL_S - (time.monotonic() - self._last_sent)
+        if wait <= 0:
+            return await self._send()
+        self._flush = self._client._spawn(self._send_later(wait))
+        return True
+
+    async def _send_later(self, wait: float) -> None:
+        await asyncio.sleep(wait)
+        await self._send()
+
+    async def _send(self) -> bool:
+        if self.latest is None:
+            return False
+        self._last_sent = time.monotonic()
+        return await self._client._notify("panel.set", dict(self.latest))
+
+    async def resend(self) -> bool:
+        """Переслать последнее состояние (вызывает клиент после каждого подключения)."""
+        return await self._send() if self.latest is not None else False
+
+
 class ModuleClient:
     """Клиент модуля. Имена методов зафиксированы ТЗ 01, раздел 10."""
 
     def __init__(self, manifest: dict, *, url: str | None = None, token: str | None = None):
-        problems = P.validate_manifest(manifest)
+        panel_warnings: list[str] = []
+        problems = P.validate_manifest(manifest, panel_warnings)
+        for warning in panel_warnings:
+            log.warning("модуль «%s»: %s", manifest.get("id"), warning)
         if problems:
             raise ManifestError("манифест не прошёл проверку: " + "; ".join(problems), problems)
         self.manifest = copy.deepcopy(manifest)
@@ -88,10 +139,28 @@ class ModuleClient:
         self._last_state: dict | None = None
         self._job_sent: dict[str, tuple[dict, float]] = {}
 
+        # пространство модуля (TZ 15): блоки и обработчики действий кнопок и строк
+        self.panel = PanelClient(self)
+        self._panel_actions: dict[str, Handler] = {}
+
     # ------------------------------------------------------------ регистрация обработчиков
 
     def _tool_names(self) -> set[str]:
         return {t["name"] for t in self.manifest.get("tools") or []}
+
+    def _panel_action_ids(self) -> set[str]:
+        return set((self.manifest.get("panel") or {}).get("actions") or [])
+
+    def panel_action(self, action_id: str):
+        """Обработчик действия пространства (кнопка или строка таблицы), объявленного в `panel.actions`:
+        `async (args: dict) -> {"ok": bool, "message": str?, "open_url": str?}` (или None: считается успехом)."""
+        if action_id not in self._panel_action_ids():
+            raise ValueError(f"действия «{action_id}» нет в panel.actions манифеста модуля «{self.module_id}»")
+
+        def deco(fn: Handler) -> Handler:
+            self._panel_actions[action_id] = fn
+            return fn
+        return deco
 
     def tool(self, name: str):
         """Обработчик инструмента из манифеста: `async (args: dict) -> JSON-значение`."""
@@ -284,6 +353,8 @@ class ModuleClient:
             log.info("модуль «%s» подключён к ядру %s", self.module_id, self.core_version or "")
             if self._last_state is not None:
                 self._spawn(self._send_env(Envelope("state", self._last_state), gen))
+            if self.panel.latest is not None:                 # TZ 15: ядро могло начать заново
+                self._spawn(self.panel.resend())
             if self._welcomes > 1 and self._on_reconnect is not None:
                 self._spawn(self._run_hook(self._on_reconnect, name="on_reconnect"))
             await self._receive_loop(ws, gen)
@@ -384,6 +455,8 @@ class ModuleClient:
             self._spawn(self._serve(env, gen, self._job_cancel_request, env.body))
         elif t == "job.list":
             self._spawn(self._serve(env, gen, self._job_list, env.body))
+        elif t == "panel.action":
+            self._spawn(self._serve(env, gen, self._panel_action_call, env.body))
         elif t == "job.answer":
             self._spawn(self._run_hook(self._job_answer_call, env.body, name="on_job_answer"))
         elif P.is_request(t):
@@ -499,6 +572,26 @@ class ModuleClient:
 
     async def _job_list(self, body: dict) -> dict:
         return {"jobs": self.job_statuses()}
+
+    async def _panel_action_call(self, body: dict) -> dict:
+        """Нажатие кнопки или строки пространства (TZ 15): `panel.action` `{action_id, args}` -> `{ok, message?, open_url?}`."""
+        action_id = body.get("action_id")
+        fn = self._panel_actions.get(action_id) if isinstance(action_id, str) else None
+        if fn is None:
+            raise ToolError(f"у модуля «{self.module_id}» нет действия «{action_id}»", code="unknown")
+        args = body.get("args")
+        if args is None:
+            args = {}
+        if not isinstance(args, dict):
+            raise ToolError("аргументы действия должны быть объектом", code="bad_request")
+        if not self.enabled:
+            raise ToolError(f"модуль «{self.module_id}» выключен", code="unavailable")
+        value = await fn(args)
+        if value is None:
+            return {"ok": True}
+        if not isinstance(value, dict) or not isinstance(value.get("ok"), bool):
+            raise ToolError("действие должно вернуть объект с полем ok (true или false)", code="internal")
+        return value
 
     # ------------------------------------------------------------ отправка
 

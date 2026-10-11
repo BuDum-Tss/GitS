@@ -23,6 +23,7 @@ FINISHED_JOBS_KEPT = 20          # завершённых задач модул�
 CHECK_TIMEOUT_S = 2.0            # tool.check: ответ не позже чем за 2 с (CORE-35)
 ENABLED_CACHE_S = 0.5            # как долго помнится чтение настроек (is_enabled зовут часто)
 ANNOUNCE_DESC_MAX, ANNOUNCE_ARG_MAX, ANNOUNCE_ARGS_MAX = 140, 40, 160     # AN-3: сколько описания и аргументов уходит в факт
+PANEL_SET_MIN_GAP_S = 0.8        # TZ 15: panel.set не чаще раза в секунду; 0.2 с на задержку сети (SDK шлёт не чаще 1 с)
 JOB_FINISHED = ("done", "failed", "cancelled")
 JOB_ID_IN_TEXT = re.compile(r"задача (j-[0-9a-f]{8}) запущена")              # render() для задач модуля (ТЗ 14, DESK-11)
 
@@ -64,6 +65,8 @@ class ModuleRecord:
     title_override: str = ""                        # title из modules.yaml: дашборд показывает его вместо названия из манифеста
     description_override: str = ""                  # description из modules.yaml (пояснение для вкладки «Модули»)
     dev: bool = False                               # для разработчиков: во вкладке только при настройке dev_mode
+    panel: dict | None = None                       # пространство модуля из манифеста (TZ 15): PanelSpec.to_dict()
+    panel_blocks: dict | None = None                # последнее panel.set: {"blocks": [...], "ts": float} (TZ 15)
 
 
 class ModuleRegistry:
@@ -140,6 +143,7 @@ class ModuleRegistry:
         m = conn.manifest
         rec.title, rec.description, rec.version = m["title"], m["description"], m["version"]
         rec.manifest = m
+        rec.panel = conn.spec.panel.to_dict() if conn.spec.panel is not None else None
         rec.connected, rec.instance, rec.pid, rec.connected_at = True, conn.instance, conn.pid, conn.connected_at
         rec.last_disconnect_reason = None
         if changed or conn.module_id not in self._module_envs:
@@ -168,6 +172,18 @@ class ModuleRegistry:
                 self.on_state()
             except Exception as e:
                 logger.warning(f"Реакция на state модуля: {e}")
+
+    def set_panel(self, module_id: str, body: dict) -> bool:
+        """Блоки пространства модуля (`panel.set`, TZ 15): последнее значение целиком. Чаще раза в секунду - лишнее
+        отбрасывается (с допуском на задержку сети). False, если модуль не объявил panel или сообщение отброшено."""
+        rec = self.records.get(module_id)
+        if rec is None or rec.panel is None:
+            return False
+        now = time.time()
+        if rec.panel_blocks is not None and now - rec.panel_blocks["ts"] < PANEL_SET_MIN_GAP_S:
+            return False
+        rec.panel_blocks = {"blocks": body["blocks"], "ts": now}
+        return True
 
     def notes(self) -> list[str]:
         """Строки для контекста разговора: что умеет каждый подключённый включённый модуль с инструментами и в каком он
@@ -357,7 +373,7 @@ class ModuleRegistry:
                 "last_error": None if rec.connected else (sup.get("last_error") or rec.last_disconnect_reason),
                 "state_summary": (rec.state or {}).get("summary"), "tools": tools,
                 "capabilities": m.get("capabilities") or [], "settings_schema": m.get("settings_schema") or {},
-                "module_settings": self.module_settings(rec.id), "dev": rec.dev}
+                "module_settings": self.module_settings(rec.id), "dev": rec.dev, "panel": rec.panel}
 
     def snapshot(self) -> list[dict]:
         return [self.describe(rec) for rec in sorted(self.records.values(), key=lambda r: r.id)]

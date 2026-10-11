@@ -62,6 +62,7 @@ class TelegramModule:
         self.channel = TelegramChannel(memory_dir, client, self.privacy)
         self.user = TelegramUser(memory_dir, client, self.privacy)
         self.tasks: list[asyncio.Task] = []
+        self._panel_key: str | None = None          # последние блоки пространства, посланные ядру (TZ 15)
         self._register()
 
     # ── фоновые задачи ───────────────────────────────────────────────────────
@@ -86,21 +87,50 @@ class TelegramModule:
 
     # ── состояние для дашборда (TG-21) ───────────────────────────────────────
 
+    def _channel_word(self) -> str:
+        ch = self.channel
+        if not self.client.enabled:
+            return "выключен"
+        if not ch.configured():
+            return "не настроен"
+        return "готов" if ch.verified else "не проверен"
+
     def snapshot(self) -> tuple[str, dict]:
         """(summary, data): канал, аккаунт, последний пост, непрочитанные. Читает файлы: звать через to_thread."""
         ch, user = self.channel, self.user
-        if not self.client.enabled:
-            channel_word = "выключен"
-        elif not ch.configured():
-            channel_word = "не настроен"
-        else:
-            channel_word = "готов" if ch.verified else "не проверен"
+        channel_word = self._channel_word()
         account = user.state_word()
         last = ch.last_post_ts()
         when = time.strftime("%d.%m %H:%M", time.localtime(last)) if last else "ещё не было"
         data = {"channel_ok": bool(ch.configured() and ch.verified), "account_ok": account == "подключён",
                 "last_post_ts": last, "unread": user.unread_count()}
         return f"канал: {channel_word}, аккаунт: {account}, последний пост: {when}", data
+
+    def panel_blocks(self) -> list[dict]:
+        """Пространство «Telegram» в дашборде (TZ 15, TAB-9): канал, аккаунт, непрочитанные, последний пост и последние
+        диалоги из входящих. Без текста сообщений: только имя чата, отправитель и время. Читает файлы: через to_thread."""
+        account = self.user.state_word()
+        last = self.channel.last_post_ts()
+        when = time.strftime("%d.%m %H:%M", time.localtime(last)) if last else "ещё не было"
+        seen, rows = set(), []
+        for rec in reversed(self.user._load_inbox()):             # свежие сверху, один диалог - одна строка
+            chat = str(rec.get("chat") or "")[:120]
+            if chat in seen:
+                continue
+            seen.add(chat)
+            stamp = time.strftime("%d.%m %H:%M", time.localtime(rec.get("ts", 0)))
+            rows.append({"text": chat or "без названия", "sub": f"{str(rec.get('from') or '')[:80]}, {stamp}"})
+            if len(rows) >= 8:
+                break
+        return [
+            {"type": "stats", "title": "Сейчас", "items": [
+                {"label": "Канал", "value": self._channel_word()},
+                {"label": "Аккаунт", "value": account},
+                {"label": "Непрочитано", "value": self.user.unread_count()},
+                {"label": "Последний пост", "value": when}]},
+            {"type": "list", "title": "Последние диалоги", "items": rows} if rows
+            else {"type": "text", "title": "Последние диалоги", "text": "Входящих в её аккаунт пока не было."},
+        ]
 
     async def run_state(self) -> None:
         last_key, sent_at = None, 0.0
@@ -111,6 +141,10 @@ class TelegramModule:
                 if key != last_key or time.monotonic() - sent_at >= STATE_EVERY_S:
                     await self.client.state(summary, data)
                     last_key, sent_at = key, time.monotonic()
+                blocks = await asyncio.to_thread(self.panel_blocks)
+                pkey = json.dumps(blocks, ensure_ascii=False, sort_keys=True)
+                if pkey != self._panel_key and await self.client.panel.set(blocks):
+                    self._panel_key = pkey
             except asyncio.CancelledError:
                 raise
             except Exception as e:

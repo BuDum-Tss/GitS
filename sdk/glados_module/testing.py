@@ -58,6 +58,7 @@ class FakeCore:
         self.hellos: list[dict] = []             # тела принятых hello
         self.rejected: list[dict] = []           # тела hello, на которые ответили reject
         self.states: dict[str, dict] = {}        # последняя `state` каждого модуля
+        self.panels: dict[str, dict] = {}        # последнее `panel.set` каждого модуля: {"blocks": [...]} (TZ 15)
         self.violations: list[str] = []          # нарушения протокола модулем (сообщения до welcome и т.п.)
         self.bad_messages: list[str] = []        # кадры, которые не разобрались как конверт
         self.auth_failures = 0
@@ -176,6 +177,14 @@ class FakeCore:
         self.messages.append(env)
         if env.type == "state":
             self.states[conn.module_id or "?"] = env.body
+        if env.type == "panel.set":
+            hello = getattr(conn, "hello", None) or {}
+            actions = set(((hello.get("manifest") or {}).get("panel") or {}).get("actions") or [])
+            problems = P.validate_panel_set(env.body, actions)
+            if problems:
+                self.violations.append("panel.set неверен: " + "; ".join(problems))
+            else:
+                self.panels[conn.module_id or "?"] = env.body
         if env.type == "result":
             fut = conn.pending.get(env.re or "")
             if fut is not None and not fut.done():
@@ -305,6 +314,10 @@ class FakeCore:
         """`tool.check`: возвращает причину опасности или None."""
         value = await self.request("tool.check", {"tool": name, "args": args or {}}, timeout=timeout)
         return value.get("danger")
+
+    async def panel_action(self, action_id: str, args: dict | None = None, *, timeout: float = 5.0) -> Any:
+        """`panel.action`: нажатие кнопки пространства модуля; возвращает `{ok, message?, open_url?}` (TZ 15)."""
+        return await self.request("panel.action", {"action_id": action_id, "args": args or {}}, timeout=timeout)
 
     async def topic(self, topic: str, data: dict | None = None) -> None:
         """Послать тему (`presence`, `settings`, ...)."""

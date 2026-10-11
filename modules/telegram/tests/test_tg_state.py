@@ -66,3 +66,32 @@ async def test_state_says_disabled_and_core_keeps_it(tmp_path, monkeypatch):
                                            "from": {"id": 5, "first_name": "П"}})
         await asyncio.sleep(0.1)
         assert rig.core.events == []                                                      # выключенный модуль молчит
+
+
+async def test_panel_shows_state_and_dialogs_without_message_text(tmp_path, monkeypatch):
+    """Пространство «Telegram» (TZ 15, TAB-9): канал, аккаунт, непрочитанные и диалоги (имя, время), текст сообщений нет."""
+    import json
+    monkeypatch.setattr(app_mod, "STATE_POLL_S", 0.05)
+    async with Rig(tmp_path, monkeypatch) as rig:
+        now = time.time()
+        for chat, who, text in (("Кухня", "Пётр", "СЕКРЕТНЫЙ ТЕКСТ 1"), ("Кухня", "Пётр", "СЕКРЕТНЫЙ ТЕКСТ 2"),
+                                ("Личка", "Анна", "СЕКРЕТНЫЙ ТЕКСТ 3")):
+            rig.mod.user._append_inbox({"ts": now, "chat": chat, "chat_id": 1, "from": who, "text": text, "private": False})
+        blocks = await asyncio.to_thread(rig.mod.panel_blocks)
+        assert [b["type"] for b in blocks] == ["stats", "list"]
+        assert [i["label"] for i in blocks[0]["items"]] == ["Канал", "Аккаунт", "Непрочитано", "Последний пост"]
+        dialogs = [i["text"] for i in blocks[1]["items"]]
+        assert dialogs == ["Личка", "Кухня"]                      # свежие сверху, один диалог - одна строка
+        assert "СЕКРЕТНЫЙ" not in json.dumps(blocks, ensure_ascii=False)
+        task = asyncio.create_task(rig.mod.run_state())
+        try:
+            await rig.core.wait_for(lambda: rig.core.panels.get("telegram"))
+        finally:
+            task.cancel()
+        assert rig.core.violations == []
+
+
+async def test_panel_says_no_dialogs_yet(tmp_path, monkeypatch):
+    async with Rig(tmp_path, monkeypatch) as rig:
+        blocks = await asyncio.to_thread(rig.mod.panel_blocks)
+    assert blocks[1] == {"type": "text", "title": "Последние диалоги", "text": "Входящих в её аккаунт пока не было."}
