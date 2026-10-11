@@ -53,8 +53,14 @@ def test_launch_start_menu_and_store_apps(env, monkeypatch):
 
 
 def test_rimworld_goes_through_game_launcher(env, monkeypatch):
-    monkeypatch.setattr(al.game_launcher, "launch", lambda: "игра запущена, мод ответил")
+    seen = []
+
+    def fake_launch(wait_seconds=120.0):
+        seen.append(wait_seconds)
+        return "игра запущена, мод ответил"
+    monkeypatch.setattr(al.game_launcher, "launch", fake_launch)
     assert al.launch("римворлд") == "игра запущена, мод ответил" and al.launch("игру") == "игра запущена, мод ответил"
+    assert seen == [100, 100]                # launch_app синхронный: ожидание мода короче тайм-аута 120 с
 
 
 def test_add_app_validates_and_extends_catalog(env, tmp_path):

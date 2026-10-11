@@ -30,7 +30,7 @@ _RU = {"хром": "chrome", "гугл хром": "chrome", "телеграм": 
 
 
 def _file() -> Path:
-    base = os.getenv("MEMORY_DIR") or str(Path(__file__).resolve().parent / "memory")
+    base = os.getenv("MEMORY_DIR") or str(Path(__file__).resolve().parents[2] / "agent" / "memory")
     return Path(base) / "apps.json"
 
 
@@ -147,7 +147,7 @@ def launch(name: str) -> str:
     app = find(name)
     kind, path = app.get("kind"), app["path"]
     if kind == "rimworld":
-        return game_launcher.launch()
+        return game_launcher.launch(wait_seconds=100)     # инструмент launch_app синхронный: тайм-аут 120 с (MOD-17)
     if kind == "uwp":
         subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{path}"], close_fds=True)
     else:

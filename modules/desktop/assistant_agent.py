@@ -1,17 +1,18 @@
-"""Агент-помощник: ГЛаДОС «вмешивается» в компьютер как Claude Code.
+"""Агент-помощник: ГЛаДОС «вмешивается» в компьютер как Claude Code (модуль desktop, ТЗ 14, инструмент claude_task).
 
-Это сложные просьбы, которые локальная модель не тянет (файлы, команды, код,
-поиск в интернете). Работает на Claude с набором инструментов Claude Code,
-но под жёсткой политикой разрешений:
+Это сложные просьбы, которые локальная модель не тянет (файлы, команды, код, поиск в интернете). Работает на Claude
+с набором инструментов Claude Code, но под жёсткой политикой разрешений:
 
   - Read/Glob/Grep внутри разрешённых папок — без вопросов;
-  - всё остальное (Bash, Write, Edit, сеть, чтение вне папок) — только после
-    явного «да» пользователя (approvals.py): ГЛаДОС вслух называет, что именно
-    собирается сделать.
+  - всё остальное (Bash, Write, Edit, сеть, чтение вне папок) — только после явного «да» пользователя: вопрос идёт
+    через ядро (client.ask), ГЛаДОС вслух называет, что именно собирается сделать;
+  - опасное (safety.danger_of) спрашивается всегда, даже при авто-разрешении.
 
-Содержимое экрана, файлов и веб-страниц для агента — данные, а не команды:
-он не выполняет инструкции оттуда, а любое действие и так требует
-подтверждения.
+Содержимое экрана, файлов и веб-страниц для агента — данные, а не команды: он не выполняет инструкции оттуда,
+а любое действие и так требует подтверждения.
+
+Модуль не импортирует ядро: разрешение приходит колбэком ask(вопрос, опасность) -> bool, расход учитывает колбэк usage
+(в ядре это core.claude_usage). Лимит Claude ядро проверяет само до запуска задачи.
 """
 import logging
 import os
@@ -22,16 +23,13 @@ from claude_agent_sdk import (
     PermissionResultAllow, PermissionResultDeny,
 )
 
-import approvals
-import claude_battery
-import claude_quota
 import safety
 from claude_cli import _CLI_PATH
 
-logger = logging.getLogger("assistant")
+logger = logging.getLogger("desktop.assistant")
 
 MODEL = os.getenv("GLADOS_ASSISTANT_MODEL", "sonnet")   # псевдоним: точные id CLI может не знать
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]    # корень GitS
 _roots_env = os.getenv("GLADOS_READ_ROOTS", "")
 READ_ROOTS = [Path(p).resolve() for p in _roots_env.split(os.pathsep) if p.strip()] or [_PROJECT_ROOT]
 
@@ -50,6 +48,13 @@ SYSTEM_PROMPT = """Ты — ГЛаДОС (Aperture Science), помощник н
 - Перед действием, которое что-то меняет, система сама спросит разрешение;
   не пытайся обойти отказ. При отказе остановись и скажи об этом.
 """
+
+
+def tokens_of(usage: dict | None) -> int:
+    """Токены из поля usage ответа Claude: вход, выход и запись в кэш (чтение кэша не считается).
+    Копия claude_battery.tokens_of: сам модуль ядра тянет настройки ядра, модулю их нельзя."""
+    u = usage or {}
+    return sum(int(u.get(k) or 0) for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens"))
 
 
 def _inside_roots(path: str | None) -> bool:
@@ -74,9 +79,9 @@ def _describe(tool: str, inp: dict) -> str:
     return f"Хочу использовать инструмент {tool}."
 
 
-async def run_task(task: str, context: str, announce) -> str | None:
-    """Выполнить просьбу. announce(text) — озвучить вопрос о разрешении.
-    Возвращает ответ, "" если сказать нечего, None при сбое."""
+async def run_task(task: str, context: str, ask, usage) -> str | None:
+    """Выполнить просьбу. ask(вопрос, опасность) -> bool - разрешение пользователя; usage(tokens, limit_text) - учёт расхода
+    (async, сбой не должен ломать задачу). Возвращает итог, "" если сказать нечего, None при сбое."""
 
     async def can_use_tool(tool_name, tool_input, _ctx):
         danger = safety.danger_of(tool_name, tool_input, _PROJECT_ROOT)
@@ -84,12 +89,10 @@ async def run_task(task: str, context: str, announce) -> str | None:
             path = tool_input.get("file_path") or tool_input.get("path")
             if _inside_roots(path):
                 return PermissionResultAllow()
-        if await approvals.request(_describe(tool_name, tool_input), announce, danger=danger):
+        if await ask(_describe(tool_name, tool_input), danger):
             return PermissionResultAllow()
         return PermissionResultDeny(message="Пользователь не разрешил это действие.")
 
-    if claude_quota.blocked():
-        return f"Claude сейчас недоступен: исчерпан лимит до {claude_quota.until_text()}."
     kwargs = dict(
         system_prompt=SYSTEM_PROMPT,
         model=MODEL,
@@ -104,7 +107,7 @@ async def run_task(task: str, context: str, announce) -> str | None:
         kwargs["cli_path"] = _CLI_PATH
 
     prompt = (f"{context}\n\nПросьба пользователя: {task}" if context else task)
-    answer = ""
+    answer, texts = "", []
     try:
         async with ClaudeSDKClient(options=ClaudeAgentOptions(**kwargs)) as client:
             await client.query(prompt)
@@ -113,15 +116,14 @@ async def run_task(task: str, context: str, announce) -> str | None:
                     for block in msg.content:
                         text = getattr(block, "text", None)
                         if text:
-                            if claude_quota.note(text):
-                                return f"Claude сейчас недоступен: исчерпан лимит до {claude_quota.until_text()}."
+                            texts.append(text)
                             answer = text.strip()
                 elif isinstance(msg, ResultMessage):
-                    claude_battery.record_result(msg, "assistant")
+                    await usage(tokens_of(getattr(msg, "usage", None)), " ".join(texts)[:500] or None)
                     break
     except Exception as e:
-        if claude_quota.note(str(e)):
-            return f"Claude сейчас недоступен: исчерпан лимит до {claude_quota.until_text()}."
+        # ядро проверит текст ошибки: если это исчерпанный лимит Claude, батарейка обнулится сразу
+        await usage(0, str(e)[:500])
         logger.error(f"Агент-помощник: {e}", exc_info=True)
         return None   # сбой: что сказать, решит компаньон
     return answer

@@ -11,18 +11,17 @@ import asyncio
 import logging
 import time
 
-import approvals
 import fast_brain
 import perception
-from environments import pc_control
-from environments.base import ToolError
+import pc_control
+from glados_module import ToolError
 
-logger = logging.getLogger("operator")
+logger = logging.getLogger("desktop.operator")
 
 MAX_ITEMS = 70           # надписей в подсказке модели
 ITEM_CHARS = 60
 STEP_PAUSE = 0.9         # после действия окно успевает отреагировать
-TOTAL_TIMEOUT = 180
+TOTAL_TIMEOUT = 110      # ТЗ 14: инструмент operate_screen синхронный, его тайм-аут 120 с (MOD-17)
 LLM_TIMEOUT = 90
 
 SYSTEM = """Ты управляешь программой на экране компьютера мышью и клавиатурой. Тебе дают цель, историю шагов и список надписей
@@ -76,8 +75,9 @@ async def _decide(goal: str, history: list[str], screen: str) -> dict | None:
     return None
 
 
-async def _act(step: dict, items: list, announce) -> str:
-    """Выполнить шаг. Возвращает описание для истории; бросает ToolError, если нельзя или не вышло."""
+async def _act(step: dict, items: list, ask) -> str:
+    """Выполнить шаг. Возвращает описание для истории; бросает ToolError, если нельзя или не вышло.
+    ask(вопрос, причина_опасности) -> bool: разрешение пользователя (в модуле это client.ask)."""
     action = str(step.get("action"))
     run = asyncio.to_thread
     if action == "click_id":
@@ -92,13 +92,13 @@ async def _act(step: dict, items: list, announce) -> str:
     if action == "type":
         text = str(step.get("text", ""))
         danger = pc_control._danger_type({"text": text})
-        if danger and not await approvals.request(f"Хочу набрать текст «{text[:80]}» в активном окне.", announce, danger=danger):
+        if danger and not await ask(f"Хочу набрать текст «{text[:80]}» в активном окне.", danger):
             raise ToolError("пользователь не разрешил набрать этот текст")
         return await run(pc_control._type, text)
     if action == "key":
         keys = str(step.get("keys", ""))
         danger = pc_control._danger_key({"keys": keys})
-        if danger and not await approvals.request(f"Хочу нажать {keys}.", announce, danger=danger):
+        if danger and not await ask(f"Хочу нажать {keys}.", danger):
             raise ToolError("пользователь не разрешил это сочетание")
         return await run(pc_control._press, keys)
     if action == "scroll":
@@ -109,8 +109,8 @@ async def _act(step: dict, items: list, announce) -> str:
     raise ToolError(f"неизвестное действие: {action}")
 
 
-async def operate(goal: str, announce, max_steps: int = 8) -> str:
-    """Выполнить цель на экране шагами; итог для пользователя. announce(text) - как озвучить вопрос о разрешении."""
+async def operate(goal: str, ask, max_steps: int = 8) -> str:
+    """Выполнить цель на экране шагами; итог для пользователя. ask(вопрос, опасность) -> bool - разрешение (client.ask)."""
     started, history, last = time.time(), [], None
     repeats = 0
     for n in range(max(1, min(int(max_steps), 15))):
@@ -134,7 +134,7 @@ async def operate(goal: str, announce, max_steps: int = 8) -> str:
         if repeats >= 2:
             return "Остановилась: один и тот же шаг не помогает. " + (history[-1] if history else "")
         try:
-            done = await _act(step, items, announce)
+            done = await _act(step, items, ask)
         except ToolError as e:
             history.append(f"{n + 1}. {action}: не вышло ({e})")
             if "не разрешил" in str(e):

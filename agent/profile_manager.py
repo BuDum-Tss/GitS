@@ -151,7 +151,7 @@ class ProfileManager:
                  streamer_tone: str | None = None,
                  subgraph: Callable[[Profile], Awaitable[dict | None]] | None = None):
         """battery() -> claude_battery.status(); foreground_app() -> имя процесса активного окна (модуль desktop, а до
-        ТЗ 14 perception.foreground()); module_state(id) -> последний state.data модуля или None; choice() -> настройка
+        ТЗ 14: состояние модуля desktop); module_state(id) -> последний state.data модуля или None; choice() -> настройка
         profile; streamer() -> настройка streamer; on_change(старый, новый) вызывается при смене профиля;
         subgraph(profile) -> живой подграф профиля от его модуля (graph.get) или None."""
         self.profiles = profiles if profiles is not None else load_profiles()

@@ -1,15 +1,16 @@
-"""Зрение ГЛаДОС: что происходит на экране. Всё обрабатывается ЛОКАЛЬНО.
+"""Зрение на ПК: что происходит на экране (модуль desktop, ТЗ 14). Всё обрабатывается ЛОКАЛЬНО.
 
-Схема: заголовок активного окна (дёшево, часто) → при смене окна или по
-таймеру скриншот этого окна → OCR (RapidOCR, точный текст) + локальная
-Gemma (смысл). Наружу уходит только короткий вывод вроде «пишет код»;
-сырой OCR-текст нигде не сохраняется и в облако не отправляется.
+Схема: заголовок активного окна (дёшево, часто) → при смене окна или по таймеру скриншот этого окна → OCR (RapidOCR,
+точный текст) + локальная модель (смысл). Наружу уходит только короткий вывод вроде «пишет код»; сырой OCR-текст нигде
+не сохраняется и в облако не отправляется.
 
 Защита приватности:
-  - окна с «чувствительными» словами в заголовке (пароли, банк, приватный
-    режим и т.п.) не снимаются вообще;
-  - выключатель settings.vision (чат: «не смотри на экран»);
+  - окна с «чувствительными» словами в заголовке (пароли, банк, приватный режим и т.п.) не снимаются вообще;
+  - выключатель общей настройки `vision` (чат: «не смотри на экран») читает модуль из client.settings;
   - при простое пользователя (нет ввода) экран не анализируется.
+
+Отличие от прежнего `agent/perception.py`: ScreenWatcher не пишет в память ядра (UserMemory). Итог анализа уходит
+колбэком `on_activity`, событие `desktop.activity` ядро само кладёт в память занятий (ТЗ 14, DESK-3).
 """
 import asyncio
 import base64
@@ -27,17 +28,15 @@ from PIL import ImageGrab
 
 import events_log
 import fast_brain
-import settings
-from user_memory import UserMemory
 
-logger = logging.getLogger("perception")
+logger = logging.getLogger("desktop.perception")
 
-CHECK_EVERY_SECS   = 8            # как часто смотрим заголовок окна
-REANALYZE_SECS     = 180          # перепроверка того же окна
-MIN_GAP_SECS       = 25           # не чаще одного анализа за это время
-IDLE_SKIP_SECS     = 300          # нет ввода дольше — пользователь отошёл
-OCR_MAX_CHARS      = 1200
-IMG_MAX_W          = 1280
+CHECK_EVERY_SECS = 8            # как часто смотрим заголовок окна
+REANALYZE_SECS = 180            # перепроверка того же окна
+MIN_GAP_SECS = 25               # не чаще одного анализа за это время
+IDLE_SKIP_SECS = 300            # нет ввода дольше — пользователь отошёл
+OCR_MAX_CHARS = 1200
+IMG_MAX_W = 1280
 
 _DEFAULT_BLOCK = (
     "пароль", "password", "keepass", "bitwarden", "1password", "lastpass",
@@ -47,6 +46,8 @@ _DEFAULT_BLOCK = (
 )
 _extra = os.getenv("GLADOS_VISION_BLOCK", "")
 BLOCK_WORDS = _DEFAULT_BLOCK + tuple(w.strip().lower() for w in _extra.split(",") if w.strip())
+GITS_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _set_dpi_aware():
     """Работать в физических пикселях. Иначе при масштабе экрана 125% координаты окон (логические)
@@ -108,7 +109,8 @@ def is_sensitive(win: dict) -> bool:
 
 
 _ocr_engine = None
-_OCR_DIR = Path(__file__).resolve().parent / "models" / "ocr"
+# модели OCR лежат в agent/models/ocr (не в git); GITS_OCR_DIR переопределяет путь
+_OCR_DIR = Path(os.getenv("GITS_OCR_DIR") or GITS_ROOT / "agent" / "models" / "ocr")
 
 
 def _engine():
@@ -187,7 +189,7 @@ _SYSTEM = (
 
 
 async def analyze(win: dict) -> dict | None:
-    """Скриншот окна → OCR + Gemma → {"summary","category"}. None при неудаче."""
+    """Скриншот окна → OCR + локальная модель → {"summary","category"}. None при неудаче."""
     img = await asyncio.to_thread(_capture, win)
     if img is None:
         return None
@@ -211,10 +213,10 @@ _DESCRIBE_SYSTEM = (
 )
 
 
-async def describe_now() -> dict:
-    """Разовый осмотр ВСЕГО экрана по прямой просьбе пользователя.
+async def describe_now(vision_on: bool) -> dict:
+    """Разовый осмотр ВСЕГО экрана по прямой просьбе пользователя (vision_on - общая настройка vision).
     Возвращает {"status": "ok"|"off"|"sensitive"|"fail", "text": ...}."""
-    if not settings.load()["vision"]:
+    if not vision_on:
         return {"status": "off"}
     win = await asyncio.to_thread(foreground)
     if win and is_sensitive(win):
@@ -241,52 +243,42 @@ async def describe_now() -> dict:
 
 
 class ScreenWatcher:
-    """Фоновый цикл: следит за активным окном и копит краткие выводы."""
+    """Следит за активным окном и копит краткие выводы. Шаг делает модуль (`observe`), цикл крутит модуль."""
 
-    def __init__(self, memory: UserMemory):
-        self._mem = memory
+    def __init__(self, on_activity, *, analyze_fn=None, clock=time.time):
+        """on_activity(entry) - async-колбэк: новый вывод анализа ({"app","category","summary","since","ts"})."""
+        self._on_activity = on_activity
+        self._analyze = analyze_fn or analyze
+        self._clock = clock
         self._last_key = None
         self._last_run = 0.0
         self.current: dict | None = None     # {"app","category","summary","since","ts"}
 
-    async def run(self):
-        while True:
-            try:
-                await self._step()
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.warning(f"Сбой зрения: {e}")
-                events_log.log("error", f"зрение: {e}")
-            await asyncio.sleep(CHECK_EVERY_SECS)
-
-    async def _step(self):
-        if not settings.load()["vision"]:
-            return
-        if idle_seconds() > IDLE_SKIP_SECS:
-            return
-        win = await asyncio.to_thread(foreground)
+    async def observe(self, win: dict | None, idle: float, vision_on: bool) -> dict | None:
+        """Один шаг: вернуть новый вывод или None. win - активное окно (dict из foreground()), idle - секунды простоя."""
+        if not vision_on or idle > IDLE_SKIP_SECS:
+            return None
         if not win or is_sensitive(win):
+            if win and self._last_key is not None:
+                events_log.log("vision", "окно пропущено: чувствительное содержимое")
             if win:
-                if self._last_key is not None:
-                    events_log.log("vision", "окно пропущено: чувствительное содержимое")
                 self._last_key = None   # после чувствительного окна анализируем заново
-            return
+            return None
         key = (win["app"], win["title"])
-        now = time.time()
+        now = self._clock()
         if key == self._last_key and now - self._last_run < REANALYZE_SECS:
-            return
+            return None
         if now - self._last_run < MIN_GAP_SECS:
-            return
+            return None
         self._last_key, self._last_run = key, now
-        res = await analyze(win)
+        res = await self._analyze(win)
         if not res:
-            return
+            return None
         prev = self.current
         same = prev and prev["app"] == win["app"] and prev["category"] == res["category"]
-        self.current = {"app": win["app"], "category": res["category"],
-                        "summary": res["summary"], "ts": now,
+        self.current = {"app": win["app"], "category": res["category"], "summary": res["summary"], "ts": now,
                         "since": prev["since"] if same else now}
-        self._mem.add_activity(win["app"], res["category"], res["summary"])
         events_log.log("vision", res["summary"], app=win["app"], category=res["category"])
         logger.info(f"[зрение] {win['app']}: {res['summary']} ({res['category']})")
+        await self._on_activity(dict(self.current))
+        return dict(self.current)

@@ -1,14 +1,12 @@
-"""Управление компьютером: мышь и клавиатура на ВЕСЬ экран (не только окно игры).
+"""Управление компьютером: мышь и клавиатура на ВЕСЬ экран (не только окно игры), модуль desktop (ТЗ 14).
 
-Инструменты окружения «Компьютер пользователя». Все требуют разрешения (риск ask); поверх этого
-отдельные действия спрашиваются всегда, даже при авто-разрешении (опасные сочетания клавиш,
-разрушительные команды в вводимом тексте). Ввод в окна с личным содержимым (пароли, банк,
-приватный режим) запрещён совсем.
+Реализация инструментов (синхронные функции, их вызывают в потоке). Описания и параметры инструментов лежат в
+манифесте модуля (manifest.py), обработчики - в app.py. Ввод в окна с личным содержимым (пароли, банк, приватный
+режим) запрещён совсем. Опасные сочетания клавиш и разрушительный текст спрашиваются всегда (`danger_check`).
 
-Как она находит, куда нажимать: click_text ищет надпись на экране локальным OCR (RapidOCR) и
-нажимает в её центр, поэтому координаты угадывать не нужно.
+Как она находит, куда нажимать: click_text ищет надпись на экране локальным OCR (RapidOCR) и нажимает в её центр,
+поэтому координаты угадывать не нужно.
 """
-import asyncio
 import ctypes
 import difflib
 import re
@@ -17,7 +15,7 @@ from pathlib import Path
 
 import perception
 import safety
-from .base import ToolError
+from glados_module import ToolError
 
 _DANGEROUS_KEYS = {"alt+f4", "win+r", "win+x", "ctrl+alt+del", "ctrl+alt+delete", "ctrl+shift+esc"}
 _MAX_TYPED = 500
@@ -235,68 +233,3 @@ def _danger_type(a: dict) -> str | None:
     return safety.danger_of("Bash", {"command": str(a.get("text", ""))}, Path.cwd())
 
 
-# ── сборка инструментов ─────────────────────────────────────────────────────────────
-
-def make_tools(_tool) -> list:
-    """_tool - фабрика Tool из builtin (одинаковое оформление со встроенными)."""
-    async def run(fn, *a):
-        return await asyncio.to_thread(fn, *a)
-
-    async def list_windows(a):
-        return await run(_list_windows)
-
-    async def focus_window(a):
-        return await run(_focus_window, a["title"])
-
-    async def click_text(a):
-        return await run(_click_text, a["text"], a.get("button") or "left", bool(a.get("double")))
-
-    async def click(a):
-        return await run(_click_xy, int(a["x"]), int(a["y"]), a.get("button") or "left", bool(a.get("double")))
-
-    async def type_text(a):
-        return await run(_type, a["text"])
-
-    async def press_key(a):
-        return await run(_press, a["keys"])
-
-    async def scroll(a):
-        return await run(_scroll, int(a["amount"]), a.get("x"), a.get("y"))
-
-    btn = {"type": "string", "enum": ["left", "right"], "required": False, "description": "кнопка мыши, по умолчанию left"}
-    dbl = {"type": "boolean", "required": False, "description": "двойной щелчок"}
-    tools = [
-        _tool("system", "list_windows", "Перечислить открытые окна на компьютере (заголовки).",
-              {}, list_windows, risk="auto", informative=True,
-              keywords=("окна", "окно", "открыто", "программы", "приложения")),
-        _tool("system", "focus_window", "Запасной уровень (по экрану): используй, только если у программы нет прямого инструмента или адаптера. Переключиться на окно по части заголовка.",
-              {"title": {"type": "string", "description": "часть заголовка окна"}}, focus_window, risk="ask",
-              keywords=("окно", "переключись", "открой", "перейди", "свернуто")),
-        _tool("system", "click_text", "Запасной уровень (по экрану): используй, только если у программы нет прямого инструмента или адаптера. Нажать мышью на надпись на экране (кнопку, ссылку, пункт меню): находит текст по экрану "
-              "и кликает в его центр.",
-              {"text": {"type": "string", "description": "надпись, на которую нажать"}, "button": btn, "double": dbl},
-              click_text, risk="ask", keywords=("нажми", "кликни", "клик", "кнопка", "кнопку", "нажать", "ссылка", "пункт", "меню")),
-        _tool("system", "click", "Запасной уровень (по экрану): используй, только если у программы нет прямого инструмента или адаптера. Нажать мышью в точку экрана по координатам (пиксели от левого верхнего угла).",
-              {"x": {"type": "integer", "description": "x"}, "y": {"type": "integer", "description": "y"},
-               "button": btn, "double": dbl},
-              click, risk="ask", keywords=("нажми", "кликни", "координаты", "точка", "клик")),
-        _tool("system", "type_text", "Запасной уровень (по экрану): используй, только если у программы нет прямого инструмента или адаптера. Набрать текст на клавиатуре в активном окне (в том числе русский). "
-              "Перед этим нужно, чтобы курсор стоял в нужном поле.",
-              {"text": {"type": "string", "description": "что набрать (до 500 символов)"}},
-              type_text, risk="ask", keywords=("набери", "напечатай", "введи", "впиши", "текст", "клавиатура")),
-        _tool("system", "press_key", "Запасной уровень (по экрану): используй, только если у программы нет прямого инструмента или адаптера. Нажать клавишу или сочетание клавиш, например enter, esc, f5, ctrl+s, alt+tab.",
-              {"keys": {"type": "string", "description": "клавиши через плюс: ctrl+s"}},
-              press_key, risk="ask", keywords=("нажми", "клавиша", "enter", "сохрани", "сочетание", "горячая")),
-        _tool("system", "scroll", "Запасной уровень (по экрану): используй, только если у программы нет прямого инструмента или адаптера. Прокрутить колесо мыши (положительное число вверх, отрицательное вниз).",
-              {"amount": {"type": "integer", "description": "на сколько щелчков"},
-               "x": {"type": "integer", "required": False, "description": "x, где прокрутить"},
-               "y": {"type": "integer", "required": False, "description": "y, где прокрутить"}},
-              scroll, risk="ask", keywords=("прокрути", "скролл", "вниз", "вверх", "колесо")),
-    ]
-    # опасные сочетания и разрушительный текст спрашиваются всегда, даже при авто-разрешении
-    for t in tools:
-        if t.name == "press_key":
-            t.danger = _danger_key
-        elif t.name == "type_text":
-            t.danger = _danger_type
-    return tools

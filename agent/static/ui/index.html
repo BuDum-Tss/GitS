@@ -136,6 +136,7 @@
             <div class="divider my-0"></div>
             <div id="panel-assistant" class="hidden">
               <div class="font-medium mb-2">Что она видит</div>
+              <div id="screen-now" class="text-sm mb-2 opacity-80"></div>
               <ul id="activity" class="space-y-2 text-sm"></ul>
             </div>
             <div id="panel-rimworld" class="hidden space-y-4">
@@ -744,6 +745,14 @@ const EMO = {idle:'спокойно', action:'в деле', angry:'раздра�
   sitting:'скучает', thinking:'думает', happy:'довольна', threat:'тревога', resting:'отдыхает',
   sad:'грустно', scared:'испугана', proud:'гордится', surprised:'удивлена'};
 
+function renderScreen(s) {
+  // состояние модуля desktop (ТЗ 14, DESK-15): без модуля - честно пусто
+  if (!s) { $('screen-now').textContent = 'Модуль «Компьютер» не подключён: экран не виден.'; return; }
+  const idle = Math.round(s.idle_s || 0);
+  const app = s.sensitive ? 'окно с личным содержимым' : (s.foreground_app || 'активного окна нет');
+  $('screen-now').textContent = `Сейчас: ${app}; простой ${idle} с.`;
+}
+
 function renderActivity(list) {
   $('activity').innerHTML = list.length ? list.slice().reverse().map(a => {
     const mins = Math.max(0, Math.round((Date.now() / 1000 - a.ts) / 60));
@@ -1114,7 +1123,7 @@ async function poll() {
     $('badge-quiet').classList.toggle('hidden', !(st.settings && (st.settings.dnd || st.settings.quiet_until * 1000 > Date.now())));
     const last = core.dialogue[core.dialogue.length - 1];
     renderChat(core.dialogue, last && last.role === 'user' && Date.now() / 1000 - last.ts < 90);
-    renderActivity(core.activity); renderMemory(core); renderGame(st);
+    renderActivity(core.activity); renderScreen(core.screen); renderMemory(core); renderGame(st);
     $('approval').classList.toggle('hidden', !core.approval.pending);
     $('approval-text').textContent = core.approval.text;
     renderApprovalExtra(core.approval);

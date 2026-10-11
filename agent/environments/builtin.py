@@ -10,11 +10,8 @@ import re
 import time
 
 import events_log
-import perception
-import screenshots
 import settings
 from .base import Environment, Tool, ToolError
-from . import pc_control
 
 
 # настройки, которые модули меняют инструментом core.set_setting (TG-13): белый список, остальное только человек
@@ -147,24 +144,6 @@ def register(registry, companion, memory, profiles=None):
             raise ToolError("по этой теме в памяти ничего нет")
         return "; ".join(parts)
 
-    async def launch_app(a):
-        import app_launcher
-        try:
-            return await asyncio.to_thread(app_launcher.launch, a["name"])
-        except (ValueError, RuntimeError) as e:
-            raise ToolError(str(e))
-
-    async def list_apps(a):
-        import app_launcher
-        return "Подходящие приложения: " + await asyncio.to_thread(app_launcher.titles, a.get("query") or "")
-
-    async def add_app(a):
-        import app_launcher
-        try:
-            return await asyncio.to_thread(app_launcher.add, a["title"], a["path"], a.get("aliases") or [])
-        except ValueError as e:
-            raise ToolError(str(e))
-
     async def quiet_mode(a):
         companion._set_quiet(a["minutes"])
         return f"режим «не отвлекать» на {a['minutes']} мин: сама не заговаривает"
@@ -204,22 +183,6 @@ def register(registry, companion, memory, profiles=None):
                   deep_analysis, informative=True,
                   keywords=("анализ", "проанализируй", "разбери", "причины", "выводы", "протокол", "аудит", "самоанализ",
                             "почему", "ошибки", "гибель", "погибла", "что пошло не так")),
-            _tool("assistant", "launch_app", "Запустить любое установленное приложение по названию, как в Alt+Пробел "
-                  "(меню «Пуск» и магазин Windows). RimWorld запускается с ожиданием мода. Для просьб «запусти римворлд», "
-                  "«пойдём играть», «открой хром», «включи телеграм». Консоли, реестр и деинсталляторы недоступны.",
-                  {"name": {"type": "string", "description": "название приложения, как сказал пользователь"}},
-                  launch_app, informative=True,
-                  keywords=("запусти", "запускай", "открой", "включи", "включай", "игру", "римворлд", "rimworld", "поиграем",
-                            "играть", "приложение", "программу", "хром", "докер", "телеграм", "блокнот")),
-            _tool("assistant", "list_apps", "Найти установленные приложения по части названия (или назвать несколько).",
-                  {"query": {"type": "string", "required": False, "description": "часть названия"}}, list_apps, informative=True,
-                  keywords=("приложения", "программы", "что можешь запустить", "что установлено")),
-            _tool("assistant", "add_app", "Добавить приложение в свой список для запуска: нужен путь к .exe, .lnk, .bat или .cmd "
-                  "(для программ вне меню «Пуск»). Каждый раз спрашивает разрешение.",
-                  {"title": {"type": "string", "description": "как называть приложение"},
-                   "path": {"type": "string", "description": "полный путь к файлу запуска"},
-                   "aliases": {"type": "array", "required": False, "description": "другие названия"}},
-                  add_app, risk="ask", informative=True, keywords=("добавь", "приложение", "программу", "список")),
             _tool("assistant", "forget", "Стереть из её долговременной памяти записи, где встречается фраза.",
                   {"text": {"type": "string", "description": "слово или фраза из записи"}}, forget,
                   keywords=("забудь", "забыть", "стереть", "память")),
@@ -239,44 +202,6 @@ def register(registry, companion, memory, profiles=None):
                   keywords=("отвлекай", "мешай", "занят", "смотрю", "работаю", "минут", "тишина")),
         ]))
 
-    # ── система ПК ────────────────────────────────────────────────────────────
-
-    async def take_screenshot(a):
-        target = a.get("target") or "game"
-        focus = bool(a.get("focus"))
-        try:
-            if target == "screen":
-                path = await asyncio.to_thread(screenshots.grab_screen)
-            else:
-                path = await asyncio.to_thread(screenshots.grab_game, focus)
-        except screenshots.ShotError as e:
-            raise ToolError(str(e))
-        from PIL import Image
-        with Image.open(path) as im:
-            size = f"{im.width}x{im.height}"
-        return (f"снимок {'экрана' if target == 'screen' else 'игры'} сохранён: {path.name} ({size}). "
-                "Его можно приложить к черновику поста (draft_attach).")
-
-    def _shot_danger(a):
-        return "Она хочет сфотографировать весь экран: на снимок могут попасть чужие окна" if a.get("target") == "screen" else None
-
-    async def describe_screen(a):
-        seen = await perception.describe_now()
-        status = seen["status"]
-        if status == "off":
-            raise ToolError("зрение выключено, она ничего не видит")
-        if status == "sensitive":
-            raise ToolError("сейчас открыто окно с личным содержимым (пароли, банк, приватный режим), смотреть она не будет")
-        if status != "ok":
-            raise ToolError("локальная модель зрения не ответила")
-        return seen["text"]
-
-    async def ask_claude(a):
-        result = await companion.run_claude(a["task"])
-        if result is None:
-            raise ToolError("агент-помощник на Claude сбойнул")
-        return result or "готово, добавить нечего"
-
     async def web_search_tool(a):
         import web_search
         return await web_search.search(a["query"])
@@ -291,53 +216,6 @@ def register(registry, companion, memory, profiles=None):
                      web_search_tool, informative=True,
                      keywords=("поищи", "найди", "интернет", "гугл", "google", "вики", "wiki", "узнай", "как работает", "что такое"))]))
 
-    system_env = Environment(
-        id="system", title="Компьютер пользователя",
-        description="Экран, звук, файлы, команды и интернет на этом компьютере, а также мышь, клавиатура и окна.",
-        tools=[
-            _tool("system", "take_screenshot", "Сделать скриншот и сохранить файлом. target=game: окно RimWorld "
-                  "(без вопросов; игра должна быть на переднем плане, либо focus=true: она сама переключится на неё); "
-                  "target=screen: весь экран (всегда спрашивает разрешение).",
-                  {"target": {"type": "string", "enum": ["game", "screen"], "required": False,
-                              "description": "game - окно игры (по умолчанию), screen - весь экран"},
-                   "focus": {"type": "boolean", "required": False, "description": "переключиться на игру перед снимком"}},
-                  take_screenshot, informative=True,
-                  keywords=("скриншот", "снимок", "сфотографируй", "скрин", "фото", "сними", "картинка")),
-            _tool("system", "describe_screen", "Посмотреть на экран прямо сейчас и описать, что на нём (приложения, чем занят пользователь).",
-                  {}, describe_screen, informative=True,
-                  keywords=("экран", "видишь", "посмотри", "окно", "делаю", "открыто")),
-            _tool("system", "ask_claude", "Сложные задачи на компьютере: работа с файлами и кодом проекта, команды, поиск в интернете, "
-                  "анализ. Выполняет Claude и сам спрашивает разрешение на каждое изменение.",
-                  {"task": {"type": "string", "description": "что нужно сделать, своими словами пользователя"}}, ask_claude, informative=True,
-                  keywords=("файл", "код", "команда", "найди", "интернет", "проект", "скрипт", "поиск", "папка", "почини", "исправь")),
-        ])
-    for t in system_env.tools:
-        if t.name == "ask_claude":
-            t.always = True
-        if t.name == "take_screenshot":
-            t.danger = _shot_danger
-    system_env.tools += pc_control.make_tools(_tool)   # мышь, клавиатура, окна (всё с разрешением)
-
-    async def read_screen_tool(a):
-        import screen_operator
-        return await screen_operator.read_screen()
-
-    async def operate_screen_tool(a):
-        import screen_operator
-        return await screen_operator.operate(a["goal"], companion.say, int(a.get("max_steps") or 8))
-
-    system_env.tools += [
-        _tool("system", "read_screen", "Запасной уровень (по экрану): прочитать надписи на экране (OCR) с координатами в активном окне. "
-              "Для вопросов «что там написано» и чтобы выбрать, на что нажать.",
-              {}, read_screen_tool, informative=True, keywords=("прочитай", "написано", "экран", "надпись", "текст на экране")),
-        _tool("system", "operate_screen", "Запасной уровень (по экрану): выполнить цель в ЛЮБОЙ программе, нажимая мышью и клавиатурой "
-              "шаг за шагом по надписям на экране (ведёт локальная модель). Используй, только если у программы нет прямого инструмента.",
-              {"goal": {"type": "string", "description": "цель своими словами: «открой настройки звука и убавь громкость»"},
-               "max_steps": {"type": "integer", "required": False, "description": "не больше шагов (по умолчанию 8)"}},
-              operate_screen_tool, risk="ask", informative=True,
-              keywords=("открой", "нажми", "настрой", "включи", "выключи", "в программе", "в приложении", "кнопку", "меню")),
-    ]
-    registry.add(system_env)
 
 
 class _ModuleIds(list):

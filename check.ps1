@@ -19,6 +19,9 @@ $voicetests = $LASTEXITCODE
 Write-Host "== pytest modules/pet (модуль питомца) ==" -ForegroundColor Cyan
 python -m pytest -q modules/pet/tests
 $pettests = $LASTEXITCODE
-if ($lint -ne 0 -or $tests -ne 0 -or $sdktests -ne 0 -or $modtests -ne 0 -or $voicetests -ne 0 -or $pettests -ne 0) { Write-Host "Есть замечания: линтер=$lint, тесты=$tests, тесты sdk=$sdktests, тесты telegram=$modtests, тесты voice=$voicetests, тесты pet=$pettests" -ForegroundColor Yellow; exit 1 }
+Write-Host "== pytest modules/desktop (модуль компьютера) ==" -ForegroundColor Cyan
+python -m pytest -q modules/desktop/tests
+$desktoptests = $LASTEXITCODE
+if ($lint -ne 0 -or $tests -ne 0 -or $sdktests -ne 0 -or $modtests -ne 0 -or $voicetests -ne 0 -or $pettests -ne 0 -or $desktoptests -ne 0) { Write-Host "Есть замечания: линтер=$lint, тесты=$tests, тесты sdk=$sdktests, тесты telegram=$modtests, тесты voice=$voicetests, тесты pet=$pettests, тесты desktop=$desktoptests" -ForegroundColor Yellow; exit 1 }
 Write-Host "Всё в порядке" -ForegroundColor Green
 

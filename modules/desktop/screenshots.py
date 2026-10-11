@@ -22,7 +22,8 @@ class ShotError(Exception):
 
 
 def _dir() -> Path:
-    base = os.getenv("MEMORY_DIR") or str(Path(__file__).resolve().parent / "memory")
+    """Папка снимков: MEMORY_DIR/screenshots (общая с модулем Telegram, TG-6); без MEMORY_DIR - agent/memory рядом с ядром."""
+    base = os.getenv("MEMORY_DIR") or str(Path(__file__).resolve().parents[2] / "agent" / "memory")
     d = Path(base) / "screenshots"
     d.mkdir(parents=True, exist_ok=True)
     return d

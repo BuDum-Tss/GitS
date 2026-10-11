@@ -5,8 +5,10 @@
 модуля вызываются запросом `tool.call` через шину (`module_hub.py`). Видимость инструментов по профилю решает
 `Registry.focus` (CORE-10), состояние окружения - включён ли модуль и подключён ли он (CORE-9).
 """
+import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -22,6 +24,8 @@ CHECK_TIMEOUT_S = 2.0            # tool.check: ответ не позже чем
 ENABLED_CACHE_S = 0.5            # как долго помнится чтение настроек (is_enabled зовут часто)
 ANNOUNCE_DESC_MAX, ANNOUNCE_ARG_MAX, ANNOUNCE_ARGS_MAX = 140, 40, 160     # AN-3: сколько описания и аргументов уходит в факт
 PANEL_SET_MIN_GAP_S = 0.8        # TZ 15: panel.set не чаще раза в секунду; 0.2 с на задержку сети (SDK шлёт не чаще 1 с)
+JOB_FINISHED = ("done", "failed", "cancelled")
+JOB_ID_IN_TEXT = re.compile(r"задача (j-[0-9a-f]{8}) запущена")              # render() для задач модуля (ТЗ 14, DESK-11)
 
 
 def announce_text(spec, args: dict) -> str:
@@ -79,6 +83,8 @@ class ModuleRegistry:
         self._settings_source = settings_source
         self._module_envs: set[str] = set()
         self._enabled_cache: tuple[float, dict] = (0.0, {})
+        self.context_for: Callable[[str], str] = lambda query: ""   # core_fills: краткий контекст разговора (ставит ядро, DESK-12)
+        self._job_waiters: dict[tuple[str, str], asyncio.Future] = {}
 
     # ── записи ──────────────────────────────────────────────────────────────
 
@@ -150,6 +156,11 @@ class ModuleRegistry:
             return
         rec.connected = False
         rec.last_disconnect_reason = reason
+        for key in [k for k in self._job_waiters if k[0] == module_id]:       # ждавшие задачу модуля получают сбой
+            fut = self._job_waiters.pop(key)
+            if not fut.done():
+                fut.set_result({"job_id": key[1], "state": "failed", "text": "",
+                                "error": {"code": "unavailable", "message": "модуль отключился"}})
 
     def set_state(self, module_id: str, summary: str, data: dict) -> None:
         rec = self.records.get(module_id)
@@ -203,11 +214,37 @@ class ModuleRegistry:
         if body.get("state") != "waiting_user":
             job.pop("question", None)
         rec.jobs[body["job_id"]] = job
-        finished = sorted((j for j in rec.jobs.values() if j["state"] in ("done", "failed", "cancelled")),
-                          key=lambda j: j["updated"])
+        finished = sorted((j for j in rec.jobs.values() if j["state"] in JOB_FINISHED), key=lambda j: j["updated"])
         for old in finished[:-FINISHED_JOBS_KEPT]:
             rec.jobs.pop(old["job_id"], None)
+        if job["state"] in JOB_FINISHED:
+            fut = self._job_waiters.pop((module_id, body["job_id"]), None)
+            if fut is not None and not fut.done():
+                fut.set_result(dict(job))
         return job
+
+    async def wait_job(self, module_id: str, job_id: str, timeout: float = 600.0) -> dict:
+        """Дождаться завершения задачи модуля (ТЗ 14, DESK-11): вернуть её последний job (state done/failed/cancelled).
+        Тайм-аут и обрыв модуля дают state failed с error."""
+        rec = self.records.get(module_id)
+        if rec is not None and rec.jobs.get(job_id, {}).get("state") in JOB_FINISHED:
+            return dict(rec.jobs[job_id])
+        key = (module_id, job_id)
+        fut = asyncio.get_running_loop().create_future()
+        self._job_waiters[key] = fut
+        try:
+            return await asyncio.wait_for(fut, timeout)
+        except asyncio.TimeoutError:
+            return {"job_id": job_id, "state": "failed", "text": "",
+                    "error": {"code": "timeout", "message": f"задача не завершилась за {int(timeout)} с"}}
+        finally:
+            self._job_waiters.pop(key, None)
+
+    @staticmethod
+    def job_id_from(text: str) -> str | None:
+        """Номер задачи из ответа инструмента с job: true («задача j-… запущена»), иначе None."""
+        m = JOB_ID_IN_TEXT.search(text or "")
+        return m.group(1) if m else None
 
     def jobs_all(self) -> list[dict]:
         """Задачи всех модулей: сначала незавершённые, затем завершённые; внутри - свежие выше."""
@@ -243,6 +280,18 @@ class ModuleRegistry:
             return f"задача {job_id} запущена" if job_id else "задача запущена"
         return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
 
+    async def _fill_core(self, spec, args: dict) -> dict:
+        """core_fills (ТЗ 01 §6.1, DESK-12): параметры, которые заполняет ядро, а не планировщик. Сейчас только context."""
+        if "context" not in spec.core_fills:
+            return args
+        query = next((str(v) for v in args.values() if isinstance(v, str)), "")
+        try:
+            context = await asyncio.to_thread(self.context_for, query)
+        except Exception as e:
+            logger.warning(f"Контекст для инструмента {spec.name}: {e}")
+            context = ""
+        return {**args, "context": str(context)[:4000]}
+
     def _make_tool(self, module_id: str, spec) -> Tool:
         async def call(args: dict) -> str:
             conn = self.hub.connection(module_id) if self.hub is not None else None
@@ -256,6 +305,7 @@ class ModuleRegistry:
                     await attention.submit_announce(module_id, announce_text(spec, args), data={"tool": spec.name})
                 except Exception as e:                  # объявление не должно мешать самому вызову
                     logger.warning(f"Объявление запуска {spec.full_id(module_id)}: {e}")
+            args = await self._fill_core(spec, args)
             try:
                 value = await conn.request("tool.call", {"tool": spec.name, "args": args}, timeout=spec.timeout_s)
             except ModuleError as e:
@@ -273,8 +323,9 @@ class ModuleRegistry:
             except Exception:
                 return "модуль не ответил на проверку"
 
+        params = {k: v for k, v in spec.params.items() if k not in spec.core_fills}     # планировщик core_fills не видит
         return Tool(id=spec.full_id(module_id), env=module_id, name=spec.name, description=spec.description,
-                    params=dict(spec.params), risk=spec.risk, keywords=tuple(spec.keywords), call=call,
+                    params=params, risk=spec.risk, keywords=tuple(spec.keywords), call=call,
                     self_confirming=spec.self_confirming, informative=spec.informative, always=spec.fallback,
                     availability=spec.availability, timeout_s=spec.timeout_s, job=spec.job,
                     danger_check=spec.danger_check, check=check if spec.danger_check else None)

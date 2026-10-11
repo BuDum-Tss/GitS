@@ -64,6 +64,18 @@ def _read_json(name: str, default):
         return default
 
 
+def _screen_state() -> dict | None:
+    """Состояние модуля desktop для вкладки «Что она видит» (DESK-15): None, если модуль не подключён."""
+    if _MODULES is None:
+        return None
+    rec = _MODULES.get("desktop")
+    if rec is None or not rec.connected or not rec.state:
+        return None
+    data = rec.state.get("data") or {}
+    return {"summary": rec.state.get("summary"), "foreground_app": data.get("foreground_app"),
+            "sensitive": data.get("sensitive"), "idle_s": data.get("idle_s"), "activity": data.get("activity")}
+
+
 async def handle_api_core(request: web.Request) -> web.Response:
     """Всё, что показывает UI помимо игры: разговор, зрение, память, вопрос о разрешении."""
     from relationships import is_hidden, kind_of, label
@@ -78,6 +90,7 @@ async def handle_api_core(request: web.Request) -> web.Response:
     return web.json_response({
         "dialogue":  _read_json("dialogue.json", [])[-40:],
         "activity":  _read_json("activity.json", [])[-5:],
+        "screen":    _screen_state(),
         "memories":  sorted(MemoryStore(str(_MEMORY_DIR)).all(), key=lambda i: -i["ts"])[:150],
         "relations": relations,
         "approval":  {"pending": approvals.has_pending(), "text": approvals.pending_text(),
@@ -145,36 +158,30 @@ async def handle_api_mode_post(request: web.Request) -> web.Response:
     return web.json_response({"current": _MODES.current_id, "override": _MODES.override})
 
 
-_MENU_BUTTONS = ("быстрый запуск", "quick start", "продолжить", "continue", "загрузить", "load")   # только кнопки главного меню
+_ROUTER = None   # маршрутизатор (router.py), ставит ядро: нужен для POST /api/menu_click (ТЗ 14, DESK-14)
+
+
+def set_router(router):
+    global _ROUTER
+    _ROUTER = router
 
 
 async def handle_api_menu_click(request: web.Request) -> web.Response:
-    """Нажать кнопку главного меню RimWorld без Claude и без вопроса: {"text": "Быстрый запуск"} (OCR по окну игры).
-    Узко и безопасно: только надписи из белого списка, только когда окно с RimWorld найдено."""
+    """Нажать кнопку главного меню RimWorld без Claude и без вопроса: {"text": "Быстрый запуск"}. Прежний HTTP-путь
+    для модуля RimWorld сохранён, но работа идёт инструментом desktop.menu_click (белый список кнопок и правило простоя
+    живут в модуле desktop)."""
     if not _is_local_json(request):
         return web.json_response({"error": "forbidden"}, status=403)
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid json"}, status=400)
-    text = str(body.get("text") or "").strip()
-    if text.lower() not in _MENU_BUTTONS:
-        return web.json_response({"ok": False, "result": "такой кнопки в списке разрешённых нет"}, status=403)
-    import perception
-    if perception.idle_seconds() < 120:       # мышь настоящая: не перехватываем её, пока пользователь за компьютером
-        return web.json_response({"ok": False, "result": "пользователь сейчас за компьютером: жду, пока отойдёт"})
-    from environments import pc_control
-    import asyncio
-
-    def work():
-        pc_control._focus_window("RimWorld")
-        import time as _t
-        _t.sleep(0.6)
-        return pc_control._click_text(text, "left", False)
-    try:
-        return web.json_response({"ok": True, "result": await asyncio.to_thread(work)})
-    except Exception as e:
-        return web.json_response({"ok": False, "result": str(e)})
+    if _ROUTER is None:
+        return web.json_response({"ok": False, "result": "ядро ещё не готово"}, status=503)
+    ok, result, code = await _ROUTER.run_tool_ex("desktop.menu_click", {"text": str(body.get("text") or "").strip()})
+    if not ok and code == "denied":
+        return web.json_response({"ok": False, "result": result}, status=403)
+    return web.json_response({"ok": ok, "result": result})
 
 
 def _rimworld_url() -> str:
