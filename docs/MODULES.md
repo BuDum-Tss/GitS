@@ -183,7 +183,10 @@ async with FakeCore() as core:
 
 ## Модули в монорепо
 
-Модули GitS лежат в `modules/<id>/` (образец: `modules/telegram/`): `main.py`, `manifest.py`, свои файлы, `tests/`. Супервизор запускает их с `cwd` модуля и передаёт `MEMORY_DIR` (абсолютный путь папки памяти ядра); пакет `glados-module` берётся из `PYTHONPATH` (`GitS/sdk`) или из окружения, если он установлен.
+Модули GitS лежат в `modules/<id>/` (образец: `modules/telegram/`): `main.py`, `manifest.py`, свои файлы, `tests/`. Супервизор запускает их с `cwd` модуля и передаёт `MEMORY_DIR` (абсолютный путь папки памяти ядра); пакет `glados-module` берётся из `PYTHONPATH` (`GitS/sdk`) или из окружения, если он установлен. В `command` и `args` кроме `{PYTHON}` доступен `{PYTHONW}` (pythonw.exe рядом с интерпретатором ядра, для модулей с окном).
+
+- **`voice`** (ТЗ 12): capabilities `voice.output` и `voice.input`; принимает от ядра `speak` (`utterance_id`, `text`, `emotion`, `replace`) и `speak.stop` (`utterance_id` или `null`, `at: now | segment_end`), отвечает на `tts.synthesize` (`text`, `emotion`, `format: wav | ogg` → `path`, `duration_ms`; файлы в `%TEMP%\glados_voice\`), шлёт события `voice.speech` (`phase: started | segment | ended`, `utterance_id`, `seq`, `segment`, `completed`, `spoken_upto`, `reason`), `voice.utterance`, `voice.user_speaking`, `voice.heard`, `voice.named`. Настройки: `barge_in`, `echo_tail_ms`. `GITS_VOICE_FAKE=1` — без звука.
+- **`pet`** (ТЗ 13): capabilities `presence.view`, подписка на `presence`, `settings`, `module`; инструментов и событий нет. Окно в главном потоке, клиент в отдельном (`queue.Queue`); свои изменения настроек (глушилка, позиция, видимость, закрепление) отправляет через `POST /api/settings` дашборда. `GITS_PET_HEADLESS=1` — без окна.
 
 ## Модули в отдельных репозиториях
 
@@ -197,4 +200,4 @@ async with FakeCore() as core:
 
 ## Проверка
 
-Из корня репозитория `.\check.ps1` запускает ruff и тесты ядра, SDK и модулей. Только SDK: `python -m pytest -q sdk/tests`; модуль Telegram: `python -m pytest -q modules/telegram/tests`.
+Из корня репозитория `.\check.ps1` запускает ruff и тесты ядра, SDK и модулей. Только SDK: `python -m pytest -q sdk/tests`; модуль Telegram: `python -m pytest -q modules/telegram/tests`; голос: `python -m pytest -q modules/voice/tests`; питомец: `python -m pytest -q modules/pet/tests` (тесты каждого модуля идут отдельным запуском).

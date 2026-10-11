@@ -4,7 +4,7 @@
 в соответствие с нашим кодом.
 
 ## Что это за проект
-ГЛаДОС: ассистентка на компьютере (разговор, зрение, слух, голос, управление ПК, память-граф; Telegram это модуль `modules/telegram`). Игры живут в
+ГЛаДОС: ассистентка на компьютере (разговор, зрение, слух, голос, управление ПК, память-граф; Telegram, голос со слухом и питомец это модули `modules/telegram`, `modules/voice`, `modules/pet`). Игры живут в
 отдельных репозиториях и подключаются как модули по шине ядра (первый: `rimworld-module`, бывший `rimworld-agent`, см. README). Всё на Python 3.12+,
 ввод-вывод асинхронный (`asyncio`); локальная модель (LM Studio) нужна для быстрых реплик и разбора намерений, Claude Code
 SDK для тяжёлых задач.
@@ -35,18 +35,19 @@ SDK для тяжёлых задач.
 | `fast_brain.py` | локальная модель: эмоции, разбор намерений, реплики |
 | `game_launcher.py`, `gamenet.py` | запуск игры (приложения по названию) и проверка порта мода; сама игра это модуль `rimworld` (`rimworld-module`) |
 | `module_dirs.py` | где лежит репозиторий модуля RimWorld: `RIMWORLD_MODULE_DIR`, запасные `RIMWORLD_AGENT_DIR` и соседние папки `rimworld-module` / `rimworld-agent` (подставляется в `modules.yaml`) |
-| `perception.py`, `hearing.py`, `mic_listener.py`, `voice_id.py`, `stt_client.py` | зрение, слух, микрофон, узнавание голосов |
-| `tts_engine.py`, `opus_encoder.py` | озвучка (Fish Speech, запасной edge-tts), OGG/Opus для `core.tts` (копия `opus_encoder.py` лежит в `modules/telegram/`) |
+| `perception.py` | зрение (экран); станет частью модуля desktop (ТЗ 14) |
+| `modules/voice/` | модуль голоса (ТЗ 12): весь звук в одном процессе. `app.py` (склейка, `tts.synthesize`, инструменты `recent_audio` и `name_voice`, события), `speaker.py` (очередь реплик, предзагрузка, `speak.stop`), `player.py` (воспроизведение через PowerShell), `tts_engine.py` (Fish Speech, запасной edge-tts, только синтез), `segmenter.py` (разбивка на предложения), `mic_listener.py` (VAD, ворота, перебивание), `stt_client.py` (WhisperX), `voice_id.py` (узнавание голосов), `hearing.py` (слух системного звука), `window.py` (активное окно для слуха, копия из зрения до ТЗ 14), `opus_encoder.py` (ffmpeg), `fakes.py` (`GITS_VOICE_FAKE=1`: без звука), `tools/measure_latency.py` (замеры VOICE-19), тесты `modules/voice/tests/`, референс голоса `resources/tts/references/` |
+| `modules/pet/` | модуль питомца (ТЗ 13): окно tkinter в главном потоке, клиент модуля в отдельном потоке (`bridge.py`, очередь `queue.Queue`), `pet_logic.py` (стикер и облачко по `presence` и времени, без окна), `pet_window.py`, `quick_input.py` (строка быстрого ввода через HTTP-API дашборда), `static/stickers/`, `GITS_PET_HEADLESS=1`: без окна; тесты `modules/pet/tests/` |
 | `modules/telegram/` | модуль Telegram (ТЗ 10): `main.py`, `manifest.py`, `app.py` (инструменты, `deliver`, состояние), `telegram_channel.py` (канал и бот), `telegram_user.py` (её аккаунт, Telethon), `tg_draft.py`, `privacy.py` (личные слова от ядра), `tg_login.py` (вход вручную), тесты в `modules/telegram/tests/` |
 | `analysis.py`, `claude_cli.py`, `claude_quota.py`, `claude_budget.py` | глубокий анализ на Claude, путь к claude.exe, лимит и расход Claude |
 | `events_log.py` | протокол событий (SQLite `memory/events.db`) |
 | `memory_store.py`, `user_memory.py` | типизированная долговременная память (планы, напоминания) |
 | `graph_memory.py` | память-граф: факты из разговора в Graphiti (FalkorDB), очередь, поиск |
-| `dashboard.py`, `tray.py`, `desktop_pet.py`, `settings.py` | интерфейс и настройки; дашборд принимает реплики и события агентов игр, показывает модули и задачи |
+| `dashboard.py`, `tray.py`, `settings.py` | интерфейс и настройки; дашборд принимает реплики, показывает модули и задачи; трей запускает только ядро (модули, в том числе голос и питомца, запускает супервизор) |
 | `module_hub.py`, `module_registry.py`, `core_requests.py` | шина модулей (`/module/ws` на :8766): рукопожатие, соединения, темы; реестр модулей и их окружения для планировщика; запросы `core.*` от модулей (ТЗ 02) |
 | `supervisor.py`, `modules.yaml` | запуск и перезапуск процессов модулей, их журналы в `agent/logs/modules/` |
 | `profile_manager.py`, `profiles/` | профили в YAML (тон, модули фокуса, условия автовыбора), выбор активного, граф для дашборда; заменили `modes.py` и `profiles.py` |
-| `conversation_io.py`, `speech_out.py` | каналы ввода и ответа разговора (голос, дашборд, модуль); интерфейс вывода речи и присутствие (`presence`) |
+| `conversation_io.py`, `speech_out.py` | каналы ввода и ответа разговора (голос, дашборд, модуль); интерфейс вывода речи и присутствие (`presence`, включая `emotion_ts`): `VoiceModuleSpeech` (речь модулю voice, «говорит ли она» по событиям `voice.speech`), `TextOnlySpeech` (голоса нет: текст в чат и `presence`), `SpeechSelector` (выбор на каждом вызове) |
 | `tool_search.py` | отбор инструментов планировщику по смыслу (эмбеддинги описаний, кэш `memory/tool_embeddings.json`), откат на слова |
 | `attention.py`, `speech_queue.py`, `attention_rules.py` | менеджер внимания (ТЗ 03): правила R1-R4, срочность и приоритет события, решения D0-D4, стек фокуса, сводка, вопросы; очередь речи (единственное место, откуда звучит речь); временные правила и их файл `memory/attention_rules.json`; инструменты `attention.*` лежат в `environments/builtin.py` |
 | `decide.py`, `services/decider/` | классификатор для внимания: клиент и класс `Decider` (вопросы EVENT_QUESTIONS и INPUT_QUESTIONS, только категориальные), общий сервис GLiNER2.5-multi-Decide на :8768 в своём окружении Python 3.12 (`kind: service` в `modules.yaml`, описание и установка в `services/decider/README.md`) |
@@ -71,8 +72,20 @@ SDK для тяжёлых задач.
 подсказкам модулей. Решения менеджера пишутся в `events_log` (вид `attention`) через `events_log.log_nowait` (запись в фоне:
 коммит SQLite стоит ~8 мс, на цикле событий ждать его нельзя).
 
+## Звук и питомец (ТЗ 12, 13)
+Весь звук это модуль `voice` (`modules/voice/`), питомец на экране это модуль `pet` (`modules/pet/`); в процессе ядра звукового кода и
+окон нет. Ядро шлёт `speak` / `speak.stop` / `tts.synthesize` (`speech_out.VoiceModuleSpeech`, `core.tts`), модуль сообщает событиями
+`voice.utterance` (в разговор, канал `voice`), `voice.speech` и `voice.user_speaking` (в `presence`), `voice.heard` (в сводку внимания и в
+память занятий) и служебным `voice.named` (человек по имени голоса); их обрабатывают `Attention.kind_handlers` / `kind_hooks`
+(`core_service.make_voice_handlers`, `make_heard_hook`), частые виды не пишутся в журнал (`Attention.silent_kinds`). Без подключённого
+модуля голоса работает `TextOnlySpeech`: реплика в чате и в `presence`. «Замолчи» (`speak.stop at: segment_end`) договаривает
+предложение. Тема `presence` (поля `speaking`, `utterance_id`, `segment`, `emotion`, `emotion_ts`, `busy`, `focus`, `user_speaking`,
+`last_user_ts`, `last_say`, `last_say_ts`) приходит модулям толчком; питомец настройки получает темой `settings`, а меняет их через
+`POST /api/settings` дашборда. Зависимости звука ставятся из `modules/voice/requirements.txt`. Модуль питомца запускается через
+`{PYTHONW}` в `modules.yaml`.
+
 ## Модули в монорепо (`modules/<id>/`)
-Модули GitS (первый: `telegram`, ТЗ 10) лежат в `modules/<id>/`: `main.py` (точка входа, одна строка добавляет в `sys.path` свою папку, `agent/` и `sdk/`),
+Модули GitS (`telegram`, `voice`, `pet`) лежат в `modules/<id>/`: `main.py` (точка входа, одна строка добавляет в `sys.path` свою папку, `agent/` и `sdk/`),
 `manifest.py`, остальные файлы, `tests/` (идут в `check.ps1`). Из `agent/` модуль берёт только библиотеки без состояния ядра (`fast_brain`,
 `events_log`, `speech_text`, `prompts`, `claude_cli`); `companion`, `dashboard`, `router`, `core_service`, `settings`, `approvals`, `relationships`,
 `user_memory`, `graph_memory` не импортирует (настройки приходят от ядра, вопросы идут через `client.ask`, люди и память ведёт ядро по `sender` события,
@@ -97,7 +110,7 @@ SDK для тяжёлых задач.
 Ключ в `DEFAULTS` (`settings.py`), поле в схеме формы (`static/ui/index.html`), при необходимости пункт трея (`tray.py`).
 
 ## Внешние сервисы (docker-compose.yml, необязательные)
-Fish Speech (`:8080`, голос), WhisperX (`:9000`, микрофон и узнавание голосов), граф памяти FalkorDB (`:6380`). Веса моделей не в git.
+Fish Speech (`:8080`, голос; его ждёт модуль `voice`, запасной edge-tts), WhisperX (`:9000`, микрофон и узнавание голосов; ждёт модуль `voice`), граф памяти FalkorDB (`:6380`). Веса моделей не в git (Fish Speech: `agent/resources/tts/checkpoints/`, референс голоса лежит у модуля голоса).
 
 ## Коммиты
 Короткое повествовательное сообщение; в конце строка `Co-Authored-By` с моделью, которая писала код. Файлы с чужими

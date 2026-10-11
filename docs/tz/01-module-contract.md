@@ -333,7 +333,7 @@
 
 | topic | data | Когда |
 |---|---|---|
-| `presence` | `{"speaking": bool, "utterance_id": str\|null, "segment": str, "emotion": str, "busy": bool, "focus": str, "user_speaking": bool, "last_user_ts": float, "last_say": str, "last_say_ts": float}` | при каждом изменении, не чаще 10 раз в секунду |
+| `presence` | `{"speaking": bool, "utterance_id": str\|null, "segment": str, "emotion": str, "emotion_ts": float, "busy": bool, "focus": str, "user_speaking": bool, "last_user_ts": float, "last_say": str, "last_say_ts": float}` | при каждом изменении, не чаще 10 раз в секунду |
 | `settings` | `{"settings": {только shared_settings модуля}, "module_settings": {...}}` | при изменении |
 | `profile` | `{"id": str, "title": str, "focus_modules": [str]}` | при смене профиля |
 | `module` | `{"enabled": bool}` | при включении или выключении этого модуля |
