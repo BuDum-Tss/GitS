@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import secrets
@@ -16,6 +17,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------- транспорт (MOD-1…MOD-7)
 
@@ -104,7 +106,7 @@ class ToolError(Exception):
 # ---------------------------------------------------------------- типы сообщений
 
 # модуль -> ядро
-MODULE_TO_CORE_NOTES = ("hello", "event", "say", "emotion", "state", "job.update", "result")
+MODULE_TO_CORE_NOTES = ("hello", "event", "say", "emotion", "state", "job.update", "result", "panel.set")
 CORE_REQUESTS = (
     "core.ask", "core.tts", "core.tool.call", "core.lookup", "core.memory.recall", "core.memory.remember",
     "core.experience.add", "core.kb.ingest", "core.persona", "core.privacy_terms", "core.claude_usage",
@@ -114,7 +116,7 @@ MODULE_TO_CORE = frozenset(MODULE_TO_CORE_NOTES) | frozenset(CORE_REQUESTS)
 
 # ядро -> модуль
 CORE_TO_MODULE_REQUESTS = ("tool.call", "tool.check", "job.cancel", "job.list", "graph.get", "deliver",
-                           "tts.synthesize")
+                           "tts.synthesize", "panel.action")
 CORE_TO_MODULE_NOTES = ("welcome", "reject", "job.answer", "speak", "speak.stop", "topic", "shutdown", "result")
 CORE_TO_MODULE = frozenset(CORE_TO_MODULE_REQUESTS) | frozenset(CORE_TO_MODULE_NOTES)
 
@@ -154,6 +156,23 @@ STATE_SUMMARY_MAX = 300
 TIMEOUT_TOOL_MIN, TIMEOUT_TOOL_MAX, TIMEOUT_TOOL_DEFAULT = 1, 120, 30
 ASK_TIMEOUT_DEFAULT, ASK_TIMEOUT_MAX = 300, 86400
 URGENCY_MIN, URGENCY_MAX = 0, 5
+
+# пространство модуля в дашборде (TZ 15, поле panel и сообщение panel.set)
+PANEL_TITLE_MAX, PANEL_ICON_MAX = 60, 40
+PANEL_ORDER_DEFAULT = 100
+PANEL_LINKS_MAX, PANEL_ACTIONS_MAX, PANEL_HOSTS_MAX, PANEL_DIRS_MAX = 12, 40, 10, 10
+PANEL_LINK_KINDS = ("url", "tool", "reveal_path")
+PANEL_ARGS_FROM = ("job",)
+PANEL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")          # id ссылок, действий и вкладок
+PANEL_BLOCK_TYPES = ("stats", "table", "list", "text", "progress", "buttons", "link", "image", "video", "log", "tabs")
+PANEL_BUTTON_STYLES = ("default", "primary", "danger")
+PANEL_SET_MAX_BYTES = 64 * 1024              # panel.set: тело целиком (ТЗ 15, раздел 3)
+PANEL_SET_MIN_INTERVAL_S = 1.0               # не чаще раза в секунду на модуль (ядро отбрасывает лишнее)
+PANEL_BLOCKS_MAX, PANEL_ITEMS_MAX, PANEL_ROWS_MAX, PANEL_LINES_MAX = 40, 50, 200, 200
+PANEL_TABS_MAX, PANEL_DEPTH_MAX = 6, 2       # вложенность блоков «tabs»: не глубже двух уровней
+PANEL_TEXT_MAX, PANEL_CELL_MAX, PANEL_LINE_MAX = 4000, 500, 500
+PANEL_LABEL_MAX = 80
+PANEL_ACTION_RESULT_MESSAGE_MAX = 300
 
 
 def new_id() -> str:
@@ -404,8 +423,11 @@ def _check_setting(name: Any, spec: Any, problems: list[str]) -> None:
             problems.append(f"{where}.default: нет среди enum")
 
 
-def validate_manifest(manifest: Any) -> list[str]:
-    """Проверить манифест по MOD-15/MOD-16 и разделу 6.1. Возвращает список проблем (пустой = верно)."""
+def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[str]:
+    """Проверить манифест по MOD-15/MOD-16 и разделу 6.1. Возвращает список проблем (пустой = верно).
+
+    Поле `panel` (TZ 15) не отклоняет модуль: его проблемы уходят в `warnings`, если список передан (модуль работает без
+    пространства). Без `warnings` проблемы panel не возвращаются вовсе."""
     if not isinstance(manifest, dict):
         return ["манифест должен быть объектом"]
     problems: list[str] = []
@@ -505,6 +527,8 @@ def validate_manifest(manifest: Any) -> list[str]:
     for flag in ("graph", "state"):
         if flag in manifest and not isinstance(manifest[flag], bool):
             problems.append(f"{flag}: должно быть true или false")
+    if "panel" in manifest and warnings is not None:
+        warnings.extend(parse_panel(manifest)[1])
     return problems
 
 
@@ -568,6 +592,393 @@ class KnowledgeSpec:
     kind: str
 
 
+# ---------------------------------------------------------------- пространство модуля (TZ 15)
+
+HOST_RE = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+
+
+def _is_http_url(v: Any) -> bool:
+    if not isinstance(v, str) or len(v) > 2000:
+        return False
+    parts = urlsplit(v)
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
+
+
+def _is_loopback_url(v: Any) -> bool:
+    return _is_http_url(v) and urlsplit(v).hostname in ("127.0.0.1", "localhost")
+
+
+def panel_problems(panel: Any, tools: set[str]) -> list[str]:
+    """Проверка поля `panel` манифеста (TZ 15, раздел 3). Пустой список = верно. `tools` - имена инструментов манифеста."""
+    if not isinstance(panel, dict):
+        return ["panel: должен быть объектом"]
+    problems: list[str] = []
+    title = panel.get("title")
+    if title is not None and (not isinstance(title, str) or not title.strip() or len(title) > PANEL_TITLE_MAX):
+        problems.append(f"panel.title: строка 1–{PANEL_TITLE_MAX} символов")
+    icon = panel.get("icon")
+    if icon is not None and (not isinstance(icon, str) or len(icon) > PANEL_ICON_MAX):
+        problems.append(f"panel.icon: строка до {PANEL_ICON_MAX} символов")
+    if panel.get("order") is not None and not _is_int(panel["order"]):
+        problems.append("panel.order: целое число")
+    if panel.get("embed_url") is not None and not _is_loopback_url(panel["embed_url"]):
+        problems.append("panel.embed_url: http(s) адрес на 127.0.0.1 или localhost")
+    dirs = panel.get("serve_dirs")
+    if dirs is not None and (not isinstance(dirs, list) or len(dirs) > PANEL_DIRS_MAX
+                             or not all(isinstance(d, str) and os.path.isabs(d) for d in dirs)):
+        problems.append(f"panel.serve_dirs: список абсолютных путей, до {PANEL_DIRS_MAX}")
+    hosts = panel.get("allowed_hosts")
+    if hosts is not None and (not isinstance(hosts, list) or len(hosts) > PANEL_HOSTS_MAX
+                              or not all(isinstance(h, str) and HOST_RE.match(h) for h in hosts)):
+        problems.append(f"panel.allowed_hosts: список имён узлов без адреса, до {PANEL_HOSTS_MAX}")
+    actions = panel.get("actions")
+    if actions is not None:
+        if not isinstance(actions, list) or len(actions) > PANEL_ACTIONS_MAX \
+                or not all(isinstance(a, str) and PANEL_ID_RE.match(a) for a in actions):
+            problems.append(f"panel.actions: список идентификаторов «[a-z][a-z0-9_]*», до {PANEL_ACTIONS_MAX}")
+        elif len(set(actions)) != len(actions):
+            problems.append("panel.actions: идентификатор повторяется")
+    links = panel.get("links")
+    if links is not None:
+        if not isinstance(links, list) or len(links) > PANEL_LINKS_MAX:
+            problems.append(f"panel.links: список до {PANEL_LINKS_MAX} ссылок")
+        else:
+            ids: set[str] = set()
+            for i, link in enumerate(links):
+                problems.extend(_link_problems(f"panel.links[{i}]", link, tools, ids))
+    return problems
+
+
+def _link_problems(where: str, link: Any, tools: set[str], ids: set[str]) -> list[str]:
+    if not isinstance(link, dict):
+        return [f"{where}: должен быть объектом"]
+    problems: list[str] = []
+    lid = link.get("id")
+    if not isinstance(lid, str) or not PANEL_ID_RE.match(lid):
+        problems.append(f"{where}.id: идентификатор «[a-z][a-z0-9_]*»")
+    elif lid in ids:
+        problems.append(f"{where}.id: «{lid}» повторяется")
+    else:
+        ids.add(lid)
+    label = link.get("label")
+    if not isinstance(label, str) or not label.strip() or len(label) > PANEL_LABEL_MAX:
+        problems.append(f"{where}.label: строка 1–{PANEL_LABEL_MAX} символов")
+    kind = link.get("kind")
+    if kind not in PANEL_LINK_KINDS:
+        return problems + [f"{where}.kind: одно из {list(PANEL_LINK_KINDS)}"]
+    if kind == "url" and not _is_http_url(link.get("url")):
+        problems.append(f"{where}.url: http(s) адрес")
+    if kind == "tool":
+        tool = link.get("tool")
+        if not isinstance(tool, str) or tool not in tools:
+            problems.append(f"{where}.tool: имя инструмента из tools этого манифеста")
+        if link.get("args_from") is not None and link["args_from"] not in PANEL_ARGS_FROM:
+            problems.append(f"{where}.args_from: одно из {list(PANEL_ARGS_FROM)}")
+        if link.get("open_result_url") is not None and not isinstance(link["open_result_url"], bool):
+            problems.append(f"{where}.open_result_url: true или false")
+    if kind == "reveal_path":
+        path, path_from = link.get("path"), link.get("path_from")
+        if (path is None) == (path_from is None):
+            problems.append(f"{where}: нужно ровно одно из path (абсолютный путь) или path_from (имя поля state.data)")
+        elif path is not None and (not isinstance(path, str) or not os.path.isabs(path)):
+            problems.append(f"{where}.path: абсолютный путь")
+        elif path_from is not None and (not isinstance(path_from, str) or not PANEL_ID_RE.match(path_from)):
+            problems.append(f"{where}.path_from: имя поля state.data")
+    return problems
+
+
+def parse_panel(manifest: dict) -> tuple[PanelSpec | None, list[str]]:
+    """Разобрать `panel` манифеста. Неверный panel отбрасывается целиком: модуль работает без пространства (TZ 15)."""
+    raw = manifest.get("panel")
+    if raw is None:
+        return None, []
+    tools = {t["name"] for t in manifest.get("tools") or [] if isinstance(t, dict) and isinstance(t.get("name"), str)}
+    problems = panel_problems(raw, tools)
+    if problems:
+        return None, ["пространство модуля отброшено, модуль работает без него: " + "; ".join(problems)]
+    links = [PanelLink(id=l["id"], label=l["label"], kind=l["kind"], url=l.get("url") or "",
+                       tool=l.get("tool") or "", args_from=l.get("args_from") or "",
+                       open_result_url=bool(l.get("open_result_url", False)), path=l.get("path") or "",
+                       path_from=l.get("path_from") or "") for l in raw.get("links") or []]
+    order = raw.get("order")
+    spec = PanelSpec(title=raw.get("title") or "", icon=raw.get("icon") or "",
+                     order=PANEL_ORDER_DEFAULT if order is None else order, links=links,
+                     embed_url=raw.get("embed_url") or "", serve_dirs=list(raw.get("serve_dirs") or []),
+                     actions=list(raw.get("actions") or []), allowed_hosts=list(raw.get("allowed_hosts") or []))
+    return spec, []
+
+
+@dataclass
+class PanelLink:
+    """Ссылка или вызов на странице модуля (`panel.links`, раздел 3 ТЗ 15)."""
+
+    id: str
+    label: str
+    kind: str                       # url | tool | reveal_path
+    url: str = ""
+    tool: str = ""
+    args_from: str = ""             # "job": аргументы берутся из задачи, для которой нарисована ссылка
+    open_result_url: bool = False
+    path: str = ""
+    path_from: str = ""
+
+    def to_dict(self) -> dict:
+        return {k: v for k, v in self.__dict__.items() if not (v == "" or v is False)}
+
+
+@dataclass
+class PanelSpec:
+    """Поле `panel` манифеста (TZ 15, раздел 3). Пустые поля в `to_dict` не выводятся, кроме `order`."""
+
+    title: str = ""
+    icon: str = ""
+    order: int = PANEL_ORDER_DEFAULT
+    links: list[PanelLink] = field(default_factory=list)
+    embed_url: str = ""
+    serve_dirs: list[str] = field(default_factory=list)
+    actions: list[str] = field(default_factory=list)
+    allowed_hosts: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        out: dict = {"order": self.order}
+        for key, value in (("title", self.title), ("icon", self.icon), ("embed_url", self.embed_url),
+                           ("serve_dirs", self.serve_dirs), ("actions", self.actions),
+                           ("allowed_hosts", self.allowed_hosts)):
+            if value:
+                out[key] = list(value) if isinstance(value, list) else value
+        if self.links:
+            out["links"] = [link.to_dict() for link in self.links]
+        return out
+
+
+# блоки панели (panel.set, раздел 2 и 3 ТЗ 15)
+
+def _cell_ok(v: Any) -> bool:
+    if v is None or isinstance(v, bool):
+        return True
+    if isinstance(v, float):
+        return math.isfinite(v)
+    if _is_num(v):
+        return True
+    return isinstance(v, str) and len(v) <= PANEL_CELL_MAX
+
+
+def _text_problem(where: str, item: dict, key: str, limit: int, *, required: bool = True) -> str | None:
+    value = item.get(key)
+    if value is None:
+        return f"{where}.{key}: обязательная строка" if required else None
+    if not isinstance(value, str) or len(value) > limit:
+        return f"{where}.{key}: строка до {limit} символов"
+    return None
+
+
+def _artifact_problems(where: str, ref: Any) -> list[str]:
+    if not isinstance(ref, dict):
+        return [f"{where}.artifact: объект {{job, name}}"]
+    problems = []
+    job = ref.get("job")
+    if not isinstance(job, str) or not JOB_ID_RE.match(job):
+        problems.append(f"{where}.artifact.job: идентификатор задачи j-xxxxxxxx")
+    name = ref.get("name")
+    if not isinstance(name, str) or not name or len(name) > 200 or name in (".", "..") or "/" in name or "\\" in name:
+        problems.append(f"{where}.artifact.name: имя файла без путей")
+    return problems
+
+
+def _action_problems(where: str, item: Any, actions: set[str] | None) -> list[str]:
+    """Действие строки или кнопки: id (из panel.actions, если список известен), подпись, args - объект."""
+    if not isinstance(item, dict):
+        return [f"{where}: объект {{id, label}}"]
+    problems = []
+    aid = item.get("id", item.get("action"))
+    if not isinstance(aid, str) or not PANEL_ID_RE.match(aid):
+        problems.append(f"{where}.id: идентификатор действия")
+    elif actions is not None and aid not in actions:
+        problems.append(f"{where}.id: действие «{aid}» не объявлено в panel.actions")
+    problems += [p for p in [_text_problem(where, item, "label", PANEL_LABEL_MAX)] if p]
+    if item.get("args") is not None and not isinstance(item["args"], dict):
+        problems.append(f"{where}.args: объект")
+    return problems
+
+
+def _check_stats(where: str, b: dict, actions, depth: int) -> list[str]:
+    items = b.get("items")
+    if not isinstance(items, list) or not 1 <= len(items) <= PANEL_ITEMS_MAX:
+        return [f"{where}.items: список 1–{PANEL_ITEMS_MAX}"]
+    problems = []
+    for j, it in enumerate(items):
+        w = f"{where}.items[{j}]"
+        if not isinstance(it, dict):
+            problems.append(f"{w}: объект")
+            continue
+        problems += [p for p in [_text_problem(w, it, "label", PANEL_LABEL_MAX)] if p]
+        if "value" not in it or not _cell_ok(it["value"]):
+            problems.append(f"{w}.value: строка, число или логическое значение")
+    return problems
+
+
+def _check_table(where: str, b: dict, actions, depth: int) -> list[str]:
+    cols = b.get("columns")
+    if not isinstance(cols, list) or not 1 <= len(cols) <= 12 or not all(
+            isinstance(c, str) and len(c) <= PANEL_LABEL_MAX for c in cols):
+        return [f"{where}.columns: список 1–12 подписей"]
+    rows = b.get("rows", [])
+    if not isinstance(rows, list) or len(rows) > PANEL_ROWS_MAX:
+        return [f"{where}.rows: список до {PANEL_ROWS_MAX} строк"]
+    problems = []
+    for r, row in enumerate(rows):
+        w = f"{where}.rows[{r}]"
+        if not isinstance(row, dict) or not isinstance(row.get("cells"), list) or len(row["cells"]) != len(cols):
+            problems.append(f"{w}: объект с cells той же длины, что columns")
+            continue
+        problems += [f"{w}.cells[{c}]: строка, число или логическое значение"
+                     for c, cell in enumerate(row["cells"]) if not _cell_ok(cell)]
+        acts = row.get("actions")
+        if acts is not None:
+            if not isinstance(acts, list) or len(acts) > 6:
+                problems.append(f"{w}.actions: список до 6 действий")
+            else:
+                for k, act in enumerate(acts):
+                    problems += _action_problems(f"{w}.actions[{k}]", act, actions)
+    return problems
+
+
+def _check_list(where: str, b: dict, actions, depth: int) -> list[str]:
+    items = b.get("items")
+    if not isinstance(items, list) or len(items) > PANEL_ROWS_MAX:
+        return [f"{where}.items: список до {PANEL_ROWS_MAX} строк"]
+    problems = []
+    for j, it in enumerate(items):
+        w = f"{where}.items[{j}]"
+        if not isinstance(it, dict):
+            problems.append(f"{w}: объект")
+            continue
+        problems += [p for p in [_text_problem(w, it, "text", PANEL_CELL_MAX),
+                                 _text_problem(w, it, "sub", 300, required=False),
+                                 _text_problem(w, it, "badge", 40, required=False)] if p]
+    return problems
+
+
+def _check_text(where: str, b: dict, actions, depth: int) -> list[str]:
+    return [p for p in [_text_problem(where, b, "text", PANEL_TEXT_MAX)] if p]
+
+
+def _check_progress(where: str, b: dict, actions, depth: int) -> list[str]:
+    problems = [p for p in [_text_problem(where, b, "label", 120, required=False)] if p]
+    value = b.get("value")
+    if not _is_num(value) or not 0 <= value <= 1:
+        problems.append(f"{where}.value: число 0–1")
+    return problems
+
+
+def _check_buttons(where: str, b: dict, actions, depth: int) -> list[str]:
+    items = b.get("items")
+    if not isinstance(items, list) or not 1 <= len(items) <= 20:
+        return [f"{where}.items: список 1–20 кнопок"]
+    problems = []
+    for j, it in enumerate(items):
+        w = f"{where}.items[{j}]"
+        if not isinstance(it, dict):
+            problems.append(f"{w}: объект")
+            continue
+        has_action, has_url = "action" in it, "url" in it
+        if has_action == has_url:
+            problems.append(f"{w}: нужно ровно одно из action (id действия) или url (http(s))")
+        if has_action:
+            problems += _action_problems(w, {"id": it["action"], "label": it.get("label"), "args": it.get("args")},
+                                         actions)
+        if has_url:
+            if not _is_http_url(it["url"]):
+                problems.append(f"{w}.url: http(s) адрес")
+            problems += [p for p in [_text_problem(w, it, "label", PANEL_LABEL_MAX)] if p]
+        if it.get("style") is not None and it["style"] not in PANEL_BUTTON_STYLES:
+            problems.append(f"{w}.style: одно из {list(PANEL_BUTTON_STYLES)}")
+    return problems
+
+
+def _check_link(where: str, b: dict, actions, depth: int) -> list[str]:
+    problems = [p for p in [_text_problem(where, b, "label", PANEL_LABEL_MAX)] if p]
+    if not _is_http_url(b.get("url")):
+        problems.append(f"{where}.url: http(s) адрес")
+    return problems
+
+
+def _check_image(where: str, b: dict, actions, depth: int) -> list[str]:
+    problems = _artifact_problems(where, b.get("artifact"))
+    return problems + [p for p in [_text_problem(where, b, "alt", 200, required=False)] if p]
+
+
+def _check_video(where: str, b: dict, actions, depth: int) -> list[str]:
+    return _artifact_problems(where, b.get("artifact"))
+
+
+def _check_log(where: str, b: dict, actions, depth: int) -> list[str]:
+    lines = b.get("lines")
+    if not isinstance(lines, list) or len(lines) > PANEL_LINES_MAX or not all(
+            isinstance(x, str) and len(x) <= PANEL_LINE_MAX for x in lines):
+        return [f"{where}.lines: список до {PANEL_LINES_MAX} строк по {PANEL_LINE_MAX} символов"]
+    return []
+
+
+def _check_tabs(where: str, b: dict, actions, depth: int) -> list[str]:
+    if depth >= PANEL_DEPTH_MAX:
+        return [f"{where}: вкладки вложены глубже {PANEL_DEPTH_MAX} уровней"]
+    tabs = b.get("tabs")
+    if not isinstance(tabs, list) or not 1 <= len(tabs) <= PANEL_TABS_MAX:
+        return [f"{where}.tabs: список 1–{PANEL_TABS_MAX} вкладок"]
+    problems = []
+    for k, tab in enumerate(tabs):
+        w = f"{where}.tabs[{k}]"
+        if not isinstance(tab, dict):
+            problems.append(f"{w}: объект")
+            continue
+        problems += [p for p in [_text_problem(w, tab, "label", PANEL_LABEL_MAX)] if p]
+        problems += [f"{w}.{p}" for p in validate_panel_blocks(tab.get("blocks"), actions, depth=depth + 1)]
+    return problems
+
+
+_BLOCK_CHECKERS = {
+    "stats": _check_stats, "table": _check_table, "list": _check_list, "text": _check_text,
+    "progress": _check_progress, "buttons": _check_buttons, "link": _check_link, "image": _check_image,
+    "video": _check_video, "log": _check_log, "tabs": _check_tabs,
+}
+
+
+def _check_block(where: str, b: Any, actions: set[str] | None, depth: int) -> list[str]:
+    if not isinstance(b, dict):
+        return [f"{where}: блок должен быть объектом"]
+    kind = b.get("type")
+    if kind not in PANEL_BLOCK_TYPES:
+        return [f"{where}.type: одно из {list(PANEL_BLOCK_TYPES)}"]
+    problems = [p for p in [_text_problem(where, b, "title", 120, required=False)] if p]
+    return problems + _BLOCK_CHECKERS[kind](where, b, actions, depth)
+
+
+def validate_panel_blocks(blocks: Any, actions: set[str] | None = None, *, depth: int = 0) -> list[str]:
+    """Проверить список блоков панели (TZ 15, раздел 2). `actions` - допустимые id действий из panel.actions
+    (None - не проверять id). Текст только строками: модуль не присылает HTML, дашборд экранирует всё."""
+    if not isinstance(blocks, list):
+        return ["blocks: список блоков"]
+    if len(blocks) > PANEL_BLOCKS_MAX:
+        return [f"blocks: не больше {PANEL_BLOCKS_MAX} блоков"]
+    problems: list[str] = []
+    for i, block in enumerate(blocks):
+        problems += _check_block(f"blocks[{i}]", block, actions, depth)
+    return problems
+
+
+def validate_panel_set(body: Any, actions: set[str] | None = None) -> list[str]:
+    """Проверить тело `panel.set`: {"blocks": [...]}, не больше PANEL_SET_MAX_BYTES (TZ 15, раздел 3)."""
+    if not isinstance(body, dict) or not isinstance(body.get("blocks"), list):
+        return ['panel.set: тело {"blocks": [...]}']
+    try:
+        size = len(json.dumps(body, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+    except (TypeError, ValueError):
+        return ["panel.set: блоки должны быть JSON-значениями"]
+    problems = [f"panel.set: больше {PANEL_SET_MAX_BYTES} байт"] if size > PANEL_SET_MAX_BYTES else []
+    return problems + validate_panel_blocks(body["blocks"], actions)
+
+
 @dataclass
 class Manifest:
     """Проверенный манифест модуля. Собирается через `Manifest.from_dict` (бросает ManifestError)."""
@@ -585,12 +996,16 @@ class Manifest:
     knowledge: list[KnowledgeSpec] = field(default_factory=list)
     graph: bool = False
     state: bool = False
+    panel: PanelSpec | None = None                      # пространство модуля (TZ 15); None - вкладки нет
+    panel_warnings: list[str] = field(default_factory=list)   # почему panel отброшен (для журнала ядра)
 
     @classmethod
     def from_dict(cls, d: Any) -> Manifest:
-        problems = validate_manifest(d)
+        warnings: list[str] = []
+        problems = validate_manifest(d, warnings)
         if problems:
             raise ManifestError("манифест не прошёл проверку: " + "; ".join(problems), problems)
+        panel, panel_warnings = parse_panel(d)
         return cls(
             id=d["id"], title=d["title"], description=d["description"], version=d["version"],
             capabilities=list(d.get("capabilities") or []), subscribe=list(d.get("subscribe") or []),
@@ -599,18 +1014,22 @@ class Manifest:
             emits=[EmitSpec(e["kind"], e["description"], e["default_urgency"]) for e in d.get("emits") or []],
             knowledge=[KnowledgeSpec(k["collection"], k["title"], k["scope"], k["kind"])
                        for k in d.get("knowledge") or []],
-            graph=bool(d.get("graph", False)), state=bool(d.get("state", False)))
+            graph=bool(d.get("graph", False)), state=bool(d.get("state", False)),
+            panel=panel, panel_warnings=panel_warnings)
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "title": self.title, "description": self.description, "version": self.version,
-                "capabilities": self.capabilities, "subscribe": self.subscribe,
-                "shared_settings": self.shared_settings, "settings_schema": self.settings_schema,
-                "tools": [t.to_dict() for t in self.tools],
-                "emits": [{"kind": e.kind, "description": e.description, "default_urgency": e.default_urgency}
-                          for e in self.emits],
-                "knowledge": [{"collection": k.collection, "title": k.title, "scope": k.scope, "kind": k.kind}
-                              for k in self.knowledge],
-                "graph": self.graph, "state": self.state}
+        out = {"id": self.id, "title": self.title, "description": self.description, "version": self.version,
+               "capabilities": self.capabilities, "subscribe": self.subscribe,
+               "shared_settings": self.shared_settings, "settings_schema": self.settings_schema,
+               "tools": [t.to_dict() for t in self.tools],
+               "emits": [{"kind": e.kind, "description": e.description, "default_urgency": e.default_urgency}
+                         for e in self.emits],
+               "knowledge": [{"collection": k.collection, "title": k.title, "scope": k.scope, "kind": k.kind}
+                             for k in self.knowledge],
+               "graph": self.graph, "state": self.state}
+        if self.panel is not None:
+            out["panel"] = self.panel.to_dict()
+        return out
 
     def tool(self, name: str) -> ToolSpec | None:
         return next((t for t in self.tools if t.name == name), None)
