@@ -47,6 +47,8 @@ MANIFEST = {
          "default_urgency": 0},
     ],
     "state": True,
+    # пространство в дашборде (TZ 15, TAB-6/TAB-9): микрофон, слух, говорит ли она, замеры синтеза
+    "panel": {"title": "Голос", "icon": "mic", "order": 70},
 }
 
 

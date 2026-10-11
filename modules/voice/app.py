@@ -6,9 +6,12 @@
 сохранялся (начало и конец реплики не перепутаются).
 """
 import asyncio
+import json
 import logging
 import secrets
+import time
 import wave
+from collections import deque
 from pathlib import Path
 
 from fakes import FakePlayer, fake_synth_file
@@ -28,6 +31,8 @@ log = logging.getLogger("voice")
 TEXT_MAX = 5000                 # предел текста для tts.synthesize (как у прежнего core.tts)
 SWEEP_EVERY_S = 3600            # VOICE-5: чистка временной папки раз в час
 STATE_EVERY_S = 60              # как часто сверять состояние для дашборда
+PANEL_EVERY_S = 2               # пространство «Голос» в дашборде (TZ 15): проверка изменений, отправка не чаще раза в секунду
+SYNTH_SAMPLES = 5               # сколько последних замеров синтеза держим для пространства
 OUTBOX_MAX = 500
 SELF_SAMPLE_TEXT = "Проверка голоса. Меня зовут ГЛаДОС. Это тест."
 
@@ -103,6 +108,8 @@ class VoiceModule:
             barge_enabled=lambda: bool(self.client.module_settings.get("barge_in")), on_barge_in=self._on_barge_in)
         self._tasks: list[asyncio.Task] = []
         self._last_state: tuple | None = None
+        self._synth_ms: deque = deque(maxlen=SYNTH_SAMPLES)     # замеры синтеза, мс (пространство «Голос», TZ 15)
+        self._panel_key: str | None = None
         self._register()
 
     # ── настройки ────────────────────────────────────────────────────────────
@@ -122,6 +129,7 @@ class VoiceModule:
         self.speaker.start()
         self._tasks.append(loop.create_task(self._sweep_loop()))
         self._tasks.append(loop.create_task(self._state_loop()))
+        self._tasks.append(loop.create_task(self._panel_loop()))
         if not self.fake:
             self._tasks.append(loop.create_task(self.mic.run()))
             self._tasks.append(loop.create_task(self.hearing.run()))
@@ -166,7 +174,48 @@ class VoiceModule:
     # ── синтез и события ─────────────────────────────────────────────────────
 
     async def _synth(self, text: str) -> str | None:
-        return await asyncio.to_thread(self._synth_blocking, text, self.tmp)
+        t0 = time.monotonic()
+        out = await asyncio.to_thread(self._synth_blocking, text, self.tmp)
+        self._synth_ms.append(round((time.monotonic() - t0) * 1000))
+        return out
+
+    # ── пространство «Голос» в дашборде (TZ 15, TAB-9) ───────────────────────
+
+    def panel_blocks(self) -> list[dict]:
+        """Микрофон, слух, заглушка, синтез, говорит ли она сейчас, последние замеры синтеза. Без устройств: их ядро не
+        знает (настройки устройств модуль пока не ведёт)."""
+        cfg = self._effective()
+        speaking = self.speaker.is_speaking()
+        mic, hearing, muted = bool(cfg.get("mic")), bool(cfg.get("hearing")), bool(cfg.get("voice_muted"))
+        samples = list(self._synth_ms)
+        blocks: list[dict] = [
+            {"type": "stats", "title": "Сейчас", "items": [
+                {"label": "Микрофон", "value": "вкл" if mic else "выкл"},
+                {"label": "Слух", "value": "вкл" if hearing else "выкл"},
+                {"label": "Голос", "value": "заглушён" if muted else "вкл"},
+                {"label": "Синтез", "value": str(tts_engine.backend())[:40]},
+                {"label": "Говорит", "value": "да" if speaking else "нет"},
+                {"label": "Слышит", "value": "да" if mic and not speaking else "нет"},
+                {"label": "Синтез, последний замер, мс", "value": samples[-1] if samples else "нет"}]},
+            {"type": "list", "title": "Замеры синтеза, мс", "items": [{"text": f"{ms} мс"} for ms in reversed(samples)]}
+            if samples else {"type": "text", "title": "Замеры синтеза, мс", "text": "Замеров пока нет."},
+        ]
+        if self.fake:
+            blocks.append({"type": "text", "text": "Тестовый режим: звук не идёт, микрофон и слух не запущены."})
+        return blocks
+
+    async def _panel_loop(self) -> None:
+        while True:
+            try:
+                blocks = self.panel_blocks()                  # дёшево: только чтение атрибутов
+                key = json.dumps(blocks, ensure_ascii=False, sort_keys=True)
+                if key != self._panel_key and await self.client.panel.set(blocks):
+                    self._panel_key = key
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning("пространство голоса не обновлено: %s", e)
+            await asyncio.sleep(PANEL_EVERY_S)
 
     def _speech_event(self, data: dict) -> None:
         self.outbox.put("voice.speech", f"Реплика {data.get('utterance_id')}: {data.get('phase')}", data=data)

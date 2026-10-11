@@ -400,3 +400,27 @@ async def test_player_param_is_replaceable(tmp_path):
     pl = FakePlayer(seconds=0)
     async with Rig(tmp_path, player=pl) as rig:
         assert rig.mod.player is pl
+
+
+async def test_panel_shows_mic_state_speaking_and_synth_samples(tmp_path):
+    """Пространство «Голос» (TZ 15, TAB-9): микрофон, слух, говорит ли она, замеры синтеза; уходит ядру как panel.set."""
+    async with Rig(tmp_path) as rig:
+        mod = rig.mod
+        blocks = mod.panel_blocks()
+        assert [b["type"] for b in blocks][:2] == ["stats", "text"]
+        items = {i["label"]: i["value"] for i in blocks[0]["items"]}
+        assert items["Говорит"] == "нет" and items["Синтез, последний замер, мс"] == "нет"
+        assert blocks[1]["text"] == "Замеров пока нет."
+        mod._synth_blocking = lambda text, directory: None          # замер без файла: синтез «прошёл»
+        await mod._synth("раз")
+        await mod._synth("два")
+        blocks = mod.panel_blocks()
+        items = {i["label"]: i["value"] for i in blocks[0]["items"]}
+        assert isinstance(items["Синтез, последний замер, мс"], int)
+        assert [i["text"][-2:] for i in blocks[1]["items"]] == ["мс", "мс"]
+        loop_task = asyncio.create_task(mod._panel_loop())             # стенд не вызывает start(): цикл запускаем сами
+        try:
+            await until(lambda: rig.core.panels.get("voice"))
+        finally:
+            loop_task.cancel()
+        assert rig.core.violations == []
