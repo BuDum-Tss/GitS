@@ -149,6 +149,42 @@ asyncio.run(main())
   Белый список сейчас: `telegram`, `telegram_after_run`, `telegram_voice`, `telegram_confirm`, `pet_visible`. Новая настройка в
   список добавляется решением владельца и тестом в `agent/tests/test_telegram_core.py`.
 
+## Политики фокуса (ТЗ 18)
+
+Фокус агента держит один модуль в политике `active`; остальные работают в фоновых политиках. Модуль объявляет свои
+политики в манифесте, ядро переводит его между ними (подробно: `docs/FOCUS.md`).
+
+```python
+MANIFEST = {
+    # ... id, title, description, version, tools, emits, state: True ...
+    "policies": [
+        {"id": "idle", "title": "Простой", "focus": "background", "transitions": ["working"],
+         "interruptible": True, "purpose": "фон, фокус не держит"},
+        {"id": "working", "title": "Монтаж", "focus": "active", "transitions": ["idle", "waiting_for_materials"],
+         "interruptible": True, "safe_points": ["кадр записан"], "resources": {"cpu": 1}},
+        {"id": "waiting_for_materials", "title": "Нет исходников", "focus": "background", "transitions": ["working"]},
+    ],
+    "default_policy": "idle",
+}
+```
+
+- `policies` - список; у каждой политики `id` (как у модулей: `^[a-z][a-z0-9_]{1,31}$`), `title`, `focus` (`active` или
+  `background`), необязательные `transitions` (пустой - без ограничений), `interruptible` (bool), `safe_points`,
+  `resources` (`gpu`, `cpu`, `tokens`, числа от 0), `quiet` (true - обычные события не переключают фокус: режим
+  «не беспокоить»), `purpose`. Лишние поля игнорируются.
+- Обязательно: минимум одна политика с `focus: "background"`, и `default_policy` - её id (фоновая). Проверяет SDK и ядро
+  при `hello`; неверный манифест отклоняется с перечнем проблем.
+- Без `policies` модуль работает как раньше: в ядре он без фокуса, его события идут только во внимание.
+- Статус для ядра: в `state` поле `data.status` с `active_policy`, `interruptible`, при блокировке `blocked` (строка
+  с причиной). Ядро освобождает фокус, когда модуль вернулся в фоновую политику или сообщил блокировку.
+- Запросы ядра модулю, если модуль объявил активную политику: `policy.activate` (`{policy, goal, task_id, ...}`),
+  `focus.release` (модуль сохраняет checkpoint и отвечает `{ok: true, checkpoint: {...}}`), `focus.resume`
+  (`{task_id, policy, goal, checkpoint, subgoals}`). На `unknown` от `focus.resume` ядро вызовет `policy.activate` с
+  `restored: true`. SDK: `@client.on_request("policy.activate")`, `"focus.release"`, `"focus.resume"`.
+
+Текущие политики модулей этого репозитория: `telegram` (`available`, `do_not_disturb`), `voice` и `pet` (`ambient`),
+`desktop` (`idle`). Все фоновые, фокус они пока не берут.
+
 ## Правила
 
 - **Факты, а не реплики.** `text` события и `say` с `mode="fact"` это что произошло («Колонист Борис уснул на посту»),

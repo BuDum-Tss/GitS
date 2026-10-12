@@ -449,3 +449,24 @@ await client.run()     # подключение, рукопожатие, цик�
 3. Эхо-модуль, запущенный против `FakeCore`, проходит сценарий: подключение → `repeat` → `count` с вопросом → ответ →
    `done`.
 4. `docs/MODULES.md` есть.
+
+## 14. Дополнение ТЗ 18: политики фокуса (протокол и манифест)
+
+Добавлено 2026-10-13 (ТЗ 18, FOC-1…FOC-4). Старые модули продолжают работать без изменений.
+
+- **MOD-31 (ОБЯЗАТЕЛЬНО, если объявлено `policies`).** Манифест может содержать `policies` (список политик) и
+  `default_policy` (id фоновой политики). Формат и проверки: `docs/MODULES.md`, раздел «Политики фокуса»; `validate_manifest`
+  (`sdk/glados_module/protocol.py`, `_check_policies`) проверяет: минимум одна политика с `focus: background`,
+  `default_policy` - фоновая, `transitions` ссылаются на существующие политики. Без `policies` фокуса у модуля нет.
+- **MOD-32 (ОБЯЗАТЕЛЬНО).** Новые запросы ядра модулю (тип `request`, модуль отвечает `result`): `policy.activate`
+  `{policy, goal, task_id, event_id, priority, reason}` и `focus.release` `{reason, task_id, force, event_id, checkpoint}`,
+  `focus.resume` `{task_id, policy, goal, checkpoint, subgoals}`. Ответ: `result` с `value.ok`. Отказ модуля (`ok: false`
+  или `denied`) оставляет фокус у прежнего владельца; `unknown` на `focus.release` означает, что модуль не умеет освобождать
+  фокус. Протокол переключения и правила - `docs/FOCUS.md`.
+- **MOD-33 (ОБЯЗАТЕЛЬНО).** Статус модуля для ядра: тема `state`, поле `data.status` с полями `active_policy`,
+  `interruptible`, `blocked` (строка при блокировке), `active_goal`, `urgency`, `estimated_remaining_s` (для дашборда).
+  Ядро не верит статусу в первые 5 с после перехода фокуса (GRACE_S).
+- **MOD-34 (ОБЯЗАТЕЛЬНО).** Решения внимания (D2 и выше) и критические события (срочность 5) по модулям с `policies`
+  попадают в очередь фокуса (`agent/focus.py`). Событие модуля без `policies` в очередь фокуса не попадает.
+- Поле `quiet: true` в политике (расширение, в исходном ТЗ 18 его нет): в такой политике обычные события не переключают
+  фокус (режим «не беспокоить» модуля, например Telegram `do_not_disturb`).
