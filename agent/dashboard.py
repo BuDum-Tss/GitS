@@ -658,6 +658,60 @@ def set_attention(attention):
     _ATTENTION = attention
 
 
+_FOCUS = None      # менеджер фокуса (ТЗ 18), ставит ядро
+
+
+def set_focus(focus):
+    global _FOCUS
+    _FOCUS = focus
+
+
+async def handle_api_focus(request: web.Request) -> web.Response:
+    """Фокус (ТЗ 18, FOC-9): кто в фокусе, очередь, checkpoint, журнал переходов, политики модулей."""
+    if _FOCUS is None:
+        return web.json_response({"holder": None, "queue": [], "checkpoints": [], "journal": [], "policies": {}})
+    return web.json_response(_FOCUS.snapshot())
+
+
+async def handle_api_focus_pin(request: web.Request) -> web.Response:
+    """{"module": "rimworld"} закрепить фокус за модулем; {"module": null} снять закрепление."""
+    body, err = await _json_body(request)
+    if err:
+        return err
+    if _FOCUS is None:
+        return web.json_response({"error": "фокус не подключён"}, status=503)
+    module = body.get("module")
+    if module is not None and (not isinstance(module, str) or not module):
+        return web.json_response({"error": "module: строка или null"}, status=400)
+    return web.json_response(await _FOCUS.pin(module))
+
+
+async def handle_api_focus_dnd(request: web.Request) -> web.Response:
+    """{"module": "telegram" | "all", "on": true|false} - «не беспокоить» для модуля или для всего агента."""
+    body, err = await _json_body(request)
+    if err:
+        return err
+    if _FOCUS is None:
+        return web.json_response({"error": "фокус не подключён"}, status=503)
+    module, on = body.get("module", "all"), body.get("on")
+    if not isinstance(module, str) or not module or not isinstance(on, bool):
+        return web.json_response({"error": "нужны module (строка) и on (true или false)"}, status=400)
+    return web.json_response(await _FOCUS.set_dnd(module, on))
+
+
+async def handle_api_focus_once(request: web.Request) -> web.Response:
+    """{"module": "telegram"} - разовое исключение из «не беспокоить» для следующего обычного события модуля."""
+    body, err = await _json_body(request)
+    if err:
+        return err
+    if _FOCUS is None:
+        return web.json_response({"error": "фокус не подключён"}, status=503)
+    module = body.get("module")
+    if not isinstance(module, str) or not module:
+        return web.json_response({"error": "нужен module (строка)"}, status=400)
+    return web.json_response(await _FOCUS.allow_once(module))
+
+
 async def handle_api_attention(request: web.Request) -> web.Response:
     """Правила, очередь речи, стек фокуса, сводка, последние решения и настройки внимания."""
     if _ATTENTION is None:
@@ -736,6 +790,10 @@ def build_app() -> web.Application:
     app.router.add_get("/api/artifact", handle_api_artifact)
     app.router.add_get("/api/attention", handle_api_attention)
     app.router.add_post("/api/attention/rules/clear", handle_api_attention_clear)
+    app.router.add_get("/api/focus", handle_api_focus)
+    app.router.add_post("/api/focus/pin", handle_api_focus_pin)
+    app.router.add_post("/api/focus/dnd", handle_api_focus_dnd)
+    app.router.add_post("/api/focus/allow_once", handle_api_focus_once)
     app.router.add_post("/api/notify", handle_api_notify)
     app.router.add_get("/api/jobs", handle_api_jobs)
     app.router.add_post("/api/jobs/{module}/{job_id}/cancel", handle_api_job_cancel)

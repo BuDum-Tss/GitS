@@ -28,6 +28,7 @@ import speech_out
 import supervisor as supervisor_mod
 import tool_search
 from attention import Attention
+from focus import STATE_FILE, FocusManager
 from companion import Companion
 from conversation_io import ConversationIO
 import core_requests
@@ -84,6 +85,13 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                     profile_source=lambda: holder["profiles"].info())
     io.hub = hub
     attention.hub, attention.modules = hub, modules
+    # менеджер фокуса (ТЗ 18): решения внимания попадают в его очередь; модули без policies в манифесте в фокусе не участвуют
+    focus_mgr = FocusManager(
+        connection_of=hub.connection, status_of=lambda mid: _module_status(modules, mid),
+        policies_of=lambda mid: _module_policies(modules, mid),
+        busy_of=lambda: attention.top_focus().kind in ("conversation", "question"),
+        state_path=settings.memory_dir() / STATE_FILE, title_of=lambda mid: _module_title(modules, mid))
+    attention.on_decided = focus_mgr.on_decided
     presence.listener = hub.broadcast_presence
     speech = getattr(companion, "speech", None)
     if hasattr(speech, "attach"):
@@ -170,14 +178,15 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                                     send_shutdown=send_shutdown, memory_dir=settings.memory_dir(),
                                     announce=announce_launch)
     modules.supervisor = sup
-    builtin.register_core_tools(registry, modules, attention)
+    builtin.register_core_tools(registry, modules, attention, focus_mgr)
 
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, profiles=profiles,
-                            supervisor=sup, presence=presence, game_order=game_order, tasks=[])
+                            supervisor=sup, presence=presence, game_order=game_order, tasks=[], focus=focus_mgr)
 
     async def start():
         await hub.start()                                # токен в файл и фоновая сверка настроек
         await attention.start()                          # планировщик речи, сроки фокуса, чистка правил
+        await focus_mgr.start()                          # очередь и переходы фокуса (ТЗ 18), состояние с диска
         layer.tasks.append(asyncio.get_running_loop().create_task(profiles.run()))
         await sup.start()
 
@@ -185,12 +194,35 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         fast_brain.remove_listener(emotion_listener)
         for task in layer.tasks:
             task.cancel()
+        await focus_mgr.stop()
         await attention.stop()
         await sup.stop_all()                             # CORE-17: shutdown всем, через 10 с убить оставшихся
         await hub.stop()
 
     layer.start, layer.stop = start, stop
     return layer
+
+
+def _module_status(modules, module_id: str) -> dict | None:
+    """Статус модуля (ТЗ 18, FOC-1) из его последнего `state`: data.status; None, если модуль его не прислал."""
+    rec = modules.get(module_id)
+    data = (rec.state or {}).get("data") if rec is not None and rec.state else None
+    status = (data or {}).get("status") if isinstance(data, dict) else None
+    return status if isinstance(status, dict) else None
+
+
+def _module_policies(modules, module_id: str) -> dict | None:
+    """Политики модуля из манифеста; None - модуль без policies (режим совместимости: без фокуса)."""
+    rec = modules.get(module_id)
+    manifest = (rec.manifest if rec is not None else None) or {}
+    if "policies" not in manifest:
+        return None
+    return {"default_policy": manifest.get("default_policy"), "policies": manifest.get("policies") or []}
+
+
+def _module_title(modules, module_id: str) -> str:
+    rec = modules.get(module_id)
+    return rec.title if rec is not None and rec.title else module_id
 
 
 VOICE_SILENT_KINDS = {"voice.speech", "voice.user_speaking", "voice.utterance"}      # частые и служебные: в module_event не пишутся
@@ -281,6 +313,7 @@ async def _run(config: dict):
     companion.game_order = layer.game_order              # RW-11: приказ игроку-агенту (инструмент order модуля игры)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     dashboard.set_attention(layer.attention)
+    dashboard.set_focus(layer.focus)                     # ТЗ 18: вкладка «Состояние», блок «Фокус»
     dashboard.set_presence(presence)
     loop = asyncio.get_running_loop()
     await dashboard.start_dashboard(

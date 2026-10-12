@@ -112,6 +112,18 @@
             <div id="modes-canvas" style="height:50vh;min-height:320px" class="rounded-box border border-base-300 bg-base-100"></div>
             <div id="modes-detail" class="hidden rounded-box border border-base-300 p-3 mt-2 text-sm"></div>
           </div>
+          <div id="focus-box">
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="font-medium">Фокус</div>
+              <span id="focus-holder" class="badge badge-ghost badge-sm" title="Модуль, который держит фокус сейчас (слот фокуса один)"></span>
+              <button id="focus-pin-btn" class="btn btn-xs btn-outline ml-auto" title="Закрепить фокус за модулем, который его держит: другие модули его не переключат, кроме критических событий">закрепить</button>
+              <button id="focus-dnd-btn" class="btn btn-xs btn-outline" title="Не беспокоить: сообщения копятся и не переключают фокус">не беспокоить</button>
+            </div>
+            <div class="text-xs opacity-70 mt-2" id="focus-meta"></div>
+            <ul id="focus-queue" class="space-y-1 text-sm mt-1"></ul>
+            <div class="text-xs opacity-60 mt-2">Последние решения фокуса</div>
+            <ul id="focus-journal" class="space-y-1 text-xs"></ul>
+          </div>
           <div id="att-box">
             <div class="flex flex-wrap items-center gap-3">
               <div class="font-medium">Внимание</div>
@@ -968,6 +980,38 @@ $('att-rules').addEventListener('click', async e => {
 });
 setInterval(() => loadAttention().catch(() => {}), 3000);
 loadAttention().catch(() => {});
+// ТЗ 18, FOC-9: блок «Фокус» во вкладке «Состояние»
+const FOC = {sig: '', last: null};
+async function loadFocus() {
+  if ($('tab-status').classList.contains('hidden')) return;
+  const f = await fetch('/api/focus').then(r => r.json());
+  FOC.last = f;
+  $('focus-holder').textContent = f.holder ? `${f.holder.module}: ${f.holder.policy}` : 'свободен (фокус у разговора)';
+  const dndMods = (f.dnd && f.dnd.modules) || [];
+  $('focus-meta').textContent = [f.pin && `закреплён за ${f.pin}`, f.dnd && f.dnd.all && 'не беспокоить для всего агента',
+    dndMods.length && `не беспокоить: ${dndMods.join(', ')}`, (f.once || []).length && `разовое исключение: ${f.once.join(', ')}`]
+    .filter(Boolean).join('. ');
+  $('focus-pin-btn').textContent = f.pin ? 'снять закрепление' : 'закрепить';
+  $('focus-dnd-btn').textContent = f.dnd && f.dnd.all ? 'выключить «не беспокоить»' : 'не беспокоить';
+  const q = (f.queue || []).map(e => `<li class="border border-base-300 rounded px-2 py-1"><span class="badge badge-sm badge-outline">${esc(e.status)}</span> ${esc(e.module)}: <span class="text-xs">${esc(e.text)}</span> <span class="opacity-60 text-xs">· ${esc(e.reason || '')}</span></li>`).join('')
+    || '<li class="opacity-60 text-xs">Очередь событий пуста.</li>';
+  const j = (f.journal || []).slice(-8).reverse().map(r => `<li class="opacity-80">${esc(r.type)}: ${esc(r.reason || r.module || '')}</li>`).join('')
+    || '<li class="opacity-60">Решений пока нет.</li>';
+  const sig = q + j + $('focus-meta').textContent;
+  if (FOC.sig !== sig) { FOC.sig = sig; $('focus-queue').innerHTML = q; $('focus-journal').innerHTML = j; }
+}
+$('focus-pin-btn').onclick = async () => {
+  const f = FOC.last || {};
+  await post('/api/focus/pin', {module: f.pin ? null : (f.holder ? f.holder.module : null)});
+  FOC.sig = ''; loadFocus().catch(() => {});
+};
+$('focus-dnd-btn').onclick = async () => {
+  const f = FOC.last || {};
+  await post('/api/focus/dnd', {module: 'all', on: !(f.dnd && f.dnd.all)});
+  FOC.sig = ''; loadFocus().catch(() => {});
+};
+setInterval(() => loadFocus().catch(() => {}), 3000);
+loadFocus().catch(() => {});
 
 // ── модули и задачи (ТЗ 02, CORE-38) ──
 const MOD_STATUS = {connected: ['подключён', 'badge-success'], disabled: ['выключен', 'badge-ghost'],
@@ -990,6 +1034,14 @@ function modSettingControl(m, key, spec) {
   return `<div class="flex items-center justify-between gap-3"><span class="text-xs">${esc(spec.title || key)}</span>${control}</div>`;
 }
 
+// ТЗ 18, FOC-9: активная политика модуля и допустимые переходы из её описания
+function policyLine(m) {
+  const cur = m.active_policy || m.default_policy || '';
+  const pol = (m.policies || []).find(p => p.id === cur) || {};
+  const takes = (m.policies || []).some(p => p.focus === 'active');
+  const moves = (pol.transitions || []).length ? `, переходы: ${pol.transitions.map(esc).join(', ')}` : '';
+  return `<div class="text-xs mt-1">Политика: <span class="font-mono">${esc(cur || '—')}</span> ${pol.focus === 'active' ? '(держит фокус)' : '(фон)'}${moves}${takes ? '' : ', фокус не берёт'}</div>`;
+}
 function renderModule(m) {
   let [label, cls] = MOD_STATUS[m.status] || [m.status_text || m.status, 'badge-ghost'];
   const service = m.kind === 'service';
@@ -1013,6 +1065,7 @@ function renderModule(m) {
     ${m.restarts ? `<div class="text-xs opacity-60">Перезапусков: ${esc(m.restarts)}</div>` : ''}
     ${m.last_error ? `<pre class="text-xs bg-base-200 rounded p-2 mt-2 whitespace-pre-wrap" style="max-height:8rem;overflow:auto">${esc(m.last_error)}</pre>` : ''}
     ${(m.capabilities || []).length ? `<div class="flex flex-wrap gap-1 mt-2">${m.capabilities.map(c => `<span class="badge badge-outline badge-xs">${esc(c)}</span>`).join('')}</div>` : ''}
+    ${(m.policies || []).length ? policyLine(m) : ''}
     ${tools ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Инструменты (${m.tools.length})</summary><ul class="space-y-1 mt-1">${tools}</ul></details>` : ''}
     ${schema.length ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Настройки</summary><div class="space-y-2 mt-2">${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></details>` : ''}
   </div>`;

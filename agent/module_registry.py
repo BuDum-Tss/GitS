@@ -364,7 +364,14 @@ class ModuleRegistry:
         tools = [{"id": f"{rec.id}.{t['name']}", "name": t["name"], "description": t["description"], "risk": t["risk"],
                   "availability": t["availability"]} for t in m.get("tools") or []]
         service = rec.kind == "service"
+        status = ((rec.state or {}).get("data") or {}).get("status") if rec.state else None
+        policies = [{"id": p["id"], "title": p.get("title", p["id"]), "focus": p.get("focus"),
+                     "transitions": p.get("transitions") or [], "quiet": bool(p.get("quiet"))}
+                    for p in m.get("policies") or [] if isinstance(p, dict) and "id" in p]
         return {"id": rec.id, "title": rec.title_override or rec.title or rec.id,
+                # ТЗ 18, FOC-9: политики фокуса модуля и текущая (из статуса модуля или по умолчанию)
+                "policies": policies, "default_policy": m.get("default_policy"),
+                "active_policy": status.get("active_policy") if isinstance(status, dict) else None,
                 "description": rec.description_override or rec.description, "version": rec.version,
                 "kind": rec.kind, "enabled": self.is_enabled(rec.id),
                 "connected": bool(sup.get("healthy")) if service else rec.connected,
