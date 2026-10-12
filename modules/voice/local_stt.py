@@ -22,6 +22,7 @@ SR = 16000
 MODEL_NAME = os.getenv("GLADOS_STT_MODEL", "small")
 RETRY_S = 60.0                      # модель не нашлась: следующая проверка не раньше, чем через столько секунд
 MIN_LOGPROB = -1.0                  # сегменты с худшей уверенностью отбрасываем (как в прежнем слухе)
+LANGUAGE = os.getenv("GLADOS_STT_LANGUAGE", os.getenv("WHISPERX_LANGUAGE", "ru"))     # язык задан явно: автоопределение на коротких фразах выдаёт корейский и прочие выдумки
 MAX_NO_SPEECH = 0.6
 
 # Типичные «галлюцинации» Whisper на тишине и музыке (общие для микрофона и слуха)
@@ -103,7 +104,7 @@ class LocalWhisper:
         """Звук float32 на 16 кГц → текст без сомнительных сегментов и выдумок. Блокирующий."""
         with self._lock:
             model = self.ensure_model()
-            segments, _ = model.transcribe(audio, vad_filter=True, beam_size=1, condition_on_previous_text=False)
+            segments, _ = model.transcribe(audio, language=LANGUAGE or None, vad_filter=True, beam_size=1, condition_on_previous_text=False)
             out = []
             for s in segments:
                 if s.no_speech_prob > MAX_NO_SPEECH or s.avg_logprob < MIN_LOGPROB:

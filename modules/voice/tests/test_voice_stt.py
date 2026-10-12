@@ -364,3 +364,12 @@ async def test_module_shows_mode_in_panel_and_journals_each_change_once(tmp_path
         await asyncio.sleep(0.05)
         assert len(logged) == 2 and "WhisperX отвечает" in logged[1][1]
         assert rig.mod.panel_blocks()[-1]["text"] == stt.label()
+
+
+def test_local_model_gets_explicit_language():
+    """Язык задан явно (по умолчанию ru): автоопределение на коротких фразах выдаёт корейский и прочие выдумки."""
+    import numpy as np
+    model = FakeModel()
+    eng, _ = make_engine(model=model)
+    eng.transcribe_array(np.zeros(1600, dtype=np.float32))
+    assert model.calls[0][1].get("language") == "ru"
