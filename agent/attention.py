@@ -167,6 +167,9 @@ class Attention:
         # то же для событий, которым нужно ещё и побочное действие (ТЗ 12, VOICE-14: voice.heard пишется в память занятий), но
         # которые дальше идут обычным путём внимания: kind -> async (Item) -> None
         self.kind_hooks: dict[str, Callable[[Item], Awaitable[None]]] = {}
+        # менеджер фокуса (ТЗ 18): после каждого решения D0–D4 (и правил R3/R4) вызывается on_decided(item, decision,
+        # priority, rule); хук синхронный и не должен ждать модулей. None - фокуса нет (режим до ТЗ 18)
+        self.on_decided: Callable[[Item, str, float, str | None], None] | None = None
         # виды, которые не пишутся в журнал module_event: служебные и частые (voice.speech, voice.user_speaking)
         self.silent_kinds: set[str] = set()
         self._items: dict[str, Item] = {}
@@ -545,6 +548,11 @@ class Attention:
         item.decision = decision
         self._act(item, decision)
         self._log_decision(item, att, score=score, rule=rule, ms=ms, rule_id=rule_id)
+        if self.on_decided is not None:                        # ТЗ 18: менеджер фокуса получает решение (не ждёт)
+            try:
+                self.on_decided(item, decision, item.priority, rule)
+            except Exception:
+                logger.exception("Хук менеджера фокуса упал (решение внимания уже применено)")
 
     def _act(self, item: Item, decision: str) -> None:
         """Что происходит по решению (ATT-10)."""

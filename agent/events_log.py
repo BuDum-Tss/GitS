@@ -36,7 +36,7 @@ import uuid
 from pathlib import Path
 
 KINDS = ("user", "say", "proactive", "reflex", "vision", "hearing", "game", "telegram", "plan", "memory", "audit",
-         "approval", "setting", "module", "module_event", "profile", "attention", "error")
+         "approval", "setting", "module", "module_event", "profile", "attention", "focus", "error")
 KEEP_DAYS = 45
 KEEP_ROWS = 300_000
 _PRUNE_EVERY = 500            # раз в столько записей проверяем, не пора ли чистить
