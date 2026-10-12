@@ -116,7 +116,9 @@ MODULE_TO_CORE = frozenset(MODULE_TO_CORE_NOTES) | frozenset(CORE_REQUESTS)
 
 # ядро -> модуль
 CORE_TO_MODULE_REQUESTS = ("tool.call", "tool.check", "job.cancel", "job.list", "graph.get", "deliver",
-                           "tts.synthesize", "panel.action")
+                           "tts.synthesize", "panel.action",
+                           # менеджер фокуса (ТЗ 18, FOC-4): переходы между политиками модуля
+                           "policy.activate", "focus.release", "focus.resume")
 CORE_TO_MODULE_NOTES = ("welcome", "reject", "job.answer", "speak", "speak.stop", "topic", "shutdown", "result")
 CORE_TO_MODULE = frozenset(CORE_TO_MODULE_REQUESTS) | frozenset(CORE_TO_MODULE_NOTES)
 
@@ -149,6 +151,8 @@ PARAM_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 JOB_ID_RE = re.compile(r"^j-[0-9a-f]{8}$")
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 KIND_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}\.[a-z0-9_][a-z0-9_.]*$")
+POLICY_FOCUS = ("active", "background")        # ТЗ 18, FOC-1: active держит фокус, background - фон (вне фокуса)
+POLICY_RESOURCES = ("gpu", "cpu", "tokens")    # ресурсы политики (необязательные числа >= 0)
 
 DESCRIPTION_MAX = 300
 EVENT_TEXT_MAX = 1000
@@ -527,9 +531,67 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
     for flag in ("graph", "state"):
         if flag in manifest and not isinstance(manifest[flag], bool):
             problems.append(f"{flag}: должно быть true или false")
+    _check_policies(manifest, problems)
     if "panel" in manifest and warnings is not None:
         warnings.extend(parse_panel(manifest)[1])
     return problems
+
+
+def _check_policies(manifest: dict, problems: list[str]) -> None:
+    """ТЗ 18, FOC-1: политики модуля. Без `policies` модуль работает как раньше (режим совместимости, без фокуса).
+    С `policies` обязательны `default_policy` (фоновая политика) и минимум одна политика с focus background."""
+    if "policies" not in manifest:
+        if "default_policy" in manifest:
+            problems.append("default_policy: задано без policies")
+        return
+    policies = manifest["policies"]
+    if not isinstance(policies, list) or not policies:
+        problems.append("policies: непустой список политик")
+        return
+    ids: list[str] = []
+    for i, pol in enumerate(policies):
+        where = f"policies[{i}]"
+        if not isinstance(pol, dict):
+            problems.append(f"{where}: должна быть объектом")
+            continue
+        pid = pol.get("id")
+        if not isinstance(pid, str) or not MODULE_ID_RE.match(pid):
+            problems.append(f"{where}.id: строка по шаблону {MODULE_ID_RE.pattern}")
+        elif pid in ids:
+            problems.append(f"{where}.id: «{pid}» повторяется")
+        else:
+            ids.append(pid)
+        if not isinstance(pol.get("title"), str) or not pol["title"].strip():
+            problems.append(f"{where}.title: обязательная непустая строка")
+        if pol.get("focus") not in POLICY_FOCUS:
+            problems.append(f"{where}.focus: одно из {list(POLICY_FOCUS)}")
+        for key in ("transitions", "safe_points"):
+            if key in pol and not _is_str_list(pol[key]):
+                problems.append(f"{where}.{key}: список строк")
+        for key in ("interruptible", "quiet"):
+            if key in pol and not isinstance(pol[key], bool):
+                problems.append(f"{where}.{key}: true или false")
+        resources = pol.get("resources", {})
+        if not isinstance(resources, dict):
+            problems.append(f"{where}.resources: объект")
+        else:
+            for key, val in resources.items():
+                if key not in POLICY_RESOURCES or not _is_num(val) or val < 0:
+                    problems.append(f"{where}.resources.{key}: допустимы {list(POLICY_RESOURCES)} с числом от 0")
+    for i, pol in enumerate(policies):
+        if isinstance(pol, dict) and _is_str_list(pol.get("transitions", [])):
+            for target in pol.get("transitions", []):
+                if target not in ids:
+                    problems.append(f"policies[{i}].transitions: политики «{target}» нет в policies")
+    if not any(isinstance(p, dict) and p.get("focus") == "background" for p in policies):
+        problems.append("policies: нужна минимум одна политика с focus background (ТЗ 18, FOC-1)")
+    default = manifest.get("default_policy")
+    if not isinstance(default, str) or default not in ids:
+        problems.append("default_policy: id одной из политик в policies")
+    else:
+        spec = next(p for p in policies if isinstance(p, dict) and p.get("id") == default)
+        if spec.get("focus") != "background":
+            problems.append("default_policy: политика по умолчанию должна быть фоновой (focus background)")
 
 
 @dataclass
@@ -590,6 +652,38 @@ class KnowledgeSpec:
     title: str
     scope: str
     kind: str
+
+
+@dataclass
+class PolicySpec:
+    """Политика модуля (ТЗ 18, FOC-1). `quiet` - в политике обычные события не переключают фокус (режим «не беспокоить»);
+    `transitions` пустой - переходы не ограничены."""
+
+    id: str
+    title: str
+    focus: str
+    purpose: str = ""
+    transitions: list[str] = field(default_factory=list)
+    interruptible: bool = False
+    safe_points: list[str] = field(default_factory=list)
+    resources: dict = field(default_factory=dict)
+    quiet: bool = False
+
+    @classmethod
+    def from_dict(cls, d: dict) -> PolicySpec:
+        return cls(id=d["id"], title=d["title"], focus=d["focus"], purpose=str(d.get("purpose") or ""),
+                   transitions=list(d.get("transitions") or []), interruptible=bool(d.get("interruptible", False)),
+                   safe_points=list(d.get("safe_points") or []), resources=dict(d.get("resources") or {}),
+                   quiet=bool(d.get("quiet", False)))
+
+    def to_dict(self) -> dict:
+        out = {"id": self.id, "title": self.title, "focus": self.focus, "transitions": self.transitions,
+               "interruptible": self.interruptible, "safe_points": self.safe_points, "resources": self.resources}
+        if self.purpose:
+            out["purpose"] = self.purpose
+        if self.quiet:
+            out["quiet"] = True
+        return out
 
 
 # ---------------------------------------------------------------- пространство модуля (TZ 15)
@@ -998,6 +1092,8 @@ class Manifest:
     state: bool = False
     panel: PanelSpec | None = None                      # пространство модуля (TZ 15); None - вкладки нет
     panel_warnings: list[str] = field(default_factory=list)   # почему panel отброшен (для журнала ядра)
+    policies: list[PolicySpec] = field(default_factory=list)  # ТЗ 18, FOC-1; пусто - режим совместимости (без фокуса)
+    default_policy: str | None = None
 
     @classmethod
     def from_dict(cls, d: Any) -> Manifest:
@@ -1015,7 +1111,9 @@ class Manifest:
             knowledge=[KnowledgeSpec(k["collection"], k["title"], k["scope"], k["kind"])
                        for k in d.get("knowledge") or []],
             graph=bool(d.get("graph", False)), state=bool(d.get("state", False)),
-            panel=panel, panel_warnings=panel_warnings)
+            panel=panel, panel_warnings=panel_warnings,
+            policies=[PolicySpec.from_dict(p) for p in d.get("policies") or []],
+            default_policy=d.get("default_policy"))
 
     def to_dict(self) -> dict:
         out = {"id": self.id, "title": self.title, "description": self.description, "version": self.version,
@@ -1029,10 +1127,16 @@ class Manifest:
                "graph": self.graph, "state": self.state}
         if self.panel is not None:
             out["panel"] = self.panel.to_dict()
+        if self.policies:
+            out["policies"] = [p.to_dict() for p in self.policies]
+            out["default_policy"] = self.default_policy
         return out
 
     def tool(self, name: str) -> ToolSpec | None:
         return next((t for t in self.tools if t.name == name), None)
+
+    def policy(self, pid: str) -> PolicySpec | None:
+        return next((p for p in self.policies if p.id == pid), None)
 
     def setting_defaults(self) -> dict:
         """Значения собственных настроек по умолчанию (для ядра: `modules.<id>.<имя>`)."""

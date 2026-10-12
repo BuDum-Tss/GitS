@@ -138,6 +138,12 @@ MANIFEST = {
     "tools": TOOLS,
     "emits": EMITS,
     "state": True,
+    # политики фокуса (ТЗ 18, FOC-1; ТЗ 11e, POL-13): без задачи модуль простаивает в фоне
+    "policies": [
+        {"id": "idle", "title": "Простой", "focus": "background", "interruptible": True,
+         "purpose": "наблюдение за экраном в фоне, фокус не держит"},
+    ],
+    "default_policy": "idle",
     # пространство в дашборде (TZ 15, TAB-6/TAB-9): активное окно, разрешения, задачи помощника Claude и их остановка
     "panel": {"title": "Компьютер", "icon": "monitor", "order": 50, "actions": ["cancel_task", "cancel_all"]},
 }

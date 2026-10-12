@@ -111,6 +111,16 @@ MANIFEST = {
         {"kind": "telegram.posted", "description": "Опубликован пост в канале", "default_urgency": 1},
     ],
     "state": True,
+    # политики фокуса (ТЗ 18, FOC-1; ТЗ 11e, POL-13): канал не держит фокус, обычные сообщения его не переключают;
+    # «не беспокоить» - режим без переключений (сообщения копятся и оцениваются позже)
+    "policies": [
+        {"id": "available", "title": "Доступна", "focus": "background", "transitions": ["do_not_disturb"],
+         "interruptible": True, "purpose": "обычная обработка сообщений в фоне"},
+        {"id": "do_not_disturb", "title": "Не беспокоить", "focus": "background", "quiet": True,
+         "transitions": ["available"], "interruptible": True,
+         "purpose": "сообщения накапливаются и не инициируют переключение фокуса"},
+    ],
+    "default_policy": "available",
     # пространство в дашборде (TZ 15, TAB-6/TAB-9): канал, аккаунт, последние диалоги без текста сообщений
     "panel": {"title": "Telegram", "icon": "send", "order": 60},
 }

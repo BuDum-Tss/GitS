@@ -47,6 +47,12 @@ MANIFEST = {
          "default_urgency": 0},
     ],
     "state": True,
+    # политики фокуса (ТЗ 18, FOC-1; ТЗ 11e, POL-13): голос работает фоном, фокус не держит
+    "policies": [
+        {"id": "ambient", "title": "Фон", "focus": "background", "interruptible": True,
+         "purpose": "микрофон и речь в фоне, фокус не держит"},
+    ],
+    "default_policy": "ambient",
     # пространство в дашборде (TZ 15, TAB-6/TAB-9): микрофон, слух, говорит ли она, замеры синтеза
     "panel": {"title": "Голос", "icon": "mic", "order": 70},
 }
