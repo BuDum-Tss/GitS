@@ -80,9 +80,18 @@ class FakePlayer:
 class FakeSTT:
     """WhisperX в памяти: отдаёт заданный текст и эмбеддинг."""
 
+    mode = "server"
+    diarized = True
+
     def __init__(self, text="", emb=None, speaker="SPEAKER_00"):
         self.t = Transcript(text=text, speaker=speaker, speaker_embedding=emb)
         self.calls = 0
+
+    def label(self) -> str:
+        return "распознавание: WhisperX (сервер), с узнаванием голосов"
+
+    def short(self) -> str:
+        return "WhisperX"
 
     async def transcribe(self, *a, **k):
         self.calls += 1

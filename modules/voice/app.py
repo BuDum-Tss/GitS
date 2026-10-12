@@ -24,6 +24,7 @@ from stt_client import STTClient
 from voice_id import VoiceIdentity
 
 import common
+import events_log
 import tts_engine
 
 log = logging.getLogger("voice")
@@ -93,7 +94,7 @@ class VoiceModule:
         self.tmp = Path(tmp_dir) if tmp_dir is not None else common.temp_dir()
         self._synth_blocking = synth or (fake_synth_file if self.fake else tts_engine.synth_file)
         self.voices = VoiceIdentity(memory_dir)
-        self.stt = stt or STTClient()
+        self.stt = stt or STTClient(on_change=self._stt_changed)
         self.outbox = Outbox(client)
         self.player = player or (FakePlayer() if self.fake else PowerShellPlayer())
         self.hearing = Hearing(self._effective, on_gist=self._on_gist)
@@ -105,8 +106,11 @@ class VoiceModule:
             self.stt, self.voices, self._on_voice, lambda: self.speaker.audible, self._own_voice_sample,
             on_speaking=self._on_user_speaking, settings_get=self._effective,
             echo_tail=lambda: max(0, int(self.client.module_settings.get("echo_tail_ms", common.ECHO_TAIL_DEFAULT_MS))) / 1000.0,
-            barge_enabled=lambda: bool(self.client.module_settings.get("barge_in")), on_barge_in=self._on_barge_in)
+            # перебивание и узнавание голосов нужны отпечатки голоса: только с сервером WhisperX (VOICE-10)
+            barge_enabled=lambda: bool(self.client.module_settings.get("barge_in")) and self.stt.diarized,
+            on_barge_in=self._on_barge_in, diarized=lambda: self.stt.diarized)
         self._tasks: list[asyncio.Task] = []
+        self._state_tasks: set[asyncio.Task] = set()
         self._last_state: tuple | None = None
         self._synth_ms: deque = deque(maxlen=SYNTH_SAMPLES)     # замеры синтеза, мс (пространство «Голос», TZ 15)
         self._panel_key: str | None = None
@@ -131,6 +135,7 @@ class VoiceModule:
         self._tasks.append(loop.create_task(self._state_loop()))
         self._tasks.append(loop.create_task(self._panel_loop()))
         if not self.fake:
+            self._tasks.append(loop.create_task(self.stt.watch()))     # STT: проверка WhisperX при старте и раз в минуту
             self._tasks.append(loop.create_task(self.mic.run()))
             self._tasks.append(loop.create_task(self.hearing.run()))
 
@@ -162,14 +167,35 @@ class VoiceModule:
     async def report_state(self, force: bool = False) -> None:
         cfg = self._effective()
         data = {"mic": bool(cfg.get("mic")), "hearing": bool(cfg.get("hearing")), "muted": bool(cfg.get("voice_muted")),
-                "tts": tts_engine.backend(), "fake": self.fake}
+                "tts": tts_engine.backend(), "fake": self.fake, "stt": self.stt.label(), "stt_mode": self.stt.mode}
         key = tuple(sorted(data.items()))
         if not force and key == self._last_state:
             return
         self._last_state = key
         summary = (f"микрофон: {'вкл' if data['mic'] else 'выкл'}, слух: {'вкл' if data['hearing'] else 'выкл'}, "
-                   f"голос: {'заглушён' if data['muted'] else 'вкл'}, синтез: {data['tts']}")
+                   f"голос: {'заглушён' if data['muted'] else 'вкл'}, синтез: {data['tts']}, {data['stt']}")
         await self.client.state(summary, data)
+
+    def _stt_changed(self, status: dict) -> None:
+        """Режим распознавания сменился (WhisperX ↔ локальный CPU, или модель открылась / не открылась): одна строка в журнал
+        и новое состояние модуля. Вызывается из STTClient внутри асинхронного кода."""
+        if status.get("mode") == "local":
+            if status.get("model_state") == "загружена":
+                line = "распознавание: WhisperX не отвечает, работаю локально (CPU), без узнавания голосов"
+            else:
+                line = (f"распознавание: WhisperX не отвечает, локальная модель {status.get('model')} не загружена "
+                        "(скачивание только с разрешения владельца): речь пока не распознаётся")
+        elif status.get("mode") == "server":
+            line = "распознавание: WhisperX отвечает, работаю через него (с узнаванием голосов)"
+        else:
+            line = f"распознавание: {status.get('label')}"
+        events_log.log_nowait("hearing", line)
+        try:
+            task = asyncio.get_running_loop().create_task(self.report_state())
+        except RuntimeError:
+            return
+        self._state_tasks.add(task)                    # ссылка до конца работы: задача не уйдёт сборщику раньше времени
+        task.add_done_callback(self._state_tasks.discard)
 
     # ── синтез и события ─────────────────────────────────────────────────────
 
@@ -196,9 +222,11 @@ class VoiceModule:
                 {"label": "Синтез", "value": str(tts_engine.backend())[:40]},
                 {"label": "Говорит", "value": "да" if speaking else "нет"},
                 {"label": "Слышит", "value": "да" if mic and not speaking else "нет"},
+                {"label": "Распознавание", "value": self.stt.short()},
                 {"label": "Синтез, последний замер, мс", "value": samples[-1] if samples else "нет"}]},
             {"type": "list", "title": "Замеры синтеза, мс", "items": [{"text": f"{ms} мс"} for ms in reversed(samples)]}
             if samples else {"type": "text", "title": "Замеры синтеза, мс", "text": "Замеров пока нет."},
+            {"type": "text", "title": "Распознавание речи", "text": self.stt.label()},
         ]
         if self.fake:
             blocks.append({"type": "text", "text": "Тестовый режим: звук не идёт, микрофон и слух не запущены."})

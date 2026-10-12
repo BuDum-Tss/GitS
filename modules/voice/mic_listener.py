@@ -1,7 +1,8 @@
 """Слушатель микрофона: речь пользователя → VAD → WhisperX → узнавание голоса → событие `voice.utterance` (ТЗ 12).
 
-По умолчанию выключен (общая настройка «mic»). Звук идёт только на ЛОКАЛЬНЫЙ сервер WhisperX (docker compose up whisperx),
-в облако не уходит; ничего не пишется на диск. Пока ГЛаДОС говорит сама, звук с микрофона отбрасывается (не слушаем
+По умолчанию выключен (общая настройка «mic»). Звук идёт только на ЛОКАЛЬНОЕ распознавание: сервер WhisperX (docker compose
+up whisperx) или, пока его нет, локальная модель на процессоре (stt_client, local_stt); в облако не уходит; ничего не пишется
+на диск. Узнавание голосов и перебивание работают только с сервером WhisperX. Пока ГЛаДОС говорит сама, звук с микрофона отбрасывается (не слушаем
 собственное эхо из колонок): «ворота» берут состояние «говорит ли она» из воспроизведения самого модуля (VOICE-7), после
 речи микрофон закрыт ещё `echo_tail_ms`. Голос «self» из voice_id служит вторым рубежом.
 
@@ -20,7 +21,7 @@ import time
 import numpy as np
 
 import events_log
-from hearing import _JUNK
+from local_stt import _JUNK
 from voice_id import SELF_PERSON_ID
 
 logger = logging.getLogger("mic")
@@ -158,13 +159,15 @@ def _record_thread(stop: threading.Event, push, loop):
 class MicListener:
     def __init__(self, stt, voice_id, on_voice, is_speaking, make_self_sample=None, on_speaking=None, *,
                  settings_get=lambda: {}, echo_tail=lambda: ECHO_TAIL, barge_enabled=lambda: False, on_barge_in=None,
-                 vad=None, clock=time.time):
+                 vad=None, clock=time.time, diarized=lambda: True):
         """stt - STTClient; voice_id - VoiceIdentity; on_voice(text, info) - реплика узнана; is_speaking() - звучит ли она
         (воспроизведение модуля); on_speaking(bool) - человек начал или закончил говорить (VOICE-8, не чаще 5 раз в
         секунду); settings_get() - общие настройки ядра (`mic`); echo_tail() - секунд закрытого микрофона после её речи;
-        barge_enabled() - включено ли перебивание; on_barge_in() - обрыв её речи (async); vad(frame) - речь ли кадр."""
+        barge_enabled() - включено ли перебивание; on_barge_in() - обрыв её речи (async); vad(frame) - речь ли кадр;
+        diarized() - есть ли голосовые отпечатки (сервер WhisperX); без них свой голос и запись образца не распознать."""
         self._stt, self._voices, self._on_voice, self._is_speaking = stt, voice_id, on_voice, is_speaking
         self._on_speaking = on_speaking
+        self._diarized = diarized
         self._settings_get = settings_get
         self._echo_tail, self._barge_enabled, self._on_barge_in = echo_tail, barge_enabled, on_barge_in
         self._vad = vad
@@ -336,8 +339,8 @@ class MicListener:
 
     async def _ensure_self_voice(self):
         """Зарегистрировать голос самой ГЛаДОС по образцу синтеза (если WhisperX уже умеет эмбеддинги)."""
-        if self._voices.has_self() or self._make_self_sample is None:
-            return
+        if self._voices.has_self() or self._make_self_sample is None or not self._diarized():
+            return                                   # без сервера WhisperX отпечатка голоса не получить: образец не нужен
         try:
             pcm = await self._make_self_sample()
             t = await self._stt.transcribe(pcm, diarize=True) if pcm else None
@@ -352,9 +355,10 @@ class MicListener:
         try:
             t = await self._stt.transcribe(audio)
         except Exception as e:
+            # режим и состояние модели (WhisperX или локальный CPU) уходят в состояние модуля и журнал отдельно (VOICE, STT)
             if time.time() - self._warned > 120:
                 self._warned = time.time()
-                events_log.log_nowait("error", f"микрофон: сервер WhisperX не отвечает ({str(e)[:80]}): docker compose up whisperx")
+                events_log.log_nowait("error", f"микрофон: распознавание не удалось ({type(e).__name__}: {str(e)[:80]})")
             return
         text = t.text.strip()
         if not text or is_hallucination(text):

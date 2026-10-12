@@ -18,14 +18,15 @@ import asyncio
 import collections
 import logging
 import os
-import re
 import time
 
 import numpy as np
 
 import events_log
 import fast_brain
+import local_stt
 import window
+from local_stt import _JUNK  # noqa: F401  (прежнее место: mic_listener берёт фильтр отсюда)
 
 logger = logging.getLogger("hearing")
 
@@ -34,26 +35,23 @@ CHUNK_SECS = 20
 MIN_RMS = 0.004                       # тише — считаем тишиной, не гоняем распознавание
 KEEP_SECS = 10 * 60                   # сколько минут текста держим в памяти
 GIST_EVERY_SECS = 180
-MODEL_NAME = os.getenv("GLADOS_STT_MODEL", "small")
 
 _BLOCK_APPS = ("zoom", "teams", "discord", "skype", "telegram", "slack", "webex", "whatsapp",
                "viber", "meet")
 _extra = os.getenv("GLADOS_HEARING_BLOCK_APPS", "")
 BLOCK_APPS = _BLOCK_APPS + tuple(a.strip().lower() for a in _extra.split(",") if a.strip())
 
-# Типичные «галлюцинации» Whisper на тишине и музыке
-_JUNK = re.compile(r"субтитры|субтитрами|dimatorzok|продолжение следует|спасибо за просмотр|"
-                   r"подписывайтесь|редактор субтитров", re.I)
-
 
 class Hearing:
-    def __init__(self, settings_get, on_gist=None, foreground=window.foreground, is_sensitive=window.is_sensitive):
+    def __init__(self, settings_get, on_gist=None, foreground=window.foreground, is_sensitive=window.is_sensitive,
+                 engine=None):
         """settings_get() - общие настройки ядра (`hearing`, `voice_muted`); on_gist(summary) - async, сводка готова
-        (событие `voice.heard`); foreground() - активное окно {title, app}; is_sensitive(окно) - личное ли оно."""
+        (событие `voice.heard`); foreground() - активное окно {title, app}; is_sensitive(окно) - личное ли оно;
+        engine - распознаватель (по умолчанию общий с микрофоном: модель грузится один раз)."""
         self._settings_get = settings_get
         self._on_gist = on_gist
         self._foreground, self._is_sensitive = foreground, is_sensitive
-        self._model = None
+        self._engine = engine if engine is not None else local_stt.shared()
         self._buf: collections.deque = collections.deque()   # (ts, text)
         self._windows: list[tuple[float, float]] = []        # когда звучала она сама
         self._last_gist = 0.0
@@ -89,24 +87,9 @@ class Hearing:
             data = rec.record(numframes=SR * CHUNK_SECS)
         return data[:, 0].astype(np.float32)
 
-    def _load_model(self):
-        if self._model is None:
-            from faster_whisper import WhisperModel
-            logger.info(f"Загружаю модель распознавания речи: {MODEL_NAME}")
-            self._model = WhisperModel(MODEL_NAME, device="cpu", compute_type="int8")
-        return self._model
-
     def _transcribe(self, audio: np.ndarray) -> str:
-        segments, _ = self._load_model().transcribe(
-            audio, vad_filter=True, beam_size=1, condition_on_previous_text=False)
-        out = []
-        for s in segments:
-            if s.no_speech_prob > 0.6 or s.avg_logprob < -1.0:
-                continue
-            t = s.text.strip()
-            if t and not _JUNK.search(t):
-                out.append(t)
-        return " ".join(out)
+        """Распознавание общей локальной моделью (local_stt): та же модель, что у запасного пути микрофона."""
+        return self._engine.transcribe_array(audio)
 
     # ── главный цикл ───────────────────────────────────────────────────────────
 
