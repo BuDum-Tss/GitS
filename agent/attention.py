@@ -170,6 +170,9 @@ class Attention:
         # менеджер фокуса (ТЗ 18): после каждого решения D0–D4 (и правил R3/R4) вызывается on_decided(item, decision,
         # priority, rule); хук синхронный и не должен ждать модулей. None - фокуса нет (режим до ТЗ 18)
         self.on_decided: Callable[[Item, str, float, str | None], None] | None = None
+        # ТЗ 18, первый эшелон фокуса: варианты подсказки политики {"модуль/политика": назначение} для классификатора
+        # (ставит ядро из менеджера фокуса); None - подсказки политики не спрашиваем
+        self.policy_options: Callable[[], dict] | None = None
         # виды, которые не пишутся в журнал module_event: служебные и частые (voice.speech, voice.user_speaking)
         self.silent_kinds: set[str] = set()
         self._items: dict[str, Item] = {}
@@ -413,7 +416,8 @@ class Attention:
 
     async def _classify_and_finish(self, item: Item, cfg: dict, att: dict, declared: int | None) -> None:
         try:
-            answers = await self.decider.classify(item.text, decide.EVENT_QUESTIONS, timeout=decide.EVENT_TIMEOUT_S)
+            questions = decide.event_questions(self.policy_options() if self.policy_options else None)
+            answers = await self.decider.classify(item.text, questions, timeout=decide.EVENT_TIMEOUT_S)
         finally:
             self._cls_pending -= 1
         ms = self.decider.last_ms
@@ -436,6 +440,14 @@ class Attention:
             item.data = {**item.data, "category": cls.category, "category_conf": round(cls.category_conf, 3)}
         else:
             item.urgency = hint if hint is not None else 1
+        if cls is not None:                               # ТЗ 18: подсказки для менеджера фокуса (первый эшелон)
+            extra = {}
+            if cls.focus_needed is not None:
+                extra.update(focus_needed=cls.focus_needed, focus_conf=round(cls.focus_conf, 3))
+            if cls.policy is not None:
+                extra.update(policy_hint=cls.policy, policy_conf=round(cls.policy_conf, 3))
+            if extra:
+                item.data = {**item.data, **extra}
         if item.addressed_to_me is None and cls is not None:
             item.addressed_to_me = cls.addressed
         # «ждёт ответа»: да/нет-вопрос модели на живой проверке сильно смещён в «нет» (10 из 20 ответов нужных не нашла), поэтому

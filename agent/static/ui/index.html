@@ -982,20 +982,25 @@ setInterval(() => loadAttention().catch(() => {}), 3000);
 loadAttention().catch(() => {});
 // ТЗ 18, FOC-9: блок «Фокус» во вкладке «Состояние»
 const FOC = {sig: '', last: null};
+// ТЗ 18: какой эшелон решил (правила, GLiNER или Gemma) и уверенность классификатора
+const ECHELON_NAME = {rules: 'правила', gliner: 'GLiNER', gemma: 'Gemma'};
+const echelonBadge = (e, conf) => e ? `<span class="badge badge-sm badge-ghost" title="Эшелон решения">${esc(ECHELON_NAME[e] || e)}${conf != null ? ' ' + Number(conf).toFixed(2) : ''}</span>` : '';
 async function loadFocus() {
   if ($('tab-status').classList.contains('hidden')) return;
   const f = await fetch('/api/focus').then(r => r.json());
   FOC.last = f;
-  $('focus-holder').textContent = f.holder ? `${f.holder.module}: ${f.holder.policy}` : 'свободен (фокус у разговора)';
+  $('focus-holder').textContent = f.holder ? `${f.holder.module}: ${f.holder.policy}${f.holder.echelon ? ' · решил ' + (ECHELON_NAME[f.holder.echelon] || f.holder.echelon) : ''}` : 'свободен (фокус у разговора)';
   const dndMods = (f.dnd && f.dnd.modules) || [];
+  const profMods = (f.dnd && f.dnd.profile) || [];
   $('focus-meta').textContent = [f.pin && `закреплён за ${f.pin}`, f.dnd && f.dnd.all && 'не беспокоить для всего агента',
-    dndMods.length && `не беспокоить: ${dndMods.join(', ')}`, (f.once || []).length && `разовое исключение: ${f.once.join(', ')}`]
+    dndMods.length && `не беспокоить: ${dndMods.join(', ')}`, profMods.length && `профиль не переключает фокус: ${profMods.join(', ')}`,
+    (f.once || []).length && `разовое исключение: ${f.once.join(', ')}`]
     .filter(Boolean).join('. ');
   $('focus-pin-btn').textContent = f.pin ? 'снять закрепление' : 'закрепить';
   $('focus-dnd-btn').textContent = f.dnd && f.dnd.all ? 'выключить «не беспокоить»' : 'не беспокоить';
-  const q = (f.queue || []).map(e => `<li class="border border-base-300 rounded px-2 py-1"><span class="badge badge-sm badge-outline">${esc(e.status)}</span> ${esc(e.module)}: <span class="text-xs">${esc(e.text)}</span> <span class="opacity-60 text-xs">· ${esc(e.reason || '')}</span></li>`).join('')
+  const q = (f.queue || []).map(e => `<li class="border border-base-300 rounded px-2 py-1"><span class="badge badge-sm badge-outline">${esc(e.status)}</span> ${echelonBadge(e.echelon, e.confidence)} ${esc(e.module)}: <span class="text-xs">${esc(e.text)}</span> <span class="opacity-60 text-xs">· ${esc(e.reason || '')}</span></li>`).join('')
     || '<li class="opacity-60 text-xs">Очередь событий пуста.</li>';
-  const j = (f.journal || []).slice(-8).reverse().map(r => `<li class="opacity-80">${esc(r.type)}: ${esc(r.reason || r.module || '')}</li>`).join('')
+  const j = (f.journal || []).slice(-8).reverse().map(r => `<li class="opacity-80">${esc(r.type)}${r.echelon ? ' [' + esc(ECHELON_NAME[r.echelon] || r.echelon) + ']' : ''}: ${esc(r.reason || r.module || '')}</li>`).join('')
     || '<li class="opacity-60">Решений пока нет.</li>';
   const sig = q + j + $('focus-meta').textContent;
   if (FOC.sig !== sig) { FOC.sig = sig; $('focus-queue').innerHTML = q; $('focus-journal').innerHTML = j; }

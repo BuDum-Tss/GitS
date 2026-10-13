@@ -51,8 +51,8 @@ SDK для тяжёлых задач.
 | `conversation_io.py`, `speech_out.py` | каналы ввода и ответа разговора (голос, дашборд, модуль); интерфейс вывода речи и присутствие (`presence`, включая `emotion_ts`): `VoiceModuleSpeech` (речь модулю voice, «говорит ли она» по событиям `voice.speech`), `TextOnlySpeech` (голоса нет: текст в чат и `presence`), `SpeechSelector` (выбор на каждом вызове) |
 | `tool_search.py` | отбор инструментов планировщику по смыслу (эмбеддинги описаний, кэш `memory/tool_embeddings.json`), откат на слова |
 | `attention.py`, `speech_queue.py`, `attention_rules.py` | менеджер внимания (ТЗ 03): правила R1-R4, срочность и приоритет события, решения D0-D4, стек фокуса, сводка, вопросы; очередь речи (единственное место, откуда звучит речь); временные правила и их файл `memory/attention_rules.json`; инструменты `attention.*` лежат в `environments/builtin.py` |
-| `focus.py`, `focus_dispatch.py` | менеджер фокуса (ТЗ 18, `docs/FOCUS.md`): один слот фокуса над модулями, очередь событий (состояния, склейка, старение, сроки), протокол переключения (release → activate → validate → resume) с checkpoint в памяти и в `memory/focus.json`, дребезг, «закрепить», «не беспокоить», разовое исключение, аудит (`focus` в журнале событий); LLM-диспетчер только для неоднозначных случаев, ответ проверяет `focus_dispatch.py`; решения внимания приходят через хук `Attention.on_decided`; команды `focus.control` в `environments/builtin.py`; `GET /api/focus` и блок «Фокус» во вкладке «Состояние» |
-| `decide.py`, `services/decider/` | классификатор для внимания: клиент и класс `Decider` (вопросы EVENT_QUESTIONS и INPUT_QUESTIONS, только категориальные), общий сервис GLiNER2.5-multi-Decide на :8768 в своём окружении Python 3.12 (`kind: service` в `modules.yaml`, описание и установка в `services/decider/README.md`) |
+| `focus.py`, `focus_dispatch.py` | менеджер фокуса (ТЗ 18, `docs/FOCUS.md`): один слот фокуса над модулями, очередь событий (состояния, склейка, старение, сроки), протокол переключения (release → activate → validate → resume) с checkpoint в памяти и в `memory/focus.json`, дребезг, «закрепить», «не беспокоить», разовое исключение, аудит (`focus` в журнале событий); LLM-диспетчер только для неоднозначных случаев, ответ проверяет `focus_dispatch.py`; решения внимания приходят через хук `Attention.on_decided`; команды `focus.control` в `environments/builtin.py`; `GET /api/focus` и блок «Фокус» во вкладке «Состояние» Два эшелона решения (`docs/FOCUS.md` раздел 9): GLiNER даёт подсказку, Gemma только для неоднозначного; `focus_dispatch.py` - вызов модели (LM Studio, тайм-аут 5 с, строгий JSON), перепроверка срочности и проверка операций. |
+| `decide.py`, `services/decider/` | классификатор для внимания: клиент и класс `Decider` (вопросы EVENT_QUESTIONS и INPUT_QUESTIONS, только категориальные), общий сервис GLiNER2.5-multi-Decide на :8768 в своём окружении Python 3.12 (`kind: service` в `modules.yaml`, описание и установка в `services/decider/README.md`) Для фокуса: вопросы `focus_needed` и `policy` (варианты из активных политик, `event_questions`). |
 | `tools/export_decide_eval.py` | выгрузка реплик и итогов маршрутизатора из `events.db` и точность `intent` |
 
 ## Ядро и модули (ТЗ 02)
@@ -73,6 +73,17 @@ SDK для тяжёлых задач.
 `submit_speech`, а не `companion.say` напрямую. Классификатор только подсказывает: без сервиса `decider` всё работает по
 подсказкам модулей. Решения менеджера пишутся в `events_log` (вид `attention`) через `events_log.log_nowait` (запись в фоне:
 коммит SQLite стоит ~8 мс, на цикле событий ждать его нельзя).
+
+## Менеджер фокуса (ТЗ 18)
+Фокус (один слот) держит модуль в активной политике; решение о событии идёт в два эшелона (`docs/FOCUS.md`, раздел 9). Первый
+эшелон: GLiNER (`decide.py`) отдаёт `focus_needed`, подсказку политики (`policy`, варианты из активных политик манифестов) и
+уверенность; `attention._apply_classification` кладёт их в `item.data`, менеджер читает их через `on_decided`. Если уверенность
+высокая и правила однозначны, решают правила без LLM. Второй эшелон: Gemma (`focus_dispatch.make_llm`, тот же клиент, что у
+`fast_brain`) только для неоднозначного случая; ответ строгий JSON, операции из конечного списка проверяются, сбой - правила.
+Эшелон и уверенность пишутся в журнал решений и видны в блоке «Фокус» дашборда. «Не беспокоить» для всего агента - это
+настройка ядра `dnd` / `quiet_until` (одно состояние, `settings.quiet_active`); разовое исключение живёт в менеджере. Профиль
+может объявить `focus.quiet_modules` (вычисляемо, в настройки не пишется). Выключатель второго эшелона: `GLADOS_FOCUS_LLM=0`.
+Тесты моделей не вызывают: заглушки `ask` (`agent/tests/test_focus_tiers.py`, `focus_rigs.py`).
 
 ## Звук и питомец (ТЗ 12, 13)
 Весь звук это модуль `voice` (`modules/voice/`), питомец на экране это модуль `pet` (`modules/pet/`); в процессе ядра звукового кода и

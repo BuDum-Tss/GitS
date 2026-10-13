@@ -30,6 +30,7 @@ TIMEOUT = float(os.getenv("GLADOS_DECIDER_TIMEOUT", "2.5"))
 EVENT_TIMEOUT_S = 1.0         # ATT-3: событие модуля
 INPUT_TIMEOUT_S = 1.5         # ATT-3: обращение пользователя (пользователь ждёт ответа)
 MAX_CHARS = 600               # ATT-3: длиннее текст обрезается
+MAX_POLICY_OPTIONS = 12      # вариантов в вопросе policy не больше (ТЗ 18)
 _DOWN_FOR = 30.0
 _down_until = [0.0]
 _client: httpx.AsyncClient | None = None
@@ -55,7 +56,23 @@ EVENT_QUESTIONS = {
         "group": "the text is addressed to many people",
         "nobody": "a notification or status, not addressed to anyone"}},
     "needs_reply": {"type": "noul", "instructions": "Does the message expect an answer or an action from its recipient?"},
+    # ТЗ 18, первый эшелон фокуса: нужно ли событие вниманию агента прямо сейчас (мимо текущей работы)
+    "focus_needed": {"type": "noul", "instructions": "Does this event need the agent's full attention right now, more than its current work?"},
 }
+
+NONE_POLICY = "none"          # метка варианта «фокус никому не нужен» в вопросе policy
+
+
+def event_questions(policy_options: dict | None = None) -> dict:
+    """Вопросы о событии. policy_options {"модуль/политика": назначение} - варианты из активных политик модулей (манифесты):
+    вопрос «какой модуль и политика подходят событию» (подсказка политики для менеджера фокуса, ТЗ 18). Без вариантов -
+    базовые EVENT_QUESTIONS (тот же объект)."""
+    if not policy_options:
+        return EVENT_QUESTIONS
+    options = dict(list(policy_options.items())[:MAX_POLICY_OPTIONS])
+    options[NONE_POLICY] = "no module needs the agent's focus for this event"
+    return {**EVENT_QUESTIONS, "policy": {"type": "choice", "options": options,
+                                          "instructions": "Which module and policy should take the agent's focus for this event?"}}
 
 INPUT_QUESTIONS = {
     "intent": {"type": "choice", "options": {
@@ -163,6 +180,10 @@ class EventClass:
     category_conf: float = 0.0
     addressed: bool | None = None          # к ней ли обращаются (assistant) или нет; None - не уверен
     needs_reply: bool | None = None
+    focus_needed: bool | None = None       # нужен ли фокус (ТЗ 18, 1 эшелон); None - не уверен
+    focus_conf: float = 0.0
+    policy: str | None = None              # подсказка: «модуль/политика» или NONE_POLICY; None - не уверен
+    policy_conf: float = 0.0
 
     @property
     def urgency(self) -> int | None:
@@ -183,6 +204,12 @@ def parse_event(answers: dict | None, min_conf: float) -> EventClass | None:
     reply, conf = _answer(answers, "needs_reply")
     if reply in ("yes", "no") and conf >= min_conf:
         out.needs_reply = reply == "yes"
+    need, conf = _answer(answers, "focus_needed")
+    if need in ("yes", "no") and conf >= min_conf:
+        out.focus_needed, out.focus_conf = need == "yes", conf
+    pol, conf = _answer(answers, "policy")
+    if pol and conf >= min_conf:
+        out.policy, out.policy_conf = pol, conf
     return out
 
 

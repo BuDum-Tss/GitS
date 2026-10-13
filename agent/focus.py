@@ -11,9 +11,15 @@ validate → resume/schedule. Запросы к модулю: `focus.release` (�
 он не ответил, фокус не передан), `policy.activate`, `focus.resume` (для модулей без него - `policy.activate` с
 checkpoint, см. docs/FOCUS.md).
 
+Два эшелона решения (ТЗ 18, docs/FOCUS.md раздел 9): первый - GLiNER (decide.py) даёт подсказку политики, уверенность и
+нужен ли фокус; если уверенность высокая и правила однозначны, решение принимается по правилам без LLM. Второй - Gemma
+(focus_dispatch.py) вызывается только для неоднозначных случаев. Каждое решение помечено эшелоном (`rules`, `gliner`,
+`gemma`) и уверенностью в журнале.
+
 Состояние (очередь, checkpoint, пины, «не беспокоить») живёт в памяти и записывается в файл (`focus.json` в папке памяти),
-чтобы перезапуск ядра не терял прерванные задачи. Все сетевые вызовы асинхронные, тайм-ауты короткие; критические события
-не ждут LLM."""
+чтобы перезапуск ядра не терял прерванные задачи. «Не беспокоить» для всего агента общее с настройкой ядра `dnd` /
+`quiet_until` (одно состояние пользователя), разовые исключения и закрепление живут здесь. Все сетевые вызовы асинхронные,
+тайм-ауты короткие; критические события не ждут LLM."""
 from __future__ import annotations
 
 import asyncio
@@ -62,6 +68,14 @@ RESOLVED_KEEP_S = 600.0
 JOURNAL_MAX = 300
 TICK_S = 0.5
 STATE_FILE = "focus.json"
+CONF_LOW = 0.6                 # уверенность классификатора ниже: неоднозначно, спрашиваем Gemma (второй эшелон)
+CONF_HIGH = 0.8                # выше: решение по правилам на ответе классификатора, без LLM (первый эшелон)
+MAX_POLICY_OPTIONS = 12
+
+ECHELON_RULES = "rules"        # решили правила: классификатора не было или критическое событие
+ECHELON_GLINER = "gliner"      # решили правила на ответе GLiNER (подсказка политики, нужен ли фокус, уверенность)
+ECHELON_GEMMA = "gemma"        # решил диспетчер Gemma (принята операция или перепроверка срочности)
+NONE_HINT = "none"             # подсказка классификатора: фокус никому не нужен
 
 PENDING = "pending"            # ждёт оценки
 DEFERRED = "deferred"          # отложено, ждёт условия возобновления
@@ -105,11 +119,18 @@ class QueuedEvent:
     policy_pref: str | None = None
     llm_asked: bool = False
     rechecked: bool = False
+    hint: str | None = None              # подсказка GLiNER: «модуль/политика» или NONE_HINT
+    hint_conf: float = 0.0
+    focus_needed: bool | None = None     # GLiNER: нужен ли фокус
+    focus_conf: float = 0.0
+    echelon: str = ECHELON_RULES         # какой эшелон решил (см. ECHELON_*)
+    llm_used: bool = False               # диспетчер Gemma ответил операцией или перепроверкой
 
     def public(self) -> dict:
         return {"id": self.id, "module": self.module, "kind": self.kind, "text": self.text[:160],
                 "status": self.status, "priority": round(self.priority, 1), "initial": round(self.initial, 1),
-                "critical": self.critical, "count": self.count, "reason": self.reason, "resume": dict(self.resume)}
+                "critical": self.critical, "count": self.count, "reason": self.reason, "resume": dict(self.resume),
+                "echelon": self.echelon, "confidence": self.confidence, "hint": self.hint}
 
 
 @dataclass
@@ -124,10 +145,12 @@ class Slot:
     since: float
     origin: str                 # event | user | resume
     event_id: str | None = None
+    echelon: str = ECHELON_RULES
 
     def public(self, pin: str | None) -> dict:
         return {"module": self.module, "task_id": self.task_id, "policy": self.policy, "goal": self.goal[:160],
-                "priority": self.priority, "since": self.since, "origin": self.origin, "pinned": pin == self.module}
+                "priority": self.priority, "since": self.since, "origin": self.origin, "pinned": pin == self.module,
+                "echelon": self.echelon}
 
 
 def _new_id(prefix: str) -> str:
@@ -154,6 +177,16 @@ def _confirmed(value: Any, policy: str | None) -> bool:
     return value.get("policy") in (None, policy)
 
 
+def _hint(value: Any) -> str | None:
+    """Подсказка политики от классификатора: «модуль/политика» или NONE_HINT; мусор отбрасывается."""
+    return value if isinstance(value, str) and value and len(value) <= 120 else None
+
+
+def _decision_fields(ev: QueuedEvent) -> dict:
+    """Эшелон и уверенность для записи решения (ТЗ 18, FOC-8, аудит)."""
+    return {"echelon": ev.echelon, "confidence": ev.confidence, "hint": ev.hint}
+
+
 def _write_json(path: Path, data: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -166,11 +199,16 @@ class FocusManager:
                  policies_of: Callable[[str], dict | None], clock: Callable[[], float] = time.time,
                  state_path: Path | None = None, llm: Callable[[dict], Awaitable[Any]] | None = None,
                  busy_of: Callable[[], bool] | None = None,
-                 recheck: Callable[[dict], Awaitable[Any]] | None = None, title_of: Callable[[str], str] | None = None):
+                 recheck: Callable[[dict], Awaitable[Any]] | None = None, title_of: Callable[[str], str] | None = None,
+                 dnd_all_of: Callable[[], bool] | None = None, set_dnd_all: Callable[[bool], None] | None = None,
+                 profile_quiet_of: Callable[[], Any] | None = None, modules_of: Callable[[], Any] | None = None):
         """connection_of(модуль) -> подключение с request(type, body, timeout) или None; status_of(модуль) -> status из
         `state` (active_policy, interruptible, blocked, ...) или None; policies_of(модуль) -> {default_policy, policies}
         из манифеста или None (модуль без политик - без фокуса, режим совместимости); busy_of() -> True, пока пользователь
-        в разговоре; llm(контекст) -> ответ диспетчера (None - LLM выключена); recheck(событие) -> новая срочность (0..5)."""
+        в разговоре; llm(контекст) -> ответ диспетчера (None - LLM выключена); recheck(событие) -> новая срочность (0..5).
+        dnd_all_of() / set_dnd_all(on) - общее состояние «не беспокоить» для всего агента (настройки ядра dnd/quiet_until);
+        без них хранится здесь. profile_quiet_of() -> модули, которым профиль не даёт переключать фокус (не сохраняется);
+        modules_of() -> ids модулей для подсказок политики (по умолчанию модули, которые присылали события)."""
         self.connection_of = connection_of
         self.status_of = status_of
         self.policies_of = policies_of
@@ -182,7 +220,11 @@ class FocusManager:
         self.title_of = title_of or (lambda mid: mid)
         self.slot: Slot | None = None
         self.pinned: str | None = None
-        self.dnd_all = False
+        self._dnd_all_of = dnd_all_of
+        self._set_dnd_all = set_dnd_all
+        self._profile_quiet_of = profile_quiet_of
+        self._modules_of = modules_of
+        self._dnd_local = False
         self.dnd_modules: set[str] = set()
         self._once: set[str] = set()
         self.events: dict[str, QueuedEvent] = {}
@@ -197,6 +239,41 @@ class FocusManager:
         self._dirty = False
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
+
+    @property
+    def dnd_all(self) -> bool:
+        """«Не беспокоить» для всего агента: одно состояние с настройкой ядра (ТЗ 18, FOC-6)."""
+        return bool(self._dnd_all_of()) if self._dnd_all_of is not None else self._dnd_local
+
+    def _profile_quiet(self) -> set[str]:
+        """Модули, которым активный профиль не даёт переключать фокус (`focus.quiet_modules`); не сохраняется."""
+        if self._profile_quiet_of is None:
+            return set()
+        try:
+            return {m for m in (self._profile_quiet_of() or ()) if isinstance(m, str)}
+        except Exception:                                          # профиль не должен ронять менеджер фокуса
+            logger.debug("профиль не отдал модули фокуса", exc_info=True)
+            return set()
+
+    def _quiet_modules(self) -> set[str]:
+        return set(self.dnd_modules) | self._profile_quiet()
+
+    def _known_modules(self) -> list[str]:
+        if self._modules_of is not None:
+            return sorted(str(m) for m in self._modules_of())
+        return sorted(self._modules_seen)
+
+    def policy_options(self) -> dict[str, str]:
+        """Варианты подсказки политики для GLiNER (ТЗ 18, первый эшелон): активные политики подключённых модулей
+        с назначением из манифеста. Ключ «модуль/политика»."""
+        out: dict[str, str] = {}
+        for mod in self._known_modules():
+            if self.connection_of(mod) is None:
+                continue
+            for pid, pol in (self._policy_table(mod) or {}).items():
+                if pol.get("focus") == "active":
+                    out[f"{mod}/{pid}"] = str(pol.get("purpose") or pol.get("title") or pid)[:160]
+        return dict(list(out.items())[:MAX_POLICY_OPTIONS])
 
     # ── вход: решение внимания ──────────────────────────────────────────────
 
@@ -215,6 +292,8 @@ class FocusManager:
             "priority": float(priority or 0.0), "urgency": urgency, "critical": (urgency or 0) >= CRITICAL_URGENCY,
             "confidence": data.get("category_conf"), "category": data.get("category"),
             "expires": getattr(item, "expires", None), "dedupe_key": getattr(item, "dedupe_key", None),
+            "hint": data.get("policy_hint"), "hint_conf": data.get("policy_conf"),
+            "focus_needed": data.get("focus_needed"), "focus_conf": data.get("focus_conf"),
         })
 
     # ── жизненный цикл ─────────────────────────────────────────────────────
@@ -281,14 +360,18 @@ class FocusManager:
             ev = QueuedEvent(id=_new_id("fe"), module=module, kind=rec["kind"], text=rec["text"], priority=rec["priority"],
                              base=rec["priority"], created=now, urgency=rec["urgency"], critical=rec["critical"],
                              confidence=rec["confidence"], category=rec["category"], expires=rec["expires"],
-                             dedupe_key=rec["dedupe_key"], initial=rec["priority"], last_eval=now, updated=now)
+                             dedupe_key=rec["dedupe_key"], initial=rec["priority"], last_eval=now, updated=now,
+                             hint=_hint(rec.get("hint")), hint_conf=float(rec.get("hint_conf") or 0.0),
+                             focus_needed=rec.get("focus_needed") if isinstance(rec.get("focus_needed"), bool) else None,
+                             focus_conf=float(rec.get("focus_conf") or 0.0))
             if not ev.critical and module in self._once:
                 self._once.discard(module)
                 ev.once = True
+            ev.echelon = self._echelon(ev)
             self.events[ev.id] = ev
             self._dirty = True
             self._log("enqueue", event=ev.id, module=module, kind=rec["kind"], priority_before=round(rec["priority"], 1),
-                      critical=ev.critical, status=PENDING, text=ev.text)
+                      critical=ev.critical, status=PENDING, text=ev.text, **_decision_fields(ev))
 
     def _expire(self, now: float) -> None:
         for ev in self.events.values():
@@ -317,7 +400,7 @@ class FocusManager:
         self._dirty = True
         self._log("resolve" if status == RESOLVED else status, event=ev.id, module=ev.module, kind=ev.kind,
                   priority_before=round(ev.initial, 1), priority_after=round(ev.priority, 1), reason=reason,
-                  status=status)
+                  status=status, **_decision_fields(ev))
 
     def _defer(self, ev: QueuedEvent, resume: dict, reason: str, now: float) -> None:
         """FOC-3: отложить с причиной. Повтор той же причины не пишет журнал заново."""
@@ -327,7 +410,8 @@ class FocusManager:
         ev.status, ev.reason, ev.resume, ev.updated = DEFERRED, reason, dict(resume), now
         self._dirty = True
         self._log("defer", event=ev.id, module=ev.module, kind=ev.kind, priority_before=round(ev.initial, 1),
-                  priority_after=round(ev.priority, 1), reason=reason, resume=resume, status=DEFERRED)
+                  priority_after=round(ev.priority, 1), reason=reason, resume=resume, status=DEFERRED,
+                  **_decision_fields(ev))
 
     def _refresh_context(self, now: float) -> None:
         """FOC-3: отложенные события возвращаются на оценку при смене контекста (фокус, политики, «не беспокоить») и раз
@@ -352,7 +436,7 @@ class FocusManager:
             conn = self.connection_of(mod)
             cur = (self.status_of(mod) or {}).get("active_policy")
             states.append((mod, conn is not None, cur))
-        return (holder, self.pinned, self.dnd_all, tuple(sorted(self.dnd_modules)), tuple(states))
+        return (holder, self.pinned, self.dnd_all, tuple(sorted(self._quiet_modules())), tuple(states))
 
     def _prune(self, now: float) -> None:
         for eid in [e.id for e in self.events.values() if e.status not in _EVENT_ALIVE
@@ -508,11 +592,13 @@ class FocusManager:
         origin_slot = Slot(module=module, task_id=task_id, policy=pol, goal=goal, priority=0.0, since=now,
                            origin=origin, event_id=ev.id)
         origin_slot.priority = self._holder_priority(origin_slot)
+        origin_slot.echelon = ev.echelon
         self.slot = origin_slot
         self._switch_times.append(now)
         self._finish(ev, RESOLVED, f"фокус передан модулю «{module}» ({pol})", now)
         self._log("switch", module=module, policy=pol, task=task_id, event=ev.id, previous=prev,
-                  priority_before=round(ev.initial, 1), priority_after=round(ev.priority, 1), reason=ev.reason)
+                  priority_before=round(ev.initial, 1), priority_after=round(ev.priority, 1), reason=ev.reason,
+                  **_decision_fields(ev))
         return True
 
     async def _evaluate_queue(self, now: float) -> bool:
@@ -530,11 +616,13 @@ class FocusManager:
             if ev.category in DANGER_CATEGORIES and ev.confidence is not None and ev.confidence < RECHECK_CONF \
                     and not ev.rechecked:
                 await self._recheck_danger(ev, now)
-            if self._ambiguous(ev) and not ev.llm_asked:
+            why = self._ambiguity(ev, now)
+            if why and not ev.llm_asked:
                 ev.llm_asked = True
-                await self._ask_llm(ev, now)
+                await self._ask_llm(ev, now, why)
                 if ev.status != PENDING:
                     continue
+            ev.echelon = self._echelon(ev)
             action, reason, resume = self._gate(ev, now)
             if action == "defer":
                 self._defer(ev, resume, reason, now)
@@ -553,6 +641,8 @@ class FocusManager:
         if not ev.once:
             if self.dnd_all or ev.module in self.dnd_modules:
                 return "defer", "не беспокоить: режим пользователя", {"type": "context_changed"}
+            if ev.module in self._profile_quiet():
+                return "defer", "профиль не даёт переключать фокус этому модулю", ctx
             cur = self._current(ev.module)
             if cur is not None and cur.get("quiet"):
                 return "defer", f"политика «{cur['id']}» не переключает фокус: сообщение сохранено", ctx
@@ -560,6 +650,8 @@ class FocusManager:
             return "defer", f"фокус закреплён за «{self.title_of(self.pinned)}»", {"type": "unpin"}
         if self.busy_of is not None and self.busy_of():
             return "defer", "пользователь в разговоре", ctx
+        if ev.focus_needed is False and ev.focus_conf >= CONF_HIGH:
+            return "defer", "классификатор: событие не требует фокуса", ctx
         if self.slot is None:
             if ev.priority >= SWITCH_P:
                 return "switch", f"приоритет {round(ev.priority)} не ниже порога {SWITCH_P}", ctx
@@ -577,14 +669,56 @@ class FocusManager:
             return "defer", "модуль в фокусе сообщил небезопасную точку", ctx
         return "switch", f"приоритет {round(ev.priority)} выше фокуса {round(holder)} на запас", ctx
 
-    def _ambiguous(self, ev: QueuedEvent) -> bool:
-        """Неоднозначно: близко к порогу или к текущему фокусу. Только тогда спрашиваем диспетчер (FOC-7)."""
-        if ev.critical or self.llm is None:
+    # ── эшелоны решения (ТЗ 18, второй эшелон) ─────────────────────────────
+
+    def _near(self, ev: QueuedEvent) -> bool:
+        """Близко к порогу переключения или к приоритету фокуса: по правилам не решается однозначно."""
+        if abs(ev.priority - SWITCH_P) < MARGIN:
+            return True
+        return self.slot is not None and abs(ev.priority - self._holder_priority()) < MARGIN
+
+    def _conflict(self, ev: QueuedEvent) -> bool:
+        """Конфликт подсказки: классификатор указывает на другой модуль или говорит «фокус не нужен» при высокой важности."""
+        if ev.hint is None or ev.hint_conf < CONF_LOW:
             return False
-        near = abs(ev.priority - SWITCH_P) < MARGIN
-        if self.slot is None:
-            return near
-        return near or abs(ev.priority - self._holder_priority()) < MARGIN
+        if ev.hint == NONE_HINT:
+            return ev.priority >= SWITCH_P and ev.focus_needed is not False
+        return ev.hint.split("/", 1)[0] != ev.module
+
+    def _claimant(self, ev: QueuedEvent) -> bool:
+        """Два претендента на фокус с близкой важностью от разных модулей."""
+        if ev.priority < SWITCH_P:
+            return False
+        return any(o.id != ev.id and o.module != ev.module and o.status == PENDING and not o.critical
+                   and o.priority >= SWITCH_P and abs(o.priority - ev.priority) < MARGIN
+                   for o in self.events.values())
+
+    def _ambiguity(self, ev: QueuedEvent, now: float) -> str | None:
+        """Почему событие неоднозначно (нужен второй эшелон) или None, если правила решают сами (ТЗ 18, FOC-7):
+        низкая уверенность GLiNER, близость к порогу без уверенного ответа, конфликт подсказки, два претендента.
+        Критические события, отсутствие LLM и уже отвеченные диспетчером не спрашиваем."""
+        if ev.critical or self.llm is None or ev.llm_used:
+            return None
+        conf = ev.confidence
+        if conf is not None and conf < CONF_LOW:
+            return f"низкая уверенность классификатора ({conf:.2f})"
+        if self._near(ev) and (conf is None or conf < CONF_HIGH):
+            return "у порога переключения или у фокуса, без уверенного ответа классификатора"
+        if self._conflict(ev):
+            return f"конфликт подсказки: классификатор указывает «{ev.hint}»"
+        if self._claimant(ev):
+            return "два претендента на фокус с близкой важностью"
+        return None
+
+    def _echelon(self, ev: QueuedEvent) -> str:
+        """Какой эшелон решил: Gemma (если ответила операцией или перепроверкой), иначе GLiNER (если давал ответ), иначе правила."""
+        if ev.llm_used:
+            return ECHELON_GEMMA
+        if ev.critical:
+            return ECHELON_RULES
+        if ev.confidence is not None or ev.hint is not None or ev.focus_needed is not None:
+            return ECHELON_GLINER
+        return ECHELON_RULES
 
     async def _recheck_danger(self, ev: QueuedEvent, now: float) -> None:
         """FOC-3: опасное событие с низкой уверенностью не понижается: быстрая перепроверка, без неё - считаем опасным."""
@@ -598,7 +732,9 @@ class FocusManager:
         if isinstance(new, int) and not isinstance(new, bool) and 0 <= new <= 5:
             ev.urgency = new
             ev.critical = new >= CRITICAL_URGENCY
-            self._log("recheck", event=ev.id, module=ev.module, status="done", reason=f"срочность {new}")
+            ev.llm_used = True
+            ev.echelon = self._echelon(ev)
+            self._log("recheck", event=ev.id, module=ev.module, status="done", reason=f"срочность {new}", **_decision_fields(ev))
             return
         before = ev.priority
         ev.base = max(ev.base, float(SWITCH_P))
@@ -611,7 +747,8 @@ class FocusManager:
     @staticmethod
     def _llm_event(ev: QueuedEvent) -> dict:
         return {"id": ev.id, "module": ev.module, "kind": ev.kind, "text": ev.text[:200], "priority": round(ev.priority, 1),
-                "critical": ev.critical, "confidence": ev.confidence, "category": ev.category}
+                "critical": ev.critical, "confidence": ev.confidence, "category": ev.category, "hint": ev.hint,
+                "hint_conf": round(ev.hint_conf, 3), "focus_needed": ev.focus_needed}
 
     def _llm_context(self, ev: QueuedEvent, now: float) -> dict:
         """Структурированное состояние для диспетчера: очередь, фокус, политики, задачи. Не полный снимок мира."""
@@ -637,22 +774,34 @@ class FocusManager:
             "pin": self.pinned, "dnd": {"all": self.dnd_all, "modules": sorted(self.dnd_modules)},
         }
 
-    async def _ask_llm(self, ev: QueuedEvent, now: float) -> None:
-        """Диспетчер предлагает операции; каждая проверяется и применяется здесь. Сбой или тайм-аут - детерминированные
-        правила (ничего не меняется)."""
+    async def _ask_llm(self, ev: QueuedEvent, now: float, why: str = "") -> None:
+        """Диспетчер Gemma предлагает операции; каждая проверяется и применяется здесь. Сбой, тайм-аут или ответ не в
+        формате JSON - детерминированные правила (ничего не меняется)."""
         ctx = self._llm_context(ev, now)
         if self.llm is None:
             return
         try:
             raw = await asyncio.wait_for(self.llm(ctx), LLM_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            self._last_llm = {"ts": now, "status": "unavailable", "error": "тайм-аут"}
+            self._log("llm", event=ev.id, module=ev.module, status="unavailable", reason="тайм-аут диспетчера", why=why)
+            return
+        except ValueError as e:                                 # ответ не строгий JSON: как сбой, правила
+            self._last_llm = {"ts": now, "status": "invalid", "error": str(e)[:160]}
+            self._log("llm", event=ev.id, module=ev.module, status="invalid", reason="ответ не JSON-объект", why=why)
+            return
         except Exception as e:
             self._last_llm = {"ts": now, "status": "unavailable", "error": str(e)[:160] or type(e).__name__}
-            self._log("llm", event=ev.id, module=ev.module, status="unavailable", reason=self._last_llm["error"])
+            self._log("llm", event=ev.id, module=ev.module, status="unavailable", reason=self._last_llm["error"], why=why)
             return
         ops, rejected, reason = dispatch.validate(raw, {**ctx, "now": now})
         self._last_llm = {"ts": now, "status": "ok", "reason": reason, "accepted": ops, "rejected": rejected}
         self._log("llm", event=ev.id, module=ev.module, status="ok", reason=reason or "без пояснения",
-                  accepted=ops, rejected=rejected)
+                  accepted=ops, rejected=rejected, why=why, confidence=ev.confidence,
+                  echelon=ECHELON_GEMMA if ops else ev.echelon)
+        if ops:                                                 # решение диспетчера принято: эшелон Gemma
+            ev.llm_used = True
+            ev.echelon = self._echelon(ev)
         for op in ops:
             await self._apply_op(op, now)
 
@@ -735,7 +884,7 @@ class FocusManager:
                 self._log("resume", module=cp["module"], task=cp["task_id"], status="failed", reason=e.message)
         if _confirmed(value, cp["policy"]):
             self.slot = Slot(module=cp["module"], task_id=cp["task_id"], policy=cp["policy"], goal=cp["goal"],
-                             priority=0.0, since=now, origin="resume")
+                             priority=0.0, since=now, origin="resume", echelon=ECHELON_RULES)
             self.slot.priority = self._holder_priority(self.slot)
             cp["status"], cp["resume_now"] = "resumed", False
             self._switch_times.append(now)
@@ -791,17 +940,23 @@ class FocusManager:
             return result
 
     async def set_dnd(self, module: str, on: bool) -> dict:
-        """«Не беспокоить»: для всего агента (module='all') или одного модуля. Сообщения копятся, фокус не переключают."""
+        """«Не беспокоить»: для всего агента (module='all') или одного модуля. Сообщения копятся, фокус не переключают.
+        Для всего агента пишется в общую настройку ядра (одно состояние с дашбордом и голосом); разовые исключения не
+        сбрасываются."""
         async with self._lock:
             if module == "all":
-                self.dnd_all = bool(on)
+                if self._set_dnd_all is not None:
+                    self._set_dnd_all(bool(on))
+                else:
+                    self._dnd_local = bool(on)
             elif on:
                 self.dnd_modules.add(module)
             else:
                 self.dnd_modules.discard(module)
             self._dirty = True
             self._log("dnd", module=module, reason="не беспокоить " + ("включено" if on else "выключено"))
-            return {"ok": True, "all": self.dnd_all, "modules": sorted(self.dnd_modules)}
+            return {"ok": True, "all": self.dnd_all, "modules": sorted(self.dnd_modules),
+                    "profile": sorted(self._profile_quiet())}
 
     async def allow_once(self, module: str) -> dict:
         """Разовое исключение: следующее обычное событие модуля проходит режим «не беспокоить». Сам режим не отменяется."""
@@ -854,7 +1009,7 @@ class FocusManager:
         if not isinstance(data, dict):
             return
         self.pinned = data.get("pin") if isinstance(data.get("pin"), str) else None
-        self.dnd_all = bool(data.get("dnd_all"))
+        self._dnd_local = bool(data.get("dnd_all"))
         self.dnd_modules = {m for m in data.get("dnd_modules") or [] if isinstance(m, str)}
         for cp in data.get("checkpoints") or []:
             if isinstance(cp, dict) and isinstance(cp.get("task_id"), str):
@@ -891,7 +1046,8 @@ class FocusManager:
                              "scratch": f"{mod}/scratch"}
         return {
             "holder": holder, "pin": self.pinned,
-            "dnd": {"all": self.dnd_all, "modules": sorted(self.dnd_modules)}, "once": sorted(self._once),
+            "dnd": {"all": self.dnd_all, "modules": sorted(self.dnd_modules), "profile": sorted(self._profile_quiet())},
+            "once": sorted(self._once),
             "queue": [e.public() for e in sorted(self.events.values(), key=lambda e: -e.priority)
                       if e.status in (PENDING, DEFERRED)][:30],
             "checkpoints": [{k: v for k, v in c.items() if k != "payload"} for c in
@@ -899,5 +1055,6 @@ class FocusManager:
             "journal": list(self._journal)[-80:],
             "switches": [r for r in list(self._journal) if r["type"] in ("switch", "release", "resume")][-10:],
             "llm": {"enabled": self.llm is not None, "last": self._last_llm},
+            "echelons": {"rules": ECHELON_RULES, "gliner": ECHELON_GLINER, "gemma": ECHELON_GEMMA},
             "policies": policies,
         }

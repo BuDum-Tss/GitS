@@ -128,7 +128,7 @@ class World:
         self.recheck_calls += 1
         return self.recheck_result
 
-    def manager(self, tmp_path=None, *, llm=True, recheck=False, state=False) -> focus.FocusManager:
+    def manager(self, tmp_path=None, *, llm=True, recheck=False, state=False, **extra) -> focus.FocusManager:
         state_path = (tmp_path / "focus.json") if (state and tmp_path is not None) else None
         return focus.FocusManager(
             connection_of=lambda mid: self.modules.get(mid),
@@ -140,6 +140,7 @@ class World:
             busy_of=lambda: self.busy,
             recheck=self._recheck if recheck else None,
             title_of=lambda mid: mid,
+            **extra,
         )
 
 

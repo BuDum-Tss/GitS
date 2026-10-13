@@ -22,6 +22,7 @@ import claude_battery
 import dashboard
 import events_log
 import fast_brain
+import focus_dispatch
 import profile_manager
 import settings
 import speech_out
@@ -86,12 +87,21 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     io.hub = hub
     attention.hub, attention.modules = hub, modules
     # менеджер фокуса (ТЗ 18): решения внимания попадают в его очередь; модули без policies в манифесте в фокусе не участвуют
+    # два эшелона (ТЗ 18): GLiNER (внимание) даёт подсказки, Gemma (LM Studio) только для неоднозначных случаев
+    second_echelon = focus_dispatch.enabled()
     focus_mgr = FocusManager(
         connection_of=hub.connection, status_of=lambda mid: _module_status(modules, mid),
         policies_of=lambda mid: _module_policies(modules, mid),
         busy_of=lambda: attention.top_focus().kind in ("conversation", "question"),
-        state_path=settings.memory_dir() / STATE_FILE, title_of=lambda mid: _module_title(modules, mid))
+        state_path=settings.memory_dir() / STATE_FILE, title_of=lambda mid: _module_title(modules, mid),
+        llm=focus_dispatch.make_llm() if second_echelon else None,
+        recheck=focus_dispatch.make_recheck() if second_echelon else None,
+        # одно состояние «не беспокоить» для всего агента: настройки ядра dnd / quiet_until (дашборд, голос, фокус)
+        dnd_all_of=settings.quiet_active, set_dnd_all=lambda on: settings.update(dnd=on, quiet_until=0.0),
+        profile_quiet_of=lambda: holder["profiles"].current().focus_quiet if "profiles" in holder else (),
+        modules_of=lambda: [mid for mid in modules.records if hub.is_connected(mid)])
     attention.on_decided = focus_mgr.on_decided
+    attention.policy_options = focus_mgr.policy_options         # подсказка политики для GLiNER (первый эшелон)
     presence.listener = hub.broadcast_presence
     speech = getattr(companion, "speech", None)
     if hasattr(speech, "attach"):
