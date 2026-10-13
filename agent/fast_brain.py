@@ -20,6 +20,7 @@ from pathlib import Path
 
 import httpx
 
+import character
 import events_log
 import reflex_actions
 from envcompat import env
@@ -38,7 +39,7 @@ EMOTIONS = ["idle", "action", "angry", "question", "looking",
 ACTIONS  = ["none", "draft_colonists", "undraft"]
 
 _SYSTEM = (
-    "Ты — рефлекторный слой ГЛаДОС (колония в RimWorld). Получив событие, выбери "
+    "Ты — рефлекторный слой {name} (колония в RimWorld). Получив событие, выбери "
     "эмоцию стикера и простую команду. draft_colonists — только если колонии "
     "угрожают враги (рейд); undraft — когда опасность миновала; в остальных "
     "случаях none. Учитывай отношения, если они указаны: смерть того, к кому "
@@ -48,7 +49,7 @@ _SYSTEM = (
 )
 
 _CHAT_SYSTEM = (
-    "Ты — рефлекторный слой ГЛаДОС. Игрок написал сообщение. Оцени, как оно "
+    "Ты — рефлекторный слой {name}. Игрок написал сообщение. Оцени, как оно "
     "меняет её отношение к игроку (delta от -10 грубость, до +10 тепло и "
     "уважение; 0 — нейтрально) и выбери эмоцию стикера. Ответь ТОЛЬКО JSON: "
     '{"delta": <целое от -10 до 10>, "emotion": <одно из ' + json.dumps(EMOTIONS) + '>}'
@@ -217,7 +218,7 @@ async def classify(evt: dict, rel=None, timeout: float = TIMEOUT) -> dict:
     t0 = time.perf_counter()
     result, source = None, "rules"
     try:
-        result = _parse(await _ask(_SYSTEM, describe(evt, rel), timeout))
+        result = _parse(await _ask(character.fill(_SYSTEM), describe(evt, rel), timeout))
         if result:
             source = "llm"
     except Exception as e:

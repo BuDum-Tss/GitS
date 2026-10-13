@@ -1,4 +1,4 @@
-"""Память ГЛаДОС о тебе: факты, последние разговоры, чем ты занималась.
+"""Память персонажа о пользователе: факты, последние разговоры, чем ты занималась.
 
 Лежит в memory/. OCR-текст с экрана НЕ сохраняется никогда — только короткие
 выводы вроде «писала код» (см. modules/desktop/perception.py).
@@ -7,6 +7,7 @@ import json
 import time
 from pathlib import Path
 
+import character
 from memory_store import MemoryStore
 
 _MAX_FACTS = 100
@@ -16,6 +17,12 @@ _MAX_ACTIVITY = 40
 
 class UserMemory:
     def __init__(self, memory_dir: str = "./memory"):
+        self._dir = Path(memory_dir)
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._store = MemoryStore(memory_dir)
+
+    def rebind(self, memory_dir) -> None:
+        """Переключение персонажа (ТЗ 05, CHR-7, CHR-10): та же память, но в папке другого персонажа."""
         self._dir = Path(memory_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
         self._store = MemoryStore(memory_dir)
@@ -88,6 +95,6 @@ class UserMemory:
         dlg = self.recent_dialogue(dialogue)
         if dlg:
             lines.append("Последние реплики разговора:")
-            lines += [f"  {'Пользователь' if d['role'] == 'user' else 'ГЛаДОС'}: {d['text']}"
+            lines += [f"  {'Пользователь' if d['role'] == 'user' else character.active().name}: {d['text']}"
                       for d in dlg]
         return "\n".join(lines)

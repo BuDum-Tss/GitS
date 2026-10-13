@@ -51,7 +51,7 @@ EVENT_QUESTIONS = {
         "routine": "status, progress, normal operation, nothing changed",
         "spam": "advertising, scam, automated junk"}},
     "addressed": {"type": "choice", "options": {
-        "assistant": "the text speaks to the AI assistant GLaDOS directly",
+        "assistant": "the text speaks to the AI assistant directly, by its name or by addressing it as you",
         "user": "the text is meant for the human owner",
         "group": "the text is addressed to many people",
         "nobody": "a notification or status, not addressed to anyone"}},

@@ -1,4 +1,4 @@
-"""Ядро ГЛаДОС: всегда включённый сервис ассистента.
+"""Ядро GitS: всегда включённый сервис ассистента.
 
 Что работает всегда:
   - окружения (environments/): реестр инструментов, маршрутизатор «могу или нет», манифесты;
@@ -18,6 +18,7 @@ import time as _time
 from pathlib import Path
 from types import SimpleNamespace
 
+import character
 import claude_battery
 import dashboard
 import events_log
@@ -30,6 +31,7 @@ import supervisor as supervisor_mod
 import tool_search
 from attention import Attention
 from focus import STATE_FILE, FocusManager
+from character_switch import CharacterSwitch
 from companion import Companion
 from conversation_io import ConversationIO
 import core_requests
@@ -41,7 +43,6 @@ from module_registry import ModuleRegistry
 from graph_memory import GraphMemory
 from relationships import Relationships
 from router import Router
-from user_memory import UserMemory
 
 logger = logging.getLogger("core")
 
@@ -188,7 +189,8 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                                     send_shutdown=send_shutdown, memory_dir=settings.memory_dir(),
                                     announce=announce_launch)
     modules.supervisor = sup
-    builtin.register_core_tools(registry, modules, attention, focus_mgr)
+    builtin.register_core_tools(registry, modules, attention, focus_mgr,
+                                switch=lambda cid: layer.character_switch.tool(cid))   # ТЗ 05, CHR-7
 
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, profiles=profiles,
                             supervisor=sup, presence=presence, game_order=game_order, tasks=[], focus=focus_mgr)
@@ -308,12 +310,14 @@ async def _run(config: dict):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     mem_dir = config["memory_dir"]
     settings.init(mem_dir)
+    character.init()                    # ТЗ 05: персонаж из настроек (его папка, имя, память)
     fast_brain.init(mem_dir)
-    rel = Relationships(mem_dir)
+    char_dir = character.memory_dir(character.active().id, Path(mem_dir))   # личная память активного персонажа (CHR-10)
+    rel = Relationships(char_dir)
     presence = speech_out.PresenceTracker()
     # речь: модуль voice, пока он подключён и включён (VOICE-15), иначе только текст в чате и в presence
     speech = speech_out.SpeechSelector(speech_out.VoiceModuleSpeech(presence), speech_out.TextOnlySpeech(presence))
-    companion = Companion(mem_dir, rel, speech=speech, presence=presence)
+    companion = Companion(char_dir, rel, speech=speech, presence=presence)
 
     # профили: активное окно и простой приходят состоянием модуля desktop (ТЗ 14), игра RimWorld (game_running) приходит
     # состоянием модуля rimworld (ТЗ 11). Без модуля desktop данных нет, профиль по окну не выбирается
@@ -332,14 +336,17 @@ async def _run(config: dict):
     asyncio.create_task(fast_brain.warmup())
 
     # Окружения: встроенные плагины сразу, манифесты (MCP, вебхуки, RimWorld) подгружаются в фоне
-    memory = UserMemory(mem_dir)
+    memory = companion._mem                              # одна память на компаньона, инструменты и разговор
     layer.requests.privacy_terms = lambda: core_requests.collect_privacy_terms(
         companion._owner_name(), rel.people_terms(), [f["text"] for f in memory.facts()])      # core.privacy_terms (TG-12)
     graph = GraphMemory(mem_dir, busy=lambda: _time.time() - companion._last_user_ts < 20 or companion.is_speaking())
     companion.graph = graph
     dashboard.set_graph(graph)
+    layer.character_switch = CharacterSwitch(companion=companion, rel=rel, graph=graph, attention=layer.attention,
+                                             hub=layer.hub, mem_root=Path(mem_dir))
+    dashboard.set_character(layer.character_switch)
     asyncio.create_task(graph.run())
-    migrated = graph.migrate_from_store(UserMemory(mem_dir).store, companion._owner_name())
+    migrated = graph.migrate_from_store(memory.store, companion._owner_name())
     if migrated:
         logger.info(f"Граф: в очередь на разбор поставлено {migrated} старых фактов о пользователе")
     builtin.register(registry, companion, memory, profiles=layer.profiles)

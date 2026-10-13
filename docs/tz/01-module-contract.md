@@ -342,6 +342,7 @@
 | `profile` | `{"id": str, "title": str, "focus_modules": [str]}` | при смене профиля |
 | `module` | `{"enabled": bool}` | при включении или выключении этого модуля |
 | `battery` | `{"percent": int, "sleeping": bool}` | при изменении на 5 и более процентов или смене `sleeping` |
+| `character` | `{"id": str, "name": str, "aliases": [str], "gender": str, "language": str, "world": str, "voice": {...}}` | при переключении персонажа (ТЗ 05, CHR-6); тексты персоны (разделы `persona.md`) модуль берёт запросом `core.persona` |
 
 ## 9. Задачи
 

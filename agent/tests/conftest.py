@@ -2,8 +2,10 @@
 import pytest
 
 import approvals
+import character
 import decide
 import events_log
+import prompts
 import settings
 
 
@@ -18,6 +20,8 @@ def _isolated_core(tmp_path, monkeypatch):
     for name in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHANNEL", "TELEGRAM_API_ID", "TELEGRAM_API_HASH"):
         monkeypatch.delenv(name, raising=False)
     settings.init(str(mem))
+    character._active = None            # персонаж процесса (ТЗ 05): каждый тест начинает с glados
+    prompts.reload()
     approvals.reset()
     decide.forget_down()
 

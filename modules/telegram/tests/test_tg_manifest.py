@@ -17,7 +17,7 @@ def test_manifest_is_valid_and_matches_the_spec():
     assert P.validate_manifest(build_manifest()) == []
     m = MANIFEST
     assert m["id"] == "telegram" and m["title"] == "Telegram" and m["capabilities"] == ["chat.channel"]
-    assert m["subscribe"] == ["settings", "presence", "module"] and m["state"] is True
+    assert m["subscribe"] == ["settings", "presence", "module", "character"] and m["state"] is True
     assert m["shared_settings"] == ["telegram", "telegram_voice", "telegram_confirm", "quiet_until", "dnd"]
     schema = m["settings_schema"]
     assert schema["owner_tg_id"]["default"] == 0

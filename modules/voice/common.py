@@ -9,7 +9,7 @@ from pathlib import Path
 from envcompat import env
 
 GITS_ROOT = Path(__file__).resolve().parent.parent.parent
-TEMP_DIR_NAME = "glados_voice"          # VOICE-5: файлы синтеза лежат в %TEMP%\glados_voice\
+TEMP_DIR_NAME = "gits_voice"            # VOICE-5: файлы синтеза лежат в %TEMP%\gits_voice\
 TEMP_KEEP_S = 3600                      # VOICE-5: файлы старше часа удаляются при старте и раз в час
 ECHO_TAIL_DEFAULT_MS = 600              # сколько микрофон закрыт после её речи (прежний ECHO_TAIL = 0,6 с)
 FAKE_ENV = "GITS_VOICE_FAKE"            # 1: синтез, воспроизведение, микрофон и слух подменены (проверка запуска, без звука)

@@ -1,4 +1,4 @@
-"""Отношения ГЛаДОС к колонистам и к игроку.
+"""Отношения персонажа к колонистам и к игроку.
 
 Хранятся в memory/relationships.json: для каждого субъекта (имя колониста
 или "игрок") — симпатия от -100 до +100 и несколько последних причин.
@@ -56,6 +56,11 @@ class Relationships:
         Path(memory_dir).mkdir(parents=True, exist_ok=True)
 
     # ── хранилище ────────────────────────────────────────────────────────────
+
+    def rebind(self, memory_dir) -> None:
+        """Переключение персонажа (ТЗ 05, CHR-7, CHR-10): отношения этого персонажа в его папке памяти."""
+        self._file = Path(memory_dir) / "relationships.json"
+        Path(memory_dir).mkdir(parents=True, exist_ok=True)
 
     def _load(self) -> dict:
         try:

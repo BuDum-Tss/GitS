@@ -14,7 +14,7 @@ SDK для тяжёлых задач.
 - **Перед коммитом запускай `.\check.ps1`** (ruff и тесты). Новая логика получает тест в `agent/tests/`. Тесты
   без микрофона, игры, сети и Claude: подставляй заглушки.
 - **Всё асинхронно.** Блокирующий код (синтез речи, диск, subprocess) уводи в `asyncio.to_thread`.
-- **Файлы характера:** `agent/resources/prompts/constitution.yaml` меняет ТОЛЬКО человек (исполнитель тикетов и любые
+- **Файлы характера:** `agent/characters/<id>/constitution.yaml` (для персонажа по умолчанию `glados`) меняет ТОЛЬКО человек (исполнитель тикетов и любые
   автоматические правки сюда не заходят). `prompt.yaml` менять можно. Характер собирает `agent/prompts.py`.
 - **Секреты** (`agent/secrets.env`, сессии Telegram, `agent/memory/`) не читать, не печатать, не коммитить. Журналы не
   должны содержать токены.
@@ -31,7 +31,8 @@ SDK для тяжёлых задач.
 |---|---|
 | `companion.py` | разговор, проактивность, память разговора, приказы в игру |
 | `router.py`, `environments/` | «могу ли я»: планировщик, реестр окружений и инструментов, MCP-источники, разрешения |
-| `prompts.py`, `resources/prompts/` | характер: конституция и prompt.yaml |
+| `prompts.py`, `character.py`, `characters/` | характер активного персонажа (конституция и prompt.yaml из его папки), карточка персонажа, `character.fill` для промптов |
+| `character_memory.py`, `character_seed.py`, `character_switch.py`, `envcompat.py` | воспоминания персонажа о себе (отбор, блок промпта), загрузка `memories.yaml` в граф (`python -m character seed <id>`), переключение персонажа, переменные окружения с запасными старыми именами (ТЗ 05) |
 | `fast_brain.py` | локальная модель: эмоции, разбор намерений, реплики |
 | `game_launcher.py`, `gamenet.py` | запуск игры (приложения по названию) и проверка порта мода; сама игра это модуль `rimworld` (`rimworld-module`) |
 | `module_dirs.py` | где лежат репозитории модулей: RimWorld (`RIMWORLD_MODULE_DIR`, запасные `RIMWORLD_AGENT_DIR` и соседние папки `rimworld-module` / `rimworld-agent`) и монтажа (`MONTAGE_MODULE_DIR`, соседняя `montage-module`, запасной `C:/MyProjects/montage-module`); подставляется в `modules.yaml` |
@@ -110,6 +111,18 @@ SDK для тяжёлых задач.
 `sdk/gits_sdk/protocol.py` (конверт, манифест, проверки; его же импортирует ядро, не копирует), `client.py` (`ModuleClient`),
 `testing.py` (`FakeCore` для тестов модулей), пример `sdk/examples/echo_module.py`, тесты `sdk/tests/` (идут в `check.ps1`).
 Руководство автора модуля: `docs/MODULES.md`. SDK зависит только от `aiohttp` и не импортирует `agent/`.
+
+## Персонажи (ТЗ 05)
+Имя персонажа (сейчас ГЛаДОС) живёт только в папке `agent/characters/<id>/` (`character.yaml`, `constitution.yaml`, `prompt.yaml`,
+`persona.md`, `memories.yaml`, `voice/`). В коде имени нет: тест `agent/tests/test_character.py` ловит строки с именем без пометки
+`# id данных`. Промпт пишет `{name}`, код подставляет его через `character.fill` в момент вызова (переключение меняет промпт сразу).
+Тексты для модулей (Telegram, помощник на компьютере) модули берут запросом `core.persona` (разделы `persona.md`) и темой `character`.
+Память: личная (`UserMemory`, отношения, правила внимания) в папке персонажа (`memory/` для `glados`, иначе `memory/characters/<id>/`),
+граф по группе `<id>` (база FalkorDB = id), области модулей `<id>:<модуль>` (ТЗ 04c WM-4), очередь графа общая с меткой персонажа.
+Воспоминания о себе: `memories.yaml` -> граф (`canon: true`), защита канона в колонистах и очистке, факты о персонаже из реплик
+собеседника не пишутся. Переключение: `character_switch.CharacterSwitch` (дашборд `POST /api/character`, инструмент
+`core.set_character`). Переменные окружения: `GITS_*` (инфраструктура) и `CHARACTER_*` (персонаж), старые `GLADOS_*` читает
+`envcompat.env()` с предупреждением; все копии `envcompat.py` должны совпадать (тест). SDK: пакет `gits_sdk`, `glados_module` - алиас.
 
 ## Как добавить инструмент
 1. Опиши его в `environments/builtin.py` через `_tool(env, name, описание, параметры, функция, risk=..., keywords=...)`

@@ -27,7 +27,6 @@ import events_log
 logger = logging.getLogger("tg_user")
 
 _INBOX_MAX = 100
-_NAMES = ("гладос", "glados")           # как к ней обращаются в группе, кроме имени её аккаунта
 
 
 class LeakError(ValueError):
@@ -188,9 +187,13 @@ class TelegramUser:
             reply_channel={"module": "telegram", "target": f"user:{ev.chat_id}"}, memorable=memorable,
             dedupe_key=f"tg:{tag}:{ev.chat_id}:{ev.id}")
 
+    def set_aliases(self, aliases) -> None:
+        """Алиасы персонажа от ядра (core.persona): как к нему обращаются в группе, кроме имени аккаунта."""
+        self._aliases = tuple(str(a) for a in (aliases or ()) if str(a).strip())
+
     async def _addressed(self, ev, text: str) -> bool:
         """Обращаются ли к ней в группе: упомянули её имя (@имя, имя аккаунта, «ГЛаДОС») или ответили на её сообщение."""
-        names = set(_NAMES)
+        names = {n.lower() for n in getattr(self, "_aliases", ())}   # имена персонажа от ядра (ТЗ 05, CHR-4)
         for attr in ("first_name", "username"):
             value = getattr(self._me, attr, None)
             if value:

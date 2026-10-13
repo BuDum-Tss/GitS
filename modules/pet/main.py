@@ -56,7 +56,7 @@ def run_window(thread: ClientThread, messages: "queue.Queue") -> int:
     holder["controller"] = controller = PetController(win, messages, on_settings=win.on_settings)
     win.pump = controller.pump
     pet_window.HotkeyThread(lambda: controller.state.hotkey_input, win.toggle_mute, win.request_input).start()
-    log.info("GLaDOS запущена — верхний правый угол. ПКМ спрячет, вернуть можно из трея.")
+    log.info("окно питомца запущено: верхний правый угол, ПКМ спрячет, вернуть можно из трея")
     win.run(should_stop=lambda: not thread.is_alive())
     return 0
 

@@ -26,6 +26,8 @@ from pathlib import Path
 os.environ.setdefault("GRAPHITI_TELEMETRY_ENABLED", "false")
 os.environ.setdefault("SEMAPHORE_LIMIT", "2")           # локальной модели хватает двух параллельных запросов
 
+import character
+import character_memory
 import events_log
 import settings
 from envcompat import env
@@ -37,7 +39,6 @@ LLM_MODEL = env("GITS_GRAPH_LLM", "google/gemma-4-e4b")
 EMB_MODEL = env("GITS_GRAPH_EMBEDDER", "text-embedding-google_embeddinggemma-300m-qat")
 FALKOR_HOST = env("GITS_GRAPH_HOST", "127.0.0.1")
 FALKOR_PORT = int(env("GITS_GRAPH_PORT", "6380"))
-GROUP = "glados"
 MIN_SCORE = 0.5                   # косинус «запрос ↔ факт»: ниже считаем несвязанным (релевантное ~0.75, мусор ~0.3)
 MIN_CHARS = 12                    # короче реплику на факты не разбираем
 MAX_QUEUE = 300
@@ -150,10 +151,10 @@ class GraphitiBackend:
     """Тонкая обёртка над Graphiti. Тяжёлые импорты ленивые: без graphiti-core бот просто не использует граф."""
 
     def __init__(self):
-        self._g = None
+        self._g: dict[str, object] = {}     # один клиент Graphiti на базу; база = id персонажа (ТЗ 05, CHR-9)
         self._emb = None
 
-    def _build(self):
+    def _build(self, database: str):
         import httpx
         from openai import AsyncOpenAI
         from graphiti_core import Graphiti
@@ -206,19 +207,21 @@ class GraphitiBackend:
                 kw.setdefault("extra_body", {})["reasoning_effort"] = "none"
                 return await self._real.chat.completions.create(**kw)
 
-        self._emb = LMEmbedder()
+        if self._emb is None:
+            self._emb = LMEmbedder()
         llm = OpenAIGenericClient(
             config=LLMConfig(api_key="lm-studio", model=LLM_MODEL, small_model=LLM_MODEL, base_url=LM_URL, temperature=0.1),
             client=NoThink(AsyncOpenAI(api_key="lm-studio", base_url=LM_URL, timeout=600)),
             max_tokens=4096, structured_output_mode="json_schema")
-        self._g = Graphiti(graph_driver=FalkorDriver(host=FALKOR_HOST, port=FALKOR_PORT, database=GROUP),
-                           llm_client=llm, embedder=self._emb, cross_encoder=EmbedReranker(self._emb))
+        return Graphiti(graph_driver=FalkorDriver(host=FALKOR_HOST, port=FALKOR_PORT, database=database),
+                        llm_client=llm, embedder=self._emb, cross_encoder=EmbedReranker(self._emb))
 
-    async def _client(self):
-        if self._g is None:
-            await asyncio.to_thread(self._build)
-            await self._g.build_indices_and_constraints()
-        return self._g
+    async def _client(self, database: str = character.DEFAULT_ID):
+        if database not in self._g:
+            g = await asyncio.to_thread(self._build, database)
+            await g.build_indices_and_constraints()
+            self._g[database] = g
+        return self._g[database]
 
     async def healthy(self) -> tuple[bool, str]:
         try:
@@ -229,76 +232,78 @@ class GraphitiBackend:
         ok = await asyncio.to_thread(lambda: ensure_model_loaded(EMB_MODEL) and ensure_model_loaded(LLM_MODEL))
         return (True, "работает") if ok else (False, "в LM Studio нет моделей для памяти (Gemma и EmbeddingGemma)")
 
-    async def add_fact(self, f: Fact, when: datetime):
+    async def add_fact(self, f: Fact, when: datetime, group: str = character.DEFAULT_ID) -> str:
+        """Записать факт в группу; возвращает uuid связи (нужен, чтобы пометить воспоминание персонажа)."""
         from graphiti_core.edges import EntityEdge
         from graphiti_core.nodes import EntityNode
-        g = await self._client()
-        s, o = EntityNode(name=f.subject, group_id=GROUP, labels=["Entity"]), EntityNode(name=f.object, group_id=GROUP, labels=["Entity"])
-        e = EntityEdge(group_id=GROUP, source_node_uuid=s.uuid, target_node_uuid=o.uuid, created_at=datetime.now(timezone.utc),
+        g = await self._client(character.database_of(group))
+        s, o = EntityNode(name=f.subject, group_id=group, labels=["Entity"]), EntityNode(name=f.object, group_id=group, labels=["Entity"])
+        e = EntityEdge(group_id=group, source_node_uuid=s.uuid, target_node_uuid=o.uuid, created_at=datetime.now(timezone.utc),
                        name=f.relation, fact=f.fact, valid_at=when)
         await g.add_triplet(s, e, o)
+        return e.uuid
 
-    async def search(self, query: str, limit: int) -> list[dict]:
-        g = await self._client()
+    async def search(self, query: str, limit: int, group: str = character.DEFAULT_ID) -> list[dict]:
+        g = await self._client(character.database_of(group))
         tok = _emb_mode.set("query")
         try:
-            edges = await g.search(query, group_ids=[GROUP], num_results=limit)
+            edges = await g.search(query, group_ids=[group], num_results=limit)
         finally:
             _emb_mode.reset(tok)
         return [{"uuid": e.uuid, "fact": e.fact, "valid_at": e.valid_at, "invalid_at": e.invalid_at} for e in edges]
 
 
-    async def upsert_fact(self, f: Fact, when: datetime):
+    async def upsert_fact(self, f: Fact, when: datetime, group: str = character.DEFAULT_ID):
         """Записать факт БЕЗ участия модели (данные игры достоверны): узел находится по имени, прежний факт того же
         отношения у субъекта удаляется, новый пишется с эмбеддингом. Быстро: только эмбеддинги."""
         from graphiti_core.edges import EntityEdge
         from graphiti_core.nodes import EntityNode
         from falkordb import FalkorDB
-        g = await self._client()
+        g = await self._client(character.database_of(group))
 
         def lookup():
-            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(GROUP)
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
             uuids = {}
             for name in (f.subject, f.object):
-                rows = gr.query("MATCH (n:Entity {name: $n, group_id: $g}) RETURN n.uuid", {"n": name, "g": GROUP}).result_set
+                rows = gr.query("MATCH (n:Entity {name: $n, group_id: $g}) RETURN n.uuid", {"n": name, "g": group}).result_set
                 uuids[name] = rows[0][0] if rows else None
-            gr.query("MATCH (a:Entity {name: $n, group_id: $g})-[r:RELATES_TO {name: $rel}]->() DELETE r",
-                     {"n": f.subject, "g": GROUP, "rel": f.relation})
+            gr.query("MATCH (a:Entity {name: $n, group_id: $g})-[r:RELATES_TO {name: $rel}]->() WHERE r.canon IS NULL OR r.canon = false DELETE r",
+                     {"n": f.subject, "g": group, "rel": f.relation})
             return uuids
         uuids = await asyncio.to_thread(lookup)
         nodes = []
         for name in (f.subject, f.object):
-            node = EntityNode(name=name, group_id=GROUP, labels=["Entity"])
+            node = EntityNode(name=name, group_id=group, labels=["Entity"])
             if uuids[name]:
                 node.uuid = uuids[name]
             await node.generate_name_embedding(g.embedder)
             await node.save(g.driver)
             nodes.append(node)
-        edge = EntityEdge(group_id=GROUP, source_node_uuid=nodes[0].uuid, target_node_uuid=nodes[1].uuid,
+        edge = EntityEdge(group_id=group, source_node_uuid=nodes[0].uuid, target_node_uuid=nodes[1].uuid,
                           created_at=datetime.now(timezone.utc), name=f.relation, fact=f.fact, valid_at=when)
         await edge.generate_embedding(g.embedder)
         await edge.save(g.driver)
 
-    async def retire(self, subject: str, relations: tuple):
+    async def retire(self, subject: str, relations: tuple, group: str = character.DEFAULT_ID):
         """Закрыть датой факты субъекта с указанными отношениями (колонист выбыл): в поиске они уже не покажутся."""
         def work():
             from falkordb import FalkorDB
-            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(GROUP)
-            gr.query("MATCH (a:Entity {name: $n, group_id: $g})-[r:RELATES_TO]->() WHERE r.name IN $rels AND r.invalid_at IS NULL "
-                     "SET r.invalid_at = $now", {"n": subject, "g": GROUP, "rels": list(relations),
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
+            gr.query("MATCH (a:Entity {name: $n, group_id: $g})-[r:RELATES_TO]->() WHERE r.name IN $rels AND r.invalid_at IS NULL AND (r.canon IS NULL OR r.canon = false) "
+                     "SET r.invalid_at = $now", {"n": subject, "g": group, "rels": list(relations),
                                                  "now": datetime.now(timezone.utc).isoformat()})
         await asyncio.to_thread(work)
 
-    async def purge_retired(self, days: float = 3.0):
+    async def purge_retired(self, days: float = 3.0, group: str = character.DEFAULT_ID):
         """Удалить давно закрытые факты о выбывших колонистах и узлы без связей (старше часа)."""
         def work():
             from falkordb import FalkorDB
-            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(GROUP)
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
             iso = lambda sec: datetime.fromtimestamp(time.time() - sec, timezone.utc).isoformat()
             gr.query("MATCH (a:Entity {group_id: $g})-[r:RELATES_TO]->() WHERE r.name IN $rels AND r.invalid_at IS NOT NULL "
-                     "AND r.invalid_at < $cut DELETE r", {"g": GROUP, "rels": list(COLONIST_RELATIONS), "cut": iso(days * 86400)})
+                     "AND r.invalid_at < $cut AND (r.canon IS NULL OR r.canon = false) DELETE r", {"g": group, "rels": list(COLONIST_RELATIONS), "cut": iso(days * 86400)})
             gr.query("MATCH (n:Entity {group_id: $g}) WHERE NOT (n)--() AND n.created_at < $cut DELETE n",
-                     {"g": GROUP, "cut": iso(3600)})
+                     {"g": group, "cut": iso(3600)})
         await asyncio.to_thread(work)
 
     async def scores(self, query: str, facts: list[str]) -> list[float]:
@@ -311,22 +316,77 @@ class GraphitiBackend:
         vs = await self._emb.embed(facts)
         return [_cos(q, v) for v in vs]
 
-    async def delete(self, uuid: str):
+    async def delete(self, uuid: str, group: str = character.DEFAULT_ID):
         from graphiti_core.edges import EntityEdge
-        g = await self._client()
+        g = await self._client(character.database_of(group))
         edge = await EntityEdge.get_by_uuid(g.driver, uuid)
         await edge.delete(g.driver)
 
-    async def snapshot(self, limit: int = 300) -> dict:
+    async def snapshot(self, limit: int = 300, group: str = character.DEFAULT_ID) -> dict:
         def work():
             from falkordb import FalkorDB
-            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(GROUP)
-            nodes = [r[0] for r in gr.query("MATCH (n:Entity) RETURN n.name LIMIT $l", {"l": limit}).result_set]
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
+            nodes = [r[0] for r in gr.query("MATCH (n:Entity {group_id: $g}) RETURN n.name LIMIT $l", {"l": limit, "g": group}).result_set]
             edges = [{"from": r[0], "relation": r[1], "to": r[2], "fact": r[3], "uuid": r[4],
                       "valid_at": str(r[5])[:10] if r[5] else None, "invalid_at": str(r[6])[:10] if r[6] else None}
-                     for r in gr.query("MATCH (a:Entity)-[r:RELATES_TO]->(b:Entity) RETURN a.name, r.name, b.name, r.fact, "
-                                       "r.uuid, r.valid_at, r.invalid_at LIMIT $l", {"l": limit}).result_set]
+                     for r in gr.query("MATCH (a:Entity)-[r:RELATES_TO]->(b:Entity) WHERE a.group_id = $g RETURN a.name, r.name, b.name, r.fact, "
+                                       "r.uuid, r.valid_at, r.invalid_at LIMIT $l", {"l": limit, "g": group}).result_set]
             return {"entities": nodes, "edges": edges}
+        return await asyncio.to_thread(work)
+
+
+    # ── память персонажа: канон, загрузка, воспоминания о себе (ТЗ 05, CHR-16…CHR-19) ────────────────────────────
+
+    async def has_canon(self, group: str, subject: str, relation: str) -> bool:
+        """Есть ли у субъекта действующий канонический факт с этим отношением (защита канона, CHR-17)."""
+        def work():
+            from falkordb import FalkorDB
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
+            rows = gr.query("MATCH (a:Entity {name: $n, group_id: $g})-[r:RELATES_TO {name: $rel}]->() "
+                            "WHERE r.canon = true AND r.invalid_at IS NULL RETURN count(r)",
+                            {"n": subject, "g": group, "rel": relation}).result_set
+            return bool(rows and rows[0][0])
+        return await asyncio.to_thread(work)
+
+    async def seed_rows(self, group: str) -> dict[str, tuple[str, str]]:
+        """Загруженные воспоминания персонажа: mem_id -> (uuid связи, текст факта)."""
+        def work():
+            from falkordb import FalkorDB
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
+            rows = gr.query("MATCH (a:Entity {group_id: $g})-[r:RELATES_TO]->() WHERE r.source = 'seed' "
+                            "RETURN r.mem_id, r.uuid, r.fact", {"g": group}).result_set
+            return {r[0]: (r[1], r[2]) for r in rows if r[0]}
+        return await asyncio.to_thread(work)
+
+    async def mark_memory(self, group: str, uuid: str, mem_id: str, mtype: str, about: str, weight: float, source: str):
+        """Пометить связь как воспоминание персонажа: канон (seed) или жизнь (life), тип, субъект и вес."""
+        def work():
+            from falkordb import FalkorDB
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
+            gr.query("MATCH ()-[r:RELATES_TO {uuid: $u}]->() SET r.mem_id = $m, r.canon = $canon, r.source = $src, "
+                     "r.mtype = $t, r.about = $about, r.weight = $w",
+                     {"u": uuid, "m": mem_id, "canon": source == "seed", "src": source, "t": mtype, "about": about,
+                      "w": float(weight)})
+        await asyncio.to_thread(work)
+
+    async def delete_memory(self, group: str, mem_id: str):
+        """Удалить воспоминание персонажа по id (запись удалена из YAML)."""
+        def work():
+            from falkordb import FalkorDB
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
+            gr.query("MATCH (a:Entity {group_id: $g})-[r:RELATES_TO {mem_id: $m}]->() DELETE r", {"g": group, "m": mem_id})
+        await asyncio.to_thread(work)
+
+    async def self_memories(self, group: str, subject: str) -> list[dict]:
+        """Воспоминания о себе: связи персонажа-субъекта, у которых есть тип (ТЗ 05, CHR-19)."""
+        def work():
+            from falkordb import FalkorDB
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
+            rows = gr.query("MATCH (a:Entity {name: $n, group_id: $g})-[r:RELATES_TO]->() WHERE r.mtype IS NOT NULL "
+                            "AND r.invalid_at IS NULL RETURN r.mem_id, r.uuid, r.fact, r.mtype, r.weight, r.source",
+                            {"n": subject, "g": group}).result_set
+            return [{"mem_id": r[0], "uuid": r[1], "fact": r[2], "mtype": r[3], "weight": float(r[4] or 0), "source": r[5]}
+                    for r in rows]
         return await asyncio.to_thread(work)
 
 
@@ -365,7 +425,8 @@ def colonist_facts(pawn: dict, colony: str) -> list[Fact]:
 
 def colony_facts(colony: str, names: list[str]) -> list[Fact]:
     """Факты о самом поселении: кто им управляет и кто в нём живёт (колонисты связаны с ним узлом-поселением)."""
-    return [Fact("ГЛаДОС", "УПРАВЛЯЕТ", colony, f"ГЛаДОС управляет поселением «{colony}» в RimWorld"),
+    me = character.active().name
+    return [Fact(me, "УПРАВЛЯЕТ", colony, f"{me} управляет поселением «{colony}» в RimWorld"),
             Fact(colony, "СОСТАВ", f"состав {colony}", f"В поселении «{colony}» колонистов: {len(names)} ({', '.join(names)})")]
 
 
@@ -385,6 +446,24 @@ class GraphMemory:
         self._colony_names: list[str] = []
         self._last_sync = 0.0
         self._last_purge = 0.0
+        self._character = character.DEFAULT_ID     # персонаж, под которым пишутся новые факты (ТЗ 05, CHR-9)
+        self._self_replies = 0                     # реплик с последнего напоминания о себе (CHR-19)
+
+    # персонаж
+    def set_character(self, char_id: str) -> None:
+        """Переключение персонажа (ТЗ 05, CHR-7): новые факты уходят в его группу; очередь общая, метка на каждой записи."""
+        self._character = char_id
+
+    def group(self) -> str:
+        return character.group_id(self._character)
+
+    def _names(self, char_id: str) -> set[str]:
+        """Имена персонажа в нижнем регистре: имя и алиасы (для защиты «я», CHR-18)."""
+        try:
+            ch = character.load(char_id)
+        except character.CharacterError:
+            return {char_id.lower()}
+        return {n.lower() for n in (ch.name, *ch.aliases)}
 
     # очередь
     def _load(self) -> list[dict]:
@@ -404,7 +483,8 @@ class GraphMemory:
         text = text.strip()
         if len(text) < MIN_CHARS:
             return
-        self._queue.append({"speaker": speaker or "Пользователь", "text": text[:1500], "ts": ts or time.time(), "tries": 0})
+        self._queue.append({"speaker": speaker or "Пользователь", "text": text[:1500], "ts": ts or time.time(), "tries": 0,
+                            "character": self._character})
         self._queue = self._queue[-MAX_QUEUE:]
         self._save()
         self._wake.set()
@@ -432,10 +512,19 @@ class GraphMemory:
             return False
         item = self._queue[0]
         try:
+            char_id = item.get("character") or character.DEFAULT_ID
+            group = character.group_id(char_id)
             facts = await self.extractor.extract(item["speaker"], item["text"])
             when = datetime.fromtimestamp(item["ts"], timezone.utc)
+            names = self._names(char_id)
+            written = []
             for f in facts:
-                await self.backend.add_fact(f, when)
+                if f.subject.lower() in names:            # CHR-18: реплика собеседника не пишет в «я» персонажа
+                    await self._about_character(f, group)
+                    continue
+                await self.backend.add_fact(f, when, group)
+                written.append(f)
+            facts = written
             self._queue.pop(0)
             self._save()
             if facts:
@@ -450,6 +539,17 @@ class GraphMemory:
             self._save()
             self._health_at = 0.0            # перепроверить доступность
             return False
+
+    async def _about_character(self, f: Fact, group: str) -> None:
+        """Факт о персонаже из реплики собеседника не применяется (CHR-18). Если у него есть канон с тем же отношением,
+        это противоречие: пишем событие memory_conflict и не трогаем канон (CHR-17)."""
+        try:
+            conflict = await self.backend.has_canon(group, f.subject, f.relation)
+        except Exception as e:
+            logger.warning(f"Граф, канон: {e}")
+            conflict = False
+        if conflict:
+            events_log.log("memory_conflict", f"канон сохранён, факт не применён: {f.fact}", relation=f.relation)
 
     async def run(self):
         while True:
@@ -493,12 +593,12 @@ class GraphMemory:
                 key = f"{f.subject}|{f.relation}"
                 if sums.get(key) == f.fact:
                     continue
-                await self.backend.upsert_fact(f, datetime.now(timezone.utc))
+                await self.backend.upsert_fact(f, datetime.now(timezone.utc), self.group())
                 sums[key] = f.fact
                 written += 1
             gone = sorted({k.split("|")[0] for k in sums if k.endswith("|КОЛОНИСТ")} - set(names))
             for who in gone:
-                await self.backend.retire(who, COLONIST_RELATIONS)
+                await self.backend.retire(who, COLONIST_RELATIONS, self.group())
                 for rel in COLONIST_RELATIONS:
                     sums.pop(f"{who}|{rel}", None)
             self._save_sums(sums)
@@ -506,7 +606,7 @@ class GraphMemory:
             purge = getattr(self.backend, "purge_retired", None)
             if purge and time.time() - self._last_purge > 3600:
                 self._last_purge = time.time()
-                await purge()
+                await purge(group=self.group())
             if written or gone:
                 events_log.log("memory", f"граф: колонисты обновлены ({written} фактов), выбыли: {', '.join(gone) or 'нет'}")
         except Exception as e:
@@ -542,7 +642,7 @@ class GraphMemory:
         if not query.strip() or not await self._ready():
             return []
         try:
-            found = await self.backend.search(query, limit * 2)
+            found = await self.backend.search(query, limit * 2, self.group())
             if not include_old:
                 found = [f for f in found if not f.get("invalid_at")]
             if not found:
@@ -554,6 +654,31 @@ class GraphMemory:
             logger.warning(f"Граф, поиск: {e}")
             return []
 
+    async def self_memories(self, query: str, n: int = character_memory.N_PICK) -> list[dict]:
+        """Воспоминания персонажа о себе, подходящие к реплике (ТЗ 05, CHR-19). Пусто, если ничего не прошло порог."""
+        if not query.strip() or not await self._ready():
+            return []
+        try:
+            cands = await self.backend.self_memories(self.group(), self._subject())
+            if not cands:
+                return []
+            scores = await self.backend.scores(query, [c["fact"] for c in cands])
+            self._self_replies += 1
+            picked, nudged = character_memory.pick(cands, scores, n=n, min_score=MIN_SCORE,
+                                                   nudge=self._self_replies >= character_memory.NUDGE_EVERY)
+            if nudged:
+                self._self_replies = 0
+            return picked
+        except Exception as e:
+            logger.warning(f"Граф, воспоминания о себе: {e}")
+            return []
+
+    def _subject(self) -> str:
+        try:
+            return character.load(self._character).name
+        except character.CharacterError:
+            return self._character
+
     async def context_block(self, query: str) -> str:
         facts = await self.search(query, limit=6)
         if not facts:
@@ -562,7 +687,7 @@ class GraphMemory:
 
     async def forget(self, uuid: str) -> bool:
         try:
-            await self.backend.delete(uuid)
+            await self.backend.delete(uuid, self.group())
             return True
         except Exception as e:
             logger.warning(f"Граф, удаление: {e}")
@@ -570,6 +695,6 @@ class GraphMemory:
 
     async def snapshot(self) -> dict:
         try:
-            return await self.backend.snapshot()
+            return await self.backend.snapshot(group=self.group())
         except Exception as e:
             return {"entities": [], "edges": [], "error": str(e)[:200]}

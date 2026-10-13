@@ -861,6 +861,14 @@ class Attention:
         """Короткая просьба замолчать: быстрый путь без модели (ATT-18)."""
         return len(text) <= 40 and bool(_STOP_RE.match(text.strip()))
 
+    async def reset_for_character(self) -> int:
+        """Переключение персонажа (ТЗ 05, CHR-7): очередь речи очищается целиком, стек фокуса — до фонового состояния.
+        Конец текущей реплики ждёт вызывающий код. Возвращает число снятых кандидатов."""
+        n = await self.speech.stop_all(10_000)
+        self._focus = self._focus[:1]
+        events_log.log_nowait("attention", "очередь речи и фокус сброшены: смена персонажа", dropped=n)
+        return n
+
     async def stop_speech(self, why: str = "stop") -> int:
         """«Замолчи» (ATT-18): речь обрывается немедленно, очередь очищается от кандидатов ниже 85."""
         n = await self.speech.stop_all(INTERRUPT_P)

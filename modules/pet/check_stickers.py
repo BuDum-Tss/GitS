@@ -27,7 +27,7 @@ for name in NAMES:
 # HTML превью
 html_lines = [
     '<html><body style="background:#222;font-family:monospace;padding:12px">',
-    '<h2 style="color:#0f0">GLaDOS Sticker Check</h2>',
+    '<h2 style="color:#0f0">Sticker Check</h2>',
     '<div style="display:flex;flex-wrap:wrap;gap:12px">',
 ]
 for name in NAMES:

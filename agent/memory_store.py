@@ -26,7 +26,16 @@ _DUP = 0.6               # доля общих основ, начиная с к�
 _WORD = re.compile(r"[а-яёa-z0-9]{3,}", re.I)
 _STOP = {"что", "как", "это", "про", "мне", "меня", "или", "для", "все", "всё", "обо", "мой", "моя",
          "его", "ему", "она", "они", "при", "над", "под", "без", "через", "тоже", "когда", "если",
-         "пользователь", "пользователя", "пользователю", "ассистентка", "гладос"}
+         "пользователь", "пользователя", "пользователю", "ассистентка"}
+
+
+def _stop_words() -> set[str]:
+    """Служебные слова и имя с алиасами активного персонажа (ТЗ 05, CHR-4): его имя не бывает темой запоминания."""
+    import character
+    try:
+        return _STOP | {a.lower() for a in character.active().aliases}
+    except Exception:
+        return _STOP
 
 
 _WEEKDAYS = [("понедельник", 0), ("вторник", 1), ("сред", 2), ("четверг", 3), ("пятниц", 4),
@@ -66,7 +75,8 @@ def _stem(w: str) -> str:
 
 
 def stems(text: str) -> set[str]:
-    return {_stem(w) for w in _WORD.findall(text) if w.lower() not in _STOP}
+    stop = _stop_words()
+    return {_stem(w) for w in _WORD.findall(text) if w.lower() not in stop}
 
 
 def _similar(a: str, b: str) -> bool:
@@ -229,7 +239,8 @@ class MemoryStore:
         if strict:
             kept = [i for i in data["items"] if text.lower() not in i["text"].lower()]
         else:
-            ws = [w.lower() for w in _WORD.findall(text) if w.lower() not in _STOP]
+            stop = _stop_words()
+            ws = [w.lower() for w in _WORD.findall(text) if w.lower() not in stop]
             keys = [w[:3] if len(w) > 3 else w for w in ws]
             if not keys:
                 return 0

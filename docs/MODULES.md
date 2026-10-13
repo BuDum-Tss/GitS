@@ -109,6 +109,7 @@ asyncio.run(main())
 | `await client.request("core.tts", {...}, timeout=60)` | любой запрос к ядру; `ToolError(code=...)` при ошибке, `asyncio.TimeoutError` без ответа |
 | `await client.job_update(job_id, state=..., stage=..., progress=..., text=...)` | ход долгой задачи (`new_job_id()` из `gits_sdk.protocol`); клиент хранит полное состояние и не шлёт прогресс чаще раза в 2 с |
 | `client.settings`, `client.module_settings`, `client.enabled`, `client.profile`, `client.battery` | то, что присылает ядро (обновляется само) |
+| `core.persona` (запрос) | карточка активного персонажа: `id`, `name`, `aliases`, `gender`, `voice`, `card`, `sections` (разделы `persona.md`); при теме `character` перечитывать (ТЗ 05, CHR-4, CHR-6) |
 | `await client.panel.set(blocks)` | пространство модуля в дашборде (ТЗ 15): список блоков, до 64 КБ; не чаще раза в секунду (лишнее сливается), после переподключения шлётся заново |
 | `@client.panel_action(id)` | кнопка или строка пространства из `panel.actions` манифеста: `async (args) -> {ok, message?, open_url?}` |
 

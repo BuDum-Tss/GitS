@@ -143,7 +143,7 @@ def is_request(msg_type: str) -> bool:
     return msg_type in REQUEST_TYPES
 
 
-TOPICS = ("presence", "settings", "profile", "module", "battery")
+TOPICS = ("presence", "settings", "profile", "module", "battery", "character")   # character: ТЗ 05, CHR-6
 CAPABILITIES = ("voice.output", "voice.input", "presence.view", "screen.observe", "chat.channel", "game")
 RISKS = ("auto", "ask", "public")
 AVAILABILITIES = ("always", "profile")

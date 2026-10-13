@@ -18,6 +18,8 @@ from telegram_user import LeakError, TelegramUser
 
 import events_log
 
+log = logging.getLogger("tg_app")
+
 logger = logging.getLogger("telegram.app")
 
 STATE_EVERY_S = 300.0            # TG-21: состояние при изменении и раз в 5 минут
@@ -74,7 +76,7 @@ class TelegramModule:
     def start(self) -> list[asyncio.Task]:
         loop = asyncio.get_running_loop()
         for coro in (self._privacy_loop(), self.channel.run_inbox(), self.channel.run(), self.channel.run_verify(),
-                     self.user.run(), self.run_state()):
+                     self.user.run(), self.run_state(), self._persona_loop()):
             self.tasks.append(loop.create_task(coro))
         return self.tasks
 
@@ -189,8 +191,26 @@ class TelegramModule:
             events_log.log_nowait("error", "telegram: голос для ответа не подготовлен, пойдёт текстом: " + scrub(str(e))[:160])
             return None
 
+    async def load_persona(self) -> None:
+        """Персонаж от ядра (core.persona, ТЗ 05 CHR-4): разделы персоны и алиасы. Повторно при теме character."""
+        try:
+            card = await self.client.request("core.persona", {}, timeout=20)
+        except Exception as e:
+            log.warning("персона от ядра не получена: %s", e)
+            return
+        self.channel.set_persona(card.get("sections") or {})
+        self.user.set_aliases(card.get("aliases") or [])
+
+    async def _persona_loop(self) -> None:
+        await self.client.wait_connected()
+        await self.load_persona()
+
     def _register(self) -> None:
         c, ch, user, privacy = self.client, self.channel, self.user, self.privacy
+        @c.on_topic("character")
+        async def _on_character(data):
+            await self.load_persona()
+
 
         # ── публикации ──
         @c.tool("post")
