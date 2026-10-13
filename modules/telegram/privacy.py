@@ -13,7 +13,7 @@ import re
 import time
 
 from common import scrub
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 import events_log
 

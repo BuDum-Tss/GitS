@@ -28,7 +28,7 @@ from pathlib import Path
 
 import httpx
 from common import CAPTION_MAX, chunks, full_name, message_fact, quiet_active, scrub, sender_info
-from glados_module import ToolError
+from gits_sdk import ToolError
 from tg_draft import TgDraft
 
 import events_log

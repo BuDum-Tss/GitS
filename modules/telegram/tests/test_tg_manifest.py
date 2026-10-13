@@ -1,7 +1,7 @@
 """Манифест и инструменты модуля Telegram (ТЗ 10: раздел 5, TG-8, TG-22)."""
 from tg_rig import Rig
 
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 from manifest import MANIFEST, build_manifest
 
 TABLE = {"post", "draft_show", "draft_write", "draft_edit", "draft_append", "draft_replace", "draft_attach",

@@ -68,8 +68,8 @@ def pcm_frames(audio: str) -> list[bytes]:
 async def measure_module(n: int, audio: str | None, skip_utter: bool) -> dict:
     sys.path[:0] = [str(HERE), str(GITS / "agent"), str(GITS / "sdk")]
     import tts_engine
-    from glados_module import ModuleClient
-    from glados_module.testing import FakeCore
+    from gits_sdk import ModuleClient
+    from gits_sdk.testing import FakeCore
     from app import VoiceModule
     from manifest import build_manifest
 

@@ -1,8 +1,8 @@
 """Шина модулей (ТЗ 02, раздел 5): WebSocket-сервер `/module/ws` в приложении дашборда (порт 8766).
 
-Модуль подключается сам (клиент SDK `glados_module`), проходит рукопожатие по ТЗ 01 §5 и дальше шлёт события, речь,
+Модуль подключается сам (клиент SDK `gits_sdk`), проходит рукопожатие по ТЗ 01 §5 и дальше шлёт события, речь,
 состояние, задачи и запросы к ядру, а ядро вызывает его инструменты и рассылает темы (`presence`, `settings`, `profile`,
-`module`, `battery`). Поведение сервера повторяет эталон `glados_module.testing.FakeCore`.
+`module`, `battery`). Поведение сервера повторяет эталон `gits_sdk.testing.FakeCore`.
 
 Защита: только петля (`127.0.0.1`, `::1`, иначе HTTP 403) и токен `Authorization: Bearer ...` (иначе 401) до апгрейда до
 WebSocket. Токен ядро создаёт при каждом старте и пишет в `%LOCALAPPDATA%\\GLaDOS\\module_token`; в журналы он не попадает,
@@ -24,8 +24,8 @@ from aiohttp import WSMsgType, web
 import events_log
 import fast_brain
 import settings
-from glados_module import protocol as P
-from glados_module.protocol import Envelope, Manifest, ProtocolError
+from gits_sdk import protocol as P
+from gits_sdk.protocol import Envelope, Manifest, ProtocolError
 
 logger = logging.getLogger("hub")
 

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from tg_rig import Rig
 
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 OWNER = 777
 

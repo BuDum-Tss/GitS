@@ -15,7 +15,7 @@ from collections import deque
 from pathlib import Path
 
 from fakes import FakePlayer, fake_synth_file
-from glados_module import ModuleClient, ToolError
+from gits_sdk import ModuleClient, ToolError
 from hearing import Hearing
 from mic_listener import MicListener
 from player import PowerShellPlayer

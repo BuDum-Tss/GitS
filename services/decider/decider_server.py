@@ -28,9 +28,10 @@ os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")        # веса уже в кэше: без обращений к сети при каждом запуске
 
 from aiohttp import web  # noqa: E402
+from envcompat import env  # noqa: E402
 
-MODEL_ID = os.getenv("GLADOS_DECIDER_MODEL", "fastino/GLiNER2.5-multi-Decide")
-PORT = int(os.getenv("GLADOS_DECIDER_PORT", "8768"))
+MODEL_ID = env("GITS_DECIDER_MODEL", "fastino/GLiNER2.5-multi-Decide")
+PORT = int(env("GITS_DECIDER_PORT", "8768"))
 MAX_STATE_CHARS = 6000
 
 _model = None

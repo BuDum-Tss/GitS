@@ -28,14 +28,15 @@ os.environ.setdefault("SEMAPHORE_LIMIT", "2")           # локальной м�
 
 import events_log
 import settings
+from envcompat import env
 
 logger = logging.getLogger("graph_memory")
 
-LM_URL = os.getenv("GLADOS_LM_URL", "http://127.0.0.1:1234/v1")
-LLM_MODEL = os.getenv("GLADOS_GRAPH_LLM", "google/gemma-4-e4b")
-EMB_MODEL = os.getenv("GLADOS_GRAPH_EMBEDDER", "text-embedding-google_embeddinggemma-300m-qat")
-FALKOR_HOST = os.getenv("GLADOS_GRAPH_HOST", "127.0.0.1")
-FALKOR_PORT = int(os.getenv("GLADOS_GRAPH_PORT", "6380"))
+LM_URL = env("GITS_LM_URL", "http://127.0.0.1:1234/v1")
+LLM_MODEL = env("GITS_GRAPH_LLM", "google/gemma-4-e4b")
+EMB_MODEL = env("GITS_GRAPH_EMBEDDER", "text-embedding-google_embeddinggemma-300m-qat")
+FALKOR_HOST = env("GITS_GRAPH_HOST", "127.0.0.1")
+FALKOR_PORT = int(env("GITS_GRAPH_PORT", "6380"))
 GROUP = "glados"
 MIN_SCORE = 0.5                   # косинус «запрос ↔ факт»: ниже считаем несвязанным (релевантное ~0.75, мусор ~0.3)
 MIN_CHARS = 12                    # короче реплику на факты не разбираем

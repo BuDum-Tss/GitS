@@ -16,17 +16,17 @@
 стучаться в закрытую дверь на каждом событии. Тайм-аут ответа (сервис занят очередью) недоступностью не считается.
 """
 import logging
-import os
 import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 import httpx
+from envcompat import env
 
 logger = logging.getLogger("decide")
 
-URL = os.getenv("GLADOS_DECIDER_URL", "http://127.0.0.1:8768")
-TIMEOUT = float(os.getenv("GLADOS_DECIDER_TIMEOUT", "2.5"))
+URL = env("GITS_DECIDER_URL", "http://127.0.0.1:8768")
+TIMEOUT = float(env("GITS_DECIDER_TIMEOUT", "2.5"))
 EVENT_TIMEOUT_S = 1.0         # ATT-3: событие модуля
 INPUT_TIMEOUT_S = 1.5         # ATT-3: обращение пользователя (пользователь ждёт ответа)
 MAX_CHARS = 600               # ATT-3: длиннее текст обрезается

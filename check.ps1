@@ -6,7 +6,7 @@ $lint = $LASTEXITCODE
 Write-Host "== pytest ==" -ForegroundColor Cyan
 python -m pytest -q
 $tests = $LASTEXITCODE
-Write-Host "== pytest sdk (glados_module) ==" -ForegroundColor Cyan
+Write-Host "== pytest sdk (gits_sdk) ==" -ForegroundColor Cyan
 python -m pytest -q sdk/tests
 $sdktests = $LASTEXITCODE
 # тесты каждого модуля идут отдельным запуском: у модулей одинаковые имена файлов (app.py, manifest.py, common.py)

@@ -152,7 +152,7 @@ Telegram, ответ приходит туда же.
 
 ## 10. Тесты
 
-- **TG-22 (ОБЯЗАТЕЛЬНО).** `GitS/modules/telegram/tests/` против `glados_module.testing.FakeCore`, сеть Telegram
+- **TG-22 (ОБЯЗАТЕЛЬНО).** `GitS/modules/telegram/tests/` против `gits_sdk.testing.FakeCore`, сеть Telegram
   подменяется (заглушки `_call` бота и клиента Telethon):
   - манифест валиден; все инструменты из таблицы зарегистрированы;
   - входящее сообщение боту → событие `telegram.bot_message` с верными полями; от владельца → `is_owner: true`;

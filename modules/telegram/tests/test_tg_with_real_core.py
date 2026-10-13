@@ -18,7 +18,7 @@ import settings
 from app import TelegramModule
 from conversation_io import Channel, ConversationIO
 from environments import builtin
-from glados_module import ModuleClient
+from gits_sdk import ModuleClient
 from manifest import build_manifest
 
 OWNER = 777
@@ -197,7 +197,7 @@ def test_planner_search_finds_telegram_tools_by_old_requests(path):
     reg = Registry()
     mods = ModuleRegistry(reg, settings_source=lambda: {"modules": {}})
     conn = SimpleNamespace(module_id="telegram", manifest=build_manifest(), instance="x", pid=1, connected_at=0,
-                           spec=__import__("glados_module.protocol", fromlist=["Manifest"]).Manifest.from_dict(build_manifest()))
+                           spec=__import__("gits_sdk.protocol", fromlist=["Manifest"]).Manifest.from_dict(build_manifest()))
     mods.on_connected(conn)
     reg.focus = lambda: set()
     request = {"post": "опубликуй пост про понедельник в телеграм", "send": "напиши Маше привет в телеге"}[path]

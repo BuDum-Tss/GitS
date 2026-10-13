@@ -8,7 +8,7 @@ from test_attention import Rig, evt_log
 import module_registry
 from attention import Attention
 from environments.registry import Registry
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 from speech_queue import ANNOUNCE_P, SpeechCandidate
 
 

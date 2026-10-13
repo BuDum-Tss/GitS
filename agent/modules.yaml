@@ -5,7 +5,7 @@
 # never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title и description
 # (как запись называется и описывается во вкладке «Модули»; перекрывают манифест); dev: true (запись видна во вкладке только при настройке dev_mode).
 # Реальные модули: telegram - ТЗ 10, rimworld - ТЗ 11, voice - ТЗ 12, desktop - ТЗ 14, montage - ТЗ 20 (ниже).
-# Модулям передаются GLADOS_MODULE_TOKEN, GLADOS_CORE_URL, GLADOS_MODULE_ID и MEMORY_DIR (абсолютный путь к папке памяти ядра).
+# Модулям передаются GITS_MODULE_TOKEN, GITS_CORE_URL, GITS_MODULE_ID и MEMORY_DIR (абсолютный путь к папке памяти ядра).
 modules:
   - id: telegram
     title: Telegram
@@ -48,7 +48,7 @@ modules:
 
   # RimWorld (ТЗ 11): отдельный репозиторий rimworld-module. {RIMWORLD_MODULE_DIR} ядро находит само (module_dirs.py: переменная
   # RIMWORLD_MODULE_DIR, запасная RIMWORLD_AGENT_DIR, соседняя папка rimworld-module или rimworld-agent). Интерпретатор общий ({PYTHON}):
-  # зависимости игрового агента и пакет glados-module стоят в нём же, отдельного .venv у модуля нет. Данные модуля лежат в его папке
+  # зависимости игрового агента и пакет gits-sdk стоят в нём же, отдельного .venv у модуля нет. Данные модуля лежат в его папке
   # agent/memory (RIMWORLD_MEMORY_DIR), а не в MEMORY_DIR ядра, который супервизор передаёт всем модулям.
   - id: rimworld
     title: RimWorld
@@ -60,7 +60,7 @@ modules:
 
   # Монтаж видео (ТЗ 20-22): отдельный репозиторий montage-module. {MONTAGE_MODULE_DIR} ядро находит само (module_dirs.py: переменная
   # MONTAGE_MODULE_DIR, соседняя папка montage-module, запасной путь C:\MyProjects\montage-module). Окружение у модуля своё: .venv
-  # репозитория (Python 3.12, claude-agent-sdk, glados-module), поэтому интерпретатор не {PYTHON}. Нужны Node.js и ffmpeg.
+  # репозитория (Python 3.12, claude-agent-sdk, gits-sdk), поэтому интерпретатор не {PYTHON}. Нужны Node.js и ffmpeg.
   - id: montage
     title: Монтаж видео
     cwd: "{MONTAGE_MODULE_DIR}/agent"

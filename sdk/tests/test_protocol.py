@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from glados_module import protocol as P
-from glados_module.protocol import Envelope, ManifestError, ProtocolError, ToolError
+from gits_sdk import protocol as P
+from gits_sdk.protocol import Envelope, ManifestError, ProtocolError, ToolError
 
 GOOD = {
     "id": "rimworld",
@@ -390,13 +390,24 @@ def test_token_file_roundtrip(tmp_path, monkeypatch):
     token = P.new_token()
     assert len(token) == 64
     path = P.write_token_file(token)
-    assert path == tmp_path / "GLaDOS" / "module_token" and P.read_token_file() == token
+    assert path == tmp_path / "GitS" / "module_token" and P.read_token_file() == token
+
+
+def test_token_file_legacy_path_is_fallback(tmp_path, monkeypatch):
+    """ТЗ 05, CHR-3: токен в прежнем каталоге GLaDOS читается, если нового файла нет; новый файл важнее."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    legacy = tmp_path / "GLaDOS" / "module_token"
+    legacy.parent.mkdir()
+    legacy.write_text("old" * 20, encoding="utf-8")
+    assert P.read_token_file() == "old" * 20
+    P.write_token_file("new" * 20)
+    assert P.read_token_file() == "new" * 20
 
 
 def test_core_url_env(monkeypatch):
-    monkeypatch.delenv("GLADOS_CORE_URL", raising=False)
+    monkeypatch.delenv("GITS_CORE_URL", raising=False)
     assert P.core_url() == "ws://127.0.0.1:8766/module/ws"
-    monkeypatch.setenv("GLADOS_CORE_URL", "ws://127.0.0.1:9/x")
+    monkeypatch.setenv("GITS_CORE_URL", "ws://127.0.0.1:9/x")
     assert P.core_url() == "ws://127.0.0.1:9/x"
 
 

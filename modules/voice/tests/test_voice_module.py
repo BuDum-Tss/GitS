@@ -5,7 +5,7 @@ import time
 import wave
 
 import pytest
-from glados_module.protocol import ToolError, validate_manifest
+from gits_sdk.protocol import ToolError, validate_manifest
 
 import common
 import opus_encoder

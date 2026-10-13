@@ -20,11 +20,11 @@ def test_parse_hotkey_rejects_bad_specs(spec):
 
 
 def test_dashboard_base_follows_the_core_url(monkeypatch):
-    monkeypatch.delenv("GLADOS_CORE_URL", raising=False)
+    monkeypatch.delenv("GITS_CORE_URL", raising=False)
     assert pet_logic.dashboard_base() == "http://127.0.0.1:8766"
-    monkeypatch.setenv("GLADOS_CORE_URL", "ws://127.0.0.1:9100/module/ws")
+    monkeypatch.setenv("GITS_CORE_URL", "ws://127.0.0.1:9100/module/ws")
     assert pet_logic.dashboard_base() == "http://127.0.0.1:9100"
-    monkeypatch.setenv("GLADOS_DASHBOARD_URL", "http://localhost:7000/")
+    monkeypatch.setenv("GITS_DASHBOARD_URL", "http://localhost:7000/")
     assert pet_logic.dashboard_base() == "http://localhost:7000"
 
 

@@ -14,7 +14,6 @@
 import asyncio
 import json
 import logging
-import os
 import re
 import time
 from pathlib import Path
@@ -23,11 +22,12 @@ import httpx
 
 import events_log
 import reflex_actions
+from envcompat import env
 
 logger = logging.getLogger("fast_brain")
 
-LM_URL   = os.environ.get("GLADOS_FAST_URL", "http://127.0.0.1:1234/v1/chat/completions")
-LM_MODEL = os.environ.get("GLADOS_FAST_MODEL", "google/gemma-4-e4b")
+LM_URL   = env("CHARACTER_FAST_URL", "http://127.0.0.1:1234/v1/chat/completions")
+LM_MODEL = env("CHARACTER_FAST_MODEL", "google/gemma-4-e4b")
 TIMEOUT  = 8.0
 WARMUP_TIMEOUT = 90.0   # холодный старт: LM Studio грузит модель ~20 с
 _lock: asyncio.Lock | None = None

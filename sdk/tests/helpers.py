@@ -2,7 +2,7 @@
 import asyncio
 import contextlib
 
-from glados_module import ModuleClient, ToolError
+from gits_sdk import ModuleClient, ToolError
 
 MANIFEST = {
     "id": "demo",

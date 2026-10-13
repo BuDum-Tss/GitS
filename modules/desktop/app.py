@@ -23,8 +23,8 @@ import pc_control
 import perception
 import screen_operator
 import screenshots
-from glados_module import ModuleClient, ToolError
-from glados_module.protocol import new_job_id
+from gits_sdk import ModuleClient, ToolError
+from gits_sdk.protocol import new_job_id
 from watch import FocusWatch
 
 import events_log

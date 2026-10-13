@@ -4,8 +4,8 @@ import contextlib
 from pathlib import Path
 
 import numpy as np
-from glados_module import ModuleClient
-from glados_module.testing import FakeCore
+from gits_sdk import ModuleClient
+from gits_sdk.testing import FakeCore
 
 from app import VoiceModule
 from manifest import build_manifest

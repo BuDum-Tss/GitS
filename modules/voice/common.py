@@ -6,6 +6,7 @@
 import os
 import tempfile
 from pathlib import Path
+from envcompat import env
 
 GITS_ROOT = Path(__file__).resolve().parent.parent.parent
 TEMP_DIR_NAME = "glados_voice"          # VOICE-5: файлы синтеза лежат в %TEMP%\glados_voice\
@@ -20,13 +21,13 @@ def default_memory_dir() -> str:
 
 
 def secrets_file() -> Path:
-    """Файл секретов: agent/secrets.env (GLADOS_SECRETS_FILE переопределяет путь, например в проверках запуска)."""
-    return Path(os.getenv("GLADOS_SECRETS_FILE") or GITS_ROOT / "agent" / "secrets.env")
+    """Файл секретов: agent/secrets.env (GITS_SECRETS_FILE переопределяет путь, например в проверках запуска)."""
+    return Path(env("GITS_SECRETS_FILE") or GITS_ROOT / "agent" / "secrets.env")
 
 
 def temp_dir() -> Path:
-    """Временная папка модуля (GLADOS_VOICE_TMP заменяет путь: тесты)."""
-    return Path(os.getenv("GLADOS_VOICE_TMP") or Path(tempfile.gettempdir()) / TEMP_DIR_NAME)
+    """Временная папка модуля (GITS_VOICE_TMP заменяет путь: тесты)."""
+    return Path(env("GITS_VOICE_TMP") or Path(tempfile.gettempdir()) / TEMP_DIR_NAME)
 
 
 def fake_mode() -> bool:

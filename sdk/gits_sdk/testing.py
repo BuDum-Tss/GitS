@@ -24,7 +24,7 @@ from aiohttp import web
 from . import protocol as P
 from .protocol import Envelope, ProtocolError, ToolError
 
-log = logging.getLogger("glados_module.testing")
+log = logging.getLogger("gits_sdk.testing")
 
 NO_REPLY = object()   # вернуть из обработчика запроса, чтобы ядро промолчало (проверка тайм-аутов)
 

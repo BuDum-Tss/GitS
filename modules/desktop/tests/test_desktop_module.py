@@ -6,9 +6,9 @@ import asyncio
 import re
 
 import pytest
-from glados_module import ModuleClient, ToolError
-from glados_module.protocol import validate_manifest
-from glados_module.testing import FakeCore
+from gits_sdk import ModuleClient, ToolError
+from gits_sdk.protocol import validate_manifest
+from gits_sdk.testing import FakeCore
 
 import app as appmod
 import pc_control

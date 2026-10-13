@@ -7,7 +7,7 @@ import aiohttp
 import dashboard
 from test_dashboard_endpoints import serve
 
-from glados_module import ModuleClient
+from gits_sdk import ModuleClient
 from focus_rigs import GAME_POLICIES
 
 MANIFEST = {

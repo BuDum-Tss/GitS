@@ -15,7 +15,7 @@ import module_registry
 from companion import Companion
 from environments.base import Environment, Tool
 from environments.registry import Registry
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 from user_memory import UserMemory
 
 AGENT = Path(__file__).resolve().parent.parent

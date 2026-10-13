@@ -2,7 +2,7 @@
 
 `TelegramModule(client, memory_dir)` вешает обработчики на `ModuleClient` и создаёт фоновые задачи (`start()`):
 личные слова от ядра (privacy), входящие бота, цикл постов, проверка канала, её аккаунт (Telethon), состояние раз в 5 минут.
-Тесты собирают модуль против `glados_module.testing.FakeCore`, а сеть Telegram подменяют (`_call`, `_upload`, клиент Telethon).
+Тесты собирают модуль против `gits_sdk.testing.FakeCore`, а сеть Telegram подменяют (`_call`, `_upload`, клиент Telethon).
 """
 import asyncio
 import json
@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from common import scrub
-from glados_module import ModuleClient, ToolError
+from gits_sdk import ModuleClient, ToolError
 from privacy import Privacy
 from telegram_channel import TelegramChannel
 from telegram_user import LeakError, TelegramUser

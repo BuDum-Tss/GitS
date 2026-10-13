@@ -7,17 +7,17 @@
 Другие агенты (игра) вызывают его через `POST /api/web_search` дашборда, чтобы поиск был один и общий."""
 import asyncio
 import logging
-import os
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage
 
 import claude_battery
 import claude_quota
 from claude_cli import _CLI_PATH
+from envcompat import env
 
 logger = logging.getLogger("web_search")
 
-MODEL = os.getenv("GLADOS_WEB_MODEL", "haiku")
+MODEL = env("GITS_WEB_MODEL", "haiku")
 TIMEOUT = 150
 TOOLS = ["WebSearch", "WebFetch"]
 

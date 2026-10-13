@@ -22,7 +22,7 @@ def _isolated(tmp_path, monkeypatch):
     mem.mkdir()
     monkeypatch.setenv("MEMORY_DIR", str(mem))
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "localappdata"))
-    monkeypatch.setenv("GLADOS_SECRETS_FILE", str(tmp_path / "нет-такого-secrets.env"))
+    monkeypatch.setenv("GITS_SECRETS_FILE", str(tmp_path / "нет-такого-secrets.env"))
     for name in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHANNEL", "TELEGRAM_API_ID", "TELEGRAM_API_HASH", "TELEGRAM_EVERY_MINS"):
         monkeypatch.delenv(name, raising=False)
     events_log.init(str(mem))

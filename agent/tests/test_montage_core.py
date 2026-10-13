@@ -52,7 +52,7 @@ def test_montage_command_is_built_from_the_variable(tmp_path):
     command, cwd = sup.resolve("montage")
     assert Path(command[0]) == python and command[1:] == ["-u", "main.py"] and Path(cwd) == repo / "agent"
     env = sup._process_env("montage")
-    assert env["GLADOS_MODULE_ID"] == "montage" and env["GLADOS_MODULE_TOKEN"] == TOKEN
+    assert env["GITS_MODULE_ID"] == "montage" and env["GITS_MODULE_TOKEN"] == TOKEN
     unset = Supervisor(load_specs(), token=TOKEN, core_url="ws://x", env={})
     assert "MONTAGE_MODULE_DIR" in unset.resolve("montage")                                  # без переменной: «не настроен»
 

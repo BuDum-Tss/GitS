@@ -1,10 +1,9 @@
 """Запуск RimWorld: найти игру, не запускать вторую копию, дождаться, пока мод ответит.
 
-Путь берётся из GLADOS_RIMWORLD_EXE, иначе типовые места. Игра стартует отдельным процессом (закрытие бота её не
+Путь берётся из GITS_RIMWORLD_EXE, иначе типовые места. Игра стартует отдельным процессом (закрытие бота её не
 закрывает). «Готова» значит: процесс жив и мод AgentBridge отвечает на порту 8765 (это бывает уже в главном меню).
 """
 import glob
-import os
 import subprocess
 import time
 from pathlib import Path
@@ -12,6 +11,7 @@ from pathlib import Path
 import psutil
 
 import gamenet
+from envcompat import env
 
 PROCESS = "RimWorldWin64.exe"
 _CANDIDATES = (r"C:\GOG Games\RimWorld\RimWorldWin64.exe",
@@ -21,8 +21,8 @@ _CANDIDATES = (r"C:\GOG Games\RimWorld\RimWorldWin64.exe",
 
 
 def find_exe() -> str | None:
-    env = os.getenv("GLADOS_RIMWORLD_EXE")
-    for path in ([env] if env else []) + list(_CANDIDATES) + glob.glob(r"C:\*\RimWorld\RimWorldWin64.exe"):
+    hint = env("GITS_RIMWORLD_EXE")
+    for path in ([hint] if hint else []) + list(_CANDIDATES) + glob.glob(r"C:\*\RimWorld\RimWorldWin64.exe"):
         if path and Path(path).is_file():
             return path
     return None
@@ -49,7 +49,7 @@ def launch(wait_seconds: float = 120.0) -> str:
                 "игра уже запущена, мод ещё загружается (подожди минуту-две)")
     exe = find_exe()
     if exe is None:
-        raise RuntimeError("не нашла RimWorldWin64.exe: укажи путь в переменной GLADOS_RIMWORLD_EXE")
+        raise RuntimeError("не нашла RimWorldWin64.exe: укажи путь в переменной GITS_RIMWORLD_EXE")
     spawn_detached(exe, str(Path(exe).parent))
     deadline = time.time() + wait_seconds
     while time.time() < deadline:

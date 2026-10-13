@@ -17,7 +17,6 @@
 import asyncio
 import collections
 import logging
-import os
 import time
 
 import numpy as np
@@ -27,6 +26,7 @@ import fast_brain
 import local_stt
 import window
 from local_stt import _JUNK  # noqa: F401  (прежнее место: mic_listener берёт фильтр отсюда)
+from envcompat import env
 
 logger = logging.getLogger("hearing")
 
@@ -38,7 +38,7 @@ GIST_EVERY_SECS = 180
 
 _BLOCK_APPS = ("zoom", "teams", "discord", "skype", "telegram", "slack", "webex", "whatsapp",
                "viber", "meet")
-_extra = os.getenv("GLADOS_HEARING_BLOCK_APPS", "")
+_extra = env("GITS_HEARING_BLOCK_APPS", "")
 BLOCK_APPS = _BLOCK_APPS + tuple(a.strip().lower() for a in _extra.split(",") if a.strip())
 
 

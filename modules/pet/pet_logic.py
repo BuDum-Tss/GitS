@@ -4,11 +4,11 @@
 `PetController` вынимает их из `queue.Queue` и отдаёт окну только то, что изменилось. Окно (tkinter) и поток клиента
 сюда не входят: всё проверяется без экрана.
 """
-import os
 import queue
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
+from envcompat import env
 
 STICKER_MAP = {
     "idle":      "idle",
@@ -34,11 +34,11 @@ HOTKEY_MUTE = "Ctrl+Alt+M"   # глобальная глушилка голос�
 
 
 def dashboard_base() -> str:
-    """Адрес дашборда ядра (пульт: /api/chat, /api/settings, /api/core). GLADOS_DASHBOARD_URL, иначе по GLADOS_CORE_URL."""
-    explicit = os.getenv("GLADOS_DASHBOARD_URL")
+    """Адрес дашборда ядра (пульт: /api/chat, /api/settings, /api/core). GITS_DASHBOARD_URL, иначе по GITS_CORE_URL."""
+    explicit = env("GITS_DASHBOARD_URL")
     if explicit:
         return explicit.rstrip("/")
-    core = os.getenv("GLADOS_CORE_URL") or "ws://127.0.0.1:8766/module/ws"
+    core = env("GITS_CORE_URL") or "ws://127.0.0.1:8766/module/ws"
     host = core.split("://", 1)[-1].split("/", 1)[0]
     return f"http://{host}"
 

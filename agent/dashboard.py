@@ -12,11 +12,12 @@ from aiohttp import web
 
 import approvals
 import module_panel
-from glados_module.protocol import JOB_ID_RE
+from gits_sdk.protocol import JOB_ID_RE
 from memory_store import MemoryStore
 import events_log
 import settings
 from user_memory import UserMemory
+from envcompat import env
 
 logger = logging.getLogger("dashboard")
 
@@ -819,6 +820,6 @@ async def start_dashboard(
 
     runner = web.AppRunner(build_app())
     await runner.setup()
-    site = web.TCPSite(runner, os.getenv("GLADOS_DASHBOARD_HOST", "127.0.0.1"), port)
+    site = web.TCPSite(runner, env("GITS_DASHBOARD_HOST", "127.0.0.1"), port)
     await site.start()
     logger.info(f"Дашборд запущен: http://localhost:{port}")

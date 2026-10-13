@@ -1,6 +1,6 @@
 """Проверка ответа LLM-диспетчера фокуса (ТЗ 18, FOC-7): конечный список операций, отказ при нарушении, без исключений."""
 import focus_dispatch as d
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 
 CTX = {
     "now": 1000.0,

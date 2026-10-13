@@ -3,8 +3,8 @@ import copy
 
 import pytest
 
-from glados_module import protocol as P
-from glados_module.protocol import Manifest
+from gits_sdk import protocol as P
+from gits_sdk.protocol import Manifest
 
 BASE = {
     "id": "montage",

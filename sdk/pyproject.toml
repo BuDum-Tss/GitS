@@ -3,14 +3,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "glados-module"
+name = "gits-sdk"
 version = "0.1.0"
-description = "SDK модулей ГЛаДОС: протокол ядро-модуль (ТЗ 01), клиент ModuleClient, FakeCore для тестов"
+description = "SDK модулей GitS: протокол ядро-модуль (ТЗ 01), клиент ModuleClient, FakeCore для тестов"
 requires-python = ">=3.12"
 dependencies = ["aiohttp>=3.9"]
 
 [tool.setuptools.packages.find]
-include = ["glados_module*"]
+include = ["gits_sdk*", "glados_module*"]   # glados_module: устаревший алиас (ТЗ 05, CHR-3)
 
 # Тесты SDK: из корня репозитория `python -m pytest -q sdk/tests` (см. check.ps1).
 # pythonpath позволяет гонять тесты и без установки пакета.

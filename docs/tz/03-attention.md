@@ -63,7 +63,7 @@
 ```
 
 - **ATT-3 (ОБЯЗАТЕЛЬНО).** Клиент `agent/decide.py` — копия `rimworld-agent/agent/decider.py` (тот же протокол,
-  запоминание недоступности на 30 с, `GLADOS_DECIDER_URL`), плюс класс `Decider` с `async classify(text, questions) ->
+  запоминание недоступности на 30 с, `GITS_DECIDER_URL`), плюс класс `Decider` с `async classify(text, questions) ->
   dict | None` поверх него: вход обрезается до 600 символов, тайм-аут 1,0 с для событий и 1,5 с для обращений
   пользователя, замер времени, `None` при недоступности или ошибке (в журнал, без исключений наружу). Настройка
   `attention.classifier` выключает вызовы.

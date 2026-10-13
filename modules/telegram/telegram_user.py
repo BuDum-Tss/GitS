@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 from common import SERVICE_USER_ID, TEXT_MAX, chunks, full_name, message_fact, scrub, sender_info
-from glados_module.protocol import clip
+from gits_sdk.protocol import clip
 
 import events_log
 

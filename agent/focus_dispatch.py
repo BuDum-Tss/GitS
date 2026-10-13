@@ -11,11 +11,11 @@ ids событий, задач, модулей и политик, текущий
 from __future__ import annotations
 
 import json
-import os
 import time
 from typing import Any, Awaitable, Callable
 
 import fast_brain
+from envcompat import env
 
 OP_TYPES = ("reprioritize_event", "defer_event", "select_task", "request_policy_transition", "pause_task",
             "resume_task", "create_subgoal")
@@ -223,8 +223,8 @@ RECHECK_SYSTEM = (
 
 
 def enabled() -> bool:
-    """Второй эшелон включён, если GLADOS_FOCUS_LLM не выключен явно (0, no, off)."""
-    return os.getenv("GLADOS_FOCUS_LLM", "1").strip().lower() not in ("0", "no", "off", "false")
+    """Второй эшелон включён, если GITS_FOCUS_LLM не выключен явно (0, no, off)."""
+    return env("GITS_FOCUS_LLM", "1").strip().lower() not in ("0", "no", "off", "false")
 
 
 def parse_strict(text: str) -> dict:

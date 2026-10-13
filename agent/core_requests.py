@@ -10,7 +10,7 @@ import logging
 import re
 from typing import Any, Callable
 
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 
 from module_hub import ModuleConnection, ModuleError
 

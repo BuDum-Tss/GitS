@@ -30,7 +30,7 @@ async def serve(tmp_path, specs=()):
 
 
 async def test_dashboard_module_settings_mode_approval_and_job_endpoints(tmp_path):
-    from glados_module import ModuleClient
+    from gits_sdk import ModuleClient
     port, layer, runner = await serve(tmp_path)
     manifest = {"id": "cfg", "title": "Настройки", "description": "Проверка настроек.", "version": "1.0.0",
                 "subscribe": ["settings"], "tools": [],

@@ -22,10 +22,11 @@ import claude_quota
 import events_log
 import safety
 from claude_cli import _CLI_PATH
+from envcompat import env
 
 logger = logging.getLogger("analysis")
 
-MODEL = os.getenv("GLADOS_ANALYSIS_MODEL", "sonnet")
+MODEL = env("GITS_ANALYSIS_MODEL", "sonnet")
 TIMEOUT = 600
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _READ = {"Read", "Glob", "Grep"}

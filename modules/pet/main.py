@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-# SDK до установки пакета glados-module; свои файлы модуля первыми
+# SDK до установки пакета gits-sdk; свои файлы модуля первыми
 sys.path[:0] = [str(HERE), str(HERE.parent.parent / "sdk")]
 
 import os  # noqa: E402

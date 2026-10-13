@@ -11,17 +11,19 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 GITS = HERE.parent.parent
-# библиотечные файлы ядра без состояния (fast_brain, events_log, safety, claude_cli) и SDK до установки пакета glados-module;
+# библиотечные файлы ядра без состояния (fast_brain, events_log, safety, claude_cli) и SDK до установки пакета gits-sdk;
 # свои файлы модуля первыми
 sys.path[:0] = [str(HERE), str(GITS / "agent"), str(GITS / "sdk")]
 
+from envcompat import env  # noqa: E402
+
 from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv(Path(os.getenv("GLADOS_SECRETS_FILE") or GITS / "agent" / "secrets.env"))
+load_dotenv(Path(env("GITS_SECRETS_FILE") or GITS / "agent" / "secrets.env"))
 
 import events_log  # noqa: E402
 from app import DesktopModule  # noqa: E402
-from glados_module import ModuleClient  # noqa: E402
+from gits_sdk import ModuleClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 
 

@@ -7,14 +7,14 @@
 
 ## Как подключиться (5 шагов)
 
-1. **Поставь SDK** в окружение модуля: `pip install -e C:\MyProjects\GitS\sdk` (пакет `glados-module`, импорт
-   `glados_module`, Python 3.12+, зависит только от `aiohttp`).
+1. **Поставь SDK** в окружение модуля: `pip install -e C:\MyProjects\GitS\sdk` (пакет `gits-sdk`, импорт
+   `gits_sdk`, Python 3.12+, зависит только от `aiohttp`).
 2. **Опиши манифест**: словарь с `id`, `title`, `description`, `version` и, при необходимости, инструментами, событиями,
    настройками (см. ниже). SDK проверяет его до подключения (`validate_manifest`), ошибки сразу видны в консоли.
 3. **Заведи обработчики**: `@client.tool("имя")` на каждый инструмент манифеста (без обработчика `run()` не стартует).
    Отказ с понятной причиной: `raise ToolError("причина", code="unavailable")`.
 4. **Запусти** `await client.run()` (или `client.main()` для программы). Адрес ядра `ws://127.0.0.1:8766/module/ws`
-   меняется переменной `GLADOS_CORE_URL`; токен берётся из `GLADOS_MODULE_TOKEN`, а при ручном запуске из файла
+   меняется переменной `GITS_CORE_URL`; токен берётся из `GITS_MODULE_TOKEN`, а при ручном запуске из файла
    `%LOCALAPPDATA%\GLaDOS\module_token`, который пишет ядро. Переподключение при обрыве SDK делает сам (1, 2, 4, 8, 16,
    30 секунд).
 5. **Шли факты**: `await client.event(kind, text, ...)`, `await client.say(text)`, `await client.state(summary, data)`.
@@ -58,7 +58,7 @@ MANIFEST = {
 
 ```python
 import asyncio
-from glados_module import ModuleClient, ToolError
+from gits_sdk import ModuleClient, ToolError
 
 MANIFEST = {
     "id": "echo", "title": "Эхо", "version": "1.0.0",
@@ -107,7 +107,7 @@ asyncio.run(main())
 | `await client.state(summary, data)` | сводка для дашборда и выбора профиля (до 300 символов) |
 | `await client.ask(question, kind="approval", options=None, timeout_s=300)` | вопрос пользователю; возвращает ответ (`True/False`, строку, текст) |
 | `await client.request("core.tts", {...}, timeout=60)` | любой запрос к ядру; `ToolError(code=...)` при ошибке, `asyncio.TimeoutError` без ответа |
-| `await client.job_update(job_id, state=..., stage=..., progress=..., text=...)` | ход долгой задачи (`new_job_id()` из `glados_module.protocol`); клиент хранит полное состояние и не шлёт прогресс чаще раза в 2 с |
+| `await client.job_update(job_id, state=..., stage=..., progress=..., text=...)` | ход долгой задачи (`new_job_id()` из `gits_sdk.protocol`); клиент хранит полное состояние и не шлёт прогресс чаще раза в 2 с |
 | `client.settings`, `client.module_settings`, `client.enabled`, `client.profile`, `client.battery` | то, что присылает ядро (обновляется само) |
 | `await client.panel.set(blocks)` | пространство модуля в дашборде (ТЗ 15): список блоков, до 64 КБ; не чаще раза в секунду (лишнее сливается), после переподключения шлётся заново |
 | `@client.panel_action(id)` | кнопка или строка пространства из `panel.actions` манифеста: `async (args) -> {ok, message?, open_url?}` |
@@ -205,7 +205,7 @@ MANIFEST = {
 
 ## Тесты модуля без ядра: `FakeCore`
 
-`glados_module.testing.FakeCore` это поддельное ядро на настоящем aiohttp-сервере (`127.0.0.1`, свободный порт). Оно
+`gits_sdk.testing.FakeCore` это поддельное ядро на настоящем aiohttp-сервере (`127.0.0.1`, свободный порт). Оно
 принимает `hello`, отвечает `welcome`, записывает все сообщения и умеет вызвать инструмент, послать тему и ответить на
 запрос модуля:
 
@@ -230,7 +230,7 @@ async with FakeCore() as core:
 - **Запуск.** Модули из `agent/modules.yaml` ядро запускает само (супервизор): `cwd`, `command`, `args`, `autostart`, `restart`
   (`always`, `on-failure`, `never`), `enabled` (включён ли, пока пользователь не выбрал сам). В путях и аргументах подставляются
   `{GITS}`, `{PYTHON}` и переменные окружения ядра в фигурных скобках; нет переменной - модуль помечен «не настроен».
-  Процессу передаются `GLADOS_MODULE_TOKEN`, `GLADOS_CORE_URL`, `GLADOS_MODULE_ID`; до установки пакета `glados-module` в
+  Процессу передаются `GITS_MODULE_TOKEN`, `GITS_CORE_URL`, `GITS_MODULE_ID`; до установки пакета `gits-sdk` в
   `PYTHONPATH` добавляется `GitS/sdk`. Вывод процесса лежит в `agent/logs/modules/<id>.log`.
 - **Сервисы.** Запись `kind: service` с `health_url` (например классификатор `decider`) это процесс без WebSocket: ядро считает его
   работающим, пока `GET health_url` отвечает 200 (опрос раз в 10 секунд), перезапускает по `restart` и не запускает второй
@@ -253,13 +253,13 @@ async with FakeCore() as core:
 
 ## Модули в монорепо
 
-Модули GitS лежат в `modules/<id>/` (образец: `modules/telegram/`): `main.py`, `manifest.py`, свои файлы, `tests/`. Супервизор запускает их с `cwd` модуля и передаёт `MEMORY_DIR` (абсолютный путь папки памяти ядра); пакет `glados-module` берётся из `PYTHONPATH` (`GitS/sdk`) или из окружения, если он установлен. В `command` и `args` кроме `{PYTHON}` доступен `{PYTHONW}` (pythonw.exe рядом с интерпретатором ядра, для модулей с окном).
+Модули GitS лежат в `modules/<id>/` (образец: `modules/telegram/`): `main.py`, `manifest.py`, свои файлы, `tests/`. Супервизор запускает их с `cwd` модуля и передаёт `MEMORY_DIR` (абсолютный путь папки памяти ядра); пакет `gits-sdk` берётся из `PYTHONPATH` (`GitS/sdk`) или из окружения, если он установлен. В `command` и `args` кроме `{PYTHON}` доступен `{PYTHONW}` (pythonw.exe рядом с интерпретатором ядра, для модулей с окном).
 
 - **`voice`** (ТЗ 12): capabilities `voice.output` и `voice.input`; принимает от ядра `speak` (`utterance_id`, `text`, `emotion`, `replace`) и `speak.stop` (`utterance_id` или `null`, `at: now | segment_end`), отвечает на `tts.synthesize` (`text`, `emotion`, `format: wav | ogg` → `path`, `duration_ms`; файлы в `%TEMP%\glados_voice\`), шлёт события `voice.speech` (`phase: started | segment | ended`, `utterance_id`, `seq`, `segment`, `completed`, `spoken_upto`, `reason`), `voice.utterance`, `voice.user_speaking`, `voice.heard`, `voice.named`. Настройки: `barge_in`, `echo_tail_ms`. `GITS_VOICE_FAKE=1` — без звука.
   Распознавание речи (`stt_client.py`, `local_stt.py`): основной путь — WhisperX (`WHISPERX_URL`, с диаризацией и голосовыми
   отпечатками). При старте и раз в 60 с проверяется `/health`; если сервер не отвечает (в том числе при ошибке соединения во время
-  фразы), распознаём локально faster-whisper на процессоре (модель `GLADOS_STT_MODEL`, по умолчанию small, int8, потоков не больше
-  `GLADOS_STT_THREADS`, по умолчанию 2). Модель одна на процесс: её делят микрофон и слух (`hearing.py`). Веса только из кэша
+  фразы), распознаём локально faster-whisper на процессоре (модель `GITS_STT_MODEL`, по умолчанию small, int8, потоков не больше
+  `GITS_STT_THREADS`, по умолчанию 2). Модель одна на процесс: её делят микрофон и слух (`hearing.py`). Веса только из кэша
   (`local_files_only`): если их нет, модуль этого честно пишет в состояние и журнал и НЕ скачивает их сам. Локальный режим без
   диаризации: голосов не узнаёт, перебивание (`barge_in`) и образец её голоса отключены, эхо режется только закрытием «ворот»
   микрофона. Состояние и панель «Голос» показывают режим («WhisperX» или «локально (CPU)»); переход логируется один раз.

@@ -64,7 +64,7 @@ SDK для тяжёлых задач.
 приказ игрока (`companion.game_order`, `core_service.wire_modules`) идёт инструментом `order` каждого модуля фокуса с `capabilities:
 ["game"]`, подграф профиля запрашивается у модуля фокуса с `graph: true` (`graph.get`), служебные события вида `rimworld.colonists`
 обрабатывает ядро само (`Attention.kind_handlers`, они не озвучиваются). Ядро видит SDK через `sys.path` (`agent/main.py`, строка с комментарием
-«до установки пакета glados-module»). Запись `modules.yaml` с `kind: service` и `health_url` это процесс без WebSocket (первый:
+«до установки пакета gits-sdk»). Запись `modules.yaml` с `kind: service` и `health_url` это процесс без WebSocket (первый:
 классификатор `decider`): супервизор следит за ним по `GET health_url`, токен ядра ему не передаётся.
 
 ## Внимание и речь (ТЗ 03)
@@ -82,7 +82,7 @@ SDK для тяжёлых задач.
 `fast_brain`) только для неоднозначного случая; ответ строгий JSON, операции из конечного списка проверяются, сбой - правила.
 Эшелон и уверенность пишутся в журнал решений и видны в блоке «Фокус» дашборда. «Не беспокоить» для всего агента - это
 настройка ядра `dnd` / `quiet_until` (одно состояние, `settings.quiet_active`); разовое исключение живёт в менеджере. Профиль
-может объявить `focus.quiet_modules` (вычисляемо, в настройки не пишется). Выключатель второго эшелона: `GLADOS_FOCUS_LLM=0`.
+может объявить `focus.quiet_modules` (вычисляемо, в настройки не пишется). Выключатель второго эшелона: `GITS_FOCUS_LLM=0`.
 Тесты моделей не вызывают: заглушки `ask` (`agent/tests/test_focus_tiers.py`, `focus_rigs.py`).
 
 ## Звук и питомец (ТЗ 12, 13)
@@ -103,11 +103,11 @@ SDK для тяжёлых задач.
 `events_log`, `speech_text`, `prompts`, `claude_cli`); `companion`, `dashboard`, `router`, `core_service`, `settings`, `approvals`, `relationships`,
 `user_memory`, `graph_memory` не импортирует (настройки приходят от ядра, вопросы идут через `client.ask`, люди и память ведёт ядро по `sender` события,
 правило TG-14 в `attention.submit`). Данные модуля лежат в `MEMORY_DIR` (его передаёт супервизор), секреты модуль читает сам из `agent/secrets.env`
-(`GLADOS_SECRETS_FILE` заменяет путь в проверках). Тесты, которые поднимают супервизор с настоящим `modules.yaml`, обязаны оставлять только нужные модули.
+(`GITS_SECRETS_FILE` заменяет путь в проверках). Тесты, которые поднимают супервизор с настоящим `modules.yaml`, обязаны оставлять только нужные модули.
 
 ## SDK модулей (`sdk/`)
-Контракт «ядро ↔ модуль» (ТЗ 01, `docs/tz/01-module-contract.md`) и пакет `glados-module` (импорт `glados_module`):
-`sdk/glados_module/protocol.py` (конверт, манифест, проверки; его же импортирует ядро, не копирует), `client.py` (`ModuleClient`),
+Контракт «ядро ↔ модуль» (ТЗ 01, `docs/tz/01-module-contract.md`) и пакет `gits-sdk` (импорт `gits_sdk`):
+`sdk/gits_sdk/protocol.py` (конверт, манифест, проверки; его же импортирует ядро, не копирует), `client.py` (`ModuleClient`),
 `testing.py` (`FakeCore` для тестов модулей), пример `sdk/examples/echo_module.py`, тесты `sdk/tests/` (идут в `check.ps1`).
 Руководство автора модуля: `docs/MODULES.md`. SDK зависит только от `aiohttp` и не импортирует `agent/`.
 

@@ -62,9 +62,9 @@ def test_parse_urgency_only_integers_0_to_5():
 
 
 def test_enabled_switch_by_env(monkeypatch):
-    monkeypatch.delenv("GLADOS_FOCUS_LLM", raising=False)
+    monkeypatch.delenv("GITS_FOCUS_LLM", raising=False)
     assert dispatch.enabled()
-    monkeypatch.setenv("GLADOS_FOCUS_LLM", "0")
+    monkeypatch.setenv("GITS_FOCUS_LLM", "0")
     assert not dispatch.enabled()
 
 

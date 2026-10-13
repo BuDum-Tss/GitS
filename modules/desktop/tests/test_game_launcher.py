@@ -16,7 +16,7 @@ def test_already_running_does_not_start_second_copy(monkeypatch):
 def test_missing_exe_gives_clear_error(monkeypatch):
     monkeypatch.setattr(gl, "is_running", lambda: False)
     monkeypatch.setattr(gl, "find_exe", lambda: None)
-    with pytest.raises(RuntimeError, match="GLADOS_RIMWORLD_EXE"):
+    with pytest.raises(RuntimeError, match="GITS_RIMWORLD_EXE"):
         gl.launch()
 
 

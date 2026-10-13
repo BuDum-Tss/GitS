@@ -25,12 +25,13 @@ from claude_agent_sdk import (
 
 import safety
 from claude_cli import _CLI_PATH
+from envcompat import env
 
 logger = logging.getLogger("desktop.assistant")
 
-MODEL = os.getenv("GLADOS_ASSISTANT_MODEL", "sonnet")   # псевдоним: точные id CLI может не знать
+MODEL = env("CHARACTER_ASSISTANT_MODEL", "sonnet")   # псевдоним: точные id CLI может не знать
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]    # корень GitS
-_roots_env = os.getenv("GLADOS_READ_ROOTS", "")
+_roots_env = env("GITS_READ_ROOTS", "")
 READ_ROOTS = [Path(p).resolve() for p in _roots_env.split(os.pathsep) if p.strip()] or [_PROJECT_ROOT]
 
 TOOLS = ["Read", "Glob", "Grep", "Bash", "Write", "Edit", "WebSearch", "WebFetch"]
