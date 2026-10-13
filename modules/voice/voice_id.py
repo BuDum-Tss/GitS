@@ -27,6 +27,11 @@ class VoiceIdentity:
 
     # ── хранилище ────────────────────────────────────────────────────────────
 
+    def rebind(self, memory_dir: str) -> None:
+        """Переключение персонажа (ТЗ 05, CHR-12): профили голосов в папке этого персонажа."""
+        self._file = Path(memory_dir) / "voices.json"
+        Path(memory_dir).mkdir(parents=True, exist_ok=True)
+
     def _load(self) -> dict:
         try:
             d = json.loads(self._file.read_text(encoding="utf-8"))

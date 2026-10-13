@@ -94,6 +94,7 @@ class VoiceModule:
         self.tmp = Path(tmp_dir) if tmp_dir is not None else common.temp_dir()
         self._synth_blocking = synth or (fake_synth_file if self.fake else tts_engine.synth_file)
         self.voices = VoiceIdentity(memory_dir)
+        self._mem_root = memory_dir                      # папки личной памяти персонажей лежат внутри (ТЗ 05, CHR-12)
         self.stt = stt or STTClient(on_change=self._stt_changed)
         self.outbox = Outbox(client)
         self.player = player or (FakePlayer() if self.fake else PowerShellPlayer())
@@ -326,6 +327,12 @@ class VoiceModule:
 
     # ── обработчики ядра ─────────────────────────────────────────────────────
 
+    def _character_memory_dir(self, char_id: str) -> str:
+        """Папка памяти персонажа: для персонажа по умолчанию — корень, для остальных memory/characters/<id>/ (ТЗ 05)."""
+        if not char_id or char_id == "glados":                # id данных
+            return self._mem_root
+        return str(Path(self._mem_root) / "characters" / char_id)
+
     async def load_character(self) -> None:
         """Голос персонажа от ядра (core.persona, ТЗ 05 CHR-12): референс и голос запасного синтеза."""
         try:
@@ -337,6 +344,7 @@ class VoiceModule:
         ref = voice.get("reference")
         path = common.GITS_ROOT / "agent" / "characters" / str(card.get("id") or "") / str(ref) if ref else None
         tts_engine.use_character_voice(path if path and path.is_file() else None, voice.get("edge_voice"))
+        self.voices.rebind(self._character_memory_dir(str(card.get("id") or "")))
 
     async def _character_loop(self) -> None:
         await self.client.wait_connected()
