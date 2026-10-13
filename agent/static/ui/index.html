@@ -90,6 +90,11 @@
       <!-- Состояние: профили, что видит, возможности -->
       <div id="tab-status" class="card bg-base-100 shadow-sm scroll-y min-h-0">
         <div class="card-body gap-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="font-medium">Персонаж</div>
+            <select id="character-pick" class="select select-sm select-bordered" onchange="switchCharacter(this.value)"></select>
+            <span id="character-msg" class="text-sm opacity-70"></span>
+          </div>
           <div>
             <div class="flex flex-wrap items-center gap-3">
               <div class="font-medium">Профили</div>
@@ -743,6 +748,32 @@ function buildSettings() {
   }));
   settingsBuilt = true;
 }
+function renderCharacter(ch) {
+  const sel = document.getElementById('character-pick');
+  if (!sel || !ch || !Array.isArray(ch.ids)) return;
+  if (sel.dataset.current === ch.id && sel.options.length === ch.ids.length) return;   // список не перерисовываем зря
+  sel.innerHTML = '';
+  for (const cid of ch.ids) {
+    const o = document.createElement('option');
+    o.value = cid; o.textContent = cid; o.selected = cid === ch.id;
+    sel.appendChild(o);
+  }
+  sel.dataset.current = ch.id;
+}
+
+async function switchCharacter(id) {
+  const msg = document.getElementById('character-msg');
+  if (msg) msg.textContent = 'переключаю…';
+  try {
+    const r = await fetch('/api/character', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                             body: JSON.stringify({id: id})});
+    const j = await r.json();
+    if (msg) msg.textContent = r.ok ? (j.changed ? 'переключено: ' + j.name : 'уже активен') : (j.error || 'ошибка');
+  } catch (e) {
+    if (msg) msg.textContent = 'нет связи с ядром';
+  }
+}
+
 function renderSettings(s) {
   if (!s) return;
   if (!settingsBuilt) buildSettings();
@@ -1359,7 +1390,7 @@ async function poll() {
   if (polling) return; polling = true;
   try {
     const [st, core] = await Promise.all([fetch('/api/state').then(r => r.json()), fetch('/api/core').then(r => r.json())]);
-  if (st.character) CHAR_NAME = st.character.name;      // имя активного персонажа (ТЗ 05, CHR-4)
+  if (st.character) { CHAR_NAME = st.character.name; renderCharacter(st.character); }   // ТЗ 05, CHR-4, CHR-7
   document.querySelectorAll('[data-char-name]').forEach(e => { e.textContent = CHAR_NAME; });
     $('badge-core').textContent = 'ядро работает'; $('badge-core').className = 'badge badge-success badge-outline';
     $('badge-game').textContent = st.connected ? ('игра: ' + (st.colony_name || 'онлайн')) : 'игра не запущена';
