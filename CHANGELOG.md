@@ -18,6 +18,7 @@
 - Тесты: `agent/tests/test_trace_fixes.py`, `modules/voice/tests/test_voice_trace.py` (случай без звука).
 
 ### Changed
+- `AGENTS.md`: правило поддерживать схему архитектуры актуальной (менять `agent/tools/architecture/spec.py` и пересобирать), строка в карте модулей.
 - Схема ядра: текст на блоках снова читается (заливка слоя смешивается с фоном темы заранее, Cytoscape не применяет альфу из rgba); добавлена легенда (слои, виды стрелок, «нужно выделить»).
 - Запись реплики пользователя в журнал идёт через `log_nowait` (не ждёт коммита SQLite; ТЗ 24). Поведение агента не меняется.
 - Схема ядра переехала на Cytoscape.js (тот же стек, что граф памяти в GUI): панно, которое можно двигать и масштабировать, блоки перетаскиваются (смещения запоминаются), развёртывание на месте, описание справа. Схема есть во вкладке «Схема» GUI агента. Единый источник: `agent/tools/architecture/spec.py`; `python -m tools.architecture.build` создаёт `static/ui/architecture-data.js`, `docs/architecture-clean.html` и `.drawio`. Тест `agent/tests/test_architecture_spec.py`.
