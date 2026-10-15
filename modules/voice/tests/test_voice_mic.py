@@ -68,7 +68,7 @@ def test_listener_passes_known_voice_and_drops_self_and_junk(tmp_path):
     v.register_self(own)
     got = []
 
-    async def on_voice(text, info):
+    async def on_voice(text, info, trace=None):
         got.append((text, info))
 
     class FakeSTT2:
@@ -112,7 +112,7 @@ async def test_overlapping_utterance_is_dropped_but_later_one_goes_through(tmp_p
     stt = FakeSTT("привет", vec(21))
     got = []
 
-    async def on_voice(text, info):
+    async def on_voice(text, info, trace=None):
         got.append(text)
     v = vid.VoiceIdentity(str(tmp_path))
     state = {"speaking": True}

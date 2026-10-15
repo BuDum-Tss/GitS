@@ -297,7 +297,7 @@ async def test_mic_in_local_mode_reports_utterance_without_speaker_identity(tmp_
     voices = VoiceIdentity(str(tmp_path))
     got = []
 
-    async def on_voice(text, info):
+    async def on_voice(text, info, trace=None):
         got.append((text, info))
 
     lis = ml.MicListener(client, voices, on_voice, lambda: False, diarized=lambda: client.diarized)

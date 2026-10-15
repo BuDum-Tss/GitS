@@ -62,6 +62,7 @@ class SpeechCandidate:
     channel: Any = None            # канал обращения (conversation_io.Channel), ставится на время реплики
     item_id: str | None = None     # событие внимания, из которого получен кандидат
     done: "asyncio.Future | None" = field(default=None, repr=False)   # True: звучала, False: снят без речи
+    trace: Any = field(default=None, repr=False)                      # трасса задержки реплики (ТЗ 24, TRC-1)
 
     @property
     def family(self) -> str:

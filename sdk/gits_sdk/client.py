@@ -623,7 +623,7 @@ class ModuleClient:
         Выключенный модуль (`enabled == False`) событий не шлёт (MOD-14). Текст длиннее 1000 символов обрезается.
         """
         extra = set(fields) - {"data", "urgency_hint", "addressed_to_me", "sender", "reply_channel", "dedupe_key",
-                               "expires_in_s", "memorable", "announce"}
+                               "expires_in_s", "memorable", "announce", "trace"}
         if extra:
             raise TypeError("неизвестные поля события: " + ", ".join(sorted(extra)))
         body = {"kind": kind, "text": P.clip(str(text), P.EVENT_TEXT_MAX), **{k: v for k, v in fields.items()

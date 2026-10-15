@@ -18,6 +18,7 @@
 """
 import asyncio
 import collections
+import contextvars
 import json
 import logging
 import re
@@ -30,6 +31,9 @@ import gamenet
 import events_log
 import fast_brain
 import character
+import journal
+import latency_trace
+import salience
 import character_memory
 import prompts
 import settings
@@ -38,6 +42,10 @@ from speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
 from user_memory import UserMemory
 
 logger = logging.getLogger("companion")
+
+# отправитель текущего обращения (узнанный голос: новый человек даёт яркость, ТЗ 24 TRC-4)
+_sender_ctx: contextvars.ContextVar = contextvars.ContextVar("companion_sender", default=None)
+
 
 def persona() -> str:
     """Характер компаньона активного персонажа (конституция + prompt.yaml); функция, чтобы переключение подхватывало новый."""
@@ -75,6 +83,8 @@ class Companion:
         self._pending_memory = 0         # сообщений с последнего осмысления беседы
         self._last_user_ts = 0.0
         self._consolidating = False
+        self._last_say_text = ""          # последняя реплика персонажа (для поправки «нет, не так», ТЗ 24 TRC-5)
+        self._bg_tasks: set = set()       # фоновые проверки поправок (ТЗ 24)
 
     def _load_last_say(self) -> float:
         """Когда она в последний раз говорила: из журнала разговора (а не «сейчас»),
@@ -120,6 +130,7 @@ class Companion:
         self._mem.add_dialogue(character.active().id, text)   # роль реплики персонажа: его id (данные диалога)
         events_log.log("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
         self._last_say = time.time()
+        self._last_say_text = text
         self.presence.update(last_say=text, last_say_ts=self._last_say)
         if channel is not None and channel.kind == "module":
             # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
@@ -153,7 +164,7 @@ class Companion:
         cutoff = time.time() - secs
         return " ".join(s for ts, s in self._heard if ts >= cutoff)[-900:]
 
-    async def on_voice(self, text: str, speaker: dict):
+    async def on_voice(self, text: str, speaker: dict, trace=None):
         """Реплика, сказанная голосом: узнанный владелец идёт как обычное сообщение, остальным ставится пометка,
         кто говорит (имя или «незнакомый голос»), и заводится профиль человека."""
         pid, name = speaker.get("id"), speaker.get("name")
@@ -166,7 +177,7 @@ class Companion:
         if pid and not speaker.get("owner") and self._rel is not None and speaker.get("has_owner"):
             self._rel.ensure_person(f"voice:{pid}", name or f"голос {str(pid)[-4:]}", source="voice")
             self._rel.note(f"voice:{pid}", text)
-        await self.on_input(UserInput(prefix + text, VOICE, ts=time.time()))
+        await self.on_input(UserInput(prefix + text, VOICE, sender=speaker, ts=time.time(), trace=trace))
 
     async def on_user_message(self, text: str, channel=None):
         """Обращение текстом (чат дашборда, строка питомца); channel по умолчанию - дашборд."""
@@ -175,21 +186,34 @@ class Companion:
     async def on_input(self, ui: UserInput):
         """Единый вход обращений (CORE-24): ответ на него уходит в канал обращения (current_channel)."""
         token = current_channel.set(ui.channel)
+        t = ui.trace if ui.trace is not None else latency_trace.start(ui.channel.kind)   # трасса задержки (ТЗ 24, TRC-1)
+        trace_token = latency_trace.bind(t)
         if self.attention is None:
             self.presence.update(busy=True)         # с менеджером внимания занятость определяет стек фокуса (ATT-23)
         try:
-            await self._handle_text(ui.text)
+            sender_token = _sender_ctx.set(ui.sender)
+            try:
+                await self._handle_text(ui.text)
+            finally:
+                _sender_ctx.reset(sender_token)
         finally:
+            latency_trace.unbind(trace_token)
+            latency_trace.finish_core(t)
             current_channel.reset(token)
             if self.attention is None:
                 self.presence.update(busy=False)
+
+    _EXPLICIT_MEMORY = re.compile(r"\b(запомни\w*|не забудь\w*|запиши)\b", re.IGNORECASE)
 
     async def _handle_text(self, text: str):
         text = text.strip()
         if not text:
             return
         self._mem.add_dialogue("user", text)
-        events_log.log("user", text)
+        # яркость реплики (ТЗ 24, TRC-4): явное «запомни» и новый человек (отправитель - из on_input)
+        sal, reasons = salience.score(salience.factors_of(memorable=bool(self._EXPLICIT_MEMORY.search(text)),
+                                                          novelty=bool((_sender_ctx.get() or {}).get("new"))))
+        events_log.log_nowait("user", text, salience=sal, reasons=reasons)   # без ожидания коммита (ТЗ 24: трасса)
         self._queue_graph(text)
         self._pending_memory += 1
         self._last_user_ts = time.time()
@@ -200,6 +224,8 @@ class Companion:
         if self.attention is not None:
             await self.attention.on_user_input(text)          # фокус «разговор»; «замолчи» обрывает речь до любых вызовов модели
             cls = await self.attention.classify_input(text)   # намерение (ATT-28); None - классификатора нет, всё как раньше
+        latency_trace.mark("classify_done")
+        self._check_correction(text)                           # поправка пользователя (ТЗ 24, TRC-5)
         if approvals.has_pending() and await self._answer_approval(text):
             return
         if self.game_order is not None:
@@ -219,18 +245,62 @@ class Companion:
         # needs_memory классификатора пока смещён в «нет» (замеры ТЗ 03): по нему память не отключаем, только пишем в журнал.
         # Поиск в графе пропускается лишь там, где память заведомо не нужна; вернуть needs_memory после дообучения.
         use_memory = intent not in ("stop", "approval")
+        route, routed = "chat", False          # routed: вызывался ли планировщик (ТЗ 24, TRC-6)
         async with self._busy:
             if intent == "about_self":
+                route = "about_self"
+                latency_trace.mark("route")
                 await self._converse(text, about_self=True, use_memory=use_memory)   # что она умеет: ответ по перечню окружений
             elif self.router is not None and (self.router.looks_like_action(text) or intent in ("action", "attention_rule")):
+                route, routed = "task", True
+                latency_trace.mark("route")
                 await self._act(text)          # просьба: планировщик, ответ после плана
             else:
+                latency_trace.mark("route")
                 flagged = await self._converse(text, use_memory=use_memory)   # болтовня: один вызов, ответ сразу
                 if flagged and self.router is not None:
+                    route, routed = "task", True
                     await self._act(text, after_chat=True)   # модель заподозрила просьбу, которую не распознали глаголы
+        self._log_route(text, route, routed, intent, cls)
         asyncio.create_task(fast_brain.react_chat(text, self._rel))   # эмоция и отношение: уже после ответа
         if self._pending_memory >= 6:
             asyncio.create_task(self._consolidate())                  # осмыслить беседу и запомнить важное
+
+    def _check_correction(self, text: str) -> None:
+        """Поправка «нет, не так» (ТЗ 24, TRC-5): по шаблону сразу; неясное начало проверяет модель в фоне."""
+        said = self._SPEAKER_TAG.sub("", text)
+        level = journal.correction_level(said)
+        if level == "no":
+            return
+        ref, prev = self._last_say, self._last_say_text[:200]
+        if level == "yes":
+            journal.mistake("correction", said[:200], refs=[ref], previous=prev)
+        else:
+            task = asyncio.create_task(self._confirm_correction(said, ref, prev))
+            self._bg_tasks.add(task)                 # сильная ссылка: иначе задачу может собрать сборщик мусора
+            task.add_done_callback(self._bg_tasks.discard)
+
+    async def _confirm_correction(self, text: str, ref: float, prev: str) -> None:
+        system = ("Пользователь ответил на твою прошлую реплику. Определи, поправляет ли он тебя: говорит ли, что ты "
+                  'ошиблась или сказала неверно. Ответь ТОЛЬКО JSON: {"correction": <true или false>}')
+        try:
+            data = fast_brain._json_of(await fast_brain._ask(system, f"Твоя реплика: {prev}\nОтвет: {text[:300]}",
+                                                             timeout=20, max_tokens=20, temperature=0.0, background=True))
+        except Exception as e:
+            logger.info(f"Проверка поправки не выполнена: {e}")
+            return
+        if data and data.get("correction") is True:
+            journal.mistake("correction", text[:200], refs=[ref], previous=prev, checked="llm")
+
+    def _log_route(self, text: str, route: str, routed: bool, intent, cls) -> None:
+        """Решение маршрута разговора (ТЗ 24, TRC-6) и несовпадение классификатора с путём (TRC-5: misroute)."""
+        conf = cls.intent_conf if cls is not None else None
+        journal.decision(route, "conversation", text, confidence=conf, echelon="gliner" if cls is not None else "rules",
+                         intent=intent)
+        if intent == "chat" and routed and self.router is not None and self.router.last_kind == "done":
+            journal.mistake("misroute", text[:200], refs=[self._last_say], source="classifier", intent=intent)
+        elif intent == "action" and not routed and self.router is not None:
+            journal.mistake("misroute", text[:200], refs=[self._last_say], source="classifier", intent=intent)
 
     async def _act(self, text: str, after_chat: bool = False):
         """Просьба действовать: маршрутизатор решает «могу или нет», выполняет, а итог говорится вслух."""
@@ -396,6 +466,7 @@ class Companion:
         else:
             self._self_block = ""
             self._graph_block = ""          # классификатор: для этой реплики факты о людях и прошлом не нужны (ATT-28)
+        latency_trace.mark("retrieve_done")
         user = f"{self._context(query=text)}\n\nПользователь говорит: {text}"
         if about_self and self.router is not None:
             user += ("\n\nПользователь спрашивает о твоих возможностях. Отвечай строго по этому перечню, ничего не выдумывая:\n"
@@ -403,12 +474,16 @@ class Companion:
         reply, escalate, action_request = "", False, False   # escalate: только если локальная модель недоступна
         try:
             reply = (await fast_brain._ask(system, user, timeout=60, max_tokens=140, temperature=0.7)).strip()
+            # ТЗ 24, TRC-1: без потоковой передачи первый токен приходит вместе с концом ответа (стриминг - ТЗ 25)
+            latency_trace.mark("llm_first_token")
+            latency_trace.mark("llm_done")
             if reply.startswith("[ДЕЙСТВИЕ]"):
                 action_request, reply = True, reply[len("[ДЕЙСТВИЕ]"):].strip()
         except Exception as e:
             logger.warning(f"Локальная модель не ответила: {e}")
             escalate = True    # без локальной модели пусть отвечает Claude
         if reply:
+            latency_trace.mark("first_sentence_ready")
             await self.say(self._declutter(reply))
         if escalate:
             await self._escalate(text)

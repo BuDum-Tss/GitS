@@ -99,7 +99,7 @@ class VoiceModule:
         self.outbox = Outbox(client)
         self.player = player or (FakePlayer() if self.fake else PowerShellPlayer())
         self.hearing = Hearing(self._effective, on_gist=self._on_gist)
-        self.speaker = Speaker(synth=self._synth, player=self.player, emit=self._speech_event,
+        self.speaker = Speaker(synth=self._synth, player=self.player, emit=self._speech_event, on_trace=self._trace_event,
                                volume=lambda: max(0, min(100, int(self.client.settings.get("volume", 100)))) / 100.0,
                                muted=lambda: bool(self.client.settings.get("voice_muted")),
                                on_segment=self.hearing.note_own_speech)
@@ -250,16 +250,21 @@ class VoiceModule:
     def _speech_event(self, data: dict) -> None:
         self.outbox.put("voice.speech", f"Реплика {data.get('utterance_id')}: {data.get('phase')}", data=data)
 
+    def _trace_event(self, wire: dict) -> None:
+        """Метки звука реплики (ТЗ 24, TRC-1): ядро допишет их в трассу и запишет её."""
+        self.outbox.put("voice.trace", "Трасса реплики", data={"trace": wire})
+
     def _on_user_speaking(self, speaking: bool) -> None:
         self.outbox.put("voice.user_speaking", "Человек начал говорить" if speaking else "Человек закончил говорить",
                         data={"speaking": bool(speaking)})
 
-    async def _on_voice(self, text: str, info: dict) -> None:
-        """VOICE-6: распознанная реплика уходит событием, а не вызовом разговора."""
+    async def _on_voice(self, text: str, info: dict, trace: dict | None = None) -> None:
+        """VOICE-6: распознанная реплика уходит событием, а не вызовом разговора. trace - метки трассы (ТЗ 24)."""
         sender = {"id": "voice:" + str(info.get("id") or "unknown"), "is_owner": bool(info.get("owner"))}
         if info.get("name"):
             sender["name"] = str(info["name"])
-        self.outbox.put("voice.utterance", text, data={"speaker": info}, sender=sender, addressed_to_me=True)
+        extra = {"trace": trace} if trace is not None else {}
+        self.outbox.put("voice.utterance", text, data={"speaker": info}, sender=sender, addressed_to_me=True, **extra)
 
     async def _on_gist(self, summary: str) -> None:
         """VOICE-14: сводка услышанного в колонках."""
@@ -369,7 +374,8 @@ class VoiceModule:
                 return None
             if not c.enabled:
                 return None
-            await self.speaker.speak(uid, text, body.get("emotion"), bool(body.get("replace")))
+            await self.speaker.speak(uid, text, body.get("emotion"), bool(body.get("replace")),
+                                     trace=body.get("trace") if isinstance(body.get("trace"), dict) else None)
             return None
 
         @c.on_request("speak.stop")

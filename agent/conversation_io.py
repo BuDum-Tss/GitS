@@ -48,6 +48,7 @@ class UserInput:
     channel: Channel = DASHBOARD
     sender: dict | None = None
     ts: float = field(default_factory=time.time)
+    trace: object = None                       # трасса задержки (ТЗ 24, TRC-1): от модуля голоса или новая в ядре
 
 
 # канал обработки текущего обращения (None вне обращения: самостоятельные реплики идут в речь и чат, CORE-26)

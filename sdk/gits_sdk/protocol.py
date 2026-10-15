@@ -1235,6 +1235,10 @@ def validate_event(body: Any) -> list[str]:
             problems.append("reply_channel: объект со строками module и target")
     if "dedupe_key" in body and not isinstance(body["dedupe_key"], str):
         problems.append("dedupe_key: должна быть строкой")
+    if "trace" in body:                                   # ТЗ 24: необязательная трасса задержки, ядро её не разбирает
+        t = body["trace"]
+        if not isinstance(t, dict) or not isinstance(t.get("id"), str) or not t["id"]:
+            problems.append("trace: объект с непустой строкой id")
     _check_expires("", body, problems)
     return problems
 

@@ -11,10 +11,12 @@ from datetime import datetime
 from aiohttp import web
 
 import approvals
+import events_log
+import journal
+import latency_trace
 import module_panel
 from gits_sdk.protocol import JOB_ID_RE
 from memory_store import MemoryStore
-import events_log
 import character
 import settings
 from user_memory import UserMemory
@@ -98,6 +100,46 @@ async def handle_api_core(request: web.Request) -> web.Response:
         "approval":  {"pending": approvals.has_pending(), "text": approvals.pending_text(),
                       **{k: v for k, v in (approvals.pending_info() or {}).items() if k in ("kind", "options", "source", "queued")}},
     })
+
+
+async def handle_api_latency(request: web.Request) -> web.Response:
+    """ТЗ 24, TRC-2: p50 и p95 по этапам реплики и от конца фразы до первого звука за окно (?window=секунды, час по умолчанию)."""
+    try:
+        window = max(60.0, min(float(request.query.get("window", "3600") or 3600), 7 * 86400.0))
+    except ValueError:
+        return web.json_response({"error": "bad params"}, status=400)
+    return web.json_response(await asyncio.to_thread(latency_trace.latency_report, window))
+
+
+async def handle_api_decisions(request: web.Request) -> web.Response:
+    """ТЗ 24, TRC-6: выборка решений диспетчера для разметки (?limit=100&trace_id=...), только чтение."""
+    try:
+        limit = int(request.query.get("limit", "100") or 100)
+    except ValueError:
+        return web.json_response({"error": "bad params"}, status=400)
+    rows = await asyncio.to_thread(journal.decisions, limit, request.query.get("trace_id") or None)
+    return web.json_response({"decisions": rows})
+
+
+async def handle_api_rating(request: web.Request) -> web.Response:
+    """ТЗ 24, TRC-5: оценка ответа на пульте (value: bad | good) с trace_id реплики. Плохая оценка пишется как ошибка bad_rating."""
+    if not _is_local_json(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    if not isinstance(body, dict):                       # список или строка в теле: не объект, отвечаем 400, а не 500
+        return web.json_response({"error": "value: bad или good"}, status=400)
+    value = body.get("value")
+    trace_id = str(body.get("trace_id") or "")[:40] or None
+    if value not in ("bad", "good"):
+        return web.json_response({"error": "value: bad или good"}, status=400)
+    if value == "bad":
+        journal.mistake("bad_rating", "оценка на пульте: плохо", refs=[], trace_id=trace_id)
+    else:
+        events_log.log_nowait("reflex", "оценка на пульте: хорошо", trace_id=trace_id)
+    return web.json_response({"ok": True})
 
 
 async def handle_api_events(request: web.Request) -> web.Response:
@@ -808,6 +850,9 @@ def build_app() -> web.Application:
     app.router.add_post("/api/character", handle_api_character_post)
     app.router.add_get("/api/core", handle_api_core)
     app.router.add_get("/api/events", handle_api_events)
+    app.router.add_get("/api/latency", handle_api_latency)
+    app.router.add_post("/api/rating", handle_api_rating)
+    app.router.add_get("/api/decisions", handle_api_decisions)
     app.router.add_get("/api/capabilities", handle_api_capabilities)
     app.router.add_get("/api/modes", handle_api_modes)
     app.router.add_post("/api/appraisal_label", handle_api_appraisal_label)

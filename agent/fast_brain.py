@@ -22,7 +22,9 @@ import httpx
 
 import character
 import events_log
+import journal
 import reflex_actions
+import salience  # ТЗ 24, TRC-4: изменение отношений меняет яркость события
 from envcompat import env
 
 logger = logging.getLogger("fast_brain")
@@ -45,14 +47,16 @@ _SYSTEM = (
     "случаях none. Учитывай отношения, если они указаны: смерть того, к кому "
     "есть привязанность, — sad, смерть нелюбимого — idle или angry. Ответь "
     'ТОЛЬКО JSON без пояснений: {"emotion": <одно из ' + json.dumps(EMOTIONS) + '>, '
-    '"action": <одно из ' + json.dumps(ACTIONS) + '>}'
+    '"action": <одно из ' + json.dumps(ACTIONS) + '>, '
+    '"intensity": <целое от 0 до 3: насколько сильна эмоция, 0 почти нет, 3 очень сильна>}'
 )
 
 _CHAT_SYSTEM = (
     "Ты — рефлекторный слой {name}. Игрок написал сообщение. Оцени, как оно "
     "меняет её отношение к игроку (delta от -10 грубость, до +10 тепло и "
     "уважение; 0 — нейтрально) и выбери эмоцию стикера. Ответь ТОЛЬКО JSON: "
-    '{"delta": <целое от -10 до 10>, "emotion": <одно из ' + json.dumps(EMOTIONS) + '>}'
+    '{"delta": <целое от -10 до 10>, "emotion": <одно из ' + json.dumps(EMOTIONS) + '>, '
+    '"intensity": <целое от 0 до 3: насколько сильна эмоция>}'
 )
 
 # Запасные правила, если локальная модель недоступна
@@ -139,7 +143,7 @@ def _parse(txt: str) -> dict | None:
         return None
     if j.get("action") not in ACTIONS:
         j["action"] = "none"
-    return {"emotion": j["emotion"], "action": j["action"]}
+    return {"emotion": j["emotion"], "action": j["action"], "intensity": journal.clamp_intensity(j.get("intensity"))}
 
 
 class Preempted(Exception):
@@ -227,7 +231,7 @@ async def classify(evt: dict, rel=None, timeout: float = TIMEOUT) -> dict:
         emo, act = _FALLBACK.get(evt.get("type"), ("looking", "none"))
         if evt.get("type") == "letter" and evt.get("priority") == "critical":
             emo, act = "threat", "draft_colonists"   # исполнится только при реальных врагах
-        result = {"emotion": emo, "action": act}
+        result = {"emotion": emo, "action": act, "intensity": 1}
     result["source"] = source
     result["ms"] = round((time.perf_counter() - t0) * 1000)
     return result
@@ -249,8 +253,9 @@ def remove_listener(callback) -> None:
 
 
 def publish(evt_name: str, res: dict):
-    """Записать эмоцию для дашборда и сообщить подписчикам (presence для модулей)."""
+    """Записать эмоцию для дашборда и сообщить подписчикам (presence для модулей) и в журнал (ТЗ 24, TRC-3)."""
     ts = time.time()
+    journal.emotion(res["emotion"], res.get("intensity", 1), reason=evt_name, character=character.active().id)
     for callback in list(_listeners):
         try:
             callback(res["emotion"], ts)
@@ -289,15 +294,18 @@ async def react_chat(text: str, rel=None) -> dict | None:
         j = _json_of(await _ask(_CHAT_SYSTEM, text[:300], TIMEOUT, background=True))
         emo = j.get("emotion") if j else None
         delta = max(-10, min(10, int(j.get("delta", 0)))) if j else 0
+        intensity = journal.clamp_intensity(j.get("intensity")) if j else 1
     except Exception as e:
         logger.warning(f"Не удалось оценить сообщение игрока: {e}")
         return None
     if emo not in EMOTIONS:
         emo = "looking"
-    res = {"emotion": emo, "action": "none", "source": "llm",
+    res = {"emotion": emo, "action": "none", "source": "llm", "intensity": intensity,
            "ms": round((time.perf_counter() - t0) * 1000)}
     publish("chat", res)
-    events_log.log("reflex", "оценка тона сообщения пользователя", emotion=emo, delta=delta, ms=res["ms"])
+    sal, reasons = salience.score(salience.factors_of(delta=delta))
+    events_log.log("reflex", "оценка тона сообщения пользователя", emotion=emo, delta=delta, ms=res["ms"],
+                   salience=sal, reasons=reasons)
     if rel is not None and delta:
         from relationships import PLAYER
         rel.adjust(PLAYER, delta, f"написал: {text[:60]}")

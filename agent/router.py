@@ -20,6 +20,7 @@ import logging
 import approvals
 import events_log
 import fast_brain
+import journal
 import settings
 from domain import risk as risk_policy
 from domain import rules
@@ -128,16 +129,20 @@ class Router:
             if shown:
                 question += f" с параметрами: {shown[:200]}"
             if not await approvals.request(question + ".", self._say, danger=danger):
+                journal.mistake("denied", f"{tool.id}: пользователь не разрешил")      # ТЗ 24, TRC-5
                 return False, tool.name, "пользователь не разрешил", "denied"
         try:
             # запас над timeout_s: модульный вызов сам вернёт понятную причину тайм-аута раньше (CORE-34)
             result = await asyncio.wait_for(tool.call(args), tool.timeout_s + 2)
         except ToolError as e:
+            journal.mistake("tool_failed", f"{tool.id}: {e}"[:200], code=getattr(e, "code", "unavailable"))
             return False, tool.name, str(e), getattr(e, "code", "unavailable")
         except asyncio.TimeoutError:
+            journal.mistake("tool_failed", f"{tool.id}: не уложилась по времени", code="timeout")
             return False, tool.name, "не уложилась по времени", "timeout"
         except Exception as e:
             logger.warning(f"Инструмент {tool.id}: {e}")
+            journal.mistake("tool_failed", f"{tool.id}: {e}"[:200], code="internal")
             return False, tool.name, f"сбой: {e}", "internal"
         return True, tool.name, str(result)[:RESULT_CHARS], None
 
@@ -170,6 +175,7 @@ class Router:
         plan = await self._plan(text, tools)
         if plan is None:
             events_log.log("plan", "планировщик не дал разбираемого ответа, это обычный разговор")
+            journal.mistake("plan_failed", text[:200], reason="unparsed")       # ТЗ 24, TRC-5
             return None
         if plan["kind"] == "chat":
             self.last_kind = "chat"
@@ -209,6 +215,8 @@ class Router:
             if not ok:
                 break   # дальше по плану идти нельзя
         events_log.log("plan", f"выполнено: {text}", feasible=True, steps=steps_log)
+        if done and not any(ok for ok, _, _ in done):
+            journal.mistake("plan_failed", text[:200], reason="no step ok")      # ни один шаг плана не прошёл
         # простое действие прошло, и она уже сказала «сейчас сделаю»: итог молчаливый
         if announced and all(ok for ok, _, _ in done) and not any(
                 candidates[str(st.get("tool"))].informative for st in plan["steps"]

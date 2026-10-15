@@ -21,6 +21,7 @@ import time
 import numpy as np
 
 import events_log
+import latency_trace
 from local_stt import _JUNK
 from voice_id import SELF_PERSON_ID
 
@@ -281,7 +282,9 @@ class MicListener:
             self._launch_utterance(audio)
 
     def _launch_utterance(self, audio: bytes) -> None:
-        task = asyncio.get_running_loop().create_task(self.handle_utterance(audio))
+        # трасса реплики (ТЗ 24, TRC-1): конец фразы - первая метка, дальше её ведёт распознавание и ядро
+        wire = latency_trace.wire_new("voice", marks={"mic_end": latency_trace.now_ms()})
+        task = asyncio.get_running_loop().create_task(self.handle_utterance(audio, wire))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -350,10 +353,12 @@ class MicListener:
         except Exception as e:
             logger.info(f"Свой голос не записан: {e}")
 
-    async def handle_utterance(self, audio: bytes):
-        """Расшифровать реплику и передать наружу (вынесено для проверки без микрофона)."""
+    async def handle_utterance(self, audio: bytes, trace: dict | None = None):
+        """Расшифровать реплику и передать наружу (вынесено для проверки без микрофона). trace - метки трассы (ТЗ 24)."""
         try:
             t = await self._stt.transcribe(audio)
+            if trace is not None:
+                trace["marks"]["stt_done"] = latency_trace.now_ms()
         except Exception as e:
             # режим и состояние модели (WhisperX или локальный CPU) уходят в состояние модуля и журнал отдельно (VOICE, STT)
             if time.time() - self._warned > 120:
@@ -369,7 +374,10 @@ class MicListener:
         info = {"id": pid or t.speaker, "name": self._voices.name_of(pid) if pid else None, "new": new,
                 "owner": bool(pid) and pid == self._voices.owner(), "has_owner": self._voices.owner() is not None}
         self.last_info = info
-        await self._on_voice(text, info)
+        if trace is not None:
+            await self._on_voice(text, info, trace=trace)
+        else:
+            await self._on_voice(text, info)
 
     def flush_speaking(self) -> None:
         """Отложенная смена признака «говорит» уходит, когда пауза между сообщениями прошла (вызывается на каждом кадре)."""

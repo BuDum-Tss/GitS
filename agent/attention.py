@@ -30,6 +30,9 @@ from typing import Any, Awaitable, Callable
 import approvals
 import decide
 import events_log
+import journal
+import latency_trace
+import salience
 import settings
 from attention_rules import FILE_NAME as RULES_FILE
 from attention_rules import RuleStore
@@ -103,6 +106,7 @@ class Item:
     decision: str = ""
     first_contact: bool = False                 # TG-14: профиль отправителя заведён именно этим событием (для веса «неизвестный»)
     memory_done: bool = False                   # TG-14: событие уже отдано в граф и память, в _act второй раз не отдаётся
+    trace: Any = None                           # трасса задержки голосовой реплики (ТЗ 24, TRC-1): от модуля, см. latency_trace
 
 
 @dataclass
@@ -271,7 +275,8 @@ class Attention:
                     addressed_to_me=ev["addressed_to_me"] if isinstance(ev.get("addressed_to_me"), bool) else None,
                     urgency=None, needs_reply=False, memorable=bool(ev.get("memorable")), created=now,
                     expires=now + float(ttl) if isinstance(ttl, (int, float)) and not isinstance(ttl, bool) and ttl > 0 else None,
-                    dedupe_key=str(ev["dedupe_key"]) if ev.get("dedupe_key") else None, urgency_hint=hint, updated=now)
+                    dedupe_key=str(ev["dedupe_key"]) if ev.get("dedupe_key") else None, urgency_hint=hint, updated=now,
+                    trace=latency_trace.from_bus(ev.get("trace"), str(ev.get("kind") or f"{module_id}.event")))
 
     def _emit_info(self, module_id: str, kind: str) -> dict | None:
         rec = self.modules.get(module_id) if self.modules is not None else None
@@ -583,10 +588,22 @@ class Attention:
                   "priority": round(item.priority, 1) if score else None, "decision": item.decision,
                   "classifier_ms": ms, "rule": rule, "rule_id": rule_id, "count": item.count,
                   "category": item.data.get("category") if isinstance(item.data, dict) else None, **extra}
+        # яркость (ТЗ 24, TRC-4): срочность, оценка модуля игры (если прислана), итог, явная просьба, новизна
+        appraisal = item.data.get("appraisal_importance") if isinstance(item.data, dict) else None
+        sal, reasons = salience.score(salience.factors_of(urgency=item.urgency, appraisal=appraisal, kind=item.kind,
+                                                          memorable=item.memorable, novelty=item.first_contact))
+        record.update(salience=sal, reasons=reasons)
         self.last_decision = record
         self.decisions.append({**record, "text": item.text[:TEXT_LOG], "ts": item.created})
         events_log.log_nowait("attention", item.text[:TEXT_LOG], **{k: (round(v, 3) if isinstance(v, float) else v)
                                                               for k, v in record.items()})
+        # журнал решений (ТЗ 24, TRC-6): маршрут, уверенность классификатора, эшелон и версия правил, трасса события
+        classified = bool(item.data.get("category")) if isinstance(item.data, dict) else False
+        journal.decision(item.decision or "?", "attention", item.text[:200],
+                         confidence=item.data.get("category_conf") if isinstance(item.data, dict) else None,
+                         echelon="gliner" if classified else "rules", rule=rule, rule_id=rule_id,
+                         trace_id=item.trace.id if item.trace is not None else None, module=item.module,
+                         salience=sal)
 
     # ── речь модулей ─────────────────────────────────────────────────────────
 
@@ -893,6 +910,7 @@ class Attention:
         else:
             cand = self.speech.new(source=source or "proactive", mode="verbatim", text=text, emotion=emotion,
                                    priority=priority if priority is not None else PROACTIVE_P)
+        self._bind_trace(cand)
         self._kick()
         return cand
 
@@ -908,24 +926,34 @@ class Attention:
         else:
             cand = self.speech.new(source="proactive", mode="fact", text=fact, priority=PROACTIVE_P, user_text=user_text,
                                    must=must)
+        self._bind_trace(cand)
         self._kick()
         return cand
+
+    @staticmethod
+    def _bind_trace(cand: SpeechCandidate) -> None:
+        """Реплика из обращения несёт трассу задержки до речи (ТЗ 24, TRC-1); очередь ждёт её сыгранности."""
+        cand.trace = latency_trace.current()
+        latency_trace.expect_audio(cand.trace)
 
     async def _play(self, cand: SpeechCandidate) -> str | None:
         """Сказать кандидата: готовая реплика - `companion.say`, факт - `companion._speak_about` (формулирует модель)."""
         before = getattr(self.companion, "last_utterance_id", None)
         token = current_channel.set(cand.channel)
+        trace_token = latency_trace.bind(getattr(cand, "trace", None))
         try:
             if cand.mode == "verbatim":
                 await self.companion.say(cand.text, cand.emotion, cand.priority, direct=True)
             else:
                 await self.companion._speak_about(cand.text, cand.user_text, cand.must, cand.question, direct=True)
         finally:
+            latency_trace.unbind(trace_token)
             current_channel.reset(token)
         uid = getattr(self.companion, "last_utterance_id", None)
         return uid if uid != before else None
 
     def _speech_played(self, cand: SpeechCandidate) -> None:
+        latency_trace.resolve_audio(getattr(cand, "trace", None))
         if cand.item_id:
             item = self._items.get(cand.item_id)
             if item is not None:
@@ -935,6 +963,7 @@ class Attention:
             self._touch_conversation()
 
     def _speech_dropped(self, cand: SpeechCandidate, reason: str) -> None:
+        latency_trace.resolve_audio(getattr(cand, "trace", None))
         events_log.log_nowait("attention", cand.text[:TEXT_LOG], speech_dropped=reason, source=cand.source, priority=cand.priority)
         if cand.item_id:
             item = self._items.get(cand.item_id)
