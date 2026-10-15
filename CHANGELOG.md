@@ -18,6 +18,7 @@
 - Тесты: `agent/tests/test_trace_fixes.py`, `modules/voice/tests/test_voice_trace.py` (случай без звука).
 
 ### Changed
+- `FocusManager` разрезан (ТЗ 29, ARC-6, R5): чистые правила `gate`, `ambiguity`, `needs_recheck`, `holder_priority` в `domain/focus_policy.py`; `FocusQueue` (`focus_queue.py`: состояния, склейка, старение, сроки), `CheckpointStore` (`focus_store.py`: checkpoint и `focus.json`), `FocusDispatch` (`focus_dispatch.py`: контекст, вызов модели с тайм-аутом, перепроверка). `focus.py` остался фасадом с прежними публичными методами и константами; протокол переключения и формат `focus.json` не менялись. Схема архитектуры обновлена (`spec.py`, пересборка). Тесты: `agent/tests/test_focus_parts.py`.
 - `AGENTS.md`: правило поддерживать схему архитектуры актуальной (менять `agent/tools/architecture/spec.py` и пересобирать), строка в карте модулей.
 - Схема ядра: текст на блоках снова читается (заливка слоя смешивается с фоном темы заранее, Cytoscape не применяет альфу из rgba); добавлена легенда (слои, виды стрелок, «нужно выделить»).
 - Запись реплики пользователя в журнал идёт через `log_nowait` (не ждёт коммита SQLite; ТЗ 24). Поведение агента не меняется.
