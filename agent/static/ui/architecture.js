@@ -8,6 +8,8 @@
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
   const alpha = (rgb, a) => { const m = String(rgb).match(/[\d.]+/g); return m ? `rgba(${m[0]},${m[1]},${m[2]},${a})` : rgb; };
   const hexRgb = h => { const n = parseInt(h.slice(1), 16); return `rgb(${n >> 16 & 255}, ${n >> 8 & 255}, ${n & 255})`; };
+  // смешать цвет слоя с фоном темы: Cytoscape не применяет альфу из rgba, поэтому заливка считается заранее
+  const mix = (fg, bg, k) => { const f = String(fg).match(/[\d.]+/g).map(Number), b = String(bg).match(/[\d.]+/g).map(Number); return `rgb(${[0, 1, 2].map(i => Math.round(f[i] * k + b[i] * (1 - k))).join(',')})`; };
   const FALLBACK = {p: 'rgb(99,102,241)', b1: 'rgb(255,255,255)', b2: 'rgb(243,244,246)', b3: 'rgb(209,213,219)', bc: 'rgb(31,41,55)'};
 
   function template() {
@@ -19,6 +21,7 @@
         <label class="label cursor-pointer gap-2 py-0"><span class="label-text text-xs">подписи стрелок</span><input type="checkbox" class="toggle toggle-sm" data-arch="labels" checked></label>
         <span class="text-xs opacity-60 ml-auto">Колесо: масштаб. Фон: сдвиг. Блок можно перетащить. Клик: описание, блок разворачивается.</span>
       </div>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs" data-arch="legend"></div>
       <div class="flex flex-1 min-h-0 rounded-box border border-base-300 overflow-hidden" data-arch="ws" style="--sw:380px">
         <div class="flex-1 min-w-0 bg-base-100" data-arch="canvas" style="min-height:360px"></div>
         <div data-arch="split" class="flex-none cursor-col-resize relative bg-base-300 hover:bg-primary" style="width:9px;touch-action:none" title="Потяните, чтобы изменить ширину описания; двойной клик возвращает"></div>
@@ -65,9 +68,16 @@
         {selector: 'edge.hot', style: {width: 3.4, opacity: 1}},
         {selector: 'edge.dim', style: {opacity: 0.07}},
       ];
-      for (const t in D.layers) st.push({selector: `node.tag-${t}`, style: {'background-color': alpha(hexRgb(D.layers[t][1]), 0.2), 'border-color': D.layers[t][1]}});
+      for (const t in D.layers) st.push({selector: `node.tag-${t}`, style: {'background-color': mix(hexRgb(D.layers[t][1]), c.b1, 0.16), 'background-opacity': 1, 'border-color': D.layers[t][1], color: c.bc}});
       return st;
     }
+
+    // легенда: цвета слоёв (рамка и заливка блока), виды стрелок, пунктирная рамка у блоков, которые нужно выделить
+    q('legend').innerHTML =
+      Object.values(D.layers).map(l => `<span class="inline-flex items-center gap-1"><span style="display:inline-block;width:16px;height:12px;border-radius:3px;border:2px solid ${l[1]};background:${l[1]}33"></span><b>${esc(l[0])}</b></span>`).join('') +
+      '<span class="opacity-40">|</span>' +
+      Object.values(D.edgeKinds).map(k => `<span class="inline-flex items-center gap-1"><span style="display:inline-block;width:24px;border-top:3px ${k[2] ? 'dashed' : 'solid'} ${k[1]}"></span>${esc(k[0])}</span>`).join('') +
+      '<span class="opacity-40">|</span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:16px;height:12px;border-radius:3px;border:2px dashed currentColor"></span>нужно выделить</span>';
 
     const cy = cytoscape({container: canvas, elements: [], style: styleFor(colors()), wheelSensitivity: 0.25, minZoom: 0.15, maxZoom: 3, boxSelectionEnabled: false});
 
