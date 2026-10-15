@@ -24,6 +24,8 @@ import dashboard
 import events_log
 import fast_brain
 import focus_dispatch
+import journal
+import latency_trace
 import profile_manager
 import settings
 import speech_out
@@ -113,6 +115,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     attention.kind_handlers.update(make_voice_handlers(companion, attention, speech))
     attention.kind_hooks["voice.heard"] = make_heard_hook(companion)
     attention.kind_hooks["desktop.activity"] = make_activity_hook(companion)
+    attention.kind_hooks["rimworld.run_ended"] = make_run_lost_hook()
 
     async def live_subgraph(profile):
         """Подграф профиля от первого модуля фокуса с graph: true (запрос graph.get, CORE-22, RW-19); None, если такого нет."""
@@ -237,7 +240,7 @@ def _module_title(modules, module_id: str) -> str:
     return rec.title if rec is not None and rec.title else module_id
 
 
-VOICE_SILENT_KINDS = {"voice.speech", "voice.user_speaking", "voice.utterance"}      # частые и служебные: в module_event не пишутся
+VOICE_SILENT_KINDS = {"voice.speech", "voice.user_speaking", "voice.utterance", "voice.trace"}      # частые и служебные: в module_event не пишутся
 
 
 def make_voice_handlers(companion, attention, speech) -> dict:
@@ -251,7 +254,10 @@ def make_voice_handlers(companion, attention, speech) -> dict:
             sender = item.sender or {}
             speaker = {"id": str(sender.get("id", "")).removeprefix("voice:") or None, "name": sender.get("name"),
                        "new": False, "owner": bool(sender.get("is_owner")), "has_owner": bool(sender.get("is_owner"))}
-        await companion.on_voice(item.text, speaker)
+        if item.trace is not None:
+            await companion.on_voice(item.text, speaker, trace=item.trace)
+        else:
+            await companion.on_voice(item.text, speaker)
 
     async def on_speech(item) -> None:
         if hasattr(speech, "on_event"):
@@ -259,6 +265,9 @@ def make_voice_handlers(companion, attention, speech) -> dict:
 
     async def on_user_speaking(item) -> None:
         attention.set_user_speaking(bool((item.data or {}).get("speaking")))
+
+    async def on_trace(item) -> None:
+        latency_trace.audio_arrived((item.data or {}).get("trace"))      # метки звука (ТЗ 24, TRC-1): запись трассы
 
     async def on_named(item) -> None:
         data = item.data or {}
@@ -275,7 +284,18 @@ def make_voice_handlers(companion, attention, speech) -> dict:
                 await asyncio.to_thread(rel.ensure_person, f"voice:{voice_id}", name, source="voice")
 
     return {"voice.utterance": on_utterance, "voice.speech": on_speech, "voice.user_speaking": on_user_speaking,
-            "voice.named": on_named}
+            "voice.named": on_named, "voice.trace": on_trace}
+
+
+def make_run_lost_hook():
+    """Метка ошибки `run_lost` (ТЗ 24, TRC-5): забег проигран (колония погибла) - событие run_ended с исходом colony_died.
+    Событие идёт обычным путём внимания; хук только пишет метку."""
+    async def on_run_ended(item) -> None:
+        data = item.data or {}
+        if str(data.get("outcome") or "") == "colony_died":
+            journal.mistake("run_lost", item.text[:200], refs=[item.created], outcome="colony_died",
+                            trace_id=item.trace.id if item.trace is not None else None)
+    return on_run_ended
 
 
 def make_heard_hook(companion):

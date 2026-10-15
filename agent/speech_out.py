@@ -18,6 +18,8 @@ import secrets
 import time
 from typing import Callable, Protocol
 
+import latency_trace
+
 logger = logging.getLogger("speech")
 
 SECONDS_PER_CHAR = 0.075      # оценка длительности речи по длине текста, когда голоса нет (облачко питомца без модуля voice)
@@ -150,8 +152,13 @@ class VoiceModuleSpeech:
         # после stop() (прерывание вниманием) реплика встаёт в очередь модуля и звучит после дослушанного предложения
         replace = any(not e["stopping"] for e in self._live.values())
         self._live[utterance_id] = {"sent": self._clock(), "started": False, "segment": "", "stopping": False}
+        t = latency_trace.current()                  # трасса задержки реплики (ТЗ 24, TRC-1): модуль голоса допишет звук
+        body = {"utterance_id": utterance_id, "text": text, "emotion": emotion, "replace": replace}
+        if t is not None:
+            body["trace"] = t.wire()
+            latency_trace.speak_sent(t)
         try:
-            await conn.send("speak", {"utterance_id": utterance_id, "text": text, "emotion": emotion, "replace": replace})
+            await conn.send("speak", body)
         except Exception:
             self._live.pop(utterance_id, None)
             raise

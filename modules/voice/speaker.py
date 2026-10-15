@@ -20,6 +20,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
+import latency_trace
 from segmenter import split_sentences
 
 logger = logging.getLogger("speaker")
@@ -38,16 +39,20 @@ class Utterance:
     cancel_reason: str | None = None             # оборвать сейчас, причина для ended
     stop_after_segment: str | None = None        # дослушать текущее предложение и остановиться, причина для ended
     tasks: set = field(default_factory=set)      # дочерние задачи (синтез, воспроизведение)
+    trace: dict | None = None                    # трасса задержки от ядра (ТЗ 24, TRC-1): метки звука дописываются сюда
+    trace_sent: bool = False                     # метки звука уже отправлены ядру
 
 
 class Speaker:
     def __init__(self, *, synth: Callable[[str], Awaitable[str | None]], player,
                  emit: Callable[[dict], None], volume: Callable[[], float] = lambda: 1.0,
-                 muted: Callable[[], bool] = lambda: False, on_segment: Callable[[str], None] | None = None):
+                 muted: Callable[[], bool] = lambda: False, on_segment: Callable[[str], None] | None = None,
+                 on_trace: Callable[[dict], None] | None = None):
         """synth(текст) -> путь к аудиофайлу или None; player.play(путь, громкость) играет и ждёт конца (отмена обрывает);
         emit(data) - событие voice.speech (синхронно, порядок сохраняется выше по течению); volume() - 0..1; muted() -
         `voice_muted`; on_segment(текст) - сегмент зазвучал (слух не слушает собственный голос)."""
         self._synth, self._player, self._emit = synth, player, emit
+        self._on_trace = on_trace                      # метки звука первого предложения уходят ядру событием voice.trace
         self._volume, self._muted, self._on_segment = volume, muted, on_segment
         self._waiting: deque[Utterance] = deque()
         self._current: Utterance | None = None
@@ -87,12 +92,13 @@ class Speaker:
 
     # ── вход ─────────────────────────────────────────────────────────────────
 
-    async def speak(self, uid: str, text: str, emotion: str | None = None, replace: bool = False) -> None:
+    async def speak(self, uid: str, text: str, emotion: str | None = None, replace: bool = False,
+                    trace: dict | None = None) -> None:
         segments = split_sentences(text or "")
         if not segments:
             self._ended(Utterance(uid, text or "", []), completed=False, reason="error")
             return
-        u = Utterance(uid, text, segments, emotion)
+        u = Utterance(uid, text, segments, emotion, trace=trace if isinstance(trace, dict) else None)
         if self._muted():
             # VOICE-4: звука нет, но ядро не ждёт; облачко питомца видит весь текст
             self._emit({"phase": "started", "utterance_id": uid, "seq": 0, "segment": text.strip()})
@@ -164,6 +170,18 @@ class Speaker:
             except OSError:
                 pass
 
+    def _mark(self, u: Utterance, stage: str) -> None:
+        """Метка звука трассы (ТЗ 24): первая побеждает; после play_start метки уходят ядру одним событием."""
+        if u.trace is None:
+            return
+        u.trace.setdefault("marks", {}).setdefault(stage, latency_trace.now_ms())
+        if stage == "play_start" and self._on_trace is not None and not u.trace_sent:
+            u.trace_sent = True
+            try:
+                self._on_trace(u.trace)
+            except Exception as e:
+                logger.debug(f"Метки звука не отправлены: {e}")
+
     def _spawn(self, u: Utterance, coro, *, preload: bool = False) -> asyncio.Task:
         task = asyncio.get_running_loop().create_task(coro)
         task._is_preload = preload                        # type: ignore[attr-defined]
@@ -231,6 +249,7 @@ class Speaker:
                 if status != "ok" or not path:
                     failed += 1
                     continue
+                self._mark(u, "tts_first_audio")
                 seg = u.segments[i]
                 self._audible = True
                 self._emit({"phase": "segment" if u.started else "started", "utterance_id": u.uid, "seq": i, "segment": seg})
@@ -240,6 +259,7 @@ class Speaker:
                         self._on_segment(seg)
                     except Exception as e:
                         logger.debug(f"Слух не уведомлён о сегменте: {e}")
+                self._mark(u, "play_start")
                 _res, status = await self._await(self._spawn(u, self._player.play(path, self._volume())))
                 self._audible = False
                 self._unlink(path)

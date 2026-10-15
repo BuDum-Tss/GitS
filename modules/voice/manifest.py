@@ -43,6 +43,8 @@ MANIFEST = {
         {"kind": "voice.user_speaking", "description": "Человек начал или закончил говорить (служебное, не озвучивается)",
          "default_urgency": 0},
         {"kind": "voice.heard", "description": "Сводка услышанного в колонках", "default_urgency": 1},
+        {"kind": "voice.trace", "description": "Метки звука реплики для трассы задержки (служебное, ТЗ 24)",
+         "default_urgency": 0},
         {"kind": "voice.named", "description": "Голосу назначено имя (служебное: ядро заводит человека в памяти)",
          "default_urgency": 0},
     ],

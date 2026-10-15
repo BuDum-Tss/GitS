@@ -1,0 +1,72 @@
+"""Журнал для эпизодов, настроения и уроков (ТЗ 24, TRC-3, TRC-5, TRC-6): эмоция с интенсивностью, метки ошибок, решения.
+
+Всё пишется через events_log.log_nowait (на цикле событий коммит SQLite не ждём). Трасса (latency_trace) подставляет
+trace_id текущего обращения, если он есть. Виды:
+  emotion   - метка, интенсивность 0..3, причина (id события или трассы), персонаж; bg=true для фоновых меток
+  mistake   - тип ошибки (MISTAKE_TYPES), текст, refs (ссылки на события: их ts)
+  decision  - решение диспетчера: маршрут, источник правил и версия, уверенность, эшелон, trace_id
+Поведение агента этот модуль не меняет: он только записывает.
+"""
+import re
+
+import events_log
+import latency_trace
+
+BACKGROUND_EMOTIONS = ("idle", "thinking", "looking", "question")     # фоновые метки: пишутся, но помечаются bg
+MISTAKE_TYPES = ("correction", "denied", "tool_failed", "plan_failed", "bad_rating", "misroute", "run_lost")
+RULES_VERSIONS = {"attention": "R1-R4,D0-D4/1", "conversation": "intent+router/1", "focus": "FOC/1", "router": "plan/1"}
+INTENSITY_MAX = 3
+
+
+def clamp_intensity(value) -> int:
+    """Интенсивность 0..3 из ответа модели; если её нет или она не разбирается, 1 (ТЗ 24, TRC-3)."""
+    if isinstance(value, bool):
+        return 1
+    try:
+        v = int(float(value))
+    except (TypeError, ValueError):
+        return 1
+    return max(0, min(INTENSITY_MAX, v))
+
+
+def _trace_id() -> str | None:
+    t = latency_trace.current()
+    return t.id if t is not None else None
+
+
+def emotion(emotion_label: str, intensity, reason: str, character: str = "", **data) -> None:
+    events_log.log_nowait("emotion", str(emotion_label), emotion=str(emotion_label), intensity=clamp_intensity(intensity),
+                          reason=str(reason)[:80], character=character or None,
+                          bg=emotion_label in BACKGROUND_EMOTIONS, trace_id=data.pop("trace_id", None) or _trace_id(), **data)
+
+
+def mistake(kind: str, text: str, refs: list | None = None, **data) -> None:
+    """Метка ошибки (TRC-5). Неизвестный вид не пишется: список видов задан ТЗ."""
+    if kind not in MISTAKE_TYPES:
+        return
+    events_log.log_nowait("mistake", str(text)[:300], type=kind, refs=[r for r in (refs or []) if r is not None][:10],
+                          trace_id=data.pop("trace_id", None) or _trace_id(), **data)
+
+
+def decision(route: str, source: str, text: str = "", *, confidence=None, echelon: str = "rules", **data) -> None:
+    """Решение диспетчера (TRC-6): маршрут, источник правил, уверенность, эшелон и версия правил."""
+    events_log.log_nowait("decision", str(text)[:200], route=str(route), source=str(source),
+                          confidence=round(float(confidence), 3) if isinstance(confidence, (int, float)) else None,
+                          echelon=echelon, rules_version=RULES_VERSIONS.get(source, source),
+                          trace_id=data.pop("trace_id", None) or _trace_id(), **data)
+
+
+# ── поправки пользователя (TRC-5) ──────────────────────────────────────────────
+
+_STRONG = re.compile(r"^\s*(нет[,!.\s]+)?(это )?(не так|не то|неправильно|не верно|неверно|ты (ошиб\w*|неправ\w*)"
+                     r"|я (же )?(сказал\w*|говорил\w*|просил\w*) (не|другое)|не то что я)", re.IGNORECASE)
+_WEAK = re.compile(r"^\s*(нет|неа|не)\b", re.IGNORECASE)
+
+
+def correction_level(text: str) -> str:
+    """yes - поправка по шаблону; maybe - начало похоже на поправку, нужна проверка моделью; no - нет."""
+    if _STRONG.search(text or ""):
+        return "yes"
+    if _WEAK.match(text or ""):
+        return "maybe"
+    return "no"
