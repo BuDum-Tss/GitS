@@ -70,3 +70,12 @@ def correction_level(text: str) -> str:
     if _WEAK.match(text or ""):
         return "maybe"
     return "no"
+
+
+def decisions(limit: int = 100, trace_id: str | None = None) -> list[dict]:
+    """Выборка решений диспетчера для разметки (как appraisal_log.recent, ТЗ 24 TRC-6): новые сверху, по trace_id при нужде."""
+    rows = events_log.tail(limit=max(1, min(int(limit), 1000)), kinds={"decision"})
+    out = [{"ts": r["ts"], **(r.get("data") or {}), "text": r.get("text", "")} for r in reversed(rows)]
+    if trace_id:
+        out = [r for r in out if r.get("trace_id") == trace_id]
+    return out

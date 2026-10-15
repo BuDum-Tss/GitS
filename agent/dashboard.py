@@ -111,6 +111,16 @@ async def handle_api_latency(request: web.Request) -> web.Response:
     return web.json_response(await asyncio.to_thread(latency_trace.latency_report, window))
 
 
+async def handle_api_decisions(request: web.Request) -> web.Response:
+    """ТЗ 24, TRC-6: выборка решений диспетчера для разметки (?limit=100&trace_id=...), только чтение."""
+    try:
+        limit = int(request.query.get("limit", "100") or 100)
+    except ValueError:
+        return web.json_response({"error": "bad params"}, status=400)
+    rows = await asyncio.to_thread(journal.decisions, limit, request.query.get("trace_id") or None)
+    return web.json_response({"decisions": rows})
+
+
 async def handle_api_rating(request: web.Request) -> web.Response:
     """ТЗ 24, TRC-5: оценка ответа на пульте (value: bad | good) с trace_id реплики. Плохая оценка пишется как ошибка bad_rating."""
     if not _is_local_json(request):
@@ -840,6 +850,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/events", handle_api_events)
     app.router.add_get("/api/latency", handle_api_latency)
     app.router.add_post("/api/rating", handle_api_rating)
+    app.router.add_get("/api/decisions", handle_api_decisions)
     app.router.add_get("/api/capabilities", handle_api_capabilities)
     app.router.add_get("/api/modes", handle_api_modes)
     app.router.add_post("/api/appraisal_label", handle_api_appraisal_label)

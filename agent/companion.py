@@ -212,7 +212,7 @@ class Companion:
         # яркость реплики (ТЗ 24, TRC-4): явное «запомни» и новый человек (отправитель - из on_input)
         sal, reasons = salience.score(salience.factors_of(memorable=bool(self._EXPLICIT_MEMORY.search(text)),
                                                           novelty=bool((_sender_ctx.get() or {}).get("new"))))
-        events_log.log("user", text, salience=sal, reasons=reasons)
+        events_log.log_nowait("user", text, salience=sal, reasons=reasons)   # без ожидания коммита (ТЗ 24: трасса)
         self._queue_graph(text)
         self._pending_memory += 1
         self._last_user_ts = time.time()
@@ -471,6 +471,9 @@ class Companion:
         reply, escalate, action_request = "", False, False   # escalate: только если локальная модель недоступна
         try:
             reply = (await fast_brain._ask(system, user, timeout=60, max_tokens=140, temperature=0.7)).strip()
+            # ТЗ 24, TRC-1: без потоковой передачи первый токен приходит вместе с концом ответа (стриминг - ТЗ 25)
+            latency_trace.mark("llm_first_token")
+            latency_trace.mark("llm_done")
             if reply.startswith("[ДЕЙСТВИЕ]"):
                 action_request, reply = True, reply[len("[ДЕЙСТВИЕ]"):].strip()
         except Exception as e:

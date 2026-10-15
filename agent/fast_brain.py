@@ -214,10 +214,6 @@ async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
     data = r.json()
     if "choices" not in data:   # LM Studio вернула ошибку (модель грузится, перегрузка): объясняем, а не падаем с KeyError
         raise RuntimeError(str(data.get("error") or data)[:200])
-    if not background:
-        # ТЗ 24, TRC-1: без потоковой передачи первый токен приходит вместе с концом ответа (стриминг - ТЗ 25)
-        latency_trace.mark("llm_first_token")
-        latency_trace.mark("llm_done")
     return data["choices"][0]["message"].get("content") or ""
 
 
