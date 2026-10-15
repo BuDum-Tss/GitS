@@ -1,117 +1,30 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GitS: архитектура ядра</title><style>
-:root{--bg:#f4f5f7;--card:#fff;--ink:#14171c;--mut:#5b6470;--line:#d5dae1;--acc:#2b6fba}
-@media(prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d2128;--ink:#e8ebf0;--mut:#98a2b0;--line:#323946;--acc:#6aa5e8}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,"Segoe UI",sans-serif}
-header,main{max-width:1500px;margin:0 auto;padding:0 20px}header{padding-top:20px}
-h1{font-size:26px;margin:0 0 4px}h2{font-size:20px;margin:30px 0 8px}h3{margin:12px 0 4px;font-size:16px}.sub{color:var(--mut);max-width:1100px;margin:0 0 10px}
-.legend{display:flex;flex-wrap:wrap;gap:6px 22px;margin:10px 0;font-size:13px}
-.legend .it{display:flex;align-items:center;gap:6px}.sw{width:26px;border-top:3px solid var(--c)}.sw.d{border-top-style:dashed}
-.lay{width:14px;height:14px;border-radius:3px;border:1px solid var(--line);border-left:5px solid var(--c);background:var(--b)}
-nav{position:sticky;top:0;z-index:9;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 20px}
-nav .in{max-width:1500px;margin:0 auto;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.tab{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 14px;font:inherit;font-size:14px;cursor:pointer}.tab.on{background:var(--acc);border-color:var(--acc);color:#fff}
-.pane{display:none}.pane.show{display:block}
-.what{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--acc);border-radius:10px;padding:8px 14px;margin:10px 0;max-width:1200px}
-.tools{display:flex;gap:6px;margin:6px 0;align-items:center;color:var(--mut);font-size:13px}.tools button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:3px 12px;font:inherit;cursor:pointer}
-.view{overflow-x:auto;overflow-y:hidden;border:1px solid var(--line);border-radius:12px;background:var(--card)}
-.sizer{position:relative}.board{position:absolute;left:0;top:0;transform-origin:0 0}
-.grp{position:absolute;border:1.5px solid #b6bdc8;background:rgba(127,127,127,.06);border-radius:12px}
-.gt{padding:6px 10px;font-weight:700;font-size:14px}
-.nd{position:absolute;border:1px solid var(--line);border-left:6px solid;border-radius:8px;padding:5px 9px;font-size:12px;line-height:14.5px;overflow:hidden;z-index:2;color:#14171c}
-.nd.macro{box-shadow:0 2px 6px rgba(0,0,0,.12)}.nd.new{border-style:dashed;border-left-style:solid}
-.ti{font-weight:700;font-size:13px;line-height:18px;margin-bottom:2px}
-.tg{display:inline-block;color:#fff;border-radius:99px;font-size:10px;font-weight:600;padding:0 7px;margin-left:4px;vertical-align:1px}
-.nw{display:inline-block;color:#c2412d;font-size:10px;font-weight:600;margin-left:6px}
-.do{color:#14171c}.out{color:#5b3fa0}.now{color:#5b6470;font-size:11px}
-svg.w{position:absolute;left:0;top:0;pointer-events:none;z-index:1}svg.w.top{z-index:3}
-.e{opacity:.82;transition:opacity .15s}.e.dim{opacity:.06}.e.hot{opacity:1;stroke-width:3.4}
-.bd circle{stroke:#fff;stroke-width:1.5}.bd text{fill:#fff;font:700 11px system-ui;text-anchor:middle;dominant-baseline:central}
-.lb{font:10.5px system-ui;fill:var(--ink);paint-order:stroke;stroke:var(--bg);stroke-width:3.5px;text-anchor:middle}
-.dim2{opacity:.12}.nd.sel{outline:3px solid var(--acc);outline-offset:1px}.nd{cursor:pointer}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;align-items:start}
-@media(max-width:1100px){.layout{grid-template-columns:1fr}}
-.side{position:sticky;top:62px;max-height:calc(100vh - 80px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
-.side h3{margin:0 0 2px;font-size:18px}.side .hint{color:var(--mut);font-size:13px}
-.side .tagline{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0 8px;font-size:12px}
-.side .pill{color:#fff;border-radius:99px;padding:0 8px;font-weight:600}
-.side .sec{margin:10px 0 0;border-top:1px dashed var(--line);padding-top:8px}.side .sec h4{margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
-.side .part{border:1px solid var(--line);border-left:5px solid var(--c);border-radius:8px;padding:6px 9px;margin:6px 0;cursor:pointer;background:var(--bg)}
-.side .part:hover{border-color:var(--acc)}.side .part b{display:block}.side .part small{display:block;color:var(--mut)}
-.side ul{margin:0;padding-left:18px}.side li{margin:2px 0}.side .btn{border:1px solid var(--acc);background:transparent;color:var(--acc);border-radius:8px;padding:3px 10px;font:inherit;font-size:13px;cursor:pointer;margin:4px 6px 0 0}
-.side .btn:hover{background:var(--acc);color:#fff}.side .code{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--mut)}
-.arr{color:var(--mut)}
-ol.steps{padding-left:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:8px 22px}
-ol.steps li{display:flex;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
-ol.steps .n{flex:none;width:24px;height:24px;border-radius:50%;background:#7a5ac8;color:#fff;font:700 12px system-ui;display:flex;align-items:center;justify-content:center}
-table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:14px;margin:8px 0}
-th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--mut);text-transform:uppercase}
-code{background:var(--bg);padding:0 4px;border-radius:4px;font-size:13px}
-pre{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;overflow:auto;font-size:13px}
-.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px}.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px}.box h3{margin:0 0 4px}
+<!doctype html>
+<html lang="ru" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitS: архитектура ядра</title>
+<!-- UI-кит как в GUI агента: Tailwind (play CDN) + daisyUI 4; граф на Cytoscape.js из agent/static/ui/vendor -->
+<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>html,body{height:auto}code{font-size:.85em}</style>
+</head><body class="bg-base-200">
+<div class="max-w-screen-2xl mx-auto p-4">
+<h1 class="text-2xl font-bold">Архитектура ядра GitS</h1>
+<p class="opacity-70 max-w-4xl my-2">Сначала только основа: блоки по слоям сверху вниз. <b>Нажмите на блок</b>: он развернётся на месте и покажет свои части, а справа откроется описание. Двойной клик по развёрнутому блоку сворачивает его. Блоки можно перетаскивать, холст сдвигается мышью и масштабируется колесом, границу между схемой и описанием можно двигать. Та же схема есть во вкладке «Схема» GUI агента. Агент реагирует на события и на внутренние импульсы (напоминания, которые он назначил себе); таймера болтовни нет. Редактируемая версия: <code>architecture-clean.drawio</code> (diagrams.net).</p>
+<div class="flex flex-wrap gap-x-5 gap-y-1 text-sm my-1"><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;border-left:5px solid #7a5ac8;background:#efe9fb"></span><b>Домен</b></span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;border-left:5px solid #2b6fba;background:#e6f0fb"></span><b>Сценарии</b></span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;border-left:5px solid #1f9d55;background:#e3f5ea"></span><b>Адаптеры</b></span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;border-left:5px solid #6b7683;background:#eceff3"></span><b>Внешнее</b></span></div><div class="flex flex-wrap gap-x-5 gap-y-1 text-sm my-1"><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:26px;border-top:3px solid #7a5ac8"></span>поток события и данных</span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:26px;border-top:3px solid #2b6fba"></span>вызов сценария, контракта</span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:26px;border-top:3px solid #1f9d55"></span>запись в память</span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:26px;border-top:3px solid #c2308a"></span>чтение из памяти</span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:26px;border-top:3px solid #d9822b"></span>обращение к внешней службе</span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:26px;border-top:3px dashed #c2412d"></span>команда, управление</span></div>
+<div id="arch-root" class="flex flex-col" style="height:calc(100vh - 170px);min-height:560px"></div>
 
-.view{border:0;border-radius:0;background:transparent}.nd{font-size:12px;line-height:14.5px}
-.toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0;color:var(--mut);font-size:13px}
-.toolbar button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:4px 12px;font:inherit;cursor:pointer}
-.toolbar button:hover{border-color:var(--acc)}.toolbar label{display:flex;gap:4px;align-items:center}
-.ws{display:flex;height:76vh;min-height:520px;--sw:420px;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
-.view{flex:1;min-width:300px;overflow:auto}
-.sizer{position:relative}.board{position:absolute;left:0;top:0;transform-origin:0 0}
-.split{flex:none;width:9px;cursor:col-resize;background:var(--line);position:relative;touch-action:none}
-.split::after{content:"";position:absolute;left:3px;top:50%;width:3px;height:44px;margin-top:-22px;border-radius:2px;background:var(--mut);opacity:.6}
-.split:hover,.split.drag{background:var(--acc)}
-.side{flex:none;width:var(--sw);overflow:auto;padding:12px 14px;background:var(--card)}
-@media(max-width:900px){.ws{flex-direction:column;height:auto}.split{display:none}.side{width:auto;max-height:50vh}}
-.grp{position:absolute;border:1.5px solid #b6bdc8;background:rgba(127,127,127,.07);border-radius:12px}
-.grp.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}
-.gt{padding:5px 10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}.gt small{font-weight:400;color:var(--mut);font-size:11px}
-.nd{position:absolute;border:1px solid var(--line);border-left:6px solid;border-radius:8px;padding:4px 8px;z-index:2;color:#14171c;cursor:pointer;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-.nd:hover{box-shadow:0 0 0 2px var(--acc)}.nd.sel{outline:3px solid var(--acc);outline-offset:1px}
-.nd.new{border-style:dashed;border-left-style:solid}.nd.dim2{opacity:.18}
-.ti{font-weight:700;font-size:13px;line-height:18px;display:flex;justify-content:space-between;gap:6px}
-.plus{font-weight:600;font-size:11px;color:#2b6fba;background:#fff;border:1px solid #2b6fba;border-radius:99px;padding:0 6px}
-.tags{display:flex;gap:6px;align-items:center;margin-top:2px}
-.tg{display:inline-block;color:#fff;border-radius:99px;font-size:10px;font-weight:600;padding:0 7px}
-.nw{color:#c2412d;font-size:10px;font-weight:700}
-svg.w{position:absolute;left:0;top:0;pointer-events:none;z-index:1}svg.w.top{z-index:3}
-path.e{opacity:.82;pointer-events:stroke;cursor:help;transition:opacity .15s}path.e.dim{opacity:.07}path.e.hot{opacity:1;stroke-width:3.4}
-.lb{font:10.5px system-ui;fill:var(--ink);paint-order:stroke;stroke:var(--card);stroke-width:3.5px;text-anchor:middle}.lb.dim{opacity:.08}
-body.nolbl .lb{display:none}
-.side h3{margin:0 0 2px;font-size:18px}.hint{color:var(--mut);font-size:13px}.red{color:#c2412d;font-weight:600}
-.tagline{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0 8px;font-size:12px}
-.pill{color:#fff;border-radius:99px;padding:0 8px;font-weight:600;font-size:12px}
-.sec{margin:10px 0 0;border-top:1px dashed var(--line);padding-top:8px}.sec h4{margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
-.part{border:1px solid var(--line);border-left:5px solid var(--c);border-radius:8px;padding:6px 9px;margin:6px 0;cursor:pointer;background:var(--bg)}
-.part:hover{border-color:var(--acc)}.part b{display:block}.part small{display:block;color:var(--mut)}
-.side ul{margin:0;padding-left:18px}.side li{margin:2px 0}.arr{color:var(--mut)}.code{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--mut)}
-.btn{border:1px solid var(--acc);background:transparent;color:var(--acc);border-radius:8px;padding:4px 12px;font:inherit;font-size:13px;cursor:pointer}.btn:hover{background:var(--acc);color:#fff}
-</style></head><body>
-<header><h1>Архитектура ядра GitS</h1>
-<p class="sub">Сначала только основа: десять блоков. <b>Нажмите на блок</b>: он развернётся на месте и покажет свои части, а справа откроется его описание. Нажмите на заголовок развёрнутого блока, чтобы свернуть. Границу между схемой и описанием можно двигать (двойной клик возвращает ширину). Агент реагирует на события и на внутренние импульсы (напоминания, которые он назначил себе); таймера болтовни нет. Редактируемая версия: <code>architecture-clean.drawio</code> (diagrams.net).</p>
-<div class="legend"><span class="it"><span class="lay" style="--c:#7a5ac8;--b:#efe9fb"></span><b>Домен</b></span><span class="it"><span class="lay" style="--c:#2b6fba;--b:#e6f0fb"></span><b>Сценарии</b></span><span class="it"><span class="lay" style="--c:#1f9d55;--b:#e3f5ea"></span><b>Адаптеры</b></span><span class="it"><span class="lay" style="--c:#6b7683;--b:#eceff3"></span><b>Внешнее</b></span></div><div class="legend"><span class="it"><span class="sw" style="--c:#7a5ac8"></span>поток события и данных</span><span class="it"><span class="sw" style="--c:#2b6fba"></span>вызов сценария, контракта</span><span class="it"><span class="sw" style="--c:#1f9d55"></span>запись в память</span><span class="it"><span class="sw" style="--c:#c2308a"></span>чтение из памяти</span><span class="it"><span class="sw" style="--c:#d9822b"></span>обращение к внешней службе</span><span class="it"><span class="sw d" style="--c:#c2412d"></span>команда, управление</span></div></header>
-<main>
-<div class="toolbar"><button id="ca">Свернуть всё</button><button id="ea">Развернуть всё</button><button id="zo">−</button><button id="zi">+</button><button id="zf">вписать</button><button id="z1">100%</button><span id="zv"></span><label><input type="checkbox" id="lbl" checked> подписи стрелок</label><span>Наведите на блок, чтобы подсветить связи; наведите на стрелку, чтобы увидеть подсказку.</span></div>
-<div class="ws" id="ws"><div class="view" id="view"><div class="sizer" id="sizer"><div class="board" id="board"></div></div></div><div class="split" id="split" title="Потяните, чтобы изменить ширину описания"></div>
-<aside class="side" id="side"><h3>Описание части</h3><p class="hint">Нажмите на блок на схеме. Здесь появятся описание, где этот код лежит сейчас, связи и, если блок составной, его внутренняя структура.</p></aside></div>
-
-<h2>Внутренние импульсы и размышление</h2>
-<div class="cols">
- <div class="box"><h3>Зачем и что убираем</h3><p>Агент не болтает по таймеру. Сейчас <code>Companion.proactive_loop</code> раз в 30 секунд спрашивает модель, стоит ли заговорить; это заменяется механизмами, которые умеют то, чего таймер не умеет.</p></div>
- <div class="box"><h3>Внутренний импульс</h3><p>Агент сам назначает себе напоминание. Когда срок приходит, <b>ImpulseTimer</b> шлёт обычный <code>Event</code> вида <code>self.reminder</code>. Он проходит тот же конвейер, что внешнее событие: правила, оценка, маршрут.</p></div>
- <div class="box"><h3>Размышление (внутренний диалог)</h3><p><b>ReflectionService</b> получает событие или импульс, думает в несколько шагов, читая память, и выдаёт <code>Intent</code>: сказать, сделать, напомнить себе позже, записать в память или ничего. Мысли идут в журнал мыслей и не озвучиваются; речь и действия проходят очередь речи и разрешения.</p></div>
- <div class="box"><h3>Ограничения</h3><p>Лимит шагов и токенов на размышление, глубина цепочки импульсов, режим «не отвлекать» для речи. Размышление не запускает опасное действие в обход разрешений.</p></div>
+<h2 class="text-xl font-semibold mt-8 mb-2">Внутренние импульсы и размышление</h2>
+<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+ <div class="card bg-base-100 shadow-sm"><div class="card-body p-4"><h3 class="font-semibold">Зачем и что убираем</h3><p>Агент не болтает по таймеру. Сейчас <code>Companion.proactive_loop</code> раз в 30 секунд спрашивает модель, стоит ли заговорить; это заменяется механизмами, которые умеют то, чего таймер не умеет.</p></div></div>
+ <div class="card bg-base-100 shadow-sm"><div class="card-body p-4"><h3 class="font-semibold">Внутренний импульс</h3><p>Агент сам назначает себе напоминание. Когда срок приходит, <b>ImpulseTimer</b> шлёт обычный <code>Event</code> вида <code>self.reminder</code>. Он проходит тот же конвейер, что внешнее событие: правила, оценка, маршрут.</p></div></div>
+ <div class="card bg-base-100 shadow-sm"><div class="card-body p-4"><h3 class="font-semibold">Размышление (внутренний диалог)</h3><p><b>ReflectionService</b> получает событие или импульс, думает в несколько шагов, читая память, и выдаёт <code>Intent</code>: сказать, сделать, напомнить себе позже, записать в память или ничего. Мысли идут в журнал мыслей и не озвучиваются; речь и действия проходят очередь речи и разрешения.</p></div></div>
+ <div class="card bg-base-100 shadow-sm"><div class="card-body p-4"><h3 class="font-semibold">Ограничения</h3><p>Лимит шагов и токенов на размышление, глубина цепочки импульсов, режим «не отвлекать» для речи. Размышление не запускает опасное действие в обход разрешений.</p></div></div>
 </div>
 
-<h2>Основные сущности</h2>
-<table><tr><th>Сущность</th><th>Смысл</th><th>Сейчас в коде</th></tr><tr><td><b>Event</b></td><td>Любой стимул: реплика, событие игры, сообщение, срок напоминания, мысль. Поля: вид, текст, источник (внешний или self), отправитель, подсказка срочности, данные, метка трассы.</td><td>сейчас четыре объекта: словарь шины, <code>Item</code>, <code>UserInput</code>, часть <code>SpeechCandidate</code></td></tr><tr><td><b>Decision</b></td><td>Приоритет 0–100, уровень D0–D4, маршруты (say, chat, task, focus, think, digest, ignore), причина и уверенность.</td><td>поля <code>Item</code> и журнал; отдельной сущности нет</td></tr><tr><td><b>Impulse (self.*)</b></td><td>Внутренний стимул: срок напоминания, которое агент назначил себе, или мысль, что-то напомнившая. Становится обычным Event и проходит тот же конвейер.</td><td>нет</td></tr><tr><td><b>Thought / Intent</b></td><td>Thought: запись внутреннего диалога (не озвучивается). Intent: вывод размышления: сказать, сделать, напомнить себе, записать, ничего.</td><td>нет</td></tr><tr><td><b>SpeechCandidate / Utterance</b></td><td>Что и с каким приоритетом хочет сказать агент; очередь выбирает момент, канал доставляет.</td><td><code>speech_queue.SpeechCandidate</code></td></tr><tr><td><b>Plan / ToolCall / ToolResult</b></td><td>Шаги из инструментов, вызов инструмента, результат или код ошибки.</td><td>словари в <code>router.py</code></td></tr><tr><td><b>Tool</b></td><td>Инструмент: имя, схема параметров, риск, видимость по профилю, исполнитель.</td><td><code>environments/base.Tool</code></td></tr><tr><td><b>Slot / FocusDecision / Checkpoint</b></td><td>Единственный слот фокуса, очередь событий, состояние прерванной задачи.</td><td><code>focus.py</code></td></tr><tr><td><b>MemoryRecord / MemoryHit</b></td><td>Единица памяти: факт, запись о человеке, воспоминание о себе, план, (план) эпизод, урок, убеждение; результат поиска с близостью.</td><td>четыре формата: граф, <code>MemoryStore</code>, отношения, диалог</td></tr><tr><td><b>Person · Character · Job</b></td><td>Человек или колонист; данные персонажа; долгая задача модуля.</td><td><code>relationships.py</code> · <code>character.py</code> · <code>module_registry.py</code></td></tr></table>
-
-<h2>Что не так в коде (по измерениям)</h2>
-<p class="sub">Ядро: 46 модулей, 12 054 строки. Измерено разбором исходников (<code>ast</code>): строки, методы, импорты; ссылки найдены поиском.</p>
-<table><tr><th>Проблема</th><th>Факты</th><th>Что делаем</th></tr><tr><td><b>Бог-объекты</b></td><td><code>Attention</code>: 1108 строк, 70 методов. <code>Companion</code>: 37 методов, 15 импортов. <code>FocusManager</code>: 60 методов.</td><td>разрезать по сценариям (шаги R3–R5)</td></tr><tr><td><b>Слои знают друг друга</b></td><td><code>attention</code> читает <code>companion._rel</code>, <code>_mem</code>, <code>graph</code> через <code>getattr</code> и зовёт <code>companion._speak_about</code>; <code>module_hub</code> импортирует <code>attention</code> и <code>fast_brain</code>.</td><td>контракты и колбэки</td></tr><tr><td><b>Глобальное состояние</b></td><td><code>events_log</code> (16 импортов), <code>character</code> (16), <code>settings.load()</code> (14), блокировка модели в <code>fast_brain</code>.</td><td>передавать через конструкторы</td></tr><tr><td><b>Корень сборки с логикой</b></td><td><code>core_service.py</code>: 22 импорта, внутри обработчики voice, colonists, run_lost, game_order.</td><td>только сборка</td></tr><tr><td><b>Нет единой сущности события</b></td><td>Словарь, <code>Item</code>, <code>UserInput</code>; правила «замолчи» и «похоже на просьбу» ещё и в <code>router</code>.</td><td><code>Event</code> и один модуль правил</td></tr><tr><td><b>Проактивность по таймеру</b></td><td><code>Companion.proactive_loop</code> раз в 30 с спрашивает модель, стоит ли заговорить.</td><td>заменить на внутренние импульсы и размышление (ТЗ 30)</td></tr><tr><td><b>Интерфейс ходит в данные</b></td><td><code>dashboard.py</code>: 863 строки, 0 классов, прямой доступ к хранилищам.</td><td>контракты чтения</td></tr><tr><td><b>Нет явного ContextBuilder</b></td><td>Склейка шести строк в <code>Companion._context</code>; два разных поиска.</td><td>компонент с бюджетом токенов</td></tr></table>
-
-<h2>Где что окажется</h2>
-<table><tr><th>Сейчас</th><th>Целевые компоненты</th></tr><tr><td><code>attention.py (1108)</code></td><td>Normalizer, PeopleDirectory, HardRules, PriorityScorer, Dispatcher, Digest, JobTracker (часть), вопросы</td></tr><tr><td><code>companion.py (666)</code></td><td>ConversationService, ContextBuilder, ReplyGenerator, MemoryWriter (capture, consolidate); <code>proactive_loop</code> временно остаётся отдельным сценарием до ТЗ 30</td></tr><tr><td><code>focus.py (1061)</code></td><td>FocusPolicy (чистая), FocusManager (очередь и переходы), CheckpointStore</td></tr><tr><td><code>router.py (225) + approvals.py (301)</code></td><td>Planner, RiskPolicy, Approver, Executor</td></tr><tr><td><code>core_service.py (378)</code></td><td>Composition root + обработчики в сценарии</td></tr><tr><td><code>module_hub.py (683)</code></td><td>ModuleHub: входящие и исходящие, без импорта домена</td></tr><tr><td><code>dashboard.py (863)</code></td><td>HTTP-адаптер: роутеры и презентеры</td></tr><tr><td><code>graph_memory.py, memory_store.py, user_memory.py</code></td><td>MemoryWriter/MemoryReader + репозитории</td></tr><tr><td><code>speech_queue.py (296)</code></td><td>SpeechQueue: остаётся как есть</td></tr><tr><td><code>events_log.py, settings.py, character.py</code></td><td>контракты EventLog, SettingsProvider, CharacterRepo</td></tr><tr><td><code>нет</code></td><td>ReminderStore, ImpulseTimer, ReflectionService, журнал мыслей (ТЗ 30)</td></tr></table>
-<pre>agent/
+<h2 class="text-xl font-semibold mt-8 mb-2">Основные сущности</h2><div class="overflow-x-auto"><table class="table table-sm bg-base-100"><thead><tr><th>Сущность</th><th>Смысл</th><th>Сейчас в коде</th></tr></thead><tbody><tr><td><b>Event</b></td><td>Любой стимул: реплика, событие игры, сообщение, срок напоминания, мысль. Поля: вид, текст, источник (внешний или self), отправитель, подсказка срочности, данные, метка трассы.</td><td>сейчас четыре объекта: словарь шины, <code>Item</code>, <code>UserInput</code>, часть <code>SpeechCandidate</code></td></tr><tr><td><b>Decision</b></td><td>Приоритет 0–100, уровень D0–D4, маршруты (say, chat, task, focus, think, digest, ignore), причина и уверенность.</td><td>поля <code>Item</code> и журнал; отдельной сущности нет</td></tr><tr><td><b>Impulse (self.*)</b></td><td>Внутренний стимул: срок напоминания, которое агент назначил себе, или мысль, что-то напомнившая. Становится обычным Event и проходит тот же конвейер.</td><td>нет</td></tr><tr><td><b>Thought / Intent</b></td><td>Thought: запись внутреннего диалога (не озвучивается). Intent: вывод размышления: сказать, сделать, напомнить себе, записать, ничего.</td><td>нет</td></tr><tr><td><b>SpeechCandidate / Utterance</b></td><td>Что и с каким приоритетом хочет сказать агент; очередь выбирает момент, канал доставляет.</td><td><code>speech_queue.SpeechCandidate</code></td></tr><tr><td><b>Plan / ToolCall / ToolResult</b></td><td>Шаги из инструментов, вызов инструмента, результат или код ошибки.</td><td>словари в <code>router.py</code></td></tr><tr><td><b>Tool</b></td><td>Инструмент: имя, схема параметров, риск, видимость по профилю, исполнитель.</td><td><code>environments/base.Tool</code></td></tr><tr><td><b>Slot / FocusDecision / Checkpoint</b></td><td>Единственный слот фокуса, очередь событий, состояние прерванной задачи.</td><td><code>focus.py</code></td></tr><tr><td><b>MemoryRecord / MemoryHit</b></td><td>Единица памяти: факт, запись о человеке, воспоминание о себе, план, (план) эпизод, урок, убеждение; результат поиска с близостью.</td><td>четыре формата: граф, <code>MemoryStore</code>, отношения, диалог</td></tr><tr><td><b>Person · Character · Job</b></td><td>Человек или колонист; данные персонажа; долгая задача модуля.</td><td><code>relationships.py</code> · <code>character.py</code> · <code>module_registry.py</code></td></tr></tbody></table></div>
+<h2 class="text-xl font-semibold mt-8 mb-2">Что не так в коде (по измерениям)</h2>
+<p class="opacity-70 mb-2">Ядро: 46 модулей, 12 054 строки. Измерено разбором исходников (<code>ast</code>): строки, методы, импорты; ссылки найдены поиском.</p><div class="overflow-x-auto"><table class="table table-sm bg-base-100"><thead><tr><th>Проблема</th><th>Факты</th><th>Что делаем</th></tr></thead><tbody><tr><td><b>Бог-объекты</b></td><td><code>Attention</code>: 1108 строк, 70 методов. <code>Companion</code>: 37 методов, 15 импортов. <code>FocusManager</code>: 60 методов.</td><td>разрезать по сценариям (шаги R3–R5)</td></tr><tr><td><b>Слои знают друг друга</b></td><td><code>attention</code> читает <code>companion._rel</code>, <code>_mem</code>, <code>graph</code> через <code>getattr</code> и зовёт <code>companion._speak_about</code>; <code>module_hub</code> импортирует <code>attention</code> и <code>fast_brain</code>.</td><td>контракты и колбэки</td></tr><tr><td><b>Глобальное состояние</b></td><td><code>events_log</code> (16 импортов), <code>character</code> (16), <code>settings.load()</code> (14), блокировка модели в <code>fast_brain</code>.</td><td>передавать через конструкторы</td></tr><tr><td><b>Корень сборки с логикой</b></td><td><code>core_service.py</code>: 22 импорта, внутри обработчики voice, colonists, run_lost, game_order.</td><td>только сборка</td></tr><tr><td><b>Нет единой сущности события</b></td><td>Словарь, <code>Item</code>, <code>UserInput</code>; правила «замолчи» и «похоже на просьбу» ещё и в <code>router</code>.</td><td><code>Event</code> и один модуль правил</td></tr><tr><td><b>Проактивность по таймеру</b></td><td><code>Companion.proactive_loop</code> раз в 30 с спрашивает модель, стоит ли заговорить.</td><td>заменить на внутренние импульсы и размышление (ТЗ 30)</td></tr><tr><td><b>Интерфейс ходит в данные</b></td><td><code>dashboard.py</code>: 863 строки, 0 классов, прямой доступ к хранилищам.</td><td>контракты чтения</td></tr><tr><td><b>Нет явного ContextBuilder</b></td><td>Склейка шести строк в <code>Companion._context</code>; два разных поиска.</td><td>компонент с бюджетом токенов</td></tr></tbody></table></div>
+<h2 class="text-xl font-semibold mt-8 mb-2">Где что окажется</h2><div class="overflow-x-auto"><table class="table table-sm bg-base-100"><thead><tr><th>Сейчас</th><th>Целевые компоненты</th></tr></thead><tbody><tr><td><code>attention.py (1108)</code></td><td>Normalizer, PeopleDirectory, HardRules, PriorityScorer, Dispatcher, Digest, JobTracker (часть), вопросы</td></tr><tr><td><code>companion.py (666)</code></td><td>ConversationService, ContextBuilder, ReplyGenerator, MemoryWriter (capture, consolidate); <code>proactive_loop</code> временно остаётся отдельным сценарием до ТЗ 30</td></tr><tr><td><code>focus.py (1061)</code></td><td>FocusPolicy (чистая), FocusManager (очередь и переходы), CheckpointStore</td></tr><tr><td><code>router.py (225) + approvals.py (301)</code></td><td>Planner, RiskPolicy, Approver, Executor</td></tr><tr><td><code>core_service.py (378)</code></td><td>Composition root + обработчики в сценарии</td></tr><tr><td><code>module_hub.py (683)</code></td><td>ModuleHub: входящие и исходящие, без импорта домена</td></tr><tr><td><code>dashboard.py (863)</code></td><td>HTTP-адаптер: роутеры и презентеры</td></tr><tr><td><code>graph_memory.py, memory_store.py, user_memory.py</code></td><td>MemoryWriter/MemoryReader + репозитории</td></tr><tr><td><code>speech_queue.py (296)</code></td><td>SpeechQueue: остаётся как есть</td></tr><tr><td><code>events_log.py, settings.py, character.py</code></td><td>контракты EventLog, SettingsProvider, CharacterRepo</td></tr><tr><td><code>нет</code></td><td>ReminderStore, ImpulseTimer, ReflectionService, журнал мыслей (ТЗ 30)</td></tr></tbody></table></div>
+<pre class="bg-base-100 border border-base-300 rounded-box p-3 text-sm overflow-auto my-3">agent/
   domain/      entities.py scoring.py rules.py risk.py focus_policy.py salience.py                 (без ввода-вывода)
   app/         process_event.py conversation.py context_builder.py planner.py executor.py focus_manager.py
                memory_capture.py reflection.py impulses.py digest.py jobs.py                       (сценарии)
@@ -120,262 +33,11 @@ body.nolbl .lb{display:none}
                event_log_sqlite.py speech_voice_module.py reminders_sqlite.py supervisor.py
   core_service.py   только сборка
 sdk/gits_sdk/contract/   публичные контракты для модулей (ТЗ 31)</pre>
-
-<h2>План рефакторинга без остановки проекта</h2>
-<p class="sub">Каждый шаг отдельной веткой, поведение не меняется, тесты зелёные. Подробно: <code>docs/tz/29-clean-architecture.md</code>, <code>30-impulses-reflection.md</code>, <code>31-module-contracts.md</code>.</p>
-<table><tr><th>Шаг</th><th>Что</th><th>Содержание</th></tr><tr><td><b>R0</b></td><td>Страховка</td><td>Тест архитектуры по импортам; текущие тесты без изменений.</td></tr><tr><td><b>R1</b></td><td>Домен</td><td>Чистые функции в <code>agent/domain/</code>: оценка и D0–D4, правила и «замолчи», дедупликация, риск, политика фокуса.</td></tr><tr><td><b>R2</b></td><td>Контракты</td><td><code>agent/contracts.py</code> (Protocol) и адаптеры поверх существующих модулей.</td></tr><tr><td><b>R3</b></td><td>Разрезать Attention</td><td>ProcessEvent (Normalizer → HardRules → Classifier → Scorer → Dispatcher), SpeechCoordinator, Digest, QuestionService, JobTracker; фасад <code>Attention</code> остаётся.</td></tr><tr><td><b>R4</b></td><td>Разрезать Companion</td><td>ConversationService, ContextBuilder, ReplyGenerator, MemoryCapture; <code>proactive_loop</code> временно отдельным сценарием.</td></tr><tr><td><b>R5</b></td><td>Разрезать FocusManager</td><td>FocusPolicy, FocusQueue, CheckpointStore, FocusDispatch.</td></tr><tr><td><b>R6</b></td><td>Сборка и транспорт</td><td><code>core_service</code> только собирает; <code>module_hub</code> без импорта домена.</td></tr><tr><td><b>R7</b></td><td>Дашборд</td><td>Роутеры и презентеры, чтение через контракты.</td></tr><tr><td><b>ТЗ 30</b></td><td>Внутренние импульсы и размышление</td><td>ReminderStore, ImpulseTimer, ReflectionService; убрать <code>proactive_loop</code>.</td></tr></table>
-</main><script>const DATA={"groups": [{"id": "g_src", "col": "A", "title": "Источники событий", "tag": "I", "new": false, "summary": "Модули (голос, Telegram, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.", "out": "Event", "nodes": [{"id": "voice", "t": "voice", "tag": "I", "new": false, "do": "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (Fish Speech)", "out": "Event voice.utterance", "now": "modules/voice"}, {"id": "desk", "t": "desktop", "tag": "I", "new": false, "do": "экран, активность, мышь и клавиатура, Claude-помощник", "out": "Event desktop.*, job.update", "now": "modules/desktop"}, {"id": "tg", "t": "telegram", "tag": "I", "new": false, "do": "бот, её аккаунт, посты канала", "out": "Event telegram.*", "now": "modules/telegram"}, {"id": "rim", "t": "rimworld", "tag": "I", "new": false, "do": "игровой агент: ходы, комментатор, запись забега", "out": "Event raid, death, colonists", "now": "modules/rimworld"}, {"id": "mont", "t": "montage", "tag": "I", "new": false, "do": "конвейер роликов: Remotion + ffmpeg, агент Claude", "out": "job.update, вопросы", "now": "modules/montage"}, {"id": "dash", "t": "Дашборд и чат", "tag": "I", "new": false, "do": "чат, настройки, пульт, оценки", "out": "UserInput как Event", "now": "dashboard.py: 863 строки, 0 классов, ходит в хранилища напрямую"}]}, {"id": "g_imp", "col": "A", "title": "Внутренние импульсы", "tag": "A", "new": true, "summary": "Напоминания, которые агент назначил себе; сработавший срок становится событием. Болтовни по таймеру нет.", "out": "Event self.*", "nodes": [{"id": "reminders", "t": "ReminderStore", "tag": "I", "new": true, "do": "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль", "out": "срок наступил", "now": "нет: сейчас есть только план в MemoryStore с сроком"}, {"id": "timer", "t": "ImpulseTimer", "tag": "I", "new": true, "do": "следит только за сроками напоминаний; когда срок пришёл, шлёт событие. Не тик болтовни", "out": "Event self.reminder", "now": "нет: сейчас proactive_loop раз в 30 с"}]}, {"id": "g_in", "col": "B", "title": "Приём", "tag": "I", "new": false, "summary": "Принимает событие из любого источника, проверяет, приводит к единому виду, склеивает повторы, узнаёт отправителя.", "out": "Event", "nodes": [{"id": "hub", "t": "ModuleHub (входящие)", "tag": "I", "new": false, "do": "WebSocket :8766: рукопожатие, проверка формата, очередь входящих; запросы core.*", "out": "Event", "now": "module_hub.py: 683 строки; импортирует attention и fast_brain, то есть транспорт знает домен"}, {"id": "event", "t": "Event", "tag": "D", "new": true, "do": "единый конверт: kind, text, sender, hint, data, trace, ts; источник внешний или внутренний (self)", "out": "сущность", "now": "нет: dict, Item, UserInput и SpeechCandidate по отдельности"}, {"id": "norm", "t": "Normalizer", "tag": "A", "new": false, "do": "нормализация, дедупликация за 60 с, склейка повторов, TTL", "out": "Event", "now": "attention.submit и _merge_duplicate"}, {"id": "people", "t": "PeopleDirectory", "tag": "A", "new": false, "do": "sender → Person, первый контакт, заметки о человеке", "out": "Person", "now": "attention._note_sender + relationships; лезет в companion._rel через getattr"}]}, {"id": "g_dec", "col": "C", "title": "Решение", "tag": "A", "new": false, "summary": "Правила до моделей, быстрая классификация, оценка важности и выбор маршрута: сказать, ответить, сделать, сменить фокус, подумать, отложить.", "out": "Decision + routes", "nodes": [{"id": "rules", "t": "HardRules", "tag": "D", "new": false, "do": "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»", "out": "RuleResult", "now": "середина attention.submit; стоп-фразы и «похоже на просьбу» ещё и в router"}, {"id": "cls", "t": "Classifier (контракт)", "tag": "A", "new": false, "do": "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с", "out": "Classification", "now": "decide.py + services/decider"}, {"id": "score", "t": "PriorityScorer", "tag": "D", "new": false, "do": "срочность × 20 × веса (профиль, отправитель, правила, пользователь) × свежесть", "out": "priority 0..100", "now": "attention._score"}, {"id": "disp", "t": "Dispatcher", "tag": "A", "new": false, "do": "решение D0–D4 и routes[]: say, chat, task, focus, think, digest, ignore; пишет решение в журнал", "out": "Decision", "now": "attention._decide, _act, _finish"}]}, {"id": "g_conv", "col": "D", "title": "Разговор", "tag": "A", "new": false, "summary": "Ведёт беседу: собирает контекст из памяти, пишет ответ быстрой моделью.", "out": "ReplyCandidate", "nodes": [{"id": "conv", "t": "ConversationService", "tag": "A", "new": false, "do": "обращение владельца: проверки → ветка (болтовня / просьба / «что умеешь») → ответ", "out": "Reply или Task", "now": "companion._handle_text и _converse"}, {"id": "ctx", "t": "ContextBuilder", "tag": "A", "new": true, "do": "собирает контекст: характер, память, диалог, состояние; бюджет токенов на роль", "out": "Context", "now": "нет: companion._context склеивает 6 строк без бюджета"}, {"id": "reply", "t": "ReplyGenerator", "tag": "A", "new": false, "do": "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля", "out": "ReplyCandidate", "now": "companion._converse, _declutter + fast_brain"}]}, {"id": "g_think", "col": "D", "title": "Размышление", "tag": "A", "new": true, "summary": "Внутренний диалог агента: получает событие или импульс, думает, читая память, и решает: сказать, сделать, напомнить себе или записать.", "out": "Intent", "nodes": [{"id": "reflect", "t": "ReflectionService", "tag": "A", "new": true, "do": "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов", "out": "Intent: сказать, сделать, напомнить, записать, ничего", "now": "нет: сейчас только proactive_loop (опрос себя раз в 30 с)"}, {"id": "thoughts", "t": "Журнал мыслей", "tag": "I", "new": true, "do": "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов", "out": "Thought", "now": "нет"}]}, {"id": "g_act", "col": "E", "title": "Дела", "tag": "A", "new": false, "summary": "Строит план из доступных инструментов, спрашивает разрешение на опасное, выполняет в модулях, ведёт долгие задачи.", "out": "ToolResult", "nodes": [{"id": "reg", "t": "ToolRegistry", "tag": "A", "new": false, "do": "инструменты ядра и модулей, видимость по профилю, отбор по смыслу", "out": "Tool[]", "now": "environments/registry.py, tool_search.py"}, {"id": "plan", "t": "Planner", "tag": "A", "new": false, "do": "LanguageModel → LM Studio (Gemma): план шагов или «не могу»", "out": "Plan", "now": "router._plan"}, {"id": "risk", "t": "RiskPolicy + Approver", "tag": "D", "new": false, "do": "риск auto / ask / public / danger; вопрос пользователю, ответ да/нет", "out": "Approval", "now": "router._step + approvals.py: 301 строка"}, {"id": "exec", "t": "Executor (ToolInvoker)", "tag": "A", "new": false, "do": "вызов инструмента в ядре или модуле, коды ошибок, итог-факт", "out": "ToolResult", "now": "router._step и _run_step"}, {"id": "jobs", "t": "JobTracker", "tag": "A", "new": false, "do": "долгие задачи: прогресс, вопросы, итог; Claude-помощник (Agent SDK)", "out": "JobState", "now": "module_registry + attention.on_job_update + desktop.assistant_agent"}]}, {"id": "g_foc", "col": "E", "title": "Фокус", "tag": "A", "new": false, "summary": "Решает, кому отдать главную роль (например, игре в бою), и когда её вернуть.", "out": "FocusDecision", "nodes": [{"id": "fmgr", "t": "FocusManager", "tag": "A", "new": false, "do": "один слот, очередь, переключение, дребезг, checkpoint", "out": "FocusDecision", "now": "focus.py: 1061 строка, 60 методов в одном классе"}, {"id": "fpol", "t": "FocusPolicy", "tag": "D", "new": true, "do": "чистые правила: приоритет, запас, критичное, старение, конфликты", "out": "FocusDecision", "now": "внутри FocusManager: _gate, _near, _claimant"}, {"id": "fdisp", "t": "FocusDispatch (контракт)", "tag": "A", "new": false, "do": "Gemma только для неоднозначного; ответ строго проверяется", "out": "Op", "now": "focus_dispatch.py: 288 строк"}]}, {"id": "g_out", "col": "F", "title": "Вывод", "tag": "I", "new": false, "summary": "Очередь речи выбирает момент и приоритет, затем реплика уходит каналом: голос, чат, Telegram, питомец. Команды модулям уходят отсюда же.", "out": "Utterance, команды", "nodes": [{"id": "queue", "t": "SpeechQueue", "tag": "A", "new": false, "do": "приоритеты, условия «не перебиваю», интервалы, прерывание, TTL; чистую политику выбора выделить в домен позже", "out": "Utterance", "now": "speech_queue.py: 296 строк, асинхронный координатор (asyncio-задачи), в домен целиком не переносится"}, {"id": "digest", "t": "Digest", "tag": "A", "new": false, "do": "сводка событий D1 и предложение рассказать", "out": "SpeechCandidate", "now": "attention._digest_*"}, {"id": "out", "t": "SpeechOutput и каналы (контракты)", "tag": "I", "new": false, "do": "голос (speak), чат, Telegram (deliver), питомец", "out": "доставка", "now": "speech_out.py, conversation_io.py"}, {"id": "aff", "t": "Presence и эмоции", "tag": "A", "new": false, "do": "говорит ли, эмоция, присутствие; (план) настроение", "out": "PresenceState", "now": "PresenceTracker + fast_brain.publish"}, {"id": "hubout", "t": "ModuleHub (исходящие)", "tag": "I", "new": false, "do": "доставка команд модулям: tool.call, speak, policy.activate, job.answer", "out": "ToolResult, события", "now": "тот же module_hub.py, смешан с приёмом"}]}, {"id": "g_mem", "col": "BOTTOM", "title": "Память", "tag": "A", "new": false, "summary": "Запись и чтение памяти: диалог, факты, профили, воспоминания о себе. Источник правды — журнал событий.", "out": "MemoryRecord, MemoryHit", "nodes": [{"id": "mw", "t": "MemoryWriter", "tag": "A", "new": false, "do": "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; (план) эпизоды и сон", "out": "MemoryRecord", "now": "companion._learn, _consolidate + graph_memory.step"}, {"id": "mr", "t": "MemoryReader", "tag": "A", "new": false, "do": "граф + воспоминания о себе + записи; (план) гибридный поиск", "out": "MemoryHit[]", "now": "graph.search, self_memories, MemoryStore.relevant (два поиска)"}, {"id": "elog", "t": "EventLog", "tag": "I", "new": false, "do": "SQLite events.db: журнал событий, трасса, решения", "out": "контракт журнала", "now": "events_log.py: глобальные функции, 16 импортов"}, {"id": "stores", "t": "Диалог, записи, люди", "tag": "I", "new": false, "do": "JSON: диалог, MemoryStore (планы, напоминания), отношения", "out": "репозитории", "now": "user_memory.py, memory_store.py, relationships.py"}, {"id": "graph", "t": "FactGraph (контракт)", "tag": "I", "new": false, "do": "Graphiti: факты с интервалами валидности", "out": "контракт графа", "now": "graph_memory.py: 701 строка"}, {"id": "char", "t": "CharacterRepo", "tag": "I", "new": false, "do": "resources/<Имя>: конституция, prompt, канон, голос", "out": "Character", "now": "character.py + resources/"}]}, {"id": "g_ext", "col": "BOTTOM2", "title": "Внешний слой и сборка", "tag": "X", "new": false, "summary": "Модели и службы: LM Studio, GLiNER, FalkorDB, Fish Speech, WhisperX, Claude. Сборка: core_service.", "out": "", "nodes": [{"id": "lms", "t": "LM Studio :1234", "tag": "X", "new": false, "do": "Gemma (речь, план, факты) и EmbeddingGemma", "out": "", "now": ""}, {"id": "gli", "t": "GLiNER decider :8768", "tag": "X", "new": false, "do": "классификатор событий и обращений", "out": "", "now": ""}, {"id": "falk", "t": "FalkorDB :6380", "tag": "X", "new": false, "do": "база графа фактов", "out": "", "now": ""}, {"id": "fish", "t": "Fish Speech / edge-tts", "tag": "X", "new": false, "do": "синтез речи", "out": "", "now": ""}, {"id": "wx", "t": "WhisperX / Whisper", "tag": "X", "new": false, "do": "распознавание речи", "out": "", "now": ""}, {"id": "cl", "t": "Claude Agent SDK", "tag": "X", "new": false, "do": "долгие и сложные задачи", "out": "", "now": ""}, {"id": "sup", "t": "Supervisor", "tag": "I", "new": false, "do": "запуск и перезапуск процессов модулей", "out": "", "now": "supervisor.py: 573 строки"}, {"id": "root", "t": "Composition root", "tag": "I", "new": false, "do": "только собирает объекты и подставляет контракты; бизнес-логики быть не должно", "out": "", "now": "core_service.py: 22 импорта, внутри обработчики voice, colonists, run_lost"}]}], "edges": [["voice", "hub", "flow", "Event"], ["desk", "hub", "flow", null], ["tg", "hub", "flow", null], ["rim", "hub", "flow", null], ["mont", "hub", "flow", "job.update"], ["dash", "hub", "flow", "UserInput"], ["reminders", "timer", "use", "срок"], ["timer", "norm", "flow", "self.reminder"], ["hub", "norm", "flow", "Event"], ["norm", "people", "use", "sender"], ["norm", "rules", "flow", "Event"], ["rules", "cls", "flow", "не решено правилами"], ["cls", "score", "flow", "Classification"], ["score", "disp", "flow", "priority"], ["rules", "conv", "flow", "R1: владелец"], ["disp", "conv", "flow", "route chat"], ["disp", "plan", "flow", "route task"], ["disp", "fmgr", "flow", "route focus"], ["disp", "reflect", "flow", "route think"], ["disp", "queue", "flow", "route say: факт"], ["disp", "digest", "flow", "D1"], ["conv", "ctx", "use", null], ["ctx", "mr", "r", "запрос"], ["ctx", "reply", "use", "Context"], ["reply", "queue", "flow", "ReplyCandidate"], ["conv", "plan", "flow", "просьба"], ["reflect", "mr", "r", "вспоминает"], ["reflect", "thoughts", "w", "мысль"], ["reflect", "queue", "flow", "хочет сказать"], ["reflect", "plan", "flow", "хочет сделать"], ["reflect", "reminders", "w", "напомнить себе"], ["reflect", "mw", "w", "записать"], ["reg", "plan", "use", "Tool[]"], ["plan", "risk", "flow", "Plan"], ["risk", "exec", "flow", "разрешённый шаг"], ["exec", "hubout", "flow", "tool.call"], ["exec", "jobs", "use", null], ["jobs", "queue", "flow", "итог"], ["exec", "queue", "flow", "итог-факт"], ["fmgr", "fpol", "use", "правила"], ["fmgr", "fdisp", "use", "неоднозначно"], ["fmgr", "hubout", "ctl", "policy.activate"], ["queue", "out", "flow", "Utterance"], ["out", "aff", "use", null], ["out", "hubout", "flow", "speak"], ["digest", "queue", "flow", null], ["conv", "mw", "w", "после ответа"], ["disp", "elog", "w", "Decision"], ["mw", "graph", "w", null], ["mw", "stores", "w", null], ["mr", "graph", "r", null], ["mr", "stores", "r", null], ["ctx", "char", "r", "характер"], ["graph", "falk", "ext", null]], "macroLabels": [["g_dec", "g_conv", "ответить"], ["g_dec", "g_act", "сделать"], ["g_dec", "g_foc", "сменить фокус"], ["g_dec", "g_think", "подумать"], ["g_dec", "g_out", "просто сказать"], ["g_conv", "g_out", "реплика"], ["g_conv", "g_act", "просьба"], ["g_think", "g_out", "хочет сказать"], ["g_think", "g_act", "хочет сделать"], ["g_act", "g_out", "итог дела"], ["g_foc", "g_out", "режим модулю"], ["g_conv", "g_mem", "читает и пишет"], ["g_think", "g_mem", "читает и пишет"], ["g_think", "g_imp", "напомнить себе"], ["g_src", "g_in", "Event"], ["g_imp", "g_in", "Event self.*"], ["g_in", "g_dec", "Event"], ["g_dec", "g_mem", "журнал решений"], ["g_act", "g_src", "команды"]], "layers": {"D": ["Домен", "#7a5ac8", "#efe9fb"], "A": ["Сценарии", "#2b6fba", "#e6f0fb"], "I": ["Адаптеры", "#1f9d55", "#e3f5ea"], "X": ["Внешнее", "#6b7683", "#eceff3"]}, "edgeKinds": {"flow": ["поток события и данных", "#7a5ac8", false], "use": ["вызов сценария, контракта", "#2b6fba", false], "w": ["запись в память", "#1f9d55", false], "r": ["чтение из памяти", "#c2308a", false], "ext": ["обращение к внешней службе", "#d9822b", false], "ctl": ["команда, управление", "#c2412d", true]}};
-// Интерактивная схема: блоки свёрнуты, по клику разворачиваются на месте, описание справа.
-const D = DATA;
-const NW = 200, NH = 46, GPAD = 10, HEAD = 30, GAP = 8, TOP = 20;
-const COLX = {A: 20, B: 262, C: 504, D: 746, E: 988, F: 1230};
-const owner = {}, nodeById = {}, groupById = {};
-D.groups.forEach(g => { groupById[g.id] = g; g.nodes.forEach(n => { owner[n.id] = g.id; nodeById[n.id] = n; }); });
-const MACRO = {};
-D.macroLabels.forEach(([a, b, l]) => { MACRO[a + '|' + b] = l; });
-const expanded = new Set();
-let selected = null, scale = 1, curW = 1000, curH = 600, fitMode = true;
-
-const $ = s => document.querySelector(s);
-const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
-const view = $('#view'), sizer = $('#sizer'), board = $('#board'), side = $('#side');
-
-function layout() {
-  const boxes = {}, gboxes = {}, colBottom = {};
-  for (const g of D.groups.filter(g => COLX[g.col] !== undefined)) {
-    const x = COLX[g.col], y = colBottom[g.col] ?? TOP;
-    if (expanded.has(g.id)) {
-      let cy = y + HEAD;
-      g.nodes.forEach(n => { boxes[n.id] = {x: x + GPAD, y: cy, w: NW, h: NH}; cy += NH + GAP; });
-      const h = cy - y + 2;
-      gboxes[g.id] = {x, y, w: NW + 2 * GPAD, h};
-      colBottom[g.col] = y + h + 18;
-    } else {
-      boxes[g.id] = {x: x + GPAD, y, w: NW, h: NH};
-      colBottom[g.col] = y + NH + 18;
-    }
-  }
-  const y0 = Math.max(...Object.values(colBottom)) + 14;
-  const mem = groupById.g_mem, ext = groupById.g_ext;
-  let memBottom = y0 + NH + 18;
-  if (expanded.has('g_mem')) {
-    const x = COLX.C, rows = Math.ceil(mem.nodes.length / 3);
-    mem.nodes.forEach((n, i) => {
-      const r = Math.floor(i / 3), c = i % 3;
-      boxes[n.id] = {x: x + GPAD + c * (NW + 12), y: y0 + HEAD + r * (NH + GAP), w: NW, h: NH};
-    });
-    const h = HEAD + rows * (NH + GAP) + 2;
-    gboxes.g_mem = {x, y: y0, w: 3 * (NW + 12) + 2 * GPAD - 12, h};
-    memBottom = y0 + h + 18;
-  } else {
-    boxes.g_mem = {x: COLX.C + GPAD, y: y0, w: NW, h: NH};
-  }
-  let bottom = memBottom;
-  if (expanded.has('g_ext')) {
-    const y = memBottom, w2 = 168;
-    ext.nodes.forEach((n, i) => { boxes[n.id] = {x: 20 + GPAD + i * (w2 + 10), y: y + HEAD, w: w2, h: NH}; });
-    const h = HEAD + NH + 8;
-    gboxes.g_ext = {x: 20, y, w: ext.nodes.length * (w2 + 10) + 2 * GPAD - 10, h};
-    bottom = y + h + 18;
-  } else {
-    boxes.g_ext = {x: COLX.F + GPAD, y: y0, w: NW, h: NH};
-  }
-  curW = COLX.F + NW + 2 * GPAD + 20;
-  curH = bottom + 10;
-  return {boxes, gboxes};
-}
-
-function visId(id) { const g = owner[id]; return expanded.has(g) ? id : g; }
-
-function computeEdges() {
-  const seen = {}, out = [];
-  for (const [a, b, kind, label] of D.edges) {
-    const ra = visId(a), rb = visId(b);
-    if (ra === rb) continue;
-    const oa = owner[a], ob = owner[b];
-    const both = expanded.has(oa) && expanded.has(ob);
-    if (!both && oa === 'g_dec' && ob === 'g_mem' && !expanded.has('g_dec') && !expanded.has('g_mem')) continue;
-    const key = both ? ra + '|' + rb + '|' + kind : ra + '|' + rb;
-    if (seen[key]) continue;
-    seen[key] = 1;
-    out.push({a: ra, b: rb, kind, label: both ? label : (MACRO[oa + '|' + ob] || null), oa, ob});
-  }
-  if (!expanded.has('g_src')) {
-    out.push({a: expanded.has('g_out') ? 'hubout' : 'g_out', b: 'g_src', kind: 'ctl', label: 'речь, команды, режим', oa: 'g_out', ob: 'g_src'});
-  }
-  return out;
-}
-
-function route(boxes, edges) {
-  const items = edges.map(e => {
-    const a = boxes[e.a], b = boxes[e.b];
-    const acx = a.x + a.w / 2, bcx = b.x + b.w / 2;
-    let sa, sb;
-    if (b.y > a.y + a.h + 40 && b.y - a.y > 240) { sa = 'b'; sb = 't'; }
-    else if (b.x > a.x + a.w - 4 && Math.abs(bcx - acx) > 40) { sa = 'r'; sb = 'l'; }
-    else if (b.x + b.w < a.x + 4 && Math.abs(bcx - acx) > 40) { sa = 'l'; sb = 'r'; }
-    else if (b.y >= a.y) { sa = 'b'; sb = 't'; }
-    else { sa = 't'; sb = 'b'; }
-    return {e, a, b, sa, sb};
-  });
-  const slots = {};
-  items.forEach(it => {
-    (slots[it.e.a + '|' + it.sa] = slots[it.e.a + '|' + it.sa] || []).push([it, 'a']);
-    (slots[it.e.b + '|' + it.sb] = slots[it.e.b + '|' + it.sb] || []).push([it, 'b']);
-  });
-  for (const key in slots) {
-    const lst = slots[key], side = key.split('|')[1];
-    lst.sort((p, q) => {
-      const o = ([it, end]) => { const r = end === 'a' ? it.b : it.a; return (side === 'l' || side === 'r') ? r.y + r.h / 2 : r.x + r.w / 2; };
-      return o(p) - o(q);
-    });
-    const k = lst.length;
-    lst.forEach(([it, end], i) => { it['off' + end] = (i - (k - 1) / 2) * Math.min(12, 60 / Math.max(1, k)); });
-  }
-  const pt = (bx, side, off) => side === 'r' ? [bx.x + bx.w, bx.y + bx.h / 2 + off] : side === 'l' ? [bx.x, bx.y + bx.h / 2 + off]
-    : side === 'b' ? [bx.x + bx.w / 2 + off, bx.y + bx.h] : [bx.x + bx.w / 2 + off, bx.y];
-  return items.map(it => {
-    const p0 = pt(it.a, it.sa, it.offa || 0), p3 = pt(it.b, it.sb, it.offb || 0);
-    let p1, p2;
-    if (it.sa === 'r' || it.sa === 'l') {
-      const c = Math.max(36, Math.abs(p3[0] - p0[0]) * 0.5), d = it.sa === 'r' ? 1 : -1;
-      p1 = [p0[0] + d * c, p0[1]]; p2 = [p3[0] - d * c, p3[1]];
-    } else {
-      const c = Math.max(28, Math.abs(p3[1] - p0[1]) * 0.45), d = it.sa === 'b' ? 1 : -1;
-      p1 = [p0[0], p0[1] + d * c]; p2 = [p3[0], p3[1] - d * c];
-    }
-    const u = 0.5, m = [0, 1].map(i => (1 - u) ** 3 * p0[i] + 3 * (1 - u) ** 2 * u * p1[i] + 3 * (1 - u) * u * u * p2[i] + u ** 3 * p3[i]);
-    return {e: it.e, p0, p1, p2, p3, mid: m};
-  });
-}
-
-function titleOf(id) { return nodeById[id] ? nodeById[id].t : (groupById[id] ? groupById[id].title : id); }
-function tagOf(id) { return nodeById[id] ? nodeById[id].tag : groupById[id].tag; }
-function newOf(id) { return nodeById[id] ? nodeById[id].new : !!groupById[id].new; }
-
-function render() {
-  const {boxes, gboxes} = layout();
-  const edges = computeEdges();
-  const paths = route(boxes, edges);
-  let h = '';
-  const svg = [`<svg class="w" width="${curW}" height="${curH}" viewBox="0 0 ${curW} ${curH}"><defs>`];
-  for (const k in D.edgeKinds) svg.push(`<marker id="ar-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="${D.edgeKinds[k][1]}"/></marker>`);
-  svg.push('</defs>');
-  const labels = [];
-  paths.forEach(p => {
-    const k = D.edgeKinds[p.e.kind], d = `M${p.p0[0].toFixed(1)},${p.p0[1].toFixed(1)} C${p.p1[0].toFixed(1)},${p.p1[1].toFixed(1)} ${p.p2[0].toFixed(1)},${p.p2[1].toFixed(1)} ${p.p3[0].toFixed(1)},${p.p3[1].toFixed(1)}`;
-    svg.push(`<path class="e" data-a="${p.e.a}" data-b="${p.e.b}" d="${d}" stroke="${k[1]}" fill="none" stroke-width="1.9"${k[2] ? ' stroke-dasharray="6 4"' : ''} marker-end="url(#ar-${p.e.kind})"><title>${esc(titleOf(p.e.a))} → ${esc(titleOf(p.e.b))}${p.e.label ? ': ' + esc(p.e.label) : ''}</title></path>`);
-    if (p.e.label) labels.push(`<text class="lb" data-a="${p.e.a}" data-b="${p.e.b}" x="${p.mid[0].toFixed(1)}" y="${(p.mid[1] - 5).toFixed(1)}">${esc(p.e.label)}</text>`);
-  });
-  svg.push('</svg>');
-  for (const gid in gboxes) {
-    const b = gboxes[gid], g = groupById[gid];
-    h += `<div class="grp${selected === gid ? ' sel' : ''}" data-grp="${gid}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><div class="gt" data-collapse="${gid}">▾ ${esc(g.title)}<small>свернуть</small></div></div>`;
-  }
-  for (const id in boxes) {
-    const b = boxes[id], isGroup = !!groupById[id], tag = tagOf(id), L = D.layers[tag];
-    const g = groupById[id];
-    const cls = 'nd' + (newOf(id) ? ' new' : '') + (isGroup ? ' macro' : '') + (selected === id ? ' sel' : '');
-    h += `<div class="${cls}" data-id="${id}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px;border-left-color:${L[1]};background:${L[2]}">` +
-      `<div class="ti">${esc(titleOf(id))}${isGroup ? `<span class="plus">+${g.nodes.length}</span>` : ''}</div>` +
-      `<div class="tags"><span class="tg" style="background:${L[1]}">${esc(L[0])}</span>${newOf(id) ? '<span class="nw">нужно выделить</span>' : ''}</div></div>`;
-  }
-  board.style.width = curW + 'px'; board.style.height = curH + 'px';
-  board.innerHTML = svg.join('') + h + `<svg class="w top" width="${curW}" height="${curH}" viewBox="0 0 ${curW} ${curH}">${labels.join('')}</svg>`;
-  applyScale();
-  board.querySelectorAll('.nd').forEach(n => {
-    n.onmouseenter = () => hl(n.dataset.id); n.onmouseleave = () => hl(null);
-    n.onclick = () => {
-      const id = n.dataset.id;
-      if (groupById[id]) { expanded.add(id); selected = id; render(); openInfo(id); }
-      else { selected = id; render(); openInfo(id); }
-    };
-  });
-  board.querySelectorAll('[data-collapse]').forEach(h2 => h2.onclick = () => { const id = h2.dataset.collapse; expanded.delete(id); selected = id; render(); openInfo(id); });
-  $('#lbl').onchange = () => document.body.classList.toggle('nolbl', !$('#lbl').checked);
-}
-
-function hl(id) {
-  const on = !!id;
-  board.querySelectorAll('.e,.lb').forEach(e => {
-    const hit = on && (e.dataset.a === id || e.dataset.b === id);
-    e.classList.toggle('hot', hit && e.classList.contains('e'));
-    e.classList.toggle('dim', on && !hit);
-  });
-  board.querySelectorAll('.nd').forEach(n => {
-    const rel = !on || n.dataset.id === id || [...board.querySelectorAll('.e')].some(e => (e.dataset.a === id && e.dataset.b === n.dataset.id) || (e.dataset.b === id && e.dataset.a === n.dataset.id));
-    n.classList.toggle('dim2', !rel);
-  });
-}
-
-function applyScale() {
-  if (fitMode) scale = Math.max(0.3, Math.min(1.2, (view.clientWidth - 24) / curW));
-  board.style.transform = `scale(${scale})`;
-  sizer.style.width = curW * scale + 'px'; sizer.style.height = curH * scale + 'px';
-  $('#zv').textContent = Math.round(scale * 100) + '%';
-}
-
-// ───────── панель описания ─────────
-function conns(ids) {
-  const inc = {}, out = {};
-  for (const [a, b, , label] of D.edges) {
-    if (ids.has(a) && !ids.has(b)) (out[groupById[owner[b]].title + ' / ' + titleOf(b)] ||= new Set()).add(label || '');
-    if (ids.has(b) && !ids.has(a)) (inc[groupById[owner[a]].title + ' / ' + titleOf(a)] ||= new Set()).add(label || '');
-  }
-  const f = o => Object.entries(o).map(([k, v]) => [k, [...v].filter(Boolean)]);
-  return [f(inc), f(out)];
-}
-const pill = t => `<span class="pill" style="background:${D.layers[t][1]}">${esc(D.layers[t][0])}</span>`;
-const connList = l => l.length ? '<ul>' + l.map(([n, ls]) => `<li>${esc(n)}${ls.length ? ` <span class="arr">(${ls.map(esc).join(', ')})</span>` : ''}</li>`).join('') + '</ul>' : '<span class="hint">нет</span>';
-
-function openInfo(id) {
-  const g = groupById[id], n = nodeById[id];
-  if (!g && !n) return;
-  let h = `<h3>${esc(g ? g.title : n.t)}</h3><div class="tagline">${pill(g ? g.tag : n.tag)}${(g ? g.new : n.new) ? '<span class="red">нужно выделить (сейчас такого компонента нет)</span>' : ''}${n ? `<span class="hint">часть блока «${esc(groupById[owner[id]].title)}»</span>` : ''}</div>`;
-  h += `<p>${esc(g ? g.summary : n.do)}</p>`;
-  const o = g ? g.out : n.out; if (o) h += `<p><b>Отдаёт:</b> ${esc(o)}</p>`;
-  if (n && n.now) h += `<p class="code">сейчас: ${esc(n.now)}</p>`;
-  const ids = g ? new Set(g.nodes.map(x => x.id)) : new Set([id]);
-  if (g) {
-    h += `<div class="sec"><h4>Внутренняя структура (${g.nodes.length})</h4>`;
-    g.nodes.forEach(p => {
-      h += `<div class="part" data-part="${p.id}" style="--c:${D.layers[p.tag][1]}"><b>${esc(p.t)} ${pill(p.tag)}${p.new ? ' <small class="red">нужно выделить</small>' : ''}</b><span>${esc(p.do)}</span>${p.out ? `<small>→ ${esc(p.out)}</small>` : ''}${p.now ? `<small class="code">сейчас: ${esc(p.now)}</small>` : ''}</div>`;
-    });
-    h += '</div>';
-    const internal = D.edges.filter(([a, b]) => ids.has(a) && ids.has(b));
-    if (internal.length) h += '<div class="sec"><h4>Как части связаны между собой</h4><ul>' + internal.map(([a, b, , l]) => `<li>${esc(titleOf(a))} <span class="arr">→</span> ${esc(titleOf(b))}${l ? ` <span class="arr">(${esc(l)})</span>` : ''}</li>`).join('') + '</ul></div>';
-  }
-  const [inc, out] = conns(ids);
-  h += `<div class="sec"><h4>Получает от</h4>${connList(inc)}</div><div class="sec"><h4>Отдаёт в</h4>${connList(out)}</div>`;
-  const gid = g ? id : owner[id];
-  h += `<div class="sec"><button class="btn" data-toggle="${gid}">${expanded.has(gid) ? 'Свернуть блок' : 'Развернуть блок'} «${esc(groupById[gid].title)}»</button></div>`;
-  side.innerHTML = h; side.scrollTop = 0;
-  side.querySelectorAll('[data-part]').forEach(p => p.onclick = () => { expanded.add(owner[p.dataset.part]); selected = p.dataset.part; render(); openInfo(p.dataset.part); });
-  side.querySelectorAll('[data-toggle]').forEach(b => b.onclick = () => { const t = b.dataset.toggle; expanded.has(t) ? expanded.delete(t) : expanded.add(t); selected = t; render(); openInfo(t); });
-}
-
-// ───────── управление ─────────
-$('#zi').onclick = () => { fitMode = false; scale = Math.min(1.6, scale + .1); applyScale(); };
-$('#zo').onclick = () => { fitMode = false; scale = Math.max(.25, scale - .1); applyScale(); };
-$('#zf').onclick = () => { fitMode = true; applyScale(); };
-$('#z1').onclick = () => { fitMode = false; scale = 1; applyScale(); };
-$('#ca').onclick = () => { expanded.clear(); selected = null; render(); };
-$('#ea').onclick = () => { D.groups.forEach(g => expanded.add(g.id)); selected = null; render(); };
-addEventListener('resize', () => applyScale());
-
-// ───────── подвижная граница между схемой и описанием ─────────
-const split = $('#split'), ws = $('#ws');
-let sw = 420;
-try { const v = parseInt(localStorage.getItem('archSideW') || '0'); if (v >= 240 && v <= 900) sw = v; } catch (e) {}
-function setSW(v, limit) { const max = limit && ws.clientWidth > 700 ? ws.clientWidth - 320 : 900; sw = Math.max(240, Math.min(max, v)); ws.style.setProperty('--sw', sw + 'px'); applyScale(); }
-setSW(sw, false);
-split.addEventListener('pointerdown', e => {
-  split.setPointerCapture(e.pointerId); split.classList.add('drag');
-  const move = ev => { const r = ws.getBoundingClientRect(); setSW(r.right - ev.clientX - 4, true); };
-  const up = ev => { split.releasePointerCapture(e.pointerId); split.classList.remove('drag'); split.removeEventListener('pointermove', move); split.removeEventListener('pointerup', up); try { localStorage.setItem('archSideW', String(sw)); } catch (x) {} };
-  split.addEventListener('pointermove', move); split.addEventListener('pointerup', up);
-});
-split.addEventListener('dblclick', () => setSW(420, false));
-
-render();
-</script></body></html>
+<h2 class="text-xl font-semibold mt-8 mb-2">План рефакторинга без остановки проекта</h2>
+<p class="opacity-70 mb-2">Каждый шаг отдельной веткой, поведение не меняется, тесты зелёные. Подробно: <code>docs/tz/29-clean-architecture.md</code>, <code>30-impulses-reflection.md</code>, <code>31-module-contracts.md</code>.</p><div class="overflow-x-auto"><table class="table table-sm bg-base-100"><thead><tr><th>Шаг</th><th>Что</th><th>Содержание</th></tr></thead><tbody><tr><td><b>R0</b></td><td>Страховка</td><td>Тест архитектуры по импортам; текущие тесты без изменений.</td></tr><tr><td><b>R1</b></td><td>Домен</td><td>Чистые функции в <code>agent/domain/</code>: оценка и D0–D4, правила и «замолчи», дедупликация, риск, политика фокуса.</td></tr><tr><td><b>R2</b></td><td>Контракты</td><td><code>agent/contracts.py</code> (Protocol) и адаптеры поверх существующих модулей.</td></tr><tr><td><b>R3</b></td><td>Разрезать Attention</td><td>ProcessEvent (Normalizer → HardRules → Classifier → Scorer → Dispatcher), SpeechCoordinator, Digest, QuestionService, JobTracker; фасад <code>Attention</code> остаётся.</td></tr><tr><td><b>R4</b></td><td>Разрезать Companion</td><td>ConversationService, ContextBuilder, ReplyGenerator, MemoryCapture; <code>proactive_loop</code> временно отдельным сценарием.</td></tr><tr><td><b>R5</b></td><td>Разрезать FocusManager</td><td>FocusPolicy, FocusQueue, CheckpointStore, FocusDispatch.</td></tr><tr><td><b>R6</b></td><td>Сборка и транспорт</td><td><code>core_service</code> только собирает; <code>module_hub</code> без импорта домена.</td></tr><tr><td><b>R7</b></td><td>Дашборд</td><td>Роутеры и презентеры, чтение через контракты.</td></tr><tr><td><b>ТЗ 30</b></td><td>Внутренние импульсы и размышление</td><td>ReminderStore, ImpulseTimer, ReflectionService; убрать <code>proactive_loop</code>.</td></tr></tbody></table></div>
+</div>
+<script src="../agent/static/ui/vendor/cytoscape.min.js"></script>
+<script src="../agent/static/ui/architecture-data.js"></script>
+<script src="../agent/static/ui/architecture.js"></script>
+<script>ARCH.mount(document.getElementById('arch-root'));</script>
+</body></html>
