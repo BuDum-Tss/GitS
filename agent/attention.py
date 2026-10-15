@@ -20,9 +20,7 @@
 Интерфейс для шины и запросов ядра прежний (ТЗ 02 §9.4): `submit`, `submit_speech`, `submit_question`, `on_job_update`.
 """
 import asyncio
-import fnmatch
 import logging
-import re
 import secrets
 import time
 from collections import deque
@@ -36,6 +34,7 @@ import settings
 from attention_rules import FILE_NAME as RULES_FILE
 from attention_rules import RuleStore
 from conversation_io import Channel, current_channel
+from domain import rules, scoring
 from speech_queue import ANNOUNCE_P, INTERRUPT_P, SpeechCandidate, SpeechQueue
 
 logger = logging.getLogger("attention")
@@ -62,11 +61,6 @@ DEFAULT_HALF_LIFE = {"rimworld.*": 60, "telegram.*": 900, "desktop.*": 120, "*.j
 DEFAULT_THRESHOLDS = (15, 35, 60, 85)
 DECISION_NAMES = ("D0", "D1", "D2", "D3", "D4")
 REPLY_CATEGORIES = ("question", "request_to_assistant")      # категории, в которых ответа ждут сами по себе
-
-_STOP_RE = re.compile(r"^\W*(пожалуйста[\W]+)?(замолчи|замолчите|помолчи|помолчите|молчи|заткнись|тихо|"
-                      r"хватит( болтать| говорить| трепаться)?|прекрати( говорить| болтать)?|стоп|stop|shut up)\W*"
-                      r"(пожалуйста\W*)?$", re.I)
-
 
 @dataclass
 class Question:
@@ -125,15 +119,6 @@ class Focus:
 
 def _clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
-
-
-def _longest_match(patterns: dict, kind: str, default=None):
-    """Значение для самого длинного шаблона (fnmatch), совпавшего с видом события."""
-    best, best_len = default, -1
-    for pat, value in patterns.items():
-        if len(pat) > best_len and fnmatch.fnmatchcase(kind, pat):
-            best, best_len = value, len(pat)
-    return best
 
 
 class Attention:
@@ -491,7 +476,7 @@ class Attention:
         weights = {}
         if self.profiles is not None:
             weights = (getattr(self.profiles.current(), "attention", None) or {}).get("weights") or {}
-        w = _longest_match({k: v for k, v in weights.items() if isinstance(v, (int, float))}, kind, 1.0)
+        w = scoring.longest_match({k: v for k, v in weights.items() if isinstance(v, (int, float))}, kind, 1.0)
         return float(w)
 
     def _w_sender(self, sender: dict | None, first_contact: bool = False) -> float:
@@ -512,9 +497,7 @@ class Attention:
         return 1.3 if float(rec.get("affinity", 0.0)) / 100.0 >= 0.6 else 1.0
 
     def _half_life(self, kind: str, att: dict) -> float:
-        value = _longest_match({k: v for k, v in att["half_life"].items() if isinstance(v, (int, float)) and v > 0}, kind,
-                               DEFAULT_HALF_LIFE["*"])
-        return float(value)
+        return scoring.half_life(kind, att["half_life"], DEFAULT_HALF_LIFE["*"])
 
     def _user_state(self, item: Item | None, urgency: int, addressed: bool | None, cfg: dict, att: dict) -> tuple[float, bool]:
         """(вес w_user, пользователь отошёл). «Не отвлекать» режет вес до 0.3, кроме срочного обращения к ней."""
@@ -532,24 +515,15 @@ class Attention:
         w_user, away = self._user_state(item, urgency, item.addressed_to_me, cfg, att)
         parts = {"w_profile": self._w_profile(item.kind), "w_sender": self._w_sender(item.sender, item.first_contact),
                  "w_rule": self.rules.weight(item.module, item.kind, self._sender_name(item.sender)), "w_user": w_user,
-                 "freshness": 0.5 ** (max(0.0, now - item.created) / self._half_life(item.kind, att))}
-        priority = urgency * 20.0
-        for v in parts.values():
-            priority *= v
-        parts["priority"] = _clamp(priority, 0.0, 100.0)
+                 "freshness": scoring.freshness(now - item.created, self._half_life(item.kind, att))}
+        parts["priority"] = scoring.priority(urgency, parts["w_profile"], parts["w_sender"], parts["w_rule"], w_user,
+                                             parts["freshness"])
         parts["away"] = away
         return parts
 
     def _decide(self, priority: float, att: dict, away: bool) -> str:
-        t = att["thresholds"]
-        level = sum(1 for th in t if priority >= th)             # 0..4
-        if level >= 2 and priority >= t[2]:
-            top = self._focus[-1]
-            if priority >= t[3] or (top.kind != "idle" and priority > top.priority + att["interrupt_margin"]):
-                level = 4
-        if away and level >= 2:
-            level = 1                                             # сказать некому: в сводку
-        return DECISION_NAMES[level]
+        top = self._focus[-1]
+        return scoring.decide(priority, att["thresholds"], away, top.kind, top.priority, att["interrupt_margin"])
 
     async def _finish(self, item: Item, cfg: dict, att: dict, *, rule: str | None = None, force: str | None = None,
                       ms: float | None = None, rule_id: str | None = None) -> None:
@@ -858,8 +832,8 @@ class Attention:
 
     @staticmethod
     def looks_like_stop(text: str) -> bool:
-        """Короткая просьба замолчать: быстрый путь без модели (ATT-18)."""
-        return len(text) <= 40 and bool(_STOP_RE.match(text.strip()))
+        """Короткая просьба замолчать: быстрый путь без модели (ATT-18). Правило в domain/rules.py."""
+        return rules.looks_like_stop(text)
 
     async def reset_for_character(self) -> int:
         """Переключение персонажа (ТЗ 05, CHR-7): очередь речи очищается целиком, стек фокуса — до фонового состояния.
