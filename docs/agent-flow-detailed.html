@@ -1,0 +1,1477 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitS: схема работы агента</title>
+<style>
+:root{
+  --bg:#f4f5f7;--card:#ffffff;--ink:#14171c;--mut:#5b6470;--line:#d5dae1;--acc:#2b6fba;
+  --k-ui:#7a5ac8;--k-ext:#8a94a3;--k-ai:#d9534f;--k-core:#2b6fba;--k-mod:#1f9d55;--k-store:#c98a00;--k-queue:#0e9aa7;--k-dec:#c2412d;
+  --e-call:#2b6fba;--e-ws:#7a5ac8;--e-http:#d9822b;--e-async:#6b7683;--e-write:#1f9d55;--e-read:#c2308a;--e-ctl:#c2412d;
+  --node-bg:#ffffff;--halo:#f4f5f7;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#14171c;--card:#1d2128;--ink:#e8ebf0;--mut:#98a2b0;--line:#323946;--acc:#6aa5e8;
+  --k-ui:#a58be6;--k-ext:#98a2b0;--k-ai:#ee7a76;--k-core:#6aa5e8;--k-mod:#46c47c;--k-store:#f0b03a;--k-queue:#41c6d1;--k-dec:#f08a78;
+  --e-call:#6aa5e8;--e-ws:#a58be6;--e-http:#f0a458;--e-async:#98a2b0;--e-write:#46c47c;--e-read:#f06fb7;--e-ctl:#f08a78;
+  --node-bg:#232933;--halo:#14171c;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,"Segoe UI",sans-serif}
+header{padding:18px 20px 6px;max-width:1500px;margin:0 auto}
+h1{font-size:24px;margin:0 0 4px}
+.sub{color:var(--mut);margin:0 0 10px;max-width:1100px}
+.bar{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 20px}
+.bar .in{max-width:1500px;margin:0 auto;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.tab{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:4px 12px;font:inherit;font-size:13px;cursor:pointer}
+.tab.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.ctl{font-size:13px;color:var(--mut);display:flex;gap:4px;align-items:center;white-space:nowrap}
+.sp{flex:1}
+main{max-width:1500px;margin:0 auto;padding:10px 20px 60px}
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:10px 0 6px}
+.lg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.lg h3{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+.lg .row{display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px}
+.sw{width:30px;height:0;border-top:3px solid var(--c)}
+.sw.dash{border-top-style:dashed}
+.nsw{width:14px;height:14px;border-radius:3px;border:1px solid var(--line);border-left:5px solid var(--c);background:var(--node-bg)}
+section.diagram{display:none;margin-top:16px}
+section.diagram.show{display:block}
+body.all section.diagram{display:block;margin-top:34px}
+section.diagram>h2{font-size:20px;margin:0 0 4px}
+section.diagram>p.intro{color:var(--mut);margin:0 0 10px;max-width:1150px}
+.scroller{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px}
+.board{position:relative}
+.lanes{position:relative;display:grid;gap:56px;align-items:start}
+.lane{min-width:0}
+.lane-title{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);border-bottom:1px dashed var(--line);padding-bottom:4px}
+.lane-nodes{display:flex;flex-direction:column;gap:22px}
+.node{position:relative;z-index:2;background:var(--node-bg);border:1px solid var(--line);border-left:5px solid var(--c,var(--k-core));border-radius:8px;padding:7px 9px;font-size:12.5px;box-shadow:0 1px 0 rgba(0,0,0,.04);transition:opacity .15s,box-shadow .15s}
+.node b{display:block;font-size:13px;margin-bottom:2px}
+.node i{display:block;font-style:normal;color:var(--mut)}
+.node .f{display:block;margin-top:3px;font:11px ui-monospace,Consolas,monospace;color:var(--mut);opacity:.9}
+.node .mk{display:inline-block;margin-top:4px;margin-right:4px;font:11px ui-monospace,Consolas,monospace;border:1px solid var(--k-queue);color:var(--k-queue);border-radius:99px;padding:0 6px}
+body.nomk .node .mk{display:none}
+.node.tz{border-style:dashed}
+.node.tz::after{content:"tz/24";position:absolute;top:-8px;right:8px;background:var(--k-queue);color:#fff;border-radius:99px;font-size:10px;padding:0 6px}
+body.notz .node.tz,body.notz .node .mk{display:none}
+.k-ui{--c:var(--k-ui)}.k-ext{--c:var(--k-ext)}.k-ai{--c:var(--k-ai)}.k-core{--c:var(--k-core)}.k-mod{--c:var(--k-mod)}.k-store{--c:var(--k-store)}.k-queue{--c:var(--k-queue)}.k-dec{--c:var(--k-dec)}
+.node.dim{opacity:.35}
+.node.hot{box-shadow:0 0 0 2px var(--acc)}
+svg.w{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+svg.w.bot{z-index:1}
+svg.w.top{z-index:3}
+path.e{fill:none;stroke-width:1.8;opacity:.85;transition:opacity .15s,stroke-width .15s}
+path.e.async{stroke-dasharray:6 4}
+path.e.dim{opacity:.08}
+path.e.hot{opacity:1;stroke-width:3.2}
+.e-call{stroke:var(--e-call)}.e-ws{stroke:var(--e-ws)}.e-http{stroke:var(--e-http)}.e-async{stroke:var(--e-async)}.e-write{stroke:var(--e-write)}.e-read{stroke:var(--e-read)}.e-ctl{stroke:var(--e-ctl)}
+.bd circle{stroke:var(--halo);stroke-width:1.5}
+.bd text{fill:#fff;font:700 10px system-ui;text-anchor:middle;dominant-baseline:central}
+.bd.dim{opacity:.12}
+.bd.hot circle{r:11}
+.lbl{font:11px system-ui;fill:var(--ink);paint-order:stroke;stroke:var(--halo);stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+.lbl.dim{opacity:.08}
+body.nolbl .lbl{display:none}
+.steps{margin:12px 0 0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:6px 18px;counter-reset:s}
+.steps li{display:flex;gap:8px;font-size:13px;padding:5px 8px;border:1px solid transparent;border-radius:8px;cursor:default}
+.steps li:hover,.steps li.hot{background:var(--card);border-color:var(--line)}
+.steps .n{flex:none;width:22px;height:22px;border-radius:50%;color:#fff;font:700 11px system-ui;display:flex;align-items:center;justify-content:center;background:var(--c)}
+.note{margin:10px 0 0;padding:8px 12px;border-left:4px solid var(--k-store);background:var(--card);border-radius:6px;font-size:13px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px;margin-top:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px}
+.card h4{margin:0 0 4px;font-size:14px}
+.card .sev{float:right;font-size:11px;border-radius:99px;padding:0 8px;border:1px solid var(--line);color:var(--mut)}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--bg);padding:0 4px;border-radius:4px}
+table.t{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13px;margin-top:10px}
+table.t th,table.t td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.t th{font-size:12px;color:var(--mut);text-transform:uppercase}
+footer{max-width:1500px;margin:0 auto;padding:0 20px 40px;color:var(--mut);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+<h1>GitS: схема работы агента</h1>
+<p class="sub">Текущая архитектура по коду репозитория (<code>master</code>) с наложением ветки <code>tz/24-trace-journal</code> (трасса задержки и журнал, пока не влита; элементы ветки помечены «tz/24»).
+Стрелки пронумерованы в порядке обработки данных; цвет стрелки показывает тип связи. Наведите курсор на блок или на пункт списка, чтобы подсветить связи. «Макеты» я понял как монтаж видео (конвейер <code>modules/montage</code>), он описан в отдельной схеме.</p>
+</header>
+<div class="bar"><div class="in" id="bar"></div></div>
+<main>
+<div class="legend" id="legend"></div>
+<div id="diagrams"></div>
+<div id="extra"></div>
+</main>
+<footer>Сгенерировано по коду; цифры (пороги, тайм-ауты) взяты из констант в коде на момент составления. Если код изменился, схему нужно обновить.</footer>
+<script>
+
+// ───────────────────────── движок схем ─────────────────────────
+const DIAGRAMS = [];
+const EXTRA = [];
+const KIND_E = {
+  call:  ['вызов внутри процесса', false],
+  ws:    ['шина модулей (WebSocket :8766)', false],
+  http:  ['HTTP / внешняя служба', false],
+  async: ['фоновая задача, очередь, событие', true],
+  write: ['запись в память', false],
+  read:  ['чтение из памяти', false],
+  ctl:   ['управление, прерывание, обратная связь', true],
+};
+const KIND_N = {
+  ui:    'человек, устройства',
+  ext:   'внешнее приложение или служба',
+  ai:    'модель (LM Studio, Claude, GLiNER)',
+  core:  'код ядра',
+  mod:   'модуль (отдельный процесс)',
+  store: 'хранилище, файл',
+  queue: 'очередь, буфер, событие',
+  dec:   'правило или решение',
+};
+const SVGNS = 'http://www.w3.org/2000/svg';
+const $ = (s, r) => (r || document).querySelector(s);
+function el(tag, attrs, html) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+function sv(tag, attrs) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function buildLegend() {
+  const lg = $('#legend');
+  let h = '<div class="lg"><h3>Стрелки</h3>';
+  for (const k in KIND_E) h += `<div class="row"><span class="sw ${KIND_E[k][1] ? 'dash' : ''}" style="--c:var(--e-${k})"></span>${KIND_E[k][0]}</div>`;
+  h += '<div class="row"><span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:var(--e-call);color:#fff;font:700 10px system-ui;text-align:center;line-height:18px">3</span>номер шага: порядок обработки</div></div>';
+  h += '<div class="lg"><h3>Блоки</h3>';
+  for (const k in KIND_N) h += `<div class="row"><span class="nsw" style="--c:var(--k-${k})"></span>${KIND_N[k]}</div>`;
+  h += '<div class="row"><span class="nsw" style="--c:var(--k-queue);border-style:dashed"></span>пунктир и метка tz/24: есть только в ветке <code>tz/24-trace-journal</code></div></div>';
+  lg.innerHTML = h;
+}
+
+function buildBar() {
+  const bar = $('#bar');
+  const all = el('button', {class: 'tab', id: 'tab-all'}, 'Все схемы подряд');
+  DIAGRAMS.concat(EXTRA).forEach(d => {
+    const b = el('button', {class: 'tab', 'data-id': d.id}, d.tab || d.title);
+    b.onclick = () => { document.body.classList.remove('all'); show(d.id); };
+    bar.appendChild(b);
+  });
+  all.onclick = () => { document.body.classList.toggle('all'); redrawAll(); };
+  bar.appendChild(el('span', {class: 'sp'}));
+  const mk = (id, txt, cls, on) => {
+    const l = el('label', {class: 'ctl'}, `<input type="checkbox" id="${id}" ${on ? 'checked' : ''}> ${txt}`);
+    l.firstChild.onchange = e => { document.body.classList.toggle(cls, !e.target.checked); setTimeout(redrawAll, 0); };
+    bar.appendChild(l);
+  };
+  mk('c-lbl', 'подписи стрелок', 'nolbl', true);
+  mk('c-mk', 'метки трассы', 'nomk', true);
+  mk('c-tz', 'ветка tz/24', 'notz', true);
+  bar.appendChild(all);
+}
+
+function nodeEl(d, n) {
+  const e = el('div', {class: `node k-${n.k || 'core'}${n.tz ? ' tz' : ''}`, id: `${d.id}__${n.id}`, 'data-n': n.id});
+  let h = `<b>${n.t}</b>`;
+  if (n.s) h += `<i>${n.s}</i>`;
+  if (n.f) h += `<span class="f">${n.f}</span>`;
+  if (n.m) h += n.m.split(',').map(x => `<span class="mk">⏱ ${x.trim()}</span>`).join('');
+  e.innerHTML = h;
+  return e;
+}
+
+function buildDiagram(d) {
+  const sec = el('section', {class: 'diagram', id: `d-${d.id}`});
+  sec.appendChild(el('h2', {}, d.title));
+  if (d.intro) sec.appendChild(el('p', {class: 'intro'}, d.intro));
+  const sc = el('div', {class: 'scroller'});
+  const board = el('div', {class: 'board'});
+  const lanes = el('div', {class: 'lanes'});
+  const mw = d.minw || 215;
+  lanes.style.gridTemplateColumns = `repeat(${d.lanes.length}, minmax(0, 1fr))`;
+  lanes.style.minWidth = (d.lanes.length * mw + (d.lanes.length - 1) * 56) + 'px';
+  d.lanes.forEach(l => {
+    const lane = el('div', {class: 'lane'});
+    lane.appendChild(el('div', {class: 'lane-title'}, l.title));
+    const box = el('div', {class: 'lane-nodes'});
+    l.nodes.forEach(n => box.appendChild(nodeEl(d, n)));
+    lane.appendChild(box);
+    lanes.appendChild(lane);
+  });
+  const bot = sv('svg', {class: 'w bot'});
+  const top = sv('svg', {class: 'w top'});
+  board.appendChild(bot);
+  board.appendChild(lanes);
+  board.appendChild(top);
+  sc.appendChild(board);
+  sec.appendChild(sc);
+  if (d.steps) {
+    const ol = el('ol', {class: 'steps'});
+    d.steps.forEach(s => {
+      const li = el('li', {'data-step': s[0]}, `<span class="n" style="--c:var(--e-${s[2] || 'call'})">${s[0]}</span><span>${s[1]}</span>`);
+      ol.appendChild(li);
+    });
+    sec.appendChild(ol);
+  }
+  if (d.note) sec.appendChild(el('div', {class: 'note'}, d.note));
+  d.sec = sec; d.board = board; d.lanesEl = lanes; d.bot = bot; d.top = top;
+  $('#diagrams').appendChild(sec);
+}
+
+function rectOf(d, id) {
+  const n = document.getElementById(`${d.id}__${id}`);
+  if (!n || n.offsetParent === null) return null;
+  const br = d.board.getBoundingClientRect(), r = n.getBoundingClientRect();
+  return {x: r.left - br.left, y: r.top - br.top, w: r.width, h: r.height, el: n};
+}
+
+function bez(p0, p1, p2, p3, t) {
+  const u = 1 - t;
+  return [u*u*u*p0[0] + 3*u*u*t*p1[0] + 3*u*t*t*p2[0] + t*t*t*p3[0],
+          u*u*u*p0[1] + 3*u*u*t*p1[1] + 3*u*t*t*p2[1] + t*t*t*p3[1]];
+}
+
+function draw(d) {
+  if (!d.sec || !d.sec.offsetParent) return;
+  const bw = d.board.scrollWidth, bh = d.board.scrollHeight;
+  [d.bot, d.top].forEach(s => { s.setAttribute('width', bw); s.setAttribute('height', bh); s.innerHTML = ''; });
+  const tzOff = document.body.classList.contains('notz');
+  // маркеры
+  const defs = sv('defs');
+  for (const k in KIND_E) {
+    const m = sv('marker', {id: `${d.id}-ar-${k}`, viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse'});
+    const p = sv('path', {d: 'M0,0 L10,5 L0,10 z'});
+    p.style.fill = `var(--e-${k})`;
+    m.appendChild(p); defs.appendChild(m);
+  }
+  d.bot.appendChild(defs);
+  const items = [];
+  d.edges.forEach((e, i) => {
+    const a = rectOf(d, e[0]), b = rectOf(d, e[1]);
+    if (!a || !b) return;
+    if (tzOff && (a.el.classList.contains('tz') || b.el.classList.contains('tz'))) return;
+    const acx = a.x + a.w / 2, bcx = b.x + b.w / 2;
+    let sa, sb;
+    if (b.x > a.x + a.w - 4 && Math.abs(bcx - acx) > 40) { sa = 'r'; sb = 'l'; }
+    else if (b.x + b.w < a.x + 4 && Math.abs(bcx - acx) > 40) { sa = 'l'; sb = 'r'; }
+    else if (b.y >= a.y) { sa = 'b'; sb = 't'; }
+    else { sa = 't'; sb = 'b'; }
+    items.push({i, e, a, b, sa, sb});
+  });
+  // слоты на сторонах блока
+  const slots = {};
+  items.forEach(it => {
+    (slots[`${it.e[0]}|${it.sa}`] = slots[`${it.e[0]}|${it.sa}`] || []).push({it, end: 'a'});
+    (slots[`${it.e[1]}|${it.sb}`] = slots[`${it.e[1]}|${it.sb}`] || []).push({it, end: 'b'});
+  });
+  for (const key in slots) {
+    const list = slots[key], side = key.split('|')[1];
+    list.sort((p, q) => {
+      const o = x => { const r = x.end === 'a' ? x.it.b : x.it.a; return (side === 'l' || side === 'r') ? r.y + r.h / 2 : r.x + r.w / 2; };
+      return o(p) - o(q);
+    });
+    list.forEach((s, idx) => { s.it['off' + s.end] = (idx - (list.length - 1) / 2) * Math.min(16, 60 / Math.max(1, list.length)); });
+  }
+  const pt = (r, side, off) => {
+    if (side === 'r') return [r.x + r.w, r.y + r.h / 2 + off];
+    if (side === 'l') return [r.x, r.y + r.h / 2 + off];
+    if (side === 'b') return [r.x + r.w / 2 + off, r.y + r.h];
+    return [r.x + r.w / 2 + off, r.y];
+  };
+  d.drawn = [];
+  items.forEach(it => {
+    const e = it.e, kind = e[2];
+    const p0 = pt(it.a, it.sa, it.offa || 0), p3 = pt(it.b, it.sb, it.offb || 0);
+    let p1, p2;
+    if (it.sa === 'r' || it.sa === 'l') {
+      const c = Math.max(34, Math.abs(p3[0] - p0[0]) * 0.5), dir = it.sa === 'r' ? 1 : -1;
+      p1 = [p0[0] + dir * c, p0[1]]; p2 = [p3[0] - dir * c, p3[1]];
+    } else {
+      const c = Math.max(26, Math.abs(p3[1] - p0[1]) * 0.5), dir = it.sa === 'b' ? 1 : -1;
+      p1 = [p0[0], p0[1] + dir * c]; p2 = [p3[0], p3[1] - dir * c];
+    }
+    const path = sv('path', {class: `e e-${kind}${KIND_E[kind][1] ? ' async' : ''}`, d: `M${p0[0]},${p0[1]} C${p1[0]},${p1[1]} ${p2[0]},${p2[1]} ${p3[0]},${p3[1]}`, 'marker-end': `url(#${d.id}-ar-${kind})`});
+    d.bot.appendChild(path);
+    const mid = bez(p0, p1, p2, p3, 0.5);
+    let badge = null, label = null;
+    if (e[4] != null) {
+      badge = sv('g', {class: 'bd'});
+      const c = sv('circle', {cx: mid[0], cy: mid[1], r: 9});
+      c.style.fill = `var(--e-${kind})`;
+      const t = sv('text', {x: mid[0], y: mid[1]}); t.textContent = e[4];
+      badge.appendChild(c); badge.appendChild(t);
+      d.top.appendChild(badge);
+    }
+    if (e[3]) {
+      label = sv('text', {class: 'lbl', x: mid[0], y: mid[1] + (e[4] != null ? 22 : -6)});
+      label.textContent = e[3];
+      d.top.appendChild(label);
+    }
+    d.drawn.push({e, path, badge, label});
+  });
+  d.sec.querySelectorAll('.node').forEach(n => {
+    n.onmouseenter = () => highlight(d, n.dataset.n, null);
+    n.onmouseleave = () => highlight(d, null, null);
+  });
+  d.sec.querySelectorAll('.steps li').forEach(li => {
+    li.onmouseenter = () => highlight(d, null, +li.dataset.step);
+    li.onmouseleave = () => highlight(d, null, null);
+  });
+}
+
+function highlight(d, node, step) {
+  const on = node != null || step != null;
+  const hotNodes = new Set();
+  (d.drawn || []).forEach(x => {
+    const hit = node != null ? (x.e[0] === node || x.e[1] === node) : (step != null && x.e[4] === step);
+    if (hit) { hotNodes.add(x.e[0]); hotNodes.add(x.e[1]); }
+    [x.path, x.badge, x.label].forEach(o => { if (o) { o.classList.toggle('hot', on && hit); o.classList.toggle('dim', on && !hit); } });
+  });
+  d.sec.querySelectorAll('.node').forEach(n => {
+    n.classList.toggle('hot', on && hotNodes.has(n.dataset.n) && (node == null || n.dataset.n === node));
+    n.classList.toggle('dim', on && !hotNodes.has(n.dataset.n));
+  });
+  d.sec.querySelectorAll('.steps li').forEach(li => li.classList.toggle('hot', step != null && +li.dataset.step === step));
+}
+
+function show(id) {
+  document.querySelectorAll('section.diagram').forEach(s => s.classList.toggle('show', s.id === `d-${id}`));
+  document.querySelectorAll('#bar .tab[data-id]').forEach(b => b.classList.toggle('on', b.dataset.id === id));
+  try { history.replaceState(null, '', '#' + id); } catch (e) {}
+  setTimeout(redrawAll, 0);
+}
+function redrawAll() { DIAGRAMS.forEach(draw); }
+
+function init() {
+  buildLegend();
+  DIAGRAMS.forEach(buildDiagram);
+  EXTRA.forEach(x => {
+    const sec = el('section', {class: 'diagram', id: `d-${x.id}`});
+    sec.appendChild(el('h2', {}, x.title));
+    if (x.intro) sec.appendChild(el('p', {class: 'intro'}, x.intro));
+    sec.appendChild(el('div', {}, x.html));
+    $('#diagrams').appendChild(sec);
+  });
+  buildBar();
+  const want = (location.hash || '').slice(1);
+  const first = DIAGRAMS.concat(EXTRA).find(d => d.id === want) || DIAGRAMS[0];
+  show(first.id);
+  addEventListener('resize', () => redrawAll());
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAll);
+}
+
+DIAGRAMS.push({
+  id: 'map', tab: '0. Карта процессов', title: '0. Карта процессов и связей',
+  intro: 'Кто с кем разговаривает. Ядро — один процесс на asyncio (порт 8766: дашборд и шина модулей). Модули — отдельные процессы, они сами подключаются к ядру по WebSocket; ядро запускает их супервизором (<code>agent/modules.yaml</code>). Тяжёлые модели живут вне ядра: LM Studio, WhisperX, Fish Speech, FalkorDB, служба классификатора, Claude.',
+  minw: 205,
+  lanes: [
+    {title: 'Человек и устройства', nodes: [
+      {id: 'u_mic', t: 'Микрофон', k: 'ui'},
+      {id: 'u_spk', t: 'Колонки', k: 'ui'},
+      {id: 'u_pet', t: 'Окно питомца', s: 'tkinter, стикеры эмоций, облачко речи', k: 'ui'},
+      {id: 'u_dash', t: 'Браузер: дашборд и пульт', s: 'чат, настройки, память, граф, модули, фокус, оценки', k: 'ui'},
+      {id: 'u_tg', t: 'Telegram', s: 'личка, группы, её канал', k: 'ui'},
+      {id: 'u_scr', t: 'Экран, мышь, клавиатура', k: 'ui'},
+      {id: 'u_game', t: 'RimWorld + мод AgentBridge', s: 'HTTP :8765, команды в главном потоке игры', k: 'ext'},
+    ]},
+    {title: 'Модули (процессы, клиенты шины)', nodes: [
+      {id: 'm_voice', t: 'voice', s: 'микрофон, VAD, STT, узнавание голосов, синтез, воспроизведение, слух системного звука', k: 'mod', f: 'modules/voice'},
+      {id: 'm_pet', t: 'pet', s: 'окно питомца, быстрый ввод', k: 'mod', f: 'modules/pet'},
+      {id: 'm_desk', t: 'desktop', s: 'зрение на экране, мышь и клавиатура, приложения, Claude-помощник', k: 'mod', f: 'modules/desktop'},
+      {id: 'm_tg', t: 'telegram', s: 'бот, её аккаунт (Telethon), посты канала', k: 'mod', f: 'modules/telegram'},
+      {id: 'm_rim', t: 'rimworld', s: 'игровой агент: контуры, ходы, комментатор, запись забегов', k: 'mod', f: 'modules/rimworld'},
+      {id: 'm_mont', t: 'montage', s: 'конвейер монтажа Remotion + Claude', k: 'mod', f: 'modules/montage'},
+    ]},
+    {title: 'Ядро GitS (agent/, один процесс)', nodes: [
+      {id: 'c_hub', t: 'module_hub', s: 'WebSocket /module/ws: рукопожатие, state, event, say, job.update, запросы core.*', k: 'core', f: 'agent/module_hub.py'},
+      {id: 'c_attn', t: 'Attention + SpeechQueue', s: 'правила R1–R4, приоритет, решения D0–D4, очередь речи, сводка', k: 'core', f: 'agent/attention.py'},
+      {id: 'c_focus', t: 'Менеджер фокуса', s: 'один слот, очередь, checkpoint, два эшелона', k: 'core', f: 'agent/focus.py'},
+      {id: 'c_comp', t: 'Companion', s: 'разговор, проактивность, контекст, память разговора', k: 'core', f: 'agent/companion.py'},
+      {id: 'c_route', t: 'Router + Registry + approvals', s: 'планировщик просьб, инструменты, разрешения', k: 'core', f: 'agent/router.py'},
+      {id: 'c_fb', t: 'fast_brain', s: 'клиент локальной модели, очередь «срочное вытесняет фоновое»', k: 'core', f: 'agent/fast_brain.py'},
+      {id: 'c_mem', t: 'Память', s: 'UserMemory, MemoryStore, Relationships, GraphMemory', k: 'core', f: 'agent/*memory*.py'},
+      {id: 'c_prof', t: 'ProfileManager', s: 'активный профиль: тон, модули фокуса', k: 'core', f: 'agent/profile_manager.py'},
+      {id: 'c_sup', t: 'Supervisor', s: 'запуск и перезапуск модулей и служб по modules.yaml', k: 'core', f: 'agent/supervisor.py'},
+      {id: 'c_dash', t: 'Dashboard (HTTP :8766)', s: 'API состояния, чат, настройки, оценки', k: 'core', f: 'agent/dashboard.py'},
+      {id: 'c_log', t: 'events_log', s: 'SQLite events.db: журнал событий', k: 'store', f: 'agent/events_log.py'},
+    ]},
+    {title: 'Службы и модели вне ядра', nodes: [
+      {id: 'x_dec', t: 'decider: GLiNER2.5-multi-Decide', s: ':8768, служба (kind: service), p95 около 0,6 с', k: 'ai', f: 'services/decider'},
+      {id: 'x_lms', t: 'LM Studio :1234', s: 'Gemma (речь, план, факты) и EmbeddingGemma-300M (эмбеддинги)', k: 'ai'},
+      {id: 'x_fish', t: 'Fish Speech :8080 / edge-tts', s: 'синтез речи, референс голоса в resources/GlaDOS/voice', k: 'ext'},
+      {id: 'x_wx', t: 'WhisperX :9000 / локальный Whisper', s: 'распознавание, голоса, перебивание', k: 'ext'},
+      {id: 'x_falk', t: 'FalkorDB :6380 (Graphiti)', s: 'граф фактов с интервалами валидности', k: 'store'},
+      {id: 'x_cl', t: 'Claude (Agent SDK / CLI)', s: 'долгие задачи: ходы игры, помощник, монтаж', k: 'ai'},
+      {id: 'x_rem', t: 'Node + Remotion + ffmpeg', s: 'рендер роликов, запись и склейка', k: 'ext'},
+      {id: 'x_tgapi', t: 'Telegram API', k: 'ext'},
+    ]},
+    {title: 'Данные на диске', nodes: [
+      {id: 's_res', t: 'resources/GlaDOS/', s: 'character.yaml, core/ (конституция, prompt, воспоминания), voice, pet, telegram, desktop, rimworld, montage', k: 'store'},
+      {id: 's_mem', t: 'memory/ ядра', s: 'диалог, MemoryStore, отношения, graph_queue, focus.json, правила внимания, настройки', k: 'store'},
+      {id: 's_rmem', t: 'modules/rimworld/agent/memory', s: 'решения, уроки, забеги, цели, задачи, видео', k: 'store'},
+      {id: 's_jobs', t: 'modules/montage/jobs/', s: 'задачи монтажа, рендеры, qa_verdicts.jsonl', k: 'store'},
+    ]},
+  ],
+  edges: [
+    ['u_mic', 'm_voice', 'call', 'PCM 16 кГц'],
+    ['m_voice', 'u_spk', 'call', 'звук'],
+    ['m_voice', 'x_wx', 'http', 'STT'],
+    ['m_voice', 'x_fish', 'http', 'синтез'],
+    ['m_voice', 'c_hub', 'ws', 'voice.utterance, speech, heard'],
+    ['c_hub', 'm_voice', 'ws', 'speak, speak.stop'],
+    ['c_hub', 'm_pet', 'ws', 'presence, settings'],
+    ['m_pet', 'u_pet', 'call'],
+    ['m_pet', 'c_dash', 'http', 'быстрый ввод'],
+    ['u_dash', 'c_dash', 'http'],
+    ['c_dash', 'c_comp', 'call', 'чат'],
+    ['u_scr', 'm_desk', 'call'],
+    ['m_desk', 'c_hub', 'ws', 'desktop.*, state'],
+    ['c_hub', 'm_desk', 'ws', 'tool.call'],
+    ['m_desk', 'x_cl', 'http', 'claude_task'],
+    ['m_desk', 'x_lms', 'http', 'смысл экрана'],
+    ['u_tg', 'x_tgapi', 'http'],
+    ['x_tgapi', 'm_tg', 'http'],
+    ['m_tg', 'c_hub', 'ws', 'telegram.*'],
+    ['c_hub', 'm_tg', 'ws', 'deliver, tool.call'],
+    ['u_game', 'm_rim', 'http', 'state, events'],
+    ['m_rim', 'u_game', 'http', 'команды'],
+    ['m_rim', 'c_hub', 'ws', 'raid, death, colonists, run_ended'],
+    ['c_hub', 'm_rim', 'ws', 'order, policy.activate'],
+    ['m_rim', 'x_cl', 'http', 'ходы (MCP)'],
+    ['m_rim', 'x_lms', 'http', 'локальные ходы'],
+    ['m_rim', 'x_dec', 'http', 'оценка событий'],
+    ['m_rim', 's_rmem', 'write'],
+    ['m_mont', 'c_hub', 'ws', 'job.update, core.ask, core.tts'],
+    ['c_hub', 'm_mont', 'ws', 'montage.start'],
+    ['m_mont', 'x_cl', 'http', 'агент-монтажёр'],
+    ['m_mont', 'x_rem', 'call'],
+    ['m_mont', 's_jobs', 'write'],
+    ['s_res', 'm_mont', 'read', 'стиль, ресурсы'],
+    ['c_hub', 'c_attn', 'call', 'event, say'],
+    ['c_attn', 'x_dec', 'http', 'classify'],
+    ['c_attn', 'c_focus', 'call', 'on_decided'],
+    ['c_focus', 'c_hub', 'ctl', 'focus.release / activate'],
+    ['c_attn', 'c_comp', 'async', 'кандидаты речи, R1'],
+    ['c_comp', 'c_fb', 'call'],
+    ['c_fb', 'x_lms', 'http'],
+    ['c_comp', 'c_route', 'call', 'просьбы'],
+    ['c_route', 'c_hub', 'ws', 'tool.call'],
+    ['c_comp', 'c_mem', 'write'],
+    ['c_mem', 'x_falk', 'write'],
+    ['c_mem', 's_mem', 'write'],
+    ['c_mem', 'x_lms', 'http', 'эмбеддинги'],
+    ['c_attn', 'c_log', 'write'],
+    ['c_prof', 'c_hub', 'async', 'тема profile'],
+    ['c_sup', 'm_voice', 'ctl', 'запуск'],
+    ['c_sup', 'm_rim', 'ctl', 'запуск'],
+    ['c_sup', 'x_dec', 'ctl', 'health'],
+    ['s_res', 'c_comp', 'read', 'характер'],
+  ],
+});
+
+DIAGRAMS.push({
+  id: 'voice', tab: '1. Голосовая реплика', title: '1. Реплика пользователя голосом: от микрофона до звука ответа',
+  intro: 'Самый частый путь. Всё идёт последовательно в одной задаче ядра; фоновая часть (эмоция, запоминание) стартует уже после ответа. Метки «⏱» показывают, где ветка tz/24 ставит отметки времени трассы (от конца фразы до первого звука).',
+  minw: 215,
+  lanes: [
+    {title: 'Модуль voice: ввод', nodes: [
+      {id: 'mic', t: 'Микрофон', s: 'кадры 30 мс, 16 кГц; выключен по умолчанию (настройка mic)', k: 'ui'},
+      {id: 'vad', t: 'mic_listener: VAD и ворота', s: 'webrtcvad; конец фразы ≈0,5 с тишины; пока она говорит (+0,6 с) микрофон закрыт; перебивание ≥800 мс (если включено)', k: 'mod', f: 'modules/voice/mic_listener.py', m: 'mic_end', tz: false},
+      {id: 'stt', t: 'STT', s: 'WhisperX :9000 (слова, голоса) или локальный Whisper на CPU; фильтр галлюцинаций', k: 'ai', f: 'stt_client.py, local_stt.py', m: 'stt_done'},
+      {id: 'vid', t: 'voice_id', s: 'узнавание голоса: {id, name, owner, new, has_owner}', k: 'mod', f: 'voice_id.py'},
+      {id: 'out', t: 'Outbox → событие voice.utterance', s: 'addressed_to_me=true, sender voice:<id>; метки трассы в поле trace', k: 'queue', f: 'voice/app.py'},
+    ]},
+    {title: 'Шина и внимание', nodes: [
+      {id: 'ws', t: 'WebSocket :8766 /module/ws', k: 'queue'},
+      {id: 'hub', t: 'module_hub', s: '_on_text → inbox → _on_note: validate_event; вид начинается с «voice.»; модуль включён', k: 'core', f: 'agent/module_hub.py'},
+      {id: 'sub', t: 'Attention.submit', s: '_make_item, запись module_event (voice.* — тихие виды); kind_handler «voice.utterance» — мимо формулы внимания', k: 'core', f: 'agent/attention.py', m: 'core_in'},
+    ]},
+    {title: 'Разговор (Companion)', nodes: [
+      {id: 'onv', t: 'on_voice', s: 'владелец — обычное сообщение; чужим пометка «[говорит X]» / «[незнакомый голос]»; relationships.ensure_person', k: 'core', f: 'companion.py'},
+      {id: 'onin', t: 'on_input', s: 'канал voice; трасса bind; presence.busy при отсутствии внимания', k: 'core', m: 'core_in'},
+      {id: 'ht', t: '_handle_text', s: 'add_dialogue; events_log user; graph.enqueue; last_user_ts; сразу эмоция «thinking» питомцу', k: 'core'},
+      {id: 'stop', t: 'attention.on_user_input', s: 'фокус «разговор»; «замолчи» (regex) обрывает речь до любых вызовов модели', k: 'dec', f: 'attention.py'},
+      {id: 'cls', t: 'classify_input → decider', s: 'intent: chat / action / about_self / approval / attention_rule / stop; needs_memory; тайм-аут 1,5 с', k: 'ai', f: 'decide.py', m: 'classify_done'},
+      {id: 'appr', t: 'Ответ на вопрос разрешения?', s: 'approvals.has_pending → try_answer (да/нет, вариант)', k: 'dec'},
+      {id: 'ord', t: 'game_order', s: 'игровая фраза → tool.call «order» модулю rimworld → приказ принят: «берусь», выход', k: 'dec'},
+      {id: 'br', t: 'Ветка', s: 'about_self | просьба (looks_like_action или intent=action) → Router | болтовня → _converse', k: 'dec', m: 'route'},
+    ]},
+    {title: 'Подготовка ответа', nodes: [
+      {id: 'mem', t: '_refresh_graph', s: 'graph.context_block и self_memories; каждый ≤3 с, подряд', k: 'core', m: 'retrieve_done'},
+      {id: 'ctx', t: '_context', s: 'MemoryStore + экран + 12 реплик + возможности + слух + о себе + граф + отношение', k: 'core'},
+      {id: 'llm', t: 'fast_brain._ask → Gemma', s: 'LM Studio :1234; весь ответ целиком (до 140 токенов, 10–15 ток/с), без стриминга; пометка [ДЕЙСТВИЕ]', k: 'ai', m: 'llm_first_token, llm_done'},
+      {id: 'dcl', t: '_declutter + clean_speech', s: 'убрать «Хочешь, чтобы я…?», обещание без действия, разметку', k: 'core', m: 'first_sentence_ready'},
+      {id: 'rt', t: 'Router.handle', s: 'см. схему «Запуск действий»', k: 'core', f: 'router.py'},
+      {id: 'react', t: 'После ответа (фон)', s: 'react_chat: эмоция и отношение; _learn: факты; _consolidate каждые 6 реплик', k: 'queue'},
+    ]},
+    {title: 'Очередь речи ядра', nodes: [
+      {id: 'say', t: 'Companion.say', s: 'не direct и канал не модульный → в очередь внимания', k: 'core'},
+      {id: 'sq', t: 'SpeechQueue', s: 'кандидат conversation, приоритет 95, срок 120 с; pump раз в 0,5 с; условия: она не говорит, пользователь молчит ≥1,5 с', k: 'queue', f: 'speech_queue.py'},
+      {id: 'play', t: '_play → say(direct) → _say_now', s: 'add_dialogue; events_log say; presence; VoiceModuleSpeech.speak → сообщение speak', k: 'core', f: 'speech_out.py'},
+    ]},
+    {title: 'Модуль voice: вывод', nodes: [
+      {id: 'spk', t: 'Speaker', s: 'очередь реплик, split_sentences, предзагрузка синтеза следующего предложения', k: 'mod', f: 'speaker.py', m: 'tts_first_audio'},
+      {id: 'tts', t: 'tts_engine', s: 'Fish Speech :8080 (референс resources/GlaDOS/voice) или запасной edge-tts', k: 'ext'},
+      {id: 'pl', t: 'player', s: 'PowerShell, громкость, отмена', k: 'mod', m: 'play_start'},
+      {id: 'spkr', t: 'Колонки', k: 'ui'},
+      {id: 'ev', t: 'События voice.speech', s: 'started / segment / ended → presence (питомец), слух не слушает себя', k: 'queue'},
+    ]},
+  ],
+  edges: [
+    ['mic', 'vad', 'call', 'кадры', 1],
+    ['vad', 'stt', 'async', 'фраза целиком', 2],
+    ['stt', 'vid', 'call', 'текст + голос', 3],
+    ['vid', 'out', 'call', null, 4],
+    ['out', 'ws', 'ws', 'event voice.utterance', 5],
+    ['ws', 'hub', 'ws', null, 6],
+    ['hub', 'sub', 'call', null, 7],
+    ['sub', 'onv', 'async', 'kind_handler', 8],
+    ['onv', 'onin', 'call', null, 9],
+    ['onin', 'ht', 'call', null, 10],
+    ['ht', 'stop', 'call', null, 11],
+    ['stop', 'cls', 'call', null, 12],
+    ['cls', 'appr', 'call', null, 13],
+    ['appr', 'ord', 'call', 'нет', 14],
+    ['ord', 'br', 'call', 'не игровая', 15],
+    ['br', 'mem', 'call', 'болтовня', 16],
+    ['mem', 'ctx', 'read', null, 17],
+    ['ctx', 'llm', 'http', 'промпт: характер + контекст', 18],
+    ['llm', 'dcl', 'call', null, 19],
+    ['dcl', 'say', 'call', null, 20],
+    ['say', 'sq', 'async', 'enqueue_say', 21],
+    ['sq', 'play', 'call', 'pump → _play', 22],
+    ['play', 'spk', 'ws', 'speak {utterance_id, text, emotion}', 23],
+    ['spk', 'tts', 'http', 'предложение', 24],
+    ['tts', 'pl', 'call', 'wav', 25],
+    ['pl', 'spkr', 'call', null, 26],
+    ['spk', 'ev', 'async', null, 27],
+    ['ev', 'sq', 'ws', 'идёт ли речь', 28],
+    ['br', 'rt', 'call', 'просьба', 29],
+    ['rt', 'say', 'call', 'итог действия', 30],
+    ['dcl', 'react', 'async', 'после ответа', 31],
+    ['stop', 'spk', 'ctl', '«замолчи»: speak.stop'],
+  ],
+  steps: [
+    [1, 'Микрофон отдаёт кадры 30 мс; VAD копит фразу, ворота не пускают звук, пока она говорит сама.'],
+    [2, 'Конец фразы (≈0,5 с тишины): аудио целиком уходит на распознавание. Метка <code>mic_end</code>.', 'async'],
+    [3, 'STT возвращает текст (WhisperX со словами и голосом или локальный Whisper); пустое и «мусор» отбрасываются.'],
+    [4, 'voice_id определяет, кто говорит: владелец, известный человек, новый голос.'],
+    [5, 'Модуль шлёт событие <code>voice.utterance</code> (addressed_to_me=true) и поле <code>trace</code> с метками.', 'ws'],
+    [6, 'Ядро принимает кадр, кладёт в очередь входящих модуля, разбирает: проверка формата, вида и «включён ли модуль».', 'ws'],
+    [7, 'Attention.submit создаёт Item, пишет журнал и находит обработчик вида.'],
+    [8, 'Реплика уходит в разговор мимо формулы важности: обработчик в фоновой задаче.', 'async'],
+    [9, 'on_voice помечает говорящего и заводит профиль человека, затем единый вход обращений on_input.'],
+    [10, '_handle_text: диалог в JSON, журнал, очередь графа, «задумалась» питомцу (без вызова модели).'],
+    [11, 'Менеджер внимания переводит фокус на «разговор»; «замолчи» срабатывает здесь, до всех моделей.'],
+    [12, 'Классификатор (GLiNER) определяет намерение. Метка <code>classify_done</code>.'],
+    [13, 'Если висит вопрос разрешения, реплика сначала считается ответом на него.'],
+    [14, 'Игровая фраза превращается в приказ модулю RimWorld; принят — коротко подтверждает и выходит.'],
+    [15, 'Выбор ветки: болтовня, просьба или «что ты умеешь». Метка <code>route</code>.'],
+    [16, 'Поиск в памяти: факты графа и воспоминания о себе. Метка <code>retrieve_done</code>.'],
+    [17, 'Сборка контекста из шести источников (общего бюджета токенов нет).', 'read'],
+    [18, 'Один вызов Gemma с характером и контекстом; ответ приходит целиком (стриминга нет).', 'http'],
+    [19, 'Страховки: убрать навязчивое «Хочешь, чтобы я…?», обещание без инструмента, разметку для озвучки.'],
+    [20, 'Реплика отдаётся в Companion.say.'],
+    [21, 'Реплика становится кандидатом очереди речи с приоритетом 95.', 'async'],
+    [22, 'Планировщик очереди выбирает кандидата (раз в 0,5 с) и запускает _play.'],
+    [23, 'Ядро отправляет модулю голоса команду <code>speak</code> с трассой.', 'ws'],
+    [24, 'Speaker режет текст на предложения и синтезирует по одному, следующее заранее.', 'http'],
+    [25, 'Готовый звук отдаётся плееру (между предложениями паузы почти нет).'],
+    [26, 'Воспроизведение через PowerShell; метка <code>play_start</code>.'],
+    [27, 'Speaker шлёт события started/segment/ended: питомец показывает облачко, слух не слушает её голос.', 'async'],
+    [28, 'Очередь узнаёт, говорит ли она (по событиям модуля) и когда можно говорить дальше.', 'ws'],
+    [29, 'Просьба вместо болтовни идёт в Router (схема 3).'],
+    [30, 'Итог действия формулирует модель и отдаёт в say.'],
+    [31, 'После ответа: оценка тона и эмоции (питомец, отношения), запоминание в фоне, осмысление беседы раз в шесть реплик.', 'async'],
+  ],
+  note: 'Слабые места пути (наблюдения по коду): ответ стартует только после полной генерации; поиск в графе и воспоминания о себе идут подряд (до 3 + 3 с); классификатор и <code>game_order</code> тоже последовательны. Запись диалога и журнала на пути ответа синхронна (в ветке tz/24 событие user переведено на <code>log_nowait</code>).',
+});
+
+DIAGRAMS.push({
+  id: 'events', tab: '2. Событие модуля → внимание', title: '2. Событие модуля: оценка внимания, решение D0–D4, речь и фокус',
+  intro: 'Любое событие любого модуля (набег в игре, сообщение в Telegram, смена окна, итог задачи) проходит менеджер внимания. Он решает, стоит ли об этом сказать и когда, а менеджер фокуса отдельно решает, нужно ли передать модулю «слот» активной работы. Реплики по событию формулирует модель по факту: готовых фраз в коде нет.',
+  minw: 215,
+  lanes: [
+    {title: 'Источники событий', nodes: [
+      {id: 'e_rim', t: 'rimworld', s: 'raid, death, fire, letter, goal, colonists, run_ended, run_video', k: 'mod'},
+      {id: 'e_tg', t: 'telegram', s: 'dm, group, bot_message, posted', k: 'mod'},
+      {id: 'e_desk', t: 'desktop', s: 'activity, app_changed, user_idle, user_back', k: 'mod'},
+      {id: 'e_voice', t: 'voice', s: 'heard (сводка колонок), named; utterance — см. схему 1', k: 'mod'},
+      {id: 'e_job', t: 'job.update', s: 'прогресс и вопросы задач модулей (waiting_user)', k: 'mod'},
+      {id: 'e_sup', t: 'Супервизор и инструменты', s: 'объявления долгих запусков (announce, правило 14)', k: 'core'},
+    ]},
+    {title: 'Вход и подготовка в submit', nodes: [
+      {id: 'h_val', t: 'module_hub', s: 'validate_event; вид начинается с «<модуль>.»; сверка с emits; выключенный модуль → отбросить', k: 'core', f: 'module_hub.py'},
+      {id: 'a_item', t: 'Attention.submit: Item', s: '_make_item; запись module_event; поле trace события (tz/24)', k: 'core', f: 'attention.py', m: 'core_in'},
+      {id: 'a_kh', t: 'kind_handlers и kind_hooks', s: 'handler уводит событие мимо формулы (voice.*, rimworld.colonists); hook — побочное действие (voice.heard, desktop.activity, rimworld.run_ended*)', k: 'dec'},
+      {id: 'a_ann', t: 'Объявление (announce)', s: 'мимо формулы: P75, срок 180 с, склейка одинаковых за 20 с, обязательно звучит', k: 'dec'},
+      {id: 'a_dup', t: 'Дедупликация', s: 'тот же dedupe_key за 60 с → счётчик повторов', k: 'dec'},
+      {id: 'a_note', t: '_note_sender (TG-14)', s: 'sender.id+name → relationships.ensure_person/note; memorable → MemoryStore (episode) и очередь графа', k: 'write'},
+    ]},
+    {title: 'Правила до классификатора и сам классификатор', nodes: [
+      {id: 'a_r1', t: 'R1: обращение владельца', s: 'это реплика разговору: io.from_module → Companion (схема 1)', k: 'dec'},
+      {id: 'a_r2', t: 'R2: ответ на вопрос', s: 'тот же канал, approvals.try_answer', k: 'dec'},
+      {id: 'a_r3', t: 'R3: правило «mute»', s: 'сразу в сводку (D1), классификатор не нужен', k: 'dec'},
+      {id: 'a_r4', t: 'R4: критичное', s: 'urgency_hint=5 и объявлено в манифесте → срочность 5', k: 'dec'},
+      {id: 'a_cls', t: 'Классификатор decider :8768', s: 'category (10 видов), urgency, addressed, needs_reply, focus_needed, policy; ≤1 с; очередь >20 → по подсказкам модуля', k: 'ai', f: 'decide.py'},
+    ]},
+    {title: 'Оценка и решение', nodes: [
+      {id: 'a_score', t: '_score', s: 'priority = срочность×20 × w_profile × w_sender × w_rule × w_user × свежесть (полураспад: rimworld 60 с, desktop 120 с, telegram 900 с, прочее 300 с)', k: 'core'},
+      {id: 'a_dec', t: '_decide', s: 'пороги 15 / 35 / 60 / 85 → D0 выбросить, D1 сводка, D2 при случае, D3 скоро, D4 прервать; пользователь отошёл → D1', k: 'dec'},
+      {id: 'a_act', t: '_act', s: 'D0 ничего; memorable → граф; D1 digest; D2–D4 — кандидат речи (факт); D4 + фокус «reaction»', k: 'core'},
+      {id: 'a_log', t: '_log_decision', s: 'events_log «attention»; яркость и журнал решений (tz/24)', k: 'store', m: 'route', tz: true},
+      {id: 'a_hook', t: 'on_decided', s: 'решение передаётся менеджеру фокуса, не ожидая его', k: 'core'},
+    ]},
+    {title: 'Речь по событию', nodes: [
+      {id: 's_dig', t: 'Сводка (digest)', s: 'до 50 событий; предложение рассказать при ≥3 событий, приоритет ≥25, тишина 10 мин; говорит не больше 5', k: 'queue'},
+      {id: 's_q', t: 'SpeechQueue', s: 'лучший кандидат; интервал между самостоятельными репликами (тихо 90 / обычно 30 / болтливо 10 с); ≥85 прерывает звучащее', k: 'queue', f: 'speech_queue.py'},
+      {id: 's_play', t: 'Companion._speak_about(факт)', s: 'Gemma решает, говорить ли: JSON {say, text}; промолчать можно; затем say(direct)', k: 'ai', f: 'companion.py'},
+      {id: 's_voice', t: 'Голос и питомец', s: 'см. схему 1 (speak → Speaker → колонки)', k: 'mod'},
+    ]},
+    {title: 'Менеджер фокуса (ТЗ 18)', nodes: [
+      {id: 'f_eval', t: 'evaluate', s: 'приоритет ≥60 и выше фокуса на 15; срочность 5 — критическое: без дребезга и без LLM', k: 'dec', f: 'focus.py'},
+      {id: 'f_t1', t: 'Эшелон 1', s: 'подсказки GLiNER (focus_needed, policy) + правила; уверенность высокая → решают правила', k: 'dec'},
+      {id: 'f_t2', t: 'Эшелон 2', s: 'Gemma-диспетчер только для неоднозначного; JSON, тайм-аут 5 с, операции из конечного списка', k: 'ai', f: 'focus_dispatch.py'},
+      {id: 'f_proto', t: 'Протокол переключения', s: 'checkpoint → focus.release → policy.activate → validate → focus.resume; дребезг ≥20 с в фокусе и ≤4 переключений/мин; старение отложенных +10 за 5 мин; состояние в focus.json', k: 'core'},
+      {id: 'f_mod', t: 'Модуль', s: 'меняет политику: afk / observe / plan / combat / manual; вне фокуса ничего не делает с игрой', k: 'mod'},
+    ]},
+  ],
+  edges: [
+    ['e_rim', 'h_val', 'ws', 'event', 1],
+    ['e_tg', 'h_val', 'ws', null, 1],
+    ['e_desk', 'h_val', 'ws', null, 1],
+    ['e_voice', 'h_val', 'ws', null, 1],
+    ['e_job', 'h_val', 'ws', 'job.update', 2],
+    ['e_sup', 'a_ann', 'call', 'submit_announce', 3],
+    ['h_val', 'a_item', 'call', null, 4],
+    ['a_item', 'a_kh', 'call', null, 5],
+    ['a_kh', 'a_ann', 'call', 'announce?', 6],
+    ['a_ann', 'a_dup', 'call', 'обычное', 7],
+    ['a_dup', 'a_note', 'call', null, 8],
+    ['a_note', 'a_r1', 'call', null, 9],
+    ['a_r1', 'a_r2', 'call', 'не владелец', 10],
+    ['a_r2', 'a_r3', 'call', null, 11],
+    ['a_r3', 'a_r4', 'call', null, 12],
+    ['a_r4', 'a_cls', 'http', 'остальные: classify', 13],
+    ['a_cls', 'a_score', 'call', 'категория → срочность', 14],
+    ['a_r3', 'a_score', 'call', 'D1'],
+    ['a_r4', 'a_score', 'call', 'срочность 5'],
+    ['a_score', 'a_dec', 'call', null, 15],
+    ['a_dec', 'a_act', 'call', null, 16],
+    ['a_act', 'a_log', 'write', null, 17],
+    ['a_act', 's_dig', 'async', 'D1', 18],
+    ['a_act', 's_q', 'async', 'D2–D4: кандидат', 19],
+    ['a_log', 'a_hook', 'call', null, 20],
+    ['a_ann', 's_q', 'async', 'P75'],
+    ['s_dig', 's_q', 'async', 'предложение сводки'],
+    ['s_q', 's_play', 'call', 'pump → _play', 21],
+    ['s_play', 's_voice', 'ws', 'speak', 22],
+    ['a_hook', 'f_eval', 'call', null, 23],
+    ['f_eval', 'f_t1', 'call', null, 24],
+    ['f_t1', 'f_t2', 'call', 'неоднозначно', 25],
+    ['f_t2', 'f_proto', 'call', null, 26],
+    ['f_t1', 'f_proto', 'call', 'ясно'],
+    ['f_proto', 'f_mod', 'ws', 'focus.release / policy.activate', 27],
+    ['f_mod', 'e_rim', 'ctl', 'статус в state (5 с)'],
+    ['a_r1', 's_play', 'ctl', 'разговор (схема 1)'],
+  ],
+  steps: [
+    [1, 'Модуль шлёт <code>event</code> (kind, text, urgency_hint, addressed_to_me, sender, dedupe_key, memorable…).', 'ws'],
+    [2, 'Задачи модулей шлют <code>job.update</code>; вопросы задач (waiting_user) идут в очередь вопросов внимания.', 'ws'],
+    [3, 'Объявления запусков (супервизор, инструменты) подаются сразу в канал announce.'],
+    [4, 'Ядро проверяет событие и создаёт Item внимания.'],
+    [5, 'Обработчик вида: либо забирает событие целиком, либо запускает побочный hook, событие идёт дальше.'],
+    [6, 'События вида <code>*.launch</code> идут мимо формулы важности: приоритет 75, обязательно звучат.'],
+    [7, 'Повторы с тем же ключом за 60 секунд склеиваются в один Item со счётчиком.'],
+    [8, 'Если известен отправитель, профиль человека и его слова записываются до решения (память не зависит от озвучки).', 'write'],
+    [9, 'R1: сообщение владельца к ней — не событие, а реплика разговору.'],
+    [10, 'R2: ответ владельца на открытый вопрос разрешения в том же канале.'],
+    [11, 'R3: временное правило «молчать про это» отправляет событие в сводку.'],
+    [12, 'R4: критичное событие, объявленное модулем срочным, обходит классификатор.'],
+    [13, 'Остальные идут к классификатору в фоновой задаче (очередь событий модуля не стоит).', 'http'],
+    [14, 'Срочность = максимум из подсказки модуля и категории; spam даёт 0.'],
+    [15, 'Приоритет 0–100 считается по формуле с весами профиля, отправителя, правил, состояния пользователя и свежести.'],
+    [16, 'Решение D0…D4 по порогам; «отошёл» или «не отвлекать» снижает.'],
+    [17, 'Решение пишется в журнал (поля: правило, классификатор, срочность, приоритет).', 'write'],
+    [18, 'D1: событие в сводку; сводку она предлагает рассказать, когда набралось достаточно и тихо.', 'async'],
+    [19, 'D2–D4: в очередь речи кладётся факт, D4 ещё ставит фокус «reaction» и прерывает речь.', 'async'],
+    [20, 'Решение отдаётся менеджеру фокуса через хук (его ошибка решение не ломает).'],
+    [21, 'Очередь выбирает кандидата; Gemma решает, нужна ли реплика, и формулирует её по факту.'],
+    [22, 'Если решила сказать — команда speak модулю голоса.', 'ws'],
+    [23, 'Менеджер фокуса оценивает: хватает ли приоритета, чтобы забрать слот у текущего.'],
+    [24, 'Первый эшелон: подсказки GLiNER и правила.'],
+    [25, 'Второй эшелон (только неоднозначное): Gemma-диспетчер, ответ проверяется.'],
+    [26, 'Решение: переключить, отложить, отклонить, или критическая процедура без ожидания.'],
+    [27, 'Протокол переключения с checkpoint прежней задачи: модуль отвечает, может отказать в небезопасной точке.', 'ws'],
+  ],
+});
+
+DIAGRAMS.push({
+  id: 'actions', tab: '3. Запуск действий', title: '3. Как запускаются действия: просьба → план → разрешение → инструмент → итог',
+  intro: 'Любая просьба проходит один путь через Router. Он сначала проверяет, есть ли у агента такая возможность, потом строит план из доступных инструментов, спрашивает разрешение там, где действие рискованное, и только затем вызывает инструмент (встроенный или в модуле). Итог возвращается фактом; сказать пользователю его формулирует модель.',
+  minw: 220,
+  lanes: [
+    {title: 'Откуда приходит просьба', nodes: [
+      {id: 'x_user', t: 'Просьба пользователя', s: 'голос, чат дашборда, Telegram (владелец)', k: 'ui'},
+      {id: 'x_det', t: 'Распознавание просьбы', s: 'intent=action (GLiNER) или looks_like_action (глаголы) или модель пометила ответ [ДЕЙСТВИЕ]', k: 'dec'},
+      {id: 'x_mod', t: 'Вызов из модуля', s: 'core.tool.call → тот же Router.run_tool_ex, те же проверки', k: 'mod'},
+      {id: 'x_order', t: 'Игровая фраза', s: 'game_order → tool.call «order» модулю с capabilities=game', k: 'dec'},
+    ]},
+    {title: 'Router: план', nodes: [
+      {id: 'r_srch', t: 'registry.search_async', s: 'инструменты активных окружений; availability always / profile (по focus_modules профиля); отбор по смыслу эмбеддингами описаний, k=14', k: 'core', f: 'environments/registry.py, tool_search.py'},
+      {id: 'r_plan', t: '_plan: Gemma', s: 'JSON {kind, feasible, reason, say_first, steps≤N}; две попытки; видит только перечень найденных инструментов', k: 'ai', f: 'router.py'},
+      {id: 'r_first', t: 'say_first', s: 'короткая фраза «пока делаю» (формулирует модель)', k: 'core'},
+      {id: 'r_no', t: 'feasible=false', s: 'факт «не могу» + честный перечень возможностей → ответ без выдумок', k: 'dec'},
+      {id: 'r_chat', t: 'kind=chat', s: 'это разговор: вернуться в _converse', k: 'dec'},
+    ]},
+    {title: 'Исполнение шага', nodes: [
+      {id: 's_val', t: '_step: validate_args', s: 'параметры по схеме инструмента (bad_request)', k: 'core'},
+      {id: 's_risk', t: 'Риск', s: 'risk: auto | ask | public (по telegram_confirm); danger-хук; tool.check у модуля (опасное называет модуль)', k: 'dec', f: 'safety.py'},
+      {id: 's_appr', t: 'approvals.request', s: 'вопрос произносится вслух через очередь; ответ голосом, чатом или Telegram; нет → код denied', k: 'core', f: 'approvals.py'},
+      {id: 's_call', t: 'tool.call', s: 'встроенный обработчик или запрос модулю; тайм-аут инструмента +2 с', k: 'core'},
+      {id: 's_res', t: 'Результат шага', s: 'успех или ToolError с кодом (unknown, bad_request, denied, unavailable, timeout, internal); при провале план обрывается', k: 'core'},
+    ]},
+    {title: 'Инструменты и исполнители', nodes: [
+      {id: 't_core', t: 'Встроенные окружения ядра', s: 'память (recall), внимание, фокус, профили, настройки, персонаж, web.search', k: 'core', f: 'environments/builtin.py'},
+      {id: 't_desk', t: 'desktop', s: 'скриншот, OCR, click/type/scroll, окна, приложения, operate_screen, menu_click, claude_task', k: 'mod'},
+      {id: 't_claude', t: 'Claude-помощник (desktop)', s: 'Agent SDK; Read/Glob/Grep свободно, остальное только после «да» (вопрос идёт через ядро), опасное всегда; данные страниц и файлов — не команды', k: 'ai', f: 'modules/desktop/assistant_agent.py'},
+      {id: 't_tg', t: 'telegram', s: 'отправить, ответить, пост в канал (risk public)', k: 'mod'},
+      {id: 't_rim', t: 'rimworld', s: 'order + MCP-инструменты игры (get_*, place_*, draft…)', k: 'mod'},
+      {id: 't_mont', t: 'montage', s: 'start, status, revise, cancel', k: 'mod'},
+      {id: 't_ext', t: 'Внешние MCP и вебхуки', s: 'environments/manifests', k: 'ext'},
+    ]},
+    {title: 'Итог и обратная связь', nodes: [
+      {id: 'o_fact', t: 'Итог-факт', s: '«сделано / НЕ получилось: инструмент → результат» → _speak_about(must=True) → say', k: 'core'},
+      {id: 'o_job', t: 'job.update', s: 'долгие задачи: прогресс, вопросы waiting_user, итог → attention.on_job_update; job_wait ждёт итог claude_task (до 600 с)', k: 'queue'},
+      {id: 'o_esc', t: 'Локальная модель недоступна', s: '_escalate → run_claude: ответ даёт Claude (если не исчерпан лимит)', k: 'dec'},
+      {id: 'o_log', t: 'Журнал', s: 'events_log plan/audit; метки ошибок denied, tool_failed, plan_failed (tz/24)', k: 'store', tz: true},
+    ]},
+  ],
+  edges: [
+    ['x_user', 'x_det', 'call', null, 1],
+    ['x_det', 'x_order', 'call', 'сначала игровая?', 2],
+    ['x_det', 'r_srch', 'call', 'просьба', 3],
+    ['x_mod', 's_val', 'call', 'минуя план', 4],
+    ['r_srch', 'r_plan', 'call', 'перечень', 5],
+    ['r_plan', 'r_chat', 'call', 'chat', 6],
+    ['r_plan', 'r_no', 'call', 'не выполнимо', 7],
+    ['r_plan', 'r_first', 'call', 'action', 8],
+    ['r_first', 's_val', 'call', 'шаги по порядку', 9],
+    ['s_val', 's_risk', 'call', null, 10],
+    ['s_risk', 's_appr', 'call', 'ask / public / danger', 11],
+    ['s_appr', 's_call', 'call', 'разрешено', 12],
+    ['s_risk', 's_call', 'call', 'auto'],
+    ['s_call', 't_core', 'call', null, 13],
+    ['s_call', 't_desk', 'ws', 'tool.call', 13],
+    ['s_call', 't_tg', 'ws', null, 13],
+    ['s_call', 't_rim', 'ws', null, 13],
+    ['s_call', 't_mont', 'ws', null, 13],
+    ['s_call', 't_ext', 'http', null, 13],
+    ['t_desk', 't_claude', 'call', 'claude_task'],
+    ['t_claude', 'o_job', 'async', 'job.update', 14],
+    ['t_core', 's_res', 'call', null, 15],
+    ['t_desk', 's_res', 'ws', 'result'],
+    ['t_rim', 's_res', 'ws', null],
+    ['t_tg', 's_res', 'ws', null],
+    ['t_mont', 's_res', 'ws', null],
+    ['s_res', 'o_fact', 'call', 'итог', 16],
+    ['s_res', 's_val', 'ctl', 'следующий шаг (если ok)'],
+    ['o_job', 'o_fact', 'async', 'итог задачи', 17],
+    ['r_no', 'o_fact', 'call', 'факт «не могу»'],
+    ['x_order', 't_rim', 'ws', 'order → прерывает ход', 18],
+    ['s_res', 'o_log', 'write'],
+    ['o_esc', 't_claude', 'call', 'run_claude'],
+    ['r_plan', 'o_esc', 'ctl', 'модель недоступна'],
+  ],
+  steps: [
+    [1, 'Пользователь просит что-то сделать; сначала идёт общий вход разговора (схема 1).'],
+    [2, 'Игровые фразы сначала предлагаются модулю игры как приказ: принял — дальше план не нужен.'],
+    [3, 'Просьба идёт в Router.handle.'],
+    [4, 'Вызов из модуля (core.tool.call) проходит те же проверки параметров и риска, без плана.'],
+    [5, 'Из реестра берутся подходящие инструменты (до 14), обязательные «always» не отсеиваются.'],
+    [6, 'Планировщик (Gemma) решил, что это разговор: Router возвращает None.'],
+    [7, 'Планировщик решил, что инструментов не хватает: ответ только честный перечень возможностей.'],
+    [8, 'Действие выполнимо: опционально сразу короткая фраза, чтобы пользователь видел, что она занята.'],
+    [9, 'Шаги выполняются по порядку; первый провал останавливает план.'],
+    [10, 'Проверка параметров по схеме инструмента.'],
+    [11, 'Для рискованного действия вслух задаётся вопрос; пользователь отвечает; отказ даёт код denied.'],
+    [12, 'Только после разрешения (или для auto) выполняется вызов с тайм-аутом.'],
+    [13, 'Вызов уходит исполнителю: встроенный обработчик в ядре или запрос tool.call модулю по шине.', 'ws'],
+    [14, 'Долгие задачи отвечают сразу идентификатором и дальше шлют job.update.', 'async'],
+    [15, 'Результат или ToolError возвращается Router.'],
+    [16, 'Router собирает итог-факт; формулирует и произносит его модель (промолчать нельзя).'],
+    [17, 'Итог долгой задачи приходит позже событием; тогда агент сообщает его.', 'async'],
+    [18, 'Приказ в игру прерывает текущий ход игрового агента и выполняется сразу.', 'ws'],
+  ],
+  note: 'Любой исполнитель, включая Claude-помощника, не видит чужих команд: тексты страниц и файлов для него данные, а каждое изменение требует «да». Вызовы инструментов модулей без разрешений идут только у RimWorld (по правилу проекта); управление ПК только с разрешением.',
+});
+
+DIAGRAMS.push({
+  id: 'decisions', tab: '4. Принятие решений', title: '4. Как принимаются решения: слои от жёстких правил до модели',
+  intro: 'Решения принимаются слоями. Чем выше слой, тем он быстрее и надёжнее; модель подключается позже и только там, где правилами не решить. Классификатор GLiNER только подсказывает: без него (служба не запущена, тайм-аут, настройка) всё работает по подсказкам модулей и правилам.',
+  minw: 225,
+  lanes: [
+    {title: 'Что приходит', nodes: [
+      {id: 'i_user', t: 'Реплика пользователя', s: 'голос, чат, Telegram владельца', k: 'ui'},
+      {id: 'i_ev', t: 'Событие модуля', s: 'игра, Telegram, экран, задачи', k: 'mod'},
+      {id: 'i_idle', t: 'Тишина и время', s: 'таймер проактивности (30 с), простой пользователя, расписание постов', k: 'queue'},
+      {id: 'i_state', t: 'Состояние мира', s: 'профиль, «не отвлекать», заряд Claude, активное окно, game_running', k: 'queue'},
+    ]},
+    {title: 'Слой 0: жёсткие правила (без ML)', nodes: [
+      {id: 'l0_stop', t: 'looks_like_stop', s: '«замолчи», «хватит», «stop»: обрывает речь до любых вызовов модели', k: 'dec', f: 'attention.py'},
+      {id: 'l0_app', t: 'Ответ на вопрос разрешения', s: 'approvals.try_answer, пока вопрос открыт', k: 'dec'},
+      {id: 'l0_r', t: 'R1–R4 внимания', s: 'R1 владелец → разговор; R2 ответ на вопрос; R3 mute → сводка; R4 критичное → срочность 5', k: 'dec'},
+      {id: 'l0_crit', t: 'Критичное в фокусе', s: 'срочность 5: без дребезга и LLM', k: 'dec'},
+    ]},
+    {title: 'Слой 1: классификатор (подсказка)', nodes: [
+      {id: 'l1_in', t: 'INPUT (реплика)', s: 'intent: chat / action / about_self / approval / attention_rule / stop; needs_memory (пока смещён в «нет», не используется для отключения памяти)', k: 'ai', f: 'decide.py'},
+      {id: 'l1_ev', t: 'EVENT (событие)', s: 'category, urgency, addressed, needs_reply, focus_needed, policy; порог уверенности min_conf=0,5, иначе «как будто нет»', k: 'ai'},
+    ]},
+    {title: 'Слой 2: внимание', nodes: [
+      {id: 'l2_sc', t: 'Приоритет', s: 'срочность×20 × вес профиля × вес отправителя × вес правил × вес состояния × свежесть', k: 'core'},
+      {id: 'l2_d', t: 'D0…D4', s: 'пороги 15/35/60/85; «отошёл» или «не отвлекать» режут вес; D4 прерывает', k: 'dec'},
+      {id: 'l2_sq', t: 'Очередь речи', s: 'приоритеты: conversation 95, question 80, announce 75, proactive 30; интервал между самостоятельными репликами; прерывание ≥85', k: 'queue'},
+    ]},
+    {title: 'Слой 3: фокус и маршрут разговора', nodes: [
+      {id: 'l3_f', t: 'Менеджер фокуса', s: 'правила → (неоднозначно) Gemma-диспетчер; один слот; дребезг; checkpoint', k: 'dec', f: 'focus.py'},
+      {id: 'l3_r', t: 'Маршрут разговора', s: 'about_self | просьба (intent или глаголы) → Router (Gemma-планировщик) | болтовня → _converse; метка [ДЕЙСТВИЕ] поднимает просьбу после ответа', k: 'dec', f: 'companion.py'},
+      {id: 'l3_ap', t: 'Разрешение на действие', s: 'risk ask / public / danger → вопрос пользователю; отказ обрывает план', k: 'dec'},
+      {id: 'l3_pro', t: 'Проактивность', s: 'раз в 30 с модель сама решает, стоит ли говорить (по дайджесту занятий и разговорчивости); промолчать — нормальный исход', k: 'ai'},
+    ]},
+    {title: 'Слой 4: решения внутри модулей и профилей', nodes: [
+      {id: 'l4_prof', t: 'ProfileManager', s: 'раз в 2 с: нет заряда Claude → sleep; ручной выбор; иначе условие activate с наибольшим priority; sticky_s; иначе assistant', k: 'core', f: 'profile_manager.py'},
+      {id: 'l4_pol', t: 'RimWorld: PolicyManager', s: 'политики afk / observe / plan / combat / manual; события из каталога events.yaml → переходы (приоритет, дребезг, просьбы); вне фокуса игра не ведётся', k: 'mod', f: 'modules/rimworld/agent/policy_manager.py'},
+      {id: 'l4_mode', t: 'Режим хода и модель', s: 'game_modes.pick_mode; think.model: local (Gemma) | Claude | смешанно (в бою Claude каждый claude_every-й ход); бюджет claude_budget, лимит claude_quota', k: 'dec'},
+      {id: 'l4_watch', t: 'Правила наблюдения', s: 'пишет модель, строго валидируются (watch_rules), срок по тику; код не пишут', k: 'dec'},
+    ]},
+    {title: 'Исходы', nodes: [
+      {id: 'o_say', t: 'Сказать / промолчать / в сводку', s: 'реплику формулирует модель по факту', k: 'core'},
+      {id: 'o_act', t: 'Выполнить инструмент', k: 'core'},
+      {id: 'o_foc', t: 'Передать фокус модулю', k: 'core'},
+      {id: 'o_drop', t: 'Выбросить (D0)', k: 'core'},
+      {id: 'o_log', t: 'Журнал решений', s: 'events_log: attention, focus, plan; в tz/24: decision с маршрутом, уверенностью, эшелоном', k: 'store'},
+    ]},
+  ],
+  edges: [
+    ['i_user', 'l0_stop', 'call', null, 1],
+    ['i_user', 'l0_app', 'call', null, 2],
+    ['i_ev', 'l0_r', 'call', null, 3],
+    ['i_ev', 'l0_crit', 'call', null, 3],
+    ['l0_stop', 'o_say', 'ctl', 'речь оборвана'],
+    ['l0_app', 'o_act', 'call', 'ответ принят'],
+    ['l0_r', 'l2_sc', 'call', 'R3/R4', 4],
+    ['l0_r', 'l1_ev', 'call', 'остальные', 4],
+    ['i_user', 'l1_in', 'call', null, 5],
+    ['l1_in', 'l3_r', 'call', 'intent', 6],
+    ['l1_ev', 'l2_sc', 'call', 'urgency', 7],
+    ['l1_ev', 'l3_f', 'call', 'focus_needed, policy', 8],
+    ['i_state', 'l2_sc', 'read', 'веса состояния', 9],
+    ['i_state', 'l4_prof', 'read', null, 9],
+    ['l2_sc', 'l2_d', 'call', null, 10],
+    ['l2_d', 'l2_sq', 'async', 'D2–D4', 11],
+    ['l2_d', 'o_drop', 'call', 'D0'],
+    ['l2_d', 'l3_f', 'call', 'on_decided', 12],
+    ['l2_sq', 'o_say', 'async', null, 13],
+    ['l3_r', 'l3_ap', 'call', 'просьба', 14],
+    ['l3_ap', 'o_act', 'call', null, 15],
+    ['l3_r', 'o_say', 'call', 'болтовня'],
+    ['l3_f', 'o_foc', 'ctl', null, 16],
+    ['l0_crit', 'l3_f', 'ctl', 'без LLM'],
+    ['o_foc', 'l4_pol', 'ws', 'policy.activate', 17],
+    ['l4_prof', 'l3_r', 'read', 'инструменты профиля'],
+    ['l4_pol', 'l4_mode', 'call', null, 18],
+    ['l4_mode', 'l4_watch', 'call', null, 19],
+    ['i_idle', 'l3_pro', 'async', null, 20],
+    ['l3_pro', 'l2_sq', 'async', 'кандидат P30'],
+    ['l2_d', 'o_log', 'write'],
+    ['l3_f', 'o_log', 'write'],
+  ],
+  steps: [
+    [1, 'Реплика сначала проверяется на «замолчи»: срабатывает до всех вызовов модели.'],
+    [2, 'Если висит вопрос разрешения, реплика сначала читается как ответ на него.'],
+    [3, 'Событие проходит правила R1–R4 и «критичное»; они не требуют ML.'],
+    [4, 'R3 и R4 сразу определяют срочность; остальные событие идёт к классификатору.'],
+    [5, 'Классификатор разбирает намерение реплики (до 1,5 с).'],
+    [6, 'Намерение выбирает ветку разговора; низкая уверенность — «как будто классификатора нет».'],
+    [7, 'Категория события превращается в срочность (spam 0, danger 5 и т. д.).'],
+    [8, 'Подсказки «нужен ли фокус» и «какая политика» уходят менеджеру фокуса.'],
+    [9, 'Состояние мира (не отвлекать, отошёл, профиль) задаёт веса и доступные инструменты.', 'read'],
+    [10, 'Приоритет переводится в решение D0…D4 по порогам.'],
+    [11, 'D2–D4 становятся кандидатами очереди речи (D1 — в сводку).', 'async'],
+    [12, 'Решение внимания передаётся менеджеру фокуса (он не блокирует внимание).'],
+    [13, 'Очередь речи выбирает момент по условиям (она молчит, человек не говорит, интервал); модель формулирует реплику.', 'async'],
+    [14, 'Просьба идёт в Router: Gemma-планировщик решает, выполнима ли она.'],
+    [15, 'Для рискованного шага — вопрос пользователю; затем выполнение.'],
+    [16, 'Менеджер фокуса решает: переключить, отложить или отклонить.'],
+    [17, 'Модуль получает политику; в RimWorld дальше решает PolicyManager.', 'ws'],
+    [18, 'Внутри модуля политика определяет режим хода, скорость игры, бой, принуждение.'],
+    [19, 'Модель может объявлять правила наблюдения; они проверяются и не пишут код.'],
+    [20, 'Тишина и время: проактивная реплика ставится кандидатом с низким приоритетом.', 'async'],
+  ],
+});
+
+DIAGRAMS.push({
+  id: 'memw', tab: '5. Память: запись', title: '5. Как формируется память: источники, фоновая обработка, хранилища',
+  intro: 'Память складывается из нескольких независимых потоков. Днём пишется быстрое (диалог, журнал, очередь графа), всё «умное» делает локальная Gemma в паузах. Эпизодов как историй пока нет: «episode» в MemoryStore это одна строка до 300 символов; нарезка и режим сна запланированы (ТЗ 27).',
+  minw: 225,
+  lanes: [
+    {title: 'Источники', nodes: [
+      {id: 'w_user', t: 'Реплика пользователя', s: 'голос, чат, Telegram владельца', k: 'ui'},
+      {id: 'w_say', t: 'Её реплики', k: 'core'},
+      {id: 'w_ev', t: 'События модулей с sender и memorable', s: 'TG-14: любые модули', k: 'mod'},
+      {id: 'w_hear', t: 'voice.heard и desktop.activity', s: 'сводка колонок, смысл экрана', k: 'mod'},
+      {id: 'w_game', t: 'Состояние игры', s: 'rimworld.colonists раз в 60 с и при смене состава', k: 'mod'},
+      {id: 'w_rem', t: '«Запомни…»', s: 'remember_text, core.memory.remember', k: 'ui'},
+      {id: 'w_seed', t: 'resources/GlaDOS/core/memories.yaml', s: 'каноничные воспоминания о себе; python -m character seed', k: 'store'},
+      {id: 'w_rmod', t: 'Модуль RimWorld: ход и забег', s: 'решения, уроки, итоги, записи о колонистах', k: 'mod'},
+    ]},
+    {title: 'Сразу, на пути обращения', nodes: [
+      {id: 'p_dlg', t: 'add_dialogue', s: 'кольцо диалога ≈60 реплик (JSON)', k: 'core', f: 'user_memory.py'},
+      {id: 'p_log', t: 'events_log', s: 'user, say, game, attention, plan, memory…; хранение 45 дней / 300 тыс. строк', k: 'core', f: 'events_log.py'},
+      {id: 'p_note', t: '_note_sender', s: 'ensure_person + note; memorable → эпизод и очередь графа', k: 'core'},
+      {id: 'p_q', t: 'graph.enqueue', s: 'реплики ≥12 симв. → graph_queue.json; свои реплики не берутся; незнакомые голоса не запоминаются', k: 'queue', f: 'graph_memory.py'},
+      {id: 'p_sync', t: 'sync_colonists', s: 'перезапись узлов колонистов и поселения без модели; ушедшие закрываются датой', k: 'core'},
+    ]},
+    {title: 'Фоновая обработка (Gemma)', nodes: [
+      {id: 'b_extract', t: 'FactExtractor', s: 'строгая схема JSON, 4–23 с на реплику; запускается, когда 20 с тишины и она не говорит (busy)', k: 'ai'},
+      {id: 'b_guard', t: 'Защита «я» (CHR-17/18)', s: 'факты о персонаже из реплик собеседника не пишутся; противоречие канону → событие memory_conflict', k: 'dec'},
+      {id: 'b_learn', t: '_learn (после ответа)', s: 'устойчивые факты user/self/plan; quiet_minutes («не отвлекай час»)', k: 'ai', f: 'companion.py'},
+      {id: 'b_cons', t: '_consolidate', s: 'каждые 6 реплик: окно 24 реплики → 0–3 воспоминания (user, self, plan, episode)', k: 'ai'},
+      {id: 'b_rem', t: 'remember_text', s: 'разбор «запомни» по видам, от первого или третьего лица', k: 'ai'},
+      {id: 'b_react', t: 'react_chat', s: 'эмоция и изменение отношения (−10…+10)', k: 'ai', f: 'fast_brain.py'},
+    ]},
+    {title: 'Хранилища', nodes: [
+      {id: 'd_dlg', t: 'Диалог', s: 'JSON, кольцо', k: 'store'},
+      {id: 'd_ms', t: 'MemoryStore (JSON)', s: 'user / self / plan / episode; важность 1–5; срок; забывание: полураспад 14 дней эпизод, 90 дней остальное', k: 'store', f: 'memory_store.py'},
+      {id: 'd_rel', t: 'Relationships (JSON)', s: 'люди, отношение, колонисты, заметки о каждом', k: 'store'},
+      {id: 'd_graph', t: 'Граф Graphiti на FalkorDB :6380', s: 'тройки с интервалами валидности (устаревшее закрывается), эмбеддинги EmbeddingGemma; группа = id персонажа, у каждого своя база', k: 'store', f: 'graph_memory.py'},
+      {id: 'd_ev', t: 'events.db (SQLite)', k: 'store'},
+      {id: 'd_act', t: 'activity.json', s: 'последние занятия: экран, звук', k: 'store'},
+      {id: 'd_rmem', t: 'memory модуля RimWorld', s: 'decisions, lessons (в промпт идут последние 15), runs, goals, tasks, pawns', k: 'store'},
+      {id: 'd_new', t: 'tz/24: trace, emotion, mistake, decision, salience', s: 'в events.db: основа будущих эпизодов, настроения и уроков', k: 'store', tz: true},
+    ]},
+  ],
+  edges: [
+    ['w_user', 'p_dlg', 'write', null, 1],
+    ['w_user', 'p_log', 'write', null, 1],
+    ['w_say', 'p_dlg', 'write', null, 2],
+    ['w_say', 'p_log', 'write', null, 2],
+    ['w_user', 'p_q', 'async', null, 3],
+    ['w_ev', 'p_note', 'call', null, 4],
+    ['p_note', 'd_rel', 'write', null, 5],
+    ['p_note', 'd_ms', 'write', 'episode', 6],
+    ['p_note', 'p_q', 'async', 'memorable'],
+    ['w_hear', 'd_act', 'write', null, 7],
+    ['w_game', 'p_sync', 'call', null, 8],
+    ['p_sync', 'd_graph', 'write', 'перезапись', 9],
+    ['p_sync', 'd_rel', 'write'],
+    ['w_rem', 'b_rem', 'call', null, 10],
+    ['b_rem', 'd_ms', 'write', null, 11],
+    ['w_seed', 'd_graph', 'write', 'canon=true', 12],
+    ['w_rmod', 'd_rmem', 'write', null, 13],
+    ['p_dlg', 'd_dlg', 'write'],
+    ['p_log', 'd_ev', 'write'],
+    ['p_q', 'b_extract', 'async', 'в паузе', 14],
+    ['b_extract', 'b_guard', 'call', null, 15],
+    ['b_guard', 'd_graph', 'write', 'add_fact + закрытие устаревшего', 16],
+    ['w_user', 'b_learn', 'async', 'после ответа', 17],
+    ['b_learn', 'd_ms', 'write', null, 18],
+    ['p_dlg', 'b_cons', 'async', 'каждые 6 реплик', 19],
+    ['b_cons', 'd_ms', 'write', null, 20],
+    ['w_user', 'b_react', 'async', null, 21],
+    ['b_react', 'd_rel', 'write', 'adjust'],
+    ['p_log', 'd_new', 'write', 'tz/24'],
+  ],
+  steps: [
+    [1, 'Реплика пишется в диалог и в журнал событий сразу (на пути обращения).', 'write'],
+    [2, 'Её собственные реплики пишутся так же; роль в диалоге — id персонажа.', 'write'],
+    [3, 'Реплика ≥12 символов ставится в очередь графа (файл переживает перезапуск).', 'async'],
+    [4, 'Событие модуля с отправителем: человек заводится в отношениях до решения внимания.'],
+    [5, 'Профиль человека и его слова записываются в Relationships.', 'write'],
+    [6, 'Если событие memorable — фактом-эпизодом в MemoryStore (важность 3) и в очередь графа.', 'write'],
+    [7, 'Сводка слуха и смысл экрана идут в «занятия» (последние пять).', 'write'],
+    [8, 'Событие rimworld.colonists обрабатывает ядро само: оно не озвучивается.'],
+    [9, 'Граф колонистов перезаписывается без участия модели: быстро; ушедшие закрываются.', 'write'],
+    [10, '«Запомни…» разбирается моделью сразу, не в фоне.'],
+    [11, 'Записи правильного вида попадают в MemoryStore; если модель не помогла — как есть.', 'write'],
+    [12, 'Канон из memories.yaml загружается в граф командой, не при каждом запуске.', 'write'],
+    [13, 'Модуль RimWorld ведёт свою память забега: решения хода, уроки, судьбы колонистов.', 'write'],
+    [14, 'Когда разговор стих (20 с) и она молчит, Gemma берёт реплику из очереди.', 'async'],
+    [15, 'Факты фильтруются: о персонаже из чужих реплик не пишем; канон защищён.'],
+    [16, 'Каждый факт пишется через add_triplet: сливаются дубли сущностей, устаревший факт закрывается датой.', 'write'],
+    [17, '_learn стартует после ответа: что стоит запомнить надолго, просил ли не отвлекать.', 'async'],
+    [18, 'Записи user/self/plan кладутся в MemoryStore.', 'write'],
+    [19, '_consolidate: раз в шесть реплик осмысляет окно беседы.', 'async'],
+    [20, 'Воспоминания (0–3) пишутся в MemoryStore, не дублируя известное.', 'write'],
+    [21, 'После каждого ответа оценивается тон: эмоция в питомца и отношения (±10).', 'async'],
+  ],
+  note: 'Забывание: <code>MemoryStore</code> снижает вес записей по сроку (эпизод — 14 дней, остальное — 90), планы живут до срока. Граф ничего не забывает сам: устаревший факт закрывается датой и скрывается из обычного поиска (показывается только с include_old).',
+});
+
+DIAGRAMS.push({
+  id: 'memr', tab: '6. Память: чтение и контекст', title: '6. Как память читается и как собирается контекст ответа',
+  intro: 'Отдельного компонента ContextBuilder нет: контекст собирает <code>Companion._context</code> из шести источников простой склейкой строк, без общего бюджета токенов и без общего ранжирования. Поиска два: словесный (MemoryStore) и по смыслу (граф). Решает «искать ли» классификатор только в крайних случаях: память отключается лишь для «замолчи» и ответа на разрешение.',
+  minw: 225,
+  lanes: [
+    {title: 'Запрос', nodes: [
+      {id: 'q_user', t: 'Реплика пользователя', s: 'query = сырой текст последней реплики (без хвоста диалога)', k: 'ui'},
+      {id: 'q_cls', t: 'Решение «искать ли»', s: 'use_memory = intent не stop и не approval; needs_memory классификатора только в журнал', k: 'dec'},
+      {id: 'q_fact', t: 'Факт для реплики', s: '_speak_about: запрос = текст пользователя или факт события', k: 'queue'},
+    ]},
+    {title: 'Поиск', nodes: [
+      {id: 'r_graph', t: 'graph.search', s: 'Graphiti → без устаревших (invalid_at) → пересчёт косинуса, порог 0,5 → топ-6; ≤3 с', k: 'core', f: 'graph_memory.py'},
+      {id: 'r_self', t: 'self_memories', s: 'канон и воспоминания о себе: relevance × (0,5 + вес), до 3; раз в 5 реплик напоминание о привычке; ≤3 с', k: 'core', f: 'character_memory.py'},
+      {id: 'r_ms', t: 'MemoryStore.relevant', s: 'пересечение трёхбуквенных основ ×3 + важность + свежесть; планы только по теме и пока не устарели; всегда 2 важных user/self', k: 'core', f: 'memory_store.py'},
+      {id: 'r_dlg', t: 'recent_dialogue', s: 'последние 12 реплик', k: 'core'},
+      {id: 'r_act', t: 'recent_activity', s: 'что было на экране недавно', k: 'core'},
+      {id: 'r_hear', t: 'recent_heard', s: 'сводки слуха за 10 минут (если слух включён)', k: 'core'},
+      {id: 'r_rel', t: 'relationships.describe', s: 'отношение к игроку', k: 'core'},
+      {id: 'r_cap', t: '_capabilities', s: 'что включено: зрение, слух, голос, модули, граф, лимит Claude', k: 'core'},
+    ]},
+    {title: 'Хранилища', nodes: [
+      {id: 'd_graph', t: 'FalkorDB (Graphiti)', k: 'store'},
+      {id: 'd_lms', t: 'LM Studio: EmbeddingGemma', s: 'эмбеддинги запроса и фактов (два прохода: поиск и пересчёт)', k: 'ai'},
+      {id: 'd_ms', t: 'MemoryStore, диалог, activity, relationships', k: 'store'},
+    ]},
+    {title: 'Сборка', nodes: [
+      {id: 'c_ctx', t: 'Companion._context', s: 'склейка: MemoryStore + экран + диалог + возможности + слух + о себе + граф + отношение', k: 'core', f: 'companion.py'},
+      {id: 'c_pers', t: 'persona()', s: 'конституция + prompt.yaml активного персонажа, {name} подставляется при вызове; profile_hint', k: 'core', f: 'prompts.py'},
+    ]},
+    {title: 'Кто пользуется', nodes: [
+      {id: 'u_conv', t: '_converse (Gemma)', s: 'ответ на болтовню', k: 'ai'},
+      {id: 'u_spk', t: '_speak_about (Gemma)', s: 'реплика по факту события', k: 'ai'},
+      {id: 'u_plan', t: 'Router._plan', s: 'видит только последние 4 реплики, без памяти', k: 'ai'},
+      {id: 'u_mod', t: 'Модули: core_fills', s: 'context для помощника desktop (без слуха)', k: 'mod'},
+      {id: 'u_tool', t: 'Инструменты recall', s: 'MemoryStore.search по словам; core.memory.recall', k: 'core'},
+      {id: 'u_rim', t: 'RimWorld', s: 'свой контекст (уроки, цели, задачи, statediff), память ядра не читает', k: 'mod'},
+    ]},
+  ],
+  edges: [
+    ['q_user', 'q_cls', 'call', null, 1],
+    ['q_cls', 'r_graph', 'call', 'искать', 2],
+    ['r_graph', 'r_self', 'call', 'затем, подряд', 3],
+    ['r_graph', 'd_lms', 'http', 'эмбеддинги', 4],
+    ['r_graph', 'd_graph', 'read', 'search', 4],
+    ['r_self', 'd_graph', 'read', 'канон'],
+    ['q_fact', 'r_ms', 'call', null, 5],
+    ['q_cls', 'r_ms', 'call', 'всегда'],
+    ['r_ms', 'd_ms', 'read', null, 6],
+    ['r_dlg', 'd_ms', 'read'],
+    ['r_act', 'd_ms', 'read'],
+    ['r_rel', 'd_ms', 'read'],
+    ['r_graph', 'c_ctx', 'read', 'графовый блок', 7],
+    ['r_self', 'c_ctx', 'read', 'блок «о себе»', 7],
+    ['r_ms', 'c_ctx', 'read', null, 7],
+    ['r_dlg', 'c_ctx', 'read', null, 7],
+    ['r_act', 'c_ctx', 'read', null, 7],
+    ['r_hear', 'c_ctx', 'read', null, 7],
+    ['r_rel', 'c_ctx', 'read', null, 7],
+    ['r_cap', 'c_ctx', 'read', null, 7],
+    ['c_pers', 'u_conv', 'read', 'характер', 8],
+    ['c_ctx', 'u_conv', 'read', 'контекст', 8],
+    ['c_ctx', 'u_spk', 'read', null, 8],
+    ['c_pers', 'u_spk', 'read'],
+    ['c_ctx', 'u_mod', 'read', null, 9],
+    ['r_ms', 'u_tool', 'read', 'search', 9],
+    ['u_plan', 'r_dlg', 'read'],
+  ],
+  steps: [
+    [1, 'Решение «искать ли память»: сейчас отключается только для «замолчи» и ответа на разрешение.'],
+    [2, 'Поиск в графе: запрос и факты превращаются в эмбеддинги, устаревшие факты скрыты.'],
+    [3, 'Воспоминания о себе ищутся вторым запросом после графа, не параллельно.'],
+    [4, 'Оба поиска ходят в LM Studio за эмбеддингами; тайм-аут 3 с на каждый, при сбое блок пустой.', 'http'],
+    [5, 'Для реплики по факту события запрос — текст пользователя или сам факт.'],
+    [6, 'MemoryStore ищет по пересечению основ слов, это не поиск по смыслу.', 'read'],
+    [7, 'Источники складываются строками в один блок контекста (порядок фиксирован, бюджета токенов нет).', 'read'],
+    [8, 'Контекст и характер идут в промпты Gemma для ответа.', 'read'],
+    [9, 'Модули и инструменты читают память своими путями (recall по словам, core_fills).', 'read'],
+  ],
+  note: 'Что это значит для будущей схемы (ТЗ 04): сегодня два разных поиска и два вида «порога»; нет переписывания запроса с учётом диалога («а он что?»); нет единого бюджета; поиск в графе стоит на критическом пути ответа. Это то, что планируется заменить общим гибридным поиском и явным ContextBuilder.',
+});
+
+DIAGRAMS.push({
+  id: 'rim', tab: '7. RimWorld', title: '7. Игровой агент RimWorld: контуры, ход, связь с ядром, запись забега',
+  intro: 'Модуль <code>modules/rimworld</code> — отдельный процесс. Быстрый контур реагирования никогда не ждёт медленные; ходы идут фоновой задачей, которую можно оборвать срочным делом. Что игра делает с агентом, решает политика (фокус): вне фокуса (afk) игровой ход не ведётся и токены не тратятся.',
+  minw: 225,
+  lanes: [
+    {title: 'Игра', nodes: [
+      {id: 'g_mod', t: 'RimWorld + AgentBridge', s: 'HTTP :8765; GameComponent; команды выполняются в главном потоке игры', k: 'ext', f: 'modules/rimworld/mod/AgentBridge'},
+      {id: 'g_state', t: 'GET state', s: 'колония, колонисты, угрозы, ресурсы, тик, пауза, журнал отладки', k: 'ext'},
+      {id: 'g_ev', t: 'GET events', s: 'incident, pawn_died, letter, fire_started, game_loaded, colony_died', k: 'ext'},
+      {id: 'g_cmd', t: 'Команды', s: 'пауза/скорость, назначения, постройки, призыв, камера', k: 'ext'},
+    ]},
+    {title: 'Контуры модуля (asyncio)', nodes: [
+      {id: 'c_tick', t: '_tick_loop (быстрый)', s: 'каждые POLL: state → statediff.compare → важные изменения; события игры; комментатор; цели', k: 'mod', f: 'controller.py'},
+      {id: 'c_pol', t: 'PolicyManager', s: 'политики afk / observe / plan / combat / manual; события из events.yaml; дребезг; вне фокуса ходы не ведутся', k: 'dec', f: 'policy_manager.py'},
+      {id: 'c_cls', t: 'Оценка событий', s: 'decider :8768 (важность) + fast_brain.react (эмоция, рефлексы reflex_actions)', k: 'ai'},
+      {id: 'c_plan', t: '_planning_loop (средний)', s: 'раскладывает цели в задачи; пауза игры; Claude', k: 'mod'},
+      {id: 'c_long', t: 'Долгосрочные цели и рефлексия', s: '_long_term_planning_loop, _reflection_loop, _self_improvement_loop (самый редкий)', k: 'mod'},
+      {id: 'c_comm', t: 'commentator', s: 'локальная модель: живые реплики по ходу игры', k: 'ai'},
+      {id: 'c_dog', t: 'game_watchdog, game_ui', s: 'меню, гибель колонии, новая колония: сначала локально (OCR), Claude если не нашла кнопку', k: 'mod'},
+    ]},
+    {title: 'Ход агента', nodes: [
+      {id: 't_should', t: 'should_think', s: 'critical/high | конец боя | значимое изменение | простой ≥120 с | прошлый ход оборвался; в бою — бюджет и срез игры; в планировании обычные ходы молчат', k: 'dec'},
+      {id: 't_start', t: '_start_turn', s: 'срочный ход обрывает идущий (cancel); свежий реактивный (<60 с) не обрывается', k: 'core'},
+      {id: 't_pause', t: '_turn: пауза и режим', s: 'urgent → пауза игры; game_modes.pick_mode; координаты режима', k: 'core'},
+      {id: 't_think', t: '_mode_turn', s: 'политика think: Gemma (local_agent) | Claude (glados_agent.run_turn: Agent SDK + MCP rimworld_mcp ⇄ мод)', k: 'ai', f: 'glados_agent.py'},
+      {id: 't_fin', t: '_finish_turn', s: 'фильтры реплики: скучное, техническое, повтор; say; log_decision; снять паузу', k: 'core'},
+    ]},
+    {title: 'Связь с ядром (core_link)', nodes: [
+      {id: 'l_link', t: 'core_link (WebSocket)', s: 'манифест (инструменты MCP + order), state раз в 5 с, события, say, emotion', k: 'queue', f: 'core_link.py'},
+      {id: 'l_ev', t: 'События для ядра', s: 'raid, death, fire, letter, goal, colonists, run_ended, run_video, launch; без sender (правило TG-14)', k: 'queue'},
+      {id: 'l_order', t: 'order', s: 'handle_order: приказ игрока прерывает ход и выполняется сразу', k: 'dec'},
+      {id: 'l_foc', t: 'policy.activate / focus.release / focus.resume', s: 'checkpoint (цель, шаг) при потере фокуса и возобновление', k: 'dec'},
+      {id: 'l_core', t: 'Ядро', s: 'внимание, граф колонистов, фокус, речь', k: 'core'},
+    ]},
+    {title: 'Запись забега и видео', nodes: [
+      {id: 'v_rec', t: 'run_recorder', s: 'ffmpeg: захват окна, звук кусками по 30 минут, отметки важных моментов (mark)', k: 'mod', f: 'run_recorder.py'},
+      {id: 'v_scen', t: 'scenario.build', s: 'сценарий из событий и отметок', k: 'mod'},
+      {id: 'v_hand', t: 'handoff', s: 'scenario.json, speech_log.json, recording.json, исходник', k: 'queue'},
+      {id: 'v_start', t: 'montage.start', s: 'core.tool.call → модуль montage (настройка auto_montage); не принял → собственный монтаж', k: 'mod'},
+      {id: 'v_mem', t: 'memory/ модуля', s: 'решения, уроки, итоги забега, цели, задачи', k: 'store'},
+    ]},
+  ],
+  edges: [
+    ['g_mod', 'g_state', 'http', null, 1],
+    ['g_mod', 'g_ev', 'http', null, 1],
+    ['g_state', 'c_tick', 'http', 'state', 2],
+    ['g_ev', 'c_tick', 'http', 'events', 2],
+    ['c_tick', 'c_cls', 'async', 'события', 3],
+    ['c_cls', 'c_pol', 'call', 'важность', 4],
+    ['c_tick', 'c_pol', 'call', 'statediff → события', 4],
+    ['c_tick', 'c_comm', 'async', 'изменения'],
+    ['c_tick', 'l_ev', 'async', 'raid, death, fire…', 5],
+    ['l_ev', 'l_link', 'async', null, 5],
+    ['l_link', 'l_core', 'ws', null, 6],
+    ['c_tick', 't_should', 'call', null, 7],
+    ['c_pol', 't_should', 'ctl', 'политика задаёт бюджеты'],
+    ['t_should', 't_start', 'call', null, 8],
+    ['t_start', 't_pause', 'call', null, 9],
+    ['t_pause', 'g_cmd', 'http', 'пауза', 10],
+    ['t_pause', 't_think', 'call', null, 11],
+    ['t_think', 'g_cmd', 'http', 'действия (MCP)', 12],
+    ['g_cmd', 'g_mod', 'http'],
+    ['t_think', 't_fin', 'call', null, 13],
+    ['t_fin', 'l_link', 'async', 'say', 14],
+    ['t_fin', 'v_mem', 'write', 'log_decision', 15],
+    ['c_plan', 'g_cmd', 'http', 'задачи, пауза'],
+    ['c_long', 'v_mem', 'write', 'цели, уроки'],
+    ['c_comm', 'l_link', 'async', 'реплики'],
+    ['c_dog', 'g_mod', 'http', 'меню / новая колония'],
+    ['l_core', 'l_order', 'ws', 'tool.call order', 16],
+    ['l_order', 't_start', 'ctl', 'прервать ход', 17],
+    ['l_core', 'l_foc', 'ws', 'фокус', 18],
+    ['l_foc', 'c_pol', 'ctl', 'политика / resume', 19],
+    ['c_tick', 'v_rec', 'async', 'старт/метки', 20],
+    ['v_rec', 'v_scen', 'call', 'конец забега', 21],
+    ['v_scen', 'v_hand', 'call', null, 22],
+    ['v_hand', 'v_start', 'call', null, 23],
+    ['v_start', 'l_link', 'ws', 'montage.start', 24],
+  ],
+  steps: [
+    [1, 'Мод слушает игру и отдаёт состояние и события по HTTP; команды выполняются только в главном потоке игры.', 'http'],
+    [2, 'Быстрый контур опрашивает state и events (параметр POLL), считает разницу состояний.', 'http'],
+    [3, 'Каждое событие игры оценивается локально: эмоция и рефлекс сразу, важность — классификатором.', 'async'],
+    [4, 'Важные события и сдвиги состояния становятся событиями политики; PolicyManager решает переход.'],
+    [5, 'Набег, гибель, пожар, письмо и цель уходят ядру как события без sender; подробности — схема 2.', 'async'],
+    [6, 'Ядро оценивает событие (внимание), решает, говорить ли и нужен ли фокус.', 'ws'],
+    [7, 'Проверяется, пора ли думать: тревога, конец боя, значимое изменение, простой, оборванный ход.'],
+    [8, 'Срочный ход обрывает текущий; иначе обычному не мешаем.'],
+    [9, 'При тревоге игра ставится на паузу; выбирается режим хода (бой, постройки, работа и т. д.).'],
+    [10, 'Команда паузы идёт в мод.', 'http'],
+    [11, 'Думает локальная Gemma или Claude (политика): подсказка без полного снимка мира, мир запрашивается инструментами.'],
+    [12, 'Действия выполняются инструментами MCP: сервер rimworld_mcp ходит в мод по HTTP.', 'http'],
+    [13, 'Итог хода: реплика проходит фильтры (скучное, технические сообщения, повторы).'],
+    [14, 'Реплика отправляется ядру: она попадёт в очередь речи (если не «не отвлекать»).', 'async'],
+    [15, 'Решение хода пишется в память модуля.', 'write'],
+    [16, 'Фраза игрока про игру приходит инструментом order от ядра.', 'ws'],
+    [17, 'Приказ обрывает идущий ход и выполняется сразу.', 'ctl'],
+    [18, 'Менеджер фокуса передаёт или забирает фокус.', 'ws'],
+    [19, 'При потере фокуса сохраняется checkpoint; при возврате ход возобновляется с него.', 'ctl'],
+    [20, 'Запись забега стартует вместе с колонией (если включена настройка record_runs), важные моменты отмечаются.', 'async'],
+    [21, 'При конце забега запись закрывается и строится сценарий.'],
+    [22, 'Готовятся файлы для монтажа: сценарий, журнал речи, описание записи.'],
+    [23, 'Монтаж отдаётся модулю montage (если включён auto_montage и модуль подключён).'],
+    [24, 'Запрос идёт через ядро: core.tool.call montage.start.', 'ws'],
+  ],
+  note: 'Правило проекта: игровая логика живёт только в модуле. Ядро видит игру через манифест, события и инструмент order; исключение — служебные виды rimworld.colonists (и в ветке tz/24 rimworld.run_ended), их ядро обрабатывает само.',
+});
+
+DIAGRAMS.push({
+  id: 'mont', tab: '8. Монтаж (макеты)', title: '8. Конвейер монтажа видео: от записи забега до готового ролика',
+  intro: 'Модуль <code>modules/montage</code>: одна задача за раз, одиннадцать стадий по порядку. Назад можно только на story и plan (из plan_approval) и на build (из review и из автоисправления в preview). Творческие стадии выполняет агент Claude в песочнице; человек утверждает историю и план и принимает черновик. Стиль и ресурсы берутся из <code>resources/GlaDOS/montage</code>.',
+  minw: 225,
+  lanes: [
+    {title: 'Вход', nodes: [
+      {id: 'in_rim', t: 'Забег RimWorld', s: 'handoff: исходное видео, scenario.json, speech_log.json, recording.json (куски звука)', k: 'mod'},
+      {id: 'in_user', t: 'Просьба пользователя', s: 'montage.start: файлы, площадка, длительность', k: 'ui'},
+      {id: 'in_core', t: 'Ядро', s: 'tool.call montage.start/status/revise/cancel; core.ask; core.tts; core.persona; job.update', k: 'core'},
+    ]},
+    {title: 'Подготовка', nodes: [
+      {id: 'st_intake', t: 'intake', s: 'ffprobe, HEVC → H.264, ссылки в sources/, вид исходника', k: 'mod', f: 'pipeline.py'},
+      {id: 'st_clar', t: 'clarify', s: 'не больше 2 вопросов (площадка, длительность, дубль) через core.ask', k: 'mod'},
+      {id: 'st_tr', t: 'transcribe', s: 'звук 16 кГц; слова из WhisperX (отложено) или из журнала речи (MON-26a): words.json; её реплики по времени', k: 'mod'},
+    ]},
+    {title: 'Творческие стадии (Claude в песочнице)', nodes: [
+      {id: 'st_story', t: 'story', s: 'логлайн, крючок, биты, подготовки и отдачи: plan/story.json', k: 'ai', f: 'prompts/stage_story.md'},
+      {id: 'st_plan', t: 'plan', s: 'plan.json и plan.md по истории, регламенту стиля и ремеслу; проверка схемой plan_schema.py и zod', k: 'ai'},
+      {id: 'st_app', t: 'plan_approval', s: 'вопрос «утвердить / переделать» (история, затем план); решение пишется в qa_verdicts.jsonl', k: 'dec'},
+      {id: 'st_vo', t: 'voiceover', s: 'строки закадра из плана → core.tts (Fish Speech голосом персонажа) → work/public/vo/', k: 'mod'},
+    ]},
+    {title: 'Сборка и выпуск', nodes: [
+      {id: 'st_build', t: 'build', s: 'агент собирает проект Remotion в work/ по плану; npx tsc --noEmit; кадры remotion still', k: 'ai'},
+      {id: 'st_prev', t: 'preview', s: 'черновик --scale 0.5 --crf 28; qa.py; смысловая проверка отдельным вызовом агента; ≤2 круга автоисправления назад в build', k: 'dec'},
+      {id: 'st_rev', t: 'review', s: 'человеку: черновик и отчёт qa/report.md; «готово» или «правки» (→ build); режим review_mode: human / auto_then_human / auto (≥20 решений и согласие ≥90%)', k: 'dec'},
+      {id: 'st_fin', t: 'final', s: 'рендер --crf 16, loudnorm до −14 LUFS, копия в output_dir, .srt для горизонтальных', k: 'mod'},
+    ]},
+    {title: 'Контроль и ограничения', nodes: [
+      {id: 'k_sand', t: 'Песочница агента (sandbox.py)', s: 'читать: папка задачи, template/, ресурсы персонажа, docs, skills; писать только work/ и plan/; команды ограничены', k: 'dec'},
+      {id: 'k_qa', t: 'qa.py', s: 'формат, громкость (ebur128), blackdetect, freezedetect, silencedetect, субтитры против слов, зоны и безопасные зоны, OCR (RapidOCR), проверки ремесла', k: 'core'},
+      {id: 'k_human', t: 'Человек', s: 'утверждает план, принимает черновик; его решения учат автопроверку', k: 'ui'},
+    ]},
+    {title: 'Ресурсы и данные', nodes: [
+      {id: 'r_style', t: 'resources/GlaDOS/montage', s: 'APERTURE_STYLE.md, assets: шрифты IBM Plex, синтезированные звуки, 12 пиктограмм', k: 'store'},
+      {id: 'r_craft', t: 'docs/EDITING_CRAFT.md и skills Remotion', k: 'store'},
+      {id: 'r_tpl', t: 'template/', s: 'шаблон Remotion (Main, схема zod, компоненты); копия в jobs/<id>/work', k: 'store'},
+      {id: 'r_jobs', t: 'jobs/<id>/', s: 'sources, transcript, plan, work, renders, qa; jobs/qa_verdicts.jsonl', k: 'store'},
+      {id: 'r_rem', t: 'Node + Remotion + ffmpeg', k: 'ext'},
+    ]},
+  ],
+  edges: [
+    ['in_rim', 'in_core', 'ws', 'montage.start', 1],
+    ['in_user', 'in_core', 'call', null, 1],
+    ['in_core', 'st_intake', 'ws', null, 2],
+    ['st_intake', 'st_clar', 'call', null, 3],
+    ['st_clar', 'in_core', 'ws', 'core.ask'],
+    ['st_clar', 'st_tr', 'call', null, 4],
+    ['st_tr', 'st_story', 'call', null, 5],
+    ['st_story', 'st_plan', 'call', null, 6],
+    ['st_plan', 'st_app', 'call', null, 7],
+    ['st_app', 'k_human', 'ws', 'утвердить / переделать', 8],
+    ['st_app', 'st_story', 'ctl', 'переделать историю'],
+    ['st_app', 'st_plan', 'ctl', 'переделать план'],
+    ['st_app', 'st_vo', 'call', 'утверждено', 9],
+    ['st_vo', 'in_core', 'ws', 'core.tts'],
+    ['st_vo', 'st_build', 'call', null, 10],
+    ['st_build', 'st_prev', 'call', null, 11],
+    ['st_prev', 'st_build', 'ctl', 'ошибки → правки (≤2 круга)'],
+    ['st_prev', 'k_qa', 'call', null],
+    ['st_prev', 'st_rev', 'call', null, 12],
+    ['st_rev', 'k_human', 'ws', 'готово / правки', 13],
+    ['st_rev', 'st_build', 'ctl', 'правки'],
+    ['st_rev', 'st_fin', 'call', 'принято', 14],
+    ['k_sand', 'st_story', 'ctl', 'ограничения'],
+    ['k_sand', 'st_plan', 'ctl'],
+    ['k_sand', 'st_build', 'ctl'],
+    ['r_style', 'st_plan', 'read', 'стиль'],
+    ['r_craft', 'st_story', 'read', 'ремесло'],
+    ['r_tpl', 'st_build', 'read', 'копия в work/'],
+    ['st_build', 'r_rem', 'call', 'tsc, still'],
+    ['st_prev', 'r_rem', 'call', 'черновик'],
+    ['st_fin', 'r_rem', 'call', 'финал, loudnorm'],
+    ['st_intake', 'r_jobs', 'write'],
+    ['st_fin', 'r_jobs', 'write', 'output'],
+  ],
+  steps: [
+    [1, 'Запрос приходит через ядро (из модуля RimWorld автоматически, если включён auto_montage, или по просьбе пользователя).', 'ws'],
+    [2, 'Задача ставится в очередь; ведётся одна за раз; стадии идут по порядку.', 'ws'],
+    [3, 'intake проверяет файлы и приводит видео к общему формату.'],
+    [4, 'clarify задаёт не больше двух вопросов, если чего-то не хватает.'],
+    [5, 'transcribe строит слова и время (для записи RimWorld — из журнала речи).'],
+    [6, 'Агент пишет историю ролика; из неё получается план.'],
+    [7, 'План проверяется схемой (структура, регламент, форматы).'],
+    [8, 'Человек отвечает «утвердить / переделать»; решение пишется в журнал обучения автопроверки.', 'ws'],
+    [9, 'Утверждённый план: строки закадра синтезируются голосом персонажа.'],
+    [10, 'Агент собирает проект Remotion по плану в рабочей папке задачи.'],
+    [11, 'Черновик, технические проверки и смысловая проверка; ошибки возвращают на build (не больше двух кругов).'],
+    [12, 'Человек получает черновик и отчёт.'],
+    [13, '«Готово» или «правки»: правки возвращают на build.', 'ws'],
+    [14, 'final: рендер, нормализация громкости до −14 LUFS, копия в папку вывода; ничего сам не публикует.'],
+  ],
+  note: 'Условие «макеты»: слово понято как монтаж видео. Если имелись в виду макеты интерфейса (дашборд) или другой процесс, скажите, и я нарисую его отдельно.',
+});
+
+DIAGRAMS.push({
+  id: 'boot', tab: '9. Запуск и жизненный цикл', title: '9. Как запускается система и как подключаются модули',
+  intro: 'Трей запускает только ядро. Остальное запускает супервизор ядра по <code>agent/modules.yaml</code>; модуль сам подключается к ядру по WebSocket, присылает манифест и дальше живёт по контракту (события, состояние, задачи, запросы). Игру запускает только <code>game_launcher.launch(reason)</code> и только по просьбе или инструменту, а не фокус и не сторож при старте.',
+  minw: 230,
+  lanes: [
+    {title: 'Запуск ядра', nodes: [
+      {id: 'b_tray', t: 'tray.py / main.py', s: 'трей, загрузка secrets.env, путь к sdk/', k: 'core', f: 'agent/main.py'},
+      {id: 'b_init', t: 'core_service._run: инициализация', s: 'settings.init → character.init → fast_brain.init → Relationships, PresenceTracker, SpeechSelector, Companion', k: 'core'},
+      {id: 'b_wire', t: 'wire_modules', s: 'ModuleHub, ModuleRegistry, Attention, FocusManager, ProfileManager, Supervisor, обработчики kind', k: 'core'},
+      {id: 'b_dash', t: 'dashboard.start :8766', s: 'HTTP API, чат, настройки, оценки; тот же порт — шина /module/ws', k: 'core'},
+      {id: 'b_start', t: 'layer.start', s: 'hub.start (токен в %LOCALAPPDATA%\\GitS\\module_token) → attention.start → focus.start → profiles.run → supervisor.start', k: 'core'},
+      {id: 'b_more', t: 'Остальное ядра', s: 'GraphMemory.run (+миграция из MemoryStore), реестр инструментов и эмбеддинги описаний, манифесты MCP и вебхуков (фон), proactive_loop', k: 'core'},
+    ]},
+    {title: 'Супервизор и службы', nodes: [
+      {id: 'sp_yaml', t: 'agent/modules.yaml', s: 'telegram, voice, desktop, pet, rimworld, montage, echo (dev); kind: service — decider', k: 'store'},
+      {id: 'sp_sup', t: 'Supervisor', s: 'процессы по {GITS}, {PYTHON}, {PYTHONW}; autostart; restart on-failure; GITS_MODULE_TOKEN, GITS_CORE_URL, GITS_CHARACTER_ID в окружение; журналы в agent/logs/modules', k: 'core', f: 'supervisor.py'},
+      {id: 'sp_ann', t: 'Объявление запуска', s: 'правило 14: долгие и заметные запуски объявляет персонаж (submit_announce)', k: 'queue'},
+      {id: 'sp_dec', t: 'decider (служба)', s: 'нет WebSocket; супервизор следит по GET health_url раз в 10 с; занятый порт — только слежение', k: 'ai'},
+    ]},
+    {title: 'Подключение модуля', nodes: [
+      {id: 'mc_conn', t: 'Модуль: connect', s: 'ws://127.0.0.1:8766/module/ws; повтор 1, 2, 4, 8, 16, 30 с', k: 'mod'},
+      {id: 'mc_hello', t: 'hello', s: 'токен, версия протокола, манифест: tools, emits, capabilities, policies, settings_schema, panel', k: 'queue'},
+      {id: 'mc_wel', t: 'welcome', s: 'ядро проверяет манифест; шлёт настройки и темы (presence, settings, profile, battery, character)', k: 'queue'},
+      {id: 'mc_run', t: 'Рабочий режим', s: 'state раз в 5 с; event; say; job.update; запросы core.*; приём tool.call, speak, deliver, policy.*', k: 'mod'},
+      {id: 'mc_off', t: 'Выключен или отключён', s: 'выключенный модуль событий и речи не шлёт; shutdown всем, через 10 с остальные убиваются', k: 'dec'},
+    ]},
+    {title: 'Профили и инструменты', nodes: [
+      {id: 'pf_ev', t: 'ProfileManager.evaluate', s: 'раз в 2 с и при смене состояния модулей: окно (desktop), game_running (rimworld), заряд Claude', k: 'core'},
+      {id: 'pf_act', t: 'Активный профиль', s: 'тон, focus_modules, веса внимания, области памяти', k: 'dec'},
+      {id: 'pf_reg', t: 'Registry', s: 'инструменты модулей: always виден всегда; profile — только если модуль в focus_modules профиля', k: 'core'},
+    ]},
+  ],
+  edges: [
+    ['b_tray', 'b_init', 'call', null, 1],
+    ['b_init', 'b_wire', 'call', null, 2],
+    ['b_wire', 'b_dash', 'call', null, 3],
+    ['b_dash', 'b_start', 'call', null, 4],
+    ['b_start', 'b_more', 'async', null, 5],
+    ['b_start', 'sp_sup', 'call', 'supervisor.start', 6],
+    ['sp_yaml', 'sp_sup', 'read', null, 6],
+    ['sp_sup', 'sp_dec', 'ctl', 'запуск и health', 7],
+    ['sp_sup', 'mc_conn', 'ctl', 'запуск процесса', 7],
+    ['sp_sup', 'sp_ann', 'async', 'объявление', 8],
+    ['sp_ann', 'b_wire', 'async', 'submit_announce'],
+    ['mc_conn', 'mc_hello', 'ws', null, 9],
+    ['mc_hello', 'mc_wel', 'ws', 'welcome / reject', 10],
+    ['mc_wel', 'mc_run', 'ws', null, 11],
+    ['mc_run', 'pf_ev', 'ws', 'state', 12],
+    ['pf_ev', 'pf_act', 'call', null, 13],
+    ['pf_act', 'pf_reg', 'call', null, 14],
+    ['pf_act', 'mc_run', 'ws', 'тема profile'],
+    ['mc_run', 'mc_off', 'ctl', 'выключен / разрыв'],
+    ['mc_off', 'mc_conn', 'ctl', 'переподключение'],
+  ],
+  steps: [
+    [1, 'Трей или командная строка запускает ядро: подгружаются секреты и путь к SDK.'],
+    [2, 'Инициализируются настройки, персонаж, быстрая модель, отношения, речь, компаньон.'],
+    [3, 'Собирается слой модулей: шина, реестр, внимание, фокус, профили, супервизор.'],
+    [4, 'Поднимается дашборд; на этом же порту принимает модули шина.'],
+    [5, 'Запускаются фоновые задачи ядра: граф памяти, реестр, проактивность.', 'async'],
+    [6, 'Супервизор читает modules.yaml и стартует включённые модули и службы.'],
+    [7, 'Модули стартуют процессами; служба классификатора проверяется по health_url.', 'ctl'],
+    [8, 'Запуск процесса объявляется пользователю через очередь внимания.', 'async'],
+    [9, 'Модуль подключается и присылает hello с токеном и манифестом.', 'ws'],
+    [10, 'Ядро проверяет и отвечает welcome (или reject: тогда модуль завершается).', 'ws'],
+    [11, 'Модуль переходит в рабочий режим: состояние, события, инструменты.', 'ws'],
+    [12, 'Состояние модулей влияет на выбор профиля (окно, игра, заряд).', 'ws'],
+    [13, 'Выбирается профиль: нет заряда Claude → sleep; ручной выбор; иначе по условиям и приоритету.'],
+    [14, 'Профиль определяет, какие инструменты модулей видны планировщику.'],
+  ],
+});
+
+DIAGRAMS.push({
+  id: 'trace', tab: '10. Трасса задержки (tz/24)', title: '10. Трасса задержки реплики (ветка tz/24-trace-journal)',
+  intro: 'Только в ветке, пока не влито в master. Каждая голосовая реплика получает идентификатор и набор меток времени по этапам; модуль и ядро пишут метки каждый в свою часть, ядро собирает их в одну запись <code>trace</code> и считает p50 и p95 для <code>GET /api/latency</code>. Метки в миллисекундах <code>perf_counter</code>: на одной машине счётчик общий для процессов.',
+  minw: 235,
+  lanes: [
+    {title: 'Модуль voice: до ядра', nodes: [
+      {id: 'a_mic', t: 'mic_end', s: 'конец фразы (VAD): wire_new создаёт трассу {id, source, marks}', k: 'mod', tz: true, f: 'mic_listener._launch_utterance'},
+      {id: 'a_stt', t: 'stt_done', s: 'после распознавания', k: 'mod', tz: true},
+      {id: 'a_ev', t: 'voice.utterance + trace', s: 'поле trace в событии (SDK его пропускает; validate_event проверяет только id)', k: 'queue', tz: true},
+    ]},
+    {title: 'Ядро: обработка реплики', nodes: [
+      {id: 'b_in', t: 'core_in', s: 'from_bus: ядро принимает трассу модуля (или start() для чата); bind в contextvar', k: 'core', tz: true, f: 'latency_trace.py'},
+      {id: 'b_cls', t: 'classify_done', k: 'core', tz: true},
+      {id: 'b_route', t: 'route', s: 'выбрана ветка; решение пишется в журнал (decision)', k: 'core', tz: true},
+      {id: 'b_ret', t: 'retrieve_done', s: 'после поиска в памяти', k: 'core', tz: true},
+      {id: 'b_llm', t: 'llm_first_token, llm_done', s: 'без стриминга ставятся подряд после полного ответа (стриминг — ТЗ 25)', k: 'core', tz: true},
+      {id: 'b_first', t: 'first_sentence_ready', k: 'core', tz: true},
+      {id: 'b_q', t: 'Очередь речи', s: 'кандидат несёт трассу (pending+1); запись ждёт, пока реплика сыграна или снята', k: 'queue', tz: true},
+      {id: 'b_sp', t: 'speak + trace', s: 'VoiceModuleSpeech кладёт трассу в команду speak и отмечает ожидание звука', k: 'core', tz: true},
+    ]},
+    {title: 'Модуль voice: звук', nodes: [
+      {id: 'c_tts', t: 'tts_first_audio', s: 'после синтеза первого предложения', k: 'mod', tz: true, f: 'speaker._mark'},
+      {id: 'c_play', t: 'play_start', s: 'перед воспроизведением; метки уходят ядру одним событием voice.trace', k: 'mod', tz: true},
+      {id: 'c_tr', t: 'voice.trace', s: 'служебное событие (не озвучивается, в журнал module_event не пишется)', k: 'queue', tz: true},
+    ]},
+    {title: 'Запись и отчёт', nodes: [
+      {id: 'd_arr', t: 'audio_arrived', s: 'метки звука дописываются в трассу', k: 'core', tz: true},
+      {id: 'd_wr', t: '_write', s: 'условия: ядро закончило обращение, в очереди реплик нет, звук пришёл (или прошло 15 с); log_nowait вид trace; метки относительно начала', k: 'store', tz: true},
+      {id: 'd_api', t: 'GET /api/latency', s: 'p50 и p95 по шагам между этапами и «от конца фразы до звука» за окно; блок во вкладке «Состояние»', k: 'core', tz: true},
+      {id: 'd_j', t: 'Журнал tz/24', s: 'emotion (с интенсивностью), mistake (поправка, отказ, провал…), decision (маршрут, эшелон, версия правил), salience', k: 'store', tz: true},
+    ]},
+  ],
+  edges: [
+    ['a_mic', 'a_stt', 'call', null, 1],
+    ['a_stt', 'a_ev', 'call', null, 2],
+    ['a_ev', 'b_in', 'ws', 'event', 3],
+    ['b_in', 'b_cls', 'call', null, 4],
+    ['b_cls', 'b_route', 'call', null, 5],
+    ['b_route', 'b_ret', 'call', null, 6],
+    ['b_ret', 'b_llm', 'call', null, 7],
+    ['b_llm', 'b_first', 'call', null, 8],
+    ['b_first', 'b_q', 'async', null, 9],
+    ['b_q', 'b_sp', 'call', null, 10],
+    ['b_sp', 'c_tts', 'ws', 'speak', 11],
+    ['c_tts', 'c_play', 'call', null, 12],
+    ['c_play', 'c_tr', 'async', null, 13],
+    ['c_tr', 'd_arr', 'ws', null, 14],
+    ['d_arr', 'd_wr', 'call', null, 15],
+    ['d_wr', 'd_api', 'read', null, 16],
+    ['b_route', 'd_j', 'write', 'decision'],
+    ['b_q', 'd_wr', 'ctl', 'pending → 0'],
+  ],
+  steps: [
+    [1, 'Модуль отмечает конец фразы: это начало отсчёта.'],
+    [2, 'Затем распознавание.'],
+    [3, 'Событие с трассой уходит ядру.', 'ws'],
+    [4, 'Ядро принимает трассу, отмечает приход, ставит метку после классификатора.'],
+    [5, 'Метка выбора маршрута.'],
+    [6, 'Метка после поиска в памяти.'],
+    [7, 'Метки модели: без потока совпадают.'],
+    [8, 'Метка «первое предложение готово».'],
+    [9, 'Реплика в очереди речи держит трассу открытой.', 'async'],
+    [10, 'Реплика отправляется модулю голоса вместе с трассой.'],
+    [11, 'Модуль синтезирует первое предложение: метка tts_first_audio.', 'ws'],
+    [12, 'Метка play_start перед воспроизведением.'],
+    [13, 'Метки звука уходят ядру событием voice.trace.', 'async'],
+    [14, 'Ядро принимает метки звука.', 'ws'],
+    [15, 'Запись trace: относительные метки и «от конца фразы до звука».'],
+    [16, 'Отчёт p50 и p95 для вкладки «Состояние».', 'read'],
+  ],
+  note: 'Ограничения ветки: трасса не пишется, пока реплика в очереди не сыграна или не снята; если голос заглушён или реплику сняли до воспроизведения, запись появится через 15 с без метки звука. Запросы без голоса (чат дашборда) тоже получают трассу, но без этапов звука.',
+});
+
+EXTRA.push({
+  id: 'bottle', tab: '11. Узкие места и ревью', title: '11. Что показывает схема: узкие места и результаты ревью кода',
+  intro: 'Наблюдения по коду, которые видны на схемах. Первая часть — архитектурные свойства master, вторая — замечания ревью ветки tz/24-trace-journal.',
+  html: `
+<h3 style="margin:14px 0 4px">Архитектура master: узкие места</h3>
+<div class="cards">
+ <div class="card"><h4>Нет стриминга ответа <span class="sev">реакция</span></h4>Первое слово звучит после полной генерации Gemma (до 140 токенов при 10–15 ток/с) и всех предыдущих шагов. Схема 1, шаги 18–22.</div>
+ <div class="card"><h4>Последовательный путь реплики <span class="sev">реакция</span></h4>Классификатор (до 1,5 с), game_order, поиск в графе (до 3 с) и воспоминания о себе (ещё до 3 с) идут друг за другом. Схема 1, шаги 12–16.</div>
+ <div class="card"><h4>Явного ContextBuilder нет <span class="sev">память</span></h4>Контекст — склейка шести источников без бюджета токенов; два разных поиска (по словам и по смыслу); запрос не учитывает диалог. Схема 6.</div>
+ <div class="card"><h4>«Эпизоды» — одна строка <span class="sev">память</span></h4>Историй с началом и концом, эмоциями и режимом сна нет. Схема 5, шаг 6 и 20.</div>
+ <div class="card"><h4>Решения размазаны по слоям <span class="sev">решения</span></h4>Внимание (D0–D4), менеджер фокуса, Router, политики модулей и проактивность решают каждый по-своему; единого документа маршрутов нет. Схема 4.</div>
+ <div class="card"><h4>Одна локальная модель на всё <span class="sev">ресурсы</span></h4>Речь, планирование, извлечение фактов, эмоции, диспетчер фокуса и эмбеддинги идут через один LM Studio; срочные вызовы вытесняют фоновые (до трёх повторов), но параллелизма нет.</div>
+ <div class="card"><h4>Ядро знает часть игровых видов <span class="sev">границы</span></h4>Несмотря на правило «игровое только в modules/rimworld», в ядре есть обработчики <code>rimworld.colonists</code> и (в ветке tz/24) <code>rimworld.run_ended</code>.</div>
+</div>
+<h3 style="margin:18px 0 4px">Ревью ветки tz/24-trace-journal (результат /code-review)</h3>
+<table class="t"><tr><th>#</th><th>Файл</th><th>Замечание</th></tr>
+<tr><td>1</td><td><code>agent/companion.py:268</code></td><td>Слабый шаблон поправки («не…», «нет…») запускает фоновый вызов Gemma на каждую такую реплику, в том числе на ответ на вопрос разрешения; ложные метки correction испортят разбор ошибок.</td></tr>
+<tr><td>2</td><td><code>agent/attention.py:939</code></td><td>Если очередь речи сразу снимает нового кандидата (переполнение, замена), <code>pending</code> трассы остаётся 1 навсегда и запись trace не пишется.</td></tr>
+<tr><td>3</td><td><code>agent/latency_trace.py:85</code></td><td>Метки модуля не проверяются на NaN/inf и диапазон: NaN попадает в JSON и ломает блок «Задержка реплики».</td></tr>
+<tr><td>4</td><td><code>agent/router.py:224</code></td><td>Один отказ даёт 2–3 метки ошибки (denied + plan_failed, tool_failed + plan_failed): счётчики подтверждений уроков завышены.</td></tr>
+<tr><td>5</td><td><code>agent/companion.py:299</code></td><td>Метка misroute пишется и тогда, когда Router отсутствует, и обвиняет классификатор, хотя маршрут выбрала эвристика глаголов.</td></tr>
+<tr><td>6</td><td><code>agent/core_service.py:118</code></td><td>Игровая логика run_lost и список игровых видов в salience — в ядре, вопреки правилу проекта; лучше объявлять итоговые события в манифесте модуля.</td></tr>
+<tr><td>7</td><td><code>agent/attention.py:628</code></td><td>Каждое решение пишется дважды (attention и decision): удваивается объём events.db, лимит 300 тыс. строк срабатывает вдвое раньше.</td></tr>
+<tr><td>8</td><td><code>agent/core_service.py:257</code></td><td>Ветвление «с trace / без trace» дублируется в трёх местах ради заглушек в тестах.</td></tr>
+<tr><td>9</td><td><code>agent/companion.py:205</code></td><td>«запиши» считается просьбой запомнить и поднимает яркость обычных команд.</td></tr>
+<tr><td>10</td><td><code>agent/companion.py:475</code></td><td>Этапы llm_first_token и llm_done совпадают по времени, пока нет стриминга: шаги в отчёте вводят в заблуждение.</td></tr>
+</table>
+<h3 style="margin:18px 0 4px">Подтверждённые проверки</h3>
+<p class="sub">Ветка tz/24: линтер чистый; тесты ядра и SDK 988; тесты модулей voice 96, telegram 84, pet 42, desktop 42, rimworld 340 (с PYTHONPATH на sdk). Замеров реальной задержки в репозитории пока нет.</p>
+`,
+});
+
+init();
+</script>
+</body>
+</html>
