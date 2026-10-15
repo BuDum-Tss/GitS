@@ -10,7 +10,7 @@ import prompts
 import settings
 from character_switch import CharacterSwitch
 
-REAL = Path(__file__).resolve().parents[1] / "characters"
+REAL = Path(__file__).resolve().parents[2] / "resources"
 
 
 class Recorder:
@@ -67,10 +67,10 @@ class FakeHub(Recorder):
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     root = tmp_path / "characters"
-    shutil.copytree(REAL / "glados", root / "glados")
-    shutil.copytree(REAL / "glados", root / "tester")        # второй персонаж: карточка с id tester
+    shutil.copytree(REAL / "GlaDOS", root / "glados")
+    shutil.copytree(REAL / "GlaDOS", root / "tester")        # второй персонаж: карточка с id tester
     (root / "tester" / "character.yaml").write_text(
-        (REAL / "glados" / "character.yaml").read_text(encoding="utf-8").replace("id: glados", "id: tester")
+        (REAL / "GlaDOS" / "character.yaml").read_text(encoding="utf-8").replace("id: glados", "id: tester")
         .replace("name: ГЛаДОС", "name: Тестерша").replace("aliases: [ГЛаДОС, гладос, GLaDOS, глэдос]",
                                                          "aliases: [Тестерша]"),
         encoding="utf-8")

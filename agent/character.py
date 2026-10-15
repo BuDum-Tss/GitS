@@ -1,4 +1,4 @@
-"""Персонаж GitS (ТЗ 05, CHR-5, CHR-6, CHR-8): данные лежат в папке agent/characters/<id>/, код имени не знает.
+"""Персонаж GitS (ТЗ 05, CHR-5, CHR-6, CHR-8): данные лежат в папке resources/<Имя>/, код имени не знает.
 
 Всё, что относится к конкретному персонажу (имя, алиасы, голос, характер, воспоминания, память), читается из его папки
 или из памяти по `character.id`. Активный персонаж хранится в настройке `character` (memory/settings.json), по умолчанию
@@ -15,14 +15,16 @@ from typing import Any
 import yaml
 
 import settings
+from gits_sdk import resources
 
 log = logging.getLogger("character")
 
-CHARACTERS_DIR = Path(__file__).resolve().parent / "characters"
+CHARACTERS_DIR = resources.resources_root()      # resources/<Имя>/: папка персонажа находится по id в character.yaml
 DEFAULT_ID = "glados"                # id данных: граф и корень памяти (без переноса), см. ТЗ 05 CHR-9, CHR-10
 CARD_FILE = "character.yaml"
-PERSONA_FILE = "persona.md"
-MEMORIES_FILE = "memories.yaml"
+CORE_DIR = "core"                    # промпты и воспоминания ядра внутри папки персонажа
+PERSONA_FILE = "persona.yaml"        # в папке модуля: разделы персоны (ключ -> текст), модуль получает их через core.persona
+MEMORIES_FILE = "core/memories.yaml"
 ANCHOR_MAX = 600                     # CHR-14: якорь до 600 символов
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
@@ -74,19 +76,16 @@ def load(char_id: str = DEFAULT_ID) -> Character:
     """Читает character.yaml персонажа; бросает CharacterError, если папки нет или данные неверны."""
     if not isinstance(char_id, str) or not ID_RE.match(char_id):
         raise CharacterError(f"недопустимый идентификатор персонажа «{char_id}»: строчные латинские буквы, цифры, _")
-    folder = CHARACTERS_DIR / char_id
+    folder = resources.character_folders(CHARACTERS_DIR).get(char_id)
+    if folder is None:
+        raise CharacterError(f"нет папки персонажа с id «{char_id}» в {CHARACTERS_DIR}: создайте её (шаблон: resources/_template)")
     card_path = folder / CARD_FILE
-    if not card_path.is_file():
-        raise CharacterError(f"нет файла {card_path}: создайте папку персонажа (шаблон: characters/_template)")
     try:
         data = yaml.safe_load(card_path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as e:
         raise CharacterError(f"{card_path}: не читается ({e})") from e
     if not isinstance(data, dict):
         raise CharacterError(f"{card_path}: ожидается словарь полей")
-    declared = str(data.get("id") or "")
-    if declared != char_id:
-        raise CharacterError(f"{card_path}: id «{declared}» не совпадает с именем папки «{char_id}»")
     name = str(data.get("name") or "").strip()
     if not name:
         raise CharacterError(f"{card_path}: нужно поле name")
@@ -106,10 +105,7 @@ def load(char_id: str = DEFAULT_ID) -> Character:
 
 def list_ids() -> list[str]:
     """Персонажи, у которых есть character.yaml. Папки с подчёркиванием (шаблон `_template`) не считаются."""
-    if not CHARACTERS_DIR.is_dir():
-        return []
-    return sorted(p.name for p in CHARACTERS_DIR.iterdir()
-                  if p.is_dir() and not p.name.startswith("_") and (p / CARD_FILE).is_file())
+    return sorted(resources.character_folders(CHARACTERS_DIR))
 
 
 def memory_dir(char_id: str = DEFAULT_ID, base: Path | None = None) -> Path:
@@ -166,24 +162,19 @@ def fill(text: str) -> str:
 
 
 def sections(char_id: str) -> dict[str, str]:
-    """Тексты персоны из persona.md: раздел `## имя` -> текст до следующего раздела. Нет файла — пустой словарь."""
-    path = CHARACTERS_DIR / char_id / PERSONA_FILE
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return {}
+    """Тексты персоны: ключи из `<модуль>/persona.yaml` всех папок персонажа (ключ -> текст). Нет файлов - пустой словарь."""
+    folder = resources.character_folders(CHARACTERS_DIR).get(char_id)
     out: dict[str, str] = {}
-    current = None
-    buf: list[str] = []
-    for line in text.splitlines():
-        if line.startswith("## "):
-            if current is not None:
-                out[current] = "\n".join(buf).strip()
-            current, buf = line[3:].strip(), []
-        elif current is not None:
-            buf.append(line)
-    if current is not None:
-        out[current] = "\n".join(buf).strip()
+    if folder is None:
+        return out
+    for path in sorted(folder.glob(f"*/{PERSONA_FILE}")):
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError) as e:
+            log.warning("%s: не читается (%s)", path, e)
+            continue
+        if isinstance(data, dict):
+            out.update({str(k): str(v).strip() for k, v in data.items() if v is not None})
     return out
 
 

@@ -1,4 +1,5 @@
 """Пиктограммы (STY-3): набор из регламента §4.6, единый контур 6 % размера, один цвет, без градиентов и внешних ссылок."""
+from layout import DEFAULT
 import re
 import xml.etree.ElementTree as ET
 
@@ -11,7 +12,7 @@ SVG = "{http://www.w3.org/2000/svg}"
 
 @pytest.mark.parametrize("name", NAMES)
 def test_pictogram_is_simple_single_colour_outline(root, name):
-    path = root / "assets" / "pictograms" / f"{name}.svg"
+    path = DEFAULT.assets / "pictograms" / f"{name}.svg"
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
     svg = ET.fromstring(text)
@@ -36,5 +37,5 @@ def test_pictogram_is_simple_single_colour_outline(root, name):
 
 
 def test_no_extra_pictograms(root):
-    found = sorted(p.stem for p in (root / "assets" / "pictograms").glob("*.svg"))
+    found = sorted(p.stem for p in (DEFAULT.assets / "pictograms").glob("*.svg"))
     assert found == sorted(NAMES)

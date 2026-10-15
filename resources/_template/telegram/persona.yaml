@@ -1,0 +1,3 @@
+# Тексты персоны для модуля Telegram (ключи telegram_channel, telegram_formats): модуль получает их от ядра через core.persona.
+telegram_channel: ""
+telegram_formats: ""

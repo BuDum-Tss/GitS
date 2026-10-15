@@ -300,6 +300,12 @@ class Supervisor:
                    PYTHONUNBUFFERED="1")
         if self.memory_dir is not None:
             env["MEMORY_DIR"] = str(self.memory_dir)
+        if "GITS_CHARACTER_ID" not in env:         # ресурсы модуля: resources/<Имя>/<модуль>/ активного персонажа (gits_sdk.resources)
+            try:
+                import character
+                env["GITS_CHARACTER_ID"] = character.configured_id()
+            except Exception as e:                  # настройки не читаются: модуль возьмёт персонажа по умолчанию
+                logger.warning(f"Модуль {module_id}: персонаж для ресурсов не определён ({e})")
         if self.pythonpath:            # до установки пакета gits-sdk модули находят SDK через PYTHONPATH
             env["PYTHONPATH"] = os.pathsep.join([*self.pythonpath, *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])])
         return env

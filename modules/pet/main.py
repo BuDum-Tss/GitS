@@ -49,7 +49,7 @@ def run_window(thread: ClientThread, messages: "queue.Queue") -> int:
     import pet_window
     sprites = pet_window.load_sprites()
     if not sprites[0]:
-        log.error("Нет стикеров в modules/pet/static/stickers/")
+        log.error("Нет стикеров в %s", pet_window.STICKERS)
         return 1
     holder: dict = {}
     win = pet_window.PetWindow(lambda: holder["controller"].state, sprites)

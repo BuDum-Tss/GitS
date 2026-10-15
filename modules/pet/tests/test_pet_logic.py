@@ -32,8 +32,8 @@ def test_sticker_is_resting_when_the_core_is_unreachable():
 
 
 def test_every_sticker_name_has_a_file():
-    from pathlib import Path
-    stickers = Path(pl.__file__).parent / "static" / "stickers"
+    from gits_sdk import resources
+    stickers = resources.module_dir("pet") / "stickers"
     for name in pl.STICKER_MAP.values():
         assert (stickers / f"{name}.png").exists(), name
 

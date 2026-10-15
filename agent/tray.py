@@ -183,7 +183,7 @@ def _switch_character(char_id: str):
 
 
 def _character_menu() -> pystray.Menu:
-    """Персонажи из папки agent/characters: выбранный отмечен."""
+    """Персонажи из папки resources: выбранный отмечен."""
     import character
     M, Menu = pystray.MenuItem, pystray.Menu
     return Menu(*[M(cid, _switch_character(cid), checked=lambda it, c=cid: character.configured_id() == c, radio=True)

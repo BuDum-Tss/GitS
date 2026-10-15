@@ -15,7 +15,7 @@ from collections import deque
 from pathlib import Path
 
 from fakes import FakePlayer, fake_synth_file
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import ModuleClient, ToolError, resources
 from hearing import Hearing
 from mic_listener import MicListener
 from player import PowerShellPlayer
@@ -333,6 +333,14 @@ class VoiceModule:
             return self._mem_root
         return str(Path(self._mem_root) / "characters" / char_id)
 
+    @staticmethod
+    def _reference_path(char_id: str, ref: str) -> Path | None:
+        """Референс голоса: путь из карточки относительно папки персонажа (resources/<Имя>/voice/...)."""
+        try:
+            return resources.character_dir(char_id) / ref
+        except FileNotFoundError:
+            return None
+
     async def load_character(self) -> None:
         """Голос персонажа от ядра (core.persona, ТЗ 05 CHR-12): референс и голос запасного синтеза."""
         try:
@@ -342,7 +350,7 @@ class VoiceModule:
             return
         voice = card.get("voice") or {}
         ref = voice.get("reference")
-        path = common.GITS_ROOT / "agent" / "characters" / str(card.get("id") or "") / str(ref) if ref else None
+        path = self._reference_path(str(card.get("id") or ""), str(ref)) if ref else None
         tts_engine.use_character_voice(path if path and path.is_file() else None, voice.get("edge_voice"))
         self.voices.rebind(self._character_memory_dir(str(card.get("id") or "")))
 

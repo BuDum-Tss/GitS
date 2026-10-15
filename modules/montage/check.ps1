@@ -8,7 +8,8 @@ $py = Join-Path $root ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) { $py = "python" }
 
 Write-Host "== ruff ==" -ForegroundColor Cyan
-& $py -m ruff check agent assets
+& $py -m ruff check agent ..\..\resources\GlaDOS\montage\assets
+esources\GlaDOS\montagessets
 $lint = $LASTEXITCODE
 
 Write-Host "== pytest ==" -ForegroundColor Cyan

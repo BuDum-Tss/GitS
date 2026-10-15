@@ -79,7 +79,7 @@ def build_system_prompt(layout: Layout, persona_card: str) -> str:
     parts = [(layout.prompts / "editor_system.md").read_text(encoding="utf-8").replace("@@TEMPLATE@@", str(layout.template).replace("\\", "/"))]
     if persona_card.strip():
         parts.append("# Карточка персонажа (core.persona)\n\n" + persona_card.strip())
-    parts.append("# Регламент стиля (docs/APERTURE_STYLE.md)\n\n" + (layout.docs / "APERTURE_STYLE.md").read_text(encoding="utf-8"))
+    parts.append("# Регламент стиля (resources/<Имя>/montage/APERTURE_STYLE.md)\n\n" + layout.style.read_text(encoding="utf-8"))
     parts.append("# Руководство по ремеслу (docs/EDITING_CRAFT.md)\n\n" + (layout.docs / "EDITING_CRAFT.md").read_text(encoding="utf-8"))
     return "\n\n---\n\n".join(parts)
 

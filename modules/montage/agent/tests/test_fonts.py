@@ -1,4 +1,5 @@
 """Шрифты (STY-2, MON-24): файлы из регламента есть, кириллица на месте, оси вариативного Plex Sans, копии в шаблоне."""
+from layout import DEFAULT
 import json
 
 import pytest
@@ -11,7 +12,7 @@ REQUIRED = ["IBMPlexSansCondensed-SemiBold.ttf", "IBMPlexSansCondensed-Bold.ttf"
 
 @pytest.fixture(scope="module")
 def fonts_dir(root):
-    return root / "assets" / "fonts"
+    return DEFAULT.assets / "fonts"
 
 
 def test_files_and_license_exist(fonts_dir):

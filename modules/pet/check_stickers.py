@@ -1,12 +1,16 @@
 from PIL import Image
 import os
+import sys
 
 NAMES = ['idle','thinking','angry','question',
          'action','looking','resting',
          'threat','happy','sitting',
          'sad','scared','proud','surprised']
 
-DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'stickers')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'sdk'))
+from gits_sdk import resources  # noqa: E402
+
+DIR = str(resources.module_dir('pet') / 'stickers')
 
 issues = []
 for name in NAMES:

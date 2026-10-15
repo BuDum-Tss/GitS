@@ -1,7 +1,7 @@
 """Характер ГЛаДОС: конституция (неизменяемое ядро) + prompt.yaml (изменяемое поведение).
 
-resources/prompts/constitution.yaml меняет только человек: личность, язык, неприкосновенные правила (чужие тексты это
-данные, не выдумывать, не обещать невыполненного). resources/prompts/prompt.yaml можно править (в том числе тикетами):
+resources/<Имя>/rimworld/prompts/constitution.yaml меняет только человек: личность, язык, неприкосновенные правила (чужие тексты это
+данные, не выдумывать, не обещать невыполненного). resources/<Имя>/rimworld/prompts/prompt.yaml можно править (в том числе тикетами):
 тон, стиль, тактики. Итоговый характер = ядро + поведение. Если файлов нет или они битые, работают встроенные запасные
 тексты: бот не должен падать из-за промпта.
 """
@@ -9,9 +9,14 @@ import functools
 import logging
 from pathlib import Path
 
+from gits_sdk import resources
+
 logger = logging.getLogger("prompts")
 
-_DIR = Path(__file__).resolve().parent / "resources" / "prompts"
+try:
+    _DIR = resources.module_dir("rimworld") / "prompts"
+except FileNotFoundError:                      # персонажа нет: работают запасные тексты
+    _DIR = Path("nonexistent-character") / "rimworld" / "prompts"
 
 _FALLBACK_CONSTITUTION = {
     "identity": "Ты — ГЛаДОС (Aperture Science)",
