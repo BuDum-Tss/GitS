@@ -45,15 +45,15 @@ GROUPS = [
          summary="Принимает событие из любого источника, проверяет, приводит к единому виду, склеивает повторы, узнаёт отправителя.", out="Event", nodes=[
         N("hub", "ModuleHub (входящие)", "I", "WebSocket :8766: рукопожатие, проверка формата, очередь входящих; запросы core.*", "Event", "module_hub.py: 683 строки; импортирует attention и fast_brain, то есть транспорт знает домен"),
         N("event", "Event", "D", "единый конверт: kind, text, sender, hint, data, trace, ts; источник внешний или внутренний (self)", "сущность", "нет: dict, Item, UserInput и SpeechCandidate по отдельности", True),
-        N("norm", "Normalizer", "A", "нормализация, дедупликация за 60 с, склейка повторов, TTL", "Event", "attention.submit и _merge_duplicate"),
-        N("people", "PeopleDirectory", "A", "sender → Person, первый контакт, заметки о человеке", "Person", "attention._note_sender + relationships; лезет в companion._rel через getattr"),
+        N("norm", "Normalizer", "A", "нормализация, дедупликация за 60 с, склейка повторов, TTL", "Event", "выделен (ТЗ 29, R3): app/normalizer.py, app/items.py (хранилище и склейка), domain/dedupe.py"),
+        N("people", "PeopleDirectory", "A", "sender → Person, первый контакт, заметки о человеке", "Person", "выделен (R3): Normalizer.note_sender через контракты PeopleDirectory и MemoryWriter; getattr(companion, \"_rel\") остался только в адаптере adapters/people.py"),
     ]),
     dict(id="g_dec", col="C", title="Решение", tag="A",
          summary="Правила до моделей, быстрая классификация, оценка важности и выбор маршрута: сказать, ответить, сделать, сменить фокус, подумать, отложить.", out="Decision + routes", nodes=[
-        N("rules", "HardRules", "D", "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»", "RuleResult", "середина attention.submit; стоп-фразы и «похоже на просьбу» ещё и в router"),
-        N("cls", "Classifier (контракт)", "A", "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с", "Classification", "decide.py + services/decider"),
-        N("score", "PriorityScorer", "D", "срочность × 20 × веса (профиль, отправитель, правила, пользователь) × свежесть", "priority 0..100", "attention._score"),
-        N("disp", "Dispatcher", "A", "решение D0–D4 и routes[]: say, chat, task, focus, think, digest, ignore; пишет решение в журнал", "Decision", "attention._decide, _act, _finish"),
+        N("rules", "HardRules", "D", "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»", "RuleResult", "выделен (R3): app/process_event.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py"),
+        N("cls", "Classifier (контракт)", "A", "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с", "Classification", "decide.py + services/decider; в Attention его зовёт app/event_classifier.py (R3)"),
+        N("score", "PriorityScorer", "D", "срочность × 20 × веса (профиль, отправитель, правила, пользователь) × свежесть", "priority 0..100", "выделен (R3): app/scorer.py поверх domain/scoring.py"),
+        N("disp", "Dispatcher", "A", "решение D0–D4 и routes[]: say, chat, task, focus, think, digest, ignore; пишет решение в журнал", "Decision", "выделен (R3): app/dispatcher.py (finish, act) и app/decision_log.py; routes[] пока только say, digest, focus-хук"),
     ]),
     dict(id="g_conv", col="D", title="Разговор", tag="A",
          summary="Ведёт беседу: собирает контекст из памяти, пишет ответ быстрой моделью.", out="ReplyCandidate", nodes=[
@@ -72,7 +72,7 @@ GROUPS = [
         N("plan", "Planner", "A", "LanguageModel → LM Studio (Gemma): план шагов или «не могу»", "Plan", "router._plan"),
         N("risk", "RiskPolicy + Approver", "D", "риск auto / ask / public / danger; вопрос пользователю, ответ да/нет", "Approval", "router._step + approvals.py: 301 строка"),
         N("exec", "Executor (ToolInvoker)", "A", "вызов инструмента в ядре или модуле, коды ошибок, итог-факт", "ToolResult", "router._step и _run_step"),
-        N("jobs", "JobTracker", "A", "долгие задачи: прогресс, вопросы, итог; Claude-помощник (Agent SDK)", "JobState", "module_registry + attention.on_job_update + desktop.assistant_agent"),
+        N("jobs", "JobTracker", "A", "долгие задачи: прогресс, вопросы, итог; Claude-помощник (Agent SDK)", "JobState", "выделен (R3) для внимания: app/jobs.py (JobTracker); module_registry и desktop.assistant_agent как раньше"),
     ]),
     dict(id="g_foc", col="E", title="Фокус", tag="A",
          summary="Решает, кому отдать главную роль (например, игре в бою), и когда её вернуть.", out="FocusDecision", nodes=[
@@ -85,7 +85,7 @@ GROUPS = [
     dict(id="g_out", col="F", title="Вывод", tag="I",
          summary="Очередь речи выбирает момент и приоритет, затем реплика уходит каналом: голос, чат, Telegram, питомец. Команды модулям уходят отсюда же.", out="Utterance, команды", nodes=[
         N("queue", "SpeechQueue", "A", "приоритеты, условия «не перебиваю», интервалы, прерывание, TTL; чистую политику выбора выделить в домен позже", "Utterance", "speech_queue.py: 296 строк, асинхронный координатор (asyncio-задачи), в домен целиком не переносится"),
-        N("digest", "Digest", "A", "сводка событий D1 и предложение рассказать", "SpeechCandidate", "attention._digest_*"),
+        N("digest", "Digest", "A", "сводка событий D1 и предложение рассказать", "SpeechCandidate", "выделен (R3): app/digest.py"),
         N("out", "SpeechOutput и каналы (контракты)", "I", "голос (speak), чат, Telegram (deliver), питомец", "доставка", "speech_out.py, conversation_io.py"),
         N("aff", "Presence и эмоции", "A", "говорит ли, эмоция, присутствие; (план) настроение", "PresenceState", "PresenceTracker + fast_brain.publish"),
         N("hubout", "ModuleHub (исходящие)", "I", "доставка команд модулям: tool.call, speak, policy.activate, job.answer", "ToolResult, события", "тот же module_hub.py, смешан с приёмом"),
