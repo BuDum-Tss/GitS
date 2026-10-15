@@ -1,7 +1,7 @@
 """Точка входа модуля RimWorld (ТЗ 11): игровые контуры, API оверлея на порту 8767, связь с ядром по контракту модулей.
 
 Запускает супервизор ядра (`agent/modules.yaml` в GitS): `python -u main.py` из папки agent/. Модуль сам подключается к ядру
-(`ws://127.0.0.1:8766/module/ws`, токен из GLADOS_MODULE_TOKEN), присылает манифест (инструменты MCP-сервера игры и `order`),
+(`ws://127.0.0.1:8766/module/ws`, токен из GITS_MODULE_TOKEN), присылает манифест (инструменты MCP-сервера игры и `order`),
 состояние и события, говорит и показывает эмоции через ядро. Без игры не падает: контуры простаивают, `game_running: false`.
 Вручную (ядро должно работать): `python main.py`; токен тогда берётся из файла ядра.
 """
@@ -17,17 +17,19 @@ HERE = Path(__file__).resolve().parent
 os.environ["MEMORY_DIR"] = os.getenv("RIMWORLD_MEMORY_DIR") or str(HERE / "memory")
 sys.path.insert(0, str(HERE))
 
+from envcompat import env  # noqa: E402
+
 
 def _ensure_sdk() -> None:
-    """Пакет glados-module обычно установлен или лежит в PYTHONPATH (супервизор добавляет GitS/sdk). Ручной запуск без того и
-    другого: ищем SDK в GLADOS_SDK_DIR или в sdk/ этого репозитория."""
+    """Пакет gits-sdk обычно установлен или лежит в PYTHONPATH (супервизор добавляет GitS/sdk). Ручной запуск без того и
+    другого: ищем SDK в GITS_SDK_DIR или в sdk/ этого репозитория."""
     try:
-        import glados_module  # noqa: F401
+        import gits_sdk  # noqa: F401
         return
     except ImportError:
         pass
-    for candidate in (os.getenv("GLADOS_SDK_DIR"), HERE.parents[2] / "sdk"):
-        if candidate and (Path(candidate) / "glados_module").is_dir():
+    for candidate in (env("GITS_SDK_DIR"), HERE.parents[2] / "sdk"):
+        if candidate and (Path(candidate) / "gits_sdk").is_dir():
             sys.path.append(str(candidate))
             return
 
@@ -51,7 +53,7 @@ from camera_director import CameraDirector  # noqa: E402
 from commentator import Commentator  # noqa: E402
 from controller import Controller  # noqa: E402
 from core_link import CoreLink  # noqa: E402
-from glados_module import ModuleClient  # noqa: E402
+from gits_sdk import ModuleClient  # noqa: E402
 from run_recorder import RunRecorder  # noqa: E402
 from state_reporter import StateReporter  # noqa: E402
 

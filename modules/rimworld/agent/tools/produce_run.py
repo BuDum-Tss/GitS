@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-os.environ.setdefault("GLADOS_NO_LAUNCH", "1")        # сборка записи никогда не запускает игру
+os.environ.setdefault("GITS_NO_LAUNCH", "1")        # сборка записи никогда не запускает игру
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import events_log  # noqa: E402
@@ -92,7 +92,7 @@ def audio_parts_for(raw: Path, started: float) -> list[AudioPart]:
 def build_recording(folder: Path, raw: Path, args: argparse.Namespace, db: Path) -> rr.Recording:
     ffmpeg = rr.find_ffmpeg()
     if not ffmpeg:
-        raise SystemExit("Не найден ffmpeg: поставь его в PATH или укажи GLADOS_FFMPEG")
+        raise SystemExit("Не найден ffmpeg: поставь его в PATH или укажи GITS_FFMPEG")
     duration = rr.probe_duration(rr.find_ffprobe(ffmpeg), raw)
     if not duration:
         raise SystemExit(f"ffprobe не прочитал длительность {raw}")

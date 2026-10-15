@@ -8,7 +8,8 @@
 import asyncio
 import json
 import logging
-import os
+
+from envcompat import env
 from pathlib import Path
 
 import httpx
@@ -277,7 +278,7 @@ async def start(memory_dir: str, rimworld_url: str = "http://localhost:8765", po
     runner = web.AppRunner(build_app())
     await runner.setup()
     port = port if port is not None else core_bridge.api_port()
-    site = web.TCPSite(runner, os.getenv("GLADOS_DASHBOARD_HOST", "127.0.0.1"), port)
+    site = web.TCPSite(runner, env("GITS_DASHBOARD_HOST", "127.0.0.1"), port)
     await site.start()
     logger.info(f"API модуля RimWorld: http://localhost:{port} (оверлей: /overlay)")
     return runner

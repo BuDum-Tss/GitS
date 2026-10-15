@@ -5,7 +5,7 @@ import json
 import os
 
 import pytest
-from glados_module import ModuleClient, ToolError
+from gits_sdk import ModuleClient, ToolError
 
 import main as main_mod
 from manifest import build_manifest

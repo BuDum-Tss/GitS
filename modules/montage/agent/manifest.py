@@ -5,7 +5,14 @@ import os
 SOURCE_KINDS = ("talking_head", "rimworld_run", "narrated", "generic")
 PLATFORMS = ("shorts", "reels", "telegram", "youtube", "none")
 FORMATS = ("vertical", "horizontal", "square")
-VOICEOVERS = ("none", "glados", "keep")
+VOICEOVERS = ("none", "character", "keep")
+VOICEOVER_ALIASES = {"glados": "character"}     # прежнее имя режима (ТЗ 05, CHR-4): старые задания читаются так же
+
+
+def normalize_voiceover(value) -> str:
+    """Режим закадра: прежнее значение glados читается как character; неизвестное возвращается как есть."""
+    v = str(value or "")
+    return VOICEOVER_ALIASES.get(v, v)
 
 _KEYWORDS = ("монтаж", "смонтируй", "ролик", "видео", "шортс", "рилс", "клип", "субтитры", "нарезка")
 
@@ -47,8 +54,8 @@ MANIFEST = {
                 "format": {"type": "string", "enum": list(FORMATS), "required": False,
                            "description": "формат кадра; по умолчанию по площадке"},
                 "duration_s": {"type": "integer", "required": False, "description": "целевая длительность, секунд"},
-                "voiceover": {"type": "string", "enum": list(VOICEOVERS), "required": False,
-                              "description": "закадр: none, glados (её голос) или keep (оставить голос исходника)"},
+                "voiceover": {"type": "string", "enum": [*VOICEOVERS, *VOICEOVER_ALIASES], "required": False,
+                              "description": "закадр: none, character (голос персонажа) или keep (оставить голос исходника)"},
             },
             "risk": "ask",
             "availability": "always",

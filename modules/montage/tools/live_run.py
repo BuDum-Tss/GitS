@@ -18,8 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "agent")]
 
-from glados_module import ModuleClient  # noqa: E402
-from glados_module.testing import FakeCore  # noqa: E402
+from gits_sdk import ModuleClient  # noqa: E402
+from gits_sdk.testing import FakeCore  # noqa: E402
 
 import main as main_mod  # noqa: E402
 import media  # noqa: E402

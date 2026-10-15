@@ -17,6 +17,8 @@
 import asyncio
 import logging
 import os
+
+from envcompat import env
 import time
 from pathlib import Path
 
@@ -63,7 +65,7 @@ PLANNING_INTERVAL_SECS    = 8 * 60          # тактические задач�
 LONG_TERM_INTERVAL_SECS   = 25 * 60         # стратегические цели — раз в 25 минут
 REFLECTION_INTERVAL_SECS  = 40 * 60         # уроки — раз в 40 минут
 SELF_IMPROVEMENT_INTERVAL_SECS = 2 * 60 * 60  # правки собственного кода — раз в 2 часа
-_ASSISTANT_URL = os.getenv("GLADOS_ASSISTANT_URL", "http://127.0.0.1:8766")
+_ASSISTANT_URL = env("GITS_CORE_HTTP_URL", "http://127.0.0.1:8766")
 MENU_STUCK_THRESHOLD_SECS = 90              # торчим в главном меню дольше — проходим сами через UI
 _BASE                     = gamenet.base_url(8765)   # http://localhost:8765 (мод отвечает только на это имя)
 _GAME_PORT                = 8765
@@ -1222,10 +1224,23 @@ class Controller:
             asyncio.create_task(self._produce_video(rec))
 
     async def _produce_video(self, rec):
-        # TODO(ТЗ 20): если настройка модуля auto_montage включена (self.link.module_settings) и модуль montage подключён,
-        # вместо собственного монтажа ниже вызвать core.tool.call("montage.start", {...}) с источником rimworld_run
+        # ТЗ 20 (MON-35, MON-36): при настройке `auto_montage` и подключённом модуле montage монтаж забега отдаётся ему; своего
+        # монтажа и клипов тогда нет. Модуль не ответил (не подключён, нет заряда, отказ) - прежний собственный монтаж.
         try:
-            result = await self.recorder.produce(rec)
+            if self._auto_montage_on():
+                handoff = await self.recorder.produce_for_montage(rec)
+                if handoff is None:
+                    return                                             # запись пустая или короткая
+                started = await self.link.start_montage(handoff)
+                if started:
+                    await self.link.event("run_video", {
+                        "run_id": handoff["run_id"], "raw": handoff["raw"], "scenario": handoff["scenario_path"],
+                        "montage_jobs": started}, text="Запись забега передана модулю монтажа.")
+                    return
+                events_log.log("video", "модуль монтажа не принял забег: монтирую сама")
+                result = await asyncio.to_thread(self.recorder.process, rec)
+            else:
+                result = await self.recorder.produce(rec)
         except Exception as e:
             logger.error(f"Видео забега: {e}", exc_info=True)
             return
@@ -1234,6 +1249,10 @@ class Controller:
                 "run_id": result["run_id"], "video": result["video"], "raw": result.get("raw"),
                 "scenario": result.get("scenario_path"), "clips": result["clips"]},
                 text=("Видео забега готово." if result["video"] else "Запись забега есть, но монтаж не получился."))
+
+    def _auto_montage_on(self) -> bool:
+        link = self.link
+        return bool(link is not None and link.online and (link.module_settings or {}).get("auto_montage"))
 
     def _ensure_run_started(self, state: dict):
         if self._colony_started:

@@ -138,10 +138,10 @@ def test_voice_reaches_final_video(tmp_path, monkeypatch):
 
 
 def test_capture_uses_window_capture_by_default(monkeypatch):
-    monkeypatch.delenv("GLADOS_RECORD_SOURCE", raising=False)
+    monkeypatch.delenv("GITS_RECORD_SOURCE", raising=False)
     cmd = rr.capture_args("ff", Path("o.mp4"))
     assert "gfxcapture=window_exe=RimWorldWin64" in cmd[cmd.index("-i") + 1] and "hwdownload" in cmd[cmd.index("-i") + 1]
-    monkeypatch.setenv("GLADOS_RECORD_SOURCE", "desktop")
+    monkeypatch.setenv("GITS_RECORD_SOURCE", "desktop")
     assert "gdigrab" in rr.capture_args("ff", Path("o.mp4")) and "desktop" in rr.capture_args("ff", Path("o.mp4"))
 
 

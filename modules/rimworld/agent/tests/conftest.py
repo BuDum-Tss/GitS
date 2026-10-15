@@ -1,7 +1,7 @@
 """Общие подставки тестов. Тесты не запускают настоящую RimWorld, кроме тестов с маркером `game` (они сами объявляют запуск
 пользователю и закрывают игру).
 
-Остальным запуск запрещён: переменная GLADOS_NO_LAUNCH=1 (её проверяет `game_launcher`; стоит и в окружении процесса pytest,
+Остальным запуск запрещён: переменная GITS_NO_LAUNCH=1 (её проверяет `game_launcher`; стоит и в окружении процесса pytest,
 поэтому её наследуют дочерние процессы, например `main.py` в `test_module_process`), `spawn_detached` заменён заглушкой,
 которая роняет тест, если до неё дошли, а `announce` (объявление о запуске: протокол и HTTP на ядро) записывает вызовы
 в список `game_launcher.announced` и ничего не делает."""
@@ -9,16 +9,16 @@ import os
 
 import pytest
 
-os.environ["GLADOS_NO_LAUNCH"] = "1"
+os.environ["GITS_NO_LAUNCH"] = "1"
 
 
 @pytest.fixture(autouse=True)
 def _never_launch_the_real_game(request, monkeypatch):
     import game_launcher
     if request.node.get_closest_marker("game"):
-        monkeypatch.delenv("GLADOS_NO_LAUNCH", raising=False)        # настоящий запуск: тест отвечает за объявление
+        monkeypatch.delenv("GITS_NO_LAUNCH", raising=False)        # настоящий запуск: тест отвечает за объявление
         return
-    monkeypatch.setenv("GLADOS_NO_LAUNCH", "1")
+    monkeypatch.setenv("GITS_NO_LAUNCH", "1")
     announced: list[str] = []
     game_launcher.announced = announced
 

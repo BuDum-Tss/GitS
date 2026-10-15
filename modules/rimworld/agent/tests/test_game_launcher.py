@@ -14,7 +14,7 @@ REASON = "тест запуска ТЗ 11b"
 @pytest.fixture
 def spawn_allowed(monkeypatch):
     """Эти тесты проверяют сам запуск, но Popen в них подменён: настоящая игра не стартует. Остальным запуск запрещён conftest."""
-    monkeypatch.delenv("GLADOS_NO_LAUNCH", raising=False)
+    monkeypatch.delenv("GITS_NO_LAUNCH", raising=False)
     monkeypatch.setattr(gl, "spawn_detached", _REAL_SPAWN)
 
 
@@ -83,13 +83,13 @@ def test_post_notify_sends_json_to_the_core_dashboard_and_ignores_a_dead_core(mo
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        monkeypatch.setenv("GLADOS_NOTIFY_URL", f"http://127.0.0.1:{server.server_port}/api/notify")
+        monkeypatch.setenv("GITS_NOTIFY_URL", f"http://127.0.0.1:{server.server_port}/api/notify")
         assert gl._post_notify("Ты сама запускаешь RimWorld (не пользователь): тест") is True
     finally:
         server.shutdown()
         server.server_close()
     assert got == [("/api/notify", "application/json", {"text": "Ты сама запускаешь RimWorld (не пользователь): тест", "source": "rimworld-tests"})]
-    monkeypatch.setenv("GLADOS_NOTIFY_URL", "http://127.0.0.1:9/api/notify")        # порт закрыт
+    monkeypatch.setenv("GITS_NOTIFY_URL", "http://127.0.0.1:9/api/notify")        # порт закрыт
     assert gl._post_notify("x") is False
 
 
@@ -97,11 +97,11 @@ def test_launch_is_forbidden_by_env_and_never_reaches_popen(spawn_allowed, monke
     exe = tmp_path / "RimWorldWin64.exe"
     exe.write_bytes(b"")
     spawned = []
-    monkeypatch.setenv("GLADOS_NO_LAUNCH", "1")
+    monkeypatch.setenv("GITS_NO_LAUNCH", "1")
     monkeypatch.setattr(gl, "is_running", lambda: False)
     monkeypatch.setattr(gl, "find_exe", lambda: str(exe))
     monkeypatch.setattr(gl.subprocess, "Popen", lambda *a, **k: spawned.append(a))
-    with pytest.raises(RuntimeError, match="GLADOS_NO_LAUNCH"):
+    with pytest.raises(RuntimeError, match="GITS_NO_LAUNCH"):
         gl.launch(REASON, wait_seconds=0)
     assert spawned == [] and gl.announced == []                 # запрещённый запуск не объявляется
 
@@ -118,7 +118,7 @@ def test_already_running_does_not_start_second_copy(monkeypatch):
 def test_missing_exe_gives_clear_error(monkeypatch):
     monkeypatch.setattr(gl, "is_running", lambda: False)
     monkeypatch.setattr(gl, "find_exe", lambda: None)
-    with pytest.raises(RuntimeError, match="GLADOS_RIMWORLD_EXE"):
+    with pytest.raises(RuntimeError, match="GITS_RIMWORLD_EXE"):
         gl.launch(REASON)
 
 

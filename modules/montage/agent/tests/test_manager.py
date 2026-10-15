@@ -5,8 +5,8 @@ import json
 import types
 
 import pytest
-from glados_module import ToolError
-from glados_module.testing import FakeCore
+from gits_sdk import ToolError
+from gits_sdk.testing import FakeCore
 
 import main as main_mod
 from layout import DEFAULT
@@ -23,7 +23,7 @@ class Env:
         self.layout = layout_for(tmp)
         self.runner = kw.pop("runner", None) or FakeRunner()
         self.renderer = kw.pop("renderer", None) or FakeRenderer()
-        from glados_module import ModuleClient
+        from gits_sdk import ModuleClient
         self.client = ModuleClient(build_manifest(), url=core.url, token=core.token)
         self.client, self.manager = main_mod.build(self.layout, client=self.client, runner=self.runner, renderer=self.renderer, qa=StubQA())
         self.task = None

@@ -4,7 +4,7 @@ import asyncio
 import json
 
 import pytest
-from glados_module.protocol import validate_panel_set
+from gits_sdk.protocol import validate_panel_set
 
 import approval_panel as ap
 from manifest import build_manifest

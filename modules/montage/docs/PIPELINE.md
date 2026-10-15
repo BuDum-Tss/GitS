@@ -14,7 +14,7 @@
                        template/ (копия в work/)  --npx remotion render-->  renders/*.mp4
 ```
 
-Модуль сам подключается к ядру (WebSocket, SDK `glados_module`), объявляет инструменты `start`, `status`, `revise`,
+Модуль сам подключается к ядру (WebSocket, SDK `gits_sdk`), объявляет инструменты `start`, `status`, `revise`,
 `cancel`, ведёт задачу с вопросами пользователю через ядро (`core.ask`, `job.update`) и ничего не публикует.
 
 ## Стадии задачи

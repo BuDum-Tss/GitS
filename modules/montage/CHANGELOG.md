@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Changed
+- ТЗ 05 (CHR-1, CHR-2, CHR-3, CHR-4): SDK `gits-sdk` (импорт `gits_sdk`, в проверках `PYTHONPATH` на `sdk` worktree GitS). Переменная
+  `GLADOS_CORE_URL` переименована в `GITS_CORE_URL`; `agent/envcompat.py` читает новое имя и старое с предупреждением.
+- Режим закадра `glados` переименован в `character` (голос персонажа, ядро озвучивает по его карточке). Схема и разбор заданий
+  принимают прежнее значение `glados` и читают его как `character` (`manifest.normalize_voiceover`).
+
+
 ### Added (ТЗ 18: политики фокуса, FOC-1)
 - Манифест объявляет `policies` и `default_policy`: одна фоновая политика `idle` (по умолчанию). Активной политики пока нет: модуль не умеет `policy.activate` и `focus.release`, и ядро не должно отпускать фокус другого модуля ради монтажа. Когда модуль научится переходам, добавляются `working` (active) и `waiting_for_materials` (блокировка). Тест: `agent/tests/test_manifest.py::test_manifest_declares_background_policy_for_focus`. Требование FOC-1 (ТЗ 18, GitS).
 

@@ -1,6 +1,6 @@
 """Точка входа модуля монтажа (ТЗ 20): `python main.py` из папки agent/. Ядро GitS запускает модуль само (modules.yaml).
 
-Подключается к ядру по контракту модулей (SDK `glados_module`), объявляет инструменты `start`, `status`, `revise`, `cancel`,
+Подключается к ядру по контракту модулей (SDK `gits_sdk`), объявляет инструменты `start`, `status`, `revise`, `cancel`,
 ведёт очередь задач и конвейер. Ничего не публикует (закон ТЗ 20): публикует ядро по просьбе пользователя.
 """
 import asyncio
@@ -11,7 +11,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE)]
 
-from glados_module import ModuleClient  # noqa: E402
+from gits_sdk import ModuleClient  # noqa: E402
 
 import approval_panel as ap  # noqa: E402
 from claude_runner import SdkRunner  # noqa: E402

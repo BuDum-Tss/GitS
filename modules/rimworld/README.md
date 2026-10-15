@@ -24,10 +24,10 @@
 Нужен Python 3.12+ (рабочий вариант: общий Python, которым запускается и ядро).
 ```powershell
 pip install -r agent/requirements.txt
-pip install -e C:\MyProjects\GitS\sdk      # пакет glados-module: контракт «ядро-модуль» (путь к GitS свой)
+pip install -e C:\MyProjects\GitS\sdk      # пакет gits-sdk: контракт «ядро-модуль» (путь к GitS свой)
 ```
 Отдельное виртуальное окружение модулю не нужно: ядро запускает его своим интерпретатором (`{PYTHON}` в `modules.yaml`). Если SDK не
-установлен, `agent/main.py` ищет его в `GLADOS_SDK_DIR` или в соседней папке `GitS/sdk`, а супервизор добавляет `GitS/sdk` в `PYTHONPATH`.
+установлен, `agent/main.py` ищет его в `GITS_SDK_DIR` или в соседней папке `GitS/sdk`, а супервизор добавляет `GitS/sdk` в `PYTHONPATH`.
 
 ## Запуск
 Обычно ничего запускать не нужно: модуль стартует вместе с ядром. Вручную (ядро GitS при этом должно работать; токен берётся из файла ядра):
@@ -40,7 +40,7 @@ python main.py                  # игровые контуры + API на http:
 
 Переменные окружения: `RIMWORLD_MODULE_DIR` (для ядра GitS: где лежит этот репозиторий; старое имя `RIMWORLD_AGENT_DIR` читается
 как запасное одну версию), `RIMWORLD_MODULE_PORT` (порт API, по умолчанию 8767; старое `RIMWORLD_AGENT_PORT` запасное),
-`RIMWORLD_MEMORY_DIR` (данные модуля, по умолчанию `agent/memory`), `GLADOS_CORE_URL`, `GLADOS_MODULE_TOKEN` (передаёт супервизор).
+`RIMWORLD_MEMORY_DIR` (данные модуля, по умолчанию `agent/memory`), `GITS_CORE_URL`, `GITS_MODULE_TOKEN` (передаёт супервизор).
 
 ## Проверка
 ```powershell

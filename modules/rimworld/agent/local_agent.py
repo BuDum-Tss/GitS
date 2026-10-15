@@ -9,7 +9,8 @@
 import asyncio
 import json
 import logging
-import os
+
+from envcompat import env
 import time
 
 import httpx
@@ -18,8 +19,8 @@ import game_modes
 
 logger = logging.getLogger("local_agent")
 
-LM_URL = os.environ.get("GLADOS_FAST_URL", "http://127.0.0.1:1234/v1/chat/completions")
-LM_MODEL = os.environ.get("GLADOS_FAST_MODEL", "google/gemma-4-e4b")
+LM_URL = env("CHARACTER_FAST_URL", "http://127.0.0.1:1234/v1/chat/completions")
+LM_MODEL = env("CHARACTER_FAST_MODEL", "google/gemma-4-e4b")
 MAX_STEPS = 8
 RESULT_CHARS = 1400
 STEP_TIMEOUT = 150.0

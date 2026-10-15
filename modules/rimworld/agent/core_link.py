@@ -2,7 +2,7 @@
 
 Внешний интерфейс тот же, что был у SpeechLink, чтобы контроллер и комментатор не переписывать: `online`, `last_user_ts()`,
 `is_speaking()`, `repeats(text)`, `say(text, emotion)`, `emotion(event, emotion)`, `event(kind, data)`, `run()`. Разница в том,
-что вместо HTTP к :8766 работает клиент модуля (`glados_module.ModuleClient`, WebSocket к шине ядра):
+что вместо HTTP к :8766 работает клиент модуля (`gits_sdk.ModuleClient`, WebSocket к шине ядра):
   - реплики идут в ядро как `say` (verbatim): речь одна, очередью и разрешением говорить распоряжается менеджер внимания;
   - присутствие (говорит ли она, когда говорил пользователь, что сказала) приходит темой `presence`;
   - общие настройки (стример, «не отвлекать», модель игрока и др.) приходят в `welcome` и темой `settings` и пишутся в
@@ -14,7 +14,7 @@ import asyncio
 import logging
 from collections import deque
 
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 import events_log
 import settings
@@ -24,6 +24,7 @@ logger = logging.getLogger("core_link")
 SETTINGS_SYNC_S = 1.0           # как часто сверять общие настройки ядра с файлом настроек модуля
 SAY_EXPIRES_S = 20              # реплика комментатора устаревает за столько секунд (ядро не озвучит запоздавшую)
 POST_TIMEOUT_S = 150            # telegram.post может ждать разрешения; ядро само ограничивает инструмент 120 с
+MONTAGE_TIMEOUT_S = 150          # montage.start имеет риск ask: ядро может ждать ответа пользователя
 RECENT_KEEP = 10                # сколько последних реплик ассистентки помнить для проверки повторов
 
 # Короткий вид события, как его зовёт игровой код -> (вид для ядра, срочность по умолчанию). Срочность и объявление в
@@ -181,6 +182,35 @@ class CoreLink:
         except (ToolError, asyncio.TimeoutError) as e:
             events_log.log("telegram", f"пост-итог после забега не опубликован: {getattr(e, 'message', None) or e!r}")
             return False
+
+    # ── монтаж забега модулем montage (ТЗ 20, MON-35) ──
+
+    @staticmethod
+    def montage_brief(handoff: dict) -> str:
+        """Факт для брифа монтажа: колония, исход, главная цель, число сцен. Реплику и сценарий пишет модуль в её характере."""
+        plan = handoff.get("scenario") or {}
+        goal = (plan.get("goal") or {}).get("title")
+        return (f"Забег RimWorld: колония «{handoff.get('colony') or plan.get('colony')}», исход «{handoff.get('outcome') or plan.get('outcome') or 'забег остановлен'}», "
+                f"главная цель {('«' + goal + '»') if goal else 'не задана'}, сцен в сценарии {len(plan.get('scenes') or [])}, запись "
+                f"{round(float(handoff.get('duration') or 0) / 60)} мин.")
+
+    async def start_montage(self, handoff: dict) -> list[str]:
+        """`core.tool.call("montage.start")` дважды: основное видео (youtube, горизонталь) и вертикальные клипы (shorts). Источники:
+        запись, куски звука, `scenario.json`, журнал речи (`speech_log.json`) и `recording.json` с временем начала записи и кусков
+        звука. Возвращает ответы принятых вызовов (пусто: модуль не принял ни одного, тогда монтирует контроллер сам)."""
+        if not self.online:
+            return []
+        sources = [handoff["raw"], *handoff.get("audio", []), handoff["scenario_path"], handoff["speech_log_path"], handoff["recording_path"]]
+        accepted: list[str] = []
+        for platform, fmt in (("youtube", "horizontal"), ("shorts", "vertical")):
+            args = {"sources": sources, "brief": self.montage_brief(handoff), "source_kind": "rimworld_run", "platform": platform,
+                    "format": fmt, "voiceover": "glados"}
+            try:
+                value = await self.client.request("core.tool.call", {"tool": "montage.start", "args": args}, timeout=MONTAGE_TIMEOUT_S)
+                accepted.append(str((value or {}).get("text") if isinstance(value, dict) else value))
+            except (ToolError, asyncio.TimeoutError) as e:
+                events_log.log("video", f"montage.start ({platform}) не принят: {getattr(e, 'message', None) or type(e).__name__}")
+        return accepted
 
     # ── жизнь ──
 

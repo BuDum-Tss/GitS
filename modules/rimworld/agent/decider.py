@@ -11,15 +11,16 @@ Gemma на видеокарте. С ТЗ 11 он живёт в репозито�
 Нет сервиса или он ответил с ошибкой: вернётся None, вызывающий код падает на старые правила и Gemma. Временная недоступность
 запоминается, чтобы не стучаться в неё на каждом событии."""
 import logging
-import os
+
+from envcompat import env
 import time
 
 import httpx
 
 logger = logging.getLogger("decider")
 
-URL = os.getenv("GLADOS_DECIDER_URL", "http://127.0.0.1:8768")
-TIMEOUT = float(os.getenv("GLADOS_DECIDER_TIMEOUT", "2.5"))
+URL = env("GITS_DECIDER_URL", "http://127.0.0.1:8768")
+TIMEOUT = float(env("GITS_DECIDER_TIMEOUT", "2.5"))
 _DOWN_FOR = 30.0
 _down_until = [0.0]
 _client: httpx.AsyncClient | None = None

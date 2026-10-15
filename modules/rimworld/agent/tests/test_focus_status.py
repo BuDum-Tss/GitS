@@ -5,7 +5,7 @@
 import json
 
 import pytest
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 
 import controller
 import focus_checkpoint

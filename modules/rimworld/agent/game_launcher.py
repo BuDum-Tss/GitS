@@ -1,12 +1,14 @@
 """Запуск RimWorld: найти игру, не запускать вторую копию, дождаться, пока мод ответит.
 
-Путь берётся из GLADOS_RIMWORLD_EXE, иначе типовые места. Игра стартует отдельным процессом (закрытие бота её не
+Путь берётся из GITS_RIMWORLD_EXE, иначе типовые места. Игра стартует отдельным процессом (закрытие бота её не
 закрывает). «Готова» значит: процесс жив и мод AgentBridge отвечает на порту 8765 (это бывает уже в главном меню).
 """
 import glob
 import json
 import logging
 import os
+
+from envcompat import env
 import subprocess
 import time
 import urllib.request
@@ -33,8 +35,8 @@ _CANDIDATES = (r"C:\GOG Games\RimWorld\RimWorldWin64.exe",
 
 
 def find_exe() -> str | None:
-    env = os.getenv("GLADOS_RIMWORLD_EXE")
-    for path in ([env] if env else []) + list(_CANDIDATES) + glob.glob(r"C:\*\RimWorld\RimWorldWin64.exe"):
+    exe = env("GITS_RIMWORLD_EXE")
+    for path in ([exe] if exe else []) + list(_CANDIDATES) + glob.glob(r"C:\*\RimWorld\RimWorldWin64.exe"):
         if path and Path(path).is_file():
             return path
     return None
@@ -72,14 +74,14 @@ def set_notifier(fn: Callable[[str], bool] | None):
 
 
 def launch_forbidden() -> bool:
-    """GLADOS_NO_LAUNCH=1: игру запускать нельзя (тесты, `tools/produce_run.py`, проверки без игры)."""
-    return os.getenv("GLADOS_NO_LAUNCH") == "1"
+    """GITS_NO_LAUNCH=1: игру запускать нельзя (тесты, `tools/produce_run.py`, проверки без игры)."""
+    return env("GITS_NO_LAUNCH") == "1"
 
 
 def _post_notify(text: str) -> bool:
     """Объявление через дашборд ядра (вне процесса модуля: тесты, скрипты). Ядро недоступно: тихо ничего."""
     try:
-        req = urllib.request.Request(os.getenv("GLADOS_NOTIFY_URL", NOTIFY_URL),
+        req = urllib.request.Request(env("GITS_NOTIFY_URL", NOTIFY_URL),
                                      data=json.dumps({"text": text, "source": NOTIFY_SOURCE}).encode("utf-8"),
                                      headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=NOTIFY_TIMEOUT_S):
@@ -134,16 +136,16 @@ def announce_self(fact: str, kind: str = "game") -> str:
 
 
 def launch_env_on() -> bool:
-    """Модуль сам держит игру запущенной: GITS_LAUNCH_GAME=1 (новое имя) или GLADOS_LAUNCH_GAME=1 (прежнее)."""
-    return "1" in (os.getenv("GITS_LAUNCH_GAME"), os.getenv("GLADOS_LAUNCH_GAME"))
+    """Модуль сам держит игру запущенной: GITS_LAUNCH_GAME=1 (новое имя) или GITS_LAUNCH_GAME=1 (прежнее)."""
+    return "1" in (os.getenv("GITS_LAUNCH_GAME"), env("GITS_LAUNCH_GAME"))
 
 
 def spawn_detached(exe: str, cwd: str, args: tuple = ()):
     """Запустить программу так, чтобы она НЕ была потомком бота: перезапуск бота (taskkill /T убивает дерево потомков)
     её не закрывает. Родителем становится промежуточный cmd, который сразу завершается.
-    GLADOS_NO_LAUNCH=1 запрещает запуск совсем: единственное место, где игра запускается, поэтому защита стоит здесь."""
+    GITS_NO_LAUNCH=1 запрещает запуск совсем: единственное место, где игра запускается, поэтому защита стоит здесь."""
     if launch_forbidden():
-        raise RuntimeError("запуск игры запрещён переменной GLADOS_NO_LAUNCH=1")
+        raise RuntimeError("запуск игры запрещён переменной GITS_NO_LAUNCH=1")
     subprocess.Popen(["cmd.exe", "/c", "start", "", "/D", cwd, exe, *args], creationflags=0x08000000, close_fds=True)
 
 
@@ -158,9 +160,9 @@ def launch(reason: str, wait_seconds: float = 120.0, args: tuple = ()) -> str:
                 "игра уже запущена, мод ещё загружается (подожди минуту-две)")
     exe = find_exe()
     if exe is None:
-        raise RuntimeError("не нашла RimWorldWin64.exe: укажи путь в переменной GLADOS_RIMWORLD_EXE")
+        raise RuntimeError("не нашла RimWorldWin64.exe: укажи путь в переменной GITS_RIMWORLD_EXE")
     if launch_forbidden():
-        raise RuntimeError("запуск игры запрещён переменной GLADOS_NO_LAUNCH=1")
+        raise RuntimeError("запуск игры запрещён переменной GITS_NO_LAUNCH=1")
     announce(reason)
     spawn_detached(exe, str(Path(exe).parent), args)
     deadline = time.time() + wait_seconds

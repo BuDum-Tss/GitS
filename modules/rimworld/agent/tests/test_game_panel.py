@@ -4,7 +4,7 @@ import json
 import time
 from types import SimpleNamespace
 
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 
 import game_panel
 import module_manifest

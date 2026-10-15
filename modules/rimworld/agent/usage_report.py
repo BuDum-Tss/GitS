@@ -8,7 +8,7 @@
 import asyncio
 import logging
 
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 logger = logging.getLogger("usage_report")
 

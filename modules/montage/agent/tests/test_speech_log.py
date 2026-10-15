@@ -5,7 +5,7 @@ import struct
 import wave
 
 import pytest
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 import transcribe
 from transcribe import Utterance, load_speech_log, make_audible, words_between, words_from_speech_log

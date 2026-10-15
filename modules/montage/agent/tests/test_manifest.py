@@ -1,5 +1,5 @@
 """Манифест модуля монтажа (MON-37): валиден по контракту ТЗ 01 и совпадает с ТЗ 20 раздел 5."""
-from glados_module import validate_manifest
+from gits_sdk import validate_manifest
 from manifest import MANIFEST, build_manifest
 
 
@@ -49,7 +49,7 @@ def test_emits_use_module_prefix():
 
 def test_panel_is_declared_and_valid_with_serve_dirs(tmp_path):
     """TZ 15, TAB-4: пространство «Монтаж» с ссылками и кнопками; каталоги раздачи задаются при запуске."""
-    from glados_module.protocol import Manifest, validate_manifest
+    from gits_sdk.protocol import Manifest, validate_manifest
     from manifest import serve_dirs
     m = build_manifest(serve_dirs(tmp_path / "jobs", str(tmp_path / "out")))
     warnings: list[str] = []

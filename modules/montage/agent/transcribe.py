@@ -21,7 +21,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 import media
 

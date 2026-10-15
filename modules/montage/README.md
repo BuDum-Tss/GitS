@@ -23,7 +23,7 @@ Claude Agent SDK со скиллами Remotion; сборка и рендер и
 # 1. Python-окружение модуля (Python 3.12: у бинарных пакетов будущих стадий, например RapidOCR, есть колёса)
 C:\Users\coffe\AppData\Local\Python\pythoncore-3.12-64\python.exe -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r dev-requirements.txt
-.\.venv\Scripts\python.exe -m pip install -e C:\MyProjects\GitS\sdk     # SDK модулей (пакет glados_module)
+.\.venv\Scripts\python.exe -m pip install -e C:\MyProjects\GitS\sdk     # SDK модулей (пакет gits_sdk)
 
 # 2. Шаблон Remotion (Node >= 18; проверено на v24.19.0). Первый запуск Remotion сам скачивает headless Chromium
 cd template

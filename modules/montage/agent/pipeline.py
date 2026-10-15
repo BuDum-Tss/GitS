@@ -25,10 +25,10 @@ import transcribe
 from agent_tools import JobEnv, load_voice_cache, synthesize_to
 from claude_runner import AgentRunner, ClaudeLimitError, StageFailed, StageResult
 from core_api import CoreAPI
-from glados_module import ToolError
+from gits_sdk import ToolError
 from jobs import PAUSED_STAGE, STAGE_PROGRESS, STAGES, Job, JobStore
 from layout import Layout
-from manifest import MANIFEST
+from manifest import MANIFEST, normalize_voiceover
 from plan_schema import PlanContext, story_beat_ids, validate_plan, validate_story
 from render import RenderError, Renderer
 from workspace import custom_components, prepare_work, sync_media
@@ -472,7 +472,7 @@ class Pipeline:
         r["source_kind"] = info["source_kind"]
         kind = info["source_kind"]
         if not r.get("voiceover"):
-            r["voiceover"] = "glados" if kind in ("narrated", "rimworld_run") else "keep"
+            r["voiceover"] = "character" if kind in ("narrated", "rimworld_run") else "keep"
         if not r.get("format"):
             r["format"] = FORMAT_OF_PLATFORM.get(r.get("platform") or "none") or self._format_from_sources(info)
         await asyncio.to_thread(self._ensure_persona_file, job)
@@ -515,8 +515,8 @@ class Pipeline:
             r["format"] = FORMAT_OF_PLATFORM[r["platform"]]
         if isinstance(data.get("duration_s"), int) and 3 <= data["duration_s"] <= 3600:
             r["duration_s"] = data["duration_s"]
-        if data.get("voiceover") in ("none", "glados", "keep"):
-            r["voiceover"] = data["voiceover"]
+        if normalize_voiceover(data.get("voiceover")) in ("none", "character", "keep"):
+            r["voiceover"] = normalize_voiceover(data["voiceover"])
         if data.get("notes"):
             job.data["notes_clarify"] = str(data["notes"])[:500]
         await self._save(job)
@@ -614,7 +614,7 @@ class Pipeline:
             return ["plan/plan.json отсутствует или не является JSON"]
         problems = validate_plan(plan, self._plan_context(job))
         r = self._request(job)
-        if plan.get("voiceover") and r.get("voiceover") != "glados":
+        if plan.get("voiceover") and normalize_voiceover(r.get("voiceover")) != "character":
             problems.append(f"voiceover: закадр не запрошен (voiceover = {r.get('voiceover')}), массив должен быть пустым")
         if not problems:
             problems += await self.renderer.validate_plan(job.work, path)

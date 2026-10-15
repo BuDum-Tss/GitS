@@ -4,8 +4,8 @@
 import asyncio
 import contextlib
 
-from glados_module import ModuleClient
-from glados_module.testing import FakeCore
+from gits_sdk import ModuleClient
+from gits_sdk.testing import FakeCore
 
 import game_api
 import module_manifest

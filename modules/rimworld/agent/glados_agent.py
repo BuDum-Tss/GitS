@@ -745,7 +745,7 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
             "rimworld": {
                 "command": sys.executable,
                 "args": [_MCP_SCRIPT],
-                **({"env": {**os.environ, "GLADOS_MODE": mode}} if mode else {}),      # сервер сам скрывает чужие инструменты
+                **({"env": {**os.environ, "GITS_MODE": mode}} if mode else {}),      # сервер сам скрывает чужие инструменты
             }
         },
         allowed_tools=allowed_tools,

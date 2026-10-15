@@ -1,6 +1,7 @@
 """MCP-сервер для RimWorld Agent Bridge (localhost:8765)."""
 import json
-import os
+
+from envcompat import env
 import time
 from pathlib import Path
 
@@ -1847,7 +1848,7 @@ def _restrict_to_mode(mode: str) -> None:
 
 
 if __name__ == "__main__":
-    _mode = os.environ.get("GLADOS_MODE", "").strip().lower()
+    _mode = env("GITS_MODE", "").strip().lower()
     if _mode:
         _restrict_to_mode(_mode)
     mcp.run()

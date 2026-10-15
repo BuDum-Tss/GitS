@@ -11,6 +11,7 @@ import os
 from urllib.parse import quote
 
 from pipeline import APPROVE, EDITS, READY, REDO_PLAN, REDO_STORY
+from envcompat import env
 
 PLAN_OPTIONS = (APPROVE, REDO_PLAN, REDO_STORY)       # вопрос plan_approval: утвердить историю и план / переделать
 DRAFT_OPTIONS = (READY, EDITS)                         # вопрос review: готово / правки
@@ -51,7 +52,7 @@ def stage_name(stage) -> str:
 
 def core_base() -> str:
     """Адрес HTTP ядра (раздача файлов `/api/artifact`): тот же хост и порт, что и у WebSocket модуля."""
-    ws = os.getenv("GLADOS_CORE_URL") or "ws://127.0.0.1:8766/module/ws"
+    ws = env("GITS_CORE_URL") or "ws://127.0.0.1:8766/module/ws"
     return "http://" + ws.split("://", 1)[-1].split("/", 1)[0]
 
 

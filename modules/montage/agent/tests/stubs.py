@@ -11,7 +11,7 @@ import wave
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 import media
 import qa as qa_mod
@@ -189,7 +189,7 @@ class FakeRunner:
             (env.job.plan_dir / "story.md").write_text("# История\n", encoding="utf-8")
         elif stage == "plan":
             plan = self.plan_factory()
-            plan["voiceover"] = plan["voiceover"] if env.job.request.get("voiceover") == "glados" else []
+            plan["voiceover"] = plan["voiceover"] if env.job.request.get("voiceover") in ("glados", "character") else []
             (env.job.plan_dir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
             (env.job.plan_dir / "plan.md").write_text("# План\n", encoding="utf-8")
         elif stage == "review":

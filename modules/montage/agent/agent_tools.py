@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 import transcribe
 from core_api import CoreAPI

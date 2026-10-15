@@ -18,7 +18,7 @@
 
 ```json
 {{"platform": "shorts|reels|telegram|youtube|none", "format": "vertical|horizontal|square", "duration_s": 45,
-  "voiceover": "none|glados|keep", "notes": "что важно помнить о задаче, одно-два предложения"}}
+  "voiceover": "none|character|keep", "notes": "что важно помнить о задаче, одно-два предложения"}}
 ```
 
 В конце ответь одним предложением: что решено.

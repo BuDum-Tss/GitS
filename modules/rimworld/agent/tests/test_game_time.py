@@ -79,7 +79,7 @@ class Fake:
         monkeypatch.setattr(planning_pause, "active", lambda *a, **k: False)
         monkeypatch.setattr(gw.events_log, "log", lambda kind, text="", **d: self.logged.append((kind, text)))
         monkeypatch.delenv("GITS_LAUNCH_GAME", raising=False)
-        monkeypatch.delenv("GLADOS_LAUNCH_GAME", raising=False)
+        monkeypatch.delenv("GITS_LAUNCH_GAME", raising=False)
         self.wd = gw.GameWatchdog(
             settings_get=lambda: self.settings, recorder=None, launch=lambda: None, new_colony=self.new_colony,
             mod_ready=lambda: True, state_ready=lambda: not self.in_menu, send_camera=lambda cmd: None,
@@ -166,10 +166,10 @@ async def test_launch_env_no_longer_makes_time_wanted(monkeypatch):
     assert f.commands == []
 
 
-@pytest.mark.parametrize("name", ["GITS_LAUNCH_GAME", "GLADOS_LAUNCH_GAME"])
+@pytest.mark.parametrize("name", ["GITS_LAUNCH_GAME", "GITS_LAUNCH_GAME"])
 def test_launch_env_on_accepts_both_names(monkeypatch, name):
     monkeypatch.delenv("GITS_LAUNCH_GAME", raising=False)
-    monkeypatch.delenv("GLADOS_LAUNCH_GAME", raising=False)
+    monkeypatch.delenv("GITS_LAUNCH_GAME", raising=False)
     assert game_launcher.launch_env_on() is False
     monkeypatch.setenv(name, "1")
     assert game_launcher.launch_env_on() is True

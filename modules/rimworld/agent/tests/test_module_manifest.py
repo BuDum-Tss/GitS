@@ -1,7 +1,7 @@
 """Манифест модуля и обработчики инструментов против FakeCore (ТЗ 11, RW-10, RW-11, RW-14a, RW-20)."""
 import pytest
-from glados_module import ToolError
-from glados_module import protocol as P
+from gits_sdk import ToolError
+from gits_sdk import protocol as P
 from rigs import Rig
 
 import gamenet

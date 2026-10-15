@@ -3,7 +3,7 @@ import socket
 
 import aiohttp
 import pytest
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 import core_bridge
 import game_api

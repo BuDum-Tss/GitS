@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import media
-from glados_module import ToolError
+from gits_sdk import ToolError
 from workspace import link_or_copy
 
 VIDEO = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".ts", ".mts"}

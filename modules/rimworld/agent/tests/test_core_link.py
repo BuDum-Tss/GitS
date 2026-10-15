@@ -106,7 +106,7 @@ async def test_run_ended_does_not_post_when_setting_is_off(tmp_path):
 
 async def test_failed_post_is_only_logged(tmp_path, monkeypatch):
     import events_log
-    from glados_module import ToolError
+    from gits_sdk import ToolError
     logged = []
     monkeypatch.setattr(events_log, "log", lambda kind, text="", **kw: logged.append((kind, text)))
     async with Rig(tmp_path, shared={"telegram_after_run": True}) as rig:

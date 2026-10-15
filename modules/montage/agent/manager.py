@@ -19,7 +19,7 @@ import intake as intake_mod
 import media
 import review_mode as rm
 from core_api import CoreAPI
-from glados_module import ToolError
+from gits_sdk import ToolError
 from jobs import FINISHED, Job, JobStore
 from layout import Layout
 from manifest import FORMATS, PLATFORMS, SOURCE_KINDS, VOICEOVERS

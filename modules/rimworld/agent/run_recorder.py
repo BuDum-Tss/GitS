@@ -5,20 +5,21 @@
   1. `scenario.py` собирает сценарий из протокола событий, целей и меток (`scenario.json`);
   2. по сценарию монтируется основное видео (`montage_*.mp4`, горизонтальное, до 10 минут);
   3. по самым важным сценам режутся вертикальные клипы 9:16 (`clips/clip_NN.mp4` и `clips.json` с подписями).
-Папка: `memory/videos/<run_id>/` (или GLADOS_VIDEO_DIR/<run_id>).
+Папка: `memory/videos/<run_id>/` (или GITS_VIDEO_DIR/<run_id>).
 
 Звук пишется кусками по 30 минут (`audio_capture`), при сбое запись звука перезапускается (`ensure_audio`); видео больше
 `max_record_hours` часов переходит в следующий кусок (`ensure_alive`). Сцены режутся перемоткой: каждая сцена это отдельный
 вход `-ss -to -i`, поэтому длина записи на скорость нарезки не влияет. Уже записанный забег собирается заново скриптом
 `tools/produce_run.py`.
 
-Настройка: `record_runs` (settings.py), `max_record_hours` (настройка модуля). Окружение: GLADOS_FFMPEG (путь к ffmpeg), GLADOS_RECORD_WINDOW (заголовок окна),
-GLADOS_RECORD_SOURCE=gdigrab|desktop (запасной захват), GLADOS_RECORD_FPS, GLADOS_VIDEO_DIR.
+Настройка: `record_runs` (settings.py), `max_record_hours` (настройка модуля). Окружение: GITS_FFMPEG (путь к ffmpeg), GITS_RECORD_WINDOW (заголовок окна),
+GITS_RECORD_SOURCE=gdigrab|desktop (запасной захват), GITS_RECORD_FPS, GITS_VIDEO_DIR.
 """
 import asyncio
 import json
 import logging
-import os
+
+from envcompat import env
 import shutil
 import subprocess
 import time
@@ -82,7 +83,7 @@ class Recording:
 
 
 def find_ffmpeg() -> str | None:
-    return os.getenv("GLADOS_FFMPEG") or shutil.which("ffmpeg")
+    return env("GITS_FFMPEG") or shutil.which("ffmpeg")
 
 
 def find_ffprobe(ffmpeg: str | None = None) -> str | None:
@@ -107,15 +108,15 @@ def probe_duration(ffprobe: str | None, path: Path) -> float | None:
 
 def capture_args(ffmpeg: str, out: Path) -> list[str]:
     """Команда записи. По умолчанию Windows Graphics Capture (filter gfxcapture): снимает именно окно RimWorld, даже если
-    его закрыло другое окно (чужие окна, например мессенджер, в кадр не попадают). GLADOS_RECORD_SOURCE=gdigrab
+    его закрыло другое окно (чужие окна, например мессенджер, в кадр не попадают). GITS_RECORD_SOURCE=gdigrab
     включает старый захват области экрана, =desktop весь экран."""
-    fps = os.getenv("GLADOS_RECORD_FPS", "30")
-    source = os.getenv("GLADOS_RECORD_SOURCE", "gfxcapture")
+    fps = env("GITS_RECORD_FPS", "30")
+    source = env("GITS_RECORD_SOURCE", "gfxcapture")
     if source == "gfxcapture":
         inp = ["-f", "lavfi", "-i", f"gfxcapture=window_exe=RimWorldWin64\\.exe:capture_cursor=0:max_framerate={fps},"
                "hwdownload,format=bgra"]
     else:
-        src = "desktop" if source == "desktop" else "title=" + os.getenv("GLADOS_RECORD_WINDOW", WINDOW_TITLE)
+        src = "desktop" if source == "desktop" else "title=" + env("GITS_RECORD_WINDOW", WINDOW_TITLE)
         inp = ["-f", "gdigrab", "-framerate", fps, "-draw_mouse", "0", "-i", src]
     return [ffmpeg, "-y", "-loglevel", "error", *inp,
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
@@ -281,7 +282,7 @@ class RunRecorder:
 
     def __init__(self, memory_dir: str, settings_get, max_hours: Callable[[], float] | None = None):
         self._memory = Path(memory_dir)
-        self._dir = Path(os.getenv("GLADOS_VIDEO_DIR") or self._memory / "videos")
+        self._dir = Path(env("GITS_VIDEO_DIR") or self._memory / "videos")
         self._settings = settings_get
         self._max_hours = max_hours or (lambda: DEFAULT_MAX_RECORD_HOURS)     # настройка модуля `max_record_hours`
         self.current: Recording | None = None
@@ -292,7 +293,7 @@ class RunRecorder:
             return
         ffmpeg = find_ffmpeg()
         if not ffmpeg:
-            logger.warning("Запись забега включена, но ffmpeg не найден: укажи путь в GLADOS_FFMPEG")
+            logger.warning("Запись забега включена, но ffmpeg не найден: укажи путь в GITS_FFMPEG")
             return
         folder = self._dir / run_id
         folder.mkdir(parents=True, exist_ok=True)
@@ -404,15 +405,13 @@ class RunRecorder:
         if proc.returncode not in (0, None) and proc.stderr:
             logger.warning("ffmpeg записи завершился с ошибкой: " + proc.stderr.read().decode("utf-8", "replace")[-300:])
 
-    def process(self, rec: Recording) -> dict | None:
-        """Сценарий, монтаж и клипы готовой записи (блокирующая: вызывать через to_thread)."""
+    def _scenario(self, rec: Recording):
+        """Общая часть `process` и `handoff`: проверка записи, события за окно, сценарий в `scenario*.json`. None: запись
+        пустая или слишком короткая."""
         raw_ok = rec.raw.is_file() and rec.raw.stat().st_size >= MIN_RAW_BYTES
         if not raw_ok or rec.duration < MIN_RAW_SECONDS:
             events_log.log("video", "запись забега пустая или слишком короткая, монтаж пропущен")
             return None
-        game_launcher.announce_self(f"собираю видео забега (колония «{rec.colony}»): сценарий, основной ролик и клипы; "
-                                    "это займёт время", kind="video")
-        ffmpeg = find_ffmpeg()
         folder = rec.out_dir or rec.raw.parent
         folder.mkdir(parents=True, exist_ok=True)
         events = rec.events if rec.events is not None else events_log.tail(limit=20_000, kinds={"game", "say"},
@@ -423,6 +422,43 @@ class RunRecorder:
         stem = rec.raw.stem.replace("raw", "")
         scenario_path = folder / f"scenario{stem}.json"
         scenario_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+        return folder, stem, events, plan, scenario_path
+
+    def handoff(self, rec: Recording) -> dict | None:
+        """Подготовить запись для модуля монтажа (ТЗ 20, MON-35, MON-36): сценарий, журнал речи (MON-26a: её реплики `say` за окно
+        записи) и описание записи (`recording.json`: время начала и куски звука с их `started_at`, ТЗ 11b). Своего монтажа и
+        клипов нет: это делает модуль montage. Блокирующая: вызывать через to_thread."""
+        prepared = self._scenario(rec)
+        if prepared is None:
+            return None
+        folder, stem, events, plan, scenario_path = prepared
+        speech_path = folder / f"speech_log{stem}.json"
+        speech = [{"ts": e["ts"], "kind": "say", "text": e["text"]} for e in events if e["kind"] == "say" and e["text"]]
+        speech_path.write_text(json.dumps(speech, ensure_ascii=False, indent=2), encoding="utf-8")
+        parts = [p for p in rec.audio_parts() if p.path.is_file()]
+        recording_path = folder / f"recording{stem}.json"
+        recording_path.write_text(json.dumps({
+            "run_id": rec.run_id, "raw": str(rec.raw), "started_at": rec.started, "duration_s": rec.duration,
+            "audio_parts": [{"path": str(p.path), "started_at": p.started_at, "seconds": p.seconds} for p in parts]},
+            ensure_ascii=False, indent=2), encoding="utf-8")
+        events_log.log("video", f"забег отдан монтажу: сцен {len(plan['scenes'])}, реплик {len(speech)}, кусков звука {len(parts)}")
+        return {"run_id": rec.run_id, "raw": str(rec.raw), "scenario": plan, "scenario_path": str(scenario_path),
+                "speech_log_path": str(speech_path), "recording_path": str(recording_path),
+                "audio": [str(p.path) for p in parts], "colony": rec.colony, "outcome": rec.outcome, "duration": rec.duration}
+
+    async def produce_for_montage(self, rec: Recording) -> dict | None:
+        await asyncio.to_thread(self._stop_blocking, rec)
+        return await asyncio.to_thread(self.handoff, rec)
+
+    def process(self, rec: Recording) -> dict | None:
+        """Сценарий, монтаж и клипы готовой записи (блокирующая: вызывать через to_thread)."""
+        prepared = self._scenario(rec)
+        if prepared is None:
+            return None
+        game_launcher.announce_self(f"собираю видео забега (колония «{rec.colony}»): сценарий, основной ролик и клипы; "
+                                    "это займёт время", kind="video")
+        folder, stem, events, plan, scenario_path = prepared
+        ffmpeg = find_ffmpeg()
         result = {"run_id": rec.run_id, "raw": str(rec.raw), "scenario": plan, "scenario_path": str(scenario_path),
                   "video": None, "clips": []}
 

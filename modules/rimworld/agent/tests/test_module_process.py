@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from glados_module.testing import FakeCore
+from gits_sdk.testing import FakeCore
 
 import gamenet
 
@@ -28,15 +28,15 @@ async def test_main_process_connects_reports_state_and_shuts_down(tmp_path):
     own_memory.mkdir()
     core_memory.mkdir()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("RIMWORLD_", "GLADOS_"))}
-    env["GLADOS_NO_LAUNCH"] = "1"          # наблюдатель за игрой иначе запустил бы настоящую RimWorld (игры нет => launch_game)
+    env["GITS_NO_LAUNCH"] = "1"          # наблюдатель за игрой иначе запустил бы настоящую RimWorld (игры нет => launch_game)
     async with FakeCore(settings={"streamer": False, "dnd": False, "quiet_until": 0.0, "game_model": "haiku",
                                   "claude_usage": "normal", "voice_muted": False, "telegram_after_run": False,
                                   "record_runs": False}) as core:
-        env.update(GLADOS_CORE_URL=core.url, GLADOS_MODULE_TOKEN=core.token, GLADOS_MODULE_ID="rimworld",
+        env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="rimworld",
                    MEMORY_DIR=str(core_memory),                     # так передаёт супервизор: чужая, ядровая папка памяти
                    RIMWORLD_MEMORY_DIR=str(own_memory), RIMWORLD_MODULE_PORT=str(free_port()),
-                   GLADOS_FAST_URL="http://127.0.0.1:9/v1/chat/completions",         # локальная модель недоступна
-                   GLADOS_DECIDER_URL="http://127.0.0.1:9", PYTHONUNBUFFERED="1",
+                   CHARACTER_FAST_URL="http://127.0.0.1:9/v1/chat/completions",         # локальная модель недоступна
+                   GITS_DECIDER_URL="http://127.0.0.1:9", PYTHONUNBUFFERED="1",
                    LOCALAPPDATA=str(tmp_path / "la"))
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-u", "main.py", cwd=str(AGENT), env=env,
@@ -58,7 +58,7 @@ async def test_main_process_connects_reports_state_and_shuts_down(tmp_path):
             assert proc.returncode is None                                           # не упал
 
             assert (await core.request("graph.get", {}))["nodes"]
-            from glados_module import ToolError
+            from gits_sdk import ToolError
             with pytest.raises(ToolError) as e:
                 await core.call_tool("get_colony_state", {})
             assert e.value.code == "unavailable"                                     # игры нет: честный отказ
@@ -72,6 +72,6 @@ async def test_main_process_connects_reports_state_and_shuts_down(tmp_path):
                 proc.kill()
             out = (await proc.stdout.read()).decode("utf-8", "replace") if proc.stdout else ""
     assert "Traceback" not in out, out
-    assert "GLADOS_NO_LAUNCH" in out or "RimWorld запускается" not in out, out            # игру модуль не запускал
+    assert "GITS_NO_LAUNCH" in out or "RimWorld запускается" not in out, out            # игру модуль не запускал
     assert list(core_memory.iterdir()) == []                                         # ядровая папка памяти не тронута
     assert own_memory.exists()                                                       # своя папка памяти; игру при старте не поднимал

@@ -9,6 +9,8 @@
 import json
 import math
 import os
+
+from envcompat import env
 import re
 import time
 from pathlib import Path
@@ -16,8 +18,8 @@ from pathlib import Path
 import httpx
 
 _FILE = Path(__file__).parent / "memory" / "knowledge.json"
-LM_URL = os.getenv("GLADOS_LM_URL", "http://127.0.0.1:1234/v1")
-EMB_MODEL = os.getenv("GLADOS_GRAPH_EMBEDDER", "text-embedding-google_embeddinggemma-300m-qat")
+LM_URL = env("GITS_LM_URL", "http://127.0.0.1:1234/v1")
+EMB_MODEL = env("GITS_GRAPH_EMBEDDER", "text-embedding-google_embeddinggemma-300m-qat")
 MAX_ENTRIES = 400
 MAX_TEXT = 700
 SOURCES = ("experience", "web")

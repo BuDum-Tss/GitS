@@ -13,7 +13,7 @@ import json
 import logging
 from typing import get_args, get_origin
 
-from glados_module import ToolError
+from gits_sdk import ToolError
 from pydantic import TypeAdapter, ValidationError
 
 import gamenet

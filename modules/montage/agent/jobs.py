@@ -15,7 +15,7 @@ import threading
 import time
 from pathlib import Path
 
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 
 STAGES = ("intake", "clarify", "transcribe", "story", "plan", "plan_approval", "voiceover", "build", "preview", "review",
           "final", "done")

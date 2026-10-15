@@ -12,7 +12,8 @@
 import asyncio
 import logging
 import ctypes
-import os
+
+from envcompat import env
 import time
 
 import events_log
@@ -250,7 +251,7 @@ class GameWatchdog:
             "launch_allowed": bool(self._launch_allowed()),
             "menu_for_s": now - self._menu_since if self._menu_since else 0.0,
             "window": window_state() if running else "missing",
-            "need_front": recording_wanted and os.getenv("GLADOS_RECORD_SOURCE", "gfxcapture") != "gfxcapture",
+            "need_front": recording_wanted and env("GITS_RECORD_SOURCE", "gfxcapture") != "gfxcapture",
             "recording_wanted": recording_wanted and in_game, "recording": recording,
             "audio": bool(rec and rec.audio and rec.audio.ok),
             "audio_dead": bool(rec and rec.audio and not rec.audio.ok and not rec.audio.stopping),

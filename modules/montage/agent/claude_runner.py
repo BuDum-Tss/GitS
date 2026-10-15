@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from agent_tools import AgentTools, JobEnv
-from glados_module import ToolError
+from gits_sdk import ToolError
 from layout import Layout
 from sandbox import Sandbox
 
