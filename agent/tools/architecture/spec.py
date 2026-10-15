@@ -57,9 +57,9 @@ GROUPS = [
     ]),
     dict(id="g_conv", col="D", title="Разговор", tag="A",
          summary="Ведёт беседу: собирает контекст из памяти, пишет ответ быстрой моделью.", out="ReplyCandidate", nodes=[
-        N("conv", "ConversationService", "A", "обращение владельца: проверки → ветка (болтовня / просьба / «что умеешь») → ответ", "Reply или Task", "companion._handle_text и _converse"),
-        N("ctx", "ContextBuilder", "A", "собирает контекст: характер, память, диалог, состояние; бюджет токенов на роль", "Context", "нет: companion._context склеивает 6 строк без бюджета", True),
-        N("reply", "ReplyGenerator", "A", "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля", "ReplyCandidate", "companion._converse, _declutter + fast_brain"),
+        N("conv", "ConversationService", "A", "обращение владельца: проверки → ветка (болтовня / просьба / «что умеешь») → ответ", "Reply или Task", "app/conversation_service.py (фасад Companion)"),
+        N("ctx", "ContextBuilder", "A", "собирает контекст: характер, память, диалог, состояние; бюджет токенов на роль", "Context", "app/context_builder.py: прежняя склейка 6 источников, бюджета токенов пока нет"),
+        N("reply", "ReplyGenerator", "A", "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля", "ReplyCandidate", "app/reply_generator.py: _converse, _declutter + fast_brain"),
     ]),
     dict(id="g_think", col="D", title="Размышление", tag="A", new=True,
          summary="Внутренний диалог агента: получает событие или импульс, думает, читая память, и решает: сказать, сделать, напомнить себе или записать.", out="Intent", nodes=[
@@ -92,7 +92,7 @@ GROUPS = [
     ]),
     dict(id="g_mem", col="BOTTOM", title="Память", tag="A",
          summary="Запись и чтение памяти: диалог, факты, профили, воспоминания о себе. Источник правды — журнал событий.", out="MemoryRecord, MemoryHit", nodes=[
-        N("mw", "MemoryWriter", "A", "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; (план) эпизоды и сон", "MemoryRecord", "companion._learn, _consolidate + graph_memory.step"),
+        N("mw", "MemoryWriter", "A", "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; (план) эпизоды и сон", "MemoryRecord", "app/memory_capture.py: _learn, _consolidate, remember_text + graph_memory.step"),
         N("mr", "MemoryReader", "A", "граф + воспоминания о себе + записи; (план) гибридный поиск", "MemoryHit[]", "graph.search, self_memories, MemoryStore.relevant (два поиска)"),
         N("elog", "EventLog", "I", "SQLite events.db: журнал событий, трасса, решения", "контракт журнала", "events_log.py: глобальные функции, 16 импортов"),
         N("stores", "Диалог, записи, люди", "I", "JSON: диалог, MemoryStore (планы, напоминания), отношения", "репозитории", "user_memory.py, memory_store.py, relationships.py"),

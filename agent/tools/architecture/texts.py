@@ -18,9 +18,9 @@ SMELLS = [
     ("Глобальное состояние", "<code>events_log</code> (16 импортов), <code>character</code> (16), <code>settings.load()</code> (14), блокировка модели в <code>fast_brain</code>.", "передавать через конструкторы"),
     ("Корень сборки с логикой", "<code>core_service.py</code>: 22 импорта, внутри обработчики voice, colonists, run_lost, game_order.", "только сборка"),
     ("Нет единой сущности события", "Словарь, <code>Item</code>, <code>UserInput</code>; правила «замолчи» и «похоже на просьбу» ещё и в <code>router</code>.", "<code>Event</code> и один модуль правил"),
-    ("Проактивность по таймеру", "<code>Companion.proactive_loop</code> раз в 30 с спрашивает модель, стоит ли заговорить.", "заменить на внутренние импульсы и размышление (ТЗ 30)"),
+    ("Проактивность по таймеру", "<code>app/proactive_legacy.py</code> (из <code>Companion.proactive_loop</code>) раз в 30 с спрашивает модель, стоит ли заговорить.", "заменить на внутренние импульсы и размышление (ТЗ 30)"),
     ("Интерфейс ходит в данные", "<code>dashboard.py</code>: 863 строки, 0 классов, прямой доступ к хранилищам.", "контракты чтения"),
-    ("Нет явного ContextBuilder", "Склейка шести строк в <code>Companion._context</code>; два разных поиска.", "компонент с бюджетом токенов"),
+    ("ContextBuilder без бюджета", "<code>app/context_builder.py</code> повторяет прежнюю склейку шести источников; два разных поиска.", "бюджет токенов на роль"),
 ]
 MAP = [
     ("attention.py (1108)", "Normalizer, PeopleDirectory, HardRules, PriorityScorer, Dispatcher, Digest, JobTracker (часть), вопросы"),

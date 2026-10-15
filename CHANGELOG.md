@@ -19,6 +19,8 @@
 
 ### Changed
 - `FocusManager` разрезан (ТЗ 29, ARC-6, R5): чистые правила `gate`, `ambiguity`, `needs_recheck`, `holder_priority` в `domain/focus_policy.py`; `FocusQueue` (`focus_queue.py`: состояния, склейка, старение, сроки), `CheckpointStore` (`focus_store.py`: checkpoint и `focus.json`), `FocusDispatch` (`focus_dispatch.py`: контекст, вызов модели с тайм-аутом, перепроверка). `focus.py` остался фасадом с прежними публичными методами и константами; протокол переключения и формат `focus.json` не менялись. Схема архитектуры обновлена (`spec.py`, пересборка). Тесты: `agent/tests/test_focus_parts.py`.
+- `Companion` разрезан (ТЗ 29, ARC-5, шаг R4): новый пакет `agent/app/` с `ConversationService` (путь обращения), `ContextBuilder` (прежняя склейка шести источников контекста), `ReplyGenerator` (ответ, `declutter`, реплика по факту), `MemoryCapture` (`_learn`, `_consolidate`, `remember_text`, очередь в граф) и временным `proactive_legacy.py` (опрос себя раз в 30 с, поведение не менялось, уйдёт с ТЗ 30). `Companion` остался фасадом с прежним публичным интерфейсом и приватными именами (`_context`, `_converse`, `_handle_text`, `_mem`, `_rel` и др.), которые используют ядро и тесты. Схема архитектуры обновлена. Тесты: `agent/tests/test_companion_split.py`.
+
 - `AGENTS.md`: правило поддерживать схему архитектуры актуальной (менять `agent/tools/architecture/spec.py` и пересобирать), строка в карте модулей.
 - Схема ядра: текст на блоках снова читается (заливка слоя смешивается с фоном темы заранее, Cytoscape не применяет альфу из rgba); добавлена легенда (слои, виды стрелок, «нужно выделить»).
 - Запись реплики пользователя в журнал идёт через `log_nowait` (не ждёт коммита SQLite; ТЗ 24). Поведение агента не меняется.

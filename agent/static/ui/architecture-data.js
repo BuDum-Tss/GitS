@@ -205,16 +205,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "обращение владельца: проверки → ветка (болтовня / просьба / «что умеешь») → ответ",
      "out": "Reply или Task",
-     "now": "companion._handle_text и _converse"
+     "now": "app/conversation_service.py (фасад Companion)"
     },
     {
      "id": "ctx",
      "t": "ContextBuilder",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "собирает контекст: характер, память, диалог, состояние; бюджет токенов на роль",
      "out": "Context",
-     "now": "нет: companion._context склеивает 6 строк без бюджета"
+     "now": "app/context_builder.py: прежняя склейка 6 источников, бюджета токенов пока нет"
     },
     {
      "id": "reply",
@@ -223,7 +223,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля",
      "out": "ReplyCandidate",
-     "now": "companion._converse, _declutter + fast_brain"
+     "now": "app/reply_generator.py: _converse, _declutter + fast_brain"
     }
    ]
   },
@@ -440,7 +440,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; (план) эпизоды и сон",
      "out": "MemoryRecord",
-     "now": "companion._learn, _consolidate + graph_memory.step"
+     "now": "app/memory_capture.py: _learn, _consolidate, remember_text + graph_memory.step"
     },
     {
      "id": "mr",

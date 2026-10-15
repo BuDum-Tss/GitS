@@ -15,23 +15,20 @@
 Звучит речь только через очередь менеджера внимания (attention.py, ТЗ 03): `say` и `_speak_about` кладут кандидата в
 очередь, а сам планировщик зовёт их с direct=True. Без менеджера (атрибут `attention` пуст: тесты, запуск до сборки слоя
 модулей) они говорят сразу, как раньше. Ответ в канал модуля (Telegram) не речь: он доставляется сразу, мимо очереди.
+
+Companion теперь тонкий фасад (ТЗ 29, ARC-5): состояние и публичный интерфейс здесь, логика в `agent/app/`:
+ConversationService (путь обращения), ContextBuilder (контекст), ReplyGenerator (ответ), MemoryCapture (запоминание),
+ProactiveLegacy (временная проактивность по таймеру, до ТЗ 30).
 """
 import asyncio
 import collections
-import contextvars
-import json
 import logging
-import re
 import time
 from pathlib import Path
 
 import claude_quota
-import gamenet
 import fast_brain
 import character
-import journal
-import latency_trace
-import salience
 import prompts
 from adapters.approver import ApprovalsModule
 from adapters.event_log_sqlite import SqliteEventLog
@@ -39,22 +36,21 @@ from adapters.llm_lmstudio import LMStudioLLM
 from adapters.memory import UserMemoryAdapter
 from adapters.people import RelationshipsAdapter
 from adapters.settings_provider import SettingsModule
-from conversation_io import DASHBOARD, VOICE, UserInput, current_channel
+from app.context_builder import ContextBuilder
+from app.conversation_service import ConversationService, _sender_ctx  # noqa: F401  (_sender_ctx: прежнее имя)
+from app.memory_capture import MemoryCapture
+from app.proactive_legacy import CONSULT as _CONSULT, MIN_GAP as _MIN_GAP, ProactiveLegacy  # noqa: F401
+from app.reply_generator import ReplyGenerator
+from conversation_io import UserInput, current_channel
 from speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
 from user_memory import UserMemory
 
 logger = logging.getLogger("companion")
 
-# отправитель текущего обращения (узнанный голос: новый человек даёт яркость, ТЗ 24 TRC-4)
-_sender_ctx: contextvars.ContextVar = contextvars.ContextVar("companion_sender", default=None)
-
 
 def persona() -> str:
     """Характер компаньона активного персонажа (конституция + prompt.yaml); функция, чтобы переключение подхватывало новый."""
     return prompts.companion_persona()
-
-_MIN_GAP = {"quiet": 30 * 60, "normal": 10 * 60, "chatty": 3 * 60}   # не говорить сама чаще
-_CONSULT = {"quiet": 10 * 60, "normal": 4 * 60, "chatty": 90}        # как часто спрашивать себя
 
 
 class Companion:
@@ -104,6 +100,12 @@ class Companion:
         self._consolidating = False
         self._last_say_text = ""          # последняя реплика персонажа (для поправки «нет, не так», ТЗ 24 TRC-5)
         self._bg_tasks: set = set()       # фоновые проверки поправок (ТЗ 24)
+        # компоненты (ТЗ 29, ARC-5): состояние остаётся здесь, логика в agent/app/
+        self.context_builder = ContextBuilder(self)
+        self.reply_generator = ReplyGenerator(self)
+        self.memory_capture = MemoryCapture(self)
+        self.conversation = ConversationService(self)
+        self.proactive_legacy = ProactiveLegacy(self)
 
     @property
     def people(self):
@@ -198,154 +200,30 @@ class Companion:
         cutoff = time.time() - secs
         return " ".join(s for ts, s in self._heard if ts >= cutoff)[-900:]
 
+
     async def on_voice(self, text: str, speaker: dict, trace=None):
-        """Реплика, сказанная голосом: узнанный владелец идёт как обычное сообщение, остальным ставится пометка,
-        кто говорит (имя или «незнакомый голос»), и заводится профиль человека."""
-        pid, name = speaker.get("id"), speaker.get("name")
-        if speaker.get("owner") or not speaker.get("has_owner"):
-            prefix = ""
-        elif name:
-            prefix = f"[говорит {name}] "
-        else:
-            prefix = "[незнакомый голос] "
-        if pid and not speaker.get("owner") and speaker.get("has_owner"):
-            self._people.ensure_person(f"voice:{pid}", name or f"голос {str(pid)[-4:]}", source="voice")
-            self._people.note(f"voice:{pid}", text)
-        await self.on_input(UserInput(prefix + text, VOICE, sender=speaker, ts=time.time(), trace=trace))
+        await self.conversation.on_voice(text, speaker, trace)
 
     async def on_user_message(self, text: str, channel=None):
-        """Обращение текстом (чат дашборда, строка питомца); channel по умолчанию - дашборд."""
-        await self.on_input(UserInput(text, channel or DASHBOARD))
+        await self.conversation.on_user_message(text, channel)
 
     async def on_input(self, ui: UserInput):
-        """Единый вход обращений (CORE-24): ответ на него уходит в канал обращения (current_channel)."""
-        token = current_channel.set(ui.channel)
-        t = ui.trace if ui.trace is not None else latency_trace.start(ui.channel.kind)   # трасса задержки (ТЗ 24, TRC-1)
-        trace_token = latency_trace.bind(t)
-        if self.attention is None:
-            self.presence.update(busy=True)         # с менеджером внимания занятость определяет стек фокуса (ATT-23)
-        try:
-            sender_token = _sender_ctx.set(ui.sender)
-            try:
-                await self._handle_text(ui.text)
-            finally:
-                _sender_ctx.reset(sender_token)
-        finally:
-            latency_trace.unbind(trace_token)
-            latency_trace.finish_core(t)
-            current_channel.reset(token)
-            if self.attention is None:
-                self.presence.update(busy=False)
-
-    _EXPLICIT_MEMORY = re.compile(r"\b(запомни\w*|не забудь\w*|запиши)\b", re.IGNORECASE)
+        await self.conversation.on_input(ui)
 
     async def _handle_text(self, text: str):
-        text = text.strip()
-        if not text:
-            return
-        self._memory_writer.add_dialogue("user", text)
-        # яркость реплики (ТЗ 24, TRC-4): явное «запомни» и новый человек (отправитель - из on_input)
-        sal, reasons = salience.score(salience.factors_of(memorable=bool(self._EXPLICIT_MEMORY.search(text)),
-                                                          novelty=bool((_sender_ctx.get() or {}).get("new"))))
-        self._log.log_nowait("user", text, salience=sal, reasons=reasons)   # без ожидания коммита (ТЗ 24: трасса)
-        self._queue_graph(text)
-        self._pending_memory += 1
-        self._last_user_ts = time.time()
-        self.presence.update(last_user_ts=self._last_user_ts)
-        fast_brain.publish("chat", {"emotion": "thinking", "action": "none"})   # сразу «задумалась», без вызова модели
-
-        cls = None
-        if self.attention is not None:
-            await self.attention.on_user_input(text)          # фокус «разговор»; «замолчи» обрывает речь до любых вызовов модели
-            cls = await self.attention.classify_input(text)   # намерение (ATT-28); None - классификатора нет, всё как раньше
-        latency_trace.mark("classify_done")
-        self._check_correction(text)                           # поправка пользователя (ТЗ 24, TRC-5)
-        if self._approver.has_pending() and await self._answer_approval(text):
-            return
-        if self.game_order is not None:
-            try:
-                taken = await self.game_order(text)
-            except Exception as e:
-                self._log.log("error", f"приказ в игру не принят: {e}")
-                taken = False
-            if taken:
-                asyncio.create_task(self._speak_about(
-                    "Игрок только что дал тебе срочное указание по игре, ты прямо сейчас берёшься выполнять его "
-                    "(действия в игре идут отдельно). Скажи одной короткой фразой в своём характере, что принимаешь.",
-                    text, must=True))
-                asyncio.create_task(fast_brain.react_chat(text, self._people))
-                return
-        intent = cls.intent if cls is not None else None
-        # needs_memory классификатора пока смещён в «нет» (замеры ТЗ 03): по нему память не отключаем, только пишем в журнал.
-        # Поиск в графе пропускается лишь там, где память заведомо не нужна; вернуть needs_memory после дообучения.
-        use_memory = intent not in ("stop", "approval")
-        route, routed = "chat", False          # routed: вызывался ли планировщик (ТЗ 24, TRC-6)
-        async with self._busy:
-            if intent == "about_self":
-                route = "about_self"
-                latency_trace.mark("route")
-                await self._converse(text, about_self=True, use_memory=use_memory)   # что она умеет: ответ по перечню окружений
-            elif self.router is not None and (self.router.looks_like_action(text) or intent in ("action", "attention_rule")):
-                route, routed = "task", True
-                latency_trace.mark("route")
-                await self._act(text)          # просьба: планировщик, ответ после плана
-            else:
-                latency_trace.mark("route")
-                flagged = await self._converse(text, use_memory=use_memory)   # болтовня: один вызов, ответ сразу
-                if flagged and self.router is not None:
-                    route, routed = "task", True
-                    await self._act(text, after_chat=True)   # модель заподозрила просьбу, которую не распознали глаголы
-        self._log_route(text, route, routed, intent, cls)
-        asyncio.create_task(fast_brain.react_chat(text, self._people))   # эмоция и отношение: уже после ответа
-        if self._pending_memory >= 6:
-            asyncio.create_task(self._consolidate())                  # осмыслить беседу и запомнить важное
+        await self.conversation.handle_text(text)
 
     def _check_correction(self, text: str) -> None:
-        """Поправка «нет, не так» (ТЗ 24, TRC-5): по шаблону сразу; неясное начало проверяет модель в фоне."""
-        said = self._SPEAKER_TAG.sub("", text)
-        level = journal.correction_level(said)
-        if level == "no":
-            return
-        ref, prev = self._last_say, self._last_say_text[:200]
-        if level == "yes":
-            journal.mistake("correction", said[:200], refs=[ref], previous=prev)
-        else:
-            task = asyncio.create_task(self._confirm_correction(said, ref, prev))
-            self._bg_tasks.add(task)                 # сильная ссылка: иначе задачу может собрать сборщик мусора
-            task.add_done_callback(self._bg_tasks.discard)
+        self.conversation.check_correction(text)
 
     async def _confirm_correction(self, text: str, ref: float, prev: str) -> None:
-        system = ("Пользователь ответил на твою прошлую реплику. Определи, поправляет ли он тебя: говорит ли, что ты "
-                  'ошиблась или сказала неверно. Ответь ТОЛЬКО JSON: {"correction": <true или false>}')
-        try:
-            data = fast_brain._json_of(await fast_brain._ask(system, f"Твоя реплика: {prev}\nОтвет: {text[:300]}",
-                                                             timeout=20, max_tokens=20, temperature=0.0, background=True))
-        except Exception as e:
-            logger.info(f"Проверка поправки не выполнена: {e}")
-            return
-        if data and data.get("correction") is True:
-            journal.mistake("correction", text[:200], refs=[ref], previous=prev, checked="llm")
+        await self.conversation.confirm_correction(text, ref, prev)
 
     def _log_route(self, text: str, route: str, routed: bool, intent, cls) -> None:
-        """Решение маршрута разговора (ТЗ 24, TRC-6) и несовпадение классификатора с путём (TRC-5: misroute)."""
-        conf = cls.intent_conf if cls is not None else None
-        journal.decision(route, "conversation", text, confidence=conf, echelon="gliner" if cls is not None else "rules",
-                         intent=intent)
-        if intent == "chat" and routed and self.router is not None and self.router.last_kind == "done":
-            journal.mistake("misroute", text[:200], refs=[self._last_say], source="classifier", intent=intent)
-        elif intent == "action" and not routed and self.router is not None:
-            journal.mistake("misroute", text[:200], refs=[self._last_say], source="classifier", intent=intent)
+        self.conversation.log_route(text, route, routed, intent, cls)
 
     async def _act(self, text: str, after_chat: bool = False):
-        """Просьба действовать: маршрутизатор решает «могу или нет», выполняет, а итог говорится вслух."""
-        outcome = await self.router.handle(text, announce=not after_chat)
-        if after_chat and self.router.last_kind == "cannot":
-            return   # на ответ-болтовню уже сказано всё, что можно; не повторяем «не могу» вторым сообщением
-        if outcome:
-            # итог действия или честное «не могу»: пользователь должен узнать результат
-            await self._speak_about(outcome, text, must=True)
-        elif outcome is None and not after_chat:
-            await self._converse(text)    # планировщик решил, что это всё-таки разговор
+        await self.conversation.act(text, after_chat)
 
     async def _answer_approval(self, text: str) -> bool:
         """Реплика как ответ на открытый вопрос (да/нет, вариант, свободный текст): см. approvals.try_answer."""
@@ -363,282 +241,46 @@ class Companion:
         return await self._speak_about_impl(fact, user_text, must, question, direct)
 
     async def _speak_about_impl(self, fact: str, user_text: str, must: bool, question: bool, direct: bool):
-        """Нет заготовленных фраз: ей сообщают факт, а говорить ли и что — решает сама.
-        must=True для итога прямой просьбы пользователя: промолчать нельзя, он должен
-        узнать, что получилось (иначе непонятно, сработало ли).
-        question=True: факт - вопрос к пользователю (core.ask, вопрос задачи), его нужно задать своими словами.
-        direct=False: факт кладётся в очередь речи внимания, реплику сформулирует планировщик, когда придёт очередь;
-        direct=True: планировщик уже выбрал этот факт - реплика формулируется и говорится сразу."""
-        if self._queued(direct):
-            await self._wait_spoken(self.attention.enqueue_fact(fact, user_text, must, question))
-            return
-        if question:
-            rule = ("Пользователю нужно задать вопрос, который описан в факте: задай его своими словами коротко, "
-                    "ничего не выдумывая и не отвечая за него. Промолчать нельзя. "
-                    'Ответь ТОЛЬКО JSON: {"say": true, "text": "<реплика>"}')
-        elif must:
-            rule = ("Пользователь сам об этом попросил, поэтому обязательно коротко сообщи ему, "
-                    "что получилось. Упомяни суть результата, не выдумывай деталей. "
-                    'Ответь ТОЛЬКО JSON: {"say": true, "text": "<реплика>"}')
-        else:
-            rule = ("Сама реши, нужно ли что-то сказать: можно промолчать. Не пересказывай факт "
-                    "дословно и не выдумывай деталей. Ответь ТОЛЬКО JSON: "
-                    '{"say": <true или false>, "text": "<реплика>"}')
-        system = persona() + " Ниже факт о том, что только что произошло. " + rule
-        user = (f"{self._context(query=user_text or fact)}\n\nФакт: {fact}"
-                + (f"\nПользователь сказал: {user_text}" if user_text else ""))
-        try:
-            data = fast_brain._json_of(await self._llm.ask(system, user, timeout=60,
-                                                           max_tokens=160, temperature=0.7))
-        except Exception as e:
-            logger.warning(f"Не удалось решить, что сказать: {e}")
-            return
-        if data and data.get("say") and data.get("text"):
-            await self.say(str(data["text"]), direct=True)
+        await self.reply_generator.speak_about(fact, user_text, must, question, direct)
 
     def _claude_note(self) -> str:
-        import claude_quota
-        return (f"Claude (игровые ходы, глубокий анализ, помощник) сейчас недоступен: исчерпан лимит до "
-                f"{claude_quota.until_text()}. Если просят то, что требует Claude, честно скажи это.") if claude_quota.blocked() else ""
+        return self.context_builder.claude_note()
 
     def _capabilities(self) -> str:
-        """Честный список того, что у неё сейчас включено: без него она выдумывает возможности."""
-        cfg = self._settings.load()
-        lines = ["Справка о твоих возможностях и их состоянии (для тебя, а не тема разговора: упоминай их, только если спросили; говори о них только по этим данным):",
-                 f"- Зрение: {'включено' if cfg['vision'] else 'выключено'}.",
-                 f"- Слух (системный звук): {'включён' if cfg['hearing'] else 'выключен'}.",
-                 f"- Голос: {'заглушён' if cfg['voice_muted'] else 'включён'}."]
-        lines += ["- " + note for note in self.module_notes()]
-        lines.append("- Помощник Claude (Клод, Claude Code): ты можешь поручить ему сложные задачи на компьютере: "
-                     "установку программ и библиотек, файлы, код, команды, интернет, анализ. Он сам спрашивает "
-                     "разрешение на каждое изменение. Просьбы, которые тебе не по силам, уходят к нему.")
-        status = self._memory_reader.graph_status()
-        if status is not None:
-            lines.append("- " + status)
-        note = self._claude_note()
-        if note:
-            lines.append("- " + note)
-        return "\n".join(lines)
+        return self.context_builder.capabilities()
 
     def _context(self, include_hearing: bool = True, query: str = "") -> str:
-        """query: о чём сейчас речь. По нему из долговременной памяти берутся подходящие записи."""
-        parts = [self._memory_reader.context_block(dialogue=12, query=query), self._capabilities()]
-        if include_hearing and self._settings.load()["hearing"]:
-            heard = self.recent_heard()
-            if heard:
-                parts.append("Что недавно было слышно из колонок (краткая сводка автоматической расшифровки, "
-                             "возможны ошибки; это может быть фильм, видео, музыка, не слова "
-                             "пользователя): " + heard)
-        if self._self_block:
-            parts.append(self._self_block)
-        if self._graph_block:
-            parts.append(self._graph_block)
-        rel = self._people.describe("игрок")
-        if rel:
-            parts.append(f"Твоё {rel}.")
-        return "\n".join(p for p in parts if p)
-
-    _OFFER = re.compile(r"^(ты )?(хочешь|не хочешь|хотела бы|хотел бы)(,? чтобы я)?|^если (хочешь|нужно)|^могу ли я|"
-                        r"^нужна ли тебе|^чем (ещё )?(могу )?помочь|^давай я", re.I)
-
-    _PROMISE = re.compile(r"^(сейчас |щас |хорошо, )?(опубликую|отправлю|запущу|включу|выключу|запощу|напишу в)", re.I)
+        return self.context_builder.build(include_hearing, query)
 
     def _declutter(self, reply: str) -> str:
-        """Страховка от навязчивости: убирает хвост-предложение помощи («Хочешь, чтобы я…?») и
-        третий вопрос подряд в конце реплики. Применяется, только если останется хотя бы одно предложение."""
-        sents = [x for x in re.split(r"(?<=[.!?…])\s+", reply.strip()) if x]
-        if len(sents) < 2:
-            return reply
-        # обещание действия без вызова инструмента (router.last_kind == "done" значит, что он был)
-        if (self.router is None or self.router.last_kind != "done") and self._PROMISE.match(sents[0].strip(" «\"")):
-            sents = sents[1:]
-            reply = " ".join(sents)
-            if len(sents) < 2:
-                return reply
-        last = sents[-1].strip(" «\"")
-        recent = [m["text"].rstrip().endswith("?") for m in self._memory_reader.recent_dialogue(10) if m["role"] != "user"][-2:]
-        if self._OFFER.match(last) or (sents[-1].rstrip().endswith("?") and len(recent) == 2 and all(recent)):
-            return " ".join(sents[:-1])
-        return reply
-
-    _SPEAKER_TAG = re.compile(r"^\[(говорит ([^\]]+)|незнакомый голос)\]\s*")
+        return self.reply_generator.declutter(reply)
 
     def _owner_name(self) -> str:
-        for fact in self._memory_reader.facts():
-            m = re.match(r"\s*(?:имя(?: пользователя)?|зовут)\s*[:\-]\s*(.+)", fact["text"], re.I)
-            names = re.findall(r"[А-Яа-яЁёA-Za-z\-]{2,}", m.group(1)) if m else []
-            if names:
-                return names[0]
-        return ""
+        return self.memory_capture.owner_name()
 
     def _queue_graph(self, text: str):
-        """Реплика человека уходит в очередь на разбор фактов (граф). Незнакомые голоса не запоминаем."""
-        tag = self._SPEAKER_TAG.match(text)
-        if tag:
-            if not tag.group(2):
-                return
-            speaker, text = tag.group(2), text[tag.end():]
-        else:
-            speaker = self._owner_name() or "Пользователь"
-        self._memory_writer.enqueue_for_graph(speaker, text)
+        self.memory_capture.queue_graph(text)
 
     async def _refresh_graph(self, query: str):
-        """Факты графа по теме реплики: поиск быстрый, но не дольше трёх секунд, иначе отвечаем без них."""
-        try:
-            self._graph_block = await asyncio.wait_for(self._memory_reader.graph_block(query), 3.0)
-        except (asyncio.TimeoutError, Exception):
-            self._graph_block = ""
-        try:
-            self._self_block = await asyncio.wait_for(self._memory_reader.self_block(query), 3.0)
-        except (asyncio.TimeoutError, Exception):
-            self._self_block = ""
+        await self.context_builder.refresh_graph(query)
 
     async def _converse(self, text: str, about_self: bool = False, use_memory: bool = True) -> bool:
-        """Обычный ответ обычным текстом, без JSON: так он приходит вдвое быстрее (локальная
-        модель генерирует ~10-15 токенов в секунду, лишние поля стоят секунд).
-        Возвращает True, если модель пометила сообщение как просьбу действовать."""
-        system = (persona() + " " + self.profile_hint() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
-                  "опубликовать, посмотреть), начни ответ с маркера [ДЕЙСТВИЕ] и коротко скажи, что сейчас "
-                  "посмотришь, что можешь, БЕЗ выдуманного результата. Иначе просто ответь.")
-        if use_memory:
-            await self._refresh_graph(text)
-        else:
-            self._self_block = ""
-            self._graph_block = ""          # классификатор: для этой реплики факты о людях и прошлом не нужны (ATT-28)
-        latency_trace.mark("retrieve_done")
-        user = f"{self._context(query=text)}\n\nПользователь говорит: {text}"
-        if about_self and self.router is not None:
-            user += ("\n\nПользователь спрашивает о твоих возможностях. Отвечай строго по этому перечню, ничего не выдумывая:\n"
-                     + self.router.registry.describe())
-        reply, escalate, action_request = "", False, False   # escalate: только если локальная модель недоступна
-        try:
-            reply = (await self._llm.ask(system, user, timeout=60, max_tokens=140, temperature=0.7)).strip()
-            # ТЗ 24, TRC-1: без потоковой передачи первый токен приходит вместе с концом ответа (стриминг - ТЗ 25)
-            latency_trace.mark("llm_first_token")
-            latency_trace.mark("llm_done")
-            if reply.startswith("[ДЕЙСТВИЕ]"):
-                action_request, reply = True, reply[len("[ДЕЙСТВИЕ]"):].strip()
-        except Exception as e:
-            logger.warning(f"Локальная модель не ответила: {e}")
-            escalate = True    # без локальной модели пусть отвечает Claude
-        if reply:
-            latency_trace.mark("first_sentence_ready")
-            await self.say(self._declutter(reply))
-        if escalate:
-            await self._escalate(text)
-        if len(text) >= 15:
-            asyncio.create_task(self._learn(text))   # фоном, уже после ответа
-        return action_request
+        return await self.reply_generator.converse(text, about_self, use_memory)
 
     def _store_memories(self, data) -> list[str]:
-        """Сохранить воспоминания из ответа модели ({"memories": [...]}); вернуть тексты новых."""
-        added: list[str] = []
-        for m in (data or {}).get("memories") or []:
-            if not isinstance(m, dict) or m.get("kind") not in ("user", "self", "plan", "episode"):
-                continue
-            text = str(m.get("text") or "").strip()
-            if len(text) < 6:
-                continue
-            try:
-                importance = max(1, min(5, int(m.get("importance", 3))))
-            except (TypeError, ValueError):
-                importance = 3
-            due = m.get("due_days")
-            due = float(due) if isinstance(due, (int, float)) and due > 0 else None
-            if self._memory_writer.add_fact(text, kind=m["kind"], importance=importance, due_days=due):
-                added.append(text)
-        return added
+        return self.memory_capture.store_memories(data)
 
     async def remember_text(self, text: str, hint_kind: str | None = None) -> list[str]:
-        """Явная просьба «запомни…»: аккуратно разобрать текст на записи правильного вида и в
-        правильном лице (о пользователе от третьего, о себе от первого). Сразу, не фоном."""
-        system = ("Пользователь просит тебя запомнить сказанное. Сформулируй 1-2 записи. kind: "
-                  "user (факт о нём: пиши от третьего лица, «Любимый цвет пользователя - зелёный»), "
-                  "self (о тебе самой, чего он хочет от тебя: пиши от первого лица, «Я называю пользователя "
-                  "Аней и реже язвлю»), plan (планы и дела: дедлайны, встречи, экзамены, задачи; due_days - "
-                  "через сколько дней, если срок можно понять, иначе null), episode (событие). importance 1-5. "
-                  'Ответь ТОЛЬКО JSON: {"memories": [{"kind": "...", "text": "...", "importance": 4, "due_days": null}]}. '
-                  f"Сегодня {time.strftime('%A, %d.%m')}.")
-        try:
-            data = fast_brain._json_of(await self._llm.ask(system, text[:500], timeout=60,
-                                                           max_tokens=220, temperature=0.1))
-        except Exception as e:
-            logger.warning(f"Не удалось разобрать «запомни»: {e}")
-            data = None
-        stored = self._store_memories(data)
-        if not stored:   # модель не помогла: сохраняем как есть, чтобы не потерять просьбу
-            kind = hint_kind if hint_kind in ("user", "self", "plan", "episode") else "user"
-            if self._memory_writer.add_fact(text.strip(), kind=kind, importance=4):
-                stored = [text.strip()]
-        return stored
+        return await self.memory_capture.remember_text(text, hint_kind)
 
     async def _learn(self, text: str):
-        """Фоном после ответа: что запомнить надолго из этого сообщения и не просил ли он не отвлекать."""
-        system = ("Из сообщения пользователя выдели то, что стоит запомнить надолго. Верни JSON: "
-                  '{"memories": [{"kind": "user|self|plan", "text": "...", "importance": 3, "due_days": null}], '
-                  '"quiet_minutes": 0}. kind=user: устойчивые факты о нём (имя, привычки, предпочтения). '
-                  "kind=self: чего он хочет от ТЕБЯ (как с ним говорить, что делать чаще или реже). "
-                  "kind=plan: его планы и дела: дедлайны, встречи, экзамены, задачи (due_days: через сколько дней, если названо, иначе null). "
-                  "Записи о пользователе пиши от третьего лица, о тебе самой от первого. "
-                  "Мелочи и сиюминутное (настроение, усталость, просьбы что-то сделать прямо сейчас в игре или на "
-                  "компьютере) не запоминай: обычно memories пустой. "
-                  "quiet_minutes: если он сказал, что сейчас будет смотреть, работать или заниматься, "
-                  "на сколько минут его не отвлекать (например 60-120), иначе 0.")
-        try:
-            data = fast_brain._json_of(await self._llm.ask(system, text[:400], timeout=60,
-                                                           max_tokens=200, temperature=0.1, background=True))
-        except Exception as e:
-            logger.warning(f"Не удалось разобрать сообщение для памяти: {e}")
-            return
-        if not data:
-            return
-        self._store_memories(data)
-        self._set_quiet(data.get("quiet_minutes"))
+        await self.memory_capture.learn(text)
 
     async def _consolidate(self):
-        """Фоном: осмыслить недавнюю беседу и сохранить важное (эпизоды, о себе, планы, факты)."""
-        if self._consolidating:
-            return
-        since = self._memory_reader.meta("consolidated_ts", 0)
-        dlg = [m for m in self._memory_reader.recent_dialogue(40) if m["ts"] > since]
-        if sum(1 for m in dlg if m["role"] == "user") < 2:
-            return
-        self._consolidating = True
-        try:
-            transcript = "\n".join(f"{'Пользователь' if m['role'] == 'user' else 'Ты'}: {m['text']}"
-                                   for m in dlg[-24:])
-            known = "; ".join(i["text"] for i in self._memory_reader.relevant(transcript[-300:], k=6))
-            system = ("Ты осмысляешь недавнюю беседу ассистентки с пользователем. Выдели 0-3 воспоминания, "
-                      "которые стоит сохранить надолго. kind: user (устойчивый факт о пользователе), "
-                      "self (о тебе самой: что ты пообещала, какое мнение у тебя сложилось, о чём вы шутили, "
-                      "пожелания к тебе), plan (планы и дела пользователя: дедлайны, встречи, экзамены, задачи; due_days если срок назван), episode (заметное "
-                      "событие или итог беседы одной фразой). importance 1-5. Не повторяй уже известное. "
-                      "Записи о пользователе пиши от третьего лица, о себе от первого. "
-                      "Мелочи не нужны (в том числе разовые просьбы сделать что-то прямо сейчас в игре или на компьютере), "
-                      "чаще всего ответ пуст. Ответь ТОЛЬКО JSON: "
-                      '{"memories": [{"kind": "...", "text": "...", "importance": 3, "due_days": null}]}')
-            data = fast_brain._json_of(await self._llm.ask(
-                system, f"Уже известно: {known or 'ничего'}\n\nБеседа:\n{transcript}",
-                timeout=90, max_tokens=320, temperature=0.2, background=True))
-            n = len(self._store_memories(data))
-            self._memory_writer.set_meta("consolidated_ts", time.time())
-            self._pending_memory = 0
-            if n:
-                self._log.log("memory", f"осмыслила беседу и запомнила: {n}")
-        except Exception as e:
-            logger.warning(f"Не удалось осмыслить беседу: {e}")
-        finally:
-            self._consolidating = False
+        await self.memory_capture.consolidate()
 
     def _set_quiet(self, minutes):
-        """Пользователь сказал, что занят: сама она не заговаривает это время."""
-        try:
-            mins = max(0, min(int(minutes), 240))
-        except (TypeError, ValueError):
-            return
-        if mins > 0:
-            self._settings.update(quiet_until=time.time() + mins * 60)
-            self._log.log("setting", f"режим «не отвлекать» на {mins} мин (по словам пользователя)")
+        self.memory_capture.set_quiet(minutes)
 
     async def run_claude(self, task: str) -> str | None:
         """Сложная задача на Claude (модуль desktop, инструмент claude_task, ТЗ 14 DESK-11): запускается задачей и ждёт её итога.
@@ -668,111 +310,16 @@ class Companion:
         else:
             await self._speak_about(f"Просьба «{task}» выполнена, добавить нечего.", task)
 
-    # ── проактивность ──────────────────────────────────────────────────────────
-    # Жёстких триггеров нет: через паузу (зависит от разговорчивости) она сама
-    # спрашивает себя, стоит ли что-то сказать, имея перед глазами дайджест
-    # последних занятий. Промолчать — нормальный исход.
+    # ── проактивность (временный сценарий app/proactive_legacy.py, до ТЗ 30) ──────
 
     async def proactive_loop(self):
-        while True:
-            await asyncio.sleep(30)
-            try:
-                await self._maybe_speak()
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.warning(f"Проактивность: {e}")
-                self._log.log("error", f"проактивность: {e}")
+        await self.proactive_legacy.loop()
 
     def _digest(self, silent_mins: int) -> str:
-        """Дайджест для решения «заговорить ли»: время, молчание, занятия за последние минуты."""
-        lines = [f"Сейчас {time.strftime('%H:%M')}. Ты молчишь уже {silent_mins} мин."]
-        if self._settings.load()["vision"]:
-            acts = self._memory_reader.recent_activity(5)
-            if acts:
-                lines.append("Что ты видела на экране (от старого к новому):")
-                for a in acts:
-                    mins = int((time.time() - a["ts"]) / 60)
-                    lines.append(f"  {mins} мин назад: {a['summary']}")
-        else:
-            lines.append("Зрение выключено, на экран ты не смотришь.")
-        plans = self._memory_reader.plans_to_nudge()[:2]
-        if plans:
-            lines.append("Скоро у пользователя (напомни ОДИН раз, коротко, и больше к этому не возвращайся):")
-            lines += [f"  - {p['text']}" for p in plans]
-        return "\n".join(lines)
+        return self.proactive_legacy.digest(silent_mins)
 
     def _repeats_recent(self, text: str) -> bool:
-        """Не повторять недавние темы: сильное пересечение по словам с её последними репликами."""
-        from memory_store import stems
-        new = stems(text)
-        if len(new) < 3:
-            return False
-        for m in [m for m in self._memory_reader.recent_dialogue(10) if m["role"] != "user"][-5:]:
-            old = stems(m["text"])
-            if old and len(new & old) / min(len(new), len(old)) >= 0.5:
-                return True
-        return False
+        return self.proactive_legacy.repeats_recent(text)
 
     async def _maybe_speak(self):
-        if self._busy.locked() or self._approver.has_pending():
-            return
-        if self._pending_memory >= 2 and time.time() - self._last_user_ts > 8 * 60:
-            asyncio.create_task(self._consolidate())   # пауза в разговоре: самое время осмыслить
-        now = time.time()
-        idle = self.idle_seconds()
-        # Пользователь отошёл / вернулся
-        if idle > 600:
-            if self._away_since is None:
-                self._away_since = now - idle
-            return
-        returned_after = None
-        if self._away_since is not None:
-            away_mins = (now - self._away_since) / 60
-            self._away_since = None
-            if away_mins >= 15:
-                returned_after = int(away_mins)
-
-        cfg = self._settings.load()
-        if self._settings.quiet_active(cfg):
-            return   # пользователь просил не отвлекать (смотрит, работает)
-        level = cfg["chattiness"]
-        gap = now - self._last_say
-        if now - self._last_user_ts < 120:
-            return   # только что разговаривали: сама не вклинивается
-        if gamenet.port_open() and gap < 45 * 60:
-            return   # идёт игра: про игру говорит игровой комментатор, а тут сама не лезет
-        cur = self.screen_activity() if cfg["vision"] else None
-        if (cur and cur["category"] in ("media", "game") and now - cur["ts"] < 600
-                and gap < 45 * 60):
-            return   # смотрит видео или играет: сама не лезет (если не слишком долго молчала)
-        if returned_after is not None and gap > 120:
-            situation = f"Пользователь вернулся к компьютеру после перерыва в {returned_after} мин."
-        else:
-            if gap < _MIN_GAP.get(level, _MIN_GAP["normal"]):
-                return
-            if now - self._last_consult < _CONSULT.get(level, _CONSULT["normal"]):
-                return
-            situation = self._digest(int(gap / 60))
-        self._last_consult = now
-
-        system = (persona() + "\n" + self.profile_hint() + "\nСама решай, стоит ли сейчас вмешаться. Говори, когда есть что-то уместное: "
-                  "наблюдение о том, что видишь, шутка про занятие, забота (долго сидит, поздно), вопрос. "
-                  "Не навязывайся без повода: если пользователь сейчас занят (игра, работа, видео) или сказать "
-                  "нечего, ответь say=false. Не возвращайся к темам, которые уже поднимала в последних "
-                  "репликах. Ответь ТОЛЬКО JSON: "
-                  '{"say": <true или false>, "text": "<реплика>", "emotion": <одно из '
-                  + json.dumps(fast_brain.EMOTIONS) + ">}")
-        user = f"{self._context()}\n\n{situation}"
-        raw = await self._llm.ask(system, user, timeout=60, max_tokens=200, temperature=0.8,
-                                  background=True)
-        data = fast_brain._json_of(raw)
-        if data and data.get("say") and data.get("text") and self._repeats_recent(str(data["text"])):
-            self._log.log("proactive", situation, said=False, why="повтор недавней темы")
-            self._last_say = now - _MIN_GAP.get(level, _MIN_GAP["normal"]) / 2
-        elif data and data.get("say") and data.get("text"):
-            emo = data.get("emotion") if data.get("emotion") in fast_brain.EMOTIONS else None
-            await self.say(str(data["text"]), emo, source="proactive")
-            self._log.log("proactive", situation, said=True)
-        else:
-            self._log.log("proactive", situation, said=False)
+        await self.proactive_legacy.maybe_speak()
