@@ -17,11 +17,11 @@ import asyncio
 import json
 import logging
 
-import approvals
-import events_log
-import fast_brain
+from adapters.approver import ApprovalsModule
+from adapters.event_log_sqlite import SqliteEventLog
+from adapters.llm_lmstudio import LMStudioLLM
+from adapters.settings_provider import SettingsModule
 import journal
-import settings
 from domain import risk as risk_policy
 from domain import rules
 from environments.base import ToolError, validate_args
@@ -66,11 +66,18 @@ PLANNER = (
 
 
 class Router:
-    def __init__(self, registry, say, dialogue_provider):
+    def __init__(self, registry, say, dialogue_provider, *, llm=None, event_log=None, settings_provider=None,
+                 approver=None):
+        """llm - LanguageModel (планировщик), event_log - EventLog, settings_provider - SettingsProvider,
+        approver - Approver (вопрос о разрешении). Без них подставляются адаптеры к текущим модулям ядра (ТЗ 29, ARC-3)."""
         self.registry = registry
         self._say = say                          # как озвучить вопрос о разрешении
         self._dialogue = dialogue_provider       # () -> короткий текст последних реплик
         self.last_kind = "chat"                  # итог последнего handle: chat / cannot / done
+        self._llm = llm if llm is not None else LMStudioLLM()
+        self._log = event_log if event_log is not None else SqliteEventLog()
+        self._settings = settings_provider if settings_provider is not None else SettingsModule()
+        self._approver = approver if approver is not None else ApprovalsModule()
 
     @staticmethod
     def looks_like_action(text: str) -> bool:
@@ -96,9 +103,9 @@ class Router:
         user = f"{self._dialogue()}\n\nПоследнее сообщение пользователя: {text}"
         for attempt in range(2):
             try:
-                raw = await fast_brain._ask(system + ("" if attempt == 0 else
-                                            "\nПредыдущий ответ не был валидным JSON. Ответь ТОЛЬКО валидным JSON."),
-                                            user, timeout=90, max_tokens=420, temperature=0.1)
+                raw = await self._llm.ask(system + ("" if attempt == 0 else
+                                          "\nПредыдущий ответ не был валидным JSON. Ответь ТОЛЬКО валидным JSON."),
+                                          user, timeout=90, max_tokens=420, temperature=0.1)
             except Exception as e:
                 logger.warning(f"Планировщик недоступен: {e}")
                 return None
@@ -122,13 +129,13 @@ class Router:
             danger = await tool.check(args)       # модуль сам называет опасность (tool.check, CORE-35)
         public_unconfirmed = tool.risk == "public" and not tool.self_confirming
         needs_ask = risk_policy.needs_ask(danger, tool.risk, tool.self_confirming,
-                                          public_unconfirmed and settings.load()["telegram_confirm"])
+                                          public_unconfirmed and self._settings.load()["telegram_confirm"])
         if needs_ask:
             shown = ", ".join(f"{k}={str(v)[:60]}" for k, v in args.items())
             question = f"Хочу выполнить действие «{tool.name}» ({tool.description.rstrip('.')})"
             if shown:
                 question += f" с параметрами: {shown[:200]}"
-            if not await approvals.request(question + ".", self._say, danger=danger):
+            if not await self._approver.request(question + ".", self._say, danger=danger):
                 journal.mistake("denied", f"{tool.id}: пользователь не разрешил")      # ТЗ 24, TRC-5
                 return False, tool.name, "пользователь не разрешил", "denied"
         try:
@@ -162,6 +169,10 @@ class Router:
         ok, _name, result, code = await self._step({"tool": tool_id, "args": args}, {tool_id: tool})
         return ok, result, code
 
+    async def call(self, tool_id: str, args: dict) -> tuple[bool, str, str | None]:
+        """ToolInvoker (контракт ТЗ 29, ARC-3): то же, что run_tool_ex."""
+        return await self.run_tool_ex(tool_id, args)
+
     async def run_tool(self, tool_id: str, args: dict) -> tuple[bool, str]:
         """Выполнить один инструмент по id с обычным контролем: проверка параметров, вопрос о разрешении, опасное всегда спрашивается.
         Для других агентов (игра) через дашборд. Возвращает (успех, результат или причина)."""
@@ -174,7 +185,7 @@ class Router:
             return None
         plan = await self._plan(text, tools)
         if plan is None:
-            events_log.log("plan", "планировщик не дал разбираемого ответа, это обычный разговор")
+            self._log.log("plan", "планировщик не дал разбираемого ответа, это обычный разговор")
             journal.mistake("plan_failed", text[:200], reason="unparsed")       # ТЗ 24, TRC-5
             return None
         if plan["kind"] == "chat":
@@ -187,7 +198,7 @@ class Router:
         if not plan.get("feasible"):
             self.last_kind = "cannot"
             reason = str(plan.get("reason") or "подходящего инструмента нет")[:200]
-            events_log.log("plan", f"не могу: {text}", feasible=False, reason=reason)
+            self._log.log("plan", f"не могу: {text}", feasible=False, reason=reason)
             return (f"Пользователь просит: «{text}». Среди твоих инструментов подходящего нет "
                     f"(причина: {reason}). Вот что у тебя есть:\n{self.registry.describe()}\n"
                     "Честно скажи, что этого не можешь. Если предлагаешь альтернативу, называй ТОЛЬКО то, что есть "
@@ -214,7 +225,7 @@ class Router:
             steps_log.append({"tool": name, "ok": ok, "result": info[:120]})
             if not ok:
                 break   # дальше по плану идти нельзя
-        events_log.log("plan", f"выполнено: {text}", feasible=True, steps=steps_log)
+        self._log.log("plan", f"выполнено: {text}", feasible=True, steps=steps_log)
         if done and not any(ok for ok, _, _ in done):
             journal.mistake("plan_failed", text[:200], reason="no step ok")      # ни один шаг плана не прошёл
         # простое действие прошло, и она уже сказала «сейчас сделаю»: итог молчаливый

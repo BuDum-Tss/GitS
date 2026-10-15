@@ -15,7 +15,7 @@
 
 Классификатор только подсказывает: без него (сервис не запущен, настройка выключена, ошибка) всё работает по подсказкам
 модуля. Он вызывается асинхронно с коротким тайм-аутом и не блокирует цикл событий (ATT-32). Реплики формирует модель по
-факту (`companion._speak_about`); код передаёт только факты.
+факту (`companion.speak_about`); код передаёт только факты.
 
 Интерфейс для шины и запросов ядра прежний (ТЗ 02 §9.4): `submit`, `submit_speech`, `submit_question`, `on_job_update`.
 """
@@ -27,13 +27,17 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
-import approvals
 import decide
-import events_log
 import journal
 import latency_trace
 import salience
 import settings
+from adapters.approver import ApprovalsModule
+from adapters.classifier_gliner import GlinerClassifier
+from adapters.event_log_sqlite import SqliteEventLog
+from adapters.memory import writer_for_companion
+from adapters.people import people_for_companion
+from adapters.settings_provider import SettingsModule
 from attention_rules import FILE_NAME as RULES_FILE
 from attention_rules import RuleStore
 from conversation_io import Channel, current_channel
@@ -126,18 +130,26 @@ def _clamp(v: float, lo: float, hi: float) -> float:
 
 
 class Attention:
-    def __init__(self, companion, io, *, clock=time.time, decider: decide.Decider | None = None,
+    def __init__(self, companion, io, *, clock=time.time, decider=None,
                  settings_source: Callable[[], dict] | None = None, rules_file=None,
-                 idle_source: Callable[[], float] | None = None, autopump: bool = True):
-        """companion - Companion (say, _speak_about, speech, presence, graph); io - ConversationIO. decider - клиент
-        классификатора (в тестах заглушка); settings_source - откуда брать настройки; rules_file - файл правил (по
+                 idle_source: Callable[[], float] | None = None, autopump: bool = True,
+                 people=None, memory_writer=None, event_log=None, settings_provider=None, approver=None):
+        """companion - Companion (say, speak_about, speech, presence); io - ConversationIO. decider - классификатор
+        (Classifier; в тестах заглушка); settings_source - откуда брать настройки; rules_file - файл правил (по
         умолчанию memory/attention_rules.json); idle_source - секунды простоя ввода; autopump=False: планировщик речи
-        запускается только вручную (`await attention.speech.pump()`), без фоновых задач."""
+        запускается только вручную (`await attention.speech.pump()`), без фоновых задач.
+        Контракты (ТЗ 29, ARC-3): people - PeopleDirectory, memory_writer - MemoryWriter, event_log - EventLog,
+        settings_provider - SettingsProvider, approver - Approver. Без них берутся публичные свойства компаньона и адаптеры."""
         self.companion = companion
         self.io = io
         self._clock = clock
-        self.decider = decider if decider is not None else decide.Decider()
-        self._settings = settings_source or settings.load
+        self.decider = decider if decider is not None else GlinerClassifier()
+        self._settings_provider = settings_provider if settings_provider is not None else SettingsModule()
+        self._settings = settings_source or self._settings_provider.load
+        self._log = event_log if event_log is not None else SqliteEventLog()
+        self._approver = approver if approver is not None else ApprovalsModule()
+        self._people = people if people is not None else people_for_companion(companion)
+        self._writer = memory_writer if memory_writer is not None else writer_for_companion(companion)
         self._idle = idle_source or self._default_idle
         self._autopump = autopump
         self.hub = None                          # ModuleHub: соединения для доставки вопросов, ставит ядро
@@ -147,7 +159,7 @@ class Attention:
         self.presence = getattr(companion, "presence", None) or _NullPresence()
         self.speech = SpeechQueue(
             speech=getattr(companion, "speech", None) or _NullSpeech(), play=self._play, presence=self.presence.snapshot,
-            chattiness=lambda: str(self._settings().get("chattiness", "normal")), question_pending=approvals.has_pending,
+            chattiness=lambda: str(self._settings().get("chattiness", "normal")), question_pending=self._approver.has_pending,
             repeats=lambda text: bool(getattr(companion, "_repeats_recent", lambda t: False)(text)),
             on_drop=self._speech_dropped, on_played=self._speech_played, clock=clock)
         # служебные события модулей, которые ядро обрабатывает само и не озвучивает: kind -> async (Item) -> None (ТЗ 11, RW-9:
@@ -301,8 +313,8 @@ class Attention:
         item = self._make_item(module_id, event, now)
         sender_name = self._sender_name(item.sender)
         if item.kind not in self.silent_kinds:
-            events_log.log_nowait("module_event", item.text[:TEXT_LOG], module=module_id, event_kind=item.kind,
-                           urgency_hint=item.urgency_hint, addressed_to_me=item.addressed_to_me, sender=sender_name)
+            self._log.log_nowait("module_event", item.text[:TEXT_LOG], module=module_id, event_kind=item.kind,
+                          urgency_hint=item.urgency_hint, addressed_to_me=item.addressed_to_me, sender=sender_name)
         handler = self.kind_handlers.get(item.kind)
         if handler is not None:
             self._spawn(self._run_kind_handler(handler, item))
@@ -329,9 +341,9 @@ class Attention:
             self._log_decision(item, att, rule="R1")
             return
         # R2: ответ владельца на вопрос, заданный в этом же канале
-        if (approvals.has_pending() and item.sender and item.sender.get("is_owner") and item.reply_channel
+        if (self._approver.has_pending() and item.sender and item.sender.get("is_owner") and item.reply_channel
                 and self._question_channel is not None and item.reply_channel.get("module") == self._question_channel.module):
-            if await approvals.try_answer(item.text):
+            if await self._approver.try_answer(item.text):
                 item.decision = "R2"
                 self._log_decision(item, att, rule="R2")
                 return
@@ -389,17 +401,11 @@ class Attention:
             return
         ident, name = str(sender["id"]), str(sender["name"])
         try:
-            rel = getattr(self.companion, "_rel", None)
-            if rel is not None and hasattr(rel, "ensure_person"):
-                item.first_contact = bool(rel.ensure_person(ident, name, source=item.module))
-                rel.note(ident, item.text)
+            item.first_contact = bool(self._people.ensure_person(ident, name, source=item.module))
+            self._people.note(ident, item.text)
             if item.memorable and not skip_memory:
-                mem = getattr(self.companion, "_mem", None)
-                if mem is not None:
-                    mem.add_fact(item.text[:300], kind="episode", importance=3)
-                graph = getattr(self.companion, "graph", None)
-                if graph is not None:
-                    graph.enqueue(name, item.text)
+                self._writer.add_fact(item.text[:300], kind="episode", importance=3)
+                self._writer.enqueue_for_graph(name, item.text)
                 item.memory_done = True
         except Exception as e:
             logger.warning(f"Запись отправителя {ident} в relationships и память: {e}")
@@ -471,8 +477,8 @@ class Attention:
         for entry in self._digest.get(old.module, ()):
             if entry["item"] == old.id:
                 entry["text"], entry["count"] = old.text, old.count
-        events_log.log_nowait("attention", old.text[:TEXT_LOG], item=old.id, module=old.module, event_kind=old.kind, merged=True,
-                       count=old.count)
+        self._log.log_nowait("attention", old.text[:TEXT_LOG], item=old.id, module=old.module, event_kind=old.kind, merged=True,
+                      count=old.count)
         return True
 
     # ── вес и решение ────────────────────────────────────────────────────────
@@ -489,12 +495,11 @@ class Attention:
             return 1.0
         if sender.get("is_owner"):
             return 1.5
-        rel = getattr(self.companion, "_rel", None)
         rec = None
-        if rel is not None and not first_contact:        # первое сообщение человека: профиль заведён только что, он ещё «неизвестный»
+        if not first_contact:        # первое сообщение человека: профиль заведён только что, он ещё «неизвестный»
             for key in (sender.get("id"), sender.get("name")):
                 if key:
-                    rec = rel.get(str(key))
+                    rec = self._people.get(str(key))
                     if rec is not None:
                         break
         if rec is None:
@@ -550,9 +555,7 @@ class Attention:
         if decision == "D0":
             return
         if item.memorable and not item.memory_done:
-            graph = getattr(self.companion, "graph", None)
-            if graph is not None:
-                graph.enqueue(self._sender_name(item.sender) or item.module, item.text)
+            self._writer.enqueue_for_graph(self._sender_name(item.sender) or item.module, item.text)
         if decision == "D1":
             self._digest_add(item)
             return
@@ -595,7 +598,7 @@ class Attention:
         record.update(salience=sal, reasons=reasons)
         self.last_decision = record
         self.decisions.append({**record, "text": item.text[:TEXT_LOG], "ts": item.created})
-        events_log.log_nowait("attention", item.text[:TEXT_LOG], **{k: (round(v, 3) if isinstance(v, float) else v)
+        self._log.log_nowait("attention", item.text[:TEXT_LOG], **{k: (round(v, 3) if isinstance(v, float) else v)
                                                               for k, v in record.items()})
         # журнал решений (ТЗ 24, TRC-6): маршрут, уверенность классификатора, эшелон и версия правил, трасса события
         classified = bool(item.data.get("category")) if isinstance(item.data, dict) else False
@@ -712,8 +715,8 @@ class Attention:
         for rec in self._digest.get(old.module, ()):
             if rec["item"] == old.id:
                 rec["count"] = old.count
-        events_log.log_nowait("attention", old.text[:TEXT_LOG], item=old.id, module=old.module, event_kind=old.kind,
-                              merged=True, count=old.count, decision="ANNOUNCE")
+        self._log.log_nowait("attention", old.text[:TEXT_LOG], item=old.id, module=old.module, event_kind=old.kind,
+                             merged=True, count=old.count, decision="ANNOUNCE")
 
     def _announce_fact(self, item: Item, short: bool) -> str:
         """Факт для реплики: что запускается и зачем (формулирует модель); пометка «коротко» при «не отвлекать»."""
@@ -819,8 +822,8 @@ class Attention:
         rule, removed = self.rules.add(module=module, kind=kind, sender=sender, effect=effect, minutes=minutes,
                                        created_from=self._last_user_text)
         await asyncio.to_thread(self.rules.save)
-        events_log.log_nowait("attention", f"правило {effect}: {module or ''} {kind or ''} {sender or ''}".strip(),
-                       rule=rule.id if rule else None, effect=effect, removed=removed, minutes=minutes)
+        self._log.log_nowait("attention", f"правило {effect}: {module or ''} {kind or ''} {sender or ''}".strip(),
+                      rule=rule.id if rule else None, effect=effect, removed=removed, minutes=minutes)
         if rule is None:
             return f"Прежние правила для этого совпадения сняты: {removed}."
         return f"Правило создано: {rule.describe(self._clock())}."
@@ -857,13 +860,13 @@ class Attention:
         Конец текущей реплики ждёт вызывающий код. Возвращает число снятых кандидатов."""
         n = await self.speech.stop_all(10_000)
         self._focus = self._focus[:1]
-        events_log.log_nowait("attention", "очередь речи и фокус сброшены: смена персонажа", dropped=n)
+        self._log.log_nowait("attention", "очередь речи и фокус сброшены: смена персонажа", dropped=n)
         return n
 
     async def stop_speech(self, why: str = "stop") -> int:
         """«Замолчи» (ATT-18): речь обрывается немедленно, очередь очищается от кандидатов ниже 85."""
         n = await self.speech.stop_all(INTERRUPT_P)
-        events_log.log_nowait("attention", "речь остановлена по просьбе пользователя", stop=True, why=why, dropped=n)
+        self._log.log_nowait("attention", "речь остановлена по просьбе пользователя", stop=True, why=why, dropped=n)
         return n
 
     async def on_user_input(self, text: str) -> None:
@@ -880,9 +883,9 @@ class Attention:
             return None
         answers = await self.decider.classify(text, decide.INPUT_QUESTIONS, timeout=decide.INPUT_TIMEOUT_S)
         cls = decide.parse_input(answers, att["min_conf_input"])
-        events_log.log_nowait("attention", text[:TEXT_LOG], input=True, intent=cls.intent if cls else None,
-                       needs_memory=cls.needs_memory if cls else None, classifier_ms=self.decider.last_ms,
-                       available=answers is not None)
+        self._log.log_nowait("attention", text[:TEXT_LOG], input=True, intent=cls.intent if cls else None,
+                      needs_memory=cls.needs_memory if cls else None, classifier_ms=self.decider.last_ms,
+                      available=answers is not None)
         if cls is not None and cls.intent == "stop":
             await self.stop_speech("classifier")
         return cls
@@ -900,7 +903,7 @@ class Attention:
                     source: str | None = None) -> SpeechCandidate:
         """Готовая реплика компаньона -> очередь (ATT-13). Источник по контексту: в формулировке вопроса - question,
         в обработке обращения - conversation (приоритет 95), иначе проактивная (приоритет «болтовни»)."""
-        if approvals.announcing.get():
+        if self._approver.formulating():
             cand = self.speech.new(source="question", mode="verbatim", text=text, emotion=emotion,
                                    priority=priority or QUESTION_ANNOUNCE_P)
         elif current_channel.get() is not None:
@@ -916,7 +919,7 @@ class Attention:
 
     def enqueue_fact(self, fact: str, user_text: str = "", must: bool = False, question: bool = False) -> SpeechCandidate:
         """Факт, по которому компаньон сам сформулирует реплику (`_speak_about`) -> очередь (ATT-13)."""
-        if question or approvals.announcing.get():
+        if question or self._approver.formulating():
             cand = self.speech.new(source="question", mode="fact", text=fact, priority=QUESTION_ANNOUNCE_P, must=must,
                                    question=True)
         elif current_channel.get() is not None:
@@ -937,7 +940,7 @@ class Attention:
         latency_trace.expect_audio(cand.trace)
 
     async def _play(self, cand: SpeechCandidate) -> str | None:
-        """Сказать кандидата: готовая реплика - `companion.say`, факт - `companion._speak_about` (формулирует модель)."""
+        """Сказать кандидата: готовая реплика - `companion.say`, факт - `companion.speak_about` (формулирует модель)."""
         before = getattr(self.companion, "last_utterance_id", None)
         token = current_channel.set(cand.channel)
         trace_token = latency_trace.bind(getattr(cand, "trace", None))
@@ -945,7 +948,7 @@ class Attention:
             if cand.mode == "verbatim":
                 await self.companion.say(cand.text, cand.emotion, cand.priority, direct=True)
             else:
-                await self.companion._speak_about(cand.text, cand.user_text, cand.must, cand.question, direct=True)
+                await self._speak_about(cand.text, cand.user_text, cand.must, cand.question, direct=True)
         finally:
             latency_trace.unbind(trace_token)
             current_channel.reset(token)
@@ -964,7 +967,7 @@ class Attention:
 
     def _speech_dropped(self, cand: SpeechCandidate, reason: str) -> None:
         latency_trace.resolve_audio(getattr(cand, "trace", None))
-        events_log.log_nowait("attention", cand.text[:TEXT_LOG], speech_dropped=reason, source=cand.source, priority=cand.priority)
+        self._log.log_nowait("attention", cand.text[:TEXT_LOG], speech_dropped=reason, source=cand.source, priority=cand.priority)
         if cand.item_id:
             item = self._items.get(cand.item_id)
             if item is not None and ((reason in ("expired", "overflow") and cand.family in ("attention", "announce"))
@@ -1006,8 +1009,8 @@ class Attention:
                 raise
 
         try:
-            return await approvals.ask(q.kind, q.question, q.options, q.timeout_s, q.source, announce=announce,
-                                       context=q.context)
+            return await self._approver.ask(q.kind, q.question, q.options, q.timeout_s, q.source, announce=announce,
+                                            context=q.context)
         finally:
             self._question_channel = None
             self._pop_focus(focus.id)
@@ -1018,9 +1021,17 @@ class Attention:
         self._question_channel = channel
         token = current_channel.set(channel)
         try:
-            await self.companion._speak_about(fact, must=True, question=True, direct=True)
+            await self._speak_about(fact, must=True, question=True, direct=True)
         finally:
             current_channel.reset(token)
+
+    async def _speak_about(self, fact: str, user_text: str = "", must: bool = False, question: bool = False,
+                           direct: bool = False):
+        """Факт компаньону на формулировку (публичный `speak_about`). Заглушки без него имеют только `_speak_about`."""
+        speak = getattr(self.companion, "speak_about", None)
+        if speak is None:
+            speak = self.companion._speak_about
+        await speak(fact, user_text, must, question, direct=direct)
 
     # ── фокус ────────────────────────────────────────────────────────────────
 
