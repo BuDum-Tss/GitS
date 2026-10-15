@@ -24,15 +24,17 @@ import re
 import time
 from pathlib import Path
 
-import approvals
 import claude_quota
 import gamenet
-import events_log
 import fast_brain
 import character
-import character_memory
 import prompts
-import settings
+from adapters.approver import ApprovalsModule
+from adapters.event_log_sqlite import SqliteEventLog
+from adapters.llm_lmstudio import LMStudioLLM
+from adapters.memory import UserMemoryAdapter
+from adapters.people import RelationshipsAdapter
+from adapters.settings_provider import SettingsModule
 from conversation_io import DASHBOARD, VOICE, UserInput, current_channel
 from speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
 from user_memory import UserMemory
@@ -48,7 +50,12 @@ _CONSULT = {"quiet": 10 * 60, "normal": 4 * 60, "chatty": 90}        # как ч
 
 
 class Companion:
-    def __init__(self, memory_dir: str, rel, speech=None, presence: PresenceTracker | None = None):
+    def __init__(self, memory_dir: str, rel, speech=None, presence: PresenceTracker | None = None, *,
+                 llm=None, memory_reader=None, memory_writer=None, people=None, event_log=None,
+                 settings_provider=None, approver=None):
+        """Контракты (ТЗ 29, ARC-3, шаг R2) необязательны: без них подставляются адаптеры к текущим модулям ядра.
+        llm - LanguageModel, memory_reader/memory_writer - MemoryReader/MemoryWriter, people - PeopleDirectory,
+        event_log - EventLog, settings_provider - SettingsProvider, approver - Approver."""
         self._dir = Path(memory_dir)
         self.presence = presence or PresenceTracker()          # тема presence (ставит слушателя ядро)
         self.speech = speech or TextOnlySpeech(self.presence)  # вывод речи (CORE-27, VOICE-15): ядро ставит выбор голос/текст
@@ -57,6 +64,11 @@ class Companion:
         self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
         self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
         self._rel = rel
+        self._people = people if people is not None else RelationshipsAdapter(lambda: self._rel)
+        self._llm = llm if llm is not None else LMStudioLLM()
+        self._log = event_log if event_log is not None else SqliteEventLog()
+        self._settings = settings_provider if settings_provider is not None else SettingsModule()
+        self._approver = approver if approver is not None else ApprovalsModule()
         self.router = None    # Router, ставится ядром после создания реестра окружений
         self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (ModuleRegistry.notes, ставит ядро)
         self.graph = None        # GraphMemory: факты о людях и жизни в графе
@@ -67,7 +79,14 @@ class Companion:
         self.idle_seconds = lambda: 0.0          # секунды простоя ввода (ставит ядро из state модуля desktop; без модуля 0: за компьютером)
         self.screen_activity = lambda: None      # текущая активность экрана {app, category, summary, ...} (ставит ядро, ТЗ 14 DESK-7)
         self.job_wait = None                     # async (module_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
-        self._mem = UserMemory(memory_dir)
+        if memory_reader is None or memory_writer is None:
+            self._mem = UserMemory(memory_dir)                 # личная память на диске (адаптеры по умолчанию)
+            default_memory = UserMemoryAdapter(lambda: self._mem, lambda: self.graph)
+        else:
+            self._mem = None                                   # память передана контрактами: диска не трогаем
+            default_memory = None
+        self._memory_reader = memory_reader if memory_reader is not None else default_memory
+        self._memory_writer = memory_writer if memory_writer is not None else default_memory
         self._last_say = self._load_last_say()   # переживает перезапуски
         self._last_consult = time.time()
         self._away_since: float | None = None
@@ -76,10 +95,25 @@ class Companion:
         self._last_user_ts = 0.0
         self._consolidating = False
 
+    @property
+    def people(self):
+        """PeopleDirectory: профили людей (менеджер внимания берёт отсюда отправителей)."""
+        return self._people
+
+    @property
+    def memory_reader(self):
+        """MemoryReader: чтение памяти для ответа."""
+        return self._memory_reader
+
+    @property
+    def memory_writer(self):
+        """MemoryWriter: запись памяти (менеджер внимания кладёт сюда события, которые стоит запомнить)."""
+        return self._memory_writer
+
     def _load_last_say(self) -> float:
         """Когда она в последний раз говорила: из журнала разговора (а не «сейчас»),
         иначе каждый перезапуск откладывал бы её реплики заново."""
-        for m in reversed(self._mem.recent_dialogue(60)):
+        for m in reversed(self._memory_reader.recent_dialogue(60)):
             if m["role"] != "user":
                 return m["ts"]
         return time.time() - 3600
@@ -117,8 +151,8 @@ class Companion:
         if not text:
             return
         channel = current_channel.get()
-        self._mem.add_dialogue(character.active().id, text)   # роль реплики персонажа: его id (данные диалога)
-        events_log.log("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
+        self._memory_writer.add_dialogue(character.active().id, text)   # роль реплики персонажа: его id (данные диалога)
+        self._log.log("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
         self._last_say = time.time()
         self.presence.update(last_say=text, last_say_ts=self._last_say)
         if channel is not None and channel.kind == "module":
@@ -139,7 +173,7 @@ class Companion:
 
     def rebind_memory(self, memory_dir) -> None:
         """Переключение персонажа (ТЗ 05, CHR-7): личная память этого персонажа, та же беседа и тон."""
-        self._mem.rebind(memory_dir)
+        self._memory_writer.rebind(memory_dir)
 
     def is_speaking(self) -> bool:
         return self.speech.is_speaking()
@@ -163,9 +197,9 @@ class Companion:
             prefix = f"[говорит {name}] "
         else:
             prefix = "[незнакомый голос] "
-        if pid and not speaker.get("owner") and self._rel is not None and speaker.get("has_owner"):
-            self._rel.ensure_person(f"voice:{pid}", name or f"голос {str(pid)[-4:]}", source="voice")
-            self._rel.note(f"voice:{pid}", text)
+        if pid and not speaker.get("owner") and speaker.get("has_owner"):
+            self._people.ensure_person(f"voice:{pid}", name or f"голос {str(pid)[-4:]}", source="voice")
+            self._people.note(f"voice:{pid}", text)
         await self.on_input(UserInput(prefix + text, VOICE, ts=time.time()))
 
     async def on_user_message(self, text: str, channel=None):
@@ -188,8 +222,8 @@ class Companion:
         text = text.strip()
         if not text:
             return
-        self._mem.add_dialogue("user", text)
-        events_log.log("user", text)
+        self._memory_writer.add_dialogue("user", text)
+        self._log.log("user", text)
         self._queue_graph(text)
         self._pending_memory += 1
         self._last_user_ts = time.time()
@@ -200,20 +234,20 @@ class Companion:
         if self.attention is not None:
             await self.attention.on_user_input(text)          # фокус «разговор»; «замолчи» обрывает речь до любых вызовов модели
             cls = await self.attention.classify_input(text)   # намерение (ATT-28); None - классификатора нет, всё как раньше
-        if approvals.has_pending() and await self._answer_approval(text):
+        if self._approver.has_pending() and await self._answer_approval(text):
             return
         if self.game_order is not None:
             try:
                 taken = await self.game_order(text)
             except Exception as e:
-                events_log.log("error", f"приказ в игру не принят: {e}")
+                self._log.log("error", f"приказ в игру не принят: {e}")
                 taken = False
             if taken:
                 asyncio.create_task(self._speak_about(
                     "Игрок только что дал тебе срочное указание по игре, ты прямо сейчас берёшься выполнять его "
                     "(действия в игре идут отдельно). Скажи одной короткой фразой в своём характере, что принимаешь.",
                     text, must=True))
-                asyncio.create_task(fast_brain.react_chat(text, self._rel))
+                asyncio.create_task(fast_brain.react_chat(text, self._people))
                 return
         intent = cls.intent if cls is not None else None
         # needs_memory классификатора пока смещён в «нет» (замеры ТЗ 03): по нему память не отключаем, только пишем в журнал.
@@ -228,7 +262,7 @@ class Companion:
                 flagged = await self._converse(text, use_memory=use_memory)   # болтовня: один вызов, ответ сразу
                 if flagged and self.router is not None:
                     await self._act(text, after_chat=True)   # модель заподозрила просьбу, которую не распознали глаголы
-        asyncio.create_task(fast_brain.react_chat(text, self._rel))   # эмоция и отношение: уже после ответа
+        asyncio.create_task(fast_brain.react_chat(text, self._people))   # эмоция и отношение: уже после ответа
         if self._pending_memory >= 6:
             asyncio.create_task(self._consolidate())                  # осмыслить беседу и запомнить важное
 
@@ -245,12 +279,20 @@ class Companion:
 
     async def _answer_approval(self, text: str) -> bool:
         """Реплика как ответ на открытый вопрос (да/нет, вариант, свободный текст): см. approvals.try_answer."""
-        return await approvals.try_answer(text)
+        return await self._approver.try_answer(text)
 
     # ── разговор ───────────────────────────────────────────────────────────────
 
+    async def speak_about(self, fact: str, user_text: str = "", must: bool = False, question: bool = False,
+                          direct: bool = False):
+        """Публичный вход (ТЗ 29): менеджер внимания зовёт его вместо приватного имени. Старое имя `_speak_about` ниже."""
+        return await self._speak_about_impl(fact, user_text, must, question, direct)
+
     async def _speak_about(self, fact: str, user_text: str = "", must: bool = False, question: bool = False,
                            direct: bool = False):
+        return await self._speak_about_impl(fact, user_text, must, question, direct)
+
+    async def _speak_about_impl(self, fact: str, user_text: str, must: bool, question: bool, direct: bool):
         """Нет заготовленных фраз: ей сообщают факт, а говорить ли и что — решает сама.
         must=True для итога прямой просьбы пользователя: промолчать нельзя, он должен
         узнать, что получилось (иначе непонятно, сработало ли).
@@ -276,8 +318,8 @@ class Companion:
         user = (f"{self._context(query=user_text or fact)}\n\nФакт: {fact}"
                 + (f"\nПользователь сказал: {user_text}" if user_text else ""))
         try:
-            data = fast_brain._json_of(await fast_brain._ask(system, user, timeout=60,
-                                                             max_tokens=160, temperature=0.7))
+            data = fast_brain._json_of(await self._llm.ask(system, user, timeout=60,
+                                                           max_tokens=160, temperature=0.7))
         except Exception as e:
             logger.warning(f"Не удалось решить, что сказать: {e}")
             return
@@ -291,7 +333,7 @@ class Companion:
 
     def _capabilities(self) -> str:
         """Честный список того, что у неё сейчас включено: без него она выдумывает возможности."""
-        cfg = settings.load()
+        cfg = self._settings.load()
         lines = ["Справка о твоих возможностях и их состоянии (для тебя, а не тема разговора: упоминай их, только если спросили; говори о них только по этим данным):",
                  f"- Зрение: {'включено' if cfg['vision'] else 'выключено'}.",
                  f"- Слух (системный звук): {'включён' if cfg['hearing'] else 'выключен'}.",
@@ -300,8 +342,9 @@ class Companion:
         lines.append("- Помощник Claude (Клод, Claude Code): ты можешь поручить ему сложные задачи на компьютере: "
                      "установку программ и библиотек, файлы, код, команды, интернет, анализ. Он сам спрашивает "
                      "разрешение на каждое изменение. Просьбы, которые тебе не по силам, уходят к нему.")
-        if self.graph is not None:
-            lines.append("- " + self.graph.status_text())
+        status = self._memory_reader.graph_status()
+        if status is not None:
+            lines.append("- " + status)
         note = self._claude_note()
         if note:
             lines.append("- " + note)
@@ -309,8 +352,8 @@ class Companion:
 
     def _context(self, include_hearing: bool = True, query: str = "") -> str:
         """query: о чём сейчас речь. По нему из долговременной памяти берутся подходящие записи."""
-        parts = [self._mem.context_block(dialogue=12, query=query), self._capabilities()]
-        if include_hearing and settings.load()["hearing"]:
+        parts = [self._memory_reader.context_block(dialogue=12, query=query), self._capabilities()]
+        if include_hearing and self._settings.load()["hearing"]:
             heard = self.recent_heard()
             if heard:
                 parts.append("Что недавно было слышно из колонок (краткая сводка автоматической расшифровки, "
@@ -320,7 +363,7 @@ class Companion:
             parts.append(self._self_block)
         if self._graph_block:
             parts.append(self._graph_block)
-        rel = self._rel.describe("игрок")
+        rel = self._people.describe("игрок")
         if rel:
             parts.append(f"Твоё {rel}.")
         return "\n".join(p for p in parts if p)
@@ -343,7 +386,7 @@ class Companion:
             if len(sents) < 2:
                 return reply
         last = sents[-1].strip(" «\"")
-        recent = [m["text"].rstrip().endswith("?") for m in self._mem.recent_dialogue(10) if m["role"] != "user"][-2:]
+        recent = [m["text"].rstrip().endswith("?") for m in self._memory_reader.recent_dialogue(10) if m["role"] != "user"][-2:]
         if self._OFFER.match(last) or (sents[-1].rstrip().endswith("?") and len(recent) == 2 and all(recent)):
             return " ".join(sents[:-1])
         return reply
@@ -351,7 +394,7 @@ class Companion:
     _SPEAKER_TAG = re.compile(r"^\[(говорит ([^\]]+)|незнакомый голос)\]\s*")
 
     def _owner_name(self) -> str:
-        for fact in self._mem.facts():
+        for fact in self._memory_reader.facts():
             m = re.match(r"\s*(?:имя(?: пользователя)?|зовут)\s*[:\-]\s*(.+)", fact["text"], re.I)
             names = re.findall(r"[А-Яа-яЁёA-Za-z\-]{2,}", m.group(1)) if m else []
             if names:
@@ -360,8 +403,6 @@ class Companion:
 
     def _queue_graph(self, text: str):
         """Реплика человека уходит в очередь на разбор фактов (граф). Незнакомые голоса не запоминаем."""
-        if self.graph is None:
-            return
         tag = self._SPEAKER_TAG.match(text)
         if tag:
             if not tag.group(2):
@@ -369,18 +410,16 @@ class Companion:
             speaker, text = tag.group(2), text[tag.end():]
         else:
             speaker = self._owner_name() or "Пользователь"
-        self.graph.enqueue(speaker, text)
+        self._memory_writer.enqueue_for_graph(speaker, text)
 
     async def _refresh_graph(self, query: str):
         """Факты графа по теме реплики: поиск быстрый, но не дольше трёх секунд, иначе отвечаем без них."""
-        if self.graph is None:
-            return
         try:
-            self._graph_block = await asyncio.wait_for(self.graph.context_block(query), 3.0)
+            self._graph_block = await asyncio.wait_for(self._memory_reader.graph_block(query), 3.0)
         except (asyncio.TimeoutError, Exception):
             self._graph_block = ""
         try:
-            self._self_block = character_memory.block(await asyncio.wait_for(self.graph.self_memories(query), 3.0))
+            self._self_block = await asyncio.wait_for(self._memory_reader.self_block(query), 3.0)
         except (asyncio.TimeoutError, Exception):
             self._self_block = ""
 
@@ -402,7 +441,7 @@ class Companion:
                      + self.router.registry.describe())
         reply, escalate, action_request = "", False, False   # escalate: только если локальная модель недоступна
         try:
-            reply = (await fast_brain._ask(system, user, timeout=60, max_tokens=140, temperature=0.7)).strip()
+            reply = (await self._llm.ask(system, user, timeout=60, max_tokens=140, temperature=0.7)).strip()
             if reply.startswith("[ДЕЙСТВИЕ]"):
                 action_request, reply = True, reply[len("[ДЕЙСТВИЕ]"):].strip()
         except Exception as e:
@@ -431,7 +470,7 @@ class Companion:
                 importance = 3
             due = m.get("due_days")
             due = float(due) if isinstance(due, (int, float)) and due > 0 else None
-            if self._mem.add_fact(text, kind=m["kind"], importance=importance, due_days=due):
+            if self._memory_writer.add_fact(text, kind=m["kind"], importance=importance, due_days=due):
                 added.append(text)
         return added
 
@@ -446,15 +485,15 @@ class Companion:
                   'Ответь ТОЛЬКО JSON: {"memories": [{"kind": "...", "text": "...", "importance": 4, "due_days": null}]}. '
                   f"Сегодня {time.strftime('%A, %d.%m')}.")
         try:
-            data = fast_brain._json_of(await fast_brain._ask(system, text[:500], timeout=60,
-                                                             max_tokens=220, temperature=0.1))
+            data = fast_brain._json_of(await self._llm.ask(system, text[:500], timeout=60,
+                                                           max_tokens=220, temperature=0.1))
         except Exception as e:
             logger.warning(f"Не удалось разобрать «запомни»: {e}")
             data = None
         stored = self._store_memories(data)
         if not stored:   # модель не помогла: сохраняем как есть, чтобы не потерять просьбу
             kind = hint_kind if hint_kind in ("user", "self", "plan", "episode") else "user"
-            if self._mem.add_fact(text.strip(), kind=kind, importance=4):
+            if self._memory_writer.add_fact(text.strip(), kind=kind, importance=4):
                 stored = [text.strip()]
         return stored
 
@@ -471,8 +510,8 @@ class Companion:
                   "quiet_minutes: если он сказал, что сейчас будет смотреть, работать или заниматься, "
                   "на сколько минут его не отвлекать (например 60-120), иначе 0.")
         try:
-            data = fast_brain._json_of(await fast_brain._ask(system, text[:400], timeout=60,
-                                                             max_tokens=200, temperature=0.1, background=True))
+            data = fast_brain._json_of(await self._llm.ask(system, text[:400], timeout=60,
+                                                           max_tokens=200, temperature=0.1, background=True))
         except Exception as e:
             logger.warning(f"Не удалось разобрать сообщение для памяти: {e}")
             return
@@ -485,16 +524,15 @@ class Companion:
         """Фоном: осмыслить недавнюю беседу и сохранить важное (эпизоды, о себе, планы, факты)."""
         if self._consolidating:
             return
-        store = self._mem.store
-        since = store.meta("consolidated_ts", 0)
-        dlg = [m for m in self._mem.recent_dialogue(40) if m["ts"] > since]
+        since = self._memory_reader.meta("consolidated_ts", 0)
+        dlg = [m for m in self._memory_reader.recent_dialogue(40) if m["ts"] > since]
         if sum(1 for m in dlg if m["role"] == "user") < 2:
             return
         self._consolidating = True
         try:
             transcript = "\n".join(f"{'Пользователь' if m['role'] == 'user' else 'Ты'}: {m['text']}"
                                    for m in dlg[-24:])
-            known = "; ".join(i["text"] for i in store.relevant(transcript[-300:], k=6))
+            known = "; ".join(i["text"] for i in self._memory_reader.relevant(transcript[-300:], k=6))
             system = ("Ты осмысляешь недавнюю беседу ассистентки с пользователем. Выдели 0-3 воспоминания, "
                       "которые стоит сохранить надолго. kind: user (устойчивый факт о пользователе), "
                       "self (о тебе самой: что ты пообещала, какое мнение у тебя сложилось, о чём вы шутили, "
@@ -504,14 +542,14 @@ class Companion:
                       "Мелочи не нужны (в том числе разовые просьбы сделать что-то прямо сейчас в игре или на компьютере), "
                       "чаще всего ответ пуст. Ответь ТОЛЬКО JSON: "
                       '{"memories": [{"kind": "...", "text": "...", "importance": 3, "due_days": null}]}')
-            data = fast_brain._json_of(await fast_brain._ask(
+            data = fast_brain._json_of(await self._llm.ask(
                 system, f"Уже известно: {known or 'ничего'}\n\nБеседа:\n{transcript}",
                 timeout=90, max_tokens=320, temperature=0.2, background=True))
             n = len(self._store_memories(data))
-            store.set_meta("consolidated_ts", time.time())
+            self._memory_writer.set_meta("consolidated_ts", time.time())
             self._pending_memory = 0
             if n:
-                events_log.log("memory", f"осмыслила беседу и запомнила: {n}")
+                self._log.log("memory", f"осмыслила беседу и запомнила: {n}")
         except Exception as e:
             logger.warning(f"Не удалось осмыслить беседу: {e}")
         finally:
@@ -524,8 +562,8 @@ class Companion:
         except (TypeError, ValueError):
             return
         if mins > 0:
-            settings.update(quiet_until=time.time() + mins * 60)
-            events_log.log("setting", f"режим «не отвлекать» на {mins} мин (по словам пользователя)")
+            self._settings.update(quiet_until=time.time() + mins * 60)
+            self._log.log("setting", f"режим «не отвлекать» на {mins} мин (по словам пользователя)")
 
     async def run_claude(self, task: str) -> str | None:
         """Сложная задача на Claude (модуль desktop, инструмент claude_task, ТЗ 14 DESK-11): запускается задачей и ждёт её итога.
@@ -569,13 +607,13 @@ class Companion:
                 raise
             except Exception as e:
                 logger.warning(f"Проактивность: {e}")
-                events_log.log("error", f"проактивность: {e}")
+                self._log.log("error", f"проактивность: {e}")
 
     def _digest(self, silent_mins: int) -> str:
         """Дайджест для решения «заговорить ли»: время, молчание, занятия за последние минуты."""
         lines = [f"Сейчас {time.strftime('%H:%M')}. Ты молчишь уже {silent_mins} мин."]
-        if settings.load()["vision"]:
-            acts = self._mem.recent_activity(5)
+        if self._settings.load()["vision"]:
+            acts = self._memory_reader.recent_activity(5)
             if acts:
                 lines.append("Что ты видела на экране (от старого к новому):")
                 for a in acts:
@@ -583,7 +621,7 @@ class Companion:
                     lines.append(f"  {mins} мин назад: {a['summary']}")
         else:
             lines.append("Зрение выключено, на экран ты не смотришь.")
-        plans = self._mem.store.plans_to_nudge()[:2]
+        plans = self._memory_reader.plans_to_nudge()[:2]
         if plans:
             lines.append("Скоро у пользователя (напомни ОДИН раз, коротко, и больше к этому не возвращайся):")
             lines += [f"  - {p['text']}" for p in plans]
@@ -595,14 +633,14 @@ class Companion:
         new = stems(text)
         if len(new) < 3:
             return False
-        for m in [m for m in self._mem.recent_dialogue(10) if m["role"] != "user"][-5:]:
+        for m in [m for m in self._memory_reader.recent_dialogue(10) if m["role"] != "user"][-5:]:
             old = stems(m["text"])
             if old and len(new & old) / min(len(new), len(old)) >= 0.5:
                 return True
         return False
 
     async def _maybe_speak(self):
-        if self._busy.locked() or approvals.has_pending():
+        if self._busy.locked() or self._approver.has_pending():
             return
         if self._pending_memory >= 2 and time.time() - self._last_user_ts > 8 * 60:
             asyncio.create_task(self._consolidate())   # пауза в разговоре: самое время осмыслить
@@ -620,8 +658,8 @@ class Companion:
             if away_mins >= 15:
                 returned_after = int(away_mins)
 
-        cfg = settings.load()
-        if settings.quiet_active(cfg):
+        cfg = self._settings.load()
+        if self._settings.quiet_active(cfg):
             return   # пользователь просил не отвлекать (смотрит, работает)
         level = cfg["chattiness"]
         gap = now - self._last_say
@@ -651,15 +689,15 @@ class Companion:
                   '{"say": <true или false>, "text": "<реплика>", "emotion": <одно из '
                   + json.dumps(fast_brain.EMOTIONS) + ">}")
         user = f"{self._context()}\n\n{situation}"
-        raw = await fast_brain._ask(system, user, timeout=60, max_tokens=200, temperature=0.8,
-                                    background=True)
+        raw = await self._llm.ask(system, user, timeout=60, max_tokens=200, temperature=0.8,
+                                  background=True)
         data = fast_brain._json_of(raw)
         if data and data.get("say") and data.get("text") and self._repeats_recent(str(data["text"])):
-            events_log.log("proactive", situation, said=False, why="повтор недавней темы")
+            self._log.log("proactive", situation, said=False, why="повтор недавней темы")
             self._last_say = now - _MIN_GAP.get(level, _MIN_GAP["normal"]) / 2
         elif data and data.get("say") and data.get("text"):
             emo = data.get("emotion") if data.get("emotion") in fast_brain.EMOTIONS else None
             await self.say(str(data["text"]), emo, source="proactive")
-            events_log.log("proactive", situation, said=True)
+            self._log.log("proactive", situation, said=True)
         else:
-            events_log.log("proactive", situation, said=False)
+            self._log.log("proactive", situation, said=False)
