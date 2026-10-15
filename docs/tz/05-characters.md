@@ -1,5 +1,7 @@
 # 05. Персонажи: код без имени персонажа, несколько персонажей, память по персонажам
 
+> **Пересмотр 2026-10-15** (`docs/ROADMAP.md`): ресурсы персонажа переехали в `resources/<Имя>/` (папка на модуль: `core/`, `voice/`, `pet/`, `telegram/`, `desktop/`, `rimworld/`, `montage/`; `gits_sdk.resources.module_dir`). Пути `agent/characters/<id>` ниже читать как `resources/<Имя>`; `persona.md` заменён YAML-файлами `<модуль>/persona.yaml`. Эмоции персонажа: ТЗ 26; убеждения и уроки: ТЗ 28.
+
 Этап 3, **первым** (до ТЗ 04). Репозитории: `GitS` (основной), `rimworld-module` и `montage-module`, если на момент
 выполнения они уже существуют (переменные окружения и тексты в коде). Ветки: `tz/05-characters`.
 Читать перед этим: `00-architecture.md`, `01-module-contract.md`, `02-core.md`, `03-attention.md`, `04-memory-knowledge.md`.

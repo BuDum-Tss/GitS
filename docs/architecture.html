@@ -51,8 +51,8 @@ code{background:var(--plan-bg);padding:1px 5px;border-radius:4px;font-size:12px}
 <div class="box ok"><b>Голос</b><i>микрофон, STT, TTS, слух, барж-ин</i></div>
 <div class="box ok"><b>Питомец</b><i>окно, эмоции, анимация речи</i></div>
 <div class="box ok"><b>Рабочий стол</b><i>экран, мышь, клавиатура, помощник Claude (ТЗ 14, влит)</i></div>
-<div class="box ok"><b>RimWorld</b><i>игровой агент, запись забегов (отдельный репозиторий, пока выключен)</i></div>
-<div class="box pause"><b>Монтаж</b><i>Remotion + Claude, стиль Aperture; шаг 2 остановлен, качество ролика не устроило</i></div>
+<div class="box ok"><b>RimWorld</b><i>игровой агент, запись забегов (modules/rimworld)</i></div>
+<div class="box pause"><b>Монтаж</b><i>Remotion + Claude, стиль Aperture (modules/montage); шаг 2 остановлен, качество ролика не устроило</i></div>
 <div class="box plan"><b>Minecraft и др.</b><i>новые игры как модули со своей областью памяти</i></div>
 </div></div>
 <div class="arrow">контракт v1: WebSocket 127.0.0.1:8766/module/ws, токен, манифест, события, задачи, запросы core.*</div>
@@ -71,7 +71,8 @@ code{background:var(--plan-bg);padding:1px 5px;border-radius:4px;font-size:12px}
 <div class="box ok"><b>Классификатор GLiNER2.5-multi-Decide</b><i>служба :8768; принимает событие, выдаёт категории и срочность, p95 около 0,6 с</i></div>
 <div class="box ok"><b>Менеджер внимания</b><i>важность × профиль × отправитель × правила; решения D0–D4, фокус, дайджест</i></div>
 <div class="box ok"><b>Очередь речи</b><i>объявления запусков (ANNOUNCE) всегда звучат</i></div>
-<div class="box wip"><b>Объявления запусков</b><i>ТЗ 16: аудит всех модулей</i></div>
+<div class="box ok"><b>Объявления запусков</b><i>ТЗ 16: аудит всех модулей</i></div>
+<div class="box plan"><b>Маршруты и быстрый контур</b><i>ТЗ 25: reflex / chat / task / ignore, стриминг, дедлайны</i></div>
 </div></div>
 <div class="arrow">решение: молчать, записать, ответить, действовать</div>
 <div class="layer"><h3>Мышление</h3>
@@ -79,16 +80,18 @@ code{background:var(--plan-bg);padding:1px 5px;border-radius:4px;font-size:12px}
 <div class="box ok"><b>Gemma (LM Studio)</b><i>речь, быстрые решения, извлечение фактов</i></div>
 <div class="box ok"><b>Claude (Agent SDK)</b><i>долгие задачи, планирование, помощник</i></div>
 <div class="box ok"><b>Выбор инструментов</b><i>tool_search, always / profile</i></div>
-<div class="box plan"><b>Политики поведения</b><i>ТЗ 11e: наблюдение, планирование, бой, ручное управление</i></div>
+<div class="box ok"><b>Политики поведения</b><i>ТЗ 11e: наблюдение, планирование, бой, ручное управление</i></div>
+<div class="box plan"><b>Эмоции</b><i>ТЗ 26: состояние, настроение, влияние на тон и питомца</i></div>
 </div></div>
 <div class="arrow">чтение и запись памяти, вызовы инструментов модулей</div>
 <div class="layer"><h3>Память</h3>
 <div class="row">
 <div class="box ok"><b>Долговременная личная</b><i>MemoryStore (JSON) + граф Graphiti / FalkorDB</i></div>
-<div class="box plan"><b>Рабочая (кратковременная)</b><i>ТЗ 04c: диалог, внимание, мир и события модуля; консолидация в эпизоды</i></div>
+<div class="box plan"><b>Эпизоды и сон</b><i>ТЗ 27: истории поверх журнала событий, резюме от первого лица, дневник, режим сна</i></div>
+<div class="box plan"><b>Рабочая (кратковременная)</b><i>ТЗ 04c (пересмотрено): хвост журнала событий и scratch для checkpoint</i></div>
 <div class="box plan"><b>Области по модулям</b><i>ТЗ 04c: корень Module:RimWorld, Module:Minecraft; общая область core</i></div>
-<div class="box plan"><b>Справочник (RAG)</b><i>ТЗ 04, после сравнения 04a</i></div>
-<div class="box plan"><b>Опыт</b><i>ТЗ 04: уроки забегов и задач</i></div>
+<div class="box plan"><b>Гибридный поиск и ContextBuilder</b><i>ТЗ 04: BM25 + вектор + фильтры, бюджет токенов; сравнение 04a</i></div>
+<div class="box plan"><b>Уроки и убеждения</b><i>ТЗ 28: учёба на ошибках, убеждения с журналом и отменой</i></div>
 </div></div>
 <div class="arrow">реплика, эмоция, сообщение</div>
 <div class="layer"><h3>Вывод</h3>
@@ -101,7 +104,7 @@ code{background:var(--plan-bg);padding:1px 5px;border-radius:4px;font-size:12px}
 <div class="box ok"><b>Событие</b><i>модуль → ядро</i></div><span class="a">→</span>
 <div class="box ok"><b>GLiNER</b><i>категории, срочность</i></div><span class="a">→</span>
 <div class="box ok"><b>Внимание</b><i>D0–D4, фокус</i></div><span class="a">→</span>
-<div class="box plan"><b>Политика</b><i>ТЗ 11e</i></div><span class="a">→</span>
+<div class="box ok"><b>Политика</b><i>ТЗ 11e</i></div><span class="a">→</span>
 <div class="box ok"><b>Память</b><i>запрос по смыслу</i></div><span class="a">→</span>
 <div class="box ok"><b>Gemma / Claude</b><i>ответ или план</i></div><span class="a">→</span>
 <div class="box ok"><b>Инструмент</b><i>вызов в модуле</i></div><span class="a">→</span>
@@ -119,18 +122,21 @@ code{background:var(--plan-bg);padding:1px 5px;border-radius:4px;font-size:12px}
 <p class="sub" style="margin-top:8px">Агент получает события, важность оценивает GLiNER, полный снимок мира не передаётся. Модель сама может объявлять правила наблюдения (например, ждать исследование и тогда перейти в планирование).</p>
 
 <h2>Что в работе и что дальше</h2>
+<p class="sub">Порядок и решения: <code>docs/ROADMAP.md</code> (редакция 2026-10-15). Приоритет: персонаж (эмоции, воспоминания, принципы, учёба на ошибках) и быстрая реакция.</p>
 <table>
 <tr><th>Задача</th><th>Статус</th><th>Что это</th></tr>
-<tr><td>ТЗ 01–03, 10–13</td><td><span class="tag ok">готово</span></td><td>контракт и SDK, ядро, внимание, Telegram, RimWorld на контракте, голос, питомец</td></tr>
-<tr><td>ТЗ 11b–11d</td><td><span class="tag ok">готово</span></td><td>надёжная запись забегов, время не на паузе, чистый экран, ясные объявления</td></tr>
-<tr><td>ТЗ 14 рабочий стол</td><td><span class="tag ok">влит в master</span></td><td>экран и ввод ушли из ядра в модуль; ручная проверка на живом ядре ещё нужна</td></tr>
-<tr><td>ТЗ 15 подвкладки модулей</td><td><span class="tag wip">в работе</span></td><td>во вкладке «Модули» подвкладка на каждый модуль, у каждого своё пространство и ссылки</td></tr>
-<tr><td>ТЗ 16 объявления запусков</td><td><span class="tag wip">в работе</span></td><td>аудит и единые объявления долгих запусков</td></tr>
-<tr><td>ТЗ 20–23 монтаж</td><td><span class="tag pause">на паузе</span></td><td>шаблон Remotion и конвейер есть, первый черновик не устроил; разбираем отдельно</td></tr>
-<tr><td>ТЗ 05 персонажи</td><td><span class="tag plan">дальше</span></td><td>код без имени персонажа, CHARACTER_/GITS_, gits-sdk, память по персонажам</td></tr>
-<tr><td>ТЗ 11e политики</td><td><span class="tag plan">дальше</span></td><td>события вместо состояния мира, четыре политики, правила наблюдения от модели</td></tr>
-<tr><td>ТЗ 04a / 04 / 04c память</td><td><span class="tag plan">дальше</span></td><td>сравнение Graphiti, MemPalace, LightRAG; справочник; рабочая память и области модулей</td></tr>
-<tr><td>ТЗ 17 схема потока</td><td><span class="tag plan">дальше</span></td><td>проверка ядра без модулей и живая схема данных во вкладке «Состояние»</td></tr>
+<tr><td>ТЗ 01–03, 05, 10–14</td><td><span class="tag ok">готово</span></td><td>контракт и SDK, ядро, внимание, персонажи (resources/), Telegram, RimWorld, голос, питомец, рабочий стол</td></tr>
+<tr><td>ТЗ 11b–11e, 15, 15b, 16, 18, 18b</td><td><span class="tag ok">готово</span></td><td>запись забегов, политики игры, вкладки модулей, объявления запусков, менеджер фокуса</td></tr>
+<tr><td>Все модули в modules/</td><td><span class="tag ok">готово</span></td><td>RimWorld и монтаж перенесены в этот репозиторий</td></tr>
+<tr><td>Фаза 0: хвосты</td><td><span class="tag wip">сейчас</span></td><td>окружение монтажа, pip install -e sdk, замена GLADOS_* в secrets.env, лишние папки</td></tr>
+<tr><td>ТЗ 24 трасса и журнал</td><td><span class="tag plan">дальше, первым</span></td><td>сквозная задержка по этапам, эмоции с интенсивностью, яркость, метки ошибок</td></tr>
+<tr><td>ТЗ 25 быстрый контур</td><td><span class="tag plan">дальше</span></td><td>маршруты событий, стриминг модель → TTS, дедлайны поиска памяти, бюджеты задержек</td></tr>
+<tr><td>ТЗ 04a / 04 память</td><td><span class="tag plan">дальше</span></td><td>сравнение хранилищ на наших данных; гибридный поиск, ContextBuilder; web.search как инструмент</td></tr>
+<tr><td>ТЗ 26 эмоции</td><td><span class="tag plan">дальше</span></td><td>состояние, настроение, влияние на тон, питомца, голос</td></tr>
+<tr><td>ТЗ 27 эпизоды и сон</td><td><span class="tag plan">дальше</span></td><td>эпизоды поверх журнала, резюме от первого лица, дневник, режим сна</td></tr>
+<tr><td>ТЗ 28 уроки и убеждения</td><td><span class="tag plan">дальше</span></td><td>учёба на ошибках, убеждения агента с журналом и отменой</td></tr>
+<tr><td>ТЗ 17 схема потока</td><td><span class="tag plan">после 24</span></td><td>живая схема данных во вкладке «Состояние»</td></tr>
+<tr><td>ТЗ 20–23 монтаж</td><td><span class="tag pause">на паузе</span></td><td>шаблон Remotion и конвейер есть, первый черновик не устроил; сцены (23) независимы от остального</td></tr>
 </table>
 
 <h2>Принципы</h2>
