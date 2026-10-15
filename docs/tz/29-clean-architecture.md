@@ -22,7 +22,7 @@
 ## 3. Целевая структура
 ```
 agent/
-  domain/    entities.py scoring.py rules.py risk.py focus_policy.py speech_queue.py salience.py   (без ввода-вывода)
+  domain/    entities.py scoring.py rules.py risk.py focus_policy.py salience.py   (без ввода-вывода)
   app/       process_event.py conversation.py context_builder.py planner.py executor.py focus_manager.py
              memory_capture.py proactive_legacy.py digest.py jobs.py                               (сценарии; reflection.py и impulses.py придут по ТЗ 30)
   ports.py   Classifier, LanguageModel, MemoryReader, MemoryWriter, EventLog, SpeechOutput, ToolInvoker, Approver, Clock, SettingsProvider
@@ -44,6 +44,9 @@ agent/
 - **ARC-7 (ОБЯЗАТЕЛЬНО, R6). Корень сборки и транспорт.** `core_service.py` только создаёт объекты и подставляет порты; обработчики voice, colonists, run_lost, game_order переезжают в `app/handlers`; `module_hub.py` получает приёмник событий и запросов колбэком (порт `EventSink`), не импортирует `attention` и `fast_brain`; исходящие команды модулям выделяются в `ModuleHub.outbound`.
 - **ARC-8 (ЖЕЛАТЕЛЬНО, R7). Дашборд.** Роутеры по темам и презентеры; чтение данных только через порты.
 - **ARC-9 (ОБЯЗАТЕЛЬНО). Документы.** После каждого шага обновляются `AGENTS.md` (карта модулей), `docs/architecture-clean.html` и `.drawio` (статус блоков: выделен или нет), `CHANGELOG.md`.
+
+## 4a. Выполнено
+- **R0, R1 (ветка `tz/29-r0-r1`, влита):** тест архитектуры; `agent/domain/` с `scoring`, `rules`, `risk`, `focus_policy`. Уточнения по факту: `speech_queue.py` это асинхронный координатор (задачи и futures), поэтому в домен он **не переносится** (ARC-1 запрещает `asyncio` в домене), а станет сценарием слоя `app` с чистой политикой выбора, выделенной в домен позже; правила «замолчи» и «похоже на просьбу» это два разных правила, объединять их нельзя (изменит поведение), оба лежат в `domain/rules.py`; `_merge_duplicate` (дедупликация) и яркость переносятся в R3.
 
 ## 5. Порядок и зависимости
 R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7. R3 готовит почву для ТЗ 25 (маршруты и быстрый контур) и ТЗ 30 (маршрут `think`), R4 — для ТЗ 25 (стриминг ответа в `ReplyGenerator`) и ТЗ 27, R5 независим и может идти параллельно R4. ТЗ 24 (трасса) желательно влить до R3: метки времени проходят через новые компоненты.
