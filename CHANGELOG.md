@@ -18,6 +18,8 @@
 - Тесты: `agent/tests/test_trace_fixes.py`, `modules/voice/tests/test_voice_trace.py` (случай без звука).
 
 ### Changed
+- `Companion` разрезан (ТЗ 29, ARC-5, шаг R4): новый пакет `agent/app/` с `ConversationService` (путь обращения), `ContextBuilder` (прежняя склейка шести источников контекста), `ReplyGenerator` (ответ, `declutter`, реплика по факту), `MemoryCapture` (`_learn`, `_consolidate`, `remember_text`, очередь в граф) и временным `proactive_legacy.py` (опрос себя раз в 30 с, поведение не менялось, уйдёт с ТЗ 30). `Companion` остался фасадом с прежним публичным интерфейсом и приватными именами (`_context`, `_converse`, `_handle_text`, `_mem`, `_rel` и др.), которые используют ядро и тесты. Схема архитектуры обновлена. Тесты: `agent/tests/test_companion_split.py`.
+
 - `AGENTS.md`: правило поддерживать схему архитектуры актуальной (менять `agent/tools/architecture/spec.py` и пересобирать), строка в карте модулей.
 - Схема ядра: текст на блоках снова читается (заливка слоя смешивается с фоном темы заранее, Cytoscape не применяет альфу из rgba); добавлена легенда (слои, виды стрелок, «нужно выделить»).
 - Запись реплики пользователя в журнал идёт через `log_nowait` (не ждёт коммита SQLite; ТЗ 24). Поведение агента не меняется.

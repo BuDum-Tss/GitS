@@ -29,7 +29,7 @@ SDK для тяжёлых задач.
 ## Карта модулей (agent/)
 | Модуль | Назначение |
 |---|---|
-| `companion.py` | разговор, проактивность, память разговора, приказы в игру |
+| `companion.py`, `app/` | фасад `Companion` (состояние, `say`, публичный интерфейс) и его компоненты (ТЗ 29, ARC-5): `conversation_service.py` (путь обращения), `context_builder.py` (контекст), `reply_generator.py` (ответ), `memory_capture.py` (запоминание), `proactive_legacy.py` (временная проактивность по таймеру, до ТЗ 30) |
 | `router.py`, `environments/` | «могу ли я»: планировщик, реестр окружений и инструментов, MCP-источники, разрешения |
 | `prompts.py`, `character.py`, `resources/<Имя>/` | характер активного персонажа (конституция и prompt.yaml из его папки), карточка персонажа, `character.fill` для промптов |
 | `character_memory.py`, `character_seed.py`, `character_switch.py`, `envcompat.py` | воспоминания персонажа о себе (отбор, блок промпта), загрузка `memories.yaml` в граф (`python -m character seed <id>`), переключение персонажа, переменные окружения с запасными старыми именами (ТЗ 05) |
