@@ -129,7 +129,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "нормализация, дедупликация за 60 с, склейка повторов, TTL",
      "out": "Event",
-     "now": "attention.submit и _merge_duplicate"
+     "now": "выделен (ТЗ 29, R3): app/normalizer.py, app/items.py (хранилище и склейка), domain/dedupe.py"
     },
     {
      "id": "people",
@@ -138,7 +138,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "sender → Person, первый контакт, заметки о человеке",
      "out": "Person",
-     "now": "attention._note_sender + relationships; лезет в companion._rel через getattr"
+     "now": "выделен (R3): Normalizer.note_sender через контракты PeopleDirectory и MemoryWriter; getattr(companion, \"_rel\") остался только в адаптере adapters/people.py"
     }
    ]
   },
@@ -158,7 +158,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»",
      "out": "RuleResult",
-     "now": "середина attention.submit; стоп-фразы и «похоже на просьбу» ещё и в router"
+     "now": "выделен (R3): app/process_event.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py"
     },
     {
      "id": "cls",
@@ -167,7 +167,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с",
      "out": "Classification",
-     "now": "decide.py + services/decider"
+     "now": "decide.py + services/decider; в Attention его зовёт app/event_classifier.py (R3)"
     },
     {
      "id": "score",
@@ -176,7 +176,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "срочность × 20 × веса (профиль, отправитель, правила, пользователь) × свежесть",
      "out": "priority 0..100",
-     "now": "attention._score"
+     "now": "выделен (R3): app/scorer.py поверх domain/scoring.py"
     },
     {
      "id": "disp",
@@ -185,7 +185,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "решение D0–D4 и routes[]: say, chat, task, focus, think, digest, ignore; пишет решение в журнал",
      "out": "Decision",
-     "now": "attention._decide, _act, _finish"
+     "now": "выделен (R3): app/dispatcher.py (finish, act) и app/decision_log.py; routes[] пока только say, digest, focus-хук"
     }
    ]
   },
@@ -308,7 +308,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "долгие задачи: прогресс, вопросы, итог; Claude-помощник (Agent SDK)",
      "out": "JobState",
-     "now": "module_registry + attention.on_job_update + desktop.assistant_agent"
+     "now": "выделен (R3) для внимания: app/jobs.py (JobTracker); module_registry и desktop.assistant_agent как раньше"
     }
    ]
   },
@@ -375,7 +375,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "сводка событий D1 и предложение рассказать",
      "out": "SpeechCandidate",
-     "now": "attention._digest_*"
+     "now": "выделен (R3): app/digest.py"
     },
     {
      "id": "out",

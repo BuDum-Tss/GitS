@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Менеджер внимания разрезан на компоненты (ТЗ 29, ARC-4, шаг R3, ветка `tz/29-r3-attention`): `agent/attention.py` стал тонким фасадом (прежние публичные методы и атрибуты `submit`, `submit_speech`, `submit_question`, `on_job_update`, `enqueue_say`, `enqueue_fact`, `hub`, `modules`, `profiles`, `kind_handlers`, `on_decided`, `speech` и приватные `_att`, `_score`, `_decide`, `_items`, `_digest`, `_focus` сохранены для ядра и тестов). Логика в пакете `agent/app/`: `process_event.py` (`EventPipeline` и `HardRules` R1-R4), `normalizer.py`, `event_classifier.py`, `scorer.py`, `dispatcher.py`, `decision_log.py`, `items.py` (хранилище и склейка повторов), `announce.py`, `speech_coordinator.py` (клей с очередью речи), `digest.py`, `focus_stack.py`, `questions.py` (`QuestionService`), `jobs.py` (`JobTracker`), `attention_core.py` (общий контекст). Дедупликация вынесена в чистый `agent/domain/dedupe.py`. Люди и память читаются только через контракты `PeopleDirectory` и `MemoryWriter`. Поведение не менялось, существующие тесты не правились. Схема архитектуры обновлена (`spec.py`, пересборка), тесты: `agent/tests/test_app_attention.py`.
+
 ### Added
 - Трасса задержки реплики (ТЗ 24, TRC-1, TRC-2): `agent/latency_trace.py`, метки `mic_end`, `stt_done`, `core_in`, `classify_done`, `route`, `retrieve_done`, `llm_first_token`, `llm_done`, `first_sentence_ready`, `tts_first_audio`, `play_start`; поле `trace` у события шины (SDK передаёт, модуль голоса ставит свои метки и шлёт `voice.trace`); одна запись `trace` в журнале на реплику; `GET /api/latency` (p50 и p95 по шагам и от конца фразы до звука); блок «Задержка реплики» во вкладке «Состояние». Запись только через `log_nowait`.
 - Эмоция в журнале (ТЗ 24, TRC-3): вид `emotion` с интенсивностью 0–3 (поле в том же JSON-ответе модели, без него 1), причиной и персонажем; фоновые метки `idle`, `thinking`, `looking`, `question` помечены `bg`. Модуль `agent/journal.py`.
