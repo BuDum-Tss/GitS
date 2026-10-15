@@ -75,7 +75,7 @@ def test_core_tools_exist_and_are_always_visible():
             return "ок"
     builtin.register_core_tools(reg, Mods())
     reg.focus = lambda: set()
-    assert {t.id for t in reg.active_tools()} == {"core.jobs", "core.job_cancel", "core.set_setting"}
+    assert {t.id for t in reg.active_tools()} == {"core.jobs", "core.job_cancel", "core.set_setting", "core.set_character"}
     assert reg.get("core.jobs").risk == "auto" and reg.get("core.jobs").informative
     assert reg.get("core.job_cancel").risk == "ask"
     assert asyncio.run(reg.get("core.jobs").call({})) == "задач у модулей сейчас нет"

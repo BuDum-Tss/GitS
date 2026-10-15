@@ -90,6 +90,11 @@
       <!-- Состояние: профили, что видит, возможности -->
       <div id="tab-status" class="card bg-base-100 shadow-sm scroll-y min-h-0">
         <div class="card-body gap-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="font-medium">Персонаж</div>
+            <select id="character-pick" class="select select-sm select-bordered" onchange="switchCharacter(this.value)"></select>
+            <span id="character-msg" class="text-sm opacity-70"></span>
+          </div>
           <div>
             <div class="flex flex-wrap items-center gap-3">
               <div class="font-medium">Профили</div>
@@ -228,7 +233,7 @@
             </div>
           </div>
           <div class="flex flex-wrap gap-3 text-xs opacity-70">
-            <span><span style="color:#a855f7">●</span> ГЛаДОС</span><span><span style="color:#f59e0b">●</span> поселение</span>
+            <span><span style="color:#a855f7">●</span> <span data-char-name></span></span><span><span style="color:#f59e0b">●</span> поселение</span>
             <span><span style="color:#22c55e">●</span> колонист</span><span><span style="color:#3b82f6">●</span> человек, место, вещь</span>
             <span><span style="color:#94a3b8">●</span> выбывший или устаревший</span>
           </div>
@@ -290,6 +295,7 @@
 </div>
 
 <script>
+let CHAR_NAME = '';   // имя активного персонажа: приходит в состоянии (/api/state, поле character)
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const post = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
@@ -387,7 +393,7 @@ function profileStyle(c) {
 }
 // стиль графа памяти: точки по типу узла, размер по числу связей, устаревшее бледнее и пунктиром
 function memoryStyle(c) {
-  const kinds = {glados: c.s, place: c.wa, colonist: c.su, old: alpha(c.bc, 0.35), thing: c.in};
+  const kinds = {self: c.s, place: c.wa, colonist: c.su, old: alpha(c.bc, 0.35), thing: c.in};
   const st = [
     {selector: 'node', style: {label: 'data(label)', 'font-size': 12, 'font-family': 'inherit', color: c.bc, 'text-valign': 'bottom', 'text-margin-y': 5,
       'background-color': c.in, width: 'mapData(deg, 0, 10, 16, 42)', height: 'mapData(deg, 0, 10, 16, 42)', 'border-width': 2, 'border-color': c.b1,
@@ -578,7 +584,7 @@ function graphModel(g, showOld) {
   const retired = new Set(all.filter(e => e.relation === 'КОЛОНИСТ' && e.invalid_at).map(e => e.from));
   const places = new Set(all.filter(e => e.relation === 'КОЛОНИСТ').map(e => e.to));
   const live = new Set(all.filter(e => !e.invalid_at).flatMap(e => [e.from, e.to]));
-  const kind = n => n === 'ГЛаДОС' ? 'glados' : places.has(n) ? 'place' : alive.has(n) ? 'colonist'
+  const kind = n => n === CHAR_NAME ? 'self' : places.has(n) ? 'place' : alive.has(n) ? 'colonist'
     : (retired.has(n) || !live.has(n)) ? 'old' : 'thing';
   const names = new Set();
   (g.nodes || []).forEach(n => { if (!hidden.has(n) && (showOld || live.has(n))) names.add(n); });
@@ -595,7 +601,7 @@ function showGraphNode(name) {
   const own = Object.keys(m.owner).filter(a => m.owner[a] === name);
   const rows = [...(m.facts[name] || [])];
   own.forEach(a => (m.facts[a] || []).forEach(e => { if (!rows.includes(e)) rows.push(e); }));
-  const KIND = {glados: 'ГЛаДОС', place: 'поселение', colonist: 'колонист', old: 'выбыл или устарел', thing: 'человек, место или вещь'};
+  const KIND = {self: CHAR_NAME, place: 'поселение', colonist: 'колонист', old: 'выбыл или устарел', thing: 'человек, место или вещь'};
   const uniq = [...new Map(rows.map(e => [e.uuid, e])).values()];
   const neigh = [...new Set(uniq.filter(e => !ATTR_REL.has(e.relation)).flatMap(e => [e.from, e.to]).filter(n => n !== name && !m.hidden.has(n)))];
   const fact = e => `<li class="flex items-start justify-between gap-2 ${e.invalid_at ? 'opacity-60' : ''}"><span>${esc(e.fact)}
@@ -742,6 +748,32 @@ function buildSettings() {
   }));
   settingsBuilt = true;
 }
+function renderCharacter(ch) {
+  const sel = document.getElementById('character-pick');
+  if (!sel || !ch || !Array.isArray(ch.ids)) return;
+  if (sel.dataset.current === ch.id && sel.options.length === ch.ids.length) return;   // список не перерисовываем зря
+  sel.innerHTML = '';
+  for (const cid of ch.ids) {
+    const o = document.createElement('option');
+    o.value = cid; o.textContent = cid; o.selected = cid === ch.id;
+    sel.appendChild(o);
+  }
+  sel.dataset.current = ch.id;
+}
+
+async function switchCharacter(id) {
+  const msg = document.getElementById('character-msg');
+  if (msg) msg.textContent = 'переключаю…';
+  try {
+    const r = await fetch('/api/character', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                             body: JSON.stringify({id: id})});
+    const j = await r.json();
+    if (msg) msg.textContent = r.ok ? (j.changed ? 'переключено: ' + j.name : 'уже активен') : (j.error || 'ошибка');
+  } catch (e) {
+    if (msg) msg.textContent = 'нет связи с ядром';
+  }
+}
+
 function renderSettings(s) {
   if (!s) return;
   if (!settingsBuilt) buildSettings();
@@ -1118,8 +1150,8 @@ function renderJob(j) {
 const MODTAB = {selected: 'overview', sig: '', pageSig: '', serve: new Set(), links: {}, tabSel: {}, open: {}, msg: {}, ev: {rows: [], id: '', at: 0}};
 const OPENABLE = ['.mp4', '.webm', '.srt', '.vtt', '.json', '.md', '.txt', '.png', '.jpg', '.jpeg'];
 const STYLE_CLS = {primary: 'btn-neutral', danger: 'btn-error', default: ''};
-function modTabStored() { try { return localStorage.getItem('glados.modulesTab') || 'overview'; } catch (_) { return 'overview'; } }
-function modTabSave(key) { try { localStorage.setItem('glados.modulesTab', key); } catch (_) { /* хранилище закрыто: выбор только на эту сессию */ } }
+function modTabStored() { try { return localStorage.getItem('gits.modulesTab') || 'overview'; } catch (_) { return 'overview'; } }
+function modTabSave(key) { try { localStorage.setItem('gits.modulesTab', key); } catch (_) { /* хранилище закрыто: выбор только на эту сессию */ } }
 MODTAB.selected = modTabStored();
 const panelModules = mods => mods.filter(m => m.kind === 'module' && m.panel && (m.enabled || m.connected));
 const safeHttp = url => /^https?:\/\//i.test(String(url || '')) ? esc(url) : '#';
@@ -1358,6 +1390,8 @@ async function poll() {
   if (polling) return; polling = true;
   try {
     const [st, core] = await Promise.all([fetch('/api/state').then(r => r.json()), fetch('/api/core').then(r => r.json())]);
+  if (st.character) { CHAR_NAME = st.character.name; renderCharacter(st.character); }   // ТЗ 05, CHR-4, CHR-7
+  document.querySelectorAll('[data-char-name]').forEach(e => { e.textContent = CHAR_NAME; });
     $('badge-core').textContent = 'ядро работает'; $('badge-core').className = 'badge badge-success badge-outline';
     $('badge-game').textContent = st.connected ? ('игра: ' + (st.colony_name || 'онлайн')) : 'игра не запущена';
     $('badge-game').className = 'badge ' + (st.connected ? 'badge-info badge-outline' : 'badge-ghost');

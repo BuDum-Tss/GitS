@@ -1,12 +1,20 @@
-"""SDK модулей ГЛаДОС (ТЗ 01): `from glados_module import ModuleClient, ToolError`.
+"""Устаревший пакет-алиас: `glados_module` переименован в `gits_sdk` (ТЗ 05, CHR-3).
 
-protocol.py: общие типы и проверки (его же импортирует ядро), client.py: клиент модуля, testing.py: FakeCore для тестов.
+Оставлен, чтобы модули в других репозиториях и уже установленный старый пакет `glados-module` не сломались до миграции.
+Импорт выдаёт DeprecationWarning. Пакет удаляется через одну версию (запись в CHANGELOG, раздел «Deprecated»).
 """
-from . import protocol
-from .client import ModuleClient
-from .protocol import PROTOCOL, ManifestError, ProtocolError, ToolError, validate_manifest
+import sys
+import warnings
 
-__version__ = "0.1.0"
+import gits_sdk
+from gits_sdk import *  # noqa: F403  (всё, что экспортирует gits_sdk)
+from gits_sdk import client, envcompat, protocol, testing
 
-__all__ = ["ModuleClient", "ToolError", "ProtocolError", "ManifestError", "PROTOCOL", "validate_manifest",
-           "protocol", "__version__"]
+warnings.warn("пакет glados_module переименован в gits_sdk: замените импорт (см. CHANGELOG, Deprecated)",
+              DeprecationWarning, stacklevel=2)
+
+# прежние подмодули указывают на те же объекты, что и новые: isinstance и совпадение классов сохраняются
+for _name, _module in (("protocol", protocol), ("client", client), ("testing", testing), ("envcompat", envcompat)):
+    sys.modules[f"{__name__}.{_name}"] = _module
+
+__all__ = list(gits_sdk.__all__)

@@ -29,6 +29,8 @@ import claude_quota
 import gamenet
 import events_log
 import fast_brain
+import character
+import character_memory
 import prompts
 import settings
 from conversation_io import DASHBOARD, VOICE, UserInput, current_channel
@@ -37,7 +39,9 @@ from user_memory import UserMemory
 
 logger = logging.getLogger("companion")
 
-PERSONA = prompts.companion_persona()   # конституция + prompt.yaml (agent/resources/prompts)
+def persona() -> str:
+    """Характер компаньона активного персонажа (конституция + prompt.yaml); функция, чтобы переключение подхватывало новый."""
+    return prompts.companion_persona()
 
 _MIN_GAP = {"quiet": 30 * 60, "normal": 10 * 60, "chatty": 3 * 60}   # не говорить сама чаще
 _CONSULT = {"quiet": 10 * 60, "normal": 4 * 60, "chatty": 90}        # как часто спрашивать себя
@@ -57,6 +61,7 @@ class Companion:
         self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (ModuleRegistry.notes, ставит ядро)
         self.graph = None        # GraphMemory: факты о людях и жизни в графе
         self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
+        self._self_block = ""     # воспоминания персонажа о себе к последней реплике (ТЗ 05, CHR-19)
         self._heard: collections.deque = collections.deque(maxlen=20)   # (время, сводка) услышанного в колонках (voice.heard)
         self.game_order = None  # async (text) -> bool: приказ в игру, ставит контроллер
         self.idle_seconds = lambda: 0.0          # секунды простоя ввода (ставит ядро из state модуля desktop; без модуля 0: за компьютером)
@@ -112,7 +117,7 @@ class Companion:
         if not text:
             return
         channel = current_channel.get()
-        self._mem.add_dialogue("glados", text)
+        self._mem.add_dialogue(character.active().id, text)   # роль реплики персонажа: его id (данные диалога)
         events_log.log("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
         self._last_say = time.time()
         self.presence.update(last_say=text, last_say_ts=self._last_say)
@@ -128,9 +133,13 @@ class Companion:
             await self.speech.speak(utterance, text, emotion, priority or 50)
         if emotion:
             fast_brain.publish("say", {"emotion": emotion, "action": "none"})
-        logger.info(f"[ГЛаДОС] {text}")
+        logger.info(f"[{character.active().name}] {text}")
 
     # ── входящее сообщение ─────────────────────────────────────────────────────
+
+    def rebind_memory(self, memory_dir) -> None:
+        """Переключение персонажа (ТЗ 05, CHR-7): личная память этого персонажа, та же беседа и тон."""
+        self._mem.rebind(memory_dir)
 
     def is_speaking(self) -> bool:
         return self.speech.is_speaking()
@@ -263,7 +272,7 @@ class Companion:
             rule = ("Сама реши, нужно ли что-то сказать: можно промолчать. Не пересказывай факт "
                     "дословно и не выдумывай деталей. Ответь ТОЛЬКО JSON: "
                     '{"say": <true или false>, "text": "<реплика>"}')
-        system = PERSONA + " Ниже факт о том, что только что произошло. " + rule
+        system = persona() + " Ниже факт о том, что только что произошло. " + rule
         user = (f"{self._context(query=user_text or fact)}\n\nФакт: {fact}"
                 + (f"\nПользователь сказал: {user_text}" if user_text else ""))
         try:
@@ -307,6 +316,8 @@ class Companion:
                 parts.append("Что недавно было слышно из колонок (краткая сводка автоматической расшифровки, "
                              "возможны ошибки; это может быть фильм, видео, музыка, не слова "
                              "пользователя): " + heard)
+        if self._self_block:
+            parts.append(self._self_block)
         if self._graph_block:
             parts.append(self._graph_block)
         rel = self._rel.describe("игрок")
@@ -368,17 +379,22 @@ class Companion:
             self._graph_block = await asyncio.wait_for(self.graph.context_block(query), 3.0)
         except (asyncio.TimeoutError, Exception):
             self._graph_block = ""
+        try:
+            self._self_block = character_memory.block(await asyncio.wait_for(self.graph.self_memories(query), 3.0))
+        except (asyncio.TimeoutError, Exception):
+            self._self_block = ""
 
     async def _converse(self, text: str, about_self: bool = False, use_memory: bool = True) -> bool:
         """Обычный ответ обычным текстом, без JSON: так он приходит вдвое быстрее (локальная
         модель генерирует ~10-15 токенов в секунду, лишние поля стоят секунд).
         Возвращает True, если модель пометила сообщение как просьбу действовать."""
-        system = (PERSONA + " " + self.profile_hint() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
+        system = (persona() + " " + self.profile_hint() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
                   "опубликовать, посмотреть), начни ответ с маркера [ДЕЙСТВИЕ] и коротко скажи, что сейчас "
                   "посмотришь, что можешь, БЕЗ выдуманного результата. Иначе просто ответь.")
         if use_memory:
             await self._refresh_graph(text)
         else:
+            self._self_block = ""
             self._graph_block = ""          # классификатор: для этой реплики факты о людях и прошлом не нужны (ATT-28)
         user = f"{self._context(query=text)}\n\nПользователь говорит: {text}"
         if about_self and self.router is not None:
@@ -627,7 +643,7 @@ class Companion:
             situation = self._digest(int(gap / 60))
         self._last_consult = now
 
-        system = (PERSONA + "\n" + self.profile_hint() + "\nСама решай, стоит ли сейчас вмешаться. Говори, когда есть что-то уместное: "
+        system = (persona() + "\n" + self.profile_hint() + "\nСама решай, стоит ли сейчас вмешаться. Говори, когда есть что-то уместное: "
                   "наблюдение о том, что видишь, шутка про занятие, забота (долго сидит, поздно), вопрос. "
                   "Не навязывайся без повода: если пользователь сейчас занят (игра, работа, видео) или сказать "
                   "нечего, ответь say=false. Не возвращайся к темам, которые уже поднимала в последних "

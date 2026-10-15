@@ -3,8 +3,8 @@ import asyncio
 import queue
 import time
 
-from glados_module import protocol as P
-from glados_module.testing import FakeCore
+from gits_sdk import protocol as P
+from gits_sdk.testing import FakeCore
 
 import bridge
 from manifest import MANIFEST, build_manifest

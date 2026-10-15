@@ -7,6 +7,7 @@ import os
 import re
 import time
 from pathlib import Path
+from envcompat import env
 
 TEXT_MAX = 300                    # TG-10: сколько символов сообщения идёт в факт события
 TG_MESSAGE_MAX = 4096             # предел длины одного сообщения Telegram
@@ -22,8 +23,8 @@ def default_memory_dir() -> str:
 
 
 def secrets_file() -> Path:
-    """Файл секретов: agent/secrets.env (GLADOS_SECRETS_FILE переопределяет путь, например в проверках запуска)."""
-    return Path(os.getenv("GLADOS_SECRETS_FILE") or GITS_ROOT / "agent" / "secrets.env")
+    """Файл секретов: agent/secrets.env (GITS_SECRETS_FILE переопределяет путь, например в проверках запуска)."""
+    return Path(env("GITS_SECRETS_FILE") or GITS_ROOT / "agent" / "secrets.env")
 
 
 def quiet_active(cfg: dict) -> bool:

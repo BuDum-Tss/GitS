@@ -36,9 +36,9 @@
   читает новое имя, а если его нет — старое `GLADOS_*` с предупреждением в журнал один раз за процесс. Удаление старых
   имён — через одну версию (запись в CHANGELOG «Deprecated»). `secrets.env.example` — только новые имена; исполнитель
   сам `secrets.env` не читает и не правит, а пишет в отчёте список переменных, которые пользователь должен переименовать.
-- **CHR-3 (ОБЯЗАТЕЛЬНО).** SDK: пакет `glados-module` → **`gits-sdk`**, импорт `glados_module` → **`gits_sdk`**, журнал
+- **CHR-3 (ОБЯЗАТЕЛЬНО).** SDK: пакет `gits-sdk` → **`gits-sdk`**, импорт `glados_module` → **`gits_sdk`**, журнал
   `gits_sdk`, файл токена `%LOCALAPPDATA%\GitS\module_token` (старый путь читается как запасной). Переустановить
-  (`pip install -e C:\MyProjects\GitS\sdk`, старый пакет `pip uninstall glados-module`). Обновить все импорты, `docs/MODULES.md`,
+  (`pip install -e C:\MyProjects\GitS\sdk`, старый пакет `pip uninstall gits-sdk`). Обновить все импорты, `docs/MODULES.md`,
   `docs/tz/*` (правка текста ТЗ: `glados_module` → `gits_sdk`, `GLADOS_*` → новые имена).
 - **CHR-4 (ОБЯЗАТЕЛЬНО).** Имя персонажа в коде: найти `rg -n -i "glados|гладос|aperture"` в `*.py`, `*.cs` (мод не
   трогать, если упоминания только в комментариях), `*.ps1`, `static/`. Каждое вхождение — одно из:

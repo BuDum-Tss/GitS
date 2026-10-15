@@ -2,7 +2,7 @@
 Синтез речи ГЛаДОС (ТЗ 12, VOICE-1): текст в аудиофайл. Воспроизведение и очередь реплик это `speaker.py` и `player.py`.
 
 Приоритет:
-  1. Fish Speech S2-Pro (http://127.0.0.1:8080): клонирование голоса по GlaDos.wav
+  1. Fish Speech S2-Pro (http://127.0.0.1:8080): клонирование голоса по референсу персонажа
   2. edge-tts, запасной (ru-RU-SvetlanaNeural, pitch=-25Hz): если Fish Speech недоступен
 
 Оба пути записывают WAV/MP3 во временный файл. Блокирующий вызов: гонять через `asyncio.to_thread`.
@@ -23,8 +23,10 @@ logger = logging.getLogger("tts")
 # ── Fish Speech ────────────────────────────────────────────────────────────────
 
 FISH_URL       = os.getenv("FISH_URL", "http://127.0.0.1:8080")
-# Референс голоса лежит у модуля: modules/voice/resources/tts/references/GlaDos.wav (docker-compose монтирует ту же папку)
-FISH_REFERENCE = Path(os.getenv("FISH_REFERENCE_AUDIO") or (Path(__file__).parent / "resources" / "tts" / "references" / "GlaDos.wav"))
+# Референс голоса персонажа (ТЗ 05, CHR-12): путь из карточки персонажа (voice.reference), см. use_character_voice().
+# По умолчанию — референс персонажа по умолчанию (id данных glados).
+_DEFAULT_REFERENCE = Path(__file__).resolve().parents[3] / "agent" / "characters" / "glados" / "voice" / "GlaDos.wav"   # id данных
+FISH_REFERENCE = Path(os.getenv("FISH_REFERENCE_AUDIO") or _DEFAULT_REFERENCE)
 FISH_TIMEOUT   = 30.0
 FISH_SR        = 44100   # Fish Speech S2-Pro default
 FISH_RECHECK_S = 60.0    # недоступный Fish Speech проверяется заново не чаще раза в минуту (раньше: только один раз за запуск)
@@ -43,6 +45,14 @@ _fish_available: bool | None   = None   # None = ещё не проверяли
 _fish_checked_at = 0.0
 
 
+def use_character_voice(reference, edge_voice: str | None = None) -> None:
+    """Голос персонажа (ТЗ 05, CHR-7, CHR-12): референс клонирования и голос запасного синтеза. Кэш референса сбрасывается."""
+    global FISH_REFERENCE, VOICE, _reference_bytes
+    FISH_REFERENCE = Path(reference) if reference else _DEFAULT_REFERENCE
+    VOICE = edge_voice or VOICE
+    _reference_bytes = None
+
+
 def reset() -> None:
     """Забыть кэш доступности Fish Speech и референса (тесты)."""
     global _reference_bytes, _fish_available, _fish_checked_at
@@ -58,7 +68,7 @@ def _get_reference() -> bytes | None:
     global _reference_bytes
     if _reference_bytes is None and FISH_REFERENCE.exists():
         _reference_bytes = FISH_REFERENCE.read_bytes()
-        logger.info(f"Референс GLaDOS: {FISH_REFERENCE} ({len(_reference_bytes):,} б)")
+        logger.info(f"Референс голоса: {FISH_REFERENCE} ({len(_reference_bytes):,} б)")
     return _reference_bytes
 
 
@@ -151,7 +161,7 @@ async def _fish_synth(text: str, directory: Path | None = None) -> str | None:
 
     # Fish Speech при streaming=True отдаёт raw PCM без заголовка
     wav = _pcm_to_wav(raw_pcm)
-    tmp = _tmp_path(".wav", "glados_fish_", directory)
+    tmp = _tmp_path(".wav", "gits_fish_", directory)
     with open(tmp, "wb") as f:
         f.write(wav)
     return tmp
@@ -163,7 +173,7 @@ async def _edge_synth(text: str, directory: Path | None = None) -> str:
     """Синтезировать текст через edge-tts → MP3."""
     import edge_tts
     communicate = edge_tts.Communicate(text, voice=VOICE, pitch=PITCH, rate=RATE)
-    tmp = _tmp_path(".mp3", "glados_edge_", directory)
+    tmp = _tmp_path(".mp3", "gits_edge_", directory)
     await communicate.save(tmp)
     return tmp
 
@@ -178,7 +188,7 @@ def _synthesize(clean: str, directory: Path | None = None) -> str | None:
         _fish_available = asyncio.run(_fish_ping())
         _fish_checked_at = now
         if _fish_available:
-            logger.info("Fish Speech доступен — использую голос GLaDOS")
+            logger.info("Fish Speech доступен — использую голос персонажа")
         elif was is None:
             logger.info("Fish Speech недоступен — fallback на edge-tts")
 

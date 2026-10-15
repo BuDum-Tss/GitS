@@ -14,7 +14,7 @@ from hub_helpers import RawModule, manifest, running_core, tool
 
 import dashboard
 import module_panel
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 
 PANEL = {
     "title": "Демо",

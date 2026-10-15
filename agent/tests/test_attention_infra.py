@@ -26,7 +26,7 @@ from supervisor import ModuleSpec, Supervisor, load_specs
 
 SERVICE = textwrap.dedent('''
     import os, time
-    print("сервис запущен token=" + ("есть" if os.environ.get("GLADOS_MODULE_TOKEN") else "нет"), flush=True)
+    print("сервис запущен token=" + ("есть" if os.environ.get("GITS_MODULE_TOKEN") else "нет"), flush=True)
     time.sleep(120)
 ''')
 SERVICE_CRASH = 'import sys\nprint("упал", flush=True)\nsys.exit(1)'

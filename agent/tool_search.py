@@ -19,11 +19,12 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 import httpx
+from envcompat import env
 
 logger = logging.getLogger("tool_search")
 
-LM_URL = os.getenv("GLADOS_LM_URL", "http://127.0.0.1:1234/v1")
-EMB_MODEL = os.getenv("GLADOS_GRAPH_EMBEDDER", "text-embedding-google_embeddinggemma-300m-qat")
+LM_URL = env("GITS_LM_URL", "http://127.0.0.1:1234/v1")
+EMB_MODEL = env("GITS_GRAPH_EMBEDDER", "text-embedding-google_embeddinggemma-300m-qat")
 QUERY_TIMEOUT_S = 2.0
 BATCH_TIMEOUT_S = 60.0
 BREAKER_S = 60.0

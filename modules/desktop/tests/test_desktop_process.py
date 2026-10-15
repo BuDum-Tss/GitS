@@ -5,8 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-from glados_module import ToolError
-from glados_module.testing import FakeCore
+from gits_sdk import ToolError
+from gits_sdk.testing import FakeCore
 
 MODULE_DIR = Path(__file__).resolve().parent.parent
 GITS = MODULE_DIR.parent.parent
@@ -17,8 +17,8 @@ async def test_main_process_connects_reports_state_and_exits_on_shutdown(tmp_pat
     mem.mkdir(exist_ok=True)
     async with FakeCore(settings={"vision": False, "auto_accept": False, "dnd": False, "quiet_until": 0.0}) as core:
         env = dict(os.environ)
-        env.update(GLADOS_CORE_URL=core.url, GLADOS_MODULE_TOKEN=core.token, GLADOS_MODULE_ID="desktop",
-                   MEMORY_DIR=str(mem), GLADOS_SECRETS_FILE=str(tmp_path / "нет-secrets.env"),
+        env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="desktop",
+                   MEMORY_DIR=str(mem), GITS_SECRETS_FILE=str(tmp_path / "нет-secrets.env"),
                    LOCALAPPDATA=str(tmp_path / "la"), GITS_DESKTOP_FAKE="1",
                    PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "sdk"))
         proc = await asyncio.create_subprocess_exec(

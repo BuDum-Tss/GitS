@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from glados_module.protocol import Manifest
+from gits_sdk.protocol import Manifest
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED = {

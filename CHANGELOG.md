@@ -6,6 +6,52 @@
 
 ### Changed
 - Модули RimWorld и монтажа переехали в этот репозиторий: `modules/rimworld` (бывший `rimworld-agent`) и `modules/montage` (бывший `montage-module`); файлы скопированы с `master` без истории коммитов. `modules.yaml` ссылается на них через `{GITS}/modules/...`, `agent/module_dirs.py` и переменные `RIMWORLD_MODULE_DIR`/`MONTAGE_MODULE_DIR` убраны. `check.ps1` запускает и тесты этих модулей. Окружение монтажа (`.venv`, `template/node_modules`) нужно собрать заново в `modules/montage`.
+- Персонажи (ТЗ 05, CHR-1…CHR-20, кроме CHR-11 и части CHR-12, см. отчёт): персонаж — данные в папке `agent/characters/<id>/`
+  (`character.yaml` с именем, алиасами, голосом и якорем; `constitution.yaml`, `prompt.yaml`, `persona.md`, `memories.yaml`,
+  `voice/GlaDos.wav`). Ядро читает активного персонажа (настройка `character`, по умолчанию `glados`). `prompts.py` берёт характер
+  из его папки, `character.fill` подставляет имя в промпты. Файлы `constitution.yaml`, `prompt.yaml` и референс голоса переехали
+  через `git mv`, содержимое конституции не менялось (хеш в тесте). `docker-compose.yml`: монтирование референса из `agent/characters/glados/voice`.
+- Переключение персонажа (CHR-7): `character_switch.CharacterSwitch` дожидается конца реплики, сбрасывает очередь речи и стек фокуса,
+  сохраняет настройку, перечитывает промпты, переключает личную память (`UserMemory`, `Relationships`, правила внимания) и группу графа,
+  рассылает тему `character` и пишет событие `character`. Инструмент `core.set_character` (risk ask), `POST /api/character` в дашборде.
+  `POST /api/settings` не меняет `character` (только переключатель).
+  Выбор персонажа есть во вкладке «Состояние» дашборда и в подменю «Персонаж» трея (оба идут через `POST /api/character`).
+- Личная память по персонажам (CHR-9, CHR-10): группа графа = id персонажа (база FalkorDB = id), области модулей `<id>:<модуль>`;
+  папка памяти персонажа `memory/` для `glados` (без переноса данных) и `memory/characters/<id>/` для остальных; общие остаются
+  `events.db`, `settings.json`, справочник, снимки. Очередь графа общая, запись помечена персонажем.
+- Воспоминания персонажа о себе (CHR-14…CHR-20): якорь из `character.yaml` (до 600 символов) в характере компаньона; `memories.yaml`
+  загружается в граф командой `python -m character seed <id> [--dry-run]` (обновление по id, без дублей, удалённые из файла убираются);
+  связи помечаются `canon`, `source`, `mtype`, `weight`. Защита канона: колонисты, закрытие фактов и очистка его не трогают;
+  противоречие пишется событием `memory_conflict`. Факты о персонаже из реплик собеседника не пишутся. Отбор в ответ: до трёх
+  воспоминаний о себе (порог по смыслу, `relevance × (0.5 + weight)`), раз в пять реплик напоминание о привычке или мнении.
+  Правило «о прошлом не выдумывать» в `prompt.yaml` (`companion.memory_rule`).
+- Имя персонажа убрано из кода (CHR-4): тексты для модели берутся из карточки и `persona.md` (раздел `telegram_channel`,
+  `telegram_formats`, `desktop_assistant`), модули получают их запросом `core.persona` (поля `id`, `name`, `aliases`, `voice`,
+  `sections`); Telegram распознаёт обращение по алиасам, голос берёт референс персонажа, помощник на компьютере - персону.
+  Подписи дашборда (граф, легенда) берут имя из состояния (`character.name`), строки `ГЛаДОС` в коде агента остаются только в данных
+  (`# id данных`) и в тесте-сторожe.
+- Переменные окружения (CHR-1, CHR-2): `GLADOS_*` переименованы по таблице ТЗ 05 в `GITS_*` (инфраструктура) и `CHARACTER_*`
+  (персонаж: `CHARACTER_FAST_MODEL`, `CHARACTER_FAST_URL`, `CHARACTER_ASSISTANT_MODEL`, `CHARACTER_MODEL`). `GITS_ASSISTANT_URL`
+  переименован в `GITS_CORE_HTTP_URL`. `agent/envcompat.py` (и копии в модулях, SDK и сервисе decider) читает новое имя и, если его
+  нет, старое с однократным предупреждением. Копии сверяет тест.
+- SDK (CHR-3): пакет `sdk/gits_sdk` (`pip install -e C:\MyProjects\GitS\sdk`, пакет `gits-sdk`), импорт `gits_sdk`, журнал
+  `gits_sdk`. Файл токена модулей: `%LOCALAPPDATA%\GitS\module_token` (прежний `GLaDOS\module_token` читается запасным). Тема
+  `character` добавлена в `TOPICS`.
+- Модули: `telegram` (канал и обращение по алиасам), `voice` (референс голоса и голос персонажа по `core.persona`, тема
+  `character`), `desktop` (персона помощника, правила безопасности остаются в коде), `pet` (тексты в журнале без имени).
+
+### Deprecated
+- Имена переменных окружения `GLADOS_*` (читаются через `envcompat` с предупреждением; удалить через одну версию после переименования в
+  `secrets.env` и в переменных ядра, см. отчёт ТЗ 05).
+- Пакет `glados_module` (алиас `gits_sdk` с DeprecationWarning; удалить через одну версию, когда модули переедут на `gits_sdk`).
+- Файл токена `%LOCALAPPDATA%\GLaDOS\module_token` (читается запасным).
+
+### Added
+- `agent/character.py` (загрузка карточки, список, активный персонаж, пути памяти, группы графа, `fill`), `agent/character_memory.py`,
+  `agent/character_seed.py` (`python -m character seed`), `agent/character_switch.py`, `agent/envcompat.py`, шаблон `agent/characters/_template/`,
+  образец `memories.yaml` для `glados` (10 записей, черновик-образец; полное наполнение пишет владелец, CHR-21).
+- Тесты: `test_character.py`, `test_character_memory.py`, `test_character_switch.py`, `test_graph_character.py`, `test_envcompat.py`,
+  `sdk/tests/test_alias.py`.
 
 ### Fixed
 - Локальное распознавание голоса получает язык явно (`GLADOS_STT_LANGUAGE`, по умолчанию `ru`): автоопределение Whisper на коротких фразах выдавало корейский текст.

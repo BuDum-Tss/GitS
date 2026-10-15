@@ -18,8 +18,8 @@ OK = textwrap.dedent('''
     from pathlib import Path
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
     Path("child.pid").write_text(str(child.pid))
-    print("module_id=" + os.environ["GLADOS_MODULE_ID"], "url=" + os.environ["GLADOS_CORE_URL"],
-          "token=" + ("yes" if len(os.environ.get("GLADOS_MODULE_TOKEN", "")) == 64 else "no"),
+    print("module_id=" + os.environ["GITS_MODULE_ID"], "url=" + os.environ["GITS_CORE_URL"],
+          "token=" + ("yes" if len(os.environ.get("GITS_MODULE_TOKEN", "")) == 64 else "no"),
           "unbuffered=" + os.environ.get("PYTHONUNBUFFERED", ""), "sdk=" + str("sdk" in os.environ.get("PYTHONPATH", "")))
     while not Path("stop.flag").exists():
         time.sleep(0.05)
@@ -344,7 +344,7 @@ async def test_real_echo_module_command_resolves_inside_repo():
     cmd, cwd = sup.resolve("echo")
     assert cmd == [sys.executable, "-u", "echo_module.py"] and (cwd / "echo_module.py").is_file()
     env = sup._process_env("echo")
-    assert env["GLADOS_MODULE_ID"] == "echo" and env["GLADOS_MODULE_TOKEN"] == TOKEN
+    assert env["GITS_MODULE_ID"] == "echo" and env["GITS_MODULE_TOKEN"] == TOKEN
     assert os.path.join(str(supervisor.GITS_ROOT), "sdk") in env["PYTHONPATH"]
 
 

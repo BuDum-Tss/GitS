@@ -23,8 +23,8 @@ import pc_control
 import perception
 import screen_operator
 import screenshots
-from glados_module import ModuleClient, ToolError
-from glados_module.protocol import new_job_id
+from gits_sdk import ModuleClient, ToolError
+from gits_sdk.protocol import new_job_id
 from watch import FocusWatch
 
 import events_log
@@ -73,6 +73,7 @@ class DesktopModule:
     def start(self) -> None:
         loop = asyncio.get_running_loop()
         self._tasks.append(loop.create_task(self._loop()))
+        self._tasks.append(loop.create_task(self._persona_loop()))
 
     async def stop(self) -> None:
         for t in self._tasks + list(self._jobs.values()):
@@ -229,8 +230,25 @@ class DesktopModule:
 
     # ── обработчики ─────────────────────────────────────────────────────────
 
+    async def load_persona(self) -> None:
+        """Персона помощника от ядра (core.persona, ТЗ 05 CHR-4): раздел desktop_assistant. Повторно при теме character."""
+        try:
+            card = await self.client.request("core.persona", {}, timeout=20)
+        except Exception as e:
+            log.warning("персона от ядра не получена: %s", e)
+            return
+        assistant_agent.set_persona((card.get("sections") or {}).get("desktop_assistant", ""))
+
+    async def _persona_loop(self) -> None:
+        await self.client.wait_connected()
+        await self.load_persona()
+
     def _register(self) -> None:
         c = self.client
+        @c.on_topic("character")
+        async def on_character(data):
+            await self.load_persona()
+
 
         @c.on_topic("settings")
         async def on_settings(data):

@@ -63,7 +63,7 @@
   Проверки MOD-3 (петля) и MOD-4 (токен) до апгрейда до WebSocket. Токен генерируется при старте ядра и пишется в
   `%LOCALAPPDATA%\GLaDOS\module_token` (атомарно: временный файл + `os.replace`).
 - **CORE-2 (ОБЯЗАТЕЛЬНО).** Рукопожатие по ТЗ 01 §5: ждать `hello` 10 с (иначе закрыть), проверить `protocol == 1`,
-  манифест (`glados_module.protocol.validate_manifest`), единственность `voice.output` (MOD-18), вытеснение
+  манифест (`gits_sdk.protocol.validate_manifest`), единственность `voice.output` (MOD-18), вытеснение
   дубликата (MOD-13). Ответ `welcome` с текущими настройками (`shared_settings` модуля), `module_settings`, профилем,
   батарейкой, `enabled`.
 - **CORE-3 (ОБЯЗАТЕЛЬНО).** Класс `ModuleConnection` с методами:
@@ -129,7 +129,7 @@ modules:
   «не настроен» с причиной и не запускается. Если `command` не существует как файл и это не `{PYTHON}` — запасной
   `{PYTHON}` и предупреждение в журнал.
 - **CORE-13 (ОБЯЗАТЕЛЬНО).** Запуск: `asyncio.create_subprocess_exec` без окна консоли (`CREATE_NO_WINDOW`), `cwd`,
-  окружение = окружение ядра + `GLADOS_MODULE_TOKEN`, `GLADOS_CORE_URL`, `GLADOS_MODULE_ID`, `PYTHONUNBUFFERED=1`.
+  окружение = окружение ядра + `GITS_MODULE_TOKEN`, `GITS_CORE_URL`, `GITS_MODULE_ID`, `PYTHONUNBUFFERED=1`.
   stdout и stderr — в `agent/logs/modules/<id>.log` (ротация: 5 МБ × 3 файла; каталог в `.gitignore`).
 - **CORE-14 (ОБЯЗАТЕЛЬНО).** Модуль запускается, если в настройках включён (`settings["modules"][id]["enabled"]`,
   по умолчанию `true` для всех из `modules.yaml`) и `autostart: true`. Выключение в дашборде: ядро шлёт модулю

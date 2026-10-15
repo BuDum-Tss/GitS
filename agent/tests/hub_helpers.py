@@ -12,8 +12,8 @@ from conversation_io import current_channel
 from attention import Attention
 from core_requests import CoreRequests
 from environments.registry import Registry
-from glados_module import protocol as P
-from glados_module.protocol import Envelope
+from gits_sdk import protocol as P
+from gits_sdk.protocol import Envelope
 from module_hub import ModuleHub
 from module_registry import ModuleRegistry
 from router import Router

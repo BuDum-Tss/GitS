@@ -28,6 +28,7 @@ from PIL import ImageGrab
 
 import events_log
 import fast_brain
+from envcompat import env
 
 logger = logging.getLogger("desktop.perception")
 
@@ -44,7 +45,7 @@ _DEFAULT_BLOCK = (
     "приватн", "private browsing", "incognito", "inprivate", "инкогнито",
     "кошел", "wallet", "seed phrase", "credit card", "банковск",
 )
-_extra = os.getenv("GLADOS_VISION_BLOCK", "")
+_extra = env("GITS_VISION_BLOCK", "")
 BLOCK_WORDS = _DEFAULT_BLOCK + tuple(w.strip().lower() for w in _extra.split(",") if w.strip())
 GITS_ROOT = Path(__file__).resolve().parents[2]
 

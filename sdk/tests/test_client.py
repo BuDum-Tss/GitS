@@ -6,10 +6,10 @@ import logging
 import pytest
 from helpers import MANIFEST, make_client, running
 
-import glados_module.client as client_mod
-from glados_module import ManifestError, ModuleClient, ToolError
-from glados_module import protocol as P
-from glados_module.testing import NO_REPLY, FakeCore
+import gits_sdk.client as client_mod
+from gits_sdk import ManifestError, ModuleClient, ToolError
+from gits_sdk import protocol as P
+from gits_sdk.testing import NO_REPLY, FakeCore
 
 # ---------------------------------------------------------------- рукопожатие
 
@@ -55,12 +55,12 @@ async def test_bad_token_gets_401_and_no_hello(core):
 
 async def test_token_from_env_then_file(core, monkeypatch, tmp_path):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.setenv("GLADOS_MODULE_TOKEN", core.token)
+    monkeypatch.setenv("GITS_MODULE_TOKEN", core.token)
     client = make_client(core, token=None)
     async with running(client, core):
         assert len(core.hellos) == 1
     # без переменной токен читается из файла ядра
-    monkeypatch.delenv("GLADOS_MODULE_TOKEN")
+    monkeypatch.delenv("GITS_MODULE_TOKEN")
     P.write_token_file(core.token)
     client2 = make_client(core, token=None)
     async with running(client2, core):
@@ -69,7 +69,7 @@ async def test_token_from_env_then_file(core, monkeypatch, tmp_path):
 
 async def test_no_token_anywhere_keeps_trying(core, monkeypatch, tmp_path):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.delenv("GLADOS_MODULE_TOKEN", raising=False)
+    monkeypatch.delenv("GITS_MODULE_TOKEN", raising=False)
     client = make_client(core, token=None)
     async with running(client, core, connected=False):
         await asyncio.sleep(0.2)
@@ -79,7 +79,7 @@ async def test_no_token_anywhere_keeps_trying(core, monkeypatch, tmp_path):
 
 
 async def test_url_from_env(core, monkeypatch):
-    monkeypatch.setenv("GLADOS_CORE_URL", core.url)
+    monkeypatch.setenv("GITS_CORE_URL", core.url)
     client = make_client(core)
     client._url = None
     assert client.url == core.url
@@ -88,7 +88,7 @@ async def test_url_from_env(core, monkeypatch):
 
 
 async def test_token_never_logged(core, caplog):
-    caplog.set_level(logging.DEBUG, logger="glados_module")
+    caplog.set_level(logging.DEBUG, logger="gits_sdk")
     client = make_client(core)
     async with running(client, core):
         await core.call_tool("ping", {"text": "x"})
@@ -161,7 +161,7 @@ async def test_tool_error_becomes_error_result(core):
 
 async def test_exception_becomes_internal_without_traceback(core, caplog):
     client = make_client(core)
-    with caplog.at_level(logging.ERROR, logger="glados_module"):
+    with caplog.at_level(logging.ERROR, logger="gits_sdk"):
         async with running(client, core):
             with pytest.raises(ToolError) as e:
                 await core.call_tool("boom")
@@ -229,7 +229,7 @@ async def test_tool_call_when_disabled_is_unavailable():
 
 async def test_unknown_types_are_ignored_and_unknown_requests_answered(core, caplog):
     client = make_client(core)
-    with caplog.at_level(logging.WARNING, logger="glados_module"):
+    with caplog.at_level(logging.WARNING, logger="gits_sdk"):
         async with running(client, core):
             await core.send("telepathy", {"a": 1})                       # неизвестный тип: игнор, соединение живо
             with pytest.raises(ToolError) as e:
@@ -594,7 +594,7 @@ async def test_kick_with_4000_stops_client(core):
 async def test_reject_about_protocol_exits_with_code_2(core, caplog):
     core.reject_next = ["protocol 2 не поддерживается"]
     client = make_client(core)
-    with caplog.at_level(logging.ERROR, logger="glados_module"):
+    with caplog.at_level(logging.ERROR, logger="gits_sdk"):
         code = await asyncio.wait_for(client.run(), 5)
     assert code == P.EXIT_REJECTED == 2
     assert len(core.rejected) == 1 and core.hellos == []

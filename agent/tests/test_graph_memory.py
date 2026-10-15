@@ -41,16 +41,16 @@ class FakeBackend:
     async def healthy(self):
         return (True, "работает") if self.ok else (False, "база не отвечает")
 
-    async def add_fact(self, fact, when):
+    async def add_fact(self, fact, when, group=None):
         self.added.append(fact)
 
-    async def search(self, query, limit):
+    async def search(self, query, limit, group=None):
         return self.found
 
     async def scores(self, query, facts):
         return [self._scores.get(f, 0.0) for f in facts]       # оценка по тексту факта, как у настоящей модели
 
-    async def delete(self, uuid):
+    async def delete(self, uuid, group=None):
         self.deleted = uuid
 
 
@@ -158,10 +158,10 @@ class ColonyBackend(FakeBackend):
         super().__init__()
         self.upserts, self.retired = [], []
 
-    async def upsert_fact(self, fact, when):
+    async def upsert_fact(self, fact, when, group=None):
         self.upserts.append(fact)
 
-    async def retire(self, subject, relations):
+    async def retire(self, subject, relations, group=None):
         self.retired.append(subject)
 
 

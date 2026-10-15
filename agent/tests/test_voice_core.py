@@ -13,7 +13,7 @@ import fast_brain
 import speech_out
 from companion import Companion
 from environments.registry import Registry
-from glados_module import ModuleClient
+from gits_sdk import ModuleClient
 from relationships import Relationships
 
 
@@ -395,7 +395,7 @@ async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tm
     from supervisor import load_specs
     monkeypatch.setenv("GITS_VOICE_FAKE", "1")
     monkeypatch.setenv("GITS_VOICE_FAKE_SEGMENT_MS", "150")
-    monkeypatch.setenv("GLADOS_VOICE_TMP", str(tmp_path / "vtmp"))
+    monkeypatch.setenv("GITS_VOICE_TMP", str(tmp_path / "vtmp"))
     specs = [s for s in load_specs() if s.id == "voice"]                       # только голос: остальные модули не запускаем
     assert len(specs) == 1 and specs[0].autostart
     mem = str(tmp_path / "memory")

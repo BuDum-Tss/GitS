@@ -282,7 +282,7 @@ def _focus_tool(focus, modules) -> Tool:
                 call=control, informative=True, availability="always")
 
 
-def register_core_tools(registry, modules, attention=None, focus=None):
+def register_core_tools(registry, modules, attention=None, focus=None, switch=None):
     """Инструменты ядра про задачи модулей (окружение core, всегда видны, ТЗ 02 раздел 11) и про внимание (ТЗ 03, ATT-24).
     modules - ModuleRegistry: jobs_all() и async cancel_job(module, job_id); attention - менеджер внимания (attention.py);
     focus - менеджер фокуса (focus.py, ТЗ 18): закрепить фокус, «не беспокоить», разовое исключение голосом."""
@@ -300,6 +300,11 @@ def register_core_tools(registry, modules, attention=None, focus=None):
 
     async def job_cancel(a):
         return await modules.cancel_job(a["module"], a["job_id"])
+
+    async def set_character(a):
+        if switch is None:
+            raise ToolError("смена персонажа пока недоступна", code="unavailable")
+        return await switch(str(a["id"]))
 
     async def set_setting(a):
         key = a["key"]
@@ -369,6 +374,9 @@ def register_core_tools(registry, modules, attention=None, focus=None):
                   {"key": {"type": "string", "enum": list(MODULE_SETTINGS), "description": "какая настройка"},
                    "value": {"type": "boolean", "description": "true - включить, false - выключить"}},
                   set_setting, keywords=("настройка",)),
+            _tool("core", "set_character", "Сменить персонажа на другого из папки characters (id персонажа). Вместе с персонажем переключается его память и голос. Для просьб «смени персонажа», «переключись на ...».",
+                  {"id": {"type": "string", "description": "id персонажа из папки characters (список в состоянии дашборда)"}},
+                  set_character, risk="ask", keywords=("персонаж", "смени", "переключись", "переключи")),
             _tool("core", "job_cancel", "Отменить задачу модуля (по модулю и номеру задачи из перечня задач).",
                   {"module": {"type": "string", "description": "id модуля, например montage"},
                    "job_id": {"type": "string", "description": "номер задачи вида j-xxxxxxxx"}},

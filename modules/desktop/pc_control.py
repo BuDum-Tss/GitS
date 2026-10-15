@@ -15,7 +15,7 @@ from pathlib import Path
 
 import perception
 import safety
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 _DANGEROUS_KEYS = {"alt+f4", "win+r", "win+x", "ctrl+alt+del", "ctrl+alt+delete", "ctrl+shift+esc"}
 _MAX_TYPED = 500

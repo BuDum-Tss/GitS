@@ -14,7 +14,7 @@ import time
 import fast_brain
 import perception
 import pc_control
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 logger = logging.getLogger("desktop.operator")
 

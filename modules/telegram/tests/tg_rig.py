@@ -4,8 +4,8 @@ import contextlib
 import json
 from pathlib import Path
 
-from glados_module import ModuleClient
-from glados_module.testing import FakeCore
+from gits_sdk import ModuleClient
+from gits_sdk.testing import FakeCore
 
 import events_log
 from app import TelegramModule
@@ -101,6 +101,10 @@ class Rig:
         self.client = ModuleClient(build_manifest(), url=self.core.url, token=self.core.token)
         self.client.reconnect_delays = (0.05, 0.05, 0.1)
         self.mod = TelegramModule(self.client, str(self.mem))
+        # персона от ядра (core.persona, ТЗ 05 CHR-4): в тестах заглушка с теми же разделами и именами
+        self.mod.channel.set_persona({"telegram_channel": "Ты — тестовый персонаж канала.",
+                                      "telegram_formats": "- тестовый формат"})
+        self.mod.user.set_aliases(["ГЛаДОС", "glados"])
         self._wire()
 
     def _wire(self):

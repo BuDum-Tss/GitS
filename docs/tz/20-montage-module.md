@@ -60,7 +60,7 @@ montage-module/
 
 - **MON-2 (ОБЯЗАТЕЛЬНО).** Установка (каждый пункт — с разрешения человека): `git init`; (по желанию человека)
   приватный репозиторий `BuDum-Tss/montage-module` на GitHub; `.venv` (Python 3.12+) с `aiohttp`, `httpx`,
-  `claude-agent-sdk` (та же версия, что в GitS), `glados-module` (`pip install -e C:\MyProjects\GitS\sdk`); Node.js
+  `claude-agent-sdk` (та же версия, что в GitS), `gits-sdk` (`pip install -e C:\MyProjects\GitS\sdk`); Node.js
   (проверить `node --version` ≥ 18; если нет — сказать человеку, не ставить самому); `npm ci` в `template/`; ffmpeg —
   тот же, что ищет `opus_encoder.find_ffmpeg` в GitS (скопировать функцию поиска).
 - **MON-3 (ОБЯЗАТЕЛЬНО).** `AGENTS.md` нового репозитория — по образцу GitS (правила из `docs/tz/README.md` «Общие

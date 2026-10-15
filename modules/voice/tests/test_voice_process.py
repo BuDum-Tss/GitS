@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from glados_module.testing import FakeCore
+from gits_sdk.testing import FakeCore
 
 MODULE_DIR = Path(__file__).resolve().parent.parent
 GITS = MODULE_DIR.parent.parent
@@ -16,9 +16,9 @@ async def test_main_process_speaks_fake_and_shuts_down(tmp_path):
     async with FakeCore(settings={"voice_muted": False, "volume": 100, "mic": False, "hearing": False,
                                   "dnd": False, "quiet_until": 0.0}) as core:
         env = dict(os.environ)
-        env.update(GLADOS_CORE_URL=core.url, GLADOS_MODULE_TOKEN=core.token, GLADOS_MODULE_ID="voice", MEMORY_DIR=str(mem),
-                   GLADOS_SECRETS_FILE=str(tmp_path / "нет-secrets.env"), LOCALAPPDATA=str(tmp_path / "la"),
-                   GLADOS_VOICE_TMP=str(tmp_path / "vtmp"), GITS_VOICE_FAKE="1", GITS_VOICE_FAKE_SEGMENT_MS="150",
+        env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="voice", MEMORY_DIR=str(mem),
+                   GITS_SECRETS_FILE=str(tmp_path / "нет-secrets.env"), LOCALAPPDATA=str(tmp_path / "la"),
+                   GITS_VOICE_TMP=str(tmp_path / "vtmp"), GITS_VOICE_FAKE="1", GITS_VOICE_FAKE_SEGMENT_MS="150",
                    PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "sdk"))
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-u", "main.py", cwd=str(MODULE_DIR), env=env,

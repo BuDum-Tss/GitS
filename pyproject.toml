@@ -39,5 +39,5 @@ ignore = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["agent/tests"]
-# sdk и sdk/examples: пакет glados_module и эхо-модуль до установки пакета (pip install -e ./sdk, см. README)
+# sdk и sdk/examples: пакет gits_sdk и эхо-модуль до установки пакета (pip install -e ./sdk, см. README)
 pythonpath = ["agent", "sdk", "sdk/examples"]

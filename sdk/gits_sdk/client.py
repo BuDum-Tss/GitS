@@ -2,7 +2,7 @@
 
 Модуль создаёт клиент с манифестом, регистрирует обработчики инструментов и вызывает `await client.run()`: клиент сам
 подключается к ядру по WebSocket, проходит рукопожатие, принимает вызовы, переподключается при обрыве. Журналы идут в
-`logging.getLogger("glados_module")`, токен в них не попадает.
+`logging.getLogger("gits_sdk")`, токен в них не попадает.
 """
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import asyncio
 import copy
 import json
 import logging
-import os
 import sys
 import time
 from collections.abc import Awaitable, Callable
@@ -20,8 +19,9 @@ import aiohttp
 
 from . import protocol as P
 from .protocol import Envelope, ManifestError, ProtocolError, ToolError
+from .envcompat import env
 
-log = logging.getLogger("glados_module")
+log = logging.getLogger("gits_sdk")
 
 ASK_GRACE_S = 30.0               # MOD-25: ждём ответа на ask столько секунд сверх timeout_s
 HANDSHAKE_TIMEOUT_S = 10.0       # сколько ждём welcome после hello
@@ -249,13 +249,13 @@ class ModuleClient:
         return self._url or P.core_url()
 
     async def _resolve_token(self) -> str | None:
-        """Токен: параметр, GLADOS_MODULE_TOKEN, файл ядра (MOD-4). Файл перечитывается при каждой попытке:
+        """Токен: параметр, GITS_MODULE_TOKEN, файл ядра (MOD-4). Файл перечитывается при каждой попытке:
         ядро меняет токен при каждом старте."""
         if self._token:
             return self._token
-        env = os.environ.get(P.ENV_TOKEN)
-        if env:
-            return env
+        token_env = env(P.ENV_TOKEN)
+        if token_env:
+            return token_env
         return await asyncio.to_thread(P.read_token_file)
 
     def main(self) -> None:

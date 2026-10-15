@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 load_dotenv("secrets.env")   # токены (не в git): TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL
 
-# до установки пакета glados-module (pip install -e ./sdk) SDK модулей берётся из репозитория
+# до установки пакета gits-sdk (pip install -e ./sdk) SDK модулей берётся из репозитория
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sdk"))
 
 import core_service

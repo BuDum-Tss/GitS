@@ -25,7 +25,7 @@ def test_montage_command_is_built_from_the_repo_folder(tmp_path):
     command, cwd = sup.resolve("montage")
     assert Path(command[0]) == python and command[1:] == ["-u", "main.py"] and Path(cwd) == repo / "agent"
     env = sup._process_env("montage")
-    assert env["GLADOS_MODULE_ID"] == "montage" and env["GLADOS_MODULE_TOKEN"] == TOKEN
+    assert env["GITS_MODULE_ID"] == "montage" and env["GITS_MODULE_TOKEN"] == TOKEN
 
 
 def test_editing_profile_is_real():

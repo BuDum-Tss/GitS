@@ -7,19 +7,19 @@
 Каждая команда проходит проверки по реальному состоянию игры (а не только
 по тому, что сказала локальная модель): draft только при наличии врагов,
 undraft только когда врагов нет, плюс пауза между повторами.
-Отключить: переменная окружения GLADOS_REFLEX_ACTIONS=off.
+Отключить: переменная окружения GITS_REFLEX_ACTIONS=off.
 """
 import asyncio
 import logging
-import os
 import time
 
 import httpx
+from envcompat import env
 
 logger = logging.getLogger("reflex")
 
-BASE     = os.environ.get("GLADOS_RIMWORLD_URL", "http://localhost:8765")   # мод отвечает только на имя localhost
-ENABLED  = os.environ.get("GLADOS_REFLEX_ACTIONS", "on").lower() != "off"
+BASE     = env("GITS_RIMWORLD_URL", "http://localhost:8765")   # мод отвечает только на имя localhost
+ENABLED  = env("GITS_REFLEX_ACTIONS", "on").lower() != "off"
 COOLDOWN_SECS = 30
 
 EXECUTABLE = ("draft_colonists", "undraft")

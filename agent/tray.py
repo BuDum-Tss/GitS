@@ -167,11 +167,35 @@ def _is_volume(pct):
     return check
 
 
+def _switch_character(char_id: str):
+    """Смена персонажа из трея: запрос к API дашборда ядра (живое переключение памяти и речи, ТЗ 05, CHR-7)."""
+    def run(icon, item):
+        import json
+        import urllib.request
+        body = json.dumps({"id": char_id}).encode("utf-8")
+        req = urllib.request.Request(DASHBOARD_URL.rstrip("/") + "/api/character", data=body, method="POST",
+                                     headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req, timeout=60).read()
+        except Exception:
+            pass
+    return run
+
+
+def _character_menu() -> pystray.Menu:
+    """Персонажи из папки agent/characters: выбранный отмечен."""
+    import character
+    M, Menu = pystray.MenuItem, pystray.Menu
+    return Menu(*[M(cid, _switch_character(cid), checked=lambda it, c=cid: character.configured_id() == c, radio=True)
+                  for cid in character.list_ids()])
+
+
 def build_menu() -> pystray.Menu:
     M, Menu = pystray.MenuItem, pystray.Menu
     return Menu(
         M("Открыть дашборд", lambda i, it: webbrowser.open(DASHBOARD_URL), default=True),
         Menu.SEPARATOR,
+        M("Персонаж", _character_menu()),
         M("Показывать питомца", _toggle_pet,
           checked=lambda it: settings.load()["pet_visible"]),
         M("Закрепить питомца (не двигается)", _toggle("pet_pinned"),

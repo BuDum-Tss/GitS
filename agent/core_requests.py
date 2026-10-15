@@ -10,7 +10,7 @@ import logging
 import re
 from typing import Any, Callable
 
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 
 from module_hub import ModuleConnection, ModuleError
 
@@ -18,7 +18,6 @@ logger = logging.getLogger("core_requests")
 
 TTS_TIMEOUT_S = 80            # синтез у модуля голоса: Fish Speech до 30 с на фразу плюс перекодирование
 TTS_TEXT_MAX = 5000
-NAME = "ГЛаДОС"
 
 _TO_TZ04 = "появится в ТЗ 04"
 _NAME_FACT = re.compile(r"\s*(?:имя(?: пользователя)?|зовут)\s*[:\-]\s*(.+)", re.I)
@@ -166,8 +165,13 @@ class CoreRequests:
     # ── прочее ──────────────────────────────────────────────────────────────
 
     async def _persona(self, conn: ModuleConnection, body: Any) -> dict:
+        """ТЗ 05, CHR-6: карточка активного персонажа (имя, алиасы, голос), карточка характера и разделы persona.md."""
+        import character
         import prompts
-        return {"name": NAME, "card": await asyncio.to_thread(prompts.persona_card, 2000)}
+        ch = character.active()
+        card = await asyncio.to_thread(prompts.persona_card, 2000)
+        sections = await asyncio.to_thread(character.sections, ch.id)
+        return {**ch.card(), "name": ch.name, "card": card, "sections": sections}
 
     async def _privacy_terms(self, conn: ModuleConnection, body: Any) -> dict:
         """TG-12: личные слова (имя владельца, имена знакомых, имена из фактов о владельце) для фильтров публикации."""

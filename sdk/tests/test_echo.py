@@ -7,8 +7,8 @@ import asyncio
 import pytest
 from echo_module import MANIFEST, build_client
 
-from glados_module import ToolError
-from glados_module import protocol as P
+from gits_sdk import ToolError
+from gits_sdk import protocol as P
 
 
 @pytest.fixture

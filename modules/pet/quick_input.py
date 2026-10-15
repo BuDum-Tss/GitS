@@ -4,7 +4,7 @@
 оно уходит ассистенту (как в чате дашборда), и ответ показывается тут же.
 Esc или клик в другое окно закрывают строку. Клавишу выбирают в трее
 (настройка hotkey_input), например "Ctrl+Alt+Space" или "Win+Shift+A".
-Перенесено из ядра в модуль pet (ТЗ 13, PET-7): поведение не менялось, адрес дашборда берётся из GLADOS_CORE_URL.
+Перенесено из ядра в модуль pet (ТЗ 13, PET-7): поведение не менялось, адрес дашборда берётся из GITS_CORE_URL.
 """
 import ctypes
 import queue
@@ -16,7 +16,7 @@ import httpx
 
 from pet_logic import dashboard_base
 
-# пульт управления: HTTP-API дашборда ядра (PET-6, PET-7); адрес по GLADOS_CORE_URL
+# пульт управления: HTTP-API дашборда ядра (PET-6, PET-7); адрес по GITS_CORE_URL
 CHAT_URL = dashboard_base() + "/api/chat"
 CORE_URL = dashboard_base() + "/api/core"
 REPLY_TIMEOUT_SECS = 90

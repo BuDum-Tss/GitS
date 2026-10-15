@@ -1,8 +1,8 @@
 """Локальный распознаватель на процессоре (faster-whisper, int8): запасной путь для микрофона и общий для слуха.
 
 Один экземпляр на процесс модуля (`shared()`): микрофон (запасной путь STTClient) и слух системного звука (hearing.py)
-делят одну загруженную модель, а не грузят её дважды. Потоков процессора не больше `GLADOS_STT_THREADS` (по умолчанию 2),
-чтобы не душить игру и LM Studio. Модель: `GLADOS_STT_MODEL` (по умолчанию small).
+делят одну загруженную модель, а не грузят её дважды. Потоков процессора не больше `GITS_STT_THREADS` (по умолчанию 2),
+чтобы не душить игру и LM Studio. Модель: `GITS_STT_MODEL` (по умолчанию small).
 
 Веса НЕ скачиваются: модель открывается с `local_files_only=True`. Если веса не лежат в кэше, распознавание просто
 недоступно, и состояние честно говорит «модель не загружена». Загрузка из сети только по разрешению владельца (правило
@@ -15,14 +15,15 @@ import threading
 import time
 
 import numpy as np
+from envcompat import env
 
 logger = logging.getLogger("local_stt")
 
 SR = 16000
-MODEL_NAME = os.getenv("GLADOS_STT_MODEL", "small")
+MODEL_NAME = env("GITS_STT_MODEL", "small")
 RETRY_S = 60.0                      # модель не нашлась: следующая проверка не раньше, чем через столько секунд
 MIN_LOGPROB = -1.0                  # сегменты с худшей уверенностью отбрасываем (как в прежнем слухе)
-LANGUAGE = os.getenv("GLADOS_STT_LANGUAGE", os.getenv("WHISPERX_LANGUAGE", "ru"))     # язык задан явно: автоопределение на коротких фразах выдаёт корейский и прочие выдумки
+LANGUAGE = env("GITS_STT_LANGUAGE", os.getenv("WHISPERX_LANGUAGE", "ru"))     # язык задан явно: автоопределение на коротких фразах выдаёт корейский и прочие выдумки
 MAX_NO_SPEECH = 0.6
 
 # Типичные «галлюцинации» Whisper на тишине и музыке (общие для микрофона и слуха)
@@ -32,7 +33,7 @@ _JUNK = re.compile(r"субтитры|субтитрами|dimatorzok|продо
 
 def _threads() -> int:
     try:
-        return max(1, int(os.getenv("GLADOS_STT_THREADS", "2")))
+        return max(1, int(env("GITS_STT_THREADS", "2")))
     except ValueError:
         return 2
 

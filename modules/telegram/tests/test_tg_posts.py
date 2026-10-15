@@ -5,7 +5,7 @@ import time
 import pytest
 from tg_rig import Rig
 
-from glados_module import ToolError
+from gits_sdk import ToolError
 
 POST = "Протокол испытания номер семь: куб снова не оправдал ожиданий."
 

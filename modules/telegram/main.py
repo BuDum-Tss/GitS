@@ -1,7 +1,7 @@
 """Точка входа модуля Telegram (ТЗ 10). Запускает супервизор ядра: `python main.py` из папки модуля.
 
 Секреты (TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL, TELEGRAM_API_ID, TELEGRAM_API_HASH) модуль читает сам из agent/secrets.env
-(путь можно заменить переменной GLADOS_SECRETS_FILE); их значения нигде не печатаются. Без секретов модуль работает и честно
+(путь можно заменить переменной GITS_SECRETS_FILE); их значения нигде не печатаются. Без секретов модуль работает и честно
 сообщает в состоянии «не настроен».
 """
 import asyncio
@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-# библиотечные файлы ядра без состояния (fast_brain, events_log, ...) и SDK до установки пакета glados-module; свои файлы модуля первыми
+# библиотечные файлы ядра без состояния (fast_brain, events_log, ...) и SDK до установки пакета gits-sdk; свои файлы модуля первыми
 sys.path[:0] = [str(HERE), str(HERE.parent.parent / "agent"), str(HERE.parent.parent / "sdk")]
 
 from dotenv import load_dotenv  # noqa: E402
@@ -21,7 +21,7 @@ load_dotenv(secrets_file())                       # секреты не в git; 
 
 import events_log  # noqa: E402
 from app import TelegramModule  # noqa: E402
-from glados_module import ModuleClient  # noqa: E402
+from gits_sdk import ModuleClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 
 log = logging.getLogger("telegram")

@@ -133,7 +133,7 @@ MANIFEST = {
                    "управление по экрану и Claude-помощник для сложных задач.",
     "version": "1.0.0",
     "capabilities": ["screen.observe"],
-    "subscribe": ["settings", "module"],
+    "subscribe": ["settings", "module", "character"],
     "shared_settings": ["vision", "dnd", "quiet_until", "auto_accept"],
     "tools": TOOLS,
     "emits": EMITS,

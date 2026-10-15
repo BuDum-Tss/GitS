@@ -20,8 +20,8 @@ def _isolated(tmp_path, monkeypatch):
     mem.mkdir()
     monkeypatch.setenv("MEMORY_DIR", str(mem))
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "localappdata"))
-    monkeypatch.setenv("GLADOS_SECRETS_FILE", str(tmp_path / "нет-такого-secrets.env"))
-    monkeypatch.setenv("GLADOS_VOICE_TMP", str(tmp_path / "voice_tmp"))
+    monkeypatch.setenv("GITS_SECRETS_FILE", str(tmp_path / "нет-такого-secrets.env"))
+    monkeypatch.setenv("GITS_VOICE_TMP", str(tmp_path / "voice_tmp"))
     monkeypatch.delenv("GITS_VOICE_FAKE", raising=False)
     events_log.init(str(mem))
     yield

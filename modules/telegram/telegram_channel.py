@@ -28,7 +28,7 @@ from pathlib import Path
 
 import httpx
 from common import CAPTION_MAX, chunks, full_name, message_fact, quiet_active, scrub, sender_info
-from glados_module import ToolError
+from gits_sdk import ToolError
 from tg_draft import TgDraft
 
 import events_log
@@ -42,30 +42,23 @@ ASK_TIMEOUT_S = 60            # вопрос о публикации в вызо
 STATE_FILE = "telegram.json"
 
 _UNSAFE = re.compile(r"https?://|www\.|@\w|\S+@\S+\.\S+|\+?\d[\d\s\-()]{8,}|парол|password|token|токен", re.I)
-_FORMATS = [
-    "протокол испытания: короткий «отчёт» о воображаемом эксперименте в лаборатории (цель, ход, сухой вывод)",
-    "объявление для сотрудников Aperture Science: нелепое правило или напоминание с официальным тоном",
-    "заметка о конкретной вещи вокруг людей (чашка кофе, будильник, вкладки браузера, обновления), с одним точным наблюдением и шуткой",
-    "мини-история в 3 предложениях: завязка, поворот, едкая концовка",
-    "честная жалоба ГЛаДОС на конкретную мелочь жизни ИИ в чужом компьютере",
-    "«совет дня» подопытным: полезный на вид, а по сути язвительный",
-    "ответ на воображаемый вопрос читателя канала: сначала вопрос в кавычках, потом ответ",
-    "итог дня одной строкой и одна мысль о нём (опирайся на время суток)",
-]
 _BANNED_OPENERS = ("итак", "наблюдаю", "кажется", "ну вот", "что ж", "ох")
 _STOCK = re.compile(r"наблюда|хаос|человеческ|любопытств|заблудш", re.I)
 
-PERSONA = (
-    "Ты — ГЛаДОС (Aperture Science), у тебя есть публичный Telegram-канал, куда ты пишешь свои "
-    "мысли. Пиши по-русски, в женском роде, остроумно и сухо, с лёгким сарказмом, от первого лица. "
-    "Это публичный канал для читателей, а не личный разговор. Пост — маленький законченный текст: "
-    "один КОНКРЕТНЫЙ предмет или событие, потом поворот или шутка. Без общих слов про «хаос», «человеческое "
-    "любопытство», «наблюдение», без философии ни о чём. Не начинай со слов «Итак», «Наблюдаю», «Кажется», "
-    "«Ну вот»: начинай сразу с сути. Каждый пост должен читаться сам по себе, без контекста."
-)
 
 
 class TelegramChannel:
+    def set_persona(self, sections: dict) -> None:
+        """Разделы персоны от ядра (core.persona, ТЗ 05 CHR-4): канал пишет от лица персонажа, без имени в коде."""
+        self._persona_sections = dict(sections or {})
+
+    def _persona_text(self) -> str:
+        return str(getattr(self, "_persona_sections", {}).get("telegram_channel", "")).strip()
+
+    def _formats(self) -> list[str]:
+        raw = str(getattr(self, "_persona_sections", {}).get("telegram_formats", ""))
+        return [line[2:].strip() for line in raw.splitlines() if line.startswith("- ")]
+
     def __init__(self, memory_dir: str, client, privacy):
         """client - ModuleClient (settings, ask, request, event); privacy - Privacy (личные слова от ядра, TG-5)."""
         self._file = Path(memory_dir) / STATE_FILE
@@ -287,7 +280,7 @@ class TelegramChannel:
         material = ("\nСобытия игры за последние часы (колония, безопасно упоминать):\n"
                     + "\n".join(f"  - {e['text'][:140]}" for e in game)) if game else ""
         past = [p["text"][:140] for p in (await self.aload())["posts"][-3:]]
-        system = (PERSONA + " Ты ведёшь черновик поста для канала. Выполни задачу: если дан текущий черновик, "
+        system = (self._persona_text() + " Ты ведёшь черновик поста для канала. Выполни задачу: если дан текущий черновик, "
                   "перепиши его по задаче и сохрани то, что не просили менять; если черновика нет, напиши новый. "
                   "Пиши 2-5 предложений. НЕЛЬЗЯ: имена людей, что делает или говорит пользователь, что у него на "
                   "экране, личные данные, ссылки, @упоминания, выдуманные факты о канале. Ответь ТОЛЬКО JSON: "
@@ -342,7 +335,7 @@ class TelegramChannel:
             return "unavailable", ""
         if not await self.ensure_verified():
             return "not_verified", ""
-        system = (PERSONA + f" Владелец канала «{self.title}» просит тебя написать пост. Выполни его "
+        system = (self._persona_text() + f" Владелец канала «{self.title}» просит тебя написать пост. Выполни его "
                   "просьбу: если тема не названа, напиши короткий приветственный пост в своём характере. "
                   "Пиши 1-4 предложения. НЕЛЬЗЯ: имена людей, что делает или говорит пользователь, что у "
                   "него на экране, личные данные, ссылки, @упоминания; и ничего не выдумывай о канале "
@@ -500,7 +493,8 @@ class TelegramChannel:
         if past:
             lines.append("Твои прошлые посты (не повторяйся):")
             lines += [f"  - {p[:160]}" for p in past]
-        lines.append("Формат поста (держись его): " + random.choice(_FORMATS) + ".")
+        if self._formats():
+            lines.append("Формат поста (держись его): " + random.choice(self._formats()) + ".")
         return "\n".join(lines)
 
     def _style_ok(self, text: str, data: dict) -> bool:
@@ -525,7 +519,9 @@ class TelegramChannel:
         return text
 
     async def _think(self, data: dict) -> str | None:
-        system = (PERSONA + " Сама реши, есть ли сейчас что сказать публике; если нет, post=false. "
+        if not self._persona_text():       # без персоны от ядра посты не сочиняем (ТЗ 05, CHR-4)
+            return None
+        system = (self._persona_text() + " Сама реши, есть ли сейчас что сказать публике; если нет, post=false. "
                   "Пиши 2-4 предложения. НЕЛЬЗЯ: имена людей, что делает или говорит пользователь, "
                   "что у него на экране, личные данные, ссылки, @упоминания. МОЖНО: события игры, "
                   "вымышленные истории и отчёты Aperture Science, мелочи быта вообще. Ответь ТОЛЬКО JSON: "

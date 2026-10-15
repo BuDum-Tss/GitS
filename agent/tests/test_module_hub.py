@@ -11,8 +11,8 @@ import approvals
 import settings
 from environments import builtin
 from environments.base import ToolError
-from glados_module import ModuleClient
-from glados_module import protocol as P
+from gits_sdk import ModuleClient
+from gits_sdk import protocol as P
 
 
 # ── рукопожатие и защита ────────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ async def test_module_error_and_internal_error_keep_codes(tmp_path):
 
         @c.tool("deny")
         async def deny(args):
-            raise __import__("glados_module").ToolError("нельзя", code="denied")
+            raise __import__("gits_sdk").ToolError("нельзя", code="denied")
 
         @c.tool("crash")
         async def crash(args):
@@ -583,13 +583,13 @@ async def test_core_tool_call_runs_through_router_with_permissions(tmp_path):
         async with running_client(echo, core), running_client(caller, core):
             res = await caller.request("core.tool.call", {"tool": "echo.repeat", "args": {"text": "привет"}})
             assert res == {"text": "привет"}
-            with pytest.raises(__import__("glados_module").ToolError) as e:
+            with pytest.raises(__import__("gits_sdk").ToolError) as e:
                 await caller.request("core.tool.call", {"tool": "echo.repeat", "args": {}})
             assert e.value.code == "bad_request"
             task = asyncio.create_task(caller.request("core.tool.call", {"tool": "caller.risky"}))
             await core.wait_for(approvals.has_pending)                   # обычные разрешения: риск ask спрашивается
             approvals.resolve(False)
-            with pytest.raises(__import__("glados_module").ToolError) as e:
+            with pytest.raises(__import__("gits_sdk").ToolError) as e:
                 await task
             assert e.value.code == "denied"
 
@@ -619,7 +619,7 @@ async def test_core_persona_claude_usage_and_web_search(tmp_path, monkeypatch):
 
 async def test_core_tts_is_forwarded_to_the_voice_module(tmp_path):
     """VOICE-16: core.tts - это запрос tts.synthesize модулю voice; ядро само не синтезирует."""
-    from glados_module import ToolError
+    from gits_sdk import ToolError
     async with running_core(tmp_path) as core:
         client = build_client(interval=0.01, url=core.url, token=core.token)
         async with running_client(client, core):

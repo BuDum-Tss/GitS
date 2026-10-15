@@ -1,7 +1,7 @@
 """Точка входа модуля голоса (ТЗ 12). Запускает супервизор ядра: `python main.py` из папки модуля.
 
 Секретов у модуля нет (Fish Speech и WhisperX локальные), но файл agent/secrets.env читается, как у других модулей монорепо:
-в нём могут лежать адреса и пути (FISH_URL, WHISPERX_URL, GLADOS_STT_MODEL). GITS_VOICE_FAKE=1 подменяет синтез и
+в нём могут лежать адреса и пути (FISH_URL, WHISPERX_URL, GITS_STT_MODEL). GITS_VOICE_FAKE=1 подменяет синтез и
 воспроизведение тишиной и не запускает микрофон и слух: так проверяют запуск без звука.
 """
 import asyncio
@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-# библиотечные файлы ядра без состояния (fast_brain, events_log) и SDK до установки пакета glados-module; свои файлы модуля первыми
+# библиотечные файлы ядра без состояния (fast_brain, events_log) и SDK до установки пакета gits-sdk; свои файлы модуля первыми
 sys.path[:0] = [str(HERE), str(HERE.parent.parent / "agent"), str(HERE.parent.parent / "sdk")]
 
 from dotenv import load_dotenv  # noqa: E402
@@ -21,7 +21,7 @@ load_dotenv(secrets_file())                       # адреса сервисо�
 
 import events_log  # noqa: E402
 from app import VoiceModule  # noqa: E402
-from glados_module import ModuleClient  # noqa: E402
+from gits_sdk import ModuleClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 
 

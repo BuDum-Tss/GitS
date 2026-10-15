@@ -26,7 +26,7 @@ MANIFEST = {
                    "с очередью реплик, перебивание, слух системного звука (что играет в колонках).",
     "version": "1.0.0",
     "capabilities": ["voice.output", "voice.input"],
-    "subscribe": ["settings", "module"],
+    "subscribe": ["settings", "module", "character"],
     "shared_settings": ["voice_muted", "volume", "mic", "hearing", "dnd", "quiet_until"],
     "settings_schema": {
         "barge_in": {"type": "boolean", "title": "Перебивание: её речь обрывается, когда говорит владелец "

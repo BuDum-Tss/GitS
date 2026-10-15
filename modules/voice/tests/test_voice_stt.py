@@ -245,13 +245,13 @@ def test_default_loader_is_cpu_int8_local_only_and_limited_threads(monkeypatch):
 
 
 def test_thread_limit_defaults_to_two_and_follows_env(monkeypatch):
-    monkeypatch.delenv("GLADOS_STT_THREADS", raising=False)
+    monkeypatch.delenv("GITS_STT_THREADS", raising=False)
     assert local_stt._threads() == 2
-    monkeypatch.setenv("GLADOS_STT_THREADS", "4")
+    monkeypatch.setenv("GITS_STT_THREADS", "4")
     assert local_stt._threads() == 4
-    monkeypatch.setenv("GLADOS_STT_THREADS", "0")
+    monkeypatch.setenv("GITS_STT_THREADS", "0")
     assert local_stt._threads() == 1
-    monkeypatch.setenv("GLADOS_STT_THREADS", "много")
+    monkeypatch.setenv("GITS_STT_THREADS", "много")
     assert local_stt._threads() == 2
 
 

@@ -10,7 +10,7 @@ import queue
 import threading
 import time
 
-from glados_module import ModuleClient, ToolError
+from gits_sdk import ModuleClient, ToolError
 from pet_logic import panel_blocks
 
 log = logging.getLogger("pet")

@@ -1,4 +1,5 @@
 """Характер: конституция плюс prompt.yaml, запасные тексты при поломке файлов."""
+import character
 import prompts
 
 
@@ -15,10 +16,13 @@ def test_game_persona_keeps_rules():
 
 
 def test_fallback_when_files_are_missing(tmp_path, monkeypatch):
-    monkeypatch.setattr(prompts, "_DIR", tmp_path)
+    """Нет файлов характера: работают запасные тексты с именем персонажа (ТЗ 05, CHR-4: имя не зашито в код)."""
+    ch = character.Character(id="x", name="Тест", aliases=("Тест",), gender="female", language="ru", world="",
+                             anchor="", voice={}, emotions={}, defaults={}, folder=tmp_path)
+    monkeypatch.setattr(character, "_active", ch)
     prompts.reload()
     try:
-        assert "ГЛаДОС" in prompts.companion_persona()
+        assert "Тест" in prompts.companion_persona()
         assert "Неизменные правила" in prompts.game_persona()
     finally:
         monkeypatch.undo()

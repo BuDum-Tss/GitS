@@ -15,7 +15,7 @@ import core_service
 import dashboard
 import settings
 from environments.registry import Registry
-from glados_module import ModuleClient
+from gits_sdk import ModuleClient
 from supervisor import Supervisor, load_specs
 
 AGENT = Path(__file__).resolve().parent.parent

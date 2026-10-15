@@ -93,7 +93,7 @@ MANIFEST = {
                    "владельца с ней через бота и личку.",
     "version": "1.0.0",
     "capabilities": ["chat.channel"],
-    "subscribe": ["settings", "presence", "module"],
+    "subscribe": ["settings", "presence", "module", "character"],
     "shared_settings": ["telegram", "telegram_voice", "telegram_confirm", "quiet_until", "dnd"],
     "settings_schema": {
         "owner_tg_id": {"type": "integer", "title": "Telegram id владельца (0: разговор через Telegram выключен)",

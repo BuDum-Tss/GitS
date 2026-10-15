@@ -1,4 +1,4 @@
-"""Веб-дашборд GLaDOS — оверлей для стримера. Порт 8766."""
+"""Веб-дашборд ядра GitS — оверлей для стримера и пульт. Порт 8766."""
 import asyncio
 import json
 import logging
@@ -12,11 +12,13 @@ from aiohttp import web
 
 import approvals
 import module_panel
-from glados_module.protocol import JOB_ID_RE
+from gits_sdk.protocol import JOB_ID_RE
 from memory_store import MemoryStore
 import events_log
+import character
 import settings
 from user_memory import UserMemory
+from envcompat import env
 
 logger = logging.getLogger("dashboard")
 
@@ -91,7 +93,7 @@ async def handle_api_core(request: web.Request) -> web.Response:
         "dialogue":  _read_json("dialogue.json", [])[-40:],
         "activity":  _read_json("activity.json", [])[-5:],
         "screen":    _screen_state(),
-        "memories":  sorted(MemoryStore(str(_MEMORY_DIR)).all(), key=lambda i: -i["ts"])[:150],
+        "memories":  sorted(MemoryStore(str(_char_dir())).all(), key=lambda i: -i["ts"])[:150],
         "relations": relations,
         "approval":  {"pending": approvals.has_pending(), "text": approvals.pending_text(),
                       **{k: v for k, v in (approvals.pending_info() or {}).items() if k in ("kind", "options", "source", "queued")}},
@@ -236,14 +238,32 @@ async def handle_api_forget(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "invalid json"}, status=400)
     if body.get("id"):
-        return web.json_response({"removed": int(MemoryStore(str(_MEMORY_DIR)).delete(str(body["id"])))})
+        return web.json_response({"removed": int(MemoryStore(str(_char_dir())).delete(str(body["id"])))})
     text = str(body.get("text", "")).strip()
     if not text:
         return web.json_response({"error": "empty"}, status=400)
-    return web.json_response({"removed": UserMemory(str(_MEMORY_DIR)).forget(text)})
+    return web.json_response({"removed": UserMemory(str(_char_dir())).forget(text)})
 
 
 _GRAPH = None   # GraphMemory, ставится ядром
+
+
+_CHARACTER = None   # CharacterSwitch, ставится ядром (ТЗ 05, CHR-7)
+
+
+def set_character(switch):
+    global _CHARACTER
+    _CHARACTER = switch
+
+
+def _char_dir() -> Path:
+    """Папка личной памяти активного персонажа (ТЗ 05, CHR-10): память дашборда показывает её."""
+    return character.memory_dir(character.active().id, _MEMORY_DIR)
+
+
+def _character_state() -> dict:
+    ch = character.active()
+    return {"id": ch.id, "name": ch.name, "ids": character.list_ids()}
 
 
 def set_graph(graph):
@@ -298,6 +318,7 @@ async def handle_api_state(request: web.Request) -> web.Response:
         "pawn_fates":       game.get("pawn_fates", {}),
         "emotion":          _load_emotion(),
         "settings":         settings.load(),
+        "character":        _character_state(),
         "presence":         _PRESENCE.snapshot() if _PRESENCE is not None else None,     # как тема presence (CORE-39)
         "modules":          ([{"id": m["id"], "connected": m["connected"], "enabled": m["enabled"]}
                               for m in _MODULES.snapshot()] if _MODULES is not None else []),
@@ -305,10 +326,26 @@ async def handle_api_state(request: web.Request) -> web.Response:
     return web.json_response(data)
 
 
-# ── Чат с GLaDOS ────────────────────────────────────────────────────────────
+# ── Чат с персонажем ────────────────────────────────────────────────────────────
 
 _CHAT_CALLBACK = None   # companion.on_user_message, проставляется в start_dashboard
 _CHAT_LOG: list[dict] = []  # локальная история отправленных сообщений — для окна чата
+
+
+async def handle_api_character_post(request: web.Request) -> web.Response:
+    """Смена персонажа (ТЗ 05, CHR-7): тело {"id": "..."}; память и речь переключаются ядром."""
+    if not _is_local_json(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    if _CHARACTER is None:
+        return web.json_response({"error": "персонажи ещё не готовы"}, status=503)
+    try:
+        return web.json_response(await _CHARACTER.switch(str(body.get("id") or "")))
+    except character.CharacterError as e:
+        return web.json_response({"error": str(e)}, status=400)
 
 
 async def handle_api_settings_post(request: web.Request) -> web.Response:
@@ -319,7 +356,7 @@ async def handle_api_settings_post(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "invalid json"}, status=400)
     return web.json_response(settings.update(**{k: v for k, v in body.items()
-                                                 if k in settings.DEFAULTS}))
+                                                 if k in settings.DEFAULTS and k != "character"}))
 
 
 async def handle_api_chat_post(request: web.Request) -> web.Response:
@@ -768,6 +805,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/state", handle_api_state)
     app.router.add_post("/api/chat", handle_api_chat_post)
     app.router.add_post("/api/settings", handle_api_settings_post)
+    app.router.add_post("/api/character", handle_api_character_post)
     app.router.add_get("/api/core", handle_api_core)
     app.router.add_get("/api/events", handle_api_events)
     app.router.add_get("/api/capabilities", handle_api_capabilities)
@@ -819,6 +857,6 @@ async def start_dashboard(
 
     runner = web.AppRunner(build_app())
     await runner.setup()
-    site = web.TCPSite(runner, os.getenv("GLADOS_DASHBOARD_HOST", "127.0.0.1"), port)
+    site = web.TCPSite(runner, env("GITS_DASHBOARD_HOST", "127.0.0.1"), port)
     await site.start()
     logger.info(f"Дашборд запущен: http://localhost:{port}")

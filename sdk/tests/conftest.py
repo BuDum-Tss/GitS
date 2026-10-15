@@ -1,6 +1,6 @@
 import pytest
 
-from glados_module.testing import FakeCore
+from gits_sdk.testing import FakeCore
 
 
 @pytest.fixture

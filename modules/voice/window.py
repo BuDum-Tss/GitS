@@ -2,12 +2,13 @@
 
 Это короткая копия `foreground()` и `is_sensitive()` из `agent/perception.py` (модуль не импортирует зрение ядра: оно тянет
 настройки и память). Когда экран станет модулем desktop (ТЗ 14), активное окно слуху будет давать он, и эта копия уйдёт.
-Список чувствительных слов тот же, что у зрения (`GLADOS_VISION_BLOCK` дополняет его).
+Список чувствительных слов тот же, что у зрения (`GITS_VISION_BLOCK` дополняет его).
 """
 import ctypes
 import ctypes.wintypes as wt
 import os
 import sys
+from envcompat import env
 
 _DEFAULT_BLOCK = (
     "пароль", "password", "keepass", "bitwarden", "1password", "lastpass",
@@ -15,7 +16,7 @@ _DEFAULT_BLOCK = (
     "приватн", "private browsing", "incognito", "inprivate", "инкогнито",
     "кошел", "wallet", "seed phrase", "credit card", "банковск",
 )
-_extra = os.getenv("GLADOS_VISION_BLOCK", "")
+_extra = env("GITS_VISION_BLOCK", "")
 BLOCK_WORDS = _DEFAULT_BLOCK + tuple(w.strip().lower() for w in _extra.split(",") if w.strip())
 
 

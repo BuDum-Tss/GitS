@@ -2,7 +2,7 @@
 
 Telegram с «не беспокоить», игра с боем, монтаж с блокировкой материалов. Внимание настоящее (Rig из test_attention):
 событие идёт через Attention.submit и хук on_decided, как в ядре. Claude и LM Studio не вызываются."""
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 
 from focus_rigs import GAME_POLICIES, MONTAGE_POLICIES, TELEGRAM_POLICIES, World, journal_types
 from test_attention import Rig

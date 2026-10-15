@@ -5,9 +5,9 @@ import logging
 import pytest
 from helpers import MANIFEST, make_client, running
 
-from glados_module import ModuleClient, ToolError
-from glados_module import protocol as P
-from glados_module.testing import FakeCore
+from gits_sdk import ModuleClient, ToolError
+from gits_sdk import protocol as P
+from gits_sdk.testing import FakeCore
 
 PANEL_MANIFEST = copy.deepcopy(MANIFEST)
 PANEL_MANIFEST["panel"] = {
@@ -27,7 +27,7 @@ async def test_module_with_bad_panel_connects_without_panel(core, caplog):
     """TAB-1: неверный panel не отклоняет модуль: подключение проходит, в журнал идёт предупреждение."""
     manifest = copy.deepcopy(MANIFEST)
     manifest["panel"] = {"links": [{"id": "x", "label": "x", "kind": "tool", "tool": "nope"}]}
-    with caplog.at_level(logging.WARNING, logger="glados_module"):
+    with caplog.at_level(logging.WARNING, logger="gits_sdk"):
         client = make_client(core, manifest=manifest)
         async with running(client, core):
             assert client.connected

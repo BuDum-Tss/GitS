@@ -68,8 +68,8 @@ def pcm_frames(audio: str) -> list[bytes]:
 async def measure_module(n: int, audio: str | None, skip_utter: bool) -> dict:
     sys.path[:0] = [str(HERE), str(GITS / "agent"), str(GITS / "sdk")]
     import tts_engine
-    from glados_module import ModuleClient
-    from glados_module.testing import FakeCore
+    from gits_sdk import ModuleClient
+    from gits_sdk.testing import FakeCore
     from app import VoiceModule
     from manifest import build_manifest
 
@@ -83,7 +83,7 @@ async def measure_module(n: int, audio: str | None, skip_utter: bool) -> dict:
             await asyncio.sleep(wav_seconds(path))
             self.ends.append(time.perf_counter())
 
-    tmp = Path(tempfile.gettempdir()) / "glados_voice_measure"
+    tmp = Path(tempfile.gettempdir()) / "gits_voice_measure"
     out: dict = {}
     async with FakeCore(settings={"voice_muted": False, "volume": 100, "mic": False, "hearing": False,
                                   "dnd": False, "quiet_until": 0.0}) as core:
@@ -211,7 +211,7 @@ def main() -> None:
     ap.add_argument("--mode", choices=("module", "legacy"), required=True)
     ap.add_argument("-n", type=int, default=20, help="повторов на замер (по умолчанию 20)")
     ap.add_argument("--agent-dir", help="legacy: каталог agent/ ветки master")
-    ap.add_argument("--audio", default=str(HERE / "resources" / "tts" / "references" / "GlaDos.wav"),
+    ap.add_argument("--audio", default=str(Path(__file__).resolve().parents[3] / "agent" / "characters" / "glados" / "voice" / "GlaDos.wav"),
                     help="WAV 16 кГц моно с речью для замера utter (нужен WhisperX); пропустить: --skip-utter")
     ap.add_argument("--skip-utter", action="store_true", help="не мерить распознавание (WhisperX не запущен)")
     ap.add_argument("--json", help="записать результат в файл")

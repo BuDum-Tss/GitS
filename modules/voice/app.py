@@ -15,7 +15,7 @@ from collections import deque
 from pathlib import Path
 
 from fakes import FakePlayer, fake_synth_file
-from glados_module import ModuleClient, ToolError
+from gits_sdk import ModuleClient, ToolError
 from hearing import Hearing
 from mic_listener import MicListener
 from player import PowerShellPlayer
@@ -94,6 +94,7 @@ class VoiceModule:
         self.tmp = Path(tmp_dir) if tmp_dir is not None else common.temp_dir()
         self._synth_blocking = synth or (fake_synth_file if self.fake else tts_engine.synth_file)
         self.voices = VoiceIdentity(memory_dir)
+        self._mem_root = memory_dir                      # папки личной памяти персонажей лежат внутри (ТЗ 05, CHR-12)
         self.stt = stt or STTClient(on_change=self._stt_changed)
         self.outbox = Outbox(client)
         self.player = player or (FakePlayer() if self.fake else PowerShellPlayer())
@@ -134,6 +135,7 @@ class VoiceModule:
         self._tasks.append(loop.create_task(self._sweep_loop()))
         self._tasks.append(loop.create_task(self._state_loop()))
         self._tasks.append(loop.create_task(self._panel_loop()))
+        self._tasks.append(loop.create_task(self._character_loop()))
         if not self.fake:
             self._tasks.append(loop.create_task(self.stt.watch()))     # STT: проверка WhisperX при старте и раз в минуту
             self._tasks.append(loop.create_task(self.mic.run()))
@@ -287,7 +289,7 @@ class VoiceModule:
             pass
 
     async def synthesize(self, body: dict) -> dict:
-        """VOICE-5: запрос ядра `tts.synthesize` → файл в %TEMP%\\glados_voice\\ (wav, либо ogg через opus_encoder)."""
+        """VOICE-5: запрос ядра `tts.synthesize` → файл в %TEMP%\\gits_voice\\ (wav, либо ogg через opus_encoder)."""
         text, fmt = body.get("text"), body.get("format") or "wav"
         if not isinstance(text, str) or not text.strip() or len(text) > TEXT_MAX:
             raise ToolError(f"text: непустая строка до {TEXT_MAX} символов", code="bad_request")
@@ -325,6 +327,29 @@ class VoiceModule:
 
     # ── обработчики ядра ─────────────────────────────────────────────────────
 
+    def _character_memory_dir(self, char_id: str) -> str:
+        """Папка памяти персонажа: для персонажа по умолчанию — корень, для остальных memory/characters/<id>/ (ТЗ 05)."""
+        if not char_id or char_id == "glados":                # id данных
+            return self._mem_root
+        return str(Path(self._mem_root) / "characters" / char_id)
+
+    async def load_character(self) -> None:
+        """Голос персонажа от ядра (core.persona, ТЗ 05 CHR-12): референс и голос запасного синтеза."""
+        try:
+            card = await self.client.request("core.persona", {}, timeout=20)
+        except Exception as e:
+            log.warning("голос персонажа не получен от ядра: %s", e)
+            return
+        voice = card.get("voice") or {}
+        ref = voice.get("reference")
+        path = common.GITS_ROOT / "agent" / "characters" / str(card.get("id") or "") / str(ref) if ref else None
+        tts_engine.use_character_voice(path if path and path.is_file() else None, voice.get("edge_voice"))
+        self.voices.rebind(self._character_memory_dir(str(card.get("id") or "")))
+
+    async def _character_loop(self) -> None:
+        await self.client.wait_connected()
+        await self.load_character()
+
     def _register(self) -> None:
         c = self.client
 
@@ -355,6 +380,10 @@ class VoiceModule:
             if c.settings.get("voice_muted"):
                 self.speaker.mute_now()
             await self.report_state()
+
+        @c.on_topic("character")
+        async def on_character(data):
+            await self.load_character()
 
         @c.on_topic("module")
         async def on_module(data):

@@ -1,7 +1,7 @@
 """Манифест и инструменты модуля Telegram (ТЗ 10: раздел 5, TG-8, TG-22)."""
 from tg_rig import Rig
 
-from glados_module import protocol as P
+from gits_sdk import protocol as P
 from manifest import MANIFEST, build_manifest
 
 TABLE = {"post", "draft_show", "draft_write", "draft_edit", "draft_append", "draft_replace", "draft_attach",
@@ -17,7 +17,7 @@ def test_manifest_is_valid_and_matches_the_spec():
     assert P.validate_manifest(build_manifest()) == []
     m = MANIFEST
     assert m["id"] == "telegram" and m["title"] == "Telegram" and m["capabilities"] == ["chat.channel"]
-    assert m["subscribe"] == ["settings", "presence", "module"] and m["state"] is True
+    assert m["subscribe"] == ["settings", "presence", "module", "character"] and m["state"] is True
     assert m["shared_settings"] == ["telegram", "telegram_voice", "telegram_confirm", "quiet_until", "dnd"]
     schema = m["settings_schema"]
     assert schema["owner_tg_id"]["default"] == 0

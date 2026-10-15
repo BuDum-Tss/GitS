@@ -13,7 +13,7 @@ SDK для тяжёлых задач.
 - **Перед коммитом запускай `.\check.ps1`** (ruff и тесты). Новая логика получает тест в `agent/tests/`. Тесты
   без микрофона, игры, сети и Claude: подставляй заглушки.
 - **Всё асинхронно.** Блокирующий код (синтез речи, диск, subprocess) уводи в `asyncio.to_thread`.
-- **Файлы характера:** `agent/resources/prompts/constitution.yaml` меняет ТОЛЬКО человек (исполнитель тикетов и любые
+- **Файлы характера:** `agent/characters/<id>/constitution.yaml` (для персонажа по умолчанию `glados`) меняет ТОЛЬКО человек (исполнитель тикетов и любые
   автоматические правки сюда не заходят). `prompt.yaml` менять можно. Характер собирает `agent/prompts.py`.
 - **Секреты** (`agent/secrets.env`, сессии Telegram, `agent/memory/`) не читать, не печатать, не коммитить. Журналы не
   должны содержать токены.
@@ -30,7 +30,8 @@ SDK для тяжёлых задач.
 |---|---|
 | `companion.py` | разговор, проактивность, память разговора, приказы в игру |
 | `router.py`, `environments/` | «могу ли я»: планировщик, реестр окружений и инструментов, MCP-источники, разрешения |
-| `prompts.py`, `resources/prompts/` | характер: конституция и prompt.yaml |
+| `prompts.py`, `character.py`, `characters/` | характер активного персонажа (конституция и prompt.yaml из его папки), карточка персонажа, `character.fill` для промптов |
+| `character_memory.py`, `character_seed.py`, `character_switch.py`, `envcompat.py` | воспоминания персонажа о себе (отбор, блок промпта), загрузка `memories.yaml` в граф (`python -m character seed <id>`), переключение персонажа, переменные окружения с запасными старыми именами (ТЗ 05) |
 | `fast_brain.py` | локальная модель: эмоции, разбор намерений, реплики |
 | `game_launcher.py`, `gamenet.py` | запуск игры (приложения по названию) и проверка порта мода; сама игра это модуль `rimworld` (`modules/rimworld`) |
 | `modules/desktop/` | модуль «Компьютер» (ТЗ 14): зрение и экран (`perception.py`), снимки, управление мышью и клавиатурой (`pc_control.py`), приложения (`app_launcher.py`), управление по экрану (`screen_operator.py`), Claude-помощник как задача (`assistant_agent.py`), события `desktop.*` и состояние для профилей; тесты `modules/desktop/tests/` |
@@ -62,7 +63,7 @@ SDK для тяжёлых задач.
 приказ игрока (`companion.game_order`, `core_service.wire_modules`) идёт инструментом `order` каждого модуля фокуса с `capabilities:
 ["game"]`, подграф профиля запрашивается у модуля фокуса с `graph: true` (`graph.get`), служебные события вида `rimworld.colonists`
 обрабатывает ядро само (`Attention.kind_handlers`, они не озвучиваются). Ядро видит SDK через `sys.path` (`agent/main.py`, строка с комментарием
-«до установки пакета glados-module»). Запись `modules.yaml` с `kind: service` и `health_url` это процесс без WebSocket (первый:
+«до установки пакета gits-sdk»). Запись `modules.yaml` с `kind: service` и `health_url` это процесс без WebSocket (первый:
 классификатор `decider`): супервизор следит за ним по `GET health_url`, токен ядра ему не передаётся.
 
 ## Внимание и речь (ТЗ 03)
@@ -80,7 +81,7 @@ SDK для тяжёлых задач.
 `fast_brain`) только для неоднозначного случая; ответ строгий JSON, операции из конечного списка проверяются, сбой - правила.
 Эшелон и уверенность пишутся в журнал решений и видны в блоке «Фокус» дашборда. «Не беспокоить» для всего агента - это
 настройка ядра `dnd` / `quiet_until` (одно состояние, `settings.quiet_active`); разовое исключение живёт в менеджере. Профиль
-может объявить `focus.quiet_modules` (вычисляемо, в настройки не пишется). Выключатель второго эшелона: `GLADOS_FOCUS_LLM=0`.
+может объявить `focus.quiet_modules` (вычисляемо, в настройки не пишется). Выключатель второго эшелона: `GITS_FOCUS_LLM=0`.
 Тесты моделей не вызывают: заглушки `ask` (`agent/tests/test_focus_tiers.py`, `focus_rigs.py`).
 
 ## Звук и питомец (ТЗ 12, 13)
@@ -101,13 +102,25 @@ SDK для тяжёлых задач.
 `events_log`, `speech_text`, `prompts`, `claude_cli`); `companion`, `dashboard`, `router`, `core_service`, `settings`, `approvals`, `relationships`,
 `user_memory`, `graph_memory` не импортирует (настройки приходят от ядра, вопросы идут через `client.ask`, люди и память ведёт ядро по `sender` события,
 правило TG-14 в `attention.submit`). Данные модуля лежат в `MEMORY_DIR` (его передаёт супервизор), секреты модуль читает сам из `agent/secrets.env`
-(`GLADOS_SECRETS_FILE` заменяет путь в проверках). Тесты, которые поднимают супервизор с настоящим `modules.yaml`, обязаны оставлять только нужные модули.
+(`GITS_SECRETS_FILE` заменяет путь в проверках). Тесты, которые поднимают супервизор с настоящим `modules.yaml`, обязаны оставлять только нужные модули.
 
 ## SDK модулей (`sdk/`)
-Контракт «ядро ↔ модуль» (ТЗ 01, `docs/tz/01-module-contract.md`) и пакет `glados-module` (импорт `glados_module`):
-`sdk/glados_module/protocol.py` (конверт, манифест, проверки; его же импортирует ядро, не копирует), `client.py` (`ModuleClient`),
+Контракт «ядро ↔ модуль» (ТЗ 01, `docs/tz/01-module-contract.md`) и пакет `gits-sdk` (импорт `gits_sdk`):
+`sdk/gits_sdk/protocol.py` (конверт, манифест, проверки; его же импортирует ядро, не копирует), `client.py` (`ModuleClient`),
 `testing.py` (`FakeCore` для тестов модулей), пример `sdk/examples/echo_module.py`, тесты `sdk/tests/` (идут в `check.ps1`).
 Руководство автора модуля: `docs/MODULES.md`. SDK зависит только от `aiohttp` и не импортирует `agent/`.
+
+## Персонажи (ТЗ 05)
+Имя персонажа (сейчас ГЛаДОС) живёт только в папке `agent/characters/<id>/` (`character.yaml`, `constitution.yaml`, `prompt.yaml`,
+`persona.md`, `memories.yaml`, `voice/`). В коде имени нет: тест `agent/tests/test_character.py` ловит строки с именем без пометки
+`# id данных`. Промпт пишет `{name}`, код подставляет его через `character.fill` в момент вызова (переключение меняет промпт сразу).
+Тексты для модулей (Telegram, помощник на компьютере) модули берут запросом `core.persona` (разделы `persona.md`) и темой `character`.
+Память: личная (`UserMemory`, отношения, правила внимания) в папке персонажа (`memory/` для `glados`, иначе `memory/characters/<id>/`),
+граф по группе `<id>` (база FalkorDB = id), области модулей `<id>:<модуль>` (ТЗ 04c WM-4), очередь графа общая с меткой персонажа.
+Воспоминания о себе: `memories.yaml` -> граф (`canon: true`), защита канона в колонистах и очистке, факты о персонаже из реплик
+собеседника не пишутся. Переключение: `character_switch.CharacterSwitch` (дашборд `POST /api/character`, инструмент
+`core.set_character`). Переменные окружения: `GITS_*` (инфраструктура) и `CHARACTER_*` (персонаж), старые `GLADOS_*` читает
+`envcompat.env()` с предупреждением; все копии `envcompat.py` должны совпадать (тест). SDK: пакет `gits_sdk`, `glados_module` - алиас.
 
 ## Как добавить инструмент
 1. Опиши его в `environments/builtin.py` через `_tool(env, name, описание, параметры, функция, risk=..., keywords=...)`

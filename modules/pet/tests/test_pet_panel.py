@@ -5,8 +5,8 @@ import queue
 
 from manifest import build_manifest
 from pet_logic import panel_blocks
-from glados_module import ToolError
-from glados_module.testing import FakeCore
+from gits_sdk import ToolError
+from gits_sdk.testing import FakeCore
 
 import bridge
 

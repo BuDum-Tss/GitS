@@ -5,7 +5,7 @@ import time
 import wave
 
 import pytest
-from glados_module.protocol import ToolError, validate_manifest
+from gits_sdk.protocol import ToolError, validate_manifest
 
 import common
 import opus_encoder
@@ -17,7 +17,7 @@ def test_manifest_is_valid_and_matches_the_spec():
     m = build_manifest()
     assert validate_manifest(m) == []
     assert (m["id"], m["title"], m["capabilities"], m["subscribe"], m["state"]) == \
-        ("voice", "Голос", ["voice.output", "voice.input"], ["settings", "module"], True)
+        ("voice", "Голос", ["voice.output", "voice.input"], ["settings", "module", "character"], True)
     assert m["shared_settings"] == ["voice_muted", "volume", "mic", "hearing", "dnd", "quiet_until"]
     assert m["settings_schema"]["barge_in"]["default"] is False
     assert m["settings_schema"]["echo_tail_ms"] == {"type": "integer", "title": m["settings_schema"]["echo_tail_ms"]["title"],

@@ -12,7 +12,7 @@
 следит за здоровьем. Токен ядра сервису не передаётся.
 
 Вывод процесса (stdout и stderr вместе) пишется в `agent/logs/modules/<id>.log` (5 МБ, три файла). Токен ядра процессу
-передаётся в `GLADOS_MODULE_TOKEN`, в журналы он не попадает: похожие на токены места в выводе вырезаются. Модулю также
+передаётся в `GITS_MODULE_TOKEN`, в журналы он не попадает: похожие на токены места в выводе вырезаются. Модулю также
 передаётся `MEMORY_DIR`: абсолютный путь к папке памяти ядра (модули хранят свои данные там же, ТЗ 10).
 """
 import asyncio
@@ -218,7 +218,7 @@ class Supervisor:
                  announce: Callable[[str, str], Awaitable[None]] | None = None):
         """enabled(id) - включён ли модуль (ModuleRegistry.is_enabled); is_connected(id) - подключён ли он сейчас;
         send_shutdown(id) - послать модулю shutdown; sleep и clock подменяются в тестах (задержки перезапуска);
-        pythonpath - что добавить в PYTHONPATH процессов (до установки пакета glados-module это GitS/sdk);
+        pythonpath - что добавить в PYTHONPATH процессов (до установки пакета gits-sdk это GitS/sdk);
         memory_dir - папка памяти ядра: модулям уходит как MEMORY_DIR (абсолютным путём; их рабочая папка другая);
         probe(url) -> отвечает ли сервис 200 (в тестах подменяется); health_interval - период опроса сервисов;
         announce(id, text) - объявление о запуске процесса модуля (правило 14: включили, перезапуск по кнопке, перезапуск
@@ -296,11 +296,11 @@ class Supervisor:
         if self.specs[module_id].kind == "service":
             env["PYTHONUNBUFFERED"] = "1"           # сервис не модуль: токен ядра и адрес шины ему не нужны
             return env
-        env.update(GLADOS_MODULE_TOKEN=self.token, GLADOS_CORE_URL=self.core_url, GLADOS_MODULE_ID=module_id,
+        env.update(GITS_MODULE_TOKEN=self.token, GITS_CORE_URL=self.core_url, GITS_MODULE_ID=module_id,
                    PYTHONUNBUFFERED="1")
         if self.memory_dir is not None:
             env["MEMORY_DIR"] = str(self.memory_dir)
-        if self.pythonpath:            # до установки пакета glados-module модули находят SDK через PYTHONPATH
+        if self.pythonpath:            # до установки пакета gits-sdk модули находят SDK через PYTHONPATH
             env["PYTHONPATH"] = os.pathsep.join([*self.pythonpath, *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])])
         return env
 

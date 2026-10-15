@@ -18,13 +18,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+from .envcompat import env
 
 # ---------------------------------------------------------------- транспорт (MOD-1…MOD-7)
 
 PROTOCOL = 1
 DEFAULT_CORE_URL = "ws://127.0.0.1:8766/module/ws"
-ENV_CORE_URL = "GLADOS_CORE_URL"
-ENV_TOKEN = "GLADOS_MODULE_TOKEN"
+ENV_CORE_URL = "GITS_CORE_URL"
+ENV_TOKEN = "GITS_MODULE_TOKEN"
 MAX_MESSAGE_BYTES = 1024 * 1024        # MOD-6: файлы передаются путями, не внутри сообщений
 HEARTBEAT_S = 10                       # MOD-5: встроенный пинг WebSocket (aiohttp heartbeat)
 PEER_TIMEOUT_S = 30                    # нет ответа столько секунд: соединение разорвано
@@ -35,15 +36,23 @@ CORE_HOST_ALLOWED = ("127.0.0.1", "::1")   # MOD-3: ядро принимает 
 
 
 def core_url() -> str:
-    """Адрес ядра: GLADOS_CORE_URL или стандартный."""
-    return os.environ.get(ENV_CORE_URL) or DEFAULT_CORE_URL
+    """Адрес ядра: GITS_CORE_URL или стандартный."""
+    return env(ENV_CORE_URL) or DEFAULT_CORE_URL
+
+
+def _local_root() -> Path:
+    base = os.environ.get("LOCALAPPDATA")
+    return Path(base) if base else Path.home() / ".local" / "share"
 
 
 def token_path() -> Path:
-    """Файл токена модулей (MOD-4): %LOCALAPPDATA%\\GLaDOS\\module_token."""
-    base = os.environ.get("LOCALAPPDATA")
-    root = Path(base) if base else Path.home() / ".local" / "share"
-    return root / "GLaDOS" / "module_token"
+    """Файл токена модулей (MOD-4, ТЗ 05 CHR-3): %LOCALAPPDATA%\\GitS\\module_token. Его пишет ядро."""
+    return _local_root() / "GitS" / "module_token"
+
+
+def legacy_token_path() -> Path:
+    """Прежний путь файла токена (до переименования в GitS): читается как запасной."""
+    return _local_root() / "GLaDOS" / "module_token"
 
 
 def new_token() -> str:
@@ -60,12 +69,16 @@ def write_token_file(token: str, path: Path | None = None) -> Path:
 
 
 def read_token_file(path: Path | None = None) -> str | None:
-    """Прочитать токен из файла; None, если файла нет или он пуст."""
-    try:
-        token = (path or token_path()).read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    return token or None
+    """Прочитать токен из файла; None, если файла нет или он пуст. Без пути: новый файл, затем прежний (запасной)."""
+    candidates = [path] if path is not None else [token_path(), legacy_token_path()]
+    for candidate in candidates:
+        try:
+            token = candidate.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if token:
+            return token
+    return None
 
 
 def reconnect_delay(attempt: int) -> float:
@@ -130,7 +143,7 @@ def is_request(msg_type: str) -> bool:
     return msg_type in REQUEST_TYPES
 
 
-TOPICS = ("presence", "settings", "profile", "module", "battery")
+TOPICS = ("presence", "settings", "profile", "module", "battery", "character")   # character: ТЗ 05, CHR-6
 CAPABILITIES = ("voice.output", "voice.input", "presence.view", "screen.observe", "chat.channel", "game")
 RISKS = ("auto", "ask", "public")
 AVAILABILITIES = ("always", "profile")

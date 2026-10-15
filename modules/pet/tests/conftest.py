@@ -16,5 +16,5 @@ for p in (GITS / "sdk", GITS / "agent", HERE):                 # как в main.
 def _isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "localappdata"))
     monkeypatch.delenv("GITS_PET_HEADLESS", raising=False)
-    monkeypatch.delenv("GLADOS_DASHBOARD_URL", raising=False)
+    monkeypatch.delenv("GITS_DASHBOARD_URL", raising=False)
     yield
