@@ -17,12 +17,14 @@
 - Правила «замолчи» и «похоже на просьбу» дублируются в `attention` и `router`.
 Если при выполнении цифры разошлись с кодом, не придумывай замену: опиши расхождение и спроси человека.
 
+Целевая схема и порядок раскрытия деталей: `docs/architecture-clean.html` (сначала основа из десяти блоков, затем слои).
+
 ## 3. Целевая структура
 ```
 agent/
   domain/    entities.py scoring.py rules.py risk.py focus_policy.py speech_queue.py salience.py   (без ввода-вывода)
   app/       process_event.py conversation.py context_builder.py planner.py executor.py focus_manager.py
-             memory_capture.py proactive.py digest.py jobs.py                                       (сценарии)
+             memory_capture.py proactive_legacy.py digest.py jobs.py                               (сценарии; reflection.py и impulses.py придут по ТЗ 30)
   ports.py   Classifier, LanguageModel, MemoryReader, MemoryWriter, EventLog, SpeechOutput, ToolInvoker, Approver, Clock, SettingsProvider
   adapters/  module_hub.py dashboard/ llm_lmstudio.py classifier_gliner.py graph_graphiti.py stores_json.py
              event_log_sqlite.py speech_voice_module.py supervisor.py
@@ -37,14 +39,14 @@ agent/
 - **ARC-2 (ОБЯЗАТЕЛЬНО, R1). Домен без ввода-вывода.** В `agent/domain/` переезжают чистые функции: оценка приоритета и решение D0–D4 (`Attention._score`, `_decide`, веса), правила R1–R4 и «замолчи» (единое место, `router` использует его же), дедупликация (`_merge_duplicate` без хранения), политика риска (`router._step`, часть про `needs_ask`), политика фокуса (`_gate`, `_near`, `_claimant`, `_conflict`, старение), яркость (`salience`, если ТЗ 24 влито). Исходные классы вызывают новые функции; результаты в тестах те же.
 - **ARC-3 (ОБЯЗАТЕЛЬНО, R2). Порты.** `agent/ports.py` с `Protocol`: `Classifier`, `LanguageModel` (fast и slow), `MemoryReader`, `MemoryWriter`, `EventLog`, `SpeechOutput`, `ToolInvoker`, `Approver`, `Clock`, `SettingsProvider`. Существующие модули оборачиваются адаптерами (`decide.Decider`, `fast_brain`, `graph_memory`, `events_log`, `speech_out`); сценарии получают порты через конструктор. Глобальные `settings.load()`, `events_log.log` в сценариях заменяются портами по мере переноса.
 - **ARC-4 (ОБЯЗАТЕЛЬНО, R3). Разрезать `Attention`.** `app/process_event.py` (Normalizer → HardRules → Classifier → Scorer → Dispatcher, по ТЗ 25 FAST-1 это и есть `routes.py`), `SpeechCoordinator` (клей с очередью речи), `app/digest.py`, `QuestionService`, `JobTracker`. Класс `Attention` остаётся тонким фасадом с прежними публичными методами (`submit`, `submit_speech`, `submit_question`, `on_job_update`, `enqueue_say`…). Доступ к профилю человека и памяти идёт через порты `PeopleDirectory` и `MemoryWriter`, а не через `getattr(companion, "_rel")`.
-- **ARC-5 (ОБЯЗАТЕЛЬНО, R4). Разрезать `Companion`.** `ConversationService`, `ContextBuilder` (явный компонент, сначала повторяет нынешнюю склейку шести источников), `ReplyGenerator`, `MemoryCapture` (`_learn`, `_consolidate`, `remember_text`), `ProactiveService`. Фасад `Companion` сохраняет публичный интерфейс (`on_voice`, `on_user_message`, `say`, `proactive_loop`…).
+- **ARC-5 (ОБЯЗАТЕЛЬНО, R4). Разрезать `Companion`.** `ConversationService`, `ContextBuilder` (явный компонент, сначала повторяет нынешнюю склейку шести источников), `ReplyGenerator`, `MemoryCapture` (`_learn`, `_consolidate`, `remember_text`). `proactive_loop` (опрос себя раз в 30 с) выделяется в отдельный временный сценарий `proactive_legacy.py` **без смены поведения**: по решению владельца агент не должен говорить по таймеру, его заменяют внутренние импульсы и размышление (ТЗ 30). Фасад `Companion` сохраняет публичный интерфейс (`on_voice`, `on_user_message`, `say`, `proactive_loop`…).
 - **ARC-6 (ОБЯЗАТЕЛЬНО, R5). Разрезать `FocusManager`.** `FocusPolicy` (чистая), `FocusQueue` (состояния событий, склейка, старение), `CheckpointStore`, `FocusDispatch` (порт к модели). Протокол переключения и формат `focus.json` не меняются.
 - **ARC-7 (ОБЯЗАТЕЛЬНО, R6). Корень сборки и транспорт.** `core_service.py` только создаёт объекты и подставляет порты; обработчики voice, colonists, run_lost, game_order переезжают в `app/handlers`; `module_hub.py` получает приёмник событий и запросов колбэком (порт `EventSink`), не импортирует `attention` и `fast_brain`; исходящие команды модулям выделяются в `ModuleHub.outbound`.
 - **ARC-8 (ЖЕЛАТЕЛЬНО, R7). Дашборд.** Роутеры по темам и презентеры; чтение данных только через порты.
 - **ARC-9 (ОБЯЗАТЕЛЬНО). Документы.** После каждого шага обновляются `AGENTS.md` (карта модулей), `docs/architecture-clean.html` и `.drawio` (статус блоков: выделен или нет), `CHANGELOG.md`.
 
 ## 5. Порядок и зависимости
-R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7. R3 готовит почву для ТЗ 25 (маршруты и быстрый контур), R4 — для ТЗ 25 (стриминг ответа в `ReplyGenerator`) и ТЗ 27, R5 независим и может идти параллельно R4. ТЗ 24 (трасса) желательно влить до R3: метки времени проходят через новые компоненты.
+R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7. R3 готовит почву для ТЗ 25 (маршруты и быстрый контур) и ТЗ 30 (маршрут `think`), R4 — для ТЗ 25 (стриминг ответа в `ReplyGenerator`) и ТЗ 27, R5 независим и может идти параллельно R4. ТЗ 24 (трасса) желательно влить до R3: метки времени проходят через новые компоненты.
 
 ## 6. Приёмка
 - Все существующие тесты ядра, SDK и модулей зелёные без правок логики (допустимы правки импортов в тестах).
