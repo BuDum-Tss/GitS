@@ -1,0 +1,27 @@
+# Ручное управление (ТЗ 11e, раздел 3.4). Важная задача застряла дольше stall_hours: принудительный порядок работы поселенцу
+# (force_work), не чаще раза на задачу за interval_hours, откат (clear_work_queue) через rollback_hours. Без языковой модели.
+id: manual
+title: "Ручное управление"
+purpose: "Застрявшая задача с клеткой: принудительная работа поселенцу с журналом причин и откатом."
+priority: 3
+focus: active
+interruptible: true
+urgency: 0.5   # срочность 0..1 по угрозе и ожиданию (status.urgency в state)
+enter:
+  kinds: [task_stalled]
+  min_importance: 3
+exit:
+  when: manual_done
+  quiet_s: 0
+  to: observe
+switch_to: [observe]
+min_dwell_s: 60
+loop: single
+think:
+  model: none
+modes: [people, economy, health, observe]
+budget:
+  stall_hours: 2
+  interval_hours: 2
+  rollback_hours: 1
+  confirm: false

@@ -1,0 +1,28 @@
+# Наблюдение (ТЗ 11e, раздел 3.1). Игра на плей; если важного нет, скорость растёт ступенями; любое важное событие сбрасывает
+# скорость и передаётся дальше. Думает только локальная модель, Claude не вызывается. Политика с фокусом по умолчанию.
+id: observe
+title: "Наблюдение"
+purpose: "Игра на плей, ход ведёт локальная модель. Важные события переводят в другие политики."
+priority: 1
+focus: active
+interruptible: true
+urgency: 0.1   # срочность 0..1 по угрозе и ожиданию (status.urgency в state)
+enter:
+  kinds: []
+  min_importance: 0
+exit:
+  when: never
+  quiet_s: 0
+  to: observe
+switch_to: [plan]
+min_dwell_s: 0
+loop: passive
+think:
+  model: local
+  max_steps: 8
+  timeout_s: 300
+modes: [observe, people, economy, health, build, explore, show, combat]
+time:
+  speed_ladder: [1, 2, 3]
+  step_quiet_s: 120
+  reset_importance: 3

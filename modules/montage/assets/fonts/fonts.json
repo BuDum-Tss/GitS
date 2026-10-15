@@ -1,0 +1,11 @@
+{
+  "license": "SIL OFL 1.1 (OFL.txt)",
+  "source": "https://github.com/google/fonts/tree/main/ofl (ibmplexsans, ibmplexmono), загружено 2026-10-11",
+  "note": "Файлы с именами из регламента (ТЗ 21 §2). Три из них побайтно одна и та же вариативная IBM Plex Sans (оси wght 100-700, wdth 75-100): статичной Plex Sans Condensed с кириллицей на Google Fonts нет. Начертание задают weight и stretch ниже; те же значения в template/src/style/tokens.ts.",
+  "fonts": [
+    {"file": "IBMPlexSansCondensed-SemiBold.ttf", "role": "caption", "family": "PlexCaption", "weight": "600", "stretch": "75%", "use": "субтитры, подписи"},
+    {"file": "IBMPlexSansCondensed-Bold.ttf", "role": "heading", "family": "PlexHeading", "weight": "700", "stretch": "75%", "use": "номера камер, заголовки, баннеры"},
+    {"file": "IBMPlexSans-Medium.ttf", "role": "service", "family": "PlexService", "weight": "500", "stretch": "100%", "use": "мелкий служебный текст, подписи к пиктограммам"},
+    {"file": "IBMPlexMono-Regular.ttf", "role": "mono", "family": "PlexMono", "weight": "400", "stretch": "100%", "use": "журнал испытания, таймкоды"}
+  ]
+}

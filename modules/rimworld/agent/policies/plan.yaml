@@ -1,0 +1,26 @@
+# Планирование (ТЗ 11e, раздел 3.2). Игра на паузе; глубокое размышление Claude, затем проход самопроверки; выход в наблюдение.
+id: plan
+title: "Планирование"
+purpose: "Игра на паузе. Claude раскладывает цели на задачи, проверяет план и выходит в наблюдение."
+priority: 2
+focus: active
+interruptible: true
+urgency: 0.4   # срочность 0..1 по угрозе и ожиданию (status.urgency в state)
+enter:
+  kinds: [plan_request, colonists_idle, blueprints_stuck]
+  min_importance: 2
+exit:
+  when: plan_done
+  quiet_s: 0
+  to: observe
+switch_to: [observe]
+min_dwell_s: 60
+loop: single
+think:
+  model: claude
+  max_steps: 12
+  timeout_s: 300
+  self_check: true
+modes: [observe, build, economy, people, explore]
+time:
+  pause: true

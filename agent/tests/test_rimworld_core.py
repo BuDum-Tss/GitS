@@ -13,7 +13,6 @@ from test_companion_attention import Rig as ConversationRig
 
 import core_service
 import dashboard
-import module_dirs
 import settings
 from environments.registry import Registry
 from glados_module import ModuleClient
@@ -213,29 +212,10 @@ async def test_event_handler_failure_does_not_break_the_hub(tmp_path):
 
 # ── RW-2: папка модуля ──────────────────────────────────────────────────────────────────────────
 
-def test_rimworld_dir_resolution_order(tmp_path):
-    root = tmp_path / "GitS"
-    root.mkdir()
-    assert module_dirs.resolve_rimworld_dir({}, root) == (None, None)                       # ничего нет: «не настроен»
-    (tmp_path / "rimworld-agent").mkdir()
-    assert module_dirs.resolve_rimworld_dir({}, root) == (str(tmp_path / "rimworld-agent"), None)
-    (tmp_path / "rimworld-module").mkdir()
-    assert module_dirs.resolve_rimworld_dir({}, root) == (str(tmp_path / "rimworld-module"), None)   # новое имя папки раньше старого
-    path, warning = module_dirs.resolve_rimworld_dir({"RIMWORLD_AGENT_DIR": r"D:\old"}, root)
-    assert path == r"D:\old" and "RIMWORLD_MODULE_DIR" in warning                           # запасная старая переменная с предупреждением
-    env = {"RIMWORLD_MODULE_DIR": r"D:\new", "RIMWORLD_AGENT_DIR": r"D:\old"}
-    assert module_dirs.resolve_rimworld_dir(env, root) == (r"D:\new", None)                 # новая переменная раньше всего
-
-
-def test_apply_sets_the_variable_for_modules_yaml(tmp_path, caplog):
-    root = tmp_path / "GitS"
-    root.mkdir()
-    env = {"RIMWORLD_AGENT_DIR": str(tmp_path / "old")}
-    with caplog.at_level("WARNING"):
-        assert module_dirs.apply(env, root) == str(tmp_path / "old")
-    assert env["RIMWORLD_MODULE_DIR"] == str(tmp_path / "old") and "устарела" in caplog.text
-    empty = {}
-    assert module_dirs.apply(empty, root) is None and "RIMWORLD_MODULE_DIR" not in empty
+def test_modules_yaml_points_at_the_rimworld_folder_in_this_repo():
+    spec = {s.id: s for s in load_specs()}["rimworld"]
+    assert spec.cwd == "{GITS}/modules/rimworld/agent"
+    assert (Path(__file__).resolve().parents[2] / "modules" / "rimworld" / "agent" / "main.py").is_file()
 
 
 # ── RW-5: запись в modules.yaml ─────────────────────────────────────────────────────────────────
@@ -243,16 +223,13 @@ def test_apply_sets_the_variable_for_modules_yaml(tmp_path, caplog):
 def test_shipped_modules_yaml_declares_the_rimworld_module(tmp_path, monkeypatch):
     spec = {s.id: s for s in load_specs()}["rimworld"]
     assert spec.kind == "module" and spec.autostart and spec.restart == "on-failure" and spec.enabled
-    assert spec.command == "{PYTHON}" and spec.args == ["-u", "main.py"] and spec.cwd == "{RIMWORLD_MODULE_DIR}/agent"
-    repo = tmp_path / "rimworld-module"
+    assert spec.command == "{PYTHON}" and spec.args == ["-u", "main.py"] and spec.cwd == "{GITS}/modules/rimworld/agent"
+    repo = tmp_path / "modules" / "rimworld"
     (repo / "agent").mkdir(parents=True)
     (repo / "agent" / "main.py").write_text("", encoding="utf-8")
-    sup = Supervisor([spec], token="t" * 64, core_url="ws://x", env={"RIMWORLD_MODULE_DIR": str(repo)})
+    sup = Supervisor([spec], token="t" * 64, core_url="ws://x", env={}, gits_root=tmp_path)
     cmd, cwd = sup.resolve("rimworld")
     assert cmd == [sys.executable, "-u", "main.py"] and cwd == repo / "agent"                # общий интерпретатор ядра, без своего .venv
-    other = Supervisor([spec], token="t" * 64, core_url="ws://x", env={})
-    reason = other.resolve("rimworld")
-    assert isinstance(reason, str) and "RIMWORLD_MODULE_DIR" in reason                     # нет переменной: «не настроен»
 
 
 # ── RW-18: старых каналов агента игры больше нет ────────────────────────────────────────────────

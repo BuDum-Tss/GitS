@@ -1,0 +1,31 @@
+# Боевая (ТЗ 11e, раздел 3.3). Пауза, мобилизация, короткий срез игры, снова пауза и оценка. Быстрые решения локальная модель,
+# крупные пересмотры Claude (каждый claude_every-й ход). Выход, когда угроза ушла на quiet_s.
+id: combat
+title: "Бой"
+purpose: "Угроза на карте: пауза, приказы, короткие срезы игры, пока угроза не уйдёт. Не может быть запрошена самой моделью."
+priority: 4
+focus: active
+interruptible: false
+urgency: 1.0   # срочность 0..1 по угрозе и ожиданию (status.urgency в state)
+enter:
+  kinds: [raid]
+  min_importance: 4
+exit:
+  when: no_threats
+  quiet_s: 30
+  to: observe
+switch_to: [observe]
+min_dwell_s: 0
+loop: iterative
+think:
+  model: mixed
+  claude_every: 3
+  max_steps: 10
+  timeout_s: 150
+modes: [combat, health, observe]
+budget:
+  slice_ticks: 600
+  max_turns: 30
+  max_per_min: 4
+time:
+  pause: true

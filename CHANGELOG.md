@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Модули RimWorld и монтажа переехали в этот репозиторий: `modules/rimworld` (бывший `rimworld-agent`) и `modules/montage` (бывший `montage-module`); файлы скопированы с `master` без истории коммитов. `modules.yaml` ссылается на них через `{GITS}/modules/...`, `agent/module_dirs.py` и переменные `RIMWORLD_MODULE_DIR`/`MONTAGE_MODULE_DIR` убраны. `check.ps1` запускает и тесты этих модулей. Окружение монтажа (`.venv`, `template/node_modules`) нужно собрать заново в `modules/montage`.
+
 ### Fixed
 - Локальное распознавание голоса получает язык явно (`GLADOS_STT_LANGUAGE`, по умолчанию `ru`): автоопределение Whisper на коротких фразах выдавало корейский текст.
 

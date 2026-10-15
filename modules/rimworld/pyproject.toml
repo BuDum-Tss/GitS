@@ -1,0 +1,45 @@
+[project]
+name = "rimworld-module"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Модуль RimWorld для ГЛаДОС (GitS): мод AgentBridge, игровые контуры на Claude, комментатор, оверлей OBS"
+
+# ============================================================
+#  Ruff: проверка кода (перенесено из GitS, подстроено под наш код)
+# ============================================================
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = [".claude", "mod", "docker", "agent/models", "agent/memory", "agent/resources"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "ASYNC"]
+ignore = [
+    "E501",   # длину строки не проверяем
+    "E701",   # однострочные if/for в старом коде
+    "E702",
+    "E741",   # имена l, I
+    "B008",
+    "B904",
+    "B007",
+    "E731",
+    "ASYNC109",   # параметр timeout в async-функциях: так устроены наши клиенты
+    "ASYNC110",
+    "ASYNC230",   # короткие записи файлов в async-коде
+    "ASYNC240",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"agent/tests/*.py" = ["E402"]    # sys.path правится до импортов проекта
+"agent/main.py" = ["E402"]       # путь и окружение настраиваются до импортов
+
+# ============================================================
+#  Pytest: тесты в agent/tests, асинхронные без декораторов
+#  Медленные тесты (настоящий ffmpeg) помечены slow: check.ps1 по умолчанию их пропускает (-m "not slow"), .\check.ps1 -All запускает
+# ============================================================
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["slow: медленный тест (настоящий ffmpeg, около минуты); по умолчанию check.ps1 его пропускает",
+           "game: тест запускает настоящую RimWorld (с объявлением пользователю); по умолчанию check.ps1 его пропускает, -All запускает"]
+testpaths = ["agent/tests"]
+pythonpath = ["agent"]

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "format": {
+    "width": 1080,
+    "height": 1080,
+    "fps": 30
+  },
+  "duration_ms": 1000,
+  "title": "demo_pictograms",
+  "segments": [],
+  "captions": {
+    "enabled": false,
+    "source": "transcript",
+    "style": "aperture_default",
+    "overrides": [],
+    "words_file": "demo/words.json"
+  },
+  "voiceover": [],
+  "inserts": [
+    {
+      "id": "i1",
+      "kind": "custom",
+      "at_ms": 0,
+      "dur_ms": 1000,
+      "beat": "b1",
+      "props": {
+        "component": "PictogramSheet"
+      }
+    }
+  ],
+  "blackout": [],
+  "sfx": [],
+  "music": null,
+  "cta": null
+}

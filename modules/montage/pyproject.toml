@@ -1,0 +1,44 @@
+[project]
+name = "montage-module"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Модуль монтажа ГЛаДОС: Claude Agent SDK + Remotion (ТЗ 20, 21, 22)"
+
+# ============================================================
+#  Ruff: проверка кода (настройки как в GitS)
+# ============================================================
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = [".claude", ".venv", "template", "jobs", "references"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "ASYNC"]
+ignore = [
+    "E501",   # длину строки не проверяем
+    "E701",   # однострочные if/for
+    "E702",
+    "E741",   # имена l, I
+    "B008",
+    "B904",
+    "B007",
+    "E731",
+    "B905",   # zip без strict
+    "ASYNC109",   # параметр timeout в async-функциях: так устроены наши клиенты
+    "ASYNC110",
+    "ASYNC230",   # короткие записи файлов в async-коде
+    "ASYNC240",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"agent/tests/*.py" = ["E402"]    # sys.path правится до импортов проекта
+"agent/main.py" = ["E402"]       # путь и окружение настраиваются до импортов
+
+# ============================================================
+#  Pytest: тесты в agent/tests, асинхронные без декораторов
+# ============================================================
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["agent/tests"]
+# agent: модули монтажа; assets/sfx: generate.py (синтез звуков); SDK ядра до установки пакета (pip install -e ..\GitS\sdk)
+pythonpath = ["agent", "assets/sfx"]

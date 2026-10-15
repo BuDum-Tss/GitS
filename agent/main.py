@@ -15,7 +15,6 @@ load_dotenv("secrets.env")   # токены (не в git): TELEGRAM_BOT_TOKEN, T
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sdk"))
 
 import core_service
-import module_dirs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,9 +29,6 @@ def main():
         "rimworld_api": os.getenv("RIMWORLD_API", "http://localhost:8765"),
         "memory_dir":   os.getenv("MEMORY_DIR", "./memory"),
     }
-    # модуль RimWorld живёт в отдельном репозитории (rimworld-module): {RIMWORLD_MODULE_DIR} в modules.yaml (ТЗ 11)
-    module_dirs.apply()
-    module_dirs.apply_montage()                       # то же для модуля монтажа (ТЗ 20): {MONTAGE_MODULE_DIR}
 
     core_service.run(config)
 

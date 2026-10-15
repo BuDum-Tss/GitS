@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node (Remotion)
+node_modules/
+template/node_modules/
+template/out/
+template/demo/out/
+template/.remotion/
+
+# Рабочие папки задач, рендеры, расшифровки (MON-1)
+jobs/
+*.log
+
+# Секреты и локальные настройки
+secrets.env
+*.env
+.claude/settings.local.json
+
+# Демо-медиа создаёт demo/make-demo-media.mjs
+template/public/media/
+template/public/vo/

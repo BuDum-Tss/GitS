@@ -1,0 +1,22 @@
+mod/AgentBridge/bin/
+mod/AgentBridge/obj/
+mod/AgentBridge/Assemblies/
+agent/memory/
+agent/_*.log
+agent/__pycache__/
+*.pyc
+agent/secrets.env
+agent/.env
+agent/models/
+
+# скриншоты экрана могут содержать личное
+agent/debug_screenshot.png
+agent/memory/screenshots/
+
+# веса Fish Speech (2.5 ГБ), качаются отдельно
+agent/resources/tts/checkpoints/
+
+agent/.venv-decider/
+
+# данные запуска в корне (не коммитить)
+/memory/

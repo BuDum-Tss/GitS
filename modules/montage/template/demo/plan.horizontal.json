@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "format": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30
+  },
+  "duration_ms": 24000,
+  "title": "demo_horizontal",
+  "segments": [
+    {
+      "id": "s1",
+      "source": "sources/demo_horizontal_h264.mp4",
+      "in_ms": 0,
+      "out_ms": 9000,
+      "at_ms": 0,
+      "volume": 1,
+      "crop": {
+        "mode": "center"
+      },
+      "zoom": 0,
+      "beat": "b1"
+    },
+    {
+      "id": "s2",
+      "source": "sources/demo_horizontal_h264.mp4",
+      "in_ms": 9000,
+      "out_ms": 18000,
+      "at_ms": 9000,
+      "volume": 1,
+      "crop": {
+        "mode": "center"
+      },
+      "zoom": 0.03,
+      "beat": "b2"
+    },
+    {
+      "id": "s3",
+      "source": "sources/demo_horizontal_h264.mp4",
+      "in_ms": 18000,
+      "out_ms": 24000,
+      "at_ms": 18000,
+      "volume": 1,
+      "crop": {
+        "mode": "center"
+      },
+      "zoom": 0,
+      "beat": "b3"
+    }
+  ],
+  "captions": {
+    "enabled": true,
+    "source": "both",
+    "style": "aperture_default",
+    "overrides": [
+      {
+        "word_index": 17,
+        "highlight": true
+      },
+      {
+        "word_index": 22,
+        "text": "жертв."
+      }
+    ],
+    "words_file": "demo/words.json"
+  },
+  "voiceover": [
+    {
+      "id": "vo1",
+      "at_ms": 9500,
+      "text": "Наблюдение: подопытный уверен, что кнопка нажимается сама.",
+      "emotion": "neutral",
+      "tts_path": null,
+      "duration_ms": 3400,
+      "beat": "b2",
+      "duck": false
+    }
+  ],
+  "inserts": [
+    {
+      "id": "i1",
+      "kind": "chamber_card",
+      "at_ms": 300,
+      "dur_ms": 2400,
+      "beat": "b1",
+      "props": {
+        "chamber": 7,
+        "of": 19,
+        "title": "Куб-компаньон: падение",
+        "pictograms": [
+          "cube",
+          {
+            "name": "button",
+            "active": true
+          },
+          {
+            "name": "gear",
+            "active": true,
+            "label": "x2"
+          },
+          {
+            "name": "clock",
+            "active": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "i2",
+      "kind": "lower_third",
+      "at_ms": 3200,
+      "dur_ms": 3400,
+      "beat": "b1",
+      "props": {
+        "text": "Подопытный № 07",
+        "sub": "Камера 7, северное крыло"
+      }
+    },
+    {
+      "id": "i3",
+      "kind": "hazard_banner",
+      "at_ms": 7000,
+      "dur_ms": 2000,
+      "beat": "b1",
+      "props": {
+        "text": "Нарушение протокола"
+      }
+    },
+    {
+      "id": "i4",
+      "kind": "pixel_transition",
+      "at_ms": 12400,
+      "dur_ms": 600,
+      "beat": "b2",
+      "props": {
+        "direction": "out"
+      }
+    },
+    {
+      "id": "i5",
+      "kind": "custom",
+      "at_ms": 13200,
+      "dur_ms": 2200,
+      "beat": "b2",
+      "props": {
+        "component": "JournalLog",
+        "lines": [
+          "00:13 нажатие: кнопка 1",
+          "00:14 падение: куб 1",
+          "00:15 вывод: протокол нарушен"
+        ]
+      }
+    },
+    {
+      "id": "i6",
+      "kind": "pixel_transition",
+      "at_ms": 15600,
+      "dur_ms": 600,
+      "beat": "b2",
+      "props": {
+        "direction": "in"
+      }
+    },
+    {
+      "id": "i7",
+      "kind": "test_result",
+      "at_ms": 18500,
+      "dur_ms": 3200,
+      "beat": "b3",
+      "props": {
+        "result": "fail",
+        "label": "Провал",
+        "text": "Куб цел, подопытный нет"
+      }
+    }
+  ],
+  "blackout": [
+    {
+      "from_ms": 13000,
+      "to_ms": 15600,
+      "opacity": 1
+    }
+  ],
+  "sfx": [
+    {
+      "at_ms": 300,
+      "name": "chime_up"
+    },
+    {
+      "at_ms": 3200,
+      "name": "tick"
+    },
+    {
+      "at_ms": 7000,
+      "name": "buzz_error"
+    },
+    {
+      "at_ms": 12400,
+      "name": "whoosh"
+    },
+    {
+      "at_ms": 18500,
+      "name": "chime_down"
+    },
+    {
+      "at_ms": 21500,
+      "name": "elevator_ding"
+    }
+  ],
+  "music": null,
+  "cta": {
+    "platform": "youtube",
+    "at_ms": 21500,
+    "text": "Следующие испытания уже ждут вас в лаборатории",
+    "beat": "b3"
+  }
+}

@@ -46,25 +46,23 @@ modules:
     autostart: true
     restart: on-failure
 
-  # RimWorld (ТЗ 11): отдельный репозиторий rimworld-module. {RIMWORLD_MODULE_DIR} ядро находит само (module_dirs.py: переменная
-  # RIMWORLD_MODULE_DIR, запасная RIMWORLD_AGENT_DIR, соседняя папка rimworld-module или rimworld-agent). Интерпретатор общий ({PYTHON}):
-  # зависимости игрового агента и пакет glados-module стоят в нём же, отдельного .venv у модуля нет. Данные модуля лежат в его папке
-  # agent/memory (RIMWORLD_MEMORY_DIR), а не в MEMORY_DIR ядра, который супервизор передаёт всем модулям.
+  # RimWorld (ТЗ 11): модуль лежит в этом репозитории (modules/rimworld). Интерпретатор общий ({PYTHON}): зависимости игрового
+  # агента и пакет glados-module стоят в нём же, отдельного .venv у модуля нет. Данные модуля лежат в его папке agent/memory
+  # (RIMWORLD_MEMORY_DIR), а не в MEMORY_DIR ядра, который супервизор передаёт всем модулям.
   - id: rimworld
     title: RimWorld
-    cwd: "{RIMWORLD_MODULE_DIR}/agent"
+    cwd: "{GITS}/modules/rimworld/agent"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
     restart: on-failure
 
-  # Монтаж видео (ТЗ 20-22): отдельный репозиторий montage-module. {MONTAGE_MODULE_DIR} ядро находит само (module_dirs.py: переменная
-  # MONTAGE_MODULE_DIR, соседняя папка montage-module, запасной путь C:\MyProjects\montage-module). Окружение у модуля своё: .venv
-  # репозитория (Python 3.12, claude-agent-sdk, glados-module), поэтому интерпретатор не {PYTHON}. Нужны Node.js и ffmpeg.
+  # Монтаж видео (ТЗ 20-22): модуль лежит в этом репозитории (modules/montage). Окружение у модуля своё: modules/montage/.venv
+  # (Python 3.12, claude-agent-sdk, glados-module), поэтому интерпретатор не {PYTHON}. Нужны Node.js и ffmpeg.
   - id: montage
     title: Монтаж видео
-    cwd: "{MONTAGE_MODULE_DIR}/agent"
-    command: "{MONTAGE_MODULE_DIR}/.venv/Scripts/python.exe"
+    cwd: "{GITS}/modules/montage/agent"
+    command: "{GITS}/modules/montage/.venv/Scripts/python.exe"
     args: ["-u", "main.py"]
     autostart: true
     restart: on-failure

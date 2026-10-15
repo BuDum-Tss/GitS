@@ -1,0 +1,116 @@
+# Каталог событий игры для политик (ТЗ 11e, POL-3). Вид события задаёт то, как с ним работают политики и правила наблюдения.
+#
+# Поля вида:
+#   title       название для дашборда и подсказки
+#   describe    описание на английском для классификатора GLiNER (вопрос «какой это вид»)
+#   source      откуда берётся: mod_event (очередь событий мода), statediff (разница снимков состояния),
+#               monitor (проверку делает контроллер: застрявшая задача, простой колонистов)
+#   importance  важность по умолчанию, 0..5. Событие с важностью 0 отбрасывается до классификатора.
+#   fields      поля, по которым правило наблюдения может отфильтровать событие (поле=значение, без учёта регистра)
+#   classify    true: классификатор уточняет вид (текстовые события, где вид неочевиден: письма)
+kinds:
+  raid:
+    title: Набег или угроза
+    describe: attack, raid or threat to the colony happening now
+    source: mod_event
+    importance: 5
+    fields: [label]
+    classify: false
+  death:
+    title: Гибель колониста
+    describe: a colonist died
+    source: mod_event
+    importance: 4
+    fields: [name, cause]
+    classify: false
+  fire:
+    title: Пожар
+    describe: fire started in the colony
+    source: mod_event
+    importance: 4
+    fields: []
+    classify: false
+  pawn_downed:
+    title: Колонист упал и лежит
+    describe: a colonist is downed and lying on the ground
+    source: statediff
+    importance: 4
+    fields: [name]
+    classify: false
+  illness:
+    title: Болезнь или травма
+    describe: a colonist fell ill or was badly injured
+    source: mod_event
+    importance: 3
+    fields: [label]
+    classify: true
+  letter:
+    title: Игровое письмо
+    describe: a game letter about an event, trader, visitor or quest
+    source: mod_event
+    importance: 2
+    fields: [label, letter_def]
+    classify: true
+  research_done:
+    title: Исследование завершено
+    describe: a research project was completed
+    source: statediff
+    importance: 2
+    fields: [research]
+    classify: false
+  resource_out:
+    title: Ресурс почти закончился
+    describe: food or another resource is running out
+    source: statediff
+    importance: 3
+    fields: [resource]
+    classify: false
+  task_stalled:
+    title: Задача застряла
+    describe: a planned task has not progressed for too long
+    source: monitor
+    importance: 3
+    fields: [description]
+    classify: false
+  plan_request:
+    title: Просьба спланировать
+    describe: the assistant asked for planning
+    source: monitor
+    importance: 2
+    fields: [reason]
+    classify: false
+  colonists_idle:
+    title: Колонисты без дела
+    describe: colonists have been idle for a long time
+    source: monitor
+    importance: 2
+    fields: []
+    classify: false
+  blueprints_stuck:
+    title: Чертежи не строятся
+    describe: construction blueprints are waiting without progress
+    source: monitor
+    importance: 2
+    fields: []
+    classify: false
+  threat_over:
+    title: Угроза миновала
+    describe: the threat on the map is gone
+    source: monitor
+    importance: 2
+    fields: []
+    classify: false
+  game_loaded:
+    title: Колония загружена
+    describe: a colony was loaded or created
+    source: mod_event
+    importance: 1
+    fields: [colony]
+    classify: false
+  colony_died:
+    title: Колония погибла
+    describe: all colonists died, the run is over
+    source: mod_event
+    importance: 5
+    fields: [colony]
+    classify: false

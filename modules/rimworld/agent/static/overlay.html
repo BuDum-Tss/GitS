@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>GLaDOS overlay</title>
+<style>
+  html,body{margin:0;background:transparent;color:#f3f1ea;font:600 20px/1.35 "Segoe UI",system-ui,sans-serif}
+  #box{width:460px;padding:14px 16px;background:rgba(18,18,22,.78);border-left:4px solid #8d8d95;border-radius:6px}
+  #box.plan{border-color:#f5a623}#box.act{border-color:#4bd37b}#box.tactic{border-color:#e5484d}
+  .mode{font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
+  .what{font-size:22px;margin:2px 0 10px}
+  .goal{font-size:15px;opacity:.9;margin-bottom:10px}
+  ul{list-style:none;margin:0;padding:0;font-size:16px;font-weight:500}
+  li{margin:2px 0}li.done{opacity:.45;text-decoration:line-through}
+  .sub{margin-left:18px;font-size:15px}
+</style></head><body>
+<div id="box"><div class="mode" id="mode"></div><div class="what" id="what"></div><div class="goal" id="goal"></div><ul id="tasks"></ul></div>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mark = s => s === 'done' ? '✓' : s === 'in_progress' ? '▶' : '○';
+const row = (t, d) => `<li class="${t.status === 'done' ? 'done' : ''} ${d ? 'sub' : ''}">${mark(t.status)} ${esc(t.text)}${t.children.length ? ' · ' + t.progress + '%' : ''}</li>` + t.children.map(c => row(c, 1)).join('');
+async function tick() {
+  try {
+    const d = await (await fetch('/api/state')).json();
+    const m = d.mode || {mode: 'observe', label: 'наблюдает', reason: ''};
+    document.getElementById('box').className = m.mode;
+    document.getElementById('mode').textContent = 'ГЛаДОС';
+    document.getElementById('what').textContent = 'Сейчас ' + m.label + (m.reason ? ': ' + m.reason : '');
+    document.getElementById('goal').textContent = d.ambition ? 'Цель игры: ' + d.ambition.title + ' (' + (d.ambition.progress || 0) + '%)' : '';
+    document.getElementById('tasks').innerHTML = (d.tasks || []).filter(t => t.status !== 'done').slice(0, 4).map(t => row(t, 0)).join('');
+  } catch (e) {}
+}
+tick(); setInterval(tick, 3000);
+</script></body></html>
