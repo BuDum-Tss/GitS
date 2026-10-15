@@ -30,7 +30,7 @@ agent/
              event_log_sqlite.py speech_voice_module.py supervisor.py
   core_service.py   только сборка
 ```
-Правило зависимостей: `domain` не импортирует ничего из `app`, `adapters` и внешних пакетов ввода-вывода; `app` зависит от `domain` и `ports`; `adapters` зависят от `ports` и `domain`; `core_service` знает всё.
+Правило зависимостей: `domain` не импортирует ничего из `app`, `adapters` и внешних пакетов ввода-вывода; `app` зависит от `domain` и `contracts`; `adapters` зависят от `contracts` и `domain`; `core_service` знает всё.
 
 ## 4. Требования
 Каждый шаг R1–R7 это отдельная ветка и отдельный коммит-набор; после каждого `.\check.ps1` зелёный и существующие тесты не правятся (кроме импортов), новые тесты добавляются на новые компоненты.
