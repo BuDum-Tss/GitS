@@ -6,6 +6,7 @@
    Классы выше 400 строк или 40 методов помечаются как предупреждение.
 """
 import ast
+import sys
 from pathlib import Path
 
 AGENT = Path(__file__).resolve().parents[1]
@@ -48,6 +49,19 @@ def test_domain_imports_nothing_impure():
             if _is_forbidden(name):
                 problems.append(f"{path.name}:{lineno} импортирует {name}")
     assert not problems, "домен не должен зависеть от ввода-вывода и ядра:\n" + "\n".join(problems)
+
+
+def test_contracts_import_only_the_standard_library():
+    """ТЗ 29, ARC-3 (шаг R2): `agent/contracts.py` это интерфейсы. Импортирует только стандартную библиотеку
+    (typing, dataclasses и т. п.) и ничего из ядра, хранилищ, сети и адаптеров."""
+    path = AGENT / "contracts.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    problems = []
+    for lineno, name in _imported_names(tree):
+        top = name.lstrip(".").split(".")[0]
+        if name.startswith(".") or top not in sys.stdlib_module_names or _is_forbidden(name):
+            problems.append(f"contracts.py:{lineno} импортирует {name}")
+    assert not problems, "контракты не должны тянуть ядро и ввод-вывод:\n" + "\n".join(problems)
 
 
 def test_class_sizes_report():
