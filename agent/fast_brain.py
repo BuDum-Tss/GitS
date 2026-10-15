@@ -23,8 +23,8 @@ import httpx
 import character
 import events_log
 import journal
-import latency_trace
 import reflex_actions
+import salience  # ТЗ 24, TRC-4: изменение отношений меняет яркость события
 from envcompat import env
 
 logger = logging.getLogger("fast_brain")
@@ -255,9 +255,7 @@ def remove_listener(callback) -> None:
 def publish(evt_name: str, res: dict):
     """Записать эмоцию для дашборда и сообщить подписчикам (presence для модулей) и в журнал (ТЗ 24, TRC-3)."""
     ts = time.time()
-    t = latency_trace.current()
-    journal.emotion(res["emotion"], res.get("intensity", 1), reason=t.id if t is not None else evt_name,
-                    character=character.active().id)
+    journal.emotion(res["emotion"], res.get("intensity", 1), reason=evt_name, character=character.active().id)
     for callback in list(_listeners):
         try:
             callback(res["emotion"], ts)
@@ -305,7 +303,6 @@ async def react_chat(text: str, rel=None) -> dict | None:
     res = {"emotion": emo, "action": "none", "source": "llm", "intensity": intensity,
            "ms": round((time.perf_counter() - t0) * 1000)}
     publish("chat", res)
-    import salience  # ТЗ 24, TRC-4: изменение отношений меняет яркость события
     sal, reasons = salience.score(salience.factors_of(delta=delta))
     events_log.log("reflex", "оценка тона сообщения пользователя", emotion=emo, delta=delta, ms=res["ms"],
                    salience=sal, reasons=reasons)

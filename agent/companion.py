@@ -84,6 +84,7 @@ class Companion:
         self._last_user_ts = 0.0
         self._consolidating = False
         self._last_say_text = ""          # последняя реплика персонажа (для поправки «нет, не так», ТЗ 24 TRC-5)
+        self._bg_tasks: set = set()       # фоновые проверки поправок (ТЗ 24)
 
     def _load_last_say(self) -> float:
         """Когда она в последний раз говорила: из журнала разговора (а не «сейчас»),
@@ -275,7 +276,9 @@ class Companion:
         if level == "yes":
             journal.mistake("correction", said[:200], refs=[ref], previous=prev)
         else:
-            asyncio.create_task(self._confirm_correction(said, ref, prev))
+            task = asyncio.create_task(self._confirm_correction(said, ref, prev))
+            self._bg_tasks.add(task)                 # сильная ссылка: иначе задачу может собрать сборщик мусора
+            task.add_done_callback(self._bg_tasks.discard)
 
     async def _confirm_correction(self, text: str, ref: float, prev: str) -> None:
         system = ("Пользователь ответил на твою прошлую реплику. Определи, поправляет ли он тебя: говорит ли, что ты "
@@ -296,7 +299,7 @@ class Companion:
                          intent=intent)
         if intent == "chat" and routed and self.router is not None and self.router.last_kind == "done":
             journal.mistake("misroute", text[:200], refs=[self._last_say], source="classifier", intent=intent)
-        elif intent == "action" and not routed:
+        elif intent == "action" and not routed and self.router is not None:
             journal.mistake("misroute", text[:200], refs=[self._last_say], source="classifier", intent=intent)
 
     async def _act(self, text: str, after_chat: bool = False):

@@ -83,16 +83,22 @@ def from_bus(wire, source: str) -> Trace | None:
         return None
     marks = wire.get("marks") if isinstance(wire.get("marks"), dict) else {}
     clean = {k: float(v) for k, v in marks.items() if k in STAGES and isinstance(v, (int, float)) and not isinstance(v, bool)}
-    existing = _open.get(wire["id"])
+    tid = _wire_id(wire["id"])
+    existing = _open.get(tid)
     if existing is not None:
         for k, v in clean.items():
             existing.marks.setdefault(k, v)
         existing.mark("core_in")
         return existing
-    t = Trace(str(wire.get("source") or source), trace_id=wire["id"][:40], marks=clean)
+    t = Trace(str(wire.get("source") or source), trace_id=tid, marks=clean)
     t.mark("core_in")
     _register(t)
     return t
+
+
+def _wire_id(raw) -> str:
+    """Id трассы из шины: одна и та же обрезка везде, иначе поиск по полному id не находит трассу, заведённую с обрезанным."""
+    return str(raw)[:40]
 
 
 def _register(t: Trace) -> None:
@@ -157,7 +163,7 @@ def audio_arrived(wire) -> None:
     """Модуль голоса прислал свои метки (`voice.trace`): tts_first_audio, play_start."""
     if not isinstance(wire, dict):
         return
-    t = _open.get(str(wire.get("id") or ""))
+    t = _open.get(_wire_id(wire.get("id") or ""))
     if t is None:
         return
     marks = wire.get("marks") if isinstance(wire.get("marks"), dict) else {}

@@ -129,8 +129,10 @@ async def handle_api_rating(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid json"}, status=400)
-    value = body.get("value") if isinstance(body, dict) else None
-    trace_id = str((body or {}).get("trace_id") or "")[:40] or None
+    if not isinstance(body, dict):                       # список или строка в теле: не объект, отвечаем 400, а не 500
+        return web.json_response({"error": "value: bad или good"}, status=400)
+    value = body.get("value")
+    trace_id = str(body.get("trace_id") or "")[:40] or None
     if value not in ("bad", "good"):
         return web.json_response({"error": "value: bad или good"}, status=400)
     if value == "bad":

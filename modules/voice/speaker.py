@@ -143,6 +143,7 @@ class Speaker:
         if not completed:
             data["reason"] = reason or "stop"
         self._emit(data)
+        self._send_trace(u)            # если звука не было, метки уходят сейчас (после начала звука уже отправлены)
 
     def _drop_waiting(self, reason: str) -> None:
         while self._waiting:
@@ -175,12 +176,19 @@ class Speaker:
         if u.trace is None:
             return
         u.trace.setdefault("marks", {}).setdefault(stage, latency_trace.now_ms())
-        if stage == "play_start" and self._on_trace is not None and not u.trace_sent:
-            u.trace_sent = True
-            try:
-                self._on_trace(u.trace)
-            except Exception as e:
-                logger.debug(f"Метки звука не отправлены: {e}")
+        if stage == "play_start":
+            self._send_trace(u)
+
+    def _send_trace(self, u: Utterance) -> None:
+        """Отдать метки ядру один раз: при начале звука или при окончании реплики, если звука не было (тишина,
+        сбой синтеза, замена). Без этого ядро ждёт отметку звука до таймаута."""
+        if u.trace is None or u.trace_sent or self._on_trace is None:
+            return
+        u.trace_sent = True
+        try:
+            self._on_trace(u.trace)
+        except Exception as e:
+            logger.debug(f"Метки звука не отправлены: {e}")
 
     def _spawn(self, u: Utterance, coro, *, preload: bool = False) -> asyncio.Task:
         task = asyncio.get_running_loop().create_task(coro)

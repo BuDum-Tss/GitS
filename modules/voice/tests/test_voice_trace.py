@@ -66,3 +66,18 @@ async def test_utterance_event_carries_trace_from_mic_to_handler():
     assert trace["id"] == wire["id"]
     assert "mic_end" in trace["marks"] and "stt_done" in trace["marks"]
     assert trace["marks"]["mic_end"] <= trace["marks"]["stt_done"]
+
+
+async def test_muted_utterance_sends_trace_at_once_without_audio_marks():
+    # без звука (голос выключен) метки уходят сейчас: ядро не ждёт таймер отметки звука (ТЗ 24, TRC-1)
+    events, traces = [], []
+    sp = Speaker(synth=FakeSynth(), player=FakePlayer(), emit=events.append, volume=lambda: 0.5,
+                 muted=lambda: True, on_trace=traces.append)
+    sp.start()
+    wire = lt.wire_new("chat", marks={"core_in": lt.now_ms()})
+    await sp.speak("u-3", "Тихо.", trace=wire)
+    assert len(traces) == 1 and traces[0]["id"] == wire["id"]
+    assert "play_start" not in traces[0]["marks"]
+    await until(lambda: any(e["phase"] == "ended" for e in events))
+    assert len(traces) == 1                         # при окончании второй раз не шлёт
+    await sp.aclose()

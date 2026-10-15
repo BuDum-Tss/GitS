@@ -16,6 +16,18 @@ BACKGROUND_EMOTIONS = ("idle", "thinking", "looking", "question")     # фоно
 MISTAKE_TYPES = ("correction", "denied", "tool_failed", "plan_failed", "bad_rating", "misroute", "run_lost")
 RULES_VERSIONS = {"attention": "R1-R4,D0-D4/1", "conversation": "intent+router/1", "focus": "FOC/1", "router": "plan/1"}
 INTENSITY_MAX = 3
+DECISIONS_SCAN = 1000         # сколько решений просматриваем, когда выборка идёт по trace_id (фильтр после выборки)
+
+# токены и пароли не попадают в журнал: текст ошибок может нести адрес с токеном бота или ключ в строке запроса
+_SECRETS = (re.compile(r"\d{6,12}:[A-Za-z0-9_-]{30,}"),
+            re.compile(r"(?i)(token|api[_-]?key|password|passwd|secret|пароль)(\s*[=:]\s*)\S+"))
+
+
+def _clean(text, limit: int) -> str:
+    out = str(text)
+    out = _SECRETS[0].sub("[токен]", out)
+    out = _SECRETS[1].sub(lambda m: m.group(1) + m.group(2) + "[скрыто]", out)
+    return out[:limit]
 
 
 def clamp_intensity(value) -> int:
@@ -24,7 +36,7 @@ def clamp_intensity(value) -> int:
         return 1
     try:
         v = int(float(value))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):      # JSON умеет «Infinity»: int(inf) не число
         return 1
     return max(0, min(INTENSITY_MAX, v))
 
@@ -35,22 +47,25 @@ def _trace_id() -> str | None:
 
 
 def emotion(emotion_label: str, intensity, reason: str, character: str = "", **data) -> None:
+    """Эмоция. Причина - id трассы обращения, если он есть, иначе `reason` (имя события, например «chat»)."""
+    tid = data.pop("trace_id", None) or _trace_id()
     events_log.log_nowait("emotion", str(emotion_label), emotion=str(emotion_label), intensity=clamp_intensity(intensity),
-                          reason=str(reason)[:80], character=character or None,
-                          bg=emotion_label in BACKGROUND_EMOTIONS, trace_id=data.pop("trace_id", None) or _trace_id(), **data)
+                          reason=str(tid or reason)[:80], character=character or None,
+                          bg=emotion_label in BACKGROUND_EMOTIONS, trace_id=tid, **data)
 
 
 def mistake(kind: str, text: str, refs: list | None = None, **data) -> None:
     """Метка ошибки (TRC-5). Неизвестный вид не пишется: список видов задан ТЗ."""
     if kind not in MISTAKE_TYPES:
         return
-    events_log.log_nowait("mistake", str(text)[:300], type=kind, refs=[r for r in (refs or []) if r is not None][:10],
-                          trace_id=data.pop("trace_id", None) or _trace_id(), **data)
+    events_log.log_nowait("mistake", _clean(text, 300), type=kind, refs=[r for r in (refs or []) if r is not None][:10],
+                          trace_id=data.pop("trace_id", None) or _trace_id(),
+                          **{k: _clean(v, 300) if isinstance(v, str) else v for k, v in data.items()})
 
 
 def decision(route: str, source: str, text: str = "", *, confidence=None, echelon: str = "rules", **data) -> None:
     """Решение диспетчера (TRC-6): маршрут, источник правил, уверенность, эшелон и версия правил."""
-    events_log.log_nowait("decision", str(text)[:200], route=str(route), source=str(source),
+    events_log.log_nowait("decision", _clean(text, 200), route=str(route), source=str(source),
                           confidence=round(float(confidence), 3) if isinstance(confidence, (int, float)) else None,
                           echelon=echelon, rules_version=RULES_VERSIONS.get(source, source),
                           trace_id=data.pop("trace_id", None) or _trace_id(), **data)
@@ -74,8 +89,10 @@ def correction_level(text: str) -> str:
 
 def decisions(limit: int = 100, trace_id: str | None = None) -> list[dict]:
     """Выборка решений диспетчера для разметки (как appraisal_log.recent, ТЗ 24 TRC-6): новые сверху, по trace_id при нужде."""
-    rows = events_log.tail(limit=max(1, min(int(limit), 1000)), kinds={"decision"})
+    limit = max(1, min(int(limit), 1000))
+    # по trace_id фильтруем после выборки: сначала берём окно побольше, иначе старое решение не найти
+    rows = events_log.tail(limit=DECISIONS_SCAN if trace_id else limit, kinds={"decision"})
     out = [{"ts": r["ts"], **(r.get("data") or {}), "text": r.get("text", "")} for r in reversed(rows)]
     if trace_id:
-        out = [r for r in out if r.get("trace_id") == trace_id]
+        out = [r for r in out if r.get("trace_id") == trace_id][:limit]
     return out
