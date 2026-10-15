@@ -1,4 +1,5 @@
 """Синтез звуков (MON-23, MON-37): длительность, формат, пик, частоты, детерминизм, совпадение с файлами в репозитории."""
+from layout import DEFAULT
 import wave
 
 import generate                       # assets/sfx/generate.py (pythonpath в pyproject.toml)
@@ -76,7 +77,7 @@ def test_files_are_pcm16_mono_and_match_the_generator(tmp_path, root):
     generate.generate_all(tmp_path)
     for name in NAMES:
         fresh = tmp_path / f"{name}.wav"
-        committed = root / "assets" / "sfx" / f"{name}.wav"
+        committed = DEFAULT.assets / "sfx" / f"{name}.wav"
         assert committed.is_file(), f"{name}.wav не сгенерирован: python assets/sfx/generate.py"
         with wave.open(str(committed), "rb") as w:
             assert (w.getnchannels(), w.getsampwidth(), w.getframerate()) == (1, 2, 44100)
@@ -87,4 +88,4 @@ def test_files_are_pcm16_mono_and_match_the_generator(tmp_path, root):
 def test_template_copies_match(root):
     pub = root / "template" / "public" / "sfx"
     for name in NAMES:
-        assert (pub / f"{name}.wav").read_bytes() == (root / "assets" / "sfx" / f"{name}.wav").read_bytes()
+        assert (pub / f"{name}.wav").read_bytes() == (DEFAULT.assets / "sfx" / f"{name}.wav").read_bytes()

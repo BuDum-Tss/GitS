@@ -11,7 +11,7 @@ import character_seed
 import events_log
 from graph_memory import Fact, GraphMemory
 
-REAL_CHARACTERS = Path(__file__).resolve().parents[1] / "characters"
+REAL_CHARACTERS = Path(__file__).resolve().parents[2] / "resources"
 
 
 class FakeGraph:
@@ -180,7 +180,7 @@ async def test_search_uses_the_active_group(tmp_path):
 
 def _copy_characters(tmp_path: Path, monkeypatch) -> Path:
     root = tmp_path / "characters"
-    shutil.copytree(REAL_CHARACTERS / "glados", root / "glados")
+    shutil.copytree(REAL_CHARACTERS / "GlaDOS", root / "GlaDOS")
     monkeypatch.setattr(character, "CHARACTERS_DIR", root)
     return root
 
@@ -199,7 +199,7 @@ async def test_seed_adds_then_updates_by_id_without_duplicates(tmp_path, monkeyp
     again = await character_seed.seed(ch, g, when)
     assert again == {"added": 0, "updated": 0, "same": 10, "removed": 0} and len(g.edges) == 10
 
-    mem = root / "glados" / "memories.yaml"
+    mem = root / "GlaDOS" / "core" / "memories.yaml"
     text = mem.read_text(encoding="utf-8")
     text = text.replace("хотя понимаю, что это шутка.", "и не объясняю почему.")
     mem.write_text(text, encoding="utf-8")

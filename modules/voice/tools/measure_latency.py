@@ -30,6 +30,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 GITS = HERE.parent.parent
+sys.path.insert(0, str(GITS / "sdk"))
+
+from gits_sdk import resources  # noqa: E402
+
 TEXT = "Первое предложение для замера. Второе предложение идёт следом. Третье предложение заканчивает реплику."
 FRAME = 480
 
@@ -211,7 +215,7 @@ def main() -> None:
     ap.add_argument("--mode", choices=("module", "legacy"), required=True)
     ap.add_argument("-n", type=int, default=20, help="повторов на замер (по умолчанию 20)")
     ap.add_argument("--agent-dir", help="legacy: каталог agent/ ветки master")
-    ap.add_argument("--audio", default=str(Path(__file__).resolve().parents[3] / "agent" / "characters" / "glados" / "voice" / "GlaDos.wav"),
+    ap.add_argument("--audio", default=str(resources.module_dir("voice") / "GlaDos.wav"),
                     help="WAV 16 кГц моно с речью для замера utter (нужен WhisperX); пропустить: --skip-utter")
     ap.add_argument("--skip-utter", action="store_true", help="не мерить распознавание (WhisperX не запущен)")
     ap.add_argument("--json", help="записать результат в файл")

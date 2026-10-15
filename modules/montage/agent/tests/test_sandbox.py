@@ -108,7 +108,7 @@ def test_read_inside_and_outside(box):
     for rel in ("plan/plan.json", "work/src/Main.tsx", "sources/info.json", "renders/still_1.png"):
         assert run(box, "Read", file_path=abs_(box, rel))[0]
     assert run(box, "Read", file_path=str(DEFAULT.template / "demo" / "plan.vertical.json"))[0]
-    assert run(box, "Read", file_path=str(DEFAULT.docs / "APERTURE_STYLE.md"))[0]
+    assert run(box, "Read", file_path=str(DEFAULT.style))[0]
     assert run(box, "Read", file_path=str(DEFAULT.assets / "fonts" / "OFL.txt"))[0]
     assert run(box, "Read", file_path="src/Main.tsx")[0]                                                   # относительный путь от work/
     assert run(box, "Read", file_path=str(DEFAULT.skills / "remotion-best-practices" / "SKILL.md"))[0]
@@ -137,7 +137,7 @@ def test_write_and_edit_only_in_work_and_plan(box):
         assert not ok, bad
     assert not run(box, "Write", file_path=str(DEFAULT.template / "src" / "Main.tsx"))[0]              # шаблон менять нельзя
     assert not run(box, "Edit", file_path="C:/Users/coffe/.bashrc")[0]
-    assert not run(box, "Write", file_path=str(DEFAULT.docs / "APERTURE_STYLE.md"))[0]
+    assert not run(box, "Write", file_path=str(DEFAULT.style))[0]
     assert not run(box, "Write", file_path="../../../agent/sandbox.py")[0]
 
 

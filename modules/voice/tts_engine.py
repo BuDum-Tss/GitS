@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 import httpx
+from gits_sdk import resources
 
 logger = logging.getLogger("tts")
 
@@ -25,7 +26,7 @@ logger = logging.getLogger("tts")
 FISH_URL       = os.getenv("FISH_URL", "http://127.0.0.1:8080")
 # Референс голоса персонажа (ТЗ 05, CHR-12): путь из карточки персонажа (voice.reference), см. use_character_voice().
 # По умолчанию — референс персонажа по умолчанию (id данных glados).
-_DEFAULT_REFERENCE = Path(__file__).resolve().parents[3] / "agent" / "characters" / "glados" / "voice" / "GlaDos.wav"   # id данных
+_DEFAULT_REFERENCE = resources.module_dir("voice") / "GlaDos.wav"      # папка voice/ персонажа по умолчанию (resources/<Имя>/voice)
 FISH_REFERENCE = Path(os.getenv("FISH_REFERENCE_AUDIO") or _DEFAULT_REFERENCE)
 FISH_TIMEOUT   = 30.0
 FISH_SR        = 44100   # Fish Speech S2-Pro default

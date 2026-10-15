@@ -26,7 +26,7 @@ def _card(folder: Path, char_id: str, **over):
 def chars(tmp_path, monkeypatch):
     """Отдельная папка персонажей: glados (настоящий) и tester (тестовый), шаблон `_template` в списке не виден."""
     root = tmp_path / "characters"
-    shutil.copytree(Path(character.CHARACTERS_DIR) / "glados", root / "glados")
+    shutil.copytree(Path(character.CHARACTERS_DIR) / "GlaDOS", root / "GlaDOS")
     _card(root / "tester", "tester", name="Тестерша")
     (root / "_template").mkdir()
     (root / "_template" / "character.yaml").write_text("id: TODO_id\n", encoding="utf-8")
@@ -38,14 +38,14 @@ def test_glados_card_is_loaded_from_its_folder():
     ch = character.load("glados")
     assert ch.name == "ГЛаДОС" and ch.id == "glados" and ch.gender == "female"
     assert "гладос" in ch.aliases and "GLaDOS" in ch.aliases
-    assert ch.folder.name == "glados" and ch.folder.parent.name == "characters"
+    assert ch.folder.name == "GlaDOS" and ch.folder.parent.name == "resources"
     assert ch.voice_reference().is_file(), "референс голоса лежит в папке персонажа"
     assert len(ch.anchor) <= character.ANCHOR_MAX
 
 
 def test_constitution_content_is_unchanged():
     """CHR-5: constitution.yaml переносится git mv, содержимое не меняется (меняет только человек)."""
-    path = Path(character.CHARACTERS_DIR) / "glados" / "constitution.yaml"
+    path = Path(character.CHARACTERS_DIR) / "GlaDOS" / "core" / "constitution.yaml"
     assert hashlib.sha256(path.read_bytes()).hexdigest() == CONSTITUTION_SHA256
 
 
@@ -54,16 +54,34 @@ def test_list_skips_template_and_unfinished_folders(chars):
 
 
 def test_unknown_character_is_an_error_with_a_reason(chars):
-    with pytest.raises(character.CharacterError, match="нет файла"):
+    with pytest.raises(character.CharacterError, match="нет папки персонажа"):
         character.load("nobody")
     with pytest.raises(character.CharacterError, match="недопустимый идентификатор"):
         character.load("../glados")
 
 
-def test_id_must_match_folder(chars):
-    _card(chars / "wrong", "other")
-    with pytest.raises(character.CharacterError, match="не совпадает с именем папки"):
+def test_folder_name_is_free_and_the_card_id_decides(chars):
+    _card(chars / "any name", "other")
+    assert character.load("other").folder.name == "any name"
+    with pytest.raises(character.CharacterError, match="нет папки персонажа"):
         character.load("wrong")
+
+
+def test_persona_sections_come_from_module_folders():
+    sections = character.sections("glados")
+    assert {"telegram_channel", "telegram_formats", "desktop_assistant"} <= set(sections)
+    assert all(sections[k].strip() for k in sections)
+
+
+def test_module_resources_live_in_the_module_folder_of_the_character():
+    from gits_sdk import resources
+    root = Path(character.CHARACTERS_DIR)
+    assert resources.module_dir("pet", "glados") == root / "GlaDOS" / "pet"
+    assert (resources.module_dir("pet", "glados") / "stickers" / "idle.png").is_file()
+    assert (resources.module_dir("voice", "glados") / "GlaDos.wav").is_file()
+    assert (resources.module_dir("montage", "glados") / "assets" / "fonts" / "OFL.txt").is_file()
+    assert (resources.module_dir("rimworld", "glados") / "prompts" / "constitution.yaml").is_file()
+    assert (resources.character_dir("glados") / "core" / "prompt.yaml").is_file()
 
 
 def test_anchor_limit_is_enforced(chars):
@@ -131,7 +149,7 @@ def test_persona_name_stays_out_of_agent_code():
     offenders = []
     for path in root.rglob("*.py"):
         parts = path.relative_to(root).parts
-        if "characters" in parts or "tests" in parts or "__pycache__" in parts or path.name == "envcompat.py":
+        if "resources" in parts or "tests" in parts or "__pycache__" in parts or path.name == "envcompat.py":
             continue
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if pattern.search(line) and "# id данных" not in line:

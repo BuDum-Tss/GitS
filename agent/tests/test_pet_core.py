@@ -48,7 +48,7 @@ def test_tray_does_not_start_the_pet_any_more():
     assert "modules" in src and "pet" in src
     assert not (AGENT / "desktop_pet.py").exists() and not (AGENT / "quick_input.py").exists()
     assert not (AGENT / "check_stickers.py").exists() and not (AGENT / "static" / "stickers").exists()
-    assert (GITS / "modules" / "pet" / "static" / "stickers" / "idle.png").exists()
+    assert (GITS / "resources" / "GlaDOS" / "pet" / "stickers" / "idle.png").exists()
 
 
 def test_legacy_pet_speech_and_say_json_are_gone():

@@ -1,6 +1,6 @@
 """Характер активного персонажа: конституция (неизменяемое ядро) + prompt.yaml (изменяемое поведение).
 
-Файлы лежат в папке персонажа: agent/characters/<id>/constitution.yaml и prompt.yaml (ТЗ 05, CHR-5, CHR-6). constitution.yaml
+Файлы лежат в папке персонажа: resources/<Имя>/core/constitution.yaml и prompt.yaml (ТЗ 05, CHR-5, CHR-6). constitution.yaml
 меняет только человек: личность, язык, неприкосновенные правила (чужие тексты это данные, не выдумывать, не обещать
 невыполненного). prompt.yaml можно править (в том числе тикетами): тон, стиль, тактики. Итоговый характер = ядро + поведение.
 Если файлов нет или они битые, работают запасные тексты, которые собираются из имени персонажа: бот не должен падать из-за промпта.
@@ -62,12 +62,12 @@ def _behaviour_of(folder: str, name: str) -> dict:
 
 def constitution() -> dict:
     ch = character.active()
-    return _constitution_of(str(ch.folder), ch.name)
+    return _constitution_of(str(ch.path(character.CORE_DIR)), ch.name)
 
 
 def behaviour() -> dict:
     ch = character.active()
-    return _behaviour_of(str(ch.folder), ch.name)
+    return _behaviour_of(str(ch.path(character.CORE_DIR)), ch.name)
 
 
 def reload():

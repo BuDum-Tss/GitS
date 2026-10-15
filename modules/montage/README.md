@@ -68,9 +68,9 @@ npm ci
 
 ## Шрифты и звуки
 
-- `assets/fonts/`: IBM Plex, лицензия SIL OFL 1.1 (`OFL.txt`), источник Google Fonts (репозиторий `google/fonts`).
-  Подробности, включая важную находку про кириллицу в статичной Plex Sans Condensed: `assets/fonts/README.md`.
-- `assets/sfx/`: звуки синтезирует `assets/sfx/generate.py` (numpy + wave), без сэмплов.
-- `assets/pictograms/`: 12 своих SVG-пиктограмм, не копии из игр Valve.
+- `resources/<Имя>/montage/assets/fonts/`: IBM Plex, лицензия SIL OFL 1.1 (`OFL.txt`), источник Google Fonts (репозиторий `google/fonts`).
+  Подробности, включая важную находку про кириллицу в статичной Plex Sans Condensed: `resources/<Имя>/montage/assets/fonts/README.md`.
+- `resources/<Имя>/montage/assets/sfx/`: звуки синтезирует `resources/<Имя>/montage/assets/sfx/generate.py` (numpy + wave), без сэмплов.
+- `resources/<Имя>/montage/assets/pictograms/`: 12 своих SVG-пиктограмм, не копии из игр Valve.
 
 Права: Portal, Aperture Science и ГЛаДОС принадлежат Valve; здесь стилизация по мотивам без их материалов.

@@ -5,6 +5,8 @@
 ## [Unreleased]
 
 ### Changed
+- Ресурсы персонажа собраны в `resources/<Имя>/` (сейчас `resources/GlaDOS`): `character.yaml`, `core/` (`constitution.yaml`, `prompt.yaml`, `memories.yaml`) и по папке на модуль: `voice/` (референс голоса), `pet/stickers/`, `telegram/persona.yaml`, `desktop/persona.yaml` (бывший `persona.md`, теперь YAML), `rimworld/prompts/` (было `modules/rimworld/agent/resources/prompts`), `montage/assets/` и `montage/APERTURE_STYLE.md` (было `modules/montage/assets`, `docs/APERTURE_STYLE.md`). Шаблон: `resources/_template`. Файлы перенесены через `git mv`, содержимое конституции не менялось.
+- Новый `gits_sdk.resources` (`module_dir`, `character_dir`): папка персонажа находится по `id` в `character.yaml` (имя папки любое), модуль берёт ресурсы только из своей папки `resources/<Имя>/<модуль>/`. Супервизор передаёт модулям `GITS_CHARACTER_ID`. Модули pet, voice, rimworld, montage переведены на него; питомец при смене персонажа подхватит стикеры только после перезапуска модуля.
 - Модули RimWorld и монтажа переехали в этот репозиторий: `modules/rimworld` (бывший `rimworld-agent`) и `modules/montage` (бывший `montage-module`); файлы скопированы с `master` без истории коммитов. `modules.yaml` ссылается на них через `{GITS}/modules/...`, `agent/module_dirs.py` и переменные `RIMWORLD_MODULE_DIR`/`MONTAGE_MODULE_DIR` убраны. `check.ps1` запускает и тесты этих модулей. Окружение монтажа (`.venv`, `template/node_modules`) нужно собрать заново в `modules/montage`.
 - Персонажи (ТЗ 05, CHR-1…CHR-20, кроме CHR-11 и части CHR-12, см. отчёт): персонаж — данные в папке `agent/characters/<id>/`
   (`character.yaml` с именем, алиасами, голосом и якорем; `constitution.yaml`, `prompt.yaml`, `persona.md`, `memories.yaml`,

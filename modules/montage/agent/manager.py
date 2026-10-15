@@ -435,7 +435,7 @@ class Manager:
     # ================================================================================================ справочник (MON-31)
 
     def kb_documents(self) -> tuple[str, list[dict]]:
-        style = (self.layout.docs / "APERTURE_STYLE.md").read_text(encoding="utf-8")
+        style = (self.layout.style).read_text(encoding="utf-8")
         craft = (self.layout.docs / "EDITING_CRAFT.md").read_text(encoding="utf-8")
         digest = hashlib.sha256((style + "\0" + craft).encode()).hexdigest()
         docs = [{"uri": "montage:style", "title": "Регламент монтажа Aperture Science", "text": style, "meta": {"kind": "style"}},

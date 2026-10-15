@@ -19,7 +19,7 @@ DEFAULTS = {
     "vision": True,             # смотреть на экран (локально)
     "game_model": "haiku",      # модель игровых ходов и планирования: haiku (быстро, дёшево) / sonnet (думает глубже, дороже)
     "profile": "auto",          # профиль: auto (сама выбирает) или id профиля из agent/profiles/ (ТЗ 02)
-    "character": "glados",      # id данных; персонаж: папка agent/characters/<id> (ТЗ 05); переключает ядро (core.set_character), не правьте вручную
+    "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); переключает ядро (core.set_character), не правьте вручную
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (нужен docker compose up whisperx)
     "hearing": False,           # слушать системный звук (речь в колонках); по умолчанию выключено

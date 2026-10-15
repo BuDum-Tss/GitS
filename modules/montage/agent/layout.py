@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from gits_sdk import resources
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # имена файлов шрифтов из регламента (ТЗ 21 §2): без любого из них монтаж не начинается (MON-24)
@@ -21,8 +23,18 @@ class Layout:
         return self.root / "template"
 
     @property
+    def character(self) -> Path:
+        """Ресурсы монтажа персонажа: resources/<Имя>/montage (шрифты, звуки, пиктограммы, регламент стиля)."""
+        return resources.module_dir("montage")
+
+    @property
     def assets(self) -> Path:
-        return self.root / "assets"
+        return self.character / "assets"
+
+    @property
+    def style(self) -> Path:
+        """Регламент стиля персонажа (для ГЛаДОС: Aperture Science)."""
+        return self.character / "APERTURE_STYLE.md"
 
     @property
     def docs(self) -> Path:

@@ -6,7 +6,8 @@ import {fileURLToPath} from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tpl = resolve(here, '..');
-const assets = resolve(tpl, '..', 'assets');
+// ресурсы монтажа персонажа: resources/<Имя>/montage/assets в корне GitS
+const assets = resolve(tpl, '..', '..', '..', 'resources', process.env.GITS_CHARACTER_FOLDER ?? 'GlaDOS', 'montage', 'assets');
 
 function copyDir(from, to, filter) {
 	mkdirSync(to, {recursive: true});

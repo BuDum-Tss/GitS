@@ -46,8 +46,8 @@
 | `segments[].source`, например `sources/clip_h264.mp4` | `work/public/media/clip_h264.mp4` (берётся только имя файла) |
 | `voiceover[].id` или `tts_path` | `work/public/vo/<id>.wav` |
 | `captions.words_file` | `work/public/<words_file>`, формат `[{"i","text","start_ms","end_ms","conf"}]` |
-| `sfx[].name` | `public/sfx/<name>.wav` (из `assets/sfx`) |
-| шрифты | `public/fonts/` (из `assets/fonts`) |
+| `sfx[].name` | `public/sfx/<name>.wav` (из `resources/<Имя>/montage/assets/sfx`) |
+| шрифты | `public/fonts/` (из `resources/<Имя>/montage/assets/fonts`) |
 
 ### Компоненты (имена в коде и вид вставки в плане)
 
@@ -76,7 +76,7 @@
 ### Токены и зоны
 
 Цвета, шрифты, размеры, движение и зоны компонентов: `template/src/style/tokens.ts` (повторяет регламент; тест сверяет
-цвета с таблицей в `docs/APERTURE_STYLE.md`). Зоны экспортируются в `template/qa_zones.json` (`npm run gen:qa-zones`) для
+цвета с таблицей в `resources/<Имя>/montage/APERTURE_STYLE.md`). Зоны экспортируются в `template/qa_zones.json` (`npm run gen:qa-zones`) для
 проверок качества: доли кадра (x, y, w, h) по форматам, безопасные зоны площадок, признак «вытесняет субтитры».
 Схема плана для сверки с `agent/plan_schema.py`: `template/plan.schema.json` (`npm run gen:schema`).
 
@@ -106,7 +106,7 @@ npm run demo:stills     # кадры всех компонентов и пров
 npx remotion render src/index.ts Main demo/out/demo_vertical.mp4 --props=demo/plan.vertical.short.json
 ```
 
-После правок `assets/` выполнить `npm run sync-assets` (копии в `public/` и пиктограммы в `src/style/`).
+После правок `resources/<Имя>/montage/assets/` выполнить `npm run sync-assets` (копии в `public/` и пиктограммы в `src/style/`).
 
 ## Субтитры
 

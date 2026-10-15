@@ -25,7 +25,7 @@ services:
       - "${FISH_HOST:-127.0.0.1}:${FISH_PORT:-8080}:8080"
     volumes:
       - ${FISH_CHECKPOINTS:-./agent/resources/tts/checkpoints}:/opt/fish-speech/checkpoints
-      - ./agent/characters/glados/voice:/opt/fish-speech/references
+      - ./resources/GlaDOS/voice:/opt/fish-speech/references
     deploy:
       resources:
         reservations:

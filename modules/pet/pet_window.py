@@ -11,10 +11,10 @@ import queue
 import textwrap
 import threading
 import time
-from pathlib import Path
 
 import httpx
 import tkinter as tk
+from gits_sdk import resources
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 import quick_input
@@ -28,7 +28,7 @@ STICKER_H   = 160          # высота стикера
 W           = 300          # ширина окна
 CHROMA      = (255, 0, 255)
 CHROMA_HEX  = "#FF00FF"
-STICKERS    = Path(__file__).parent / "static" / "stickers"
+STICKERS    = resources.module_dir("pet") / "stickers"    # resources/<Имя>/pet/stickers (персонаж из GITS_CHARACTER_ID)
 PUMP_MS     = 50           # PET-3: разбор очереди потока клиента
 HOTKEY_RECHECK_S = 2.0     # как часто сверять клавишу быстрого ввода с настройкой (смена подхватывается без перезапуска)
 

@@ -151,7 +151,7 @@ class Sandbox:
         return self.job_dir / "work"
 
     def read_roots(self) -> list[Path]:
-        return [self.job_dir, self.layout.template, self.layout.assets, self.layout.docs, self.layout.skills]
+        return [self.job_dir, self.layout.template, self.layout.character, self.layout.docs, self.layout.skills]
 
     def write_roots(self) -> list[Path]:
         return [self.work, self.job_dir / "plan"]

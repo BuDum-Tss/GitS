@@ -6,7 +6,7 @@ import pytest
 import character
 import character_memory as cm
 
-SAMPLE_MEMORIES = Path(__file__).resolve().parents[1] / "characters" / "glados" / "memories.yaml"
+SAMPLE_MEMORIES = Path(__file__).resolve().parents[2] / "resources" / "GlaDOS" / "core" / "memories.yaml"
 
 
 def _write(tmp_path: Path, text: str) -> Path:

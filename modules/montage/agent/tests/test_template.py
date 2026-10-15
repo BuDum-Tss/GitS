@@ -1,5 +1,6 @@
 """Шаблон Remotion без запуска Chromium (MON-19..MON-22, STY-4, STY-5): версии, токены против регламента, нет русских
 констант в коде, демо-планы проходят схему zod, экспортные файлы (qa_zones.json, plan.schema.json) не устарели."""
+from layout import DEFAULT
 import json
 import re
 import shutil
@@ -40,7 +41,7 @@ def test_installed_versions_match(tpl):
 
 
 def test_colour_tokens_equal_the_regulation(root, tpl):
-    style = (root / "docs" / "APERTURE_STYLE.md").read_text(encoding="utf-8")
+    style = DEFAULT.style.read_text(encoding="utf-8")
     table = dict(re.findall(r"\| `(\w+)` \| `(#[0-9A-Fa-f]{6})` \|", style))
     assert set(table) == {"labWhite", "labGrey", "chamberDark", "portalBlue", "portalOrange", "hazardYellow", "alertRed"}
     tokens = (tpl / "src" / "style" / "tokens.ts").read_text(encoding="utf-8")
@@ -70,7 +71,7 @@ def test_no_russian_text_constants_in_template(tpl):
 def test_pictogram_module_is_in_sync_with_svg(root, tpl):
     generated = (tpl / "src" / "style" / "pictograms.generated.ts").read_text(encoding="utf-8")
     names = re.findall(r"^\t(\w+): \{strokeWidth", generated, re.M)
-    svgs = sorted((root / "assets" / "pictograms").glob("*.svg"))
+    svgs = sorted((DEFAULT.assets / "pictograms").glob("*.svg"))
     assert names == [p.stem for p in svgs]
     for p in svgs:
         inner = re.search(r"<svg[^>]*>(.*)</svg>", p.read_text(encoding="utf-8"), re.S).group(1)

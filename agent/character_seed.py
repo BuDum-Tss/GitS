@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m character", description="Персонажи GitS (ТЗ 05)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("seed", help="загрузить воспоминания персонажа в граф (по memories.yaml)")
-    s.add_argument("id", help="id персонажа: папка agent/characters/<id>")
+    s.add_argument("id", help="id персонажа: папка resources/<Имя> с этим id")
     s.add_argument("--dry-run", action="store_true", help="только проверить файл, граф не трогать")
     args = ap.parse_args(argv)
     try:
