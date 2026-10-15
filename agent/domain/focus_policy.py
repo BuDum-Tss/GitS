@@ -18,6 +18,11 @@ NONE_HINT = "none"             # подсказка классификатора
 ECHELON_RULES = "rules"        # решили правила: классификатора не было или критическое событие
 ECHELON_GLINER = "gliner"      # решили правила на ответе GLiNER (подсказка политики, нужен ли фокус, уверенность)
 ECHELON_GEMMA = "gemma"        # решил диспетчер Gemma (принята операция или перепроверка срочности)
+CRITICAL_URGENCY = 5           # срочность 5 - критическое: без дребезга, без LLM, без ожидания
+USER_PRIORITY = 95             # просьба пользователя (закрепить, «возьми фокус»)
+HOLDER_PRIORITY_EVENT = 60     # фокус, взятый по событию, держит приоритет 60: обычные события его не сдвигают
+RECHECK_CONF = 0.5             # опасное событие с уверенностью классификатора ниже этого перепроверяется
+DANGER_CATEGORIES = ("danger", "death_injury", "disaster")
 
 
 def aged_priority(base: float, age_s: float, aging_s: float = AGING_S, step: float = AGING_STEP,
@@ -93,3 +98,73 @@ def confirmed(value: Any, policy: str | None) -> bool:
 def hint_value(value: Any) -> str | None:
     """Подсказка политики от классификатора: «модуль/политика» или NONE_HINT; мусор отбрасывается."""
     return value if isinstance(value, str) and value and len(value) <= 120 else None
+
+
+def holder_priority(origin: str | None) -> float:
+    """Приоритет, который держит фокус: просьба пользователя сильнее фокуса, взятого по событию; без фокуса 0."""
+    if origin is None:
+        return 0.0
+    return float(USER_PRIORITY if origin == "user" else HOLDER_PRIORITY_EVENT)
+
+
+def needs_recheck(category: str | None, confidence: float | None, rechecked: bool) -> bool:
+    """FOC-3: опасное событие с низкой уверенностью классификатора перепроверяется один раз."""
+    return (category in DANGER_CATEGORIES and confidence is not None and confidence < RECHECK_CONF
+            and not rechecked)
+
+
+def ambiguity(*, critical: bool, has_llm: bool, llm_used: bool, confidence: float | None, near: bool, conflict: bool,
+              claimant: bool, hint: str | None, conf_low: float = CONF_LOW, conf_high: float = CONF_HIGH) -> str | None:
+    """Почему событие неоднозначно (нужен второй эшелон) или None, если правила решают сами (ТЗ 18, FOC-7): низкая
+    уверенность классификатора, близость к порогу без уверенного ответа, конфликт подсказки, два претендента.
+    Критические события, отсутствие LLM и уже отвеченные диспетчером не спрашиваем."""
+    if critical or not has_llm or llm_used:
+        return None
+    if confidence is not None and confidence < conf_low:
+        return f"низкая уверенность классификатора ({confidence:.2f})"
+    if near and (confidence is None or confidence < conf_high):
+        return "у порога переключения или у фокуса, без уверенного ответа классификатора"
+    if conflict:
+        return f"конфликт подсказки: классификатор указывает «{hint}»"
+    if claimant:
+        return "два претендента на фокус с близкой важностью"
+    return None
+
+
+def gate(*, critical: bool, once: bool, quiet: bool, profile_quiet: bool, quiet_policy: str | None,
+         pinned: str | None, pinned_title: str, module: str, busy: bool, focus_needed: bool | None, focus_conf: float,
+         priority: float, has_slot: bool, slot_since: float, switch_times, now: float, holder: float,
+         interruptible: bool) -> tuple[str, str, dict]:
+    """Детерминированные правила (FOC-4, FOC-6): что делать с событием. Возвращает (действие, причина, условие
+    возобновления). `quiet`: включено «не беспокоить» для всего агента или для модуля; `quiet_policy`: id текущей
+    политики модуля, которая не переключает фокус (или None)."""
+    ctx = {"type": "context_changed"}
+    if critical:
+        return "switch", "критическое событие: переключение без ожидания", ctx
+    if not once:
+        if quiet:
+            return "defer", "не беспокоить: режим пользователя", {"type": "context_changed"}
+        if profile_quiet:
+            return "defer", "профиль не даёт переключать фокус этому модулю", ctx
+        if quiet_policy is not None:
+            return "defer", f"политика «{quiet_policy}» не переключает фокус: сообщение сохранено", ctx
+    if pinned is not None and module != pinned:
+        return "defer", f"фокус закреплён за «{pinned_title}»", {"type": "unpin"}
+    if busy:
+        return "defer", "пользователь в разговоре", ctx
+    if focus_needed is False and focus_conf >= CONF_HIGH:
+        return "defer", "классификатор: событие не требует фокуса", ctx
+    if not has_slot:
+        if priority >= SWITCH_P:
+            return "switch", f"приоритет {round(priority)} не ниже порога {SWITCH_P}", ctx
+        return "defer", f"приоритет {round(priority)} ниже порога переключения {SWITCH_P}", ctx
+    damp = dampening(now, slot_since, switch_times)
+    if damp == "short":
+        return "defer", "дребезг: мало времени в текущем фокусе", ctx
+    if damp == "rate":
+        return "defer", "дребезг: лимит переключений в минуту", ctx
+    if not clears_focus(priority, holder):
+        return "defer", f"не выше текущего фокуса на запас {MARGIN}", ctx
+    if not interruptible:
+        return "defer", "модуль в фокусе сообщил небезопасную точку", ctx
+    return "switch", f"приоритет {round(priority)} выше фокуса {round(holder)} на запас", ctx

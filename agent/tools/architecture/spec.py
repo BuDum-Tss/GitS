@@ -76,9 +76,11 @@ GROUPS = [
     ]),
     dict(id="g_foc", col="E", title="Фокус", tag="A",
          summary="Решает, кому отдать главную роль (например, игре в бою), и когда её вернуть.", out="FocusDecision", nodes=[
-        N("fmgr", "FocusManager", "A", "один слот, очередь, переключение, дребезг, checkpoint", "FocusDecision", "focus.py: 1061 строка, 60 методов в одном классе"),
-        N("fpol", "FocusPolicy", "D", "чистые правила: приоритет, запас, критичное, старение, конфликты", "FocusDecision", "внутри FocusManager: _gate, _near, _claimant", True),
-        N("fdisp", "FocusDispatch (контракт)", "A", "Gemma только для неоднозначного; ответ строго проверяется", "Op", "focus_dispatch.py: 288 строк"),
+        N("fmgr", "FocusManager (фасад)", "A", "один слот, протокол переключения, команды пользователя, журнал; прежние публичные методы", "FocusDecision", "focus.py: фасад над четырьмя частями (ТЗ 29, ARC-6)"),
+        N("fpol", "FocusPolicy", "D", "чистые правила: приоритет, запас, критичное, старение, конфликты", "FocusDecision", "domain/focus_policy.py: gate, ambiguity, дребезг, эшелон"),
+        N("fque", "FocusQueue", "A", "состояния событий, склейка, старение, сроки", "QueuedEvent", "focus_queue.py", True),
+        N("fstore", "CheckpointStore", "A", "checkpoint задач и файл focus.json", "checkpoint", "focus_store.py", True),
+        N("fdisp", "FocusDispatch (контракт)", "A", "Gemma только для неоднозначного; ответ строго проверяется", "Op", "focus_dispatch.py: класс FocusDispatch и validate"),
     ]),
     dict(id="g_out", col="F", title="Вывод", tag="I",
          summary="Очередь речи выбирает момент и приоритет, затем реплика уходит каналом: голос, чат, Telegram, питомец. Команды модулям уходят отсюда же.", out="Utterance, команды", nodes=[
@@ -130,7 +132,7 @@ EDGES = [
     ("reg", "plan", "use", "Tool[]", None), ("plan", "risk", "flow", "Plan", 12), ("risk", "exec", "flow", "разрешённый шаг", 13),
     ("exec", "hubout", "flow", "tool.call", 14), ("exec", "jobs", "use", None, None), ("jobs", "queue", "flow", "итог", None),
     ("exec", "queue", "flow", "итог-факт", 15),
-    ("fmgr", "fpol", "use", "правила", None), ("fmgr", "fdisp", "use", "неоднозначно", None), ("fmgr", "hubout", "ctl", "policy.activate", None),
+    ("fmgr", "fpol", "use", "правила", None), ("fmgr", "fdisp", "use", "неоднозначно", None), ("fmgr", "fque", "use", "события", None), ("fmgr", "fstore", "use", "checkpoint", None), ("fmgr", "hubout", "ctl", "policy.activate", None),
     ("queue", "out", "flow", "Utterance", 16), ("out", "aff", "use", None, None), ("out", "hubout", "flow", "speak", 17), ("digest", "queue", "flow", None, None),
     ("conv", "mw", "w", "после ответа", None), ("disp", "elog", "w", "Decision", None),
     ("mw", "graph", "w", None, None), ("mw", "stores", "w", None, None),

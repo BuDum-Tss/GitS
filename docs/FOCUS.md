@@ -2,7 +2,7 @@
 
 Что делает: в каждый момент один модуль (или никто) держит **фокус** агента, то есть работает в своей политике `active`.
 Остальные модули живут в фоновых политиках (`background`) и не занимают внимание агента. Решает ядро, исполняет модуль.
-Код: `agent/focus.py` (менеджер), `agent/focus_dispatch.py` (проверка ответа LLM). Надстройка над `agent/attention.py`:
+Код: `agent/focus.py` (фасад менеджера), `agent/focus_queue.py` (очередь событий), `agent/focus_store.py` (checkpoint и `focus.json`), `agent/domain/focus_policy.py` (чистые правила и пороги), `agent/focus_dispatch.py` (контракт к модели и проверка ответа LLM). Надстройка над `agent/attention.py`:
 внимание оценивает событие (D0–D4), менеджер фокуса решает, переключать ли модуль. Внимание не переписано: хук
 `Attention.on_decided` получает каждое решение после `_finish`.
 
@@ -190,7 +190,7 @@ LLM не вызывает методы модулей. Тексты событи
 
 ## 11. Константы
 
-`agent/focus.py`: `SWITCH_P=60`, `MARGIN=15`, `CRITICAL_URGENCY=5`, `USER_PRIORITY=95`, `HOLDER_PRIORITY_EVENT=60`,
+`agent/domain/focus_policy.py` (реэкспорт в `agent/focus.py`): `SWITCH_P=60`, `MARGIN=15`, `CRITICAL_URGENCY=5`, `USER_PRIORITY=95`, `HOLDER_PRIORITY_EVENT=60`,
 `MIN_FOCUS_S=20`, `MAX_SWITCHES_PER_MIN=4`, `GRACE_S=5`, `AGING_S=300`, `AGING_STEP=10`, `AGING_CAP=70`, `RECHECK_S=30`,
 `EVENT_TTL_S=1800`, `DEDUPE_S=60`, `CHECKPOINT_MAX_AGE_S=6*3600`, `RESUME_RETRIES=3`, `REFUSE_BACKOFF_S=60`,
 `LLM_TIMEOUT_S=5`, `CONF_LOW=0.6`, `CONF_HIGH=0.8`, `MAX_POLICY_OPTIONS=12`. `agent/focus_dispatch.py`: `CALL_TIMEOUT_S=5`,

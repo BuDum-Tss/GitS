@@ -323,21 +323,39 @@ window.ARCH_DATA = {
    "nodes": [
     {
      "id": "fmgr",
-     "t": "FocusManager",
+     "t": "FocusManager (фасад)",
      "tag": "A",
      "new": false,
-     "do": "один слот, очередь, переключение, дребезг, checkpoint",
+     "do": "один слот, протокол переключения, команды пользователя, журнал; прежние публичные методы",
      "out": "FocusDecision",
-     "now": "focus.py: 1061 строка, 60 методов в одном классе"
+     "now": "focus.py: фасад над четырьмя частями (ТЗ 29, ARC-6)"
     },
     {
      "id": "fpol",
      "t": "FocusPolicy",
      "tag": "D",
-     "new": true,
+     "new": false,
      "do": "чистые правила: приоритет, запас, критичное, старение, конфликты",
      "out": "FocusDecision",
-     "now": "внутри FocusManager: _gate, _near, _claimant"
+     "now": "domain/focus_policy.py: gate, ambiguity, дребезг, эшелон"
+    },
+    {
+     "id": "fque",
+     "t": "FocusQueue",
+     "tag": "A",
+     "new": true,
+     "do": "состояния событий, склейка, старение, сроки",
+     "out": "QueuedEvent",
+     "now": "focus_queue.py"
+    },
+    {
+     "id": "fstore",
+     "t": "CheckpointStore",
+     "tag": "A",
+     "new": true,
+     "do": "checkpoint задач и файл focus.json",
+     "out": "checkpoint",
+     "now": "focus_store.py"
     },
     {
      "id": "fdisp",
@@ -346,7 +364,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "Gemma только для неоднозначного; ответ строго проверяется",
      "out": "Op",
-     "now": "focus_dispatch.py: 288 строк"
+     "now": "focus_dispatch.py: класс FocusDispatch и validate"
     }
    ]
   },
@@ -801,6 +819,18 @@ window.ARCH_DATA = {
    "fdisp",
    "use",
    "неоднозначно"
+  ],
+  [
+   "fmgr",
+   "fque",
+   "use",
+   "события"
+  ],
+  [
+   "fmgr",
+   "fstore",
+   "use",
+   "checkpoint"
   ],
   [
    "fmgr",
