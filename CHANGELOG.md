@@ -4,7 +4,17 @@
 
 ## [Unreleased]
 
+### Added
+- Трасса задержки реплики (ТЗ 24, TRC-1, TRC-2): `agent/latency_trace.py`, метки `mic_end`, `stt_done`, `core_in`, `classify_done`, `route`, `retrieve_done`, `llm_first_token`, `llm_done`, `first_sentence_ready`, `tts_first_audio`, `play_start`; поле `trace` у события шины (SDK передаёт, модуль голоса ставит свои метки и шлёт `voice.trace`); одна запись `trace` в журнале на реплику; `GET /api/latency` (p50 и p95 по шагам и от конца фразы до звука); блок «Задержка реплики» во вкладке «Состояние». Запись только через `log_nowait`.
+- Эмоция в журнале (ТЗ 24, TRC-3): вид `emotion` с интенсивностью 0–3 (поле в том же JSON-ответе модели, без него 1), причиной и персонажем; фоновые метки `idle`, `thinking`, `looking`, `question` помечены `bg`. Модуль `agent/journal.py`.
+- Яркость события (ТЗ 24, TRC-4): `data.salience` (0–1) и `data.reasons` у реплик пользователя, решений внимания и оценки тона; веса в таблице `agent/salience.py`.
+- Метки ошибок (ТЗ 24, TRC-5): вид `mistake` с типами `correction` (поправка по шаблону; неясное начало проверяет модель в фоне), `denied`, `tool_failed`, `plan_failed`, `bad_rating` (`POST /api/rating`), `misroute`, `run_lost` (итог забега `colony_died`).
+- Журнал решений (ТЗ 24, TRC-6): вид `decision` с маршрутом, источником и версией правил, уверенностью, эшелоном и `trace_id`; выборка `GET /api/decisions`.
+- Сквозной замер (ТЗ 24, TRC-7): `agent/tools/measure_e2e.py` (режим `stub` без внешних программ, режим `live` по просьбе владельца), `docs/LATENCY_BASELINE.md` с методом и цифрами заглушек; живые цифры владелец добавляет сам.
+- Тесты: `agent/tests/test_trace_journal.py`, `test_trace_endpoints.py`, `test_measure_e2e.py`, `modules/voice/tests/test_voice_trace.py`, `sdk/tests/test_trace_field.py`.
+
 ### Changed
+- Запись реплики пользователя в журнал идёт через `log_nowait` (не ждёт коммита SQLite; ТЗ 24). Поведение агента не меняется.
 - План развития пересмотрен (`docs/ROADMAP.md`): персонаж (эмоции, эпизоды и сон, дневник от первого лица, уроки на ошибках, убеждения, которые она меняет сама с журналом и отменой) и быстрый контур вперёд справочников; порядок фаз 0–7, новые ТЗ 24–28, пересмотр ТЗ 04, 04a, 04c, 18.
 - Ресурсы персонажа собраны в `resources/<Имя>/` (сейчас `resources/GlaDOS`): `character.yaml`, `core/` (`constitution.yaml`, `prompt.yaml`, `memories.yaml`) и по папке на модуль: `voice/` (референс голоса), `pet/stickers/`, `telegram/persona.yaml`, `desktop/persona.yaml` (бывший `persona.md`, теперь YAML), `rimworld/prompts/` (было `modules/rimworld/agent/resources/prompts`), `montage/assets/` и `montage/APERTURE_STYLE.md` (было `modules/montage/assets`, `docs/APERTURE_STYLE.md`). Шаблон: `resources/_template`. Файлы перенесены через `git mv`, содержимое конституции не менялось.
 - Новый `gits_sdk.resources` (`module_dir`, `character_dir`): папка персонажа находится по `id` в `character.yaml` (имя папки любое), модуль берёт ресурсы только из своей папки `resources/<Имя>/<модуль>/`. Супервизор передаёт модулям `GITS_CHARACTER_ID`. Модули pet, voice, rimworld, montage переведены на него; питомец при смене персонажа подхватит стикеры только после перезапуска модуля.
