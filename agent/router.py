@@ -16,26 +16,20 @@ handle() возвращает None, если это обычный разгов�
 import asyncio
 import json
 import logging
-import re
 
 import approvals
 import events_log
 import fast_brain
 import journal
 import settings
+from domain import risk as risk_policy
+from domain import rules
 from environments.base import ToolError, validate_args
 
 logger = logging.getLogger("router")
 
 MAX_STEPS = 4
 
-# Глаголы-просьбы: по ним решается, нужен ли планировщик вообще. Болтовня идёт мимо него,
-# чтобы отвечать сразу, без лишнего вызова модели.
-_VERBS = ("напиш", "включ", "выключ", "найд", "сдела", "покаж", "запомн", "забуд", "отправ", "откр",
-          "закр", "замолч", "помолч", "запост", "опублик", "посмотр", "провер", "удал", "созд",
-          "скач", "установ", "запуст", "запуск", "стартуй", "поигра", "останов", "постав", "заказ", "купи", "переключ", "отключ",
-          "поруч", "клод", "claude", "попроси", "отвлека", "нажм", "кликн", "набер", "напечата", "прокрут", "вспомн", "помниш", "запиши", "закаж", "оплат", "забронир", "отмен", "перезапуст", "обнови", "загруз", "видиш", "слыши", "подсматр", "подслуш", "слушай", "прочит", "сохран", "измени", "поменяй")
-_VERB_RE = re.compile(r"\b(" + "|".join(_VERBS) + ")", re.I)
 RESULT_CHARS = 600
 
 PLANNER = (
@@ -80,8 +74,8 @@ class Router:
 
     @staticmethod
     def looks_like_action(text: str) -> bool:
-        """Быстрая проверка без модели: похоже ли сообщение на просьбу что-то сделать."""
-        return bool(_VERB_RE.search(text.lower()))
+        """Быстрая проверка без модели: похоже ли сообщение на просьбу что-то сделать (правило в domain/rules.py)."""
+        return rules.looks_like_action(text)
 
     # ── планирование ─────────────────────────────────────────────────────────
 
@@ -126,8 +120,9 @@ class Router:
         danger = tool.danger(args) if tool.danger else None
         if tool.danger_check and tool.check is not None and not danger:
             danger = await tool.check(args)       # модуль сам называет опасность (tool.check, CORE-35)
-        needs_ask = bool(danger) or tool.risk == "ask" or (
-            tool.risk == "public" and not tool.self_confirming and settings.load()["telegram_confirm"])
+        public_unconfirmed = tool.risk == "public" and not tool.self_confirming
+        needs_ask = risk_policy.needs_ask(danger, tool.risk, tool.self_confirming,
+                                          public_unconfirmed and settings.load()["telegram_confirm"])
         if needs_ask:
             shown = ", ".join(f"{k}={str(v)[:60]}" for k, v in args.items())
             question = f"Хочу выполнить действие «{tool.name}» ({tool.description.rstrip('.')})"

@@ -1,5 +1,8 @@
 """Исправления после ревью трассы и журнала (ТЗ 24): интенсивность «Infinity», выборка решений по trace_id, секреты в
 метках, id трассы из шины, оценка с не-объектом в теле, ложная ошибка маршрута без планировщика."""
+import gc
+import warnings
+
 import events_log
 import journal
 import latency_trace as lt
@@ -7,6 +10,7 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 import dashboard
+from module_hub import ModuleHub
 from test_companion_attention import Rig
 
 
@@ -110,6 +114,17 @@ async def test_rating_with_a_list_body_is_a_bad_request():
 
 
 # ── маршрут без планировщика ────────────────────────────────────────────────────
+
+def test_notify_without_event_loop_does_not_leave_a_coroutine_unawaited():
+    # синхронный вызов без цикла событий (старт, тесты): корутина рассылки закрывается, а не теряется с предупреждением
+    hub = object.__new__(ModuleHub)
+    hub._tasks = set()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        hub.notify("presence", {})
+        gc.collect()
+    assert not [w for w in caught if "never awaited" in str(w.message)]
+
 
 def test_action_intent_without_router_is_not_a_misroute(mk):
     rig = mk()

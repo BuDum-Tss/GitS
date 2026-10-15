@@ -24,6 +24,8 @@
   .bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>
   <script src="/static/ui/vendor/cytoscape.min.js"></script>
+  <script src="/static/ui/architecture-data.js"></script>
+  <script src="/static/ui/architecture.js"></script>
 </head>
 <body class="bg-base-200">
 <div class="flex flex-col h-full">
@@ -84,6 +86,7 @@
         <a role="tab" class="tab" data-tab="memory">Память</a>
         <a role="tab" class="tab" data-tab="modules">Модули</a>
         <a role="tab" class="tab" data-tab="events">События</a>
+        <a role="tab" class="tab" data-tab="arch" title="Схема архитектуры ядра">Схема</a>
         <a role="tab" class="tab" data-tab="settings" title="Настройки" aria-label="Настройки" style="flex:0 0 auto;width:2rem;padding:0;margin-left:auto"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
       </div>
 
@@ -263,6 +266,11 @@
       </div>
 
       <!-- Настройки -->
+      <!-- Схема архитектуры ядра: Cytoscape, данные из static/ui/architecture-data.js (создаёт agent/tools/architecture/build.py) -->
+      <div id="tab-arch" class="card bg-base-100 shadow-sm min-h-0 hidden flex flex-col">
+        <div id="arch-root" class="card-body gap-2 p-3 min-h-0 flex flex-col flex-1"></div>
+      </div>
+
       <div id="tab-settings" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-5">
           <div id="settings-form" class="space-y-6"></div>
@@ -352,10 +360,11 @@ $('btn-theme').onclick = () => {
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('tab-active', t === tab));
-  ['status', 'memory', 'modules', 'events', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
+  ['status', 'memory', 'modules', 'events', 'arch', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
   if (tab.dataset.tab === 'status') { loadModes().then(() => MD.cy && fitGraph(MD.cy)); }
   if (tab.dataset.tab === 'modules') { loadModules().catch(() => {}); }
   if (tab.dataset.tab === 'memory') { loadGraph().then(() => GR.cy && fitGraph(GR.cy)); }
+  if (tab.dataset.tab === 'arch') { showArch(); }
 });
 
 // ── графы на Cytoscape.js: цвета берутся из темы DaisyUI, поэтому графы вписаны в интерфейс ──
@@ -443,6 +452,14 @@ function syncGraph(cy, els) {
   return changed;
 }
 function fitGraph(cy) { cy.fitting = true; cy.resize(); cy.fit(undefined, 28); cy.fitting = false; }
+
+// ── схема архитектуры ядра (вкладка «Схема»): граф монтируется при первом показе, цвета берутся из темы ──
+const ARCHV = {api: null};
+function showArch() {
+  if (!window.ARCH) { $('arch-root').innerHTML = '<div class="p-4 opacity-60">Не загрузилась схема (static/ui/architecture.js).</div>'; return; }
+  if (!ARCHV.api) ARCHV.api = ARCH.mount($('arch-root'), {colors: () => themeColors()});
+  else setTimeout(() => ARCHV.api.fit(), 0);
+}
 
 // ── профили и батарейка ──
 const MD = {cy: null, view: 'main', data: null, shape: '', caps: [], subNodes: [], pick: null};

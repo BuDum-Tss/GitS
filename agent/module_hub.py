@@ -615,10 +615,12 @@ class ModuleHub:
 
     def notify(self, topic: str, data: dict) -> None:
         """Как broadcast, но из синхронного кода (смена профиля, присутствие): рассылка уходит фоновой задачей."""
+        coro = self.broadcast(topic, data)
         try:
-            self._spawn(self.broadcast(topic, data))
+            self._spawn(coro)
         except RuntimeError:
-            pass                                       # цикла событий нет (старт или тесты): некому рассылать
+            coro.close()                               # цикла событий нет (старт или тесты): некому рассылать; корутину закрываем
+
 
     def broadcast_presence(self, data: dict) -> None:
         """Тема presence не чаще 10 раз в секунду; в паузе побеждает последнее значение (CORE-5)."""

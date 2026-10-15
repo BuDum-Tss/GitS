@@ -34,22 +34,17 @@ from typing import Any, Awaitable, Callable
 
 import events_log
 import focus_dispatch as dispatch
+from domain import focus_policy as policy
+from domain.focus_policy import ECHELON_GEMMA, ECHELON_GLINER, ECHELON_RULES, SWITCH_P, MARGIN, CONF_LOW, CONF_HIGH
 from module_hub import ModuleError
 
 logger = logging.getLogger("focus")
 
 # ── пороги и сроки ───────────────────────────────────────────────────────────
-SWITCH_P = 60                  # приоритет, с которого событие переключает фокус (как D3 внимания)
-MARGIN = 15                    # запас: событие должно быть выше текущего фокуса на столько (как interrupt_margin)
 CRITICAL_URGENCY = 5           # срочность 5 - критическое: без дребезга, без LLM, без ожидания
 USER_PRIORITY = 95             # просьба пользователя (закрепить, «возьми фокус»)
 HOLDER_PRIORITY_EVENT = 60     # фокус, взятый по событию, держит приоритет 60: обычные события его не сдвигают
-MIN_FOCUS_S = 20.0             # дребезг: минимум времени в фокусе до переключения (кроме критических)
-MAX_SWITCHES_PER_MIN = 4       # дребезг: переключений в минуту
 GRACE_S = 5.0                  # после передачи фокуса статусу модуля не верим этот срок (он может отстать)
-AGING_S = 300.0                # старение: каждые AGING_S ожидания приоритет растёт
-AGING_STEP = 10
-AGING_CAP = 70                 # старение не поднимает выше этого (критическим оно не нужно)
 RECHECK_S = 30.0               # отложенные события переоцениваются раз в RECHECK_S (и при смене контекста)
 EVENT_TTL_S = 1800.0           # отложенное событие, которое так и не стало важным, истекает через полчаса
 DEDUPE_S = 60.0                # одинаковые события одного модуля в это окно склеиваются
@@ -68,14 +63,8 @@ RESOLVED_KEEP_S = 600.0
 JOURNAL_MAX = 300
 TICK_S = 0.5
 STATE_FILE = "focus.json"
-CONF_LOW = 0.6                 # уверенность классификатора ниже: неоднозначно, спрашиваем Gemma (второй эшелон)
-CONF_HIGH = 0.8                # выше: решение по правилам на ответе классификатора, без LLM (первый эшелон)
 MAX_POLICY_OPTIONS = 12
 
-ECHELON_RULES = "rules"        # решили правила: классификатора не было или критическое событие
-ECHELON_GLINER = "gliner"      # решили правила на ответе GLiNER (подсказка политики, нужен ли фокус, уверенность)
-ECHELON_GEMMA = "gemma"        # решил диспетчер Gemma (принята операция или перепроверка срочности)
-NONE_HINT = "none"             # подсказка классификатора: фокус никому не нужен
 
 PENDING = "pending"            # ждёт оценки
 DEFERRED = "deferred"          # отложено, ждёт условия возобновления
@@ -170,16 +159,8 @@ def _json_safe(payload: Any) -> dict | None:
     return json.loads(text)
 
 
-def _confirmed(value: Any, policy: str | None) -> bool:
-    """Модуль подтвердил переход: ok true и, если назвал политику, то именно запрошенную."""
-    if not isinstance(value, dict) or value.get("ok") is not True:
-        return False
-    return value.get("policy") in (None, policy)
-
-
-def _hint(value: Any) -> str | None:
-    """Подсказка политики от классификатора: «модуль/политика» или NONE_HINT; мусор отбрасывается."""
-    return value if isinstance(value, str) and value and len(value) <= 120 else None
+_confirmed = policy.confirmed                               # domain/focus_policy.py
+_hint = policy.hint_value                                   # domain/focus_policy.py
 
 
 def _decision_fields(ev: QueuedEvent) -> dict:
@@ -387,8 +368,7 @@ class FocusManager:
         for ev in self.events.values():
             if ev.status not in (PENDING, DEFERRED) or ev.critical:
                 continue
-            steps = int((now - ev.created) // AGING_S)
-            aged = min(AGING_CAP, ev.base + AGING_STEP * steps) if steps else ev.base
+            aged = policy.aged_priority(ev.base, now - ev.created)
             if aged > ev.priority:
                 ev.priority = aged
                 self._log("aging", event=ev.id, module=ev.module, priority_before=round(ev.base, 1),
@@ -656,13 +636,13 @@ class FocusManager:
             if ev.priority >= SWITCH_P:
                 return "switch", f"приоритет {round(ev.priority)} не ниже порога {SWITCH_P}", ctx
             return "defer", f"приоритет {round(ev.priority)} ниже порога переключения {SWITCH_P}", ctx
-        if now - self.slot.since < MIN_FOCUS_S:
+        damp = policy.dampening(now, self.slot.since, self._switch_times)
+        if damp == "short":
             return "defer", "дребезг: мало времени в текущем фокусе", ctx
-        recent = [t for t in self._switch_times if now - t < 60.0]
-        if len(recent) >= MAX_SWITCHES_PER_MIN:
+        if damp == "rate":
             return "defer", "дребезг: лимит переключений в минуту", ctx
         holder = self._holder_priority()
-        if ev.priority < SWITCH_P or ev.priority < holder + MARGIN:
+        if not policy.clears_focus(ev.priority, holder):
             return "defer", f"не выше текущего фокуса на запас {MARGIN}", ctx
         st = self.status_of(self.slot.module) or {}
         if st.get("interruptible") is False:
@@ -673,25 +653,16 @@ class FocusManager:
 
     def _near(self, ev: QueuedEvent) -> bool:
         """Близко к порогу переключения или к приоритету фокуса: по правилам не решается однозначно."""
-        if abs(ev.priority - SWITCH_P) < MARGIN:
-            return True
-        return self.slot is not None and abs(ev.priority - self._holder_priority()) < MARGIN
+        return policy.near_threshold(ev.priority, self._holder_priority(), self.slot is not None)
 
     def _conflict(self, ev: QueuedEvent) -> bool:
         """Конфликт подсказки: классификатор указывает на другой модуль или говорит «фокус не нужен» при высокой важности."""
-        if ev.hint is None or ev.hint_conf < CONF_LOW:
-            return False
-        if ev.hint == NONE_HINT:
-            return ev.priority >= SWITCH_P and ev.focus_needed is not False
-        return ev.hint.split("/", 1)[0] != ev.module
+        return policy.hint_conflicts(ev.hint, ev.hint_conf, ev.priority, ev.focus_needed, ev.module)
 
     def _claimant(self, ev: QueuedEvent) -> bool:
         """Два претендента на фокус с близкой важностью от разных модулей."""
-        if ev.priority < SWITCH_P:
-            return False
-        return any(o.id != ev.id and o.module != ev.module and o.status == PENDING and not o.critical
-                   and o.priority >= SWITCH_P and abs(o.priority - ev.priority) < MARGIN
-                   for o in self.events.values())
+        others = ((o.id, o.module, o.status, o.critical, o.priority) for o in self.events.values())
+        return policy.has_claimant(ev.priority, ev.module, ev.id, others, PENDING)
 
     def _ambiguity(self, ev: QueuedEvent, now: float) -> str | None:
         """Почему событие неоднозначно (нужен второй эшелон) или None, если правила решают сами (ТЗ 18, FOC-7):
@@ -712,13 +683,8 @@ class FocusManager:
 
     def _echelon(self, ev: QueuedEvent) -> str:
         """Какой эшелон решил: Gemma (если ответила операцией или перепроверкой), иначе GLiNER (если давал ответ), иначе правила."""
-        if ev.llm_used:
-            return ECHELON_GEMMA
-        if ev.critical:
-            return ECHELON_RULES
-        if ev.confidence is not None or ev.hint is not None or ev.focus_needed is not None:
-            return ECHELON_GLINER
-        return ECHELON_RULES
+        return policy.echelon(ev.llm_used, ev.critical,
+                              ev.confidence is not None or ev.hint is not None or ev.focus_needed is not None)
 
     async def _recheck_danger(self, ev: QueuedEvent, now: float) -> None:
         """FOC-3: опасное событие с низкой уверенностью не понижается: быстрая перепроверка, без неё - считаем опасным."""
