@@ -145,6 +145,98 @@ async def run_stub(turns: int, memory_dir: str) -> dict:
         events_log.flush()
 
 
+class _SimLLM:
+    """Модель с заданной скоростью (ТЗ 25): `sentences` предложений по `sentence_ms` мс. Целиком отдаёт ответ после последнего,
+    потоком - каждое предложение сразу, как готово. Скорость условная: сравнивается путь ответа, а не LM Studio."""
+    SENTENCES = ("Первое предложение ответа идёт сюда. ", "Второе предложение чуть длиннее первого. ",
+                 "Третье предложение завершает мысль. ", "Четвёртое предложение уже лишнее. ")
+
+    def __init__(self, sentence_ms: float, sentences: int = 3):
+        self.sentence_ms, self.sentences = sentence_ms, sentences
+
+    async def ask(self, system, user, *, timeout, max_tokens=40, temperature=0.3, background=False, image_b64=None, parallel=False):
+        await asyncio.sleep(self.sentence_ms * self.sentences / 1000)
+        return "".join(self.SENTENCES[:self.sentences])
+
+    async def ask_stream(self, system, user, *, timeout, max_tokens=140, temperature=0.7):
+        for sent in self.SENTENCES[:self.sentences]:
+            await asyncio.sleep(self.sentence_ms / 1000)
+            yield sent
+
+
+class _VoiceLikeSpeech(_Speech):
+    def __init__(self, streaming: bool):
+        super().__init__()
+        self.streaming = streaming
+
+    async def speak(self, utterance_id, text, emotion, priority, *, queue=False):
+        return None
+
+
+async def run_compare(turns: int, memory_dir: str, sentence_ms: float = 250.0, sentences: int = 3) -> dict:
+    """До и после (ТЗ 25, приёмка): реплики чата с одной и той же условной моделью, ответ целиком и потоком по предложениям.
+    Возвращает по каждому режиму сводку трасс; главное число - `at.first_sentence_ready` (когда первое предложение ушло в речь)."""
+    import decide
+    import events_log
+    import fast_brain
+    import latency_trace as lt
+    import settings
+    import speech_out
+    from attention import Attention
+    from companion import Companion
+    from conversation_io import DASHBOARD, UserInput
+    from relationships import Relationships
+
+    saved = (fast_brain.publish, fast_brain.react_chat, decide.decide, events_log._dir)
+    settings.init(memory_dir)
+    events_log.init(memory_dir)
+
+    async def no_reaction(text, rel=None):
+        return None
+
+    async def no_classifier(*args, **kwargs):
+        return None
+
+    fast_brain.publish = lambda *a, **k: None
+    fast_brain.react_chat = no_reaction
+    decide.decide = no_classifier
+    out: dict = {"sentence_ms": sentence_ms, "sentences": sentences}
+    try:
+        for mode in ("whole", "stream"):
+            sub = Path(memory_dir) / mode
+            sub.mkdir(parents=True, exist_ok=True)
+            events_log.init(str(sub))
+            companion = Companion(str(sub), Relationships(str(sub)), speech=_VoiceLikeSpeech(mode == "stream"),
+                                  presence=speech_out.PresenceTracker(), llm=_SimLLM(sentence_ms, sentences))
+            companion.io = _Io()
+            companion.graph = None
+            companion.router = _Router()
+            cfg = copy.deepcopy(settings.DEFAULTS)
+            att = Attention(companion, companion.io, settings_source=lambda cfg=cfg: cfg, decider=_NoDecider(),
+                            rules_file=sub / "rules.json", idle_source=lambda: 0.0, autopump=False)
+            companion.attention = att
+            for i in range(turns):
+                await companion.on_input(UserInput(PHRASES[i % len(PHRASES)], DASHBOARD))
+                await att.speech.pump()
+                await att.settle()
+            events_log.flush()
+            out[mode] = lt.summarize(events_log.tail(limit=10000, kinds={"trace"}))
+        return out
+    finally:
+        fast_brain.publish, fast_brain.react_chat, decide.decide, events_log._dir = saved
+        events_log.flush()
+
+
+def compare_markdown(rep: dict) -> str:
+    lines = [f"Условная модель: {rep['sentences']} предложения по {rep['sentence_ms']} мс. Метка `first_sentence_ready`: когда первое "
+             "предложение ушло в речь (от прихода обращения в ядро).", "",
+             "| режим | p50, мс | p95, мс | n |", "|---|---|---|---|"]
+    for mode, title in (("whole", "ответ целиком (до ТЗ 25)"), ("stream", "поток по предложениям")):
+        at = (rep.get(mode) or {}).get("at", {}).get("first_sentence_ready", {})
+        lines.append(f"| {title} | {at.get('p50')} | {at.get('p95')} | {at.get('n')} |")
+    return "\n".join(lines) + "\n"
+
+
 async def run_live(turns: int, url: str, timeout_s: float = 90.0) -> dict:
     """Живое ядро: реплики в дашборд, ожидание новой трассы на каждую, итог из GET /api/latency."""
     import aiohttp
@@ -183,7 +275,17 @@ def main(argv=None) -> int:
     ap.add_argument("--mode", choices=("stub", "live"), default="stub")
     ap.add_argument("--url", default="http://127.0.0.1:8766")
     ap.add_argument("--out", default="")
+    ap.add_argument("--compare", action="store_true", help="до и после ТЗ 25: ответ целиком и потоком на условной модели")
+    ap.add_argument("--sentence-ms", type=float, default=250.0, help="для --compare: время одного предложения модели")
     args = ap.parse_args(argv)
+    if args.compare:
+        with tempfile.TemporaryDirectory() as tmp:
+            rep = asyncio.run(run_compare(args.turns, tmp, args.sentence_ms))
+        md = compare_markdown(rep)
+        print(md)
+        if args.out:
+            Path(args.out).write_text(md, encoding="utf-8")
+        return 0
     if args.mode == "stub":
         with tempfile.TemporaryDirectory() as tmp:
             rep = asyncio.run(run_stub(args.turns, tmp))

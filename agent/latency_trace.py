@@ -27,7 +27,10 @@ ORIGIN_STAGES = ("mic_end", "core_in")          # от чего отсчитыв
 OPEN_TTL_S = 300.0                              # незавершённые трассы старше этого выбрасываются из памяти без записи
 AUDIO_WAIT_S = 15.0                             # сколько ждём отметки звука, если реплика ушла в голос
 
+BUDGET_CACHE_S = 30.0                           # как долго держим бюджеты из настроек, не читая файл на каждой трассе
 _open: dict[str, "Trace"] = {}
+_budget_source = None                           # () -> {этап: мс}; по умолчанию настройка latency_budget
+_budget_cache: tuple[float, dict] | None = None
 _current: contextvars.ContextVar["Trace | None"] = contextvars.ContextVar("latency_trace", default=None)
 
 
@@ -204,7 +207,62 @@ def _write(t: Trace) -> None:
     data = {"trace_id": t.id, "source": t.source, "marks": rel}
     if "play_start" in t.marks and origin is not None:
         data["end_to_sound_ms"] = round(t.marks["play_start"] - origin, 2)
+    over = exceeded(rel, data.get("end_to_sound_ms"), budgets())            # бюджеты задержки (ТЗ 25, FAST-8)
+    if over:
+        data["exceeded"] = over
+        events_log.log_nowait("budget_exceeded", t.source, trace_id=t.id, source=t.source, stages=over)
     events_log.log_nowait("trace", t.source, **data)
+
+
+# ── бюджеты (ТЗ 25, FAST-8) ────────────────────────────────────────────────────
+
+def set_budget_source(source) -> None:
+    """Откуда брать бюджеты: функция без аргументов -> {этап: мс}. None - настройка `latency_budget` (по умолчанию)."""
+    global _budget_source, _budget_cache
+    _budget_source, _budget_cache = source, None
+
+
+def budgets() -> dict:
+    """Бюджеты задержки по этапам, мс (настройка latency_budget); сбой чтения - пустой словарь (бюджетов нет)."""
+    global _budget_cache
+    if _budget_source is not None:
+        try:
+            return dict(_budget_source() or {})
+        except Exception:
+            return {}
+    now = time.monotonic()
+    if _budget_cache is not None and now - _budget_cache[0] < BUDGET_CACHE_S:
+        return _budget_cache[1]
+    try:
+        import settings
+        value = dict(settings.load().get("latency_budget") or {})
+    except Exception:
+        value = {}
+    _budget_cache = (now, value)
+    return value
+
+
+def ordered_stages(marks: dict) -> list[str]:
+    """Этапы трассы в порядке времени (при равенстве - в порядке STAGES): при стриминге первое предложение готово раньше
+    конца ответа модели, и порядок STAGES дал бы отрицательный шаг."""
+    return sorted((k for k in marks if k in STAGES), key=lambda k: (marks[k], STAGES.index(k)))
+
+
+def exceeded(rel_marks: dict, end_to_sound, limits: dict) -> list[dict]:
+    """Этапы, чей шаг (от предыдущей метки по времени) больше бюджета, и общее время до звука. Пустые бюджеты - нет превышений."""
+    out: list[dict] = []
+    prev = None
+    for stage in ordered_stages(rel_marks):
+        if prev is not None:
+            step = float(rel_marks[stage]) - float(rel_marks[prev])
+            limit = limits.get(stage)
+            if isinstance(limit, (int, float)) and step > limit:
+                out.append({"stage": stage, "ms": round(step, 1), "limit": limit})
+        prev = stage
+    limit = limits.get("end_to_sound")
+    if isinstance(end_to_sound, (int, float)) and isinstance(limit, (int, float)) and end_to_sound > limit:
+        out.append({"stage": "end_to_sound", "ms": round(float(end_to_sound), 1), "limit": limit})
+    return out
 
 
 def _origin(t: Trace) -> float | None:
@@ -241,6 +299,8 @@ def summarize(rows: list[dict]) -> dict:
     at: dict[str, list[float]] = {}
     end_to_sound: list[float] = []
     by_source: dict[str, int] = {}
+    over_by_stage: dict[str, int] = {}
+    traces_over = 0
     n = 0
     for r in rows:
         d = r.get("data") if isinstance(r, dict) else None
@@ -253,21 +313,26 @@ def summarize(rows: list[dict]) -> dict:
         src = str(d.get("source") or "?")
         by_source[src] = by_source.get(src, 0) + 1
         prev = None
-        for stage in STAGES:
-            if stage not in marks:
-                continue
+        for stage in ordered_stages(marks):
             at.setdefault(stage, []).append(float(marks[stage]))
             if prev is not None:
                 steps.setdefault(stage, []).append(float(marks[stage]) - float(marks[prev]))
             prev = stage
         if isinstance(d.get("end_to_sound_ms"), (int, float)):
             end_to_sound.append(float(d["end_to_sound_ms"]))
+        over = d.get("exceeded") if isinstance(d.get("exceeded"), list) else []
+        if over:
+            traces_over += 1
+        for o in over:
+            if isinstance(o, dict) and o.get("stage"):
+                over_by_stage[str(o["stage"])] = over_by_stage.get(str(o["stage"]), 0) + 1
     return {
         "traces": n,
         "by_source": by_source,
         "steps": {s: _stats(steps[s]) for s in STAGES if s in steps},
         "at": {s: _stats(at[s]) for s in STAGES if s in at},
         "end_to_sound": _stats(end_to_sound),
+        "budget": {"traces_over": traces_over, "by_stage": over_by_stage},      # ТЗ 25, FAST-8: превышения бюджетов
     }
 
 

@@ -1,6 +1,7 @@
 """Решение и действие по событию (ТЗ 29, ARC-4; ТЗ 03, ATT-10): приоритет, D0-D4, сводка, очередь речи, хук фокуса."""
 import logging
 
+import routes
 from domain import rules
 
 from .attention_core import TEXT_MAX, AttentionContext, Item
@@ -30,7 +31,8 @@ class Dispatcher:
         think = self.think_route(item, decision)
         if not (think and item.origin == "self"):          # импульс самого агента не озвучивается и не уходит в сводку: он идёт в размышление
             self.act(item, decision)
-        self.decisions.write(item, att, score=score, rule=rule, ms=ms, rule_id=rule_id, **({"route": "think"} if think else {}))
+        self.decisions.write(item, att, score=score, rule=rule, ms=ms, rule_id=rule_id, routes=routes.of_decision(decision, think=think),
+                             **({"route": "think"} if think else {}))
         if think:
             self.ctx.on_think(item)
         if self.ctx.on_decided is not None:                    # ТЗ 18: менеджер фокуса получает решение (не ждёт)

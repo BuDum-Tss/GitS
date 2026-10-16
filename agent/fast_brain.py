@@ -161,12 +161,14 @@ async def _post(body: dict, timeout: float):
 
 async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
                image_b64: str | None = None, temperature: float = 0.3,
-               background: bool = False) -> str:
+               background: bool = False, parallel: bool = False) -> str:
     """Один вызов локальной модели. Модель одна, поэтому вызовы идут по очереди, но срочные
     (ответ пользователю, план) вытесняют фоновые (запоминание, зрение, оценка тона).
     background=True: вызов уступает срочным, при вытеснении повторяется, а после трёх
     неудач бросает Preempted.
-    image_b64 — JPEG в base64 (модель должна уметь картинки, Gemma 4 умеет)."""
+    image_b64 — JPEG в base64 (модель должна уметь картинки, Gemma 4 умеет).
+    parallel=True (ТЗ 25, FAST-3): короткий вызов мгновенного уровня (подтверждение, филлер) идёт мимо блокировки и не
+    вытесняет других: иначе фраза «принято» ждала бы план, который она и должна опередить."""
     global _lock, _fg_waiting
     if _lock is None:
         _lock = asyncio.Lock()
@@ -183,7 +185,9 @@ async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
         "max_tokens": max_tokens,
         "reasoning_effort": "none",   # иначе Gemma «размышляет» и съедает все токены
     }
-    if not background:
+    if parallel:
+        r = await _post(body, timeout)
+    elif not background:
         _fg_waiting += 1
         try:
             for task in list(_bg_calls):
@@ -215,6 +219,53 @@ async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
     if "choices" not in data:   # LM Studio вернула ошибку (модель грузится, перегрузка): объясняем, а не падаем с KeyError
         raise RuntimeError(str(data.get("error") or data)[:200])
     return data["choices"][0]["message"].get("content") or ""
+
+
+def _stream_piece(line: str) -> str | None:
+    """Кусок текста из строки потока LM Studio (`data: {...}`); None - строка без текста или конец потока."""
+    line = line.strip()
+    if not line.startswith("data:"):
+        return None
+    payload = line[5:].strip()
+    if not payload or payload == "[DONE]":
+        return None
+    try:
+        data = json.loads(payload)
+        return (data["choices"][0].get("delta") or {}).get("content") or None
+    except (ValueError, KeyError, IndexError, TypeError):
+        return None
+
+
+async def _ask_stream(system: str, user: str, timeout: float, max_tokens: int = 140, temperature: float = 0.7):
+    """Ответ локальной модели потоком (ТЗ 25, FAST-4): асинхронный генератор кусков текста. Срочный вызов, как `_ask` без
+    background: вытесняет фоновые и держит блокировку, пока идёт поток. Закрытие генератора (`aclose`) обрывает запрос.
+    Ошибка LM Studio или сети - исключение до первого куска или посреди потока."""
+    global _lock, _fg_waiting
+    if _lock is None:
+        _lock = asyncio.Lock()
+    body = {
+        "model": LM_MODEL,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "reasoning_effort": "none",
+        "stream": True,
+    }
+    _fg_waiting += 1
+    try:
+        for task in list(_bg_calls):
+            task.cancel()
+        async with _lock:
+            async with httpx.AsyncClient(timeout=timeout) as c:
+                async with c.stream("POST", LM_URL, json=body) as r:
+                    if r.status_code != 200:
+                        raise RuntimeError((await r.aread()).decode("utf-8", "replace")[:200])
+                    async for line in r.aiter_lines():
+                        piece = _stream_piece(line)
+                        if piece:
+                            yield piece
+    finally:
+        _fg_waiting -= 1
 
 
 async def classify(evt: dict, rel=None, timeout: float = TIMEOUT) -> dict:

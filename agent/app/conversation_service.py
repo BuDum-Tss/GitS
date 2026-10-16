@@ -9,10 +9,12 @@ import logging
 
 import fast_brain
 import journal
+import routes
 import latency_trace
 import salience
 from conversation_io import DASHBOARD, VOICE, UserInput, current_channel
 
+from app.instant import current_turn
 from app.memory_capture import SPEAKER_TAG
 
 logger = logging.getLogger("companion")
@@ -20,6 +22,7 @@ logger = logging.getLogger("companion")
 # отправитель текущего обращения (узнанный голос: новый человек даёт яркость, ТЗ 24 TRC-4)
 _sender_ctx: contextvars.ContextVar = contextvars.ContextVar("companion_sender", default=None)
 
+WRITE_WAIT_S = 0.05      # сколько ответ ждёт запись реплики в диалог (ТЗ 25, FAST-7); дальше запись доходит в фоне
 _EXPLICIT_MEMORY = re.compile(r"\b(запомни\w*|не забудь\w*|запиши)\b", re.IGNORECASE)
 
 
@@ -69,67 +72,125 @@ class ConversationService:
                 h.presence.update(busy=False)
 
     async def handle_text(self, text: str):
+        """Единый вход обращения (ТЗ 25, FAST-1): жёсткие правила до моделей -> параллельно классификатор, приказ в игру, поиск
+        в памяти и запись реплики -> маршруты (`routes.py`) -> ответ потоком, поручение или то и другое."""
         h = self._h
         text = text.strip()
         if not text:
             return
-        h._memory_writer.add_dialogue("user", text)
-        # яркость реплики (ТЗ 24, TRC-4): явное «запомни» и новый человек (отправитель - из on_input)
+        hard = routes.hard_rules().match(text, pending_question=h._approver.has_pending())
+        if hard is not None and hard.kind in ("stop", "emergency"):
+            await self._reflex(text, hard)
+        # запись реплики (диалог, очередь графа) уходит в поток и идёт параллельно разбору; ответ её дожидается (FAST-7)
         sal, reasons = salience.score(salience.factors_of(memorable=bool(_EXPLICIT_MEMORY.search(text)),
                                                           novelty=bool((_sender_ctx.get() or {}).get("new"))))
-        h._log.log_nowait("user", text, salience=sal, reasons=reasons)   # без ожидания коммита (ТЗ 24: трасса)
+        writes = asyncio.ensure_future(asyncio.to_thread(self._write_user, text))
+        try:
+            await self._handle(text, hard, writes, sal, reasons)
+        finally:
+            await asyncio.gather(writes, return_exceptions=True)
+
+    def _write_user(self, text: str) -> None:
+        h = self._h
+        h._memory_writer.add_dialogue("user", text)
         h._queue_graph(text)
+
+    async def _reflex(self, text: str, hard) -> None:
+        """Рефлекс жёсткого правила (FAST-2, FAST-5): оборвать генерацию ответа и речь сразу, без вызовов моделей."""
+        h = self._h
+        h.cancel_reply(hard.kind)
+        if h.attention is not None:
+            if not h.attention.looks_like_stop(text):          # «замолчи» остановит on_user_input; остальное - здесь
+                await h.attention.stop_speech(f"hard_rule:{hard.kind}")
+        else:
+            await h.speech.stop(None)
+
+    async def _handle(self, text: str, hard, writes, sal, reasons) -> None:
+        h = self._h
+        h._log.log_nowait("user", text, salience=sal, reasons=reasons)   # без ожидания коммита (ТЗ 24: трасса)
         h._pending_memory += 1
         h._last_user_ts = time.time()
         h.presence.update(last_user_ts=h._last_user_ts)
         fast_brain.publish("chat", {"emotion": "thinking", "action": "none"})   # сразу «задумалась», без вызова модели
 
-        cls = None
         if h.attention is not None:
             await h.attention.on_user_input(text)          # фокус «разговор»; «замолчи» обрывает речь до любых вызовов модели
-            cls = await h.attention.classify_input(text)   # намерение (ATT-28); None - классификатора нет, всё как раньше
-        latency_trace.mark("classify_done")
         h._check_correction(text)                           # поправка пользователя (ТЗ 24, TRC-5)
         if h._approver.has_pending() and await h._answer_approval(text):
+            await writes
+            self.log_decision(text, routes.of_input(intent=None, looks_action=False, hard=hard or routes.HardMatch(
+                "approval", "pending_question", "владелец ответил на открытый вопрос о разрешении")), None)
             return
-        if h.game_order is not None:
-            try:
-                taken = await h.game_order(text)
-            except Exception as e:
-                h._log.log("error", f"приказ в игру не принят: {e}")
-                taken = False
-            if taken:
-                asyncio.create_task(h._speak_about(
-                    "Игрок только что дал тебе срочное указание по игре, ты прямо сейчас берёшься выполнять его "
-                    "(действия в игре идут отдельно). Скажи одной короткой фразой в своём характере, что принимаешь.",
-                    text, must=True))
-                asyncio.create_task(fast_brain.react_chat(text, h._people))
-                return
+        # классификатор, приказ в игру и поиск в памяти идут вместе (FAST-6); поиск ограничен дедлайном при ответе
+        likely_task = h.router is not None and h.router.looks_like_action(text)
+        retrieval = None if (likely_task or hard is not None) else h.context_builder.start_retrieval(text)   # поручению память не нужна
+        cls, taken = await asyncio.gather(self._classify(text), self._game_order(text))
+        latency_trace.mark("classify_done")
+        if taken:
+            self._cancel(retrieval)
+            await writes
+            self.log_decision(text, routes.of_input(intent=None, looks_action=False, order_taken=True, hard=hard), cls)
+            asyncio.create_task(h._speak_about(
+                "Игрок только что дал тебе срочное указание по игре, ты прямо сейчас берёшься выполнять его "
+                "(действия в игре идут отдельно). Скажи одной короткой фразой в своём характере, что принимаешь.",
+                text, must=True))
+            asyncio.create_task(fast_brain.react_chat(text, h._people))
+            return
         intent = cls.intent if cls is not None else None
         # needs_memory классификатора пока смещён в «нет» (замеры ТЗ 03): по нему память не отключаем, только пишем в журнал.
         # Поиск в графе пропускается лишь там, где память заведомо не нужна; вернуть needs_memory после дообучения.
-        use_memory = intent not in ("stop", "approval")
+        use_memory = intent not in ("stop", "approval") and not (hard is not None and hard.kind == "stop")
+        decision = routes.of_input(intent=intent, looks_action=h.router is not None and h.router.looks_like_action(text),
+                                   hard=hard, has_router=h.router is not None)
         route, routed = "chat", False          # routed: вызывался ли планировщик (ТЗ 24, TRC-6)
-        async with h._busy:
-            if intent == "about_self":
-                route = "about_self"
-                latency_trace.mark("route")
-                await h._converse(text, about_self=True, use_memory=use_memory)   # что она умеет: ответ по перечню окружений
-            elif h.router is not None and (h.router.looks_like_action(text) or intent in ("action", "attention_rule")):
-                route, routed = "task", True
-                latency_trace.mark("route")
-                await h._act(text)          # просьба: планировщик, ответ после плана
-            else:
-                latency_trace.mark("route")
-                flagged = await h._converse(text, use_memory=use_memory)   # болтовня: один вызов, ответ сразу
-                if flagged and h.router is not None:
+        done = decision.already_done
+        await asyncio.wait({writes}, timeout=WRITE_WAIT_S)   # обычно запись уже готова и контекст видит реплику; медленный диск ответ не держит
+        turn = h.instant.begin(text, task=decision.has(routes.TASK) and intent != "about_self")
+        try:
+            async with h._busy:
+                if intent == "about_self":
+                    route = "about_self"
+                    latency_trace.mark("route")
+                    await h._converse(text, about_self=True, use_memory=use_memory, retrieval=retrieval, already_done=done)
+                elif decision.has(routes.TASK):
                     route, routed = "task", True
-                    await h._act(text, after_chat=True)   # модель заподозрила просьбу, которую не распознали глаголы
-        h._log_route(text, route, routed, intent, cls)
+                    self._cancel(retrieval)
+                    latency_trace.mark("route")
+                    await h._act(text)          # просьба: планировщик, ответ после плана
+                else:
+                    latency_trace.mark("route")
+                    flagged = await h._converse(text, use_memory=use_memory, retrieval=retrieval, already_done=done)   # болтовня
+                    if flagged and h.router is not None:
+                        route, routed = "task", True
+                        decision.add(routes.TASK)
+                        await h._act(text, after_chat=True)   # модель заподозрила просьбу, которую не распознали глаголы
+        finally:
+            turn.end()
+        self.log_route(text, route, routed, intent, cls, decision)
         h.arm_idle_consolidation()
         asyncio.create_task(fast_brain.react_chat(text, h._people))   # эмоция и отношение: уже после ответа
         if h._pending_memory >= 6:
             asyncio.create_task(h._consolidate())                  # осмыслить беседу и запомнить важное
+
+    @staticmethod
+    def _cancel(retrieval) -> None:
+        if retrieval is not None:
+            retrieval.cancel()
+
+    async def _classify(self, text: str):
+        """Намерение обращения (ATT-28); None - классификатора нет, всё как раньше."""
+        h = self._h
+        return await h.attention.classify_input(text) if h.attention is not None else None
+
+    async def _game_order(self, text: str) -> bool:
+        h = self._h
+        if h.game_order is None:
+            return False
+        try:
+            return bool(await h.game_order(text))
+        except Exception as e:
+            h._log.log("error", f"приказ в игру не принят: {e}")
+            return False
 
     def check_correction(self, text: str) -> None:
         """Поправка «нет, не так» (ТЗ 24, TRC-5): по шаблону сразу; неясное начало проверяет модель в фоне."""
@@ -158,12 +219,21 @@ class ConversationService:
         if data and data.get("correction") is True:
             journal.mistake("correction", text[:200], refs=[ref], previous=prev, checked="llm")
 
-    def log_route(self, text: str, route: str, routed: bool, intent, cls) -> None:
-        """Решение маршрута разговора (ТЗ 24, TRC-6) и несовпадение классификатора с путём (TRC-5: misroute)."""
+    def log_decision(self, text: str, decision, cls) -> None:
+        """Решение без разговора (ответ на вопрос о разрешении, приказ в игру): маршруты и правило в журнал решений."""
+        journal.decision(decision.routes[-1] if decision.routes else routes.IGNORE, "conversation", text,
+                         confidence=cls.intent_conf if cls is not None else None, echelon=decision.echelon, routes=decision.routes,
+                         already_done=decision.already_done, hard_rule=decision.rule)
+
+    def log_route(self, text: str, route: str, routed: bool, intent, cls, decision=None) -> None:
+        """Решение маршрута разговора (ТЗ 24, TRC-6; ТЗ 25, FAST-1: список маршрутов) и несовпадение классификатора с путём
+        (TRC-5: misroute)."""
         h = self._h
         conf = cls.intent_conf if cls is not None else None
+        extra = ({"routes": decision.routes, "already_done": decision.already_done, "hard_rule": decision.rule}
+                 if decision is not None else {})
         journal.decision(route, "conversation", text, confidence=conf, echelon="gliner" if cls is not None else "rules",
-                         intent=intent)
+                         intent=intent, **extra)
         if intent == "chat" and routed and h.router is not None and h.router.last_kind == "done":
             journal.mistake("misroute", text[:200], refs=[h._last_say], source="classifier", intent=intent)
         elif intent == "action" and not routed and h.router is not None:
@@ -172,7 +242,10 @@ class ConversationService:
     async def act(self, text: str, after_chat: bool = False):
         """Просьба действовать: маршрутизатор решает «могу или нет», выполняет, а итог говорится вслух."""
         h = self._h
-        outcome = await h.router.handle(text, announce=not after_chat)
+        turn = current_turn.get()
+        # «принято» мгновенного уровня уже сказано: объявление плана (say_first) было бы вторым подтверждением (ТЗ 25, FAST-3)
+        announce = (lambda: not after_chat and not (turn is not None and turn.acked))
+        outcome = await h.router.handle(text, announce=announce)
         if after_chat and h.router.last_kind == "cannot":
             return   # на ответ-болтовню уже сказано всё, что можно; не повторяем «не могу» вторым сообщением
         if outcome:

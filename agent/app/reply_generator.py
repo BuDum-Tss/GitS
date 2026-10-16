@@ -1,5 +1,12 @@
 """ReplyGenerator: ответ локальной модели в разговоре и формулировка реплики по факту (ТЗ 29, ARC-5).
-Страховки стиля (`declutter`) здесь же. Точка для стриминга ответа (ТЗ 25)."""
+Страховки стиля (`declutter`, потоковая `StreamDeclutter`) здесь же.
+
+Стриминг (ТЗ 25, FAST-4, FAST-5): если вывод речи умеет голос и модель отдаёт поток (`ask_stream`), ответ идёт так: токены ->
+`SentenceSplitter` -> `StreamDeclutter` (держит последнее предложение до прихода следующего) -> `Companion.say_part` (прямо в
+вывод речи мимо условий ожидания очереди; следующие предложения встают в очередь модуля голоса, а не заменяют звучащее) ->
+TTS. Маркер [ДЕЙСТВИЕ] разбирается до первого предложения. `cancel()` («замолчи», перебивание, экстренное слово) обрывает
+запрос к модели, остаток предложений и ещё не начатое предложение в синтезе. Нет потока или канала голоса: прежний путь целиком.
+"""
 import asyncio
 import logging
 import re
@@ -7,18 +14,97 @@ import re
 import fast_brain
 import latency_trace
 import prompts
+import speech_out
+from conversation_io import current_channel
+from speech_text import SentenceSplitter, clean_speech
 
 logger = logging.getLogger("companion")
+
+
+ACTION_MARKER = "[ДЕЙСТВИЕ]"
+BACKPRESSURE_LIVE = 3          # сколько предложений может быть у модуля голоса в работе, прежде чем ждём (его очередь: звучащее + три)
+
+
+class StreamSession:
+    """Один потоковый ответ: отмена (событие), что уже ушло в речь."""
+
+    def __init__(self):
+        self.cancelled = False
+        self.reason = ""
+        self.event = asyncio.Event()
+        self.sentences: list[str] = []          # ушедшие в речь предложения (то, что она успела сказать)
+        self.utterances: list[str] = []
+
+    def cancel(self, reason: str) -> None:
+        if not self.cancelled:
+            self.cancelled, self.reason = True, reason
+            self.event.set()
+
+
+class StreamDeclutter:
+    """`ReplyGenerator.declutter` для потока: первое предложение уходит сразу (кроме похожего на обещание действия: его
+    судьба ясна, когда придёт второе), каждое следующее держится до прихода очередного (задержка на одно предложение),
+    последнее проверяется на хвост-предложение помощи и третий вопрос подряд при `finish()`. Результат тот же, что у
+    `declutter` по целой реплике."""
+
+    def __init__(self, gen: "ReplyGenerator"):
+        self._g = gen
+        self._first_held: str | None = None     # первое предложение, похожее на обещание: ждём второго
+        self._held: str | None = None
+        self._released = 0
+        self._count = 0
+
+    def push(self, sentence: str) -> list[str]:
+        g, out = self._g, []
+        self._count += 1
+        if self._count == 1:
+            if g.promise_like(sentence):
+                self._first_held = sentence
+                return []
+            self._released = 1
+            return [sentence]
+        if self._first_held is not None:
+            self._first_held = None            # второе предложение пришло: обещание без вызова инструмента отбрасывается
+        elif self._held is not None:
+            out.append(self._held)
+            self._released += 1
+        self._held = sentence
+        return out
+
+    def finish(self) -> list[str]:
+        out = []
+        if self._first_held is not None:        # предложение всего одно: как и раньше, ничего не отбрасывается
+            out.append(self._first_held)
+        if self._held is not None:
+            if self._released >= 1 and self._g.tail_unwanted(self._held):
+                pass
+            else:
+                out.append(self._held)
+        self._first_held = self._held = None
+        return out
 
 
 class ReplyGenerator:
     def __init__(self, host):
         self._h = host
+        self._session: StreamSession | None = None
 
     _OFFER = re.compile(r"^(ты )?(хочешь|не хочешь|хотела бы|хотел бы)(,? чтобы я)?|^если (хочешь|нужно)|^могу ли я|"
                         r"^нужна ли тебе|^чем (ещё )?(могу )?помочь|^давай я", re.I)
 
     _PROMISE = re.compile(r"^(сейчас |щас |хорошо, )?(опубликую|отправлю|запущу|включу|выключу|запощу|напишу в)", re.I)
+
+    def promise_like(self, sentence: str) -> bool:
+        """Похоже на обещание действия, а инструмент не вызывался (router.last_kind != "done")."""
+        h = self._h
+        return (h.router is None or h.router.last_kind != "done") and bool(self._PROMISE.match(sentence.strip(" «\"")))
+
+    def tail_unwanted(self, sentence: str) -> bool:
+        """Хвост-предложение помощи («Хочешь, чтобы я…?») или третий вопрос подряд."""
+        recent = [m["text"].rstrip().endswith("?") for m in self._h._memory_reader.recent_dialogue(10)
+                  if m["role"] != "user"][-2:]
+        return bool(self._OFFER.match(sentence.strip(" «\""))
+                    or (sentence.rstrip().endswith("?") and len(recent) == 2 and all(recent)))
 
     def declutter(self, reply: str) -> str:
         """Страховка от навязчивости: убирает хвост-предложение помощи («Хочешь, чтобы я…?») и
@@ -39,43 +125,208 @@ class ReplyGenerator:
             return " ".join(sents[:-1])
         return reply
 
-    async def converse(self, text: str, about_self: bool = False, use_memory: bool = True) -> bool:
+    # ── настройки и отмена ─────────────────────────────────────────────────────
+
+    def _cfg(self) -> dict:
+        try:
+            cfg = self._h._settings.load().get("fast_contour")
+        except Exception:
+            cfg = None
+        return cfg if isinstance(cfg, dict) else {}
+
+    def _stream_ok(self) -> bool:
+        """Потоковый путь: включён в настройках, ответ не в канал модуля (там не речь), модель умеет поток, есть голос."""
+        h = self._h
+        if not self._cfg().get("stream", True) or not hasattr(h._llm, "ask_stream"):
+            return False
+        channel = current_channel.get()
+        if channel is not None and channel.kind == "module":
+            return False
+        return speech_out.supports_streaming(h.speech)
+
+    def cancel(self, reason: str = "stop") -> bool:
+        """Оборвать идущий потоковый ответ (FAST-5): запрос к модели, остаток предложений. Звучащее останавливает вывод речи
+        («замолчи», перебивание). Возвращает True, если было что обрывать."""
+        s = self._session
+        if s is None or s.cancelled:
+            return False
+        s.cancel(reason)
+        return True
+
+    @property
+    def streaming(self) -> bool:
+        return self._session is not None and not self._session.cancelled
+
+    async def quick_fact(self, fact: str, user_text: str) -> str | None:
+        """Реплика мгновенного уровня по факту (подтверждение, филлер, ТЗ 25 FAST-3): модель отвечает текстом реплики; вызов
+        мимо блокировки модели. Нет модели или ответа - None (фраз в коде нет)."""
+        h = self._h
+        system = prompts.companion_persona() + " " + fact + " Ответь ТОЛЬКО текстом реплики, без пояснений."
+        user = f"Пользователь сказал: {user_text}" if user_text else "Пользователь ждёт."
+        try:
+            try:
+                reply = await h._llm.ask(system, user, timeout=15, max_tokens=40, temperature=0.7, parallel=True)
+            except TypeError:
+                reply = await h._llm.ask(system, user, timeout=15, max_tokens=40, temperature=0.7)
+        except Exception as e:
+            logger.info(f"Реплика мгновенного уровня не сформулирована: {e}")
+            return None
+        return clean_speech(reply.strip()) or None
+
+    # ── ответ ──────────────────────────────────────────────────────────────────
+
+    async def converse(self, text: str, about_self: bool = False, use_memory: bool = True, retrieval=None,
+                       already_done=()) -> bool:
         """Обычный ответ обычным текстом, без JSON: так он приходит вдвое быстрее (локальная
         модель генерирует ~10-15 токенов в секунду, лишние поля стоят секунд).
+        retrieval: поиск в памяти, запущенный раньше (ТЗ 25, FAST-6); already_done: что рефлекс уже сделал (FAST-1).
         Возвращает True, если модель пометила сообщение как просьбу действовать."""
         h = self._h
         system = (prompts.companion_persona() + " " + h.profile_hint() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
                   "опубликовать, посмотреть), начни ответ с маркера [ДЕЙСТВИЕ] и коротко скажи, что сейчас "
                   "посмотришь, что можешь, БЕЗ выдуманного результата. Иначе просто ответь.")
         if use_memory:
-            await h._refresh_graph(text)
+            deadline = self._cfg().get("memory_deadline_ms", 300)
+            await h.context_builder.use_retrieval(retrieval, text, deadline / 1000 if deadline else None)
         else:
+            if retrieval is not None:
+                retrieval.cancel()
             h._self_block = ""
             h._graph_block = ""          # классификатор: для этой реплики факты о людях и прошлом не нужны (ATT-28)
         latency_trace.mark("retrieve_done")
         user = f"{h._context(query=text)}\n\nПользователь говорит: {text}"
+        if already_done:
+            user += "\n\nУже сделано без тебя (не повторяй и не обещай заново): " + "; ".join(already_done) + "."
         if about_self and h.router is not None:
             user += ("\n\nПользователь спрашивает о твоих возможностях. Отвечай строго по этому перечню, ничего не выдумывая:\n"
                      + h.router.registry.describe())
+        if self._stream_ok():
+            action_request, escalate = await self._converse_stream(system, user)
+        else:
+            action_request, escalate = await self._converse_whole(system, user)
+        if escalate:
+            await h._escalate(text)
+        if len(text) >= 15:
+            asyncio.create_task(h._learn(text))   # фоном, уже после ответа
+        return action_request
+
+    async def _converse_whole(self, system: str, user: str) -> tuple[bool, bool]:
+        """Прежний путь: весь ответ целиком, потом реплика. (просьба действовать, нужна эскалация к Claude)."""
+        h = self._h
         reply, escalate, action_request = "", False, False   # escalate: только если локальная модель недоступна
         try:
             reply = (await h._llm.ask(system, user, timeout=60, max_tokens=140, temperature=0.7)).strip()
-            # ТЗ 24, TRC-1: без потоковой передачи первый токен приходит вместе с концом ответа (стриминг - ТЗ 25)
+            # без потоковой передачи первый токен приходит вместе с концом ответа
             latency_trace.mark("llm_first_token")
             latency_trace.mark("llm_done")
-            if reply.startswith("[ДЕЙСТВИЕ]"):
-                action_request, reply = True, reply[len("[ДЕЙСТВИЕ]"):].strip()
+            if reply.startswith(ACTION_MARKER):
+                action_request, reply = True, reply[len(ACTION_MARKER):].strip()
         except Exception as e:
             logger.warning(f"Локальная модель не ответила: {e}")
             escalate = True    # без локальной модели пусть отвечает Claude
         if reply:
             latency_trace.mark("first_sentence_ready")
             await h.say(h._declutter(reply))
-        if escalate:
-            await h._escalate(text)
-        if len(text) >= 15:
-            asyncio.create_task(h._learn(text))   # фоном, уже после ответа
-        return action_request
+        return action_request, escalate
+
+    async def _converse_stream(self, system: str, user: str) -> tuple[bool, bool]:
+        """Потоковый путь (FAST-4, FAST-5). Эскалация к Claude, только если модель не дала ни одного предложения из-за сбоя."""
+        h = self._h
+        session = self._session = StreamSession()
+        splitter, decl = SentenceSplitter(), StreamDeclutter(self)
+        head, head_done, action_request, failed = "", False, False, False
+        first_token = False
+        gen = h._llm.ask_stream(system, user, timeout=60, max_tokens=140, temperature=0.7)
+        stopper = asyncio.ensure_future(session.event.wait())
+        nxt: asyncio.Future | None = None
+
+        async def deliver(sentences: list[str]) -> None:
+            for sent in sentences:
+                if session.cancelled:
+                    return
+                await self._emit(session, sent)
+
+        try:
+            while True:
+                nxt = asyncio.ensure_future(gen.__anext__())
+                await asyncio.wait({nxt, stopper}, return_when=asyncio.FIRST_COMPLETED)
+                if session.cancelled:
+                    nxt.cancel()
+                    await asyncio.gather(nxt, return_exceptions=True)
+                    break
+                try:
+                    delta = nxt.result()
+                except StopAsyncIteration:
+                    break
+                if not first_token:
+                    first_token = True
+                    latency_trace.mark("llm_first_token")
+                if not head_done:                              # маркер [ДЕЙСТВИЕ] разбирается до первого предложения
+                    head += delta
+                    probe = head.lstrip()
+                    if probe.startswith(ACTION_MARKER):
+                        action_request, delta = True, probe[len(ACTION_MARKER):]
+                    elif ACTION_MARKER.startswith(probe):
+                        continue                              # пока не ясно, маркер это или начало слова
+                    else:
+                        delta = head
+                    head, head_done = "", True
+                for sent in splitter.feed(delta):
+                    await deliver(decl.push(sent))
+                    if session.cancelled:
+                        break
+                if session.cancelled:
+                    break
+            if not session.cancelled:
+                if head and not head_done:                     # поток кончился на обрывке, похожем на маркер
+                    for sent in splitter.feed(head):
+                        await deliver(decl.push(sent))
+                for sent in splitter.flush():
+                    await deliver(decl.push(sent))
+                await deliver(decl.finish())
+        except asyncio.CancelledError:
+            session.cancel("task_cancelled")
+            raise
+        except Exception as e:
+            logger.warning(f"Локальная модель не ответила: {e}")
+            failed = True
+            if session.sentences and not session.cancelled:   # часть ответа уже прозвучала: договаривать нечем, но и звать Claude поздно
+                await deliver(decl.finish())
+        finally:
+            latency_trace.mark("llm_done")
+            stopper.cancel()
+            if nxt is not None and not nxt.done():
+                nxt.cancel()
+            try:
+                await gen.aclose()
+            except Exception:
+                pass
+            self._session = None
+        if session.sentences:
+            h.commit_reply(" ".join(session.sentences))      # в память и журнал уходит то, что она успела сказать
+        return action_request, failed and not session.sentences and not session.cancelled
+
+    async def _emit(self, session: StreamSession, sentence: str) -> None:
+        """Одно готовое предложение: в вывод речи (первое заменяет звучащее, следующие встают в очередь модуля голоса)."""
+        h = self._h
+        text = clean_speech(sentence)
+        if not text or session.cancelled:
+            return
+        if not session.sentences:
+            latency_trace.mark("first_sentence_ready")
+        live = getattr(h.speech, "live_count", None)
+        waited = 0.0
+        while live is not None and live() >= BACKPRESSURE_LIVE and not session.cancelled and waited < 30.0:
+            await asyncio.sleep(0.05)                         # модуль голоса держит в очереди не больше трёх: старое не вытесняем
+            waited += 0.05
+        if session.cancelled:
+            return
+        utterance = await h.say_part(text, first=not session.sentences)
+        if utterance:
+            session.utterances.append(utterance)
+            session.sentences.append(text)
+            if session.cancelled:                             # отмена пришла, пока предложение уходило: остановить и его
+                await h.speech.stop(utterance)
 
     async def speak_about(self, fact: str, user_text: str, must: bool, question: bool, direct: bool):
         """Нет заготовленных фраз: ей сообщают факт, а говорить ли и что — решает сама.

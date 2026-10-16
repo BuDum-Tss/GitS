@@ -19,6 +19,15 @@ class LanguageModel(Protocol):
 
 
 @runtime_checkable
+class StreamingLanguageModel(Protocol):
+    """Модель, умеющая отдавать ответ потоком (ТЗ 25, FAST-4): `ask_stream` возвращает асинхронный генератор кусков текста;
+    закрытие генератора обрывает запрос. Необязательная способность: без неё ответ приходит целиком."""
+
+    def ask_stream(self, system: str, user: str, *, timeout: float, max_tokens: int = 140,
+                   temperature: float = 0.7): ...
+
+
+@runtime_checkable
 class Classifier(Protocol):
     """Классификатор (GLiNER, сервис decider): текст и вопросы -> ответы или None. Исключений наружу не бросает."""
 

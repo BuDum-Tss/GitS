@@ -1,5 +1,6 @@
 """Запись решения внимания в журнал (ТЗ 29, ARC-4; ТЗ 03, ATT-29; ТЗ 24, TRC-4, TRC-6)."""
 import journal
+import routes
 import salience
 
 from .attention_core import TEXT_LOG, AttentionContext, Item
@@ -14,6 +15,7 @@ class DecisionLog:
         """ATT-29: решение в журнале с множителями, приоритетом и временем классификатора."""
         ctx = self.ctx
         score = score or {}
+        extra["routes"] = extra.get("routes") or routes.of_decision(item.decision)       # маршруты решения (ТЗ 25, FAST-1)
         record = {"item": item.id, "module": item.module, "event_kind": item.kind, "urgency": item.urgency,
                   "w_profile": score.get("w_profile"), "w_sender": score.get("w_sender"), "w_rule": score.get("w_rule"),
                   "w_user": score.get("w_user"), "freshness": score.get("freshness"),
@@ -35,4 +37,4 @@ class DecisionLog:
                          confidence=item.data.get("category_conf") if isinstance(item.data, dict) else None,
                          echelon="gliner" if classified else "rules", rule=rule, rule_id=rule_id,
                          trace_id=item.trace.id if item.trace is not None else None, module=item.module,
-                         salience=sal)
+                         salience=sal, routes=extra.get("routes"))

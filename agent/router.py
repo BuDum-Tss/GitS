@@ -206,7 +206,7 @@ class Router:
 
         self.last_kind = "done"
         say_first = str(plan.get("say_first") or "").strip()
-        announced = bool(announce and say_first)
+        announced = bool(say_first) and bool(announce() if callable(announce) else announce)   # callable: решает в момент объявления (ТЗ 25, FAST-3)
         if announced:
             await self._say(say_first)   # пока ищет и делает, пользователь видит, что она занята
         candidates = {t.id: t for t in tools}

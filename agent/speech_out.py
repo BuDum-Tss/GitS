@@ -31,6 +31,15 @@ def new_utterance_id() -> str:
     return "u-" + secrets.token_hex(4)
 
 
+def supports_streaming(speech) -> bool:
+    """Умеет ли вывод речи принимать предложения потоком (ТЗ 25, FAST-4): сейчас это только подключённый голос. Заглушки
+    без метода `supports_streaming` и без атрибута `streaming` потоком не пользуются."""
+    check = getattr(speech, "supports_streaming", None)
+    if callable(check):
+        return bool(check())
+    return bool(getattr(speech, "streaming", False))
+
+
 class SpeechOutput(Protocol):
     async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int) -> None: ...
     async def stop(self, utterance_id: str | None = None) -> None: ...
@@ -80,7 +89,10 @@ class TextOnlySpeech:
         self._utterance: str | None = None
         self._timer: asyncio.TimerHandle | None = None
 
-    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int) -> None:
+    def supports_streaming(self) -> bool:
+        return False
+
+    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int, *, queue: bool = False) -> None:
         if self._timer is not None:
             self._timer.cancel()
         self._utterance = utterance_id
@@ -146,13 +158,22 @@ class VoiceModuleSpeech:
 
     # ── SpeechOutput ─────────────────────────────────────────────────────────
 
-    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int) -> None:
+    def supports_streaming(self) -> bool:
+        return self.available()
+
+    def live_count(self) -> int:
+        """Сколько реплик отправлено модулю и не закончено (звучащая и ожидающие): у модуля голоса ждать могут не более трёх."""
+        return len(self._live) if self.is_speaking() else 0
+
+    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int, *, queue: bool = False) -> None:
+        """queue=True (ТЗ 25, FAST-4): предложение потокового ответа встаёт в очередь модуля голоса после звучащего, а не
+        заменяет его (`replace: false` контракта speak)."""
         conn = self.connection()
         if conn is None:
             raise RuntimeError("модуль голоса не подключён")
         # replace: звучит (или готовится) реплика, которую внимание не просило остановить, - прежнее поведение speak_sequence;
         # после stop() (прерывание вниманием) реплика встаёт в очередь модуля и звучит после дослушанного предложения
-        replace = any(not e["stopping"] for e in self._live.values())
+        replace = not queue and any(not e["stopping"] for e in self._live.values())
         self._live[utterance_id] = {"sent": self._clock(), "started": False, "segment": "", "stopping": False}
         t = latency_trace.current()                  # трасса задержки реплики (ТЗ 24, TRC-1): модуль голоса допишет звук
         body = {"utterance_id": utterance_id, "text": text, "emotion": emotion, "replace": replace}
@@ -246,10 +267,16 @@ class SpeechSelector:
     def _active(self) -> SpeechOutput:
         return self.voice if self.voice.available() else self.text
 
-    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int) -> None:
+    def supports_streaming(self) -> bool:
+        return self.voice.available()
+
+    def live_count(self) -> int:
+        return self.voice.live_count()
+
+    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int, *, queue: bool = False) -> None:
         if self.voice.available():
             try:
-                await self.voice.speak(utterance_id, text, emotion, priority)
+                await self.voice.speak(utterance_id, text, emotion, priority, queue=queue)
                 return
             except Exception as e:
                 logger.warning(f"Модуль голоса не принял реплику, остаётся текст: {e}")
