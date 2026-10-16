@@ -46,6 +46,7 @@ from speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
 from user_memory import UserMemory
 
 logger = logging.getLogger("companion")
+IDLE_CONSOLIDATE_S = 8 * 60 + 5
 
 
 def persona() -> str:
@@ -93,6 +94,7 @@ class Companion:
         self._memory_writer = memory_writer if memory_writer is not None else default_memory
         self._last_say = self._load_last_say()   # переживает перезапуски
         self._last_consult = time.time()
+        self._idle_handle = None         # отложенное осмысление беседы после паузы (вместо опроса по таймеру, ТЗ 30)
         self._away_since: float | None = None
         self._busy = asyncio.Lock()      # один разговор за раз
         self._pending_memory = 0         # сообщений с последнего осмысления беседы
@@ -309,6 +311,20 @@ class Companion:
             await self._speak_about(f"Не удалось выполнить просьбу «{task}»: сбой агента-помощника.", task)
         else:
             await self._speak_about(f"Просьба «{task}» выполнена, добавить нечего.", task)
+
+    def arm_idle_consolidation(self) -> None:
+        """После реплики пользователя: если беседа замолкнет, осмыслить её через IDLE_CONSOLIDATE_S (один отложенный вызов)."""
+        if self._idle_handle is not None:
+            self._idle_handle.cancel()
+        try:
+            self._idle_handle = asyncio.get_running_loop().call_later(IDLE_CONSOLIDATE_S, self._idle_consolidate)
+        except RuntimeError:
+            self._idle_handle = None
+
+    def _idle_consolidate(self) -> None:
+        self._idle_handle = None
+        if self._pending_memory >= 2 and not self._consolidating:
+            asyncio.get_running_loop().create_task(self._consolidate())
 
     # ── проактивность (временный сценарий app/proactive_legacy.py, до ТЗ 30) ──────
 

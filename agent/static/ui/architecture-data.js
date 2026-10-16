@@ -71,7 +71,7 @@ window.ARCH_DATA = {
    "row": 0,
    "title": "Внутренние импульсы",
    "tag": "A",
-   "new": true,
+   "new": false,
    "summary": "Напоминания, которые агент назначил себе; сработавший срок становится событием. Болтовни по таймеру нет.",
    "out": "Event self.*",
    "nodes": [
@@ -79,19 +79,19 @@ window.ARCH_DATA = {
      "id": "reminders",
      "t": "ReminderStore",
      "tag": "I",
-     "new": true,
+     "new": false,
      "do": "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль",
      "out": "срок наступил",
-     "now": "нет: сейчас есть только план в MemoryStore с сроком"
+     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonReminders, файл reminders.json), контракт ReminderRepository; инструмент assistant.remind_self"
     },
     {
      "id": "timer",
      "t": "ImpulseTimer",
      "tag": "I",
-     "new": true,
+     "new": false,
      "do": "следит только за сроками напоминаний; когда срок пришёл, шлёт событие. Не тик болтовни",
      "out": "Event self.reminder",
-     "now": "нет: сейчас proactive_loop раз в 30 с"
+     "now": "есть (ТЗ 30): app/impulse_timer.py, один таймер на ближайший срок, восстановление и склейка просроченного; proactive_loop выключен настройкой proactive_tick"
     }
    ]
   },
@@ -117,10 +117,10 @@ window.ARCH_DATA = {
      "id": "event",
      "t": "Event",
      "tag": "D",
-     "new": true,
+     "new": false,
      "do": "единый конверт: kind, text, sender, hint, data, trace, ts; источник внешний или внутренний (self)",
      "out": "сущность",
-     "now": "нет: dict, Item, UserInput и SpeechCandidate по отдельности"
+     "now": "частично (ТЗ 30): domain/event.py (Event с origin external/self) для импульсов и размышления; внутри внимания остаётся Item (поле origin)"
     },
     {
      "id": "norm",
@@ -232,7 +232,7 @@ window.ARCH_DATA = {
    "row": 3,
    "title": "Размышление",
    "tag": "A",
-   "new": true,
+   "new": false,
    "summary": "Внутренний диалог агента: получает событие или импульс, думает, читая память, и решает: сказать, сделать, напомнить себе или записать.",
    "out": "Intent",
    "nodes": [
@@ -240,19 +240,19 @@ window.ARCH_DATA = {
      "id": "reflect",
      "t": "ReflectionService",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов",
      "out": "Intent: сказать, сделать, напомнить, записать, ничего",
-     "now": "нет: сейчас только proactive_loop (опрос себя раз в 30 с)"
+     "now": "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route); лимиты шагов, токенов, часа, глубины"
     },
     {
      "id": "thoughts",
      "t": "Журнал мыслей",
      "tag": "I",
-     "new": true,
+     "new": false,
      "do": "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов",
      "out": "Thought",
-     "now": "нет"
+     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), GET /api/thoughts"
     }
    ]
   },

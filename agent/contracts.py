@@ -168,3 +168,27 @@ class ToolInvoker(Protocol):
     """Выполнение инструмента по id с обычным контролем (разрешения, риск). Возвращает (ok, результат, код ошибки)."""
 
     async def call(self, tool_id: str, args: dict) -> tuple[bool, str, str | None]: ...
+
+
+@runtime_checkable
+class ReminderRepository(Protocol):
+    """Напоминания, которые агент назначает себе (ТЗ 30, IMP-2). Запись: dict с полями id, due, text, source, status
+    (`pending` / `fired` / `cancelled`), depth, untrusted, created, ttl_s."""
+
+    def add(self, due: float, text: str, *, source: dict | None = None, depth: int = 0, untrusted: bool = False,
+            ttl_s: float | None = None) -> dict: ...
+
+    def get(self, reminder_id: str) -> dict | None: ...
+
+    def pending(self) -> list[dict]: ...
+
+    def set_status(self, reminder_id: str, status: str) -> None: ...
+
+
+@runtime_checkable
+class ThoughtJournal(Protocol):
+    """Журнал мыслей (ТЗ 30, IMP-6): записи не озвучиваются."""
+
+    def append(self, thought: dict) -> None: ...
+
+    def recent(self, n: int = 50) -> list[dict]: ...

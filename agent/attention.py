@@ -63,7 +63,7 @@ from app.digest import Digest
 from app.dispatcher import Dispatcher
 from app.event_classifier import EventClassifier
 from app.focus_stack import FocusStack
-from app.items import ItemStore, event_fact
+from app.items import ItemStore, event_fact, event_of
 from app.jobs import JobTracker
 from app.normalizer import Normalizer
 from app.process_event import EventPipeline, HardRules
@@ -73,11 +73,13 @@ from app.speech_coordinator import SpeechCoordinator
 from attention_rules import FILE_NAME as RULES_FILE
 from attention_rules import RuleStore
 from domain import rules
+from domain.event import KIND_THOUGHT, SELF_MODULE, Event
 from speech_queue import INTERRUPT_P, SpeechCandidate
 
 import settings
 
 logger = logging.getLogger("attention")
+REFLECTION_P = 40            # речь по итогам размышления: выше болтовни (30), ниже событий
 _clamp = clamp
 _NullSpeech = NullSpeech
 _NullPresence = NullPresence
@@ -108,6 +110,7 @@ class Attention:
     presence = _Via("ctx", "presence")
     kind_handlers = _Via("ctx", "kind_handlers")      # kind -> async (Item) -> None: служебные события (ТЗ 11, RW-9)
     kind_hooks = _Via("ctx", "kind_hooks")            # то же с побочным действием (ТЗ 12, VOICE-14)
+    on_think = _Via("ctx", "on_think")                # ТЗ 30: маршрут think (item) -> размышление в фоне
     on_decided = _Via("ctx", "on_decided")            # ТЗ 18: решение (item, decision, priority, rule) -> менеджер фокуса
     policy_options = _Via("ctx", "policy_options")    # ТЗ 18, первый эшелон: варианты подсказки политики
     silent_kinds = _Via("ctx", "silent_kinds")        # виды, которые не пишутся в журнал module_event
@@ -253,6 +256,31 @@ class Attention:
     async def submit_question(self, q: Question) -> Any:
         """Задать вопрос пользователю (ATT-19). Возвращает (answer, by), как approvals.ask."""
         return await self.questions.submit(q)
+
+    # ── импульсы и размышление (ТЗ 30) ────────────────────────────────────────
+
+    async def submit_self(self, event: dict) -> None:
+        """Внутреннее событие агента (`self.reminder`, `self.thought`): тот же конвейер, источник `self`."""
+        await self.pipeline.submit(SELF_MODULE, event)
+
+    def attach_reflection(self, service) -> None:
+        """Подключить ReflectionService: маршрут think запускает размышление в фоне."""
+        self.ctx.on_think = lambda item: self.ctx.spawn(service.reflect(event_of(item)))
+
+    async def reflect_speech(self, event: Event, intent) -> str:
+        """Намерение `say` из размышления. «Не отвлекать» запрещает речь: мысль уходит в сводку. Иначе факт встаёт в очередь
+        речи, формулирует его модель при озвучивании."""
+        cfg = self.ctx.settings()
+        item = self.normalizer.make_item(SELF_MODULE, {"kind": KIND_THOUGHT, "text": intent.text}, self.ctx.clock())
+        if self.ctx.quiet(cfg):
+            item.decision = "D1"
+            self.digest_.add(item)
+            return "suppressed: quiet mode, moved to digest"
+        fact = f"Ты обдумала ({event.kind}) и решила сказать пользователю, своими словами и коротко: {intent.text}"
+        self.coordinator.speech.new(source=f"attention:{item.id}", mode="fact", text=fact, emotion=intent.emotion,
+                                    priority=REFLECTION_P, ttl=600.0)
+        self.coordinator.kick()
+        return "queued"
 
     # ── сводка ───────────────────────────────────────────────────────────────
 

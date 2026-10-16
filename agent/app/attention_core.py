@@ -77,6 +77,7 @@ class Item:
     first_contact: bool = False                 # TG-14: профиль отправителя заведён именно этим событием (для веса «неизвестный»)
     memory_done: bool = False                   # TG-14: событие уже отдано в граф и память, в _act второй раз не отдаётся
     trace: Any = None                           # трасса задержки голосовой реплики (ТЗ 24, TRC-1): от модуля, см. latency_trace
+    origin: str = "external"                    # ТЗ 30, IMP-1: external (модуль) | self (импульс самого агента)
 
 
 @dataclass
@@ -149,6 +150,8 @@ class AttentionContext:
         # ТЗ 18, первый эшелон: варианты подсказки политики для классификатора; None - не спрашиваем
         self.policy_options: Callable[[], dict] | None = None
         self.threshold_offset: Callable[[], float] | None = None   # ТЗ 26: сдвиг порогов от настроения (пункты), ограничен
+        # ТЗ 30, IMP-4: маршрут think; on_think(item) синхронный, запускает размышление в фоне; None - размышления нет
+        self.on_think: Callable[[Item], None] | None = None
         self.silent_kinds: set[str] = set()      # виды, которые не пишутся в журнал module_event
         self.last_decision: dict | None = None   # для отладки и дашборда
         self.decisions: deque = deque(maxlen=100)

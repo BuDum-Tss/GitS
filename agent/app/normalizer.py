@@ -3,6 +3,7 @@ import logging
 import secrets
 
 import latency_trace
+from domain.event import ORIGIN_EXTERNAL, ORIGIN_SELF, SELF_MODULE
 
 from .attention_core import SPEECH_DEFAULT_URGENCY, TEXT_MAX, AttentionContext, Item
 
@@ -27,7 +28,8 @@ class Normalizer:
                     urgency=None, needs_reply=False, memorable=bool(ev.get("memorable")), created=now,
                     expires=now + float(ttl) if isinstance(ttl, (int, float)) and not isinstance(ttl, bool) and ttl > 0 else None,
                     dedupe_key=str(ev["dedupe_key"]) if ev.get("dedupe_key") else None, urgency_hint=hint, updated=now,
-                    trace=latency_trace.from_bus(ev.get("trace"), str(ev.get("kind") or f"{module_id}.event")))
+                    trace=latency_trace.from_bus(ev.get("trace"), str(ev.get("kind") or f"{module_id}.event")),
+                    origin=ORIGIN_SELF if module_id == SELF_MODULE else ORIGIN_EXTERNAL)
 
     @staticmethod
     def make_speech_item(module_id: str, say: dict, text: str, now: float) -> tuple[Item, str, float | None]:

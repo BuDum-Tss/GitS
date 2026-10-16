@@ -36,15 +36,15 @@ GROUPS = [
         N("mont", "montage", "I", "конвейер роликов: Remotion + ffmpeg, агент Claude", "job.update, вопросы", "modules/montage"),
         N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard.py: 863 строки, 0 классов, ходит в хранилища напрямую"),
     ]),
-    dict(id="g_imp", col="A", title="Внутренние импульсы", tag="A", new=True,
+    dict(id="g_imp", col="A", title="Внутренние импульсы", tag="A",
          summary="Напоминания, которые агент назначил себе; сработавший срок становится событием. Болтовни по таймеру нет.", out="Event self.*", nodes=[
-        N("reminders", "ReminderStore", "I", "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль", "срок наступил", "нет: сейчас есть только план в MemoryStore с сроком", True),
-        N("timer", "ImpulseTimer", "I", "следит только за сроками напоминаний; когда срок пришёл, шлёт событие. Не тик болтовни", "Event self.reminder", "нет: сейчас proactive_loop раз в 30 с", True),
+        N("reminders", "ReminderStore", "I", "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль", "срок наступил", "есть (ТЗ 30): adapters/impulse_store.py (JsonReminders, файл reminders.json), контракт ReminderRepository; инструмент assistant.remind_self"),
+        N("timer", "ImpulseTimer", "I", "следит только за сроками напоминаний; когда срок пришёл, шлёт событие. Не тик болтовни", "Event self.reminder", "есть (ТЗ 30): app/impulse_timer.py, один таймер на ближайший срок, восстановление и склейка просроченного; proactive_loop выключен настройкой proactive_tick"),
     ]),
     dict(id="g_in", col="B", title="Приём", tag="I",
          summary="Принимает событие из любого источника, проверяет, приводит к единому виду, склеивает повторы, узнаёт отправителя.", out="Event", nodes=[
         N("hub", "ModuleHub (входящие)", "I", "WebSocket :8766: рукопожатие, проверка формата, очередь входящих; запросы core.*", "Event", "module_hub.py: 683 строки; импортирует attention и fast_brain, то есть транспорт знает домен"),
-        N("event", "Event", "D", "единый конверт: kind, text, sender, hint, data, trace, ts; источник внешний или внутренний (self)", "сущность", "нет: dict, Item, UserInput и SpeechCandidate по отдельности", True),
+        N("event", "Event", "D", "единый конверт: kind, text, sender, hint, data, trace, ts; источник внешний или внутренний (self)", "сущность", "частично (ТЗ 30): domain/event.py (Event с origin external/self) для импульсов и размышления; внутри внимания остаётся Item (поле origin)"),
         N("norm", "Normalizer", "A", "нормализация, дедупликация за 60 с, склейка повторов, TTL", "Event", "выделен (ТЗ 29, R3): app/normalizer.py, app/items.py (хранилище и склейка), domain/dedupe.py"),
         N("people", "PeopleDirectory", "A", "sender → Person, первый контакт, заметки о человеке", "Person", "выделен (R3): Normalizer.note_sender через контракты PeopleDirectory и MemoryWriter; getattr(companion, \"_rel\") остался только в адаптере adapters/people.py"),
     ]),
@@ -61,10 +61,10 @@ GROUPS = [
         N("ctx", "ContextBuilder", "A", "собирает контекст: характер, память, диалог, состояние; бюджет токенов на роль", "Context", "app/context_builder.py: склейка 6 источников; бюджет токенов на роль и блок и режимы push (needs_memory) / pull (recall) в настройке context, по умолчанию прежнее поведение"),
         N("reply", "ReplyGenerator", "A", "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля", "ReplyCandidate", "app/reply_generator.py: _converse, _declutter + fast_brain"),
     ]),
-    dict(id="g_think", col="D", title="Размышление", tag="A", new=True,
+    dict(id="g_think", col="D", title="Размышление", tag="A",
          summary="Внутренний диалог агента: получает событие или импульс, думает, читая память, и решает: сказать, сделать, напомнить себе или записать.", out="Intent", nodes=[
-        N("reflect", "ReflectionService", "A", "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов", "Intent: сказать, сделать, напомнить, записать, ничего", "нет: сейчас только proactive_loop (опрос себя раз в 30 с)", True),
-        N("thoughts", "Журнал мыслей", "I", "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов", "Thought", "нет", True),
+        N("reflect", "ReflectionService", "A", "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов", "Intent: сказать, сделать, напомнить, записать, ничего", "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route); лимиты шагов, токенов, часа, глубины"),
+        N("thoughts", "Журнал мыслей", "I", "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов", "Thought", "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), GET /api/thoughts"),
     ]),
     dict(id="g_act", col="E", title="Дела", tag="A",
          summary="Строит план из доступных инструментов, спрашивает разрешение на опасное, выполняет в модулях, ведёт долгие задачи.", out="ToolResult", nodes=[

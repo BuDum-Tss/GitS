@@ -3,6 +3,7 @@
 Решение «можно ли склеить» чистое и лежит в `domain/dedupe.py`; здесь только состояние и обновление очереди речи и сводки.
 """
 from domain import dedupe
+from domain.event import Event
 
 from .attention_core import TEXT_LOG, AttentionContext, Item
 
@@ -16,6 +17,13 @@ def event_fact(ctx: AttentionContext, item: Item) -> str:
         parts.append(f"На это можно ответить через модуль «{ctx.module_title(str(item.reply_channel.get('module')))}», "
                      "но только если пользователь попросит.")
     return " ".join(parts)
+
+
+def event_of(item: Item) -> Event:
+    """Item внимания -> Event для размышления (ТЗ 30)."""
+    return Event(kind=item.kind, text=item.text, origin=item.origin, module=item.module, ts=item.created, sender=item.sender,
+                 urgency=item.urgency, priority=item.priority, memorable=item.memorable, needs_reply=item.needs_reply,
+                 data=dict(item.data) if isinstance(item.data, dict) else {}, item_id=item.id)
 
 
 class ItemStore:
