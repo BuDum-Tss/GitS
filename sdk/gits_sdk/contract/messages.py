@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from .. import protocol as P
-from .spec import C2M, M2C, NOTE, PLANNED, REQUEST, TOPIC, Field, Message
+from .spec import C2M, M2C, NOTE, REQUEST, TOPIC, Field, Message
 
 F = Field
 
@@ -80,7 +80,8 @@ _lookup = Message(
              F("allow_web", "boolean", False, "можно ли дополнять поиском в сети", default=False),
              F("k", "integer", False, "сколько результатов", min=1, max=50)),
     response=(F("text", "string", True, "найденное одним текстом"),),
-    errors=("bad_request", "unavailable"), status=PLANNED, planned_in="ТЗ 04", note="Пока отвечает unavailable.",
+    errors=("bad_request", "unavailable"),
+    note="Гибридный поиск (ТЗ 04) по коллекциям справочника и опыта; без `collections` ищет по всему справочнику. `allow_web` не используется: интернет это отдельный инструмент `core.web_search`. Ничего не найдено: пустой `text`.",
     valid=({"query": "кофе"}, {"query": "стиль", "collections": ["montage.style"], "allow_web": False, "k": 5}),
     invalid=({}, {"query": ""}, {"query": "x", "k": 0}),
     response_valid=({"text": "..."},), response_invalid=({},),
@@ -107,8 +108,10 @@ _exp_add = Message(
              F("statement", "string", True, "вывод одной фразой", nonempty=True),
              F("context", "string", False, "в каком случае это верно"),
              F("data", "object", False, "подробности")),
-    response=(F("stored", "boolean", False, "записано ли"),),
-    errors=("bad_request", "unavailable"), status=PLANNED, planned_in="ТЗ 04", note="Пока отвечает unavailable.",
+    response=(F("stored", "boolean", False, "записано ли (false: объединено с похожим)"), F("id", "integer", False, "номер записи"),
+              F("merged", "boolean", False, "объединено с существующей")),
+    errors=("bad_request", "unavailable"),
+    note="Опыт попадает в коллекцию `<scope>.experience`; похожий вывод объединяется (`merged`), подтверждения растут. `data`: `confidence`, `source`.",
     valid=({"scope": "montage", "statement": "короткие сцены держат внимание", "context": "ролики до минуты"},),
     invalid=({}, {"scope": "montage"}, {"scope": "m", "statement": 3}),
     response_valid=({"stored": True}, {}), response_invalid=({"stored": "да"},),
@@ -119,8 +122,10 @@ _kb_ingest = Message(
              F("documents", "array", True, "документы: объекты с текстом", items="object"),
              F("replace", "boolean", False, "заменить коллекцию целиком", default=False),
              F("final", "boolean", False, "последняя порция", default=False)),
-    response=(F("stored", "integer", False, "сколько документов принято", min=0),),
-    errors=("bad_request", "unavailable"), status=PLANNED, planned_in="ТЗ 04", note="Пока отвечает unavailable.",
+    response=(F("stored", "integer", False, "сколько кусков записано", min=0), F("added", "integer", False, "новых кусков", min=0),
+              F("updated", "integer", False, "обновлено", min=0), F("skipped", "integer", False, "пропущено", min=0)),
+    errors=("bad_request", "unavailable", "denied"),
+    note="Документ: `uri`, `title`, `text`, `meta`; до 50 документов за запрос. Коллекция должна быть объявлена в `knowledge` манифеста отправителя или начинаться с его id, иначе `denied`. `replace` вместе с `final` удаляет то, чего в загрузке не было.",
     valid=({"collection": "montage.style", "documents": [{"title": "Правила", "text": "..."}], "replace": True},),
     invalid=({}, {"collection": "a"}, {"collection": "a", "documents": "x"}),
     response_valid=({"stored": 2}, {}), response_invalid=({"stored": -1},),

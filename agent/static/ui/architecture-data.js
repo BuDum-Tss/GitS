@@ -515,6 +515,15 @@ window.ARCH_DATA = {
      "now": "есть (ТЗ 28): domain/lessons.py, app/lessons.py, adapters/lesson_store.py, lesson_service.py"
     },
     {
+     "id": "kb",
+     "t": "Справочники и опыт модулей (KnowledgeBase)",
+     "tag": "A",
+     "new": false,
+     "do": "коллекции общего гибридного поиска: вики и описания RimWorld, регламенты монтажа (куски 250-450 слов по заголовкам, knowledge.db); опыт модулей идёт в уроки области <модуль>.experience; запросы core.kb.ingest (права по манифесту), core.lookup, core.experience.add; загрузка скриптом tools/knowledge_ingest.py",
+     "out": "Hit, kb chunk",
+     "now": "есть (ТЗ 04): knowledge_base.py, knowledge_service.py, core_requests.py; в игре уроки в промпте подбираются по ситуации (modules/rimworld core_link.lessons_for)"
+    },
+    {
      "id": "beliefs",
      "t": "Убеждения (принимает сама)",
      "tag": "A",
@@ -1110,6 +1119,18 @@ window.ARCH_DATA = {
    "lms",
    "ext",
    "урок, проверка убеждения"
+  ],
+  [
+   "hub",
+   "kb",
+   "flow",
+   "core.kb.ingest, core.lookup"
+  ],
+  [
+   "kb",
+   "lessons",
+   "use",
+   "опыт модулей"
   ],
   [
    "lessons",

@@ -879,7 +879,7 @@ class ModuleClient:
 
     async def lookup(self, query: str, collections: list[str] | None = None, *, allow_web: bool = False, k: int | None = None,
                      timeout: float = 30.0) -> str:
-        """`core.lookup` (planned): справочник знаний, текст найденного. Пока ядро отвечает ToolError(unavailable)."""
+        """`core.lookup`: справочник знаний, текст найденного (пусто, если ничего нет)."""
         body: dict = {"query": query, "allow_web": allow_web}
         if collections:
             body["collections"] = list(collections)
@@ -908,12 +908,12 @@ class ModuleClient:
         return bool(R.as_dict(await self._core("core.memory.remember", body)).get("stored"))
 
     async def experience_add(self, entry: dict, *, timeout: float = 30.0) -> dict:
-        """`core.experience.add` (planned): добавить опыт `{scope, statement, context?}`. Пока ToolError(unavailable)."""
+        """`core.experience.add`: добавить опыт `{scope, statement, context?}`; ответ {stored, id, merged}."""
         return R.as_dict(await self._core("core.experience.add", dict(entry), timeout=timeout))
 
     async def kb_ingest(self, collection: str, documents: list[dict], *, replace: bool = False, final: bool = False,
                         timeout: float = 120.0) -> dict:
-        """`core.kb.ingest` (planned): документы в коллекцию базы знаний. Пока ToolError(unavailable)."""
+        """`core.kb.ingest`: документы `{uri, title, text, meta?}` в коллекцию (чужая коллекция: denied)."""
         body: dict = {"collection": collection, "documents": documents}
         if replace:
             body["replace"] = True

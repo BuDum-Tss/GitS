@@ -259,9 +259,7 @@ async def test_typed_client_methods_use_the_contract():
             await client.claude_usage(10, "t")
             with pytest.raises(ValueError):
                 await client.tts("")                                          # неверное исходящее тело
-            with pytest.raises(ToolError) as e:
-                await client.lookup("что-то")
-            assert e.value.code == "unavailable"
+            assert isinstance(await client.lookup("что-то"), str)                 # справочник реализован (контракт 1.4)
         finally:
             await client.stop()
             await asyncio.wait_for(task, 5)
