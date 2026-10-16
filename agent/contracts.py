@@ -192,3 +192,26 @@ class ThoughtJournal(Protocol):
     def append(self, thought: dict) -> None: ...
 
     def recent(self, n: int = 50) -> list[dict]: ...
+
+
+@runtime_checkable
+class EventSink(Protocol):
+    """Приёмник сообщений модулей (ТЗ 29, ARC-7): шина модулей передаёт сюда события, речь, эмоции, обновления задач и
+    вопросы задач, ничего не зная о менеджере внимания и модели. Реализация в ядре: `adapters/module_events.py`."""
+
+    async def submit(self, module_id: str, event: dict) -> None: ...
+
+    async def submit_speech(self, module_id: str, say: dict) -> None: ...
+
+    def on_emotion(self, module_id: str, emotion: Any) -> bool: ...
+
+    async def on_job_update(self, module_id: str, job: dict) -> None: ...
+
+    async def submit_question(self, module_id: str, job_id: str, question_id: str, question: dict) -> tuple[Any, str]: ...
+
+
+@runtime_checkable
+class RequestHandler(Protocol):
+    """Обработчик запросов модуля к ядру `core.*` (шина зовёт его для каждого запроса). Ошибки: `ModuleError`."""
+
+    async def handle(self, conn: Any, msg_type: str, body: dict) -> Any: ...

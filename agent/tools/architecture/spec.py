@@ -34,7 +34,7 @@ GROUPS = [
         N("tg", "telegram", "I", "бот, её аккаунт, посты канала", "Event telegram.*", "modules/telegram"),
         N("rim", "rimworld", "I", "игровой агент: ходы, комментатор, запись забега", "Event raid, death, colonists", "modules/rimworld"),
         N("mont", "montage", "I", "конвейер роликов: Remotion + ffmpeg, агент Claude", "job.update, вопросы", "modules/montage"),
-        N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard.py: 863 строки, 0 классов, ходит в хранилища напрямую"),
+        N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider", True),
     ]),
     dict(id="g_imp", col="A", title="Внутренние импульсы", tag="A",
          summary="Напоминания, которые агент назначил себе; сработавший срок становится событием. Болтовни по таймеру нет.", out="Event self.*", nodes=[
@@ -43,7 +43,7 @@ GROUPS = [
     ]),
     dict(id="g_in", col="B", title="Приём", tag="I",
          summary="Принимает событие из любого источника, проверяет, приводит к единому виду, склеивает повторы, узнаёт отправителя.", out="Event", nodes=[
-        N("hub", "ModuleHub (входящие)", "I", "WebSocket :8766: рукопожатие, проверка формата, очередь входящих; запросы core.*", "Event", "module_hub.py: 683 строки; импортирует attention и fast_brain, то есть транспорт знает домен"),
+        N("hub", "ModuleHub (входящие)", "I", "WebSocket :8766: рукопожатие, проверка формата, очередь входящих; запросы core.*", "Event", "module_hub.py: приёмник событий EventSink колбэком (adapters/module_events.py), без attention и fast_brain"),
         N("event", "Event", "D", "единый конверт: kind, text, sender, hint, data, trace, ts; источник внешний или внутренний (self)", "сущность", "частично (ТЗ 30): domain/event.py (Event с origin external/self) для импульсов и размышления; внутри внимания остаётся Item (поле origin)"),
         N("norm", "Normalizer", "A", "нормализация, дедупликация за 60 с, склейка повторов, TTL", "Event", "выделен (ТЗ 29, R3): app/normalizer.py, app/items.py (хранилище и склейка), domain/dedupe.py"),
         N("people", "PeopleDirectory", "A", "sender → Person, первый контакт, заметки о человеке", "Person", "выделен (R3): Normalizer.note_sender через контракты PeopleDirectory и MemoryWriter; getattr(companion, \"_rel\") остался только в адаптере adapters/people.py"),
@@ -88,7 +88,7 @@ GROUPS = [
         N("digest", "Digest", "A", "сводка событий D1 и предложение рассказать", "SpeechCandidate", "выделен (R3): app/digest.py"),
         N("out", "SpeechOutput и каналы (контракты)", "I", "голос (speak), чат, Telegram (deliver), питомец", "доставка", "speech_out.py, conversation_io.py"),
         N("aff", "Presence и эмоции", "A", "говорит ли, эмоция, присутствие; настроение (валентность, возбуждение, быстрые эмоции) затухает к базовому уровню персонажа", "PresenceState", "выделено (ТЗ 26): app/affect_service.py поверх domain/affect.py; PresenceTracker, fast_brain.publish; настроение в ContextBuilder, тон голоса, пороги внимания"),
-        N("hubout", "ModuleHub (исходящие)", "I", "доставка команд модулям: tool.call, speak, policy.activate, job.answer", "ToolResult, события", "тот же module_hub.py, смешан с приёмом"),
+        N("hubout", "ModuleHub (исходящие)", "I", "доставка команд модулям: tool.call, speak, policy.activate, job.answer", "ToolResult, события", "module_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как ModuleHub.outbound", True),
     ]),
     dict(id="g_mem", col="BOTTOM", title="Память", tag="A",
          summary="Запись и чтение памяти: диалог, факты, профили, воспоминания о себе. Источник правды — журнал событий.", out="MemoryRecord, MemoryHit", nodes=[
@@ -108,7 +108,8 @@ GROUPS = [
         N("wx", "WhisperX / Whisper", "X", "распознавание речи", "", ""),
         N("cl", "Claude Agent SDK", "X", "долгие и сложные задачи", "", ""),
         N("sup", "Supervisor", "I", "запуск и перезапуск процессов модулей", "", "supervisor.py: 573 строки"),
-        N("root", "Composition root", "I", "только собирает объекты и подставляет контракты; бизнес-логики быть не должно", "", "core_service.py: 22 импорта, внутри обработчики voice, colonists, run_lost"),
+        N("root", "Composition root", "I", "только собирает объекты и подставляет контракты; бизнес-логики быть не должно", "", "core_service.py: только сборка; обработчики voice, colonists, run_lost, game_order в app/handlers/"),
+        N("hnd", "Обработчики модулей", "A", "события voice.*, rimworld.colonists и run_ended, desktop.activity, приказ в игру (game_order)", "", "app/handlers/: voice.py, game.py, desktop.py", True),
     ]),
 ]
 
@@ -119,7 +120,7 @@ EDGES = [
     ("voice", "hub", "flow", "Event", None), ("desk", "hub", "flow", None, None), ("tg", "hub", "flow", None, None),
     ("rim", "hub", "flow", None, None), ("mont", "hub", "flow", "job.update", None), ("dash", "hub", "flow", "UserInput", None),
     ("reminders", "timer", "use", "срок", None), ("timer", "norm", "flow", "self.reminder", None),
-    ("hub", "norm", "flow", "Event", 2), ("norm", "people", "use", "sender", None), ("norm", "rules", "flow", "Event", 3),
+    ("root", "hnd", "use", None, None), ("hub", "norm", "flow", "Event", 2), ("norm", "people", "use", "sender", None), ("norm", "rules", "flow", "Event", 3),
     ("rules", "cls", "flow", "не решено правилами", 4), ("cls", "score", "flow", "Classification", 5), ("score", "disp", "flow", "priority", 6),
     ("rules", "conv", "flow", "R1: владелец", None),
     ("disp", "conv", "flow", "route chat", 7), ("disp", "plan", "flow", "route task", 7), ("disp", "fmgr", "flow", "route focus", 7),

@@ -46,9 +46,9 @@ SDK для тяжёлых задач.
 | `journal.py`, `salience.py` | журнал для эпизодов и уроков (ТЗ 24): эмоция с интенсивностью (`emotion`), метки ошибок (`mistake`), решения диспетчера (`decision`), поправки «нет, не так»; яркость события (`data.salience`, таблица весов) |
 | `memory_store.py`, `user_memory.py` | типизированная долговременная память (планы, напоминания) |
 | `graph_memory.py` | память-граф: факты из разговора в Graphiti (FalkorDB), очередь, поиск |
-| `dashboard.py`, `tray.py`, `settings.py` | интерфейс и настройки; дашборд принимает реплики, показывает модули и задачи; трей запускает только ядро (модули, в том числе голос и питомца, запускает супервизор) |
+| `dashboard/`, `tray.py`, `settings.py` | интерфейс и настройки (ТЗ 29, ARC-8: `dashboard/` пакет: `routes_system.py`, `routes_memory.py`, `routes_modules.py`, `routes_attention.py` по темам, `presenters.py` чистые презентеры ответов, `context.py` общее состояние `ctx` и защита запросов; публичные адреса не менялись, `__init__.py` собирает приложение и хранит прежние имена `handle_api_*`, `set_*`); дашборд принимает реплики, показывает модули и задачи; трей запускает только ядро (модули, в том числе голос и питомца, запускает супервизор) |
 | `module_panel.py` | пространство модуля в дашборде (ТЗ 15): проверка путей раздачи артефактов (`serve_dirs`), открытия папок, адресов и ответов действий |
-| `module_hub.py`, `module_registry.py`, `core_requests.py` | шина модулей (`/module/ws` на :8766): рукопожатие, соединения, темы; реестр модулей и их окружения для планировщика; запросы `core.*` от модулей (ТЗ 02) |
+| `module_hub.py`, `module_outbound.py`, `module_registry.py`, `core_requests.py`, `app/handlers/` | шина модулей (ТЗ 29, ARC-7: шина не импортирует `attention` и `fast_brain`, сообщения модулей отдаёт приёмнику `EventSink` из `contracts.py`, реализация `adapters/module_events.py`; исходящее (темы, presence, `job.answer`) в `ModuleHub.outbound`; обработчики событий voice, rimworld, desktop и приказ в игру лежат в `app/handlers/`, `core_service.py` только собирает) (`/module/ws` на :8766): рукопожатие, соединения, темы; реестр модулей и их окружения для планировщика; запросы `core.*` от модулей (ТЗ 02) |
 | `supervisor.py`, `modules.yaml` | запуск и перезапуск процессов модулей, их журналы в `agent/logs/modules/` |
 | `profile_manager.py`, `profiles/` | профили в YAML (тон, модули фокуса, условия автовыбора), выбор активного, граф для дашборда; заменили `modes.py` и `profiles.py` |
 | `conversation_io.py`, `speech_out.py` | каналы ввода и ответа разговора (голос, дашборд, модуль); интерфейс вывода речи и присутствие (`presence`, включая `emotion_ts`): `VoiceModuleSpeech` (речь модулю voice, «говорит ли она» по событиям `voice.speech`), `TextOnlySpeech` (голоса нет: текст в чат и `presence`), `SpeechSelector` (выбор на каждом вызове) |
@@ -101,7 +101,7 @@ SDK для тяжёлых задач.
 окон нет. Ядро шлёт `speak` / `speak.stop` / `tts.synthesize` (`speech_out.VoiceModuleSpeech`, `core.tts`), модуль сообщает событиями
 `voice.utterance` (в разговор, канал `voice`), `voice.speech` и `voice.user_speaking` (в `presence`), `voice.heard` (в сводку внимания и в
 память занятий) и служебным `voice.named` (человек по имени голоса); их обрабатывают `Attention.kind_handlers` / `kind_hooks`
-(`core_service.make_voice_handlers`, `make_heard_hook`), частые виды не пишутся в журнал (`Attention.silent_kinds`). Без подключённого
+(`app/handlers/voice.py`: `make_voice_handlers`, `make_heard_hook`), частые виды не пишутся в журнал (`Attention.silent_kinds`). Без подключённого
 модуля голоса работает `TextOnlySpeech`: реплика в чате и в `presence`. «Замолчи» (`speak.stop at: segment_end`) договаривает
 предложение. Тема `presence` (поля `speaking`, `utterance_id`, `segment`, `emotion`, `emotion_ts`, `busy`, `focus`, `user_speaking`,
 `last_user_ts`, `last_say`, `last_say_ts`) приходит модулям толчком; питомец настройки получает темой `settings`, а меняет их через

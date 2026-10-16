@@ -14,12 +14,12 @@ ENT = [
 ]
 SMELLS = [
     ("Бог-объекты", "<code>Attention</code>: 1108 строк, 70 методов. <code>Companion</code>: 37 методов, 15 импортов. <code>FocusManager</code>: 60 методов.", "разрезать по сценариям (шаги R3–R5)"),
-    ("Слои знают друг друга", "<code>attention</code> читает <code>companion._rel</code>, <code>_mem</code>, <code>graph</code> через <code>getattr</code> и зовёт <code>companion._speak_about</code>; <code>module_hub</code> импортирует <code>attention</code> и <code>fast_brain</code>.", "контракты и колбэки"),
+    ("Слои знают друг друга", "<code>attention</code> читает <code>companion._rel</code>, <code>_mem</code>, <code>graph</code> через <code>getattr</code> и зовёт <code>companion._speak_about</code>; <code>module_hub</code> больше не импортирует <code>attention</code> и <code>fast_brain</code> (приёмник <code>EventSink</code>, ТЗ 29 R6).", "контракты и колбэки"),
     ("Глобальное состояние", "<code>events_log</code> (16 импортов), <code>character</code> (16), <code>settings.load()</code> (14), блокировка модели в <code>fast_brain</code>.", "передавать через конструкторы"),
-    ("Корень сборки с логикой", "<code>core_service.py</code>: 22 импорта, внутри обработчики voice, colonists, run_lost, game_order.", "только сборка"),
+    ("Корень сборки с логикой (устранено в R6)", "обработчики voice, colonists, run_lost, game_order вынесены в <code>app/handlers/</code>; <code>core_service.py</code> только собирает.", "только сборка"),
     ("Нет единой сущности события", "Словарь, <code>Item</code>, <code>UserInput</code>; правила «замолчи» и «похоже на просьбу» ещё и в <code>router</code>.", "<code>Event</code> и один модуль правил"),
     ("Проактивность по таймеру", "<code>app/proactive_legacy.py</code> (из <code>Companion.proactive_loop</code>) раз в 30 с спрашивает модель, стоит ли заговорить.", "заменить на внутренние импульсы и размышление (ТЗ 30)"),
-    ("Интерфейс ходит в данные", "<code>dashboard.py</code>: 863 строки, 0 классов, прямой доступ к хранилищам.", "контракты чтения"),
+    ("Интерфейс ходит в данные (частично устранено в R7)", "<code>dashboard/</code>: роутеры и презентеры; настройки читаются через <code>SettingsProvider</code>, остальное через объекты ядра в <code>ctx</code>.", "контракты чтения"),
     ("ContextBuilder: бюджет есть, поиск ещё два", "<code>app/context_builder.py</code>: бюджет токенов на роль и режимы push/pull есть (настройка <code>context</code>), по умолчанию прежняя склейка; общий гибридный поиск <code>search/</code> готов, но чтение памяти ещё идёт двумя поисками.", "подключить search/ к MemoryReader"),
 ]
 MAP = [
@@ -27,9 +27,9 @@ MAP = [
     ("companion.py (666)", "ConversationService, ContextBuilder, ReplyGenerator, MemoryWriter (capture, consolidate); <code>proactive_loop</code> временно остаётся отдельным сценарием до ТЗ 30"),
     ("focus.py (1061)", "FocusPolicy (чистая), FocusManager (очередь и переходы), CheckpointStore"),
     ("router.py (225) + approvals.py (301)", "Planner, RiskPolicy, Approver, Executor"),
-    ("core_service.py (378)", "Composition root + обработчики в сценарии"),
-    ("module_hub.py (683)", "ModuleHub: входящие и исходящие, без импорта домена"),
-    ("dashboard.py (863)", "HTTP-адаптер: роутеры и презентеры"),
+    ("core_service.py", "Composition root; обработчики в <code>app/handlers/</code>"),
+    ("module_hub.py + module_outbound.py", "ModuleHub: входящие, исходящие в <code>ModuleHub.outbound</code>, без импорта домена"),
+    ("dashboard/", "HTTP-адаптер: роутеры <code>routes_*.py</code> и презентеры <code>presenters.py</code>"),
     ("graph_memory.py, memory_store.py, user_memory.py", "MemoryWriter/MemoryReader + репозитории"),
     ("speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
     ("events_log.py, settings.py, character.py", "контракты EventLog, SettingsProvider, CharacterRepo"),

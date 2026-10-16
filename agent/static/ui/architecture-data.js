@@ -59,10 +59,10 @@ window.ARCH_DATA = {
      "id": "dash",
      "t": "Дашборд и чат",
      "tag": "I",
-     "new": false,
+     "new": true,
      "do": "чат, настройки, пульт, оценки",
      "out": "UserInput как Event",
-     "now": "dashboard.py: 863 строки, 0 классов, ходит в хранилища напрямую"
+     "now": "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider"
     }
    ]
   },
@@ -111,7 +111,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "WebSocket :8766: рукопожатие, проверка формата, очередь входящих; запросы core.*",
      "out": "Event",
-     "now": "module_hub.py: 683 строки; импортирует attention и fast_brain, то есть транспорт знает домен"
+     "now": "module_hub.py: приёмник событий EventSink колбэком (adapters/module_events.py), без attention и fast_brain"
     },
     {
      "id": "event",
@@ -417,10 +417,10 @@ window.ARCH_DATA = {
      "id": "hubout",
      "t": "ModuleHub (исходящие)",
      "tag": "I",
-     "new": false,
+     "new": true,
      "do": "доставка команд модулям: tool.call, speak, policy.activate, job.answer",
      "out": "ToolResult, события",
-     "now": "тот же module_hub.py, смешан с приёмом"
+     "now": "module_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как ModuleHub.outbound"
     }
    ]
   },
@@ -568,7 +568,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "только собирает объекты и подставляет контракты; бизнес-логики быть не должно",
      "out": "",
-     "now": "core_service.py: 22 импорта, внутри обработчики voice, colonists, run_lost"
+     "now": "core_service.py: только сборка; обработчики voice, colonists, run_lost, game_order в app/handlers/"
+    },
+    {
+     "id": "hnd",
+     "t": "Обработчики модулей",
+     "tag": "A",
+     "new": true,
+     "do": "события voice.*, rimworld.colonists и run_ended, desktop.activity, приказ в игру (game_order)",
+     "out": "",
+     "now": "app/handlers/: voice.py, game.py, desktop.py"
     }
    ]
   }
@@ -621,6 +630,12 @@ window.ARCH_DATA = {
    "norm",
    "flow",
    "self.reminder"
+  ],
+  [
+   "root",
+   "hnd",
+   "use",
+   null
   ],
   [
    "hub",

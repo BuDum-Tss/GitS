@@ -22,17 +22,16 @@ from typing import Any, Callable
 from aiohttp import WSMsgType, web
 
 import events_log
-import fast_brain
 import settings
 from gits_sdk import contract
 from gits_sdk import protocol as P
 from gits_sdk.protocol import Envelope, Manifest, ProtocolError
+from module_outbound import Outbound
 
 logger = logging.getLogger("hub")
 
 CORE_VERSION = "2026.10.0"
 HELLO_TIMEOUT_S = 10.0
-PRESENCE_MIN_INTERVAL_S = 0.1          # CORE-5: тема presence не чаще 10 раз в секунду
 INBOX_LIMIT = 1000                     # очередь уведомлений одного модуля; дальше отбрасываются
 WATCH_INTERVAL_S = 1.0                 # как часто сверяются настройки, включённость и батарейка
 BATTERY_EVERY = 5                      # батарейка проверяется раз в столько тиков
@@ -161,16 +160,17 @@ class _JobQuestion:
 
 
 class ModuleHub:
-    def __init__(self, modules, *, attention=None, requests=None, token: str | None = None, token_file: Path | None = None,
+    def __init__(self, modules, *, sink=None, requests=None, token: str | None = None, token_file: Path | None = None,
                  settings_source: Callable[[], dict] = settings.load,
                  profile_source: Callable[[], dict] = lambda: {"id": "assistant", "title": "Ассистент", "focus_modules": []},
                  battery_source: Callable[[], dict] = lambda: {},
                  presence=None, hello_timeout: float = HELLO_TIMEOUT_S, monotonic: Callable[[], float] = time.monotonic):
-        """modules - ModuleRegistry; attention - менеджер внимания (submit, submit_speech, submit_question,
-        on_job_update); requests - обработчик core.* (core_requests.CoreRequests); *_source - откуда брать настройки,
-        профиль и батарейку (в тестах подменяются); presence - PresenceTracker (снимок для новых модулей и эмоции)."""
+        """modules - ModuleRegistry; sink - приёмник событий модулей (контракт `contracts.EventSink`, ТЗ 29 ARC-7: шина
+        не знает ни менеджера внимания, ни модели); requests - обработчик core.* (`contracts.RequestHandler`, в ядре
+        core_requests.CoreRequests); *_source - откуда брать настройки, профиль и батарейку (в тестах подменяются);
+        presence - PresenceTracker (снимок для новых модулей)."""
         self.modules = modules
-        self.attention = attention
+        self.sink = sink
         self.requests = requests
         if requests is not None:
             requests.hub = self                        # core.tts передаётся модулю голоса через шину (VOICE-16)
@@ -187,9 +187,7 @@ class ModuleHub:
         self._tasks: set[asyncio.Task] = set()
         self._watch_task: asyncio.Task | None = None
         self._battery_sent: dict | None = None
-        self._presence_latest: dict | None = None
-        self._presence_last = float("-inf")
-        self._presence_timer: asyncio.TimerHandle | None = None
+        self._outbound: Outbound | None = None
         modules.hub = self
 
     # ── жизненный цикл ─────────────────────────────────────────────────────────
@@ -207,8 +205,7 @@ class ModuleHub:
     async def stop(self) -> None:
         if self._watch_task is not None:
             self._watch_task.cancel()
-        if self._presence_timer is not None:
-            self._presence_timer.cancel()
+        self.outbound.stop()
         for conn in list(self._conns.values()):
             await conn.close(1001, "ядро останавливается")
         for task in list(self._tasks):
@@ -219,6 +216,14 @@ class ModuleHub:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return task
+
+    @property
+    def outbound(self) -> Outbound:
+        """Исходящие команды модулям (темы, присутствие, ответы на вопросы задач); создаётся при первом обращении."""
+        ob = self.__dict__.get("_outbound")
+        if ob is None:
+            ob = self._outbound = Outbound(self)
+        return ob
 
     # ── доступ ──────────────────────────────────────────────────────────────
 
@@ -348,7 +353,7 @@ class ModuleHub:
                        instance=conn.instance, enabled=enabled)
         logger.info(f"Модуль {mid} подключён")
         if self.presence is not None and "presence" in spec.subscribe:
-            self._spawn(self._safe_send_topic(conn, "presence", self.presence.snapshot()))
+            self._spawn(self.outbound.safe_send_topic(conn, "presence", self.presence.snapshot()))
         return conn
 
     # ── настройки модуля ────────────────────────────────────────────────────────
@@ -456,22 +461,18 @@ class ModuleHub:
             if kind not in {e.kind for e in conn.spec.emits} and kind not in conn.warned_kinds:
                 conn.warned_kinds.add(kind)
                 logger.warning(f"Модуль {mid}: событие «{kind}» не объявлено в emits")
-            if self.attention is not None:
-                await self.attention.submit(mid, body)
+            if self.sink is not None:
+                await self.sink.submit(mid, body)
         elif t == "say":
             problems = contract.validate("say", body)
             if problems:
                 logger.warning(f"Модуль {mid}: say неверный: {'; '.join(problems)}")
                 return
-            if self.attention is not None:
-                await self.attention.submit_speech(mid, body)
+            if self.sink is not None:
+                await self.sink.submit_speech(mid, body)
         elif t == "emotion":
             emotion = body.get("emotion")
-            if emotion in fast_brain.EMOTIONS:
-                fast_brain.publish(f"module:{mid}", {"emotion": emotion, "action": "none", "source": mid})
-                if self.presence is not None:
-                    self.presence.update(emotion=emotion)
-            else:
+            if self.sink is not None and not self.sink.on_emotion(mid, emotion):
                 logger.warning(f"Модуль {mid}: неизвестная эмоция {emotion!r}")
 
     # ── задачи ──────────────────────────────────────────────────────────────────
@@ -488,8 +489,8 @@ class ModuleHub:
             return
         if body["state"] == "waiting_user":
             await self._job_question(conn, body)
-        if self.attention is not None:
-            await self.attention.on_job_update(mid, body)
+        if self.sink is not None:
+            await self.sink.on_job_update(mid, body)
 
     async def _job_question(self, conn: ModuleConnection, job: dict) -> None:
         """Вопрос задачи (MOD-20): один раз на question_id, ответ уходит модулю как job.answer."""
@@ -505,14 +506,11 @@ class ModuleHub:
         entry.task = self._spawn(self._ask_job_question(key, entry, q))
 
     async def _ask_job_question(self, key: tuple[str, str, str], entry: _JobQuestion, q: dict) -> None:
-        from attention import Question
         mid, job_id, question_id = key
-        question = Question(kind=q["kind"], question=q["question"], options=q.get("options"),
-                            timeout_s=q.get("timeout_s", P.ASK_TIMEOUT_DEFAULT), source=mid,
-                            context={"job_id": job_id, **(q.get("context") or {})},
-                            urgency_hint=q.get("urgency_hint"), job_id=job_id, question_id=question_id)
         try:
-            answer, _by = await self.attention.submit_question(question)
+            if self.sink is None:
+                raise ModuleError("unavailable", "приёмник событий не подключён")
+            answer, _by = await self.sink.submit_question(mid, job_id, question_id, q)
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -524,14 +522,8 @@ class ModuleHub:
 
     async def _send_answer(self, key: tuple[str, str, str], entry: _JobQuestion) -> None:
         mid, job_id, question_id = key
-        conn = self.connection(mid)
-        if conn is None:
-            return                                     # отправим при следующем job.update этой задачи после переподключения
-        try:
-            await conn.send("job.answer", {"job_id": job_id, "question_id": question_id, "answer": entry.answer})
+        if await self.outbound.send_job_answer(mid, job_id, question_id, entry.answer):
             entry.sent = True
-        except ModuleError as e:
-            logger.warning(f"job.answer для {mid}/{job_id} не отправлен: {e.message}")
 
     async def answer_job(self, module_id: str, job_id: str, question_id: str, answer: Any) -> str | None:
         """Ответ на вопрос задачи не словами, а кнопкой в дашборде: вопрос снимается из очереди approvals, модулю уходит
@@ -605,54 +597,23 @@ class ModuleHub:
                        replaced=not current)
         logger.info(f"Модуль {conn.module_id} отключился: {reason}")
 
-    # ── темы ────────────────────────────────────────────────────────────────────
-
-    async def _safe_send_topic(self, conn: ModuleConnection, topic: str, data: dict) -> None:
-        try:
-            await conn.send("topic", {"topic": topic, "data": data})
-        except ModuleError:
-            pass
+    # ── темы (исходящее лежит в Outbound; здесь короткие входы для старых вызовов) ──────────────────────────
 
     async def send_topic(self, module_id: str, topic: str, data: dict) -> None:
         """Тема одному модулю (если подключён)."""
-        conn = self.connection(module_id)
-        if conn is not None:
-            await self._safe_send_topic(conn, topic, data)
+        await self.outbound.send_topic(module_id, topic, data)
 
     async def broadcast(self, topic: str, data: dict) -> None:
         """Тема всем подключённым и включённым модулям, подписанным на неё (CORE-5)."""
-        targets = [c for c in self.connections() if topic in c.spec.subscribe and self._enabled(c)]
-        await asyncio.gather(*[self._safe_send_topic(c, topic, data) for c in targets])
+        await self.outbound.broadcast(topic, data)
 
     def notify(self, topic: str, data: dict) -> None:
         """Как broadcast, но из синхронного кода (смена профиля, присутствие): рассылка уходит фоновой задачей."""
-        coro = self.broadcast(topic, data)
-        try:
-            self._spawn(coro)
-        except RuntimeError:
-            coro.close()                               # цикла событий нет (старт или тесты): некому рассылать; корутину закрываем
-
+        self.outbound.notify(topic, data)
 
     def broadcast_presence(self, data: dict) -> None:
         """Тема presence не чаще 10 раз в секунду; в паузе побеждает последнее значение (CORE-5)."""
-        self._presence_latest = data
-        if self._presence_timer is not None:
-            return
-        wait = PRESENCE_MIN_INTERVAL_S - (self._monotonic() - self._presence_last)
-        if wait <= 0:
-            self._flush_presence()
-            return
-        try:
-            self._presence_timer = asyncio.get_running_loop().call_later(wait, self._flush_presence)
-        except RuntimeError:
-            pass
-
-    def _flush_presence(self) -> None:
-        self._presence_timer = None
-        data, self._presence_latest = self._presence_latest, None
-        if data is not None:
-            self._presence_last = self._monotonic()
-            self.notify("presence", data)
+        self.outbound.broadcast_presence(data)
 
     async def refresh(self) -> None:
         """Сверить настройки и включённость сейчас (после изменения из дашборда); тема уходит только при отличии."""
@@ -663,13 +624,13 @@ class ModuleHub:
             enabled = self.modules.is_enabled(mid, cfg)
             if enabled != conn.last_enabled:
                 conn.last_enabled = enabled
-                await self._safe_send_topic(conn, "module", {"enabled": enabled})
+                await self.outbound.safe_send_topic(conn, "module", {"enabled": enabled})
             payload = {"settings": self._shared(conn.spec, cfg),
                        "module_settings": self._module_settings(mid, conn.spec, cfg)}
             if payload != conn.last_settings:
                 conn.last_settings = payload
                 if "settings" in conn.spec.subscribe:
-                    await self._safe_send_topic(conn, "settings", payload)
+                    await self.outbound.safe_send_topic(conn, "settings", payload)
 
     async def _watch(self) -> None:
         tick = 0

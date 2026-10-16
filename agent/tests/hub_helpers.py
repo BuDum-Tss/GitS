@@ -9,6 +9,7 @@ from aiohttp import web
 
 import speech_out
 from conversation_io import current_channel
+from adapters.module_events import AttentionEventSink
 from attention import Attention
 from core_requests import CoreRequests
 from environments.registry import Registry
@@ -99,7 +100,7 @@ class Core:
         self.attention.hub, self.attention.modules = None, self.modules
         self.requests = CoreRequests(attention=self.attention)
         self.said: list[str] = []
-        self.hub = ModuleHub(self.modules, attention=self.attention, requests=self.requests,
+        self.hub = ModuleHub(self.modules, sink=AttentionEventSink(self.attention), requests=self.requests,
                              settings_source=lambda: self.settings_state, token_file=tmp_path / "module_token",
                              hello_timeout=0.5)
         self.router = Router(self.envs, self._say, lambda: "")
