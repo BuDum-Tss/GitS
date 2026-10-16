@@ -9,6 +9,8 @@ memory_scopes: [montage]
 knowledge: []
 attention:
   weights: {}
+# окно редактора включает только тон и инструменты (ситуация внутри assistant, ТЗ 32 WS-7); среда montage только по импульсу
+workspace: montage
 activate:
   foreground_apps: [davinciresolve, resolve, "premiere pro", vegas]
 priority: 30

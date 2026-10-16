@@ -52,6 +52,29 @@ def test_exit_waits_for_a_safe_point_unless_the_reason_is_forced():
     assert dom.can_exit(spec, True, Reason.SELF)[0]
 
 
+def test_spec_from_manifest_maps_entries_to_reasons_and_never_allows_process_start():
+    spec = dom.spec_from_manifest("montage", {"id": "montage", "title": "Монтаж", "entry": ["user_message", "critical", "fallback"],
+                                              "interruptible": False, "safe_points": ["между стадиями"], "signals_in": ["telegram.*"],
+                                              "done_when": "готово"})
+    assert spec.entry == (Reason.USER, Reason.CRITICAL) and spec.interruptible is False and spec.signals_in == ("telegram.*",)
+    assert not dom.can_enter(spec, Reason.SELF)[0] and not dom.can_enter(spec, "process_started")[0]
+    default = dom.spec_from_manifest("rimworld", {"id": "rimworld", "title": "RimWorld"})
+    assert default.entry == dom.MODULE_ENTRY
+
+
+def test_signal_routing_by_current_workspace():
+    assistant, sleep = dom.BUILTIN[ASSISTANT], dom.BUILTIN[SLEEP]
+    montage = dom.spec_from_manifest("montage", {"id": "montage", "title": "Монтаж", "signals_in": ["telegram.*"]})
+    game = dom.module_spec("rimworld", "RimWorld")
+    assert dom.route_signal(montage, game, "rimworld.letter", "rimworld", 4) == dom.SIGNAL_DIGEST    # не из signals_in: сводка
+    assert dom.route_signal(montage, None, "telegram.message", "telegram", 3) == dom.SIGNAL_NOTIFY
+    assert dom.route_signal(montage, game, "rimworld.raid", "rimworld", 5) == dom.SIGNAL_SWITCH      # критический
+    assert dom.route_signal(montage, None, "telegram.message", "telegram", 5) == dom.SIGNAL_NOTIFY   # у службы своей среды нет
+    assert dom.route_signal(montage, montage, "montage.done", "montage", 5) == dom.SIGNAL_OWN
+    assert dom.route_signal(assistant, game, "rimworld.letter", "rimworld", 2) == dom.SIGNAL_NOTIFY  # assistant принимает всё
+    assert dom.route_signal(sleep, game, "rimworld.letter", "rimworld", 2) == dom.SIGNAL_DIGEST      # сон молчит
+
+
 # ── менеджер ─────────────────────────────────────────────────────────────────
 
 async def test_starts_in_assistant():
@@ -200,5 +223,5 @@ async def test_core_wiring_has_workspaces_and_release_holder_without_slot():
     layer = core_service.wire_modules(WiredCompanion(), Registry(), port=free_port(),
                                       battery=lambda: {"level": 1.0, "sleeping": False}, specs=[])
     snap = layer.workspaces.snapshot()
-    assert snap["current"] == ASSISTANT and {"rimworld", "montage"} <= {a["id"] for a in snap["available"]}
+    assert snap["current"] == ASSISTANT and {a["id"] for a in snap["available"]} == {ASSISTANT, SLEEP}     # среды модулей - из манифестов
     assert (await layer.focus.release_holder()) == {"ok": True, "already": True}

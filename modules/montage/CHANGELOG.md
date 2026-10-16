@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Added
+- ТЗ 32, этап B: среда агента «Монтаж». Манифест объявляет `workspace` и активную политику `working`; обработчики `workspace.enter` / `workspace.exit` / `workspace.resume` (старые имена те же) в `main.wire`, состояние среды в `env_state.py`, статус для ядра в `state.data.status` (`active_policy`, `interruptible`: во время сборки и финала выходить нельзя). Среда кончается сама, когда задачи, начатые при ней, готовы: модуль возвращается в `idle`, ядро возвращает агента в `assistant`.
+
 ### Changed (ТЗ 23: сцены дизайн-системы v2)
 - Сцены дизайн-системы «Лаборатория Aperture» v2 в шаблоне Remotion (ТЗ 23, SC-1..SC-7, ветка `tz/23-design-scenes`):
   - SC-1: `template/src/style/tokens.ts` приведён к `tokens.json` дизайн-системы (копия `template/design/tokens.json`): цвета `sign-*`, `bp-*`, `chamberDark-plate`, прозрачности, длительности (`intro`, `bp-draw`, `pet-bob`, `pet-talk`, `caption-crossfade`, `bumper-hold`), размеры и типографика; `hazardYellow` и `alertRed` удалены, как и компоненты `ChamberCard`, `HazardBanner`, `TestResult`, `PixelTransition`, `LowerThird`. Градиенты и тени вынесены в `tokens.ts` (`effects`). Вариативный Plex Sans зарегистрирован с диапазоном осей (`plexStyle(вес, ширина)`).

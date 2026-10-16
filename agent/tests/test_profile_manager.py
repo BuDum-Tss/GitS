@@ -23,10 +23,10 @@ class Clock:
 
 def make(**kw):
     """Менеджер на реальных файлах профилей с управляемыми источниками."""
-    src = {"sleeping": False, "app": None, "states": {}, "choice": "auto", "streamer": False}
+    src = {"sleeping": False, "app": None, "states": {}, "choice": "auto", "streamer": False, "workspace": "assistant"}
     clock = Clock()
     pm = ProfileManager(battery=lambda: {"sleeping": src["sleeping"]}, foreground_app=lambda: src["app"],
-                        module_state=lambda m: src["states"].get(m), choice=lambda: src["choice"],
+                        workspace_of=lambda: src["workspace"], module_state=lambda m: src["states"].get(m), choice=lambda: src["choice"],
                         streamer=lambda: src["streamer"], now=clock, **kw)
     pm.evaluate()
     return pm, src, clock
@@ -38,8 +38,7 @@ def test_files_cover_the_spec_table():
     assert profiles["assistant"].focus_modules == ("desktop", "telegram")
     assert profiles["work"].focus_modules == ("desktop",) and profiles["work"].priority == 20
     assert profiles["rimworld"].focus_modules == ("rimworld",) and profiles["rimworld"].priority == 50
-    assert profiles["rimworld"].activate["foreground_apps"] == ["rimworldwin64"]
-    assert profiles["rimworld"].activate["module_state"] == {"rimworld": {"game_running": True}}
+    assert not profiles["rimworld"].activate and profiles["rimworld"].workspace == "rimworld"      # ТЗ 32, WS-5: окно и game_running не входят
     assert profiles["rimworld"].knowledge == ("rimworld.wiki", "rimworld.defs", "rimworld.experience")
     assert profiles["rimworld"].attention["weights"] == {"rimworld.*": 1.5, "telegram.group": 0.4}
     assert profiles["editing"].focus_modules == ("montage", "desktop") and profiles["editing"].priority == 30
@@ -87,7 +86,7 @@ def test_sleep_beats_manual_choice_and_games():                               # 
 
 def test_manual_choice_beats_auto_but_planned_is_ignored():                   # шаг 2
     pm, src, _ = make()
-    src["app"] = "rimworldwin64"
+    src["workspace"] = "rimworld"
     src["choice"] = "work"
     assert pm.evaluate() == "work" and pm.override == "work" and pm.auto_id() == "rimworld"
     src["choice"] = "minecraft"                                               # planned: игнорируется
@@ -100,17 +99,20 @@ def test_manual_choice_beats_auto_but_planned_is_ignored():                   # 
     assert pm.manual_choice() is None
 
 
-def test_activation_by_app_and_by_module_state():                             # шаг 3
+def test_activation_by_app_and_the_game_does_not_enter_its_profile():         # шаг 3, ТЗ 32 WS-5
     pm, src, _ = make()
     src["app"] = "Code"
     assert pm.evaluate() == "work"
-    src["app"] = "RimWorldWin64.exe"
-    assert pm.evaluate() == "rimworld"                                        # приоритет 50 над 20
+    pm1, src1, _ = make()
+    src1["app"] = "RimWorldWin64.exe"
+    assert pm1.evaluate() == HUB                                              # окно игры профиль не включает
     pm2, src2, _ = make()
-    src2["states"] = {"rimworld": {"game_running": False}}
-    assert pm2.evaluate() == HUB                                              # значение не совпало
     src2["states"] = {"rimworld": {"game_running": True, "extra": 1}}
-    assert pm2.evaluate() == "rimworld"                                       # любое из условий: module_state
+    assert pm2.evaluate() == HUB                                              # состояние модуля тоже
+    src2["workspace"] = "rimworld"
+    assert pm2.evaluate() == "rimworld"                                       # профиль включает среда агента
+    src2["workspace"] = "assistant"
+    assert pm2.evaluate() == HUB                                              # без липкости: вышли из среды - профиль снят
 
 
 def test_priority_tie_prefers_current_then_alphabet():
@@ -128,11 +130,11 @@ def test_priority_tie_prefers_current_then_alphabet():
 
 def test_stickiness_after_conditions_vanish():                                # шаг 4
     pm, src, clock = make()
-    src["app"] = "rimworldwin64"
-    assert pm.evaluate() == "rimworld"
+    src["app"] = "resolve"
+    assert pm.evaluate() == "editing"
     src["app"] = "chrome"
     clock.t += 119
-    assert pm.evaluate() == "rimworld"                                        # sticky_s = 120
+    assert pm.evaluate() == "editing"                                         # sticky_s = 120
     clock.t += 2
     assert pm.evaluate() == HUB                                               # прошло больше 120 с после пропажи условий
     src["app"] = "code"
@@ -140,7 +142,7 @@ def test_stickiness_after_conditions_vanish():                                # 
     src["app"] = "chrome"
     clock.t += 60
     assert pm.evaluate() == "work"
-    src["app"] = "rimworldwin64"
+    src["workspace"] = "rimworld"
     assert pm.evaluate() == "rimworld"                                        # другое условие сразу побеждает липкость
 
 
@@ -156,7 +158,7 @@ def test_change_callback_and_no_callback_on_first_evaluation():
 
 def test_hint_text_wrapper_and_streamer_addition():                           # CORE-21
     pm, src, _ = make()
-    src["app"] = "rimworldwin64"
+    src["workspace"] = "rimworld"
     pm.evaluate()
     wrapper = "[Внутренняя настройка тона, не тема разговора и не повод что-то сообщать: {} Никогда не упоминай режимы, профили и их переключение.]"
     assert pm.hint() == wrapper.format(TONE_GAME)
@@ -187,7 +189,7 @@ def test_registry_visibility_by_focus_modules():                              # 
     pm, src, _ = make()
     reg.focus = pm.focus_modules
     assert {t.id for t in reg.active_tools()} == {"system.t", "rimworld.a"}   # always виден в любом профиле
-    src["app"] = "rimworldwin64"
+    src["workspace"] = "rimworld"
     pm.evaluate()
     assert {t.id for t in reg.active_tools()} == {"system.t", "rimworld.a", "rimworld.t"}
     src["sleeping"] = True
@@ -208,7 +210,7 @@ async def test_graph_format_with_live_and_default_subgraphs():                # 
     async def provider(profile):
         return live if profile.id == "rimworld" else None
     pm, src, _ = make(subgraph=provider)
-    src["app"] = "rimworldwin64"
+    src["workspace"] = "rimworld"
     pm.evaluate()
     g = await pm.graph()
     assert {"current", "auto", "override", "battery", "nodes", "edges", "subgraphs"} <= set(g)

@@ -51,10 +51,17 @@ SETTINGS_SCHEMA = {
                            "(игровых часов)", "default": 2, "min": 0.5, "max": 24},
     "manual_confirm": {"type": "boolean", "title": "Ручное управление: только предлагать принудительную работу, не выполнять "
                        "без подтверждения", "default": False},
-    "focus_mode": {"type": "string", "title": "Фокус агента: auto - без менеджера фокуса в ядре модуль берёт его сам, когда "
-                   "игра запущена; core - только запросы ядра; manual - только кнопки на панели RimWorld",
-                   "default": "auto", "enum": ["auto", "core", "manual"]},
+    "focus_mode": {"type": "string", "title": "Фокус агента: core - только запросы ядра (среду включает импульс: сообщение или "
+                   "решение агента); manual - только кнопки на панели RimWorld; auto - старый режим, модуль сам берёт "
+                   "фокус, когда игра запущена (в среду это не входит)",
+                   "default": "core", "enum": ["auto", "core", "manual"]},
 }
+# среда агента (ТЗ 32, WS-4): в неё входят по сообщению пользователя, по самоимпульсу или по критическому сигналу
+WORKSPACE = {"id": MODULE_ID, "title": "RimWorld",
+             "purpose": "игра в колонию вместе с пользователем: ходы, планирование, бой, комментарии вслух",
+             "entry": ["user_message", "self_impulse", "critical"], "interruptible": True,
+             "safe_points": ["игра на паузе", "тихо: нет угрозы и боя"], "signals_in": ["telegram.*"],
+             "done_when": "забег закончен или игра закрыта"}
 # что модуль шлёт ядру (RW-9): срочности берутся из core_link.EVENTS, чтобы не расходились
 _EMIT_TEXT = {
     "rimworld.colonists": "Обновился список колонистов (служебное: отношения и граф памяти)",
@@ -65,6 +72,7 @@ _EMIT_TEXT = {
     "rimworld.letter": "Игровое письмо (событие в колонии, торговцы, гости, ссоры)",
     "rimworld.goal": "Цель игры достигнута или заброшена",
     "rimworld.run_video": "Видео забега готово (пути к записи, сценарию и клипам в data)",
+    "rimworld.game_started": "Игра запущена (сигнал; в среду RimWorld агент входит только по своему импульсу или просьбе)",
 }
 EMITS = [{"kind": kind, "description": _EMIT_TEXT[kind], "default_urgency": urgency}
          for kind, urgency in EVENTS.values()]
@@ -152,7 +160,8 @@ def build_manifest(tools: list[dict]) -> dict:
             # политики (ТЗ 18, FOC-1; ТЗ 11e, POL-11/13): минимум одна с focus background (афк), она по умолчанию;
             # переходы в формате ядра (из фоновой только запрашиваемые, см. policies.Registry.transitions)
             "knowledge": [{"collection": c, "title": t, "scope": "rimworld", "kind": k} for c, t, k in KNOWLEDGE],
-            "policies": policies.get().manifest(), "default_policy": policies.get().default}
+            "policies": policies.get().manifest(), "default_policy": policies.get().default,
+            "workspace": dict(WORKSPACE)}
 
 
 async def build(mcp=None) -> dict:
@@ -237,15 +246,17 @@ def attach(client, tools: list[dict], order, graph, module=None, launch=None, fo
         return graph()
 
     if focus is not None:
-        @client.on_request("policy.activate")
+        # ТЗ 32, WS-4: новые имена запросов среды; прежние (policy.activate, focus.release, focus.resume) SDK ведёт к тем же
+        # обработчикам как алиасы
+        @client.on_request("workspace.enter")
         async def _activate(body):                                       # POL-14
             return await focus.activate(body or {})
 
-        @client.on_request("focus.release")
+        @client.on_request("workspace.exit")
         async def _release(body):                                        # POL-14
             return await focus.release(body or {})
 
-        @client.on_request("focus.resume")
+        @client.on_request("workspace.resume")
         async def _resume(body):                                         # ТЗ 18, FOC-4: возобновление по checkpoint
             return await focus.resume(body or {})
 

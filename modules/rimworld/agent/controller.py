@@ -414,12 +414,24 @@ class Controller:
                 self.policies.enter_afk("игра закрыта: фокус модуля снят, модуль ждёт игру", source="auto")
             return
         self._game_gone_ticks = 0
+        if not self._game_up:
+            self._emit_game_started()                    # ТЗ 32, WS-5: игра запущена - только сигнал, среду он не включает
         self._game_up = True
         if focus_mode.auto_grab_allowed(mode=self._focus_mode(), core_seen=self._core_focus_seen, game_up=True,
                                         in_focus=self.policies.in_focus, held_off=self._held_off):
             if self.policies.leave_afk("observe", "игра запущена, менеджера фокуса в ядре нет: модуль взял фокус сам",
                                        source="auto"):
                 self._focus_source = "auto"
+
+    def _emit_game_started(self) -> None:
+        """Сигнал `rimworld.game_started` ядру (ТЗ 32, WS-5). Агент может ответить своим импульсом «зайти в колонию»."""
+        link = getattr(self, "link", None)
+        if link is None:
+            return
+        try:
+            asyncio.get_running_loop().create_task(link.event("game_started", {}, text="Игра RimWorld запущена."))
+        except RuntimeError:
+            pass                                         # вне цикла событий (тесты, разовый вызов): сигнал не нужен
 
     async def _take_focus(self, target: str, reason: str, source: str, cp: dict | None = None) -> dict:
         """Вернуть фокус в `target` и восстановить контур по checkpoint (POL-14). Общая часть policy.activate, focus.resume

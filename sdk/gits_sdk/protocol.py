@@ -136,7 +136,13 @@ MODULE_TO_CORE = frozenset(MODULE_TO_CORE_NOTES) | frozenset(CORE_REQUESTS)
 CORE_TO_MODULE_REQUESTS = ("tool.call", "tool.check", "job.cancel", "job.list", "graph.get", "deliver",
                            "tts.synthesize", "panel.action",
                            # менеджер фокуса (ТЗ 18, FOC-4): переходы между политиками модуля
-                           "policy.activate", "focus.release", "focus.resume")
+                           "policy.activate", "focus.release", "focus.resume",
+                           # среды агента (ТЗ 32, WS-4): новые имена тех же запросов, старые остаются алиасами на один релиз
+                           "workspace.enter", "workspace.exit", "workspace.resume")
+# запрос среды -> прежнее имя того же запроса (и наоборот): модуль может обработать любое из двух, ядро шлёт новое
+WORKSPACE_ALIASES = {"workspace.enter": "policy.activate", "workspace.exit": "focus.release",
+                     "workspace.resume": "focus.resume"}
+WORKSPACE_ALIASES = {**WORKSPACE_ALIASES, **{old: new for new, old in WORKSPACE_ALIASES.items()}}
 CORE_TO_MODULE_NOTES = ("welcome", "reject", "job.answer", "speak", "speak.stop", "topic", "shutdown", "result")
 CORE_TO_MODULE = frozenset(CORE_TO_MODULE_REQUESTS) | frozenset(CORE_TO_MODULE_NOTES)
 
@@ -169,6 +175,8 @@ PARAM_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 JOB_ID_RE = re.compile(r"^j-[0-9a-f]{8}$")
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 KIND_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}\.[a-z0-9_][a-z0-9_.]*$")
+WORKSPACE_ENTRIES = ("user_message", "self_impulse", "schedule", "critical", "fallback")   # ТЗ 32, 4.1: как можно войти в среду
+WORKSPACE_ENTRY_DEFAULT = ("user_message", "self_impulse", "critical")
 POLICY_FOCUS = ("active", "background")        # ТЗ 18, FOC-1: active держит фокус, background - фон (вне фокуса)
 POLICY_RESOURCES = ("gpu", "cpu", "tokens")    # ресурсы политики (необязательные числа >= 0)
 
@@ -550,9 +558,44 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
         if flag in manifest and not isinstance(manifest[flag], bool):
             problems.append(f"{flag}: должно быть true или false")
     _check_policies(manifest, problems)
+    _check_workspace(manifest, problems)
     if "panel" in manifest and warnings is not None:
         warnings.extend(parse_panel(manifest)[1])
     return problems
+
+
+def _check_workspace(manifest: dict, problems: list[str]) -> None:
+    """ТЗ 32, WS-4: среда агента, которую объявляет модуль (поле `workspace`). Необязательно: без него модуль не среда.
+    Среда модуля входит в фокус только по импульсу: `process_started` и подобные условия запрещены."""
+    if "workspace" not in manifest:
+        return
+    ws = manifest["workspace"]
+    if not isinstance(ws, dict):
+        problems.append("workspace: должен быть объектом")
+        return
+    if ws.get("id") != manifest.get("id"):
+        problems.append("workspace.id: должен совпадать с id модуля")
+    for key in ("title", "purpose", "done_when"):
+        if key in ws and (not isinstance(ws[key], str) or not ws[key].strip()):
+            problems.append(f"workspace.{key}: непустая строка")
+    if "title" not in ws:
+        problems.append("workspace.title: обязательная непустая строка")
+    entry = ws.get("entry", list(WORKSPACE_ENTRY_DEFAULT))
+    if not isinstance(entry, list) or not entry or not all(isinstance(e, str) for e in entry):
+        problems.append("workspace.entry: непустой список строк")
+    else:
+        for e in entry:
+            if e not in WORKSPACE_ENTRIES:
+                problems.append(f"workspace.entry: «{e}» неизвестно, допустимо {list(WORKSPACE_ENTRIES)} "
+                                "(запуск процесса и окно среду не включают)")
+    if "interruptible" in ws and not isinstance(ws["interruptible"], bool):
+        problems.append("workspace.interruptible: должно быть true или false")
+    for key in ("safe_points", "signals_in"):
+        if key in ws and (not isinstance(ws[key], list) or not all(isinstance(x, str) and x.strip() for x in ws[key])):
+            problems.append(f"workspace.{key}: список непустых строк")
+    extra = set(ws) - {"id", "title", "purpose", "entry", "interruptible", "safe_points", "signals_in", "done_when"}
+    if extra:
+        problems.append(f"workspace: неизвестные поля {sorted(extra)}")
 
 
 def _check_policies(manifest: dict, problems: list[str]) -> None:
@@ -1112,6 +1155,7 @@ class Manifest:
     panel_warnings: list[str] = field(default_factory=list)   # почему panel отброшен (для журнала ядра)
     policies: list[PolicySpec] = field(default_factory=list)  # ТЗ 18, FOC-1; пусто - режим совместимости (без фокуса)
     default_policy: str | None = None
+    workspace: dict | None = None                       # ТЗ 32, WS-4: среда агента, которую объявляет модуль
 
     @classmethod
     def from_dict(cls, d: Any) -> Manifest:
@@ -1131,7 +1175,7 @@ class Manifest:
             graph=bool(d.get("graph", False)), state=bool(d.get("state", False)),
             panel=panel, panel_warnings=panel_warnings,
             policies=[PolicySpec.from_dict(p) for p in d.get("policies") or []],
-            default_policy=d.get("default_policy"))
+            default_policy=d.get("default_policy"), workspace=dict(d["workspace"]) if d.get("workspace") else None)
 
     def to_dict(self) -> dict:
         out = {"id": self.id, "title": self.title, "description": self.description, "version": self.version,
@@ -1148,6 +1192,8 @@ class Manifest:
         if self.policies:
             out["policies"] = [p.to_dict() for p in self.policies]
             out["default_policy"] = self.default_policy
+        if self.workspace:
+            out["workspace"] = dict(self.workspace)
         return out
 
     def tool(self, name: str) -> ToolSpec | None:

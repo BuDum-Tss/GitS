@@ -7,12 +7,13 @@ def test_manifest_is_valid():
     assert validate_manifest(build_manifest()) == []
 
 
-def test_manifest_declares_background_policy_for_focus():
-    """ТЗ 18, FOC-1: политики фокуса; фон по умолчанию; без активной политики (переходов модуль пока не умеет)."""
+def test_manifest_declares_policies_and_workspace():
+    """ТЗ 18, FOC-1; ТЗ 32, WS-4: фон по умолчанию (idle), активная политика working и среда агента."""
     m = build_manifest()
     assert m["default_policy"] == "idle"
-    assert [p["id"] for p in m["policies"]] == ["idle"]
-    assert all(p["focus"] == "background" for p in m["policies"])
+    assert {p["id"]: p["focus"] for p in m["policies"]} == {"idle": "background", "working": "active"}
+    ws = m["workspace"]
+    assert ws["id"] == "montage" and "process_started" not in ws["entry"] and ws["interruptible"] is True
     assert validate_manifest(m) == []
 
 

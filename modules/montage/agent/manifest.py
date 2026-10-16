@@ -112,14 +112,22 @@ MANIFEST = {
         {"collection": "montage.experience", "title": "Опыт монтажа", "scope": "montage", "kind": "experience"},
     ],
     "state": True,
-    # политики фокуса (ТЗ 18, FOC-1; ТЗ 11e, POL-13): вне монтажа модуль простаивает в фоне. Активной политики пока нет:
-    # переходы (policy.activate, focus.release) модуль не умеет, и ядро не должно отпускать фокус другого модуля ради него.
-    # Когда модуль научится переходам, добавляются политика working (focus active) и блокировки (waiting_for_materials)
+    # политики фокуса (ТЗ 18, FOC-1; ТЗ 11e, POL-13; ТЗ 32): вне среды монтаж идёт в фоне (idle), в среде политика working.
+    # Переходы запросами workspace.enter / workspace.exit / workspace.resume (прежние policy.activate, focus.release, focus.resume
+    # SDK ведёт к тем же обработчикам)
     "policies": [
-        {"id": "idle", "title": "Простой", "focus": "background", "interruptible": True,
+        {"id": "idle", "title": "Простой", "focus": "background", "interruptible": True, "transitions": ["working"],
          "purpose": "монтаж в фоне, фокус не держит"},
+        {"id": "working", "title": "Монтаж", "focus": "active", "interruptible": True, "transitions": ["idle"],
+         "safe_points": ["между стадиями задачи"], "purpose": "агент занят монтажом: ведёт задачи, отвечает по ним, не отвлекается"},
     ],
     "default_policy": "idle",
+    # среда агента (ТЗ 32, WS-4): в неё входят по сообщению пользователя («давай монтировать»), по самоимпульсу или по
+    # критическому сигналу; закончена, когда задачи, начатые при ней, готовы
+    "workspace": {"id": "montage", "title": "Монтаж", "purpose": "монтаж роликов: нарезка, склейка, озвучка, выгрузка, правки",
+                  "entry": ["user_message", "self_impulse", "critical"], "interruptible": True,
+                  "safe_points": ["между стадиями задачи"], "signals_in": ["telegram.*"],
+                  "done_when": "задачи, начатые при среде, готовы или отменены"},
     # пространство в дашборде (TZ 15, TAB-4, TAB-9): ссылки и кнопки; блоки присылает менеджер (panel.set)
     "panel": {
         "title": "Монтаж",

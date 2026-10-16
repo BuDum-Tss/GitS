@@ -20,6 +20,8 @@ MANIFEST = {
     "emits": [{"kind": "rimworld.raid", "description": "Начался набег на колонию", "default_urgency": 5}],
     "policies": GAME_POLICIES["policies"],
     "default_policy": GAME_POLICIES["default_policy"],
+    # ТЗ 32: критическое событие переключает среду только если модуль объявил свою среду
+    "workspace": {"id": "rimworld", "title": "RimWorld", "entry": ["user_message", "self_impulse", "critical"]},
     "state": True,
 }
 
@@ -30,7 +32,7 @@ async def test_critical_event_over_websocket_moves_module_into_focus(tmp_path):
     client = ModuleClient(MANIFEST, url=f"ws://127.0.0.1:{port}/module/ws", token=layer.hub.token)
     activations: list[dict] = []
 
-    @client.on_request("policy.activate")
+    @client.on_request("policy.activate")          # ядро шлёт workspace.enter; прежнее имя - алиас того же обработчика
     async def activate(body):
         activations.append(body)
         return {"ok": True, "policy": body["policy"]}
@@ -56,6 +58,7 @@ async def test_critical_event_over_websocket_moves_module_into_focus(tmp_path):
             assert activations and activations[-1]["policy"] == "observe"   # активная политика игры, не фоновая
             assert "task_id" in activations[-1] and activations[-1]["reason"]
             assert body["holder"] is not None and body["holder"]["module"] == "rimworld"
+            assert layer.workspaces.current == "rimworld" and layer.workspaces.reason == "critical"
             assert body["holder"]["policy"] == "observe"
             assert any(r["type"] == "switch" and r["reason"] for r in body["journal"])
             assert body["policies"]["rimworld"]["default"] == "afk"

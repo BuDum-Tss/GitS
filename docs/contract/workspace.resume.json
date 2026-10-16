@@ -1,0 +1,60 @@
+{
+  "name": "workspace.resume",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.5",
+  "errors": [
+    "unknown",
+    "unavailable",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "id задачи",
+        "minLength": 1
+      },
+      "policy": {
+        "type": "string",
+        "description": "политика"
+      },
+      "goal": {
+        "type": "string",
+        "description": "цель"
+      },
+      "checkpoint": {
+        "description": "сохранённое состояние"
+      },
+      "subgoals": {
+        "type": "array",
+        "description": "подцели"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "task_id"
+    ],
+    "title": "workspace.resume",
+    "description": "Ядро возвращает агента в среду модуля с её checkpoint (ТЗ 32, раньше `focus.resume`)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean",
+        "description": "возобновлено"
+      },
+      "policy": {
+        "type": "string",
+        "description": "политика"
+      }
+    },
+    "additionalProperties": true,
+    "title": "workspace.resume (ответ)"
+  }
+}

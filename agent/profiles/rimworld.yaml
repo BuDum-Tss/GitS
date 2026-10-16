@@ -9,9 +9,9 @@ memory_scopes: [rimworld]
 knowledge: [rimworld.wiki, rimworld.defs, rimworld.experience]
 attention:
   weights: {"rimworld.*": 1.5, "telegram.group": 0.4}
-activate:
-  foreground_apps: [rimworldwin64]
-  module_state: {rimworld: {game_running: true}}
+# ТЗ 32, WS-5: окно игры и game_running профиль не включают; он действует, пока агент в среде rimworld
+workspace: rimworld
+activate: {}
 priority: 50
-sticky_s: 120
+sticky_s: 0
 planned: false

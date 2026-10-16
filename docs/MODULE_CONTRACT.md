@@ -2,7 +2,7 @@
 
 Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора модуля: `docs/MODULES.md`, протокол: `docs/tz/01-module-contract.md`, ТЗ контракта: `docs/tz/31-module-contracts.md`.
 
-Версия протокола `PROTOCOL = 1`, версия контракта `1.4`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
+Версия протокола `PROTOCOL = 1`, версия контракта `1.5`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
 ## Версии и совместимость
 
@@ -21,6 +21,7 @@
 - `1.2`: ТЗ 27: core.memory.episodes (эпизоды памяти ядра)
 - `1.3`: core.memory.recall и core.memory.remember реализованы (были planned)
 - `1.4`: ТЗ 04: core.lookup, core.experience.add, core.kb.ingest реализованы (были planned)
+- `1.5`: ТЗ 32: поле манифеста workspace, запросы workspace.enter / workspace.exit / workspace.resume (policy.activate, focus.release, focus.resume остаются алиасами на один релиз)
 
 Устаревшее: нет.
 
@@ -1042,6 +1043,126 @@
 направление: core->module, вид: request, статус: **stable**, с версии 1.0.
 
 Коды ошибок: `unknown`, `unavailable`, `internal`.
+
+Тело:
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `task_id` | string | да | непустая | id задачи |
+| `policy` | string | нет | - | политика |
+| `goal` | string | нет | - | цель |
+| `checkpoint` | any | нет | - | сохранённое состояние |
+| `subgoals` | array | нет | - | подцели |
+
+Ответ (`result.value`):
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `ok` | boolean | нет | - | возобновлено |
+| `policy` | string | нет | - | политика |
+
+Пример:
+
+```json
+{
+  "task_id": "t1",
+  "policy": "working",
+  "goal": "g",
+  "checkpoint": {},
+  "subgoals": []
+}
+```
+
+### `workspace.enter`
+
+Ядро вводит агента в среду модуля (ТЗ 32, раньше `policy.activate`): только по импульсу (сообщение пользователя, самоимпульс) или по критическому сигналу. Модуль может отказать.
+
+направление: core->module, вид: request, статус: **stable**, с версии 1.5.
+
+Коды ошибок: `bad_request`, `unknown`, `unavailable`, `denied`, `internal`.
+
+`policy.activate` принимает тот же запрос (алиас на один релиз); SDK направляет оба имени к одному обработчику.
+
+Тело:
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `workspace` | string | нет | - | среда (id модуля) |
+| `policy` | string | нет | - | активная политика модуля |
+| `goal` | string | нет | - | цель |
+| `task_id` | string | нет | - | id задачи |
+| `event_id` | string | нет | - | id события |
+| `priority` | number | нет | - | приоритет |
+| `reason` | string | нет | - | причина входа: user, self, critical |
+| `restored` | boolean | нет | - | возобновление |
+| `checkpoint` | any | нет | - | сохранённое состояние |
+| `subgoals` | array | нет | - | подцели |
+
+Ответ (`result.value`):
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `ok` | boolean | нет | - | принято |
+| `policy` | string | нет | - | включённая политика |
+| `error` | string | нет | - | причина отказа |
+
+Пример:
+
+```json
+{
+  "workspace": "rimworld",
+  "goal": "зайти в колонию",
+  "reason": "user"
+}
+```
+
+### `workspace.exit`
+
+Ядро выводит агента из среды модуля и просит checkpoint (ТЗ 32, раньше `focus.release`).
+
+направление: core->module, вид: request, статус: **stable**, с версии 1.5.
+
+Коды ошибок: `unknown`, `unavailable`, `internal`.
+
+`focus.release` принимает тот же запрос (алиас на один релиз).
+
+Тело:
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `reason` | string | нет | - | причина |
+| `task_id` | string | нет | - | id задачи |
+| `force` | boolean | нет | - | принудительно |
+| `event_id` | string | нет | - | id события |
+| `checkpoint` | boolean | нет | - | нужен checkpoint |
+
+Ответ (`result.value`):
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `ok` | boolean | нет | - | освобождено |
+| `checkpoint` | object | нет | - | состояние для возобновления |
+| `error` | string | нет | - | причина отказа |
+
+Пример:
+
+```json
+{
+  "reason": "done",
+  "force": true,
+  "checkpoint": true
+}
+```
+
+### `workspace.resume`
+
+Ядро возвращает агента в среду модуля с её checkpoint (ТЗ 32, раньше `focus.resume`).
+
+направление: core->module, вид: request, статус: **stable**, с версии 1.5.
+
+Коды ошибок: `unknown`, `unavailable`, `internal`.
+
+`focus.resume` принимает тот же запрос (алиас на один релиз).
 
 Тело:
 

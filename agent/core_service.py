@@ -33,7 +33,6 @@ import lesson_service
 import impulse_service
 import focus_dispatch
 import profile_manager
-from domain import workspace as ws_dom
 import settings
 import speech_out
 import supervisor as supervisor_mod
@@ -97,18 +96,28 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         # одно состояние «не беспокоить» для всего агента: настройки ядра dnd / quiet_until (дашборд, голос, фокус)
         dnd_all_of=settings.quiet_active, set_dnd_all=lambda on: settings.update(dnd=on, quiet_until=0.0),
         profile_quiet_of=lambda: holder["profiles"].current().focus_quiet if "profiles" in holder else (),
-        modules_of=lambda: [mid for mid in modules.records if hub.is_connected(mid)])
-    attention.on_decided = focus_mgr.on_decided
-    # среды агента (ТЗ 32): фокус как текущая среда; модульные среды включает только импульс, обмен с модулем делает менеджер фокуса
+        modules_of=lambda: [mid for mid in modules.records if hub.is_connected(mid)],
+        auto_switch=False, workspace_names=True)      # ТЗ 32: слот не выбирает среду, имена запросов workspace.*
+    # среды агента (ТЗ 32): фокус как текущая среда; среду модуля объявляет его манифест и включает только импульс (сообщение
+    # пользователя, самоимпульс) или критический сигнал; обмен с модулем (вход, выход, checkpoint) делает менеджер фокуса
+    async def enter_module(ws: str, goal: str) -> dict:
+        if not goal:                                     # вход без новой цели: вернуть приостановленную задачу, если она есть
+            res = await focus_mgr.resume_module(ws)
+            if res.get("ok"):
+                return res
+        return await focus_mgr.request(ws, goal=goal, source="workspace")
+
     workspaces = WorkspaceManager(
-        activate=lambda ws, goal: focus_mgr.request(ws, goal=goal, source="workspace"),
+        activate=enter_module,
         release=lambda ws, reason, force: focus_mgr.release_holder(reason=reason, force=force),
         interruptible=lambda ws: bool((_module_status(modules, ws) or {}).get("interruptible", True)),
-        connected=hub.is_connected,
+        connected=hub.is_connected, status_of=lambda ws: _module_status(modules, ws),
+        is_background=focus_mgr.is_background,
+        modules_of=lambda: [(rec.id, rec.manifest, rec.title) for rec in modules.records.values() if rec.manifest],
+        on_change=lambda rec: holder["profiles"].poke(),           # профиль среды (тон, инструменты) следует за средой
         log=lambda kind, **data: events_log.log_nowait("workspace", f"{data.get('from')} -> {data.get('to')}", type=kind, **data))
-    for module_id, title in ws_dom.MODULE_WORKSPACES.items():
-        workspaces.register_module(module_id, title)
     holder["workspaces"] = workspaces
+    attention.on_decided = workspaces.on_event          # ТЗ 32, WS-6: события чужих сред это сигналы, а не претенденты на слот
     attention.policy_options = focus_mgr.policy_options         # подсказка политики для GLiNER (первый эшелон)
     presence.listener = hub.broadcast_presence
     speech = getattr(companion, "speech", None)
@@ -142,6 +151,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         hub.notify("profile", holder["profiles"].info())
 
     profiles = profile_manager.ProfileManager(battery=battery, foreground_app=foreground, module_state=modules.state_data,
+                                              workspace_of=lambda: workspaces.current,
                                               on_change=on_profile_change, subgraph=live_subgraph)
     holder["profiles"] = profiles
     attention.profiles = profiles
@@ -179,7 +189,8 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                                     only_core=lambda: bool(settings.load().get("only_core")))
     modules.supervisor = sup
     builtin.register_core_tools(registry, modules, attention, focus_mgr,
-                                switch=lambda cid: layer.character_switch.tool(cid))   # ТЗ 05, CHR-7
+                                switch=lambda cid: layer.character_switch.tool(cid),   # ТЗ 05, CHR-7
+                                workspaces=workspaces)                                  # ТЗ 32: workspace.switch, workspace.status
 
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, profiles=profiles,
                             supervisor=sup, presence=presence, game_order=game_order, tasks=[], focus=focus_mgr,
@@ -190,6 +201,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         await attention.start()                          # планировщик речи, сроки фокуса, чистка правил
         await focus_mgr.start()                          # очередь и переходы фокуса (ТЗ 18), состояние с диска
         layer.tasks.append(asyncio.get_running_loop().create_task(profiles.run()))
+        layer.tasks.append(asyncio.get_running_loop().create_task(workspaces.run()))
         await sup.start()
 
     async def stop():

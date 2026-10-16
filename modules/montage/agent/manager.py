@@ -19,6 +19,7 @@ import intake as intake_mod
 import media
 import review_mode as rm
 from core_api import CoreAPI
+from env_state import WorkspaceState
 from gits_sdk import ToolError
 from jobs import FINISHED, Job, JobStore
 from layout import Layout
@@ -66,6 +67,26 @@ class Manager:
         self._reaper: asyncio.Task | None = None
         self._panel: asyncio.Task | None = None
         pipeline.state_hook = self.publish_state
+        self.env = WorkspaceState()                     # среда агента «Монтаж» (ТЗ 32)
+
+    # ================================================================================================ среда агента (ТЗ 32)
+
+    def _busy(self) -> bool:
+        return bool(self.queue) or self.current is not None
+
+    async def enter_workspace(self, body: dict) -> dict:
+        """workspace.enter (прежнее policy.activate): агент входит в монтаж. Задачи, уже стоящие в очереди, становятся делом среды."""
+        res = self.env.enter(str(body.get("goal") or "")[:200], str(body.get("task_id") or ""), busy=self._busy(),
+                             restored=bool(body.get("restored")))
+        await self.publish_state()
+        return res
+
+    async def exit_workspace(self, body: dict) -> dict:
+        """workspace.exit (прежнее focus.release): монтаж в фон; задачи идут дальше, checkpoint хранит цель и очередь."""
+        res = self.env.exit({"goal": self.env.goal, "was_active": self.env.active, "queue": list(self.queue),
+                             "current": self.current})
+        await self.publish_state()
+        return res
 
     # ================================================================================================ поставить задачу
 
@@ -125,6 +146,7 @@ class Manager:
         await asyncio.to_thread(self.store.save, job)
         await asyncio.to_thread(self.store.log, job, "created", request={k: v for k, v in request.items() if k != "sources"})
         self._jobs[job.job_id] = job
+        self.env.note_job()
         await self._enqueue(job, "Задача поставлена в очередь")
         return {"job_id": job.job_id}
 
@@ -405,6 +427,7 @@ class Manager:
         queued = [j for j in (self._jobs.get(i) for i in self.queue) if j is not None]
         cur = self._jobs.get(self.current) if self.current else None
         stats = rm.agreement(await asyncio.to_thread(self.store.verdicts))
+        self.env.finish_if_done(busy=bool(queued) or cur is not None)
         summary = f"задач в очереди {len(queued)}"
         if cur is not None:
             summary += f", выполняется: {cur.data['title']} ({cur.stage}, {round(cur.data['progress'] * 100)} %)"
@@ -416,6 +439,7 @@ class Manager:
         data = {"queue": [self.describe(j) for j in queued], "current": self.describe(cur) if cur else None,
                 "review": {**stats, "text": rm.agreement_text(stats), "mode": mode, "mode_note": why},
                 # папки для ссылок пространства «Монтаж» (path_from в манифесте, TZ 15)
+                "status": self.env.status(cur.stage if cur is not None else None),       # ТЗ 18, 32: статус среды для ядра
                 "jobs_dir": os.path.abspath(str(self.layout.jobs)),
                 "output_dir": os.path.expandvars(str(self.pipeline.setting("output_dir")))}
         client = getattr(self.core, "client", None)

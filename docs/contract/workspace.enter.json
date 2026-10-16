@@ -1,0 +1,82 @@
+{
+  "name": "workspace.enter",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.5",
+  "errors": [
+    "bad_request",
+    "unknown",
+    "unavailable",
+    "denied",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "workspace": {
+        "type": "string",
+        "description": "среда (id модуля)"
+      },
+      "policy": {
+        "type": "string",
+        "description": "активная политика модуля"
+      },
+      "goal": {
+        "type": "string",
+        "description": "цель"
+      },
+      "task_id": {
+        "type": "string",
+        "description": "id задачи"
+      },
+      "event_id": {
+        "type": "string",
+        "description": "id события"
+      },
+      "priority": {
+        "type": "number",
+        "description": "приоритет"
+      },
+      "reason": {
+        "type": "string",
+        "description": "причина входа: user, self, critical"
+      },
+      "restored": {
+        "type": "boolean",
+        "description": "возобновление"
+      },
+      "checkpoint": {
+        "description": "сохранённое состояние"
+      },
+      "subgoals": {
+        "type": "array",
+        "description": "подцели"
+      }
+    },
+    "additionalProperties": true,
+    "title": "workspace.enter",
+    "description": "Ядро вводит агента в среду модуля (ТЗ 32, раньше `policy.activate`): только по импульсу (сообщение пользователя, самоимпульс) или по критическому сигналу. Модуль может отказать."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean",
+        "description": "принято"
+      },
+      "policy": {
+        "type": "string",
+        "description": "включённая политика"
+      },
+      "error": {
+        "type": "string",
+        "description": "причина отказа"
+      }
+    },
+    "additionalProperties": true,
+    "title": "workspace.enter (ответ)"
+  }
+}

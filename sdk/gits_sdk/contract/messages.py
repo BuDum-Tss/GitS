@@ -414,6 +414,52 @@ _c_focus_resume = Message(
     response_valid=({"ok": True}, {}), response_invalid=({"ok": 1},),
 )
 
+_c_ws_enter = Message(
+    "workspace.enter", C2M, REQUEST,
+    "Ядро вводит агента в среду модуля (ТЗ 32, раньше `policy.activate`): только по импульсу (сообщение пользователя, "
+    "самоимпульс) или по критическому сигналу. Модуль может отказать.",
+    since="1.5",
+    request=(F("workspace", "string", False, "среда (id модуля)"), F("policy", "string", False, "активная политика модуля"),
+             F("goal", "string", False, "цель"), F("task_id", "string", False, "id задачи"),
+             F("event_id", "string", False, "id события"), F("priority", "number", False, "приоритет"),
+             F("reason", "string", False, "причина входа: user, self, critical"),
+             F("restored", "boolean", False, "возобновление"), F("checkpoint", "any", False, "сохранённое состояние"),
+             F("subgoals", "array", False, "подцели")),
+    response=(F("ok", "boolean", False, "принято"), F("policy", "string", False, "включённая политика"),
+              F("error", "string", False, "причина отказа")),
+    errors=("bad_request", "unknown", "unavailable", "denied", "internal"),
+    note="`policy.activate` принимает тот же запрос (алиас на один релиз); SDK направляет оба имени к одному обработчику.",
+    valid=({"workspace": "rimworld", "goal": "зайти в колонию", "reason": "user"}, {"policy": "working"}, {}), invalid=({"goal": 5},),
+    response_valid=({"ok": True, "policy": "working"}, {}), response_invalid=({"ok": "да"},),
+)
+_c_ws_exit = Message(
+    "workspace.exit", C2M, REQUEST,
+    "Ядро выводит агента из среды модуля и просит checkpoint (ТЗ 32, раньше `focus.release`).",
+    since="1.5",
+    request=(F("reason", "string", False, "причина"), F("task_id", "string", False, "id задачи"),
+             F("force", "boolean", False, "принудительно"), F("event_id", "string", False, "id события"),
+             F("checkpoint", "boolean", False, "нужен checkpoint")),
+    response=(F("ok", "boolean", False, "освобождено"), F("checkpoint", "object", False, "состояние для возобновления"),
+              F("error", "string", False, "причина отказа")),
+    errors=("unknown", "unavailable", "internal"),
+    note="`focus.release` принимает тот же запрос (алиас на один релиз).",
+    valid=({"reason": "done", "force": True, "checkpoint": True}, {}), invalid=({"force": "да"},),
+    response_valid=({"ok": True, "checkpoint": {}}, {"ok": False, "error": "занята"}), response_invalid=({"checkpoint": 3},),
+)
+_c_ws_resume = Message(
+    "workspace.resume", C2M, REQUEST,
+    "Ядро возвращает агента в среду модуля с её checkpoint (ТЗ 32, раньше `focus.resume`).",
+    since="1.5",
+    request=(F("task_id", "string", True, "id задачи", nonempty=True), F("policy", "string", False, "политика"),
+             F("goal", "string", False, "цель"), F("checkpoint", "any", False, "сохранённое состояние"),
+             F("subgoals", "array", False, "подцели")),
+    response=(F("ok", "boolean", False, "возобновлено"), F("policy", "string", False, "политика")),
+    errors=("unknown", "unavailable", "internal"),
+    note="`focus.resume` принимает тот же запрос (алиас на один релиз).",
+    valid=({"task_id": "t1", "policy": "working", "goal": "g", "checkpoint": {}, "subgoals": []},), invalid=({}, {"task_id": ""}),
+    response_valid=({"ok": True}, {}), response_invalid=({"ok": 1},),
+)
+
 # ── ядро -> модуль, без ответа ────────────────────────────────────────────────
 
 _speak = Message(
@@ -516,7 +562,8 @@ CORE_REQUEST_MESSAGES = (_ask, _tts, _tool_call, _lookup, _recall, _remember, _e
                          _claude_usage, _web_search, _llm_ask, _events_tail, _claude_locate, _episodes)
 MODULE_NOTE_MESSAGES = (_hello, _event, _say, _emotion, _state, _job_update, _panel_set, _log)
 MODULE_REQUEST_MESSAGES = (_c_tool_call, _c_tool_check, _c_job_cancel, _c_job_list, _c_graph_get, _c_deliver, _c_tts,
-                           _c_panel_action, _c_policy_activate, _c_focus_release, _c_focus_resume)
+                           _c_panel_action, _c_policy_activate, _c_focus_release, _c_focus_resume,
+                           _c_ws_enter, _c_ws_exit, _c_ws_resume)
 CORE_NOTE_MESSAGES = (_welcome, _reject, _job_answer, _speak, _speak_stop, _shutdown)
 TOPIC_MESSAGES = (_t_presence, _t_settings, _t_profile, _t_battery, _t_character, _t_module)
 
