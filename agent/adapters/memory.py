@@ -4,9 +4,11 @@
 подставляет ядро уже после создания компаньона. Пока объекта нет (None), запись ничего не делает, чтение отдаёт
 пустое значение. Формат файлов памяти этим адаптером не меняется.
 """
+import time
 from typing import Any, Callable
 
 import character_memory
+import flow_trace
 
 
 class UserMemoryAdapter:
@@ -63,7 +65,11 @@ class UserMemoryAdapter:
 
     def search(self, query: str, k: int = 6) -> list[dict]:
         store = self._store()
-        return store.search(query, k=k) if store is not None else []
+        t0 = time.perf_counter()
+        hits = store.search(query, k=k) if store is not None else []
+        flow_trace.step(None, "graph_memory", "planner", "graph_memory", "memory_read", ms=(time.perf_counter() - t0) * 1000,
+                        size=len(query or ""), label=f"hits={len(hits)}")
+        return hits
 
     async def recall(self, query: str, k: int = 6) -> list[dict]:
         """Записи по теме (как `search`) и, если подключены эпизоды, эпизоды и дневник по смыслу (гибридный поиск, ТЗ 27).
@@ -94,6 +100,7 @@ class UserMemoryAdapter:
             mem.add_dialogue(role, text)
 
     def add_fact(self, text: str, kind: str = "user", importance: int = 3, due_days: float | None = None) -> bool:
+        flow_trace.step(None, "graph_memory", "working_memory", "graph_memory", "memory_write", size=len(text or ""), label=kind)
         mem = self._get_mem()
         return bool(mem.add_fact(text, kind=kind, importance=importance, due_days=due_days)) if mem is not None else False
 

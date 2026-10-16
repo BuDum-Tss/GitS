@@ -62,7 +62,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "чат, настройки, пульт, оценки",
      "out": "UserInput как Event",
-     "now": "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider"
+     "now": "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (flow_trace.py, flow_spec.py, /api/flow)"
     }
    ]
   },

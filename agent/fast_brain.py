@@ -22,6 +22,7 @@ import httpx
 
 import character
 import events_log
+import flow_trace
 import journal
 import reflex_actions
 import salience  # ТЗ 24, TRC-4: изменение отношений меняет яркость события
@@ -170,6 +171,7 @@ async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
     parallel=True (ТЗ 25, FAST-3): короткий вызов мгновенного уровня (подтверждение, филлер) идёт мимо блокировки и не
     вытесняет других: иначе фраза «принято» ждала бы план, который она и должна опередить."""
     global _lock, _fg_waiting
+    _t_llm = time.perf_counter()
     if _lock is None:
         _lock = asyncio.Lock()
     content = user
@@ -215,6 +217,8 @@ async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
             await asyncio.sleep(1.0)          # вытеснили: подождать и повторить
         if r is None:
             raise Preempted("фоновый вызов вытеснен срочными")
+    flow_trace.step(None, "gemma", "planner", "gemma", "llm", ms=(time.perf_counter() - _t_llm) * 1000, size=len(system) + len(str(user)),
+                    label="background" if background else "gemma")
     data = r.json()
     if "choices" not in data:   # LM Studio вернула ошибку (модель грузится, перегрузка): объясняем, а не падаем с KeyError
         raise RuntimeError(str(data.get("error") or data)[:200])

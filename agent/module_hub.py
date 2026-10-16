@@ -22,6 +22,7 @@ from typing import Any, Callable
 from aiohttp import WSMsgType, web
 
 import events_log
+import flow_trace
 import settings
 from gits_sdk import contract
 from gits_sdk import protocol as P
@@ -461,6 +462,9 @@ class ModuleHub:
             if kind not in {e.kind for e in conn.spec.emits} and kind not in conn.warned_kinds:
                 conn.warned_kinds.add(kind)
                 logger.warning(f"Модуль {mid}: событие «{kind}» не объявлено в emits")
+            tr = body.get("trace") if isinstance(body.get("trace"), dict) else {}
+            flow_trace.step(tr.get("id") or None, "bus", f"module:{mid}", "bus", "event", size=len(str(body.get("text") or "")),
+                            label=kind)
             if self.sink is not None:
                 await self.sink.submit(mid, body)
         elif t == "say":

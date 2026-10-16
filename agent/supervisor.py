@@ -325,6 +325,10 @@ class Supervisor:
         return self.logs_dir / f"{module_id}.log"
 
     def should_run(self, module_id: str) -> bool:
+        if os.environ.get("GITS_NO_MODULES") == "1":      # ТЗ 17, FLOW-1: режим «только ядро», службы ядра (decider) остаются
+            spec = self.specs[module_id]
+            if spec.kind != "service" or os.environ.get("GITS_NO_DECIDER") == "1":
+                return False
         return self.specs[module_id].autostart and self._enabled(module_id)
 
     # ── управление ──────────────────────────────────────────────────────────
