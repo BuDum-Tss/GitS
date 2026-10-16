@@ -8,7 +8,7 @@ from gits_sdk import ModuleClient
 from gits_sdk.testing import FakeCore
 
 import events_log
-from app import TelegramModule
+from telegram_module import TelegramModule
 from manifest import build_manifest
 
 SHARED = {"telegram": False, "telegram_voice": False, "telegram_confirm": False, "quiet_until": 0.0, "dnd": False}

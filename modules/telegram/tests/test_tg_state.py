@@ -3,7 +3,7 @@ import asyncio
 import time
 from types import SimpleNamespace
 
-import app as app_mod
+import telegram_module as app_mod
 from tg_rig import Rig
 
 POST = "Объявление для сотрудников: кофе закончился, эксперименты отменяются."

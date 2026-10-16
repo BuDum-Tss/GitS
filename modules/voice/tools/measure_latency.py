@@ -74,7 +74,7 @@ async def measure_module(n: int, audio: str | None, skip_utter: bool) -> dict:
     import tts_engine
     from gits_sdk import ModuleClient
     from gits_sdk.testing import FakeCore
-    from app import VoiceModule
+    from voice_module import VoiceModule
     from manifest import build_manifest
 
     class SilentPlayer:

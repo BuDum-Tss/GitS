@@ -17,7 +17,7 @@
 | `launch_app`: любое приложение, в том числе RimWorld (`app_launcher` → `game_launcher.launch`) | да | флаг `announce` в манифесте | долгий запуск, до 120 с |
 | `operate_screen`: цель по экрану, шаги мышью и клавиатурой | да | флаг `announce` | долгая серия действий, локальная модель шагает по экрану |
 | `claude_task`: задача Claude на ПК (job) | да | флаг `announce` | долгая задача, Claude сам спрашивает разрешения на изменения |
-| `take_screenshot` с `target=screen`: весь экран | да | `client.say(mode="fact", announce=True)` в `app.py` | заметно: на снимок могут попасть чужие окна |
+| `take_screenshot` с `target=screen`: весь экран | да | `client.say(mode="fact", announce=True)` в `desktop_module.py` | заметно: на снимок могут попасть чужие окна |
 | `take_screenshot` с `target=game` (и `focus=true`) | нет | - | быстрый снимок окна; переключение окна - короткая операция |
 | `menu_click`: «Быстрый запуск», «Продолжить», «Загрузить» в RimWorld | **было нет, добавлено**: флаг `announce` | флаг `announce` (путь ядра и дашборда `POST /api/menu_click` один и тот же) | нажатие начинает или загружает партию: запуск игры |
 | `focus_window`, `click`, `click_text`, `type_text`, `press_key`, `scroll`, `list_windows`, `read_screen`, `describe_screen`, `last_screenshot`, `list_apps` | нет | - | быстрые операции; `operate_screen` объявлен целиком |

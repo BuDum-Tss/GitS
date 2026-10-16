@@ -7,7 +7,7 @@ import numpy as np
 from gits_sdk import ModuleClient
 from gits_sdk.testing import FakeCore
 
-from app import VoiceModule
+from voice_module import VoiceModule
 from manifest import build_manifest
 from stt_client import Transcript
 

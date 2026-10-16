@@ -22,7 +22,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(Path(env("GITS_SECRETS_FILE") or GITS / "agent" / "secrets.env"))
 
 import events_log  # noqa: E402
-from app import DesktopModule  # noqa: E402
+from desktop_module import DesktopModule  # noqa: E402
 from gits_sdk import ModuleClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 

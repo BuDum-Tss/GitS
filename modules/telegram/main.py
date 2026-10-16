@@ -20,7 +20,7 @@ from common import default_memory_dir, secrets_file  # noqa: E402
 load_dotenv(secrets_file())                       # секреты не в git; файла нет - модуль «не настроен»
 
 import events_log  # noqa: E402
-from app import TelegramModule  # noqa: E402
+from telegram_module import TelegramModule  # noqa: E402
 from gits_sdk import ModuleClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 

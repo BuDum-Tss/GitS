@@ -18,6 +18,7 @@
 - Тесты: `agent/tests/test_trace_fixes.py`, `modules/voice/tests/test_voice_trace.py` (случай без звука).
 
 ### Changed
+- `modules/{telegram,voice,desktop}/app.py` переименованы в `telegram_module.py`, `voice_module.py`, `desktop_module.py`: пакет ядра `agent/app/` (ТЗ 29) затенял одноимённый модуль, и тесты Telegram падали при импорте внимания.
 - `AGENTS.md`: правило поддерживать схему архитектуры актуальной (менять `agent/tools/architecture/spec.py` и пересобирать), строка в карте модулей.
 - Схема ядра: текст на блоках снова читается (заливка слоя смешивается с фоном темы заранее, Cytoscape не применяет альфу из rgba); добавлена легенда (слои, виды стрелок, «нужно выделить»).
 - Запись реплики пользователя в журнал идёт через `log_nowait` (не ждёт коммита SQLite; ТЗ 24). Поведение агента не меняется.

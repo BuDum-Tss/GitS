@@ -10,10 +10,10 @@ from gits_sdk import ModuleClient, ToolError
 from gits_sdk.protocol import validate_manifest
 from gits_sdk.testing import FakeCore
 
-import app as appmod
+import desktop_module as appmod
 import pc_control
 import screenshots
-from app import DesktopModule
+from desktop_module import DesktopModule
 from manifest import build_manifest
 
 SETTINGS = {"vision": True, "auto_accept": False, "dnd": False, "quiet_until": 0.0}

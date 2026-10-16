@@ -20,7 +20,7 @@ from common import default_memory_dir, secrets_file  # noqa: E402
 load_dotenv(secrets_file())                       # адреса сервисов и модели; файла нет - значения по умолчанию
 
 import events_log  # noqa: E402
-from app import VoiceModule  # noqa: E402
+from voice_module import VoiceModule  # noqa: E402
 from gits_sdk import ModuleClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 

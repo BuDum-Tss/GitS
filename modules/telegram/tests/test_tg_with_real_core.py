@@ -15,7 +15,7 @@ from tg_rig import NetStubs
 import approvals
 import core_requests
 import settings
-from app import TelegramModule
+from telegram_module import TelegramModule
 from conversation_io import Channel, ConversationIO
 from environments import builtin
 from gits_sdk import ModuleClient

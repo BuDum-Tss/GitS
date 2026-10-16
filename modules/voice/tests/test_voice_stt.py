@@ -11,7 +11,7 @@ import httpx
 import numpy as np
 import pytest
 
-import app
+import voice_module as app
 import hearing as h
 import local_stt
 import mic_listener as ml
