@@ -45,7 +45,8 @@ class PresenceTracker:
     функция (шина модулей), она сама решает, как рассылать."""
 
     DEFAULTS = {"speaking": False, "utterance_id": None, "segment": "", "emotion": "idle", "emotion_ts": 0.0, "busy": False,
-                "focus": "idle", "user_speaking": False, "last_user_ts": 0.0, "last_say": "", "last_say_ts": 0.0}
+                "focus": "idle", "user_speaking": False, "last_user_ts": 0.0, "last_say": "", "last_say_ts": 0.0,
+                "valence": 0.0, "arousal": 0.2, "mood": 0.0, "mood_emotion": "idle"}
 
     def __init__(self, listener: Callable[[dict], None] | None = None):
         self.state = dict(self.DEFAULTS)
@@ -124,6 +125,7 @@ class VoiceModuleSpeech:
         self._clock = clock
         self.hub = None                              # ModuleHub и ModuleRegistry: ставит ядро (attach)
         self.modules = None
+        self.tone_of: Callable[[], dict] | None = None      # ТЗ 26: сдвиг голоса {rate_pct, pitch_hz}; ставит ядро
         self._live: dict[str, dict] = {}             # utterance_id -> {sent, started, segment, stopping}
 
     def attach(self, hub, modules) -> None:
@@ -154,6 +156,11 @@ class VoiceModuleSpeech:
         self._live[utterance_id] = {"sent": self._clock(), "started": False, "segment": "", "stopping": False}
         t = latency_trace.current()                  # трасса задержки реплики (ТЗ 24, TRC-1): модуль голоса допишет звук
         body = {"utterance_id": utterance_id, "text": text, "emotion": emotion, "replace": replace}
+        if self.tone_of is not None:                 # ТЗ 26: ограниченный сдвиг голоса от настроения
+            try:
+                body["tone"] = self.tone_of()
+            except Exception:
+                pass
         if t is not None:
             body["trace"] = t.wire()
             latency_trace.speak_sent(t)

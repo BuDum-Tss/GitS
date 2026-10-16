@@ -54,10 +54,15 @@ def emotion(emotion_label: str, intensity, reason: str, character: str = "", **d
                           bg=emotion_label in BACKGROUND_EMOTIONS, trace_id=tid, **data)
 
 
+mistake_hook = None       # ТЗ 26: callable(kind), ядро ставит AffectService.on_mistake
+
+
 def mistake(kind: str, text: str, refs: list | None = None, **data) -> None:
     """Метка ошибки (TRC-5). Неизвестный вид не пишется: список видов задан ТЗ."""
     if kind not in MISTAKE_TYPES:
         return
+    if mistake_hook is not None:
+        mistake_hook(kind)
     events_log.log_nowait("mistake", _clean(text, 300), type=kind, refs=[r for r in (refs or []) if r is not None][:10],
                           trace_id=data.pop("trace_id", None) or _trace_id(),
                           **{k: _clean(v, 300) if isinstance(v, str) else v for k, v in data.items()})

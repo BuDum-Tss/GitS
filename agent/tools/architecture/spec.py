@@ -87,7 +87,7 @@ GROUPS = [
         N("queue", "SpeechQueue", "A", "приоритеты, условия «не перебиваю», интервалы, прерывание, TTL; чистую политику выбора выделить в домен позже", "Utterance", "speech_queue.py: 296 строк, асинхронный координатор (asyncio-задачи), в домен целиком не переносится"),
         N("digest", "Digest", "A", "сводка событий D1 и предложение рассказать", "SpeechCandidate", "выделен (R3): app/digest.py"),
         N("out", "SpeechOutput и каналы (контракты)", "I", "голос (speak), чат, Telegram (deliver), питомец", "доставка", "speech_out.py, conversation_io.py"),
-        N("aff", "Presence и эмоции", "A", "говорит ли, эмоция, присутствие; (план) настроение", "PresenceState", "PresenceTracker + fast_brain.publish"),
+        N("aff", "Presence и эмоции", "A", "говорит ли, эмоция, присутствие; настроение (валентность, возбуждение, быстрые эмоции) затухает к базовому уровню персонажа", "PresenceState", "выделено (ТЗ 26): app/affect_service.py поверх domain/affect.py; PresenceTracker, fast_brain.publish; настроение в ContextBuilder, тон голоса, пороги внимания"),
         N("hubout", "ModuleHub (исходящие)", "I", "доставка команд модулям: tool.call, speak, policy.activate, job.answer", "ToolResult, события", "тот же module_hub.py, смешан с приёмом"),
     ]),
     dict(id="g_mem", col="BOTTOM", title="Память", tag="A",

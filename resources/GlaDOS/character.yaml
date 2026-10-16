@@ -20,5 +20,12 @@ voice:                                        # голос: референс к�
   pitch: -25Hz
   rate: -12%
 
-emotions: {}                                  # набор эмоций задаёт fast_brain (общий для всех персонажей)
+emotions:                                     # ТЗ 26: эмоциональные параметры (набор подписей задаёт fast_brain)
+  baseline_valence: -0.05                     # базовый уровень: чуть холоднее нейтрального
+  baseline_arousal: 0.2
+  emotion_decay_min: 8                        # быстрые эмоции гаснут за минуты
+  mood_decay_h: 5                             # настроение за часы
+  inertia: 0.35                               # сухая, поддаётся не сразу
+  max_shift_per_hour: 0.5
+  sensitivity: {chat: 0.9, game: 1.0, mistake: 0.7, relation: 0.8, default: 1.0}
 defaults: {}                                  # значения настроек, которые персонаж хочет по умолчанию (пока пусто)

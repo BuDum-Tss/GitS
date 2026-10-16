@@ -374,6 +374,7 @@ class VoiceModule:
                 return None
             if not c.enabled:
                 return None
+            tts_engine.set_tone(body.get("tone"))        # ТЗ 26: ограниченный сдвиг голоса от настроения
             await self.speaker.speak(uid, text, body.get("emotion"), bool(body.get("replace")),
                                      trace=body.get("trace") if isinstance(body.get("trace"), dict) else None)
             return None
