@@ -37,6 +37,7 @@ class DashboardContext:
     character: Any = None          # CharacterSwitch
     attention: Any = None          # Attention
     focus: Any = None              # FocusManager
+    workspace: Any = None          # WorkspaceManager (ТЗ 32)
     impulses: Any = None           # импульсы и размышление (ТЗ 30)
     affect: Any = None             # AffectService (ТЗ 26)
     chat_callback: Callable[[str], Any] | None = None

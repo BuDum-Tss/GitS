@@ -33,6 +33,7 @@ class SleepScheduler:
         self.idle_seconds, self.last_user_ts, self.busy = idle_seconds, last_user_ts, busy
         self.grace_s, self.poll_s, self.watch_s = grace_s, poll_s, watch_s
         self.state = "awake"
+        self.on_state: Callable[[str], None] | None = None     # сон начался или кончился (ТЗ 32: среда sleep)
         self.plan: dom.SleepPlan | None = None
         self.last_report: dict | None = None
         self.interrupted_after_s: float | None = None
@@ -92,6 +93,7 @@ class SleepScheduler:
         self._stop = asyncio.Event()
         self._asked_at = None
         self.plan, self.state, self._started_at = plan, "sleeping", self.clock()
+        self._notify_state()
         self._task = asyncio.create_task(self._run(plan))
         self._notify()
         return self._task
@@ -148,6 +150,14 @@ class SleepScheduler:
                 self.interrupted_after_s = round(self.clock() - self._asked_at, 3)
             self.state = "awake"
             self._notify()
+            self._notify_state()
+
+    def _notify_state(self) -> None:
+        if self.on_state is not None:
+            try:
+                self.on_state(self.state)
+            except Exception as e:
+                logger.warning(f"Смена состояния сна: {e}")
 
     # ── жизненный цикл ───────────────────────────────────────────────────────
 
