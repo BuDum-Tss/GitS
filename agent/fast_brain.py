@@ -238,6 +238,12 @@ async def classify(evt: dict, rel=None, timeout: float = TIMEOUT) -> dict:
 
 
 _listeners: list = []
+_affect = None          # AffectService (ТЗ 26): оценка событий и интенсивность реплик; None - состояния эмоций нет
+
+
+def set_affect(service) -> None:
+    global _affect
+    _affect = service
 
 
 def add_listener(callback):
@@ -255,7 +261,13 @@ def remove_listener(callback) -> None:
 def publish(evt_name: str, res: dict):
     """Записать эмоцию для дашборда и сообщить подписчикам (presence для модулей) и в журнал (ТЗ 24, TRC-3)."""
     ts = time.time()
-    journal.emotion(res["emotion"], res.get("intensity", 1), reason=evt_name, character=character.active().id)
+    intensity = res.get("intensity", 1)
+    if _affect is not None:
+        if evt_name == "say":                   # эмоция реплики: интенсивность из состояния (ТЗ 26, AFF-5)
+            intensity = _affect.reply_intensity(res["emotion"])
+        else:
+            _affect.on_emotion(evt_name, {**res, "intensity": intensity})
+    journal.emotion(res["emotion"], intensity, reason=evt_name, character=character.active().id)
     for callback in list(_listeners):
         try:
             callback(res["emotion"], ts)
@@ -300,7 +312,7 @@ async def react_chat(text: str, rel=None) -> dict | None:
         return None
     if emo not in EMOTIONS:
         emo = "looking"
-    res = {"emotion": emo, "action": "none", "source": "llm", "intensity": intensity,
+    res = {"emotion": emo, "action": "none", "source": "llm", "intensity": intensity, "delta": delta,
            "ms": round((time.perf_counter() - t0) * 1000)}
     publish("chat", res)
     sal, reasons = salience.score(salience.factors_of(delta=delta))

@@ -745,6 +745,28 @@ def set_focus(focus):
     _FOCUS = focus
 
 
+_AFFECT = None      # AffectService (ТЗ 26), ставит ядро
+
+
+def set_affect(affect) -> None:
+    global _AFFECT
+    _AFFECT = affect
+
+
+async def handle_api_affect(request: web.Request) -> web.Response:
+    """Состояние эмоций (ТЗ 26, AFF-7): настроение, эмоции, график за 24 часа."""
+    if _AFFECT is None:
+        return web.json_response({"available": False})
+    return web.json_response({"available": True, **_AFFECT.snapshot(with_history=True)})
+
+
+async def handle_api_affect_reset(request: web.Request) -> web.Response:
+    if _AFFECT is None:
+        return web.json_response({"available": False})
+    _AFFECT.reset()
+    return web.json_response({"available": True, **_AFFECT.snapshot(with_history=True)})
+
+
 async def handle_api_focus(request: web.Request) -> web.Response:
     """Фокус (ТЗ 18, FOC-9): кто в фокусе, очередь, checkpoint, журнал переходов, политики модулей."""
     if _FOCUS is None:
@@ -874,6 +896,8 @@ def build_app() -> web.Application:
     app.router.add_get("/api/attention", handle_api_attention)
     app.router.add_post("/api/attention/rules/clear", handle_api_attention_clear)
     app.router.add_get("/api/focus", handle_api_focus)
+    app.router.add_get("/api/affect", handle_api_affect)
+    app.router.add_post("/api/affect/reset", handle_api_affect_reset)
     app.router.add_post("/api/focus/pin", handle_api_focus_pin)
     app.router.add_post("/api/focus/dnd", handle_api_focus_dnd)
     app.router.add_post("/api/focus/allow_once", handle_api_focus_once)

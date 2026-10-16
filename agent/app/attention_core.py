@@ -148,6 +148,7 @@ class AttentionContext:
         self.on_decided: Callable[[Item, str, float, str | None], None] | None = None
         # ТЗ 18, первый эшелон: варианты подсказки политики для классификатора; None - не спрашиваем
         self.policy_options: Callable[[], dict] | None = None
+        self.threshold_offset: Callable[[], float] | None = None   # ТЗ 26: сдвиг порогов от настроения (пункты), ограничен
         self.silent_kinds: set[str] = set()      # виды, которые не пишутся в журнал module_event
         self.last_decision: dict | None = None   # для отладки и дашборда
         self.decisions: deque = deque(maxlen=100)
@@ -185,6 +186,12 @@ class AttentionContext:
         if not isinstance(out.get("half_life"), dict) or not out["half_life"]:
             out["half_life"] = dict(DEFAULT_HALF_LIFE)
         out["classifier"] = bool(out.get("classifier", True))
+        if self.threshold_offset is not None:       # настроение: только пороги D-уровней, правила R1-R4 не затронуты
+            try:
+                off = float(self.threshold_offset())
+                out["thresholds"] = [max(0.0, t + off) for t in out["thresholds"]]
+            except Exception:
+                pass
         return out
 
     def module_title(self, module_id: str) -> str:

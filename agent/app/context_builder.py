@@ -7,6 +7,7 @@ import asyncio
 class ContextBuilder:
     def __init__(self, host):
         self._h = host
+        self.mood_of = None        # ТЗ 26: callable() -> факт о настроении; ядро ставит AffectService.mood_block
 
     def claude_note(self) -> str:
         import claude_quota
@@ -66,6 +67,13 @@ class ContextBuilder:
             blocks.append(("self", h._self_block))
         if h._graph_block and not skip_memory:
             blocks.append(("graph", h._graph_block))
+        if self.mood_of is not None:
+            try:
+                mood = self.mood_of()
+            except Exception:
+                mood = ""
+            if mood:
+                blocks.append(("mood", mood))
         rel = h._people.describe("игрок")
         if rel:
             blocks.append(("relation", f"Твоё {rel}."))
