@@ -15,6 +15,7 @@ load_dotenv("secrets.env")   # токены (не в git): TELEGRAM_BOT_TOKEN, T
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sdk"))
 
 import core_service
+import tray_launch
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,6 +31,7 @@ def main():
         "memory_dir":   os.getenv("MEMORY_DIR", "./memory"),
     }
 
+    tray_launch.ensure_tray()        # трей всегда стартует вместе с ядром (повторный запуск тихо выходит по мьютексу)
     core_service.run(config)
 
 
