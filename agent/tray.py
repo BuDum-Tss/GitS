@@ -21,6 +21,8 @@ import socket
 import subprocess
 import sys
 import threading
+import time
+import traceback
 import webbrowser
 import winreg
 from pathlib import Path
@@ -30,6 +32,7 @@ import pystray
 from PIL import Image
 
 import settings
+import tray_autostart
 
 HERE = Path(__file__).resolve().parent
 DASHBOARD_URL = "http://localhost:8766/"
@@ -119,13 +122,28 @@ def autostart_enabled() -> bool:
         return False
 
 
+def heal_autostart() -> bool:
+    """Автозапуск включён, но путь в записи протух (проект переехал, Python обновили): переписать на текущий tray.py.
+    Живую запись (оба файла на месте) не трогаем, чтобы запуск из чужой копии проекта её не перехватывал."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            value = winreg.QueryValueEx(k, RUN_NAME)[0]
+            if not tray_autostart.is_stale(value):
+                return False
+            winreg.SetValueEx(k, RUN_NAME, 0, winreg.REG_SZ, tray_autostart.command(_pythonw(), HERE / "tray.py"))
+    except OSError:
+        return False
+    _log(f"автозапуск: путь в реестре протух ({value}), записан текущий")
+    return True
+
+
 def toggle_autostart(icon, item):
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
         if autostart_enabled():
             winreg.DeleteValue(k, RUN_NAME)
         else:
             winreg.SetValueEx(k, RUN_NAME, 0, winreg.REG_SZ,
-                              f'"{_pythonw()}" "{HERE / "tray.py"}"')
+                              tray_autostart.command(_pythonw(), HERE / "tray.py"))
 
 
 # ── меню ─────────────────────────────────────────────────────────────────────
@@ -226,8 +244,8 @@ def build_menu() -> pystray.Menu:
           checked=lambda it: settings.load()["auto_accept"]),
         M("Запускать с Windows", toggle_autostart, checked=lambda it: autostart_enabled()),
         M("Перезапустить ядро", restart_core),
-        M("Остановить ассистента", lambda i, it: (stop_all(), i.stop())),
-        M("Закрыть трей (ассистент продолжит работать)", lambda i, it: i.stop()),
+        M("Остановить ассистента", lambda i, it: (stop_all(), _quit(i))),
+        M("Закрыть трей (ассистент продолжит работать)", lambda i, it: _quit(i)),
     )
 
 
@@ -243,6 +261,24 @@ def _icon_image() -> Image.Image:
         return Image.new("RGBA", (64, 64), (90, 90, 90, 255))
 
 
+_stopping = False            # трей закрыт по команде из меню: перезапускать его не надо
+
+
+def _quit(icon) -> None:
+    global _stopping
+    _stopping = True
+    icon.stop()
+
+
+def _log(text: str) -> None:
+    """Журнал трея в папке памяти (у pythonw нет консоли, иначе причина исчезновения иконки осталась бы неизвестной)."""
+    try:
+        with open(Path(MEMORY_DIR) / "tray.log", "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {text}\n")
+    except OSError:
+        pass
+
+
 def _single_instance() -> bool:
     ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\AssistantTray")
     return ctypes.windll.kernel32.GetLastError() != 183   # ERROR_ALREADY_EXISTS
@@ -251,13 +287,21 @@ def _single_instance() -> bool:
 def main():
     if not _single_instance():
         return
-    icon = pystray.Icon("assistant", _icon_image(), "Ассистент", build_menu())
+    Path(MEMORY_DIR).mkdir(parents=True, exist_ok=True)
+    heal_autostart()
 
     def setup(ic):
         ic.visible = True
         start_core()
 
-    icon.run(setup)
+    # трей должен быть виден всегда: любой сбой иконки или меню не убивает процесс, иконка создаётся заново
+    while not _stopping:
+        try:
+            pystray.Icon("assistant", _icon_image(), "Ассистент", build_menu()).run(setup)
+        except Exception:
+            _log("трей упал, перезапуск:\n" + traceback.format_exc())
+        if not _stopping:
+            time.sleep(3)
 
 
 if __name__ == "__main__":
