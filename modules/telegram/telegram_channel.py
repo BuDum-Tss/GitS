@@ -31,8 +31,7 @@ from common import CAPTION_MAX, chunks, full_name, message_fact, quiet_active, s
 from gits_sdk import ToolError
 from tg_draft import TgDraft
 
-import events_log
-import fast_brain
+from gits_sdk import host
 
 logger = logging.getLogger("telegram")
 
@@ -131,7 +130,7 @@ class TelegramChannel:
 
     def log(self, text: str, error: bool = False, **data) -> None:
         """Запись в общий журнал (вид telegram или error); токен бота из текста вырезается."""
-        events_log.log_nowait("error" if error else "telegram", scrub(("telegram: " if error else "") + text, self._token),
+        host.log_nowait("error" if error else "telegram", scrub(("telegram: " if error else "") + text, self._token),
                               **data)
 
     # ── Bot API ───────────────────────────────────────────────────────────────
@@ -199,8 +198,7 @@ class TelegramChannel:
 
     async def synth_ogg(self, text: str) -> bytes:
         """TG-4: озвучка её голосом запросом core.tts (ядро возвращает путь к OGG/Opus); файл читается и удаляется."""
-        res = await self.client.request("core.tts", {"text": text, "format": "ogg"}, timeout=90)
-        path = res.get("path") if isinstance(res, dict) else None
+        path = (await self.client.tts(text, None, "ogg", timeout=90)).path
         if not path:
             raise RuntimeError("синтез речи не дал аудио")
         try:
@@ -276,7 +274,7 @@ class TelegramChannel:
     async def compose(self, instruction: str, current: str = "") -> str | None:
         """Написать или переписать текст поста по задаче; при непустом current правит его.
         None, если не получилось или текст не прошёл фильтр приватности."""
-        game = await asyncio.to_thread(events_log.tail, limit=8, kinds={"game"}, since=time.time() - 6 * 3600)
+        game = await host.tail(limit=8, kinds={"game"}, since=time.time() - 6 * 3600)
         material = ("\nСобытия игры за последние часы (колония, безопасно упоминать):\n"
                     + "\n".join(f"  - {e['text'][:140]}" for e in game)) if game else ""
         past = [p["text"][:140] for p in (await self.aload())["posts"][-3:]]
@@ -288,7 +286,7 @@ class TelegramChannel:
         user = (f"Текущий черновик: {current or '(пусто)'}\nЗадача: {instruction}{material}"
                 + (("\nПрошлые посты (не повторяйся): " + " | ".join(past)) if past else ""))
         try:
-            res = fast_brain._json_of(await fast_brain._ask(system, user, timeout=90, max_tokens=400, temperature=0.8))
+            res = await host.llm_json(system, user, timeout=90, max_tokens=400, temperature=0.8)
         except Exception as e:
             self.log(f"не удалось написать черновик: {e}", error=True)
             return None
@@ -342,8 +340,8 @@ class TelegramChannel:
                   "(его темы, игры, проекты), если об этом не сказано. Ответь ТОЛЬКО JSON: "
                   '{"text": "<текст поста>"}')
         try:
-            res = fast_brain._json_of(await fast_brain._ask(system, f"Просьба владельца: {instruction}",
-                                                            timeout=90, max_tokens=300, temperature=0.8))
+            res = await host.llm_json(system, f"Просьба владельца: {instruction}", timeout=90, max_tokens=300,
+                                      temperature=0.8)
         except Exception as e:
             self.log(f"не удалось сочинить пост: {e}", error=True)
             return "failed", ""
@@ -485,7 +483,7 @@ class TelegramChannel:
     async def _digest(self, data: dict) -> str:
         now = time.time()
         lines = [f"Сейчас {time.strftime('%H:%M')}."]
-        game = await asyncio.to_thread(events_log.tail, limit=8, kinds={"game"}, since=now - 6 * 3600)
+        game = await host.tail(limit=8, kinds={"game"}, since=now - 6 * 3600)
         if game:
             lines.append("События игры за последние часы (колония, это безопасно упоминать):")
             lines += [f"  - {e['text']}" for e in game]
@@ -529,10 +527,10 @@ class TelegramChannel:
         res = text = None
         for attempt in range(2):
             try:
-                res = fast_brain._json_of(await fast_brain._ask(
+                res = await host.llm_json(
                     system + ("" if attempt == 0 else " Прошлый черновик был вялым или похожим на прежние: "
                               "напиши совсем иначе, с конкретикой."),
-                    await self._digest(data), timeout=90, background=True, max_tokens=300, temperature=0.95))
+                    await self._digest(data), timeout=90, background=True, max_tokens=300, temperature=0.95)
             except Exception as e:
                 logger.warning("Не удалось сочинить пост: %s", e)
                 return None

@@ -20,8 +20,8 @@ import time
 
 import numpy as np
 
-import events_log
-import latency_trace
+from gits_sdk import host
+from gits_sdk import trace as latency_trace  # метки трассы задержки: SDK, не внутренности ядра (ТЗ 31)
 from local_stt import _JUNK
 from voice_id import SELF_PERSON_ID
 
@@ -217,7 +217,7 @@ class MicListener:
             except Exception as e:
                 if time.time() - self._warned > 300:
                     self._warned = time.time()
-                    events_log.log_nowait("error", f"микрофон: {e}")
+                    host.log_nowait("error", f"микрофон: {e}")
                 await asyncio.sleep(30)
 
     async def _session(self):
@@ -232,7 +232,7 @@ class MicListener:
         threading.Thread(target=_record_thread, args=(stop, push, loop), daemon=True, name="mic").start()
         self.prepare()
         await self._ensure_self_voice()
-        events_log.log_nowait("hearing", "микрофон включён: слушаю речь")
+        host.log_nowait("hearing", "микрофон включён: слушаю речь")
         try:
             while self._enabled():
                 try:
@@ -243,7 +243,7 @@ class MicListener:
         finally:
             stop.set()
             self._note_speaking(False, force=True)
-            events_log.log_nowait("hearing", "микрофон выключен")
+            host.log_nowait("hearing", "микрофон выключен")
 
     # ── разбор кадра ─────────────────────────────────────────────────────────
 
@@ -349,7 +349,7 @@ class MicListener:
             t = await self._stt.transcribe(pcm, diarize=True) if pcm else None
             if t and t.speaker_embedding:
                 self._voices.register_self(t.speaker_embedding)
-                events_log.log_nowait("hearing", "голос ГЛаДОС записан: собственное эхо игнорируется")
+                host.log_nowait("hearing", "голос ГЛаДОС записан: собственное эхо игнорируется")
         except Exception as e:
             logger.info(f"Свой голос не записан: {e}")
 
@@ -363,7 +363,7 @@ class MicListener:
             # режим и состояние модели (WhisperX или локальный CPU) уходят в состояние модуля и журнал отдельно (VOICE, STT)
             if time.time() - self._warned > 120:
                 self._warned = time.time()
-                events_log.log_nowait("error", f"микрофон: распознавание не удалось ({type(e).__name__}: {str(e)[:80]})")
+                host.log_nowait("error", f"микрофон: распознавание не удалось ({type(e).__name__}: {str(e)[:80]})")
             return
         text = t.text.strip()
         if not text or is_hallucination(text):

@@ -1,0 +1,81 @@
+{
+  "name": "core.ask",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable",
+    "timeout"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string",
+        "description": "вид вопроса",
+        "enum": [
+          "approval",
+          "choice",
+          "text"
+        ]
+      },
+      "question": {
+        "type": "string",
+        "description": "текст вопроса",
+        "minLength": 1
+      },
+      "options": {
+        "type": "array",
+        "description": "варианты (для choice обязательны)",
+        "items": {
+          "type": "string"
+        }
+      },
+      "timeout_s": {
+        "type": "number",
+        "description": "тайм-аут ответа, секунд",
+        "minimum": 1,
+        "maximum": 86400,
+        "default": 300
+      },
+      "context": {
+        "type": "object",
+        "description": "любые данные для показа вместе с вопросом"
+      },
+      "urgency_hint": {
+        "type": "integer",
+        "description": "подсказка срочности",
+        "minimum": 0,
+        "maximum": 5
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "kind",
+      "question"
+    ],
+    "title": "core.ask",
+    "description": "Вопрос пользователю через менеджер внимания. Ответ: bool для approval, строка для choice и text."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "answer": {
+        "description": "ответ пользователя (по тайм-ауту false или null)"
+      },
+      "by": {
+        "type": "string",
+        "description": "кто ответил (канал)"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "answer"
+    ],
+    "title": "core.ask (ответ)"
+  }
+}

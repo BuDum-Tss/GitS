@@ -1,0 +1,70 @@
+{
+  "name": "core.persona",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "unavailable",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "core.persona",
+    "description": "Карточка активного персонажа и разделы persona.md для текстов модуля (ТЗ 05)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "id персонажа"
+      },
+      "name": {
+        "type": "string",
+        "description": "имя"
+      },
+      "aliases": {
+        "type": "array",
+        "description": "другие имена",
+        "items": {
+          "type": "string"
+        }
+      },
+      "gender": {
+        "type": "string",
+        "description": "род"
+      },
+      "language": {
+        "type": "string",
+        "description": "язык"
+      },
+      "world": {
+        "type": "string",
+        "description": "мир"
+      },
+      "voice": {
+        "type": "object",
+        "description": "параметры голоса"
+      },
+      "card": {
+        "type": "string",
+        "description": "краткая карточка характера"
+      },
+      "sections": {
+        "type": "object",
+        "description": "разделы persona.md"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "id",
+      "name"
+    ],
+    "title": "core.persona (ответ)"
+  }
+}

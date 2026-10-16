@@ -1,0 +1,44 @@
+{
+  "name": "tool.call",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unknown",
+    "unavailable",
+    "denied",
+    "internal",
+    "timeout",
+    "cancelled"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "tool": {
+        "type": "string",
+        "description": "имя инструмента",
+        "minLength": 1
+      },
+      "args": {
+        "type": "object",
+        "description": "аргументы"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "tool"
+    ],
+    "title": "tool.call",
+    "description": "Вызов инструмента модуля из манифеста. `tool` без префикса модуля или с ним."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "tool.call (ответ)"
+  }
+}

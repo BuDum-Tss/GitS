@@ -1,0 +1,61 @@
+{
+  "name": "focus.release",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "unknown",
+    "unavailable",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "reason": {
+        "type": "string",
+        "description": "причина"
+      },
+      "task_id": {
+        "type": "string",
+        "description": "id задачи"
+      },
+      "force": {
+        "type": "boolean",
+        "description": "принудительно"
+      },
+      "event_id": {
+        "type": "string",
+        "description": "id события"
+      },
+      "checkpoint": {
+        "type": "boolean",
+        "description": "нужен checkpoint"
+      }
+    },
+    "additionalProperties": true,
+    "title": "focus.release",
+    "description": "Менеджер фокуса просит освободить фокус и вернуть checkpoint (ТЗ 18)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean",
+        "description": "освобождено"
+      },
+      "checkpoint": {
+        "type": "object",
+        "description": "состояние для возобновления"
+      },
+      "error": {
+        "type": "string",
+        "description": "причина отказа"
+      }
+    },
+    "additionalProperties": true,
+    "title": "focus.release (ответ)"
+  }
+}

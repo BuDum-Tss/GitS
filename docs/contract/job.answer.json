@@ -1,0 +1,35 @@
+{
+  "name": "job.answer",
+  "direction": "core->module",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "description": "id задачи",
+        "minLength": 1
+      },
+      "question_id": {
+        "type": "string",
+        "description": "id вопроса",
+        "minLength": 1
+      },
+      "answer": {
+        "description": "ответ"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "job_id",
+      "question_id",
+      "answer"
+    ],
+    "title": "job.answer",
+    "description": "Ответ пользователя на вопрос задачи (`waiting_user`)."
+  }
+}

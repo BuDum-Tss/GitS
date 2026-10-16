@@ -1,0 +1,54 @@
+{
+  "name": "core.experience.add",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "planned",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "scope": {
+        "type": "string",
+        "description": "область опыта, например montage",
+        "minLength": 1
+      },
+      "statement": {
+        "type": "string",
+        "description": "вывод одной фразой",
+        "minLength": 1
+      },
+      "context": {
+        "type": "string",
+        "description": "в каком случае это верно"
+      },
+      "data": {
+        "type": "object",
+        "description": "подробности"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "scope",
+      "statement"
+    ],
+    "title": "core.experience.add",
+    "description": "Добавить опыт модуля в память: вывод (`statement`) с областью (`scope`) и контекстом."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "stored": {
+        "type": "boolean",
+        "description": "записано ли"
+      }
+    },
+    "additionalProperties": true,
+    "title": "core.experience.add (ответ)"
+  }
+}

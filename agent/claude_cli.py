@@ -1,24 +1,6 @@
-"""Путь к claude.exe для Claude Agent SDK (SDK может искать сам, но так надёжнее)."""
-import logging
+"""Путь к claude.exe для Claude Agent SDK (SDK может искать сам, но так надёжнее).
 
-logger = logging.getLogger("claude_cli")
-
-
-def _find_claude_exe() -> str | None:
-    import glob
-    patterns = [
-        r"C:\Users\*\AppData\Local\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code\*\claude.exe",
-        r"C:\Users\*\AppData\Local\Programs\Claude\claude.exe",
-        r"C:\Program Files\Claude\claude.exe",
-        r"C:\Users\*\AppData\Local\uv\cache\archive-v0\*\claude_agent_sdk\_bundled\claude.exe",
-    ]
-    for pattern in patterns:
-        matches = sorted(glob.glob(pattern, recursive=False))
-        if matches:
-            return matches[-1]
-    return None
-
-
-_CLI_PATH = _find_claude_exe()
-if not _CLI_PATH:
-    logger.warning("claude.exe не найден: SDK будет искать сам")
+Поиск живёт в SDK (`gits_sdk.claude_path`, ТЗ 31 MC-4): им же пользуются модули.
+"""
+from gits_sdk.claude_path import CLI_PATH as _CLI_PATH  # noqa: F401
+from gits_sdk.claude_path import locate as _find_claude_exe  # noqa: F401

@@ -27,7 +27,7 @@ from gits_sdk import ModuleClient, ToolError
 from gits_sdk.protocol import new_job_id
 from watch import FocusWatch
 
-import events_log
+from gits_sdk import host
 
 log = logging.getLogger("desktop")
 
@@ -97,7 +97,7 @@ class DesktopModule:
         опасное спрашивается всегда (ТЗ 14, DESK-9). Тайм-аут и отказ - False."""
         auto = bool(self.client.settings.get("auto_accept"))
         if auto and not danger:
-            events_log.log("approval", "авто-разрешено: " + question)
+            host.log_nowait("approval", "авто-разрешено: " + question)
             return True
         text = question if not danger else f"{question} Внимание: {danger}." + (
             " Спрашиваю, даже несмотря на авто-разрешение." if auto else "")
@@ -111,11 +111,8 @@ class DesktopModule:
 
     async def _usage(self, tokens: int, limit_text: str | None) -> None:
         """DESK-10: расход Claude ядру (батарейка и исчерпанный лимит). Сбой учёта не ломает задачу."""
-        body = {"tokens": int(tokens), "source": "desktop"}
-        if limit_text:
-            body["limit_text"] = limit_text
         try:
-            await self.client.request("core.claude_usage", body, timeout=USAGE_TIMEOUT_S)
+            await self.client.claude_usage(tokens, "desktop", limit_text or None, timeout=USAGE_TIMEOUT_S)
         except Exception as e:
             log.warning(f"расход Claude не учтён: {e}")
 
@@ -233,7 +230,7 @@ class DesktopModule:
     async def load_persona(self) -> None:
         """Персона помощника от ядра (core.persona, ТЗ 05 CHR-4): раздел desktop_assistant. Повторно при теме character."""
         try:
-            card = await self.client.request("core.persona", {}, timeout=20)
+            card = (await self.client.persona()).raw
         except Exception as e:
             log.warning("персона от ядра не получена: %s", e)
             return

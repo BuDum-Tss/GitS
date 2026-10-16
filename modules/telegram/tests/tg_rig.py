@@ -7,7 +7,6 @@ from pathlib import Path
 from gits_sdk import ModuleClient
 from gits_sdk.testing import FakeCore
 
-import events_log
 from app import TelegramModule
 from manifest import build_manifest
 
@@ -161,17 +160,17 @@ class Rig:
     def api_calls(self, method):
         return [p for m, p in self.net.api if m == method]
 
-    def journal(self, kind="telegram"):
-        events_log.flush()
-        return events_log.tail(100, {kind})
+    async def journal(self, kind="telegram"):
+        await asyncio.sleep(0.15)                                       # сообщение log доходит до FakeCore по сети
+        return [e for e in self.core.logs if e["kind"] == kind]       # запись модуля в журнал ядра (сообщение log, ТЗ 31)
 
     def read_state(self):
         return json.loads((self.mem / "telegram.json").read_text(encoding="utf-8"))
 
     def stub_model(self, monkeypatch, text, post=True):
         """Локальная модель отвечает заданным текстом поста."""
-        import fast_brain
+        data = {"post": post, "text": text}
 
-        async def fake_ask(system, user, **kw):
-            return json.dumps({"post": post, "text": text}, ensure_ascii=False)
-        monkeypatch.setattr(fast_brain, "_ask", fake_ask)
+        @self.core.on_request("core.llm.ask")
+        def fake_ask(body):
+            return {"text": json.dumps(data, ensure_ascii=False), "data": data}

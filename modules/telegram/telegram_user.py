@@ -22,7 +22,7 @@ from pathlib import Path
 from common import SERVICE_USER_ID, TEXT_MAX, chunks, full_name, message_fact, scrub, sender_info
 from gits_sdk.protocol import clip
 
-import events_log
+from gits_sdk import host
 
 logger = logging.getLogger("tg_user")
 
@@ -129,7 +129,7 @@ class TelegramUser:
                 async def on_message(ev):
                     await self._on_incoming(ev)
 
-                events_log.log_nowait("telegram", f"её аккаунт подключён: {getattr(self._me, 'first_name', '?')}")
+                host.log_nowait("telegram", f"её аккаунт подключён: {getattr(self._me, 'first_name', '?')}")
                 await client.run_until_disconnected()
             except asyncio.CancelledError:
                 raise
@@ -157,7 +157,7 @@ class TelegramUser:
             rec = {"ts": time.time(), "chat": title, "chat_id": ev.chat_id, "from": who, "text": text,
                    "private": bool(ev.is_private)}
             await asyncio.to_thread(self._append_inbox, rec)             # TG-11: tg_inbox.json как прежде
-            events_log.log_nowait("telegram", f"написали в её аккаунт ({'личное' if ev.is_private else title}): "
+            host.log_nowait("telegram", f"написали в её аккаунт ({'личное' if ev.is_private else title}): "
                                               f"{who}: {text[:100]}")
             await self._emit(ev, sender, who, title, text)
         except Exception as e:
@@ -289,7 +289,7 @@ class TelegramUser:
             client = await self._connect()
             ent = await self._entity(client, chat)
             await client.send_message(ent, text)
-        events_log.log_nowait("telegram", f"она написала с аккаунта в «{chat}»: {text[:120]}")
+        host.log_nowait("telegram", f"она написала с аккаунта в «{chat}»: {text[:120]}")
         return f"отправлено в «{chat}»"
 
     async def reply(self, chat_id: int, text: str, ogg: bytes | None = None) -> None:
@@ -307,7 +307,7 @@ class TelegramUser:
                     await client.send_file(ent, voice, voice_note=True, caption=cap)
                     rest = "" if cap else text
                 except Exception as e:
-                    events_log.log_nowait("error", "telegram: голосовой ответ с аккаунта не ушёл, отправляю текстом: "
+                    host.log_nowait("error", "telegram: голосовой ответ с аккаунта не ушёл, отправляю текстом: "
                                                    + clip(str(e), 160))
             for part in chunks(rest):
                 await client.send_message(ent, part)

@@ -1,0 +1,27 @@
+{
+  "name": "panel.set",
+  "direction": "module->core",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "blocks": {
+        "type": "array",
+        "description": "блоки",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "blocks"
+    ],
+    "title": "panel.set",
+    "description": "Блоки пространства модуля в дашборде (ТЗ 15); не чаще раза в секунду, до 64 КиБ."
+  }
+}

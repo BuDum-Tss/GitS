@@ -48,41 +48,31 @@ class ClientCore:
 
     async def tts(self, text: str, emotion: str = "neutral") -> dict:
         """core.tts -> {"path", "duration_ms"}: синтез её голосом в файл (модуль голоса, ТЗ 12)."""
-        value = await self.client.request("core.tts", {"text": text, "emotion": emotion, "format": "wav"}, timeout=TTS_TIMEOUT_S)
-        if not isinstance(value, dict) or not value.get("path"):
+        try:
+            res = await self.client.tts(text, emotion, "wav", timeout=TTS_TIMEOUT_S)
+        except (KeyError, TypeError, ValueError) as e:
+            raise ToolError("ядро вернуло неверный ответ на core.tts", code="internal") from e
+        if not res.path:
             raise ToolError("ядро вернуло неверный ответ на core.tts", code="internal")
-        return value
+        return {"path": res.path, "duration_ms": res.duration_ms}
 
     async def persona(self) -> dict:
-        value = await self.client.request("core.persona", {}, timeout=20)
-        return value if isinstance(value, dict) else {}
+        return (await self.client.persona()).raw
 
     async def claude_usage(self, tokens: int, source: str, limit_text: str | None = None) -> None:
-        body: dict = {"tokens": int(tokens), "source": source}
-        if limit_text:
-            body["limit_text"] = limit_text[:500]
         try:
-            await self.client.request("core.claude_usage", body, timeout=15)
+            await self.client.claude_usage(tokens, source, limit_text[:500] if limit_text else None)
         except (ToolError, asyncio.TimeoutError) as e:
             log.info("расход Claude не учтён ядром: %s", getattr(e, "message", None) or type(e).__name__)
 
     async def kb_ingest(self, collection: str, documents: list[dict], *, replace: bool = False, final: bool = False) -> dict:
-        body: dict = {"collection": collection, "documents": documents}
-        if replace:
-            body["replace"] = True
-        if final:
-            body["final"] = True
-        return await self.client.request("core.kb.ingest", body, timeout=120)
+        return await self.client.kb_ingest(collection, documents, replace=replace, final=final)
 
     async def experience_add(self, entry: dict) -> dict:
-        return await self.client.request("core.experience.add", entry, timeout=30)
+        return await self.client.experience_add(entry)
 
     async def lookup(self, query: str, collections: list[str]) -> str:
-        value = await self.client.request("core.lookup", {"query": query, "collections": collections, "allow_web": False, "k": 5},
-                                          timeout=30)
-        if isinstance(value, dict):
-            return str(value.get("text") or "")
-        return str(value or "")
+        return await self.client.lookup(query, collections, allow_web=False, k=5)
 
     async def job_update(self, job_id: str, **fields) -> bool:
         return await self.client.job_update(job_id, **fields)

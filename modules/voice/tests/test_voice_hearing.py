@@ -3,7 +3,7 @@ import time
 
 import numpy as np
 
-import fast_brain
+from gits_sdk import host
 import hearing as h
 
 
@@ -54,8 +54,8 @@ async def test_gist_goes_out_as_a_summary(monkeypatch):
         got.append(summary)
 
     async def fake_ask(system, user, **kw):
-        return '{"summary": "играет джаз"}'
-    monkeypatch.setattr(fast_brain, "_ask", fake_ask)
+        return {"summary": "играет джаз"}
+    monkeypatch.setattr(host, "llm_json", fake_ask)
     ear = make({}, on_gist=on_gist)
     now = time.time()
     ear._buf.append((now, "слова " * 30))

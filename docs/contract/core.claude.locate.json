@@ -1,0 +1,30 @@
+{
+  "name": "core.claude.locate",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.1",
+  "errors": [
+    "unavailable"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "core.claude.locate",
+    "description": "Путь к claude.exe для Claude Agent SDK (или null, если не найден)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "путь к claude.exe или отсутствует"
+      }
+    },
+    "additionalProperties": true,
+    "title": "core.claude.locate (ответ)"
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "name": "event",
+  "direction": "module->core",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string",
+        "description": "вид «<модуль>.<что>»"
+      },
+      "text": {
+        "type": "string",
+        "description": "что случилось",
+        "maxLength": 1000,
+        "minLength": 1
+      },
+      "data": {
+        "type": "object",
+        "description": "подробности"
+      },
+      "urgency_hint": {
+        "type": "integer",
+        "description": "подсказка срочности",
+        "minimum": 0,
+        "maximum": 5
+      },
+      "addressed_to_me": {
+        "type": "boolean",
+        "description": "обращено к ассистентке"
+      },
+      "memorable": {
+        "type": "boolean",
+        "description": "достойно запоминания"
+      },
+      "announce": {
+        "type": "boolean",
+        "description": "объявление, звучит всегда"
+      },
+      "sender": {
+        "type": "object",
+        "description": "отправитель: id, name, is_owner"
+      },
+      "reply_channel": {
+        "type": "object",
+        "description": "куда отвечать: module, target"
+      },
+      "dedupe_key": {
+        "type": "string",
+        "description": "ключ склейки"
+      },
+      "expires_in_s": {
+        "type": "number",
+        "description": "срок жизни, секунд"
+      },
+      "trace": {
+        "type": "object",
+        "description": "трасса задержки (ТЗ 24)"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "kind",
+      "text"
+    ],
+    "title": "event",
+    "description": "Событие модуля для менеджера внимания (ТЗ 03). Вид должен начинаться с `<id модуля>.`."
+  }
+}

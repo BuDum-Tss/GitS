@@ -1,0 +1,44 @@
+{
+  "name": "core.web_search",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "запрос",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "query"
+    ],
+    "title": "core.web_search",
+    "description": "Поиск в интернете средствами ядра."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "найденное"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "text"
+    ],
+    "title": "core.web_search (ответ)"
+  }
+}

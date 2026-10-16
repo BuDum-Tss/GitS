@@ -15,7 +15,7 @@ import time
 from common import scrub
 from gits_sdk import ToolError
 
-import events_log
+from gits_sdk import host
 
 logger = logging.getLogger("telegram.privacy")
 
@@ -40,8 +40,8 @@ def stem(word: str) -> str:
 
 class Privacy:
     def __init__(self, request):
-        """request - `client.request` (async (type, body, timeout=...) -> value)."""
-        self._request = request
+        """fetch - `client.privacy_terms` (async (timeout=...) -> список слов; запрос `core.privacy_terms`)."""
+        self._fetch = request
         self.terms: list[str] = []
         self.ready = False
         self.fetched_at = 0.0
@@ -63,14 +63,13 @@ class Privacy:
     async def refresh(self) -> bool:
         """Запросить список у ядра. При ошибке остаётся прежний (или его нет)."""
         try:
-            value = await self._request("core.privacy_terms", {}, timeout=20)
-            terms = value.get("terms") if isinstance(value, dict) else None
+            terms = await self._fetch(timeout=20)
             if not isinstance(terms, list):
                 raise ValueError("ядро вернуло список личных слов в неверной форме")
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            events_log.log_nowait("telegram", scrub(f"личные слова от ядра не получены: {e}"))
+            host.log_nowait("telegram", scrub(f"личные слова от ядра не получены: {e}"))
             logger.warning("личные слова от ядра не получены: %s", e)
             return False
         self.set_terms(terms)

@@ -1,0 +1,25 @@
+{
+  "name": "settings",
+  "direction": "core->module",
+  "kind": "topic",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "settings": {
+        "type": "object",
+        "description": "общие настройки"
+      },
+      "module_settings": {
+        "type": "object",
+        "description": "настройки модуля"
+      }
+    },
+    "additionalProperties": true,
+    "title": "settings",
+    "description": "Настройки: общие из `shared_settings` и собственные из `settings_schema` модуля."
+  }
+}

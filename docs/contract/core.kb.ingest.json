@@ -1,0 +1,59 @@
+{
+  "name": "core.kb.ingest",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "planned",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "collection": {
+        "type": "string",
+        "description": "коллекция, например montage.style",
+        "minLength": 1
+      },
+      "documents": {
+        "type": "array",
+        "description": "документы: объекты с текстом",
+        "items": {
+          "type": "object"
+        }
+      },
+      "replace": {
+        "type": "boolean",
+        "description": "заменить коллекцию целиком",
+        "default": false
+      },
+      "final": {
+        "type": "boolean",
+        "description": "последняя порция",
+        "default": false
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "collection",
+      "documents"
+    ],
+    "title": "core.kb.ingest",
+    "description": "Отдать документы в коллекцию базы знаний (`replace` заменяет коллекцию, `final` завершает загрузку)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "stored": {
+        "type": "integer",
+        "description": "сколько документов принято",
+        "minimum": 0
+      }
+    },
+    "additionalProperties": true,
+    "title": "core.kb.ingest (ответ)"
+  }
+}

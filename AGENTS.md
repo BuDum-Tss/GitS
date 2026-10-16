@@ -116,6 +116,9 @@ SDK для тяжёлых задач.
 правило TG-14 в `attention.submit`). Данные модуля лежат в `MEMORY_DIR` (его передаёт супервизор), секреты модуль читает сам из `agent/secrets.env`
 (`GITS_SECRETS_FILE` заменяет путь в проверках). Тесты, которые поднимают супервизор с настоящим `modules.yaml`, обязаны оставлять только нужные модули.
 
+## Контракт модулей (ТЗ 31)
+Все запросы, сообщения, темы, окружение и ресурсы описаны в `sdk/gits_sdk/contract/` (единственный источник; проверки зовут SDK, `FakeCore`, `module_hub`, `core_requests`). Документ `docs/MODULE_CONTRACT.md` и схемы `docs/contract/*.json` создаёт `python sdk/tools/gen_contract_doc.py` (после правки контракта запусти его; тест сверяет). Новый запрос `core.*`: описание с примерами в `contract/messages.py`, обработчик в `core_requests.py`, метод в `ModuleClient`. Модули не импортируют файлы `agent/` (тест в `agent/tests/test_architecture.py`): журнал `client.log` / `gits_sdk.host.log_nowait`, локальная модель `gits_sdk.host.llm_ask|llm_json` (запрос `core.llm.ask`), `gits_sdk.safety`, `gits_sdk.claude_path`, `gits_sdk.trace`. Тесты модулей `rimworld` и `montage` запускай с `PYTHONPATH=sdk` (иначе подхватится установленный SDK другого checkout).
+
 ## SDK модулей (`sdk/`)
 Контракт «ядро ↔ модуль» (ТЗ 01, `docs/tz/01-module-contract.md`) и пакет `gits-sdk` (импорт `gits_sdk`):
 `sdk/gits_sdk/protocol.py` (конверт, манифест, проверки; его же импортирует ядро, не копирует), `client.py` (`ModuleClient`),

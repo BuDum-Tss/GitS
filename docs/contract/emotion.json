@@ -1,0 +1,29 @@
+{
+  "name": "emotion",
+  "direction": "module->core",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "emotion": {
+        "type": "string",
+        "description": "эмоция",
+        "minLength": 1
+      },
+      "cause": {
+        "type": "string",
+        "description": "причина"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "emotion"
+    ],
+    "title": "emotion",
+    "description": "Эмоция модуля (допустимость проверяет ядро)."
+  }
+}

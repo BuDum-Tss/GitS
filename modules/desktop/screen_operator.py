@@ -11,7 +11,7 @@ import asyncio
 import logging
 import time
 
-import fast_brain
+from gits_sdk import host
 import perception
 import pc_control
 from gits_sdk import ToolError
@@ -67,9 +67,8 @@ async def read_screen() -> str:
 async def _decide(goal: str, history: list[str], screen: str) -> dict | None:
     user = (f"Цель: {goal}\n\nУже сделано:\n" + ("\n".join(history[-6:]) or "(пока ничего)") + f"\n\n{screen}\n\nСледующий шаг (JSON):")
     for attempt in range(2):
-        raw = await fast_brain._ask(SYSTEM + ("" if attempt == 0 else "\nПредыдущий ответ не был JSON. Ответь ТОЛЬКО JSON."),
-                                    user, timeout=LLM_TIMEOUT, max_tokens=160, temperature=0.1)
-        data = fast_brain._json_of(raw)
+        data = await host.llm_json(SYSTEM + ("" if attempt == 0 else "\nПредыдущий ответ не был JSON. Ответь ТОЛЬКО JSON."),
+                                   user, timeout=LLM_TIMEOUT, max_tokens=160, temperature=0.1)
         if isinstance(data, dict) and data.get("action"):
             return data
     return None

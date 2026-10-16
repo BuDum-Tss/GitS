@@ -1,0 +1,31 @@
+{
+  "name": "battery",
+  "direction": "core->module",
+  "kind": "topic",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "percent": {
+        "type": "integer",
+        "description": "процент",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "sleeping": {
+        "type": "boolean",
+        "description": "спит ли"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "percent",
+      "sleeping"
+    ],
+    "title": "battery",
+    "description": "Батарейка Claude: процент и сон."
+  }
+}

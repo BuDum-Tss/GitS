@@ -11,9 +11,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 GITS = HERE.parent.parent
-# библиотечные файлы ядра без состояния (fast_brain, events_log, safety, claude_cli) и SDK до установки пакета gits-sdk;
-# свои файлы модуля первыми
-sys.path[:0] = [str(HERE), str(GITS / "agent"), str(GITS / "sdk")]
+# SDK до установки пакета gits-sdk; свои файлы модуля первыми. Внутренностей ядра (agent/) модуль не импортирует (ТЗ 31)
+sys.path[:0] = [str(HERE), str(GITS / "sdk")]
 
 from envcompat import env  # noqa: E402
 
@@ -21,7 +20,6 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(Path(env("GITS_SECRETS_FILE") or GITS / "agent" / "secrets.env"))
 
-import events_log  # noqa: E402
 from app import DesktopModule  # noqa: E402
 from gits_sdk import ModuleClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
@@ -33,7 +31,6 @@ def memory_dir() -> str:
 
 
 async def amain() -> int:
-    events_log.init(memory_dir())
     client = ModuleClient(build_manifest())
     module = DesktopModule(client)
     module.start()
@@ -41,7 +38,6 @@ async def amain() -> int:
         return await client.run()
     finally:
         await module.stop()
-        await asyncio.to_thread(events_log.flush)
 
 
 def main() -> None:

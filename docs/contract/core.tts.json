@@ -1,0 +1,65 @@
+{
+  "name": "core.tts",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable",
+    "timeout",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "что произнести",
+        "maxLength": 5000,
+        "minLength": 1
+      },
+      "emotion": {
+        "type": "string",
+        "description": "эмоция реплики"
+      },
+      "format": {
+        "type": "string",
+        "description": "формат файла",
+        "enum": [
+          "wav",
+          "ogg"
+        ],
+        "default": "wav"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "text"
+    ],
+    "title": "core.tts",
+    "description": "Синтез речи её голосом: ядро передаёт запрос модулю голоса (`tts.synthesize`) и его ответ."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "путь к звуковому файлу"
+      },
+      "duration_ms": {
+        "type": "integer",
+        "description": "длительность, мс",
+        "minimum": 0
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "path",
+      "duration_ms"
+    ],
+    "title": "core.tts (ответ)"
+  }
+}

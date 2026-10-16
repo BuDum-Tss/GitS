@@ -1,0 +1,49 @@
+{
+  "name": "welcome",
+  "direction": "core->module",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "protocol": {
+        "type": "integer",
+        "description": "версия протокола"
+      },
+      "core_version": {
+        "type": "string",
+        "description": "версия ядра"
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "включён ли модуль"
+      },
+      "settings": {
+        "type": "object",
+        "description": "общие настройки"
+      },
+      "module_settings": {
+        "type": "object",
+        "description": "настройки модуля"
+      },
+      "profile": {
+        "type": "object",
+        "description": "активный профиль"
+      },
+      "battery": {
+        "type": "object",
+        "description": "батарейка Claude"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "protocol",
+      "enabled"
+    ],
+    "title": "welcome",
+    "description": "Ответ на hello: версия, включённость, настройки, профиль, батарейка."
+  }
+}

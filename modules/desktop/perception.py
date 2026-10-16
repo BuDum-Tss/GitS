@@ -26,8 +26,7 @@ from pathlib import Path
 import numpy as np
 from PIL import ImageGrab
 
-import events_log
-import fast_brain
+from gits_sdk import host
 from envcompat import env
 
 logger = logging.getLogger("desktop.perception")
@@ -197,9 +196,8 @@ async def analyze(win: dict) -> dict | None:
     text = await asyncio.to_thread(_ocr_text, img)
     user = (f"Приложение: {win['app']}\nТекст на экране (OCR): {text or '(нет текста)'}\n"
             "Опиши, чем занят пользователь.")
-    raw = await fast_brain._ask(_SYSTEM, user, timeout=60, max_tokens=120, background=True,
-                                image_b64=_b64(img), temperature=0.2)
-    data = fast_brain._json_of(raw)
+    data = await host.llm_json(_SYSTEM, user, timeout=60, max_tokens=120, background=True,
+                               image_b64=_b64(img), temperature=0.2)
     if not data or not data.get("summary"):
         return None
     cat = data.get("category") if data.get("category") in _CATEGORIES else "other"
@@ -235,8 +233,8 @@ async def describe_now(vision_on: bool) -> dict:
             f"Текст на экране (OCR): {text or '(нет текста)'}\n"
             "Опиши, что на экране.")
     try:
-        out = await fast_brain._ask(_DESCRIBE_SYSTEM, user, timeout=90, max_tokens=200,
-                                    image_b64=_b64(img), temperature=0.2)
+        out = await host.llm_ask(_DESCRIBE_SYSTEM, user, timeout=90, max_tokens=200,
+                                 image_b64=_b64(img), temperature=0.2)
     except Exception as e:
         logger.warning(f"Не удалось описать экран: {e}")
         return {"status": "fail"}
@@ -261,7 +259,7 @@ class ScreenWatcher:
             return None
         if not win or is_sensitive(win):
             if win and self._last_key is not None:
-                events_log.log("vision", "окно пропущено: чувствительное содержимое")
+                host.log_nowait("vision", "окно пропущено: чувствительное содержимое")
             if win:
                 self._last_key = None   # после чувствительного окна анализируем заново
             return None
@@ -279,7 +277,7 @@ class ScreenWatcher:
         same = prev and prev["app"] == win["app"] and prev["category"] == res["category"]
         self.current = {"app": win["app"], "category": res["category"], "summary": res["summary"], "ts": now,
                         "since": prev["since"] if same else now}
-        events_log.log("vision", res["summary"], app=win["app"], category=res["category"])
+        host.log_nowait("vision", res["summary"], app=win["app"], category=res["category"])
         logger.info(f"[зрение] {win['app']}: {res['summary']} ({res['category']})")
         await self._on_activity(dict(self.current))
         return dict(self.current)
