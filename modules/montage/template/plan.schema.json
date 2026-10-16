@@ -108,6 +108,17 @@
             "enum": [
               "jump_cut"
             ]
+          },
+          "frame": {
+            "type": "string",
+            "enum": [
+              "hud"
+            ]
+          },
+          "frame_label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
           }
         },
         "required": [
@@ -267,93 +278,288 @@
                 "minimum": 0,
                 "maximum": 9007199254740991
               },
+              "beat": {
+                "type": "string",
+                "minLength": 1
+              },
               "dur_ms": {
                 "type": "integer",
-                "minimum": 1,
+                "minimum": 3400,
+                "maximum": 6000
+              },
+              "kind": {
+                "type": "string",
+                "const": "intro"
+              },
+              "props": {
+                "type": "object",
+                "properties": {
+                  "subtitle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "wordmark": {
+                    "default": "APERTURE SCIENCE",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "subtitle"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "at_ms",
+              "beat",
+              "dur_ms",
+              "kind",
+              "props"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "at_ms": {
+                "type": "integer",
+                "minimum": 0,
                 "maximum": 9007199254740991
               },
               "beat": {
                 "type": "string",
                 "minLength": 1
               },
+              "dur_ms": {
+                "type": "integer",
+                "minimum": 3000,
+                "maximum": 9007199254740991
+              },
               "kind": {
                 "type": "string",
-                "const": "chamber_card"
+                "const": "blueprint"
               },
               "props": {
                 "type": "object",
                 "properties": {
-                  "chamber": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 999
-                  },
-                  "of": {
-                    "default": 19,
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 99
-                  },
                   "title": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 40
                   },
-                  "pictograms": {
-                    "minItems": 2,
-                    "maxItems": 5,
+                  "kicker": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "callouts": {
+                    "default": [],
+                    "maxItems": 4,
                     "type": "array",
                     "items": {
-                      "anyOf": [
-                        {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "y": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "label": {
                           "type": "string",
-                          "enum": [
-                            "button",
-                            "camera",
-                            "clock",
-                            "cube",
-                            "exit",
-                            "eye",
-                            "gear",
-                            "hazard_water",
-                            "laser",
-                            "person",
-                            "speaker",
-                            "warning"
-                          ]
+                          "minLength": 1,
+                          "maxLength": 40
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "label"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "drawing": {
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "line"
+                            },
+                            "x1": {
+                              "type": "number",
+                              "minimum": -0.1,
+                              "maximum": 1.1
+                            },
+                            "y1": {
+                              "type": "number",
+                              "minimum": -0.1,
+                              "maximum": 1.1
+                            },
+                            "x2": {
+                              "type": "number",
+                              "minimum": -0.1,
+                              "maximum": 1.1
+                            },
+                            "y2": {
+                              "type": "number",
+                              "minimum": -0.1,
+                              "maximum": 1.1
+                            },
+                            "weight": {
+                              "default": "main",
+                              "type": "string",
+                              "enum": [
+                                "main",
+                                "thin",
+                                "wall"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "x1",
+                            "y1",
+                            "x2",
+                            "y2"
+                          ],
+                          "additionalProperties": false
                         },
                         {
                           "type": "object",
                           "properties": {
-                            "name": {
+                            "type": {
+                              "type": "string",
+                              "const": "rect"
+                            },
+                            "x": {
+                              "type": "number",
+                              "minimum": -0.1,
+                              "maximum": 1.1
+                            },
+                            "y": {
+                              "type": "number",
+                              "minimum": -0.1,
+                              "maximum": 1.1
+                            },
+                            "w": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1.2
+                            },
+                            "h": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1.2
+                            },
+                            "weight": {
+                              "default": "main",
                               "type": "string",
                               "enum": [
-                                "button",
-                                "camera",
-                                "clock",
-                                "cube",
-                                "exit",
-                                "eye",
-                                "gear",
-                                "hazard_water",
-                                "laser",
-                                "person",
-                                "speaker",
-                                "warning"
+                                "main",
+                                "thin",
+                                "wall"
                               ]
-                            },
-                            "active": {
-                              "default": true,
-                              "type": "boolean"
-                            },
-                            "label": {
-                              "type": "string",
-                              "minLength": 1,
-                              "maxLength": 24
                             }
                           },
                           "required": [
-                            "name"
+                            "type",
+                            "x",
+                            "y",
+                            "w",
+                            "h"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "circle"
+                            },
+                            "cx": {
+                              "type": "number",
+                              "minimum": -0.1,
+                              "maximum": 1.1
+                            },
+                            "cy": {
+                              "type": "number",
+                              "minimum": -0.1,
+                              "maximum": 1.1
+                            },
+                            "r": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "weight": {
+                              "default": "main",
+                              "type": "string",
+                              "enum": [
+                                "main",
+                                "thin",
+                                "wall"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "cx",
+                            "cy",
+                            "r"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "path"
+                            },
+                            "d": {
+                              "type": "string",
+                              "minLength": 2,
+                              "maxLength": 600,
+                              "pattern": "^[MLHVCSQTAZ0-9eE+.,\\s-]+$"
+                            },
+                            "weight": {
+                              "default": "main",
+                              "type": "string",
+                              "enum": [
+                                "main",
+                                "thin",
+                                "wall"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "d"
                           ],
                           "additionalProperties": false
                         }
@@ -362,9 +568,10 @@
                   }
                 },
                 "required": [
-                  "chamber",
                   "title",
-                  "pictograms"
+                  "kicker",
+                  "note",
+                  "drawing"
                 ],
                 "additionalProperties": false
               }
@@ -372,8 +579,8 @@
             "required": [
               "id",
               "at_ms",
-              "dur_ms",
               "beat",
+              "dur_ms",
               "kind",
               "props"
             ],
@@ -391,154 +598,93 @@
                 "minimum": 0,
                 "maximum": 9007199254740991
               },
-              "dur_ms": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 9007199254740991
-              },
               "beat": {
                 "type": "string",
                 "minLength": 1
-              },
-              "kind": {
-                "type": "string",
-                "const": "hazard_banner"
-              },
-              "props": {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 60
-                  }
-                },
-                "required": [
-                  "text"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "id",
-              "at_ms",
-              "dur_ms",
-              "beat",
-              "kind",
-              "props"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1
-              },
-              "at_ms": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
               },
               "dur_ms": {
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 9007199254740991
               },
-              "beat": {
-                "type": "string",
-                "minLength": 1
-              },
               "kind": {
                 "type": "string",
-                "const": "pixel_transition"
+                "const": "glados_room"
               },
               "props": {
                 "type": "object",
                 "properties": {
-                  "direction": {
-                    "type": "string",
-                    "enum": [
-                      "in",
-                      "out"
-                    ]
-                  }
-                },
-                "required": [
-                  "direction"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "id",
-              "at_ms",
-              "dur_ms",
-              "beat",
-              "kind",
-              "props"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1
-              },
-              "at_ms": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "dur_ms": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 9007199254740991
-              },
-              "beat": {
-                "type": "string",
-                "minLength": 1
-              },
-              "kind": {
-                "type": "string",
-                "const": "test_result"
-              },
-              "props": {
-                "type": "object",
-                "properties": {
-                  "result": {
-                    "type": "string",
-                    "enum": [
-                      "pass",
-                      "fail"
-                    ]
+                  "moods": {
+                    "default": [],
+                    "maxItems": 60,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from_ms": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "to_ms": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "mood": {
+                          "type": "string",
+                          "enum": [
+                            "idle",
+                            "thinking",
+                            "angry",
+                            "happy",
+                            "question",
+                            "surprised"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "from_ms",
+                        "to_ms",
+                        "mood"
+                      ],
+                      "additionalProperties": false
+                    }
                   },
-                  "label": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "text": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 60
+                  "speech": {
+                    "default": [],
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from_ms": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "to_ms": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "from_ms",
+                        "to_ms"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
-                "required": [
-                  "result",
-                  "text"
-                ],
                 "additionalProperties": false
               }
             },
             "required": [
               "id",
               "at_ms",
-              "dur_ms",
               "beat",
+              "dur_ms",
               "kind",
               "props"
             ],
@@ -556,35 +702,78 @@
                 "minimum": 0,
                 "maximum": 9007199254740991
               },
-              "dur_ms": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 9007199254740991
-              },
               "beat": {
                 "type": "string",
                 "minLength": 1
               },
+              "dur_ms": {
+                "type": "integer",
+                "minimum": 2500,
+                "maximum": 3500
+              },
               "kind": {
                 "type": "string",
-                "const": "lower_third"
+                "const": "chamber_sign"
               },
               "props": {
                 "type": "object",
                 "properties": {
-                  "text": {
+                  "big": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 60
+                    "maxLength": 12
                   },
-                  "sub": {
+                  "small": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 60
+                    "maxLength": 50
+                  },
+                  "done": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 30
+                  },
+                  "total": {
+                    "default": 19,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 30
+                  },
+                  "active": {
+                    "default": [],
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "colonists",
+                        "build",
+                        "sleep",
+                        "research",
+                        "fire",
+                        "raid",
+                        "loss",
+                        "animals",
+                        "cold",
+                        "night",
+                        "health",
+                        "cube",
+                        "button",
+                        "subject"
+                      ]
+                    }
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
                   }
                 },
                 "required": [
-                  "text"
+                  "big",
+                  "small",
+                  "done",
+                  "title"
                 ],
                 "additionalProperties": false
               }
@@ -592,8 +781,8 @@
             "required": [
               "id",
               "at_ms",
-              "dur_ms",
               "beat",
+              "dur_ms",
               "kind",
               "props"
             ],
@@ -611,14 +800,112 @@
                 "minimum": 0,
                 "maximum": 9007199254740991
               },
+              "beat": {
+                "type": "string",
+                "minLength": 1
+              },
               "dur_ms": {
                 "type": "integer",
-                "minimum": 1,
+                "minimum": 2500,
+                "maximum": 3500
+              },
+              "kind": {
+                "type": "string",
+                "const": "result_sign"
+              },
+              "props": {
+                "type": "object",
+                "properties": {
+                  "big": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12
+                  },
+                  "small": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "done": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 30
+                  },
+                  "total": {
+                    "default": 19,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 30
+                  },
+                  "active": {
+                    "default": [],
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "colonists",
+                        "build",
+                        "sleep",
+                        "research",
+                        "fire",
+                        "raid",
+                        "loss",
+                        "animals",
+                        "cold",
+                        "night",
+                        "health",
+                        "cube",
+                        "button",
+                        "subject"
+                      ]
+                    }
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "big",
+                  "small",
+                  "done",
+                  "title"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "at_ms",
+              "beat",
+              "dur_ms",
+              "kind",
+              "props"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "at_ms": {
+                "type": "integer",
+                "minimum": 0,
                 "maximum": 9007199254740991
               },
               "beat": {
                 "type": "string",
                 "minLength": 1
+              },
+              "dur_ms": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
               },
               "kind": {
                 "type": "string",
@@ -641,8 +928,8 @@
             "required": [
               "id",
               "at_ms",
-              "dur_ms",
               "beat",
+              "dur_ms",
               "kind",
               "props"
             ],

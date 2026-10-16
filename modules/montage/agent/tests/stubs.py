@@ -136,11 +136,13 @@ def make_plan(*, platform="shorts", duration=12000, voiceover=True, captions=Tru
         "captions": {"enabled": captions and vertical, "source": "voiceover", "style": "aperture_default", "overrides": [],
                      "words_file": "transcript/words.json"},
         "voiceover": [], "inserts": [
-            {"id": "i1", "kind": "chamber_card", "at_ms": 200, "dur_ms": 2300, "beat": "b1",
-             "props": {"chamber": 7, "of": 19, "title": "Правило безопасности", "pictograms": ["cube", "button"]}},
-            {"id": "i2", "kind": "test_result", "at_ms": 9500, "dur_ms": 2000, "beat": "b3",
-             "props": {"result": "pass", "text": "Правило принято"}}],
-        "blackout": [], "sfx": [{"at_ms": 200, "name": "chime_up"}, {"at_ms": 9500, "name": "chime_up"}], "music": None,
+            {"id": "i1", "kind": "chamber_sign", "at_ms": 200, "dur_ms": 3000, "beat": "b1",
+             "props": {"big": "07", "small": "07/19 · колония · день 1", "done": 7, "total": 19, "active": ["colonists", "build"],
+                       "title": "Правило безопасности"}},
+            {"id": "i2", "kind": "result_sign", "at_ms": 6800, "dur_ms": 2600, "beat": "b3",
+             "props": {"big": "ПРОЙДЕНО", "small": "потерь 0 · дней 12", "done": 19, "total": 19, "active": ["colonists"],
+                       "title": "Правило принято"}}],
+        "blackout": [], "sfx": [{"at_ms": 200, "name": "chime_up"}, {"at_ms": 6800, "name": "chime_up"}], "music": None,
         "cta": {"platform": platform, "at_ms": 10000 if platform != "youtube" else duration - 4000, "text": "Следующее испытание скоро", "beat": "b3"}
         if duration > 10000 else None,
     }

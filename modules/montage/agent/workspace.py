@@ -18,7 +18,7 @@ from layout import Layout
 
 COPY_FILES = ("package.json", "package-lock.json", "tsconfig.json", "remotion.config.ts", "qa_zones.json", "plan.schema.json")
 COPY_DIRS = ("src", "scripts")
-PUBLIC_DIRS = ("fonts", "sfx")
+PUBLIC_DIRS = ("fonts", "sfx", "scenes", "pet", "hud")   # шрифты, звуки, фон комнаты, питомец, рамка HUD (ТЗ 23)
 MEDIA_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".wav", ".mp3", ".m4a",
                   ".aac", ".flac", ".ogg"}
 

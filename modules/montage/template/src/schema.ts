@@ -1,11 +1,11 @@
-// Схема plan.json (zod): ТЗ 20 раздел 7 (MON-13, MON-20) + поле `beat` из ТЗ 22 (CRAFT-2). Это входные props композиции Main.
+// Схема plan.json (zod): ТЗ 20 раздел 7 (MON-13, MON-20) + поле `beat` из ТЗ 22 (CRAFT-2) + сцены дизайн-системы v2 (ТЗ 23, SC-3). Это входные props композиции Main.
 // Единственный источник правды о форме плана: scripts/export-schema.mjs пишет из неё plan.schema.json, по которому
 // agent/plan_schema.py проверяется тестом на совпадение (шаг 2). Файл читает и Node, поэтому импорты только с .ts.
 import {z} from 'zod';
-import {pictogramNames} from './style/pictograms.generated.ts';
-import {limits} from './style/tokens.ts';
+import {iconNames} from './style/icons.ts';
+import {durations, limits, room} from './style/tokens.ts';
 
-export const insertKinds = ['chamber_card', 'hazard_banner', 'pixel_transition', 'test_result', 'lower_third', 'custom'] as const;
+export const insertKinds = ['intro', 'blueprint', 'glados_room', 'chamber_sign', 'result_sign', 'custom'] as const;
 export const sfxNames = ['chime_up', 'chime_down', 'beep', 'tick', 'whoosh', 'buzz_error', 'elevator_ding'] as const;
 export const platforms = ['shorts', 'reels', 'telegram', 'youtube', 'none'] as const;
 export const beatRoles = ['hook', 'setup', 'inciting', 'rise', 'turn', 'climax', 'payoff', 'button', 'cta'] as const;
@@ -25,6 +25,8 @@ export const segmentSchema = z.strictObject({
 	zoom: z.number().min(0).max(0.04).default(0), // медленный наезд за сцену, не больше 4 %
 	beat: beatId,
 	intent: z.enum(['jump_cut']).optional(), // CRAFT-4: осознанная перебивка
+	frame: z.enum(['hud']).optional(), // ТЗ 23, SC-3: кадр игры в рамке HUD (горизонтальные ролики)
+	frame_label: z.string().min(1).max(limits.hudLabel).optional(), // подпись в верхней планке рамки HUD
 });
 
 export const captionsSchema = z.strictObject({
@@ -55,42 +57,75 @@ export const voiceoverSchema = z.strictObject({
 	duck: z.boolean().default(false), // CRAFT-4: закадр намеренно идёт поверх живой речи
 });
 
-const pictogramRef = z.union([
-	z.enum(pictogramNames as [string, ...string[]]),
-	z.strictObject({name: z.enum(pictogramNames as [string, ...string[]]), active: z.boolean().default(true), label: text(24).optional()}),
+const insertBase = {id: z.string().min(1), at_ms: ms, beat: beatId};
+const dur = (min: number, max?: number) => (max === undefined ? z.number().int().min(min) : z.number().int().min(min).max(max));
+
+const frac = z.number().min(-0.1).max(1.1); // доля кадра; чуть за краем допустима
+const weight = z.enum(['main', 'thin', 'wall']).default('main'); // линия 3 px, вспомогательная 1,6 px, стена 10 px
+
+// Рисунок чертежа: простые SVG-примитивы в долях кадра (x, w, r: от ширины; y, h: от высоты; радиус круга от ширины).
+// Путь: абсолютные команды M L H V C S Q T A Z, координаты в долях кадра (у A: радиусы и точка, флаги 0/1).
+export const drawingPrimitive = z.discriminatedUnion('type', [
+	z.strictObject({type: z.literal('line'), x1: frac, y1: frac, x2: frac, y2: frac, weight}),
+	z.strictObject({type: z.literal('rect'), x: frac, y: frac, w: z.number().min(0).max(1.2), h: z.number().min(0).max(1.2), weight}),
+	z.strictObject({type: z.literal('circle'), cx: frac, cy: frac, r: z.number().min(0).max(1), weight}),
+	z.strictObject({type: z.literal('path'), d: z.string().min(2).max(600).regex(/^[MLHVCSQTAZ0-9eE+.,\s-]+$/), weight}),
 ]);
 
-const insertBase = {id: z.string().min(1), at_ms: ms, dur_ms: z.number().int().min(1), beat: beatId};
+const iconRef = z.enum(iconNames);
+const signProps = {
+	big: text(limits.signBig), // огромное число или слово итога (sign-number)
+	small: text(limits.signSmall), // строка-дробь (sign-small)
+	done: z.number().int().min(0).max(limits.ticks), // сколько штрихов прогресса пройдено
+	total: z.number().int().min(1).max(limits.ticks).default(19),
+	active: z.array(iconRef).max(12).default([]), // какие иконки включены
+	title: text(limits.signTitle), // заголовок капсом (sign-title)
+};
+const range = {from_ms: ms, to_ms: ms};
 
 export const insertSchema = z.discriminatedUnion('kind', [
 	z.strictObject({
 		...insertBase,
-		kind: z.literal('chamber_card'),
+		dur_ms: dur(durations.intro - 600, durations.intro + 2000),
+		kind: z.literal('intro'),
+		props: z.strictObject({subtitle: text(limits.subtitle), wordmark: text(limits.wordmark).default('APERTURE SCIENCE')}),
+	}),
+	z.strictObject({
+		...insertBase,
+		dur_ms: dur(durations.bpDraw + 500),
+		kind: z.literal('blueprint'),
 		props: z.strictObject({
-			chamber: z.number().int().min(0).max(999),
-			of: z.number().int().min(1).max(99).default(19),
-			title: text(limits.title),
-			pictograms: z.array(pictogramRef).min(2).max(5),
+			title: text(limits.bpTitle),
+			kicker: text(limits.bpKicker),
+			note: text(limits.bpNote),
+			callouts: z.array(z.strictObject({x: z.number().min(0).max(1), y: z.number().min(0).max(1), label: text(limits.bpLabel)})).max(limits.callouts).default([]),
+			drawing: z.array(drawingPrimitive).min(1).max(limits.drawing),
 		}),
 	}),
-	z.strictObject({...insertBase, kind: z.literal('hazard_banner'), props: z.strictObject({text: text(limits.onScreen)})}),
 	z.strictObject({
 		...insertBase,
-		kind: z.literal('pixel_transition'),
-		props: z.strictObject({direction: z.enum(['in', 'out'])}),
+		dur_ms: dur(1),
+		kind: z.literal('glados_room'),
+		props: z.strictObject({
+			moods: z.array(z.strictObject({...range, mood: z.enum(room.moods)})).max(60).default([]), // время ролика, как at_ms
+			speech: z.array(z.strictObject(range)).max(200).default([]), // отрезки её речи по журналу (время ролика); голос закадра берётся из voiceover
+		}),
 	}),
 	z.strictObject({
 		...insertBase,
-		kind: z.literal('test_result'),
-		props: z.strictObject({result: z.enum(['pass', 'fail']), label: text(limits.title).optional(), text: text(limits.onScreen)}),
+		dur_ms: dur(durations.bumperHold.min, durations.bumperHold.max),
+		kind: z.literal('chamber_sign'),
+		props: z.strictObject(signProps),
 	}),
 	z.strictObject({
 		...insertBase,
-		kind: z.literal('lower_third'),
-		props: z.strictObject({text: text(limits.onScreen), sub: text(limits.onScreen).optional()}),
+		dur_ms: dur(durations.bumperHold.min, durations.bumperHold.max),
+		kind: z.literal('result_sign'),
+		props: z.strictObject(signProps),
 	}),
 	z.strictObject({
 		...insertBase,
+		dur_ms: dur(1),
 		kind: z.literal('custom'),
 		props: z.looseObject({component: z.string().min(1)}), // компонент из work/src/custom/index.ts
 	}),
@@ -135,6 +170,7 @@ export type PlanInput = z.input<typeof planSchema>;
 export type Segment = z.infer<typeof segmentSchema>;
 export type Insert = z.infer<typeof insertSchema>;
 export type InsertOf<K extends Insert['kind']> = Extract<Insert, {kind: K}>;
+export type DrawingPrimitive = z.infer<typeof drawingPrimitive>;
 export type Voiceover = z.infer<typeof voiceoverSchema>;
 export type Word = z.infer<typeof wordSchema>;
 export type MainProps = z.infer<typeof mainPropsSchema>;

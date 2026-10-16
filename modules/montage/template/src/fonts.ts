@@ -2,7 +2,7 @@
 import {loadFont} from '@remotion/fonts';
 import {useEffect, useState} from 'react';
 import {cancelRender, continueRender, delayRender, staticFile} from 'remotion';
-import {fonts} from './style/tokens';
+import {fonts, plex} from './style/tokens';
 
 let loading: Promise<void> | null = null;
 
@@ -18,7 +18,10 @@ export function loadFonts(): Promise<void> {
 					stretch: `${f.stretch}%`,
 					display: 'block',
 				}),
-			),
+			).concat([
+				// вариативный Plex Sans с диапазоном осей: сцены v2 берут любой вес и ширину (как bundle.css дизайн-системы)
+				loadFont({family: plex.family, url: staticFile(`fonts/${plex.file}`), weight: plex.weight, stretch: plex.stretch, display: 'block'}),
+			]),
 		).then(() => undefined);
 	}
 	return loading;

@@ -9,22 +9,38 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 PLATFORMS = ("shorts", "reels", "telegram", "youtube", "none")
 # запасной список видов вставок; настоящий берётся из template/plan.schema.json (единый источник: новые компоненты шаблона
 # добавляются без правки Python), подробные правила props есть только у перечисленных ниже видов
-INSERT_KINDS = ("chamber_card", "hazard_banner", "pixel_transition", "test_result", "lower_third", "custom")
+INSERT_KINDS = ("intro", "blueprint", "glados_room", "chamber_sign", "result_sign", "custom")
 CAPTION_PLATFORMS = ("shorts", "reels", "telegram", "none")      # субтитры вжигаются только в вертикальных коротких роликах
 BEAT_ROLES = ("hook", "setup", "inciting", "rise", "turn", "climax", "payoff", "button", "cta")
 MAX_ON_SCREEN = 60          # тексты на экране (ТЗ 20 MON-13), заголовки 40 (регламент §6), CTA 80
 MAX_TITLE = 40
 MAX_CTA = 80
 MAX_VOICEOVER = 400
-MAX_PIXEL_TRANSITIONS = 2   # регламент §9
 SFX_MIN_GAP_MS = 1000       # регламент §5: не больше одного эффекта в секунду
-PIXEL_MS = (400, 600)       # регламент §4.5
+# сцены дизайн-системы v2 (ТЗ 23): пределы текстов и длительностей; настоящие значения лежат в template/src/style/tokens.ts,
+# а списки допустимых значений (иконки, эмоции) берутся из plan.schema.json
+MAX_SUBTITLE = 60           # подзаголовок интро
+MAX_WORDMARK = 40
+MAX_SIGN_BIG, MAX_SIGN_SMALL, MAX_SIGN_TITLE = 12, 50, 30
+MAX_BP_TITLE, MAX_BP_KICKER, MAX_BP_NOTE, MAX_BP_LABEL = 40, 40, 120, 40
+MAX_CALLOUTS, MAX_DRAWING = 4, 200
+MAX_TICKS = 30
+MAX_HUD_LABEL = 40
+INTRO_MS = (3400, 6000)     # интро 4 с, анимация заканчивается к 3,4 с
+BUMPER_MS = (2500, 3500)    # отбивка-табличка держится bumper-hold
+BLUEPRINT_MIN_MS = 3000     # линии рисуются 2,5 с, затем подписи
+ICONS = ("colonists", "build", "sleep", "research", "fire", "raid", "loss", "animals", "cold", "night", "health", "cube",
+         "button", "subject")
+MOODS = ("idle", "thinking", "angry", "happy", "question", "surprised")
+DRAWING_TYPES = {"line": ("x1", "y1", "x2", "y2"), "rect": ("x", "y", "w", "h"), "circle": ("cx", "cy", "r"), "path": ("d",)}
+PATH_RE = re.compile(r"^[MLHVCSQTAZ0-9eE+.,\s-]+$")
 
 # площадка -> (ширина, высота, fps, предельная длительность, мс); None: без ограничения (ТЗ 21 §8)
 PLATFORM_FORMAT = {
@@ -42,16 +58,17 @@ class PlanContext:
     job_dir: Path | None = None
     platform: str = "none"
     beat_ids: set[str] | None = None                 # id битов story.json; None: истории нет, поле `beat` проверяется только как строка
-    pictograms: set[str] = field(default_factory=set)
+    icons: tuple[str, ...] = ICONS                             # имена иконок табличек (из plan.schema.json)
+    moods: tuple[str, ...] = MOODS                             # эмоции питомца в комнате (из plan.schema.json)
     sfx: set[str] = field(default_factory=set)
     source_ms: dict[str, int] = field(default_factory=dict)     # длительность исходников в мс по пути `sources/…` (если известна)
     insert_kinds: tuple[str, ...] = INSERT_KINDS               # допустимые kind вставок (из plan.schema.json шаблона)
 
     @classmethod
     def from_layout(cls, layout, **kw) -> PlanContext:
-        pict = {p.stem for p in (layout.assets / "pictograms").glob("*.svg")}
         sfx = {p.stem for p in (layout.assets / "sfx").glob("*.wav")}
-        return cls(pictograms=pict, sfx=sfx, insert_kinds=insert_kinds_from_schema(layout), **kw)
+        icons, moods = scene_vocabulary_from_schema(layout)
+        return cls(sfx=sfx, insert_kinds=insert_kinds_from_schema(layout), icons=icons, moods=moods, **kw)
 
 
 def insert_kinds_from_schema(layout) -> tuple[str, ...]:
@@ -64,6 +81,20 @@ def insert_kinds_from_schema(layout) -> tuple[str, ...]:
     except (OSError, ValueError, KeyError, TypeError):
         return INSERT_KINDS
     return kinds or INSERT_KINDS
+
+
+def scene_vocabulary_from_schema(layout) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Имена иконок и эмоций питомца из `template/plan.schema.json` (запасные значения: константы выше)."""
+    try:
+        doc = json.loads((layout.template / "plan.schema.json").read_text(encoding="utf-8"))
+        variants = doc["properties"]["inserts"]["items"]
+        variants = variants.get("oneOf") or variants.get("anyOf") or []
+        by_kind = {v["properties"]["kind"]["const"]: v["properties"]["props"]["properties"] for v in variants}
+        icons = tuple(by_kind["chamber_sign"]["active"]["items"]["enum"])
+        moods = tuple(by_kind["glados_room"]["moods"]["items"]["properties"]["mood"]["enum"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return ICONS, MOODS
+    return icons or ICONS, moods or MOODS
 
 
 def _is_int(v) -> bool:
@@ -181,7 +212,8 @@ def validate_plan(plan, ctx: PlanContext) -> list[str]:
         segs = []
     for k, s in enumerate(segs):
         where = f"segments[{k}]"
-        if not c.obj(where, s, {"id", "source", "in_ms", "out_ms", "at_ms", "volume", "crop", "zoom", "beat", "intent"},
+        if not c.obj(where, s, {"id", "source", "in_ms", "out_ms", "at_ms", "volume", "crop", "zoom", "beat", "intent", "frame",
+                                 "frame_label"},
                      {"id", "source", "in_ms", "out_ms", "at_ms", "beat"}):
             continue
         sid = s.get("id")
@@ -214,6 +246,16 @@ def validate_plan(plan, ctx: PlanContext) -> list[str]:
             c.add(f"{where}.crop", "{\"mode\": \"center\"} или {\"mode\": \"face\"}")
         if "intent" in s and s["intent"] != "jump_cut":
             c.add(f"{where}.intent", "единственное допустимое значение: jump_cut")
+        if "frame" in s:
+            fmt_ = plan.get("format") if isinstance(plan.get("format"), dict) else {}
+            if s["frame"] != "hud":
+                c.add(f"{where}.frame", "единственное значение: hud (рамка HUD поверх игры)")
+            elif _is_int(fmt_.get("width")) and _is_int(fmt_.get("height")) and fmt_["height"] > fmt_["width"]:
+                c.add(f"{where}.frame", "рамка HUD нарисована под горизонтальный кадр: в вертикальных роликах её нет")
+        if "frame_label" in s:
+            if "frame" not in s:
+                c.add(f"{where}.frame_label", "подпись рамки без frame: \"hud\"")
+            c.text(where, s, "frame_label", MAX_HUD_LABEL)
         beat_ref(where, s, True)
     spans.sort()
     for (a0, a1, aid), (b0, b1, bid) in zip(spans, spans[1:]):
@@ -292,7 +334,6 @@ def validate_plan(plan, ctx: PlanContext) -> list[str]:
     if not isinstance(inserts, list):
         c.add("inserts", "должен быть массивом")
         inserts = []
-    pixel = 0
     for k, ins in enumerate(inserts):
         where = f"inserts[{k}]"
         if not c.obj(where, ins, {"id", "kind", "at_ms", "dur_ms", "props", "beat"}, {"id", "kind", "at_ms", "dur_ms", "props", "beat"}):
@@ -312,13 +353,9 @@ def validate_plan(plan, ctx: PlanContext) -> list[str]:
         if at is not None and dur is not None and at + dur > D + 50:
             c.add(where, f"вставка заканчивается на {at + dur} мс, ролик длится {D} мс")
         beat_ref(where, ins, True)
-        _check_insert_props(c, where, kind, ins.get("props"), ctx)
-        if kind == "pixel_transition":
-            pixel += 1
-            if dur is not None and not PIXEL_MS[0] <= dur <= PIXEL_MS[1]:
-                c.add(f"{where}.dur_ms", f"переход «пиксели» длится {PIXEL_MS[0]}–{PIXEL_MS[1]} мс (регламент §4.5)")
-    if pixel > MAX_PIXEL_TRANSITIONS:
-        c.add("inserts", f"переходов «пиксели» {pixel}, допустимо не больше {MAX_PIXEL_TRANSITIONS} (регламент §9)")
+        _check_insert_props(c, where, kind, ins.get("props"), ctx, D)
+        if dur is not None:
+            _check_insert_duration(c, where, kind, dur)
 
     # ---- blackout
     bl = plan.get("blackout", [])
@@ -396,45 +433,106 @@ def validate_plan(plan, ctx: PlanContext) -> list[str]:
     return c.problems
 
 
-def _check_insert_props(c: _Check, where: str, kind, props, ctx: PlanContext) -> None:
+def _check_insert_duration(c: _Check, where: str, kind, dur: int) -> None:
+    if kind == "intro" and not INTRO_MS[0] <= dur <= INTRO_MS[1]:
+        c.add(f"{where}.dur_ms", f"интро длится {INTRO_MS[0]}–{INTRO_MS[1]} мс, обычно 4000 (получено {dur})")
+    elif kind in ("chamber_sign", "result_sign") and not BUMPER_MS[0] <= dur <= BUMPER_MS[1]:
+        c.add(f"{where}.dur_ms", f"табличка держится {BUMPER_MS[0]}–{BUMPER_MS[1]} мс (bumper-hold, получено {dur})")
+    elif kind == "blueprint" and dur < BLUEPRINT_MIN_MS:
+        c.add(f"{where}.dur_ms", f"чертёж рисуется 2,5 с, затем подписи: не короче {BLUEPRINT_MIN_MS} мс (получено {dur})")
+
+
+def _check_ranges(c: _Check, where: str, items, extra: set[str], D: int, key: str) -> None:
+    if not isinstance(items, list):
+        c.add(where, "должен быть массивом")
+        return
+    for j, it in enumerate(items):
+        w = f"{where}[{j}]"
+        if not c.obj(w, it, {"from_ms", "to_ms"} | extra, {"from_ms", "to_ms"} | extra):
+            continue
+        a = c.int_field(w, it, "from_ms", 0)
+        z = c.int_field(w, it, "to_ms", 0)
+        if a is not None and z is not None and z <= a:
+            c.add(f"{w}.to_ms", f"должно быть больше from_ms ({a})")
+        if z is not None and z > D + 50:
+            c.add(f"{w}.to_ms", f"{z} мс за пределами ролика ({D} мс)")
+
+
+def _check_drawing(c: _Check, where: str, drawing) -> None:
+    if not isinstance(drawing, list) or not 1 <= len(drawing) <= MAX_DRAWING:
+        c.add(where, f"список из 1–{MAX_DRAWING} фигур (line, rect, circle, path) в долях кадра")
+        return
+    for j, d in enumerate(drawing):
+        w = f"{where}[{j}]"
+        kind = d.get("type") if isinstance(d, dict) else None
+        if kind not in DRAWING_TYPES:
+            c.add(f"{w}.type", f"одно из {', '.join(DRAWING_TYPES)}")
+            continue
+        fields = set(DRAWING_TYPES[kind])
+        if not c.obj(w, d, {"type", "weight"} | fields, {"type"} | fields):
+            continue
+        if "weight" in d and d["weight"] not in ("main", "thin", "wall"):
+            c.add(f"{w}.weight", "main, thin или wall")
+        if kind == "path":
+            if not isinstance(d["d"], str) or not 2 <= len(d["d"]) <= 600 or not PATH_RE.match(d["d"]):
+                c.add(f"{w}.d", "путь из абсолютных команд M L H V C S Q T A Z и чисел (доли кадра), до 600 символов")
+            continue
+        for key in fields:
+            v = d[key]
+            if not _is_num(v) or not -0.1 <= v <= 1.2:
+                c.add(f"{w}.{key}", "число в долях кадра (от -0.1 до 1.2)")
+
+
+def _check_insert_props(c: _Check, where: str, kind, props, ctx: PlanContext, D: int = 10 ** 9) -> None:
     w = f"{where}.props"
-    if kind == "chamber_card":
-        if not c.obj(w, props, {"chamber", "of", "title", "pictograms"}, {"chamber", "title", "pictograms"}):
+    if kind == "intro":
+        if c.obj(w, props, {"subtitle", "wordmark"}, {"subtitle"}):
+            c.text(w, props, "subtitle", MAX_SUBTITLE)
+            c.text(w, props, "wordmark", MAX_WORDMARK)
+    elif kind == "blueprint":
+        if not c.obj(w, props, {"title", "kicker", "note", "callouts", "drawing"}, {"title", "kicker", "note", "drawing"}):
             return
-        c.int_field(w, props, "chamber", 0, 999)
-        if "of" in props:
-            c.int_field(w, props, "of", 1, 99)
-        c.text(w, props, "title", MAX_TITLE)
-        pics = props.get("pictograms")
-        if not isinstance(pics, list) or not 2 <= len(pics) <= 5:
-            c.add(f"{w}.pictograms", "список из 2–5 пиктограмм")
+        c.text(w, props, "title", MAX_BP_TITLE)
+        c.text(w, props, "kicker", MAX_BP_KICKER)
+        c.text(w, props, "note", MAX_BP_NOTE)
+        calls = props.get("callouts", [])
+        if not isinstance(calls, list) or len(calls) > MAX_CALLOUTS:
+            c.add(f"{w}.callouts", f"список не длиннее {MAX_CALLOUTS} выносок")
+            calls = []
+        for j, co in enumerate(calls):
+            cw = f"{w}.callouts[{j}]"
+            if c.obj(cw, co, {"x", "y", "label"}, {"x", "y", "label"}):
+                for key in ("x", "y"):
+                    if not _is_num(co[key]) or not 0 <= co[key] <= 1:
+                        c.add(f"{cw}.{key}", "доля кадра от 0 до 1")
+                c.text(cw, co, "label", MAX_BP_LABEL)
+        _check_drawing(c, f"{w}.drawing", props.get("drawing"))
+    elif kind == "glados_room":
+        if not c.obj(w, props, {"moods", "speech"}):
+            return
+        moods = props.get("moods", [])
+        _check_ranges(c, f"{w}.moods", moods, {"mood"}, D, "mood")
+        for j, m in enumerate(moods if isinstance(moods, list) else []):
+            if isinstance(m, dict) and m.get("mood") not in ctx.moods:
+                c.add(f"{w}.moods[{j}].mood", f"одна из {', '.join(ctx.moods)} (получено «{m.get('mood')}»)")
+        _check_ranges(c, f"{w}.speech", props.get("speech", []), set(), D, "speech")
+    elif kind in ("chamber_sign", "result_sign"):
+        if not c.obj(w, props, {"big", "small", "done", "total", "active", "title"}, {"big", "small", "done", "title"}):
+            return
+        c.text(w, props, "big", MAX_SIGN_BIG)
+        c.text(w, props, "small", MAX_SIGN_SMALL)
+        c.text(w, props, "title", MAX_SIGN_TITLE)
+        done = c.int_field(w, props, "done", 0, MAX_TICKS)
+        total = c.int_field(w, props, "total", 1, MAX_TICKS) if "total" in props else 19
+        if done is not None and total is not None and done > total:
+            c.add(f"{w}.done", f"пройдено {done}, а штрихов всего {total}")
+        active = props.get("active", [])
+        if not isinstance(active, list) or len(active) > 12:
+            c.add(f"{w}.active", "список не длиннее 12 иконок")
         else:
-            for j, p in enumerate(pics):
-                name = p if isinstance(p, str) else (p.get("name") if isinstance(p, dict) else None)
-                if isinstance(p, dict):
-                    c.obj(f"{w}.pictograms[{j}]", p, {"name", "active", "label"}, {"name"})
-                    if isinstance(p.get("label"), str) and len(p["label"]) > 24:
-                        c.add(f"{w}.pictograms[{j}].label", "не длиннее 24 символов")
-                if ctx.pictograms and name not in ctx.pictograms:
-                    c.add(f"{w}.pictograms[{j}]", f"нет пиктограммы «{name}» (есть: {', '.join(sorted(ctx.pictograms))})")
-    elif kind == "hazard_banner":
-        if c.obj(w, props, {"text"}, {"text"}):
-            c.text(w, props, "text", MAX_ON_SCREEN)
-    elif kind == "pixel_transition":
-        if c.obj(w, props, {"direction"}, {"direction"}) and props.get("direction") not in ("in", "out"):
-            c.add(f"{w}.direction", "in или out")
-    elif kind == "test_result":
-        if c.obj(w, props, {"result", "label", "text"}, {"result", "text"}):
-            if props.get("result") not in ("pass", "fail"):
-                c.add(f"{w}.result", "pass или fail")
-            if "label" in props:
-                c.text(w, props, "label", MAX_TITLE)
-            c.text(w, props, "text", MAX_ON_SCREEN)
-    elif kind == "lower_third":
-        if c.obj(w, props, {"text", "sub"}, {"text"}):
-            c.text(w, props, "text", MAX_ON_SCREEN)
-            if "sub" in props:
-                c.text(w, props, "sub", MAX_ON_SCREEN)
+            for j, name in enumerate(active):
+                if name not in ctx.icons:
+                    c.add(f"{w}.active[{j}]", f"нет иконки «{name}» (есть: {', '.join(ctx.icons)})")
     elif kind not in ("custom",):
         if not isinstance(props, dict):
             c.add(w, "должен быть объектом")                       # новый вид вставки: форму props проверяет схема шаблона (zod)

@@ -1,4 +1,4 @@
-"""plan_schema (MON-13, MON-28, CRAFT-2): верный план и по неверному примеру на каждое правило; сверка с plan.schema.json шаблона."""
+﻿"""plan_schema (MON-13, MON-28, CRAFT-2): верный план и по неверному примеру на каждое правило; сверка с plan.schema.json шаблона."""
 import copy
 import json
 
@@ -46,7 +46,7 @@ def bad(mutate, expect, tmp_path=None, platform="shorts", plan=None):
 
 def test_times_must_be_non_negative_and_inside_the_video():
     bad(lambda p: p["inserts"][0].update(at_ms=-5), "не меньше 0")
-    bad(lambda p: p["inserts"][0].update(at_ms=11500, dur_ms=2000), "вставка заканчивается")
+    bad(lambda p: p["inserts"][0].update(at_ms=11500, dur_ms=3000), "вставка заканчивается")
     bad(lambda p: p["sfx"][0].update(at_ms=99999), "не больше")
     bad(lambda p: p["voiceover"][0].update(at_ms=99999), "за пределами ролика")
     bad(lambda p: p["blackout"].append({"from_ms": 100, "to_ms": 99999}), "за пределами ролика")
@@ -75,13 +75,14 @@ def test_segment_must_be_inside_the_source_duration(tmp_path):
 
 def test_insert_kind_comes_from_the_template_schema():
     kinds = insert_kinds_from_schema(DEFAULT)
-    assert {"chamber_card", "custom", "pixel_transition"} <= set(kinds)
+    assert {"intro", "blueprint", "glados_room", "chamber_sign", "result_sign", "custom"} == set(kinds)
+    assert not {"chamber_card", "hazard_banner", "test_result", "pixel_transition", "lower_third"} & set(kinds)
     bad(lambda p: p["inserts"][0].update(kind="неизвестная"), "одно из")
     # новый вид в схеме шаблона принимается без правки Python
     c = ctx()
-    c.insert_kinds = (*c.insert_kinds, "blueprint")
+    c.insert_kinds = (*c.insert_kinds, "confetti")
     plan = make_plan()
-    plan["inserts"].append({"id": "i9", "kind": "blueprint", "at_ms": 5000, "dur_ms": 1500, "beat": "b2", "props": {"x": 1}})
+    plan["inserts"].append({"id": "i9", "kind": "confetti", "at_ms": 5000, "dur_ms": 1500, "beat": "b2", "props": {"x": 1}})
     assert validate_plan(plan, c) == []
 
 
@@ -95,8 +96,9 @@ def test_sfx_names_come_from_assets_and_are_spaced():
 
 
 def test_on_screen_text_limits():
-    bad(lambda p: p["inserts"][1]["props"].update(text="я" * 61), "предел 60")
-    bad(lambda p: p["inserts"][0]["props"].update(title="я" * 41), "предел 40")
+    bad(lambda p: p["inserts"][0]["props"].update(title="я" * 31), "предел 30")
+    bad(lambda p: p["inserts"][0]["props"].update(small="я" * 51), "предел 50")
+    bad(lambda p: p["inserts"][0]["props"].update(big="я" * 13), "предел 12")
     bad(lambda p: p["cta"].update(text="я" * 81), "предел 80")
     bad(lambda p: p["voiceover"][0].update(text="я" * 401), "предел 400")
 
@@ -120,14 +122,65 @@ def test_format_and_duration_follow_the_platform_table():
     bad(lambda p: p["format"].update(width=1081), "чётными")
 
 
-def test_pixel_transitions_limits():
-    def add(p, n):
-        for k in range(n):
-            p["inserts"].append({"id": f"p{k}", "kind": "pixel_transition", "at_ms": 3000 + k * 2000, "dur_ms": 500, "beat": "b2",
-                                 "props": {"direction": "in"}})
-    bad(lambda p: add(p, 3), "переходов «пиксели» 3")
-    bad(lambda p: p["inserts"].append({"id": "p", "kind": "pixel_transition", "at_ms": 3000, "dur_ms": 900, "beat": "b2", "props": {"direction": "in"}}),
-        "400–600")
+def scene(kind, **props):
+    return {"id": "x", "kind": kind, "at_ms": 3000, "dur_ms": 3000, "beat": "b2", "props": props}
+
+
+DRAWING = [{"type": "rect", "x": 0.3, "y": 0.4, "w": 0.3, "h": 0.2}, {"type": "line", "x1": 0.1, "y1": 0.2, "x2": 0.5, "y2": 0.2, "weight": "thin"},
+           {"type": "circle", "cx": 0.5, "cy": 0.5, "r": 0.05}, {"type": "path", "d": "M 0.1 0.1 H 0.4 A 0.05 0.05 0 0 1 0.5 0.2 Z"}]
+BLUEPRINT = {"title": "Спальня 4×4", "kicker": "Отчёт", "note": "Заметка", "drawing": DRAWING,
+             "callouts": [{"x": 0.4, "y": 0.5, "label": "Стена"}]}
+
+
+def test_scenes_of_design_system_v2_pass_and_are_checked():
+    ok = make_plan()
+    ok["inserts"] += [{**scene("intro", subtitle="Лаборатория"), "id": "a", "at_ms": 3400, "dur_ms": 4000},
+                      {**scene("blueprint", **BLUEPRINT), "id": "b", "at_ms": 7400, "dur_ms": 3000},
+                      {**scene("glados_room", moods=[{"from_ms": 3000, "to_ms": 4000, "mood": "happy"}], speech=[{"from_ms": 3000, "to_ms": 3500}]),
+                       "id": "c", "at_ms": 10400, "dur_ms": 1500}]
+    problems = validate_plan(ok, ctx())
+    assert [p for p in problems if "inserts[2]" in p or "inserts[3]" in p or "inserts[4]" in p] == [], problems
+
+    def bad_scene(ins, expect):
+        p = make_plan()
+        p["inserts"].append(ins)
+        assert any(expect in x for x in validate_plan(p, ctx())), (expect, validate_plan(p, ctx()))
+
+    bad_scene(scene("intro", subtitle="я" * 61), "предел 60")
+    bad_scene({**scene("intro", subtitle="т"), "dur_ms": 1000}, "интро длится")
+    bad_scene({**scene("chamber_sign", big="1", small="м", done=1, active=[], title="т"), "dur_ms": 1000}, "bumper-hold")
+    bad_scene(scene("chamber_sign", big="1", small="м", done=5, total=3, active=[], title="т"), "штрихов всего")
+    bad_scene(scene("result_sign", big="1", small="м", done=1, active=["костёр"], title="т"), "нет иконки")
+    bad_scene(scene("blueprint", **{**BLUEPRINT, "callouts": [{"x": 0.1, "y": 0.1, "label": "а"}] * 5}), "не длиннее 4")
+    bad_scene(scene("blueprint", **{**BLUEPRINT, "callouts": [{"x": 0.1, "y": 0.1, "label": "я" * 41}]}), "предел 40")
+    bad_scene(scene("blueprint", **{**BLUEPRINT, "drawing": [{"type": "spiral"}]}), "одно из line")
+    bad_scene(scene("blueprint", **{**BLUEPRINT, "drawing": [{"type": "path", "d": "M 0 0 L alert(1)"}]}), "путь из абсолютных команд")
+    bad_scene(scene("blueprint", **{**BLUEPRINT, "drawing": [{"type": "circle", "cx": 5, "cy": 0.5, "r": 0.1}]}), "долях кадра")
+    bad_scene({**scene("blueprint", **BLUEPRINT), "dur_ms": 2000}, "не короче 3000")
+    bad_scene(scene("glados_room", moods=[{"from_ms": 100, "to_ms": 50, "mood": "idle"}]), "больше from_ms")
+    bad_scene(scene("glados_room", moods=[{"from_ms": 100, "to_ms": 500, "mood": "furious"}]), "одна из idle")
+    bad_scene(scene("glados_room", speech=[{"from_ms": 100, "to_ms": 99999}]), "за пределами ролика")
+
+
+def test_hud_frame_only_in_horizontal_formats():
+    yt = make_plan(platform="youtube", duration=14000, captions=False)
+    seg = {"id": "s1", "source": "sources/a.mp4", "in_ms": 0, "out_ms": 4000, "at_ms": 4000, "volume": 1, "crop": {"mode": "center"},
+           "zoom": 0, "beat": "b2", "frame": "hud", "frame_label": "КАМЕРА 07"}
+    yt["segments"] = [seg]
+    assert not [x for x in validate_plan(yt, ctx(platform="youtube")) if "frame" in x]
+    sh = make_plan()
+    sh["segments"] = [{**seg, "id": "s2"}]
+    assert any("рамка HUD нарисована под горизонтальный кадр" in x for x in validate_plan(sh, ctx()))
+    sh["segments"] = [{**seg, "frame_label": "я" * 41}]
+    assert any("предел 40" in x for x in validate_plan(sh, ctx()))
+    sh["segments"] = [{k: v for k, v in seg.items() if k != "frame"}]
+    assert any("подпись рамки без frame" in x for x in validate_plan(sh, ctx()))
+
+
+def test_vocabulary_comes_from_the_template_json_schema():
+    from plan_schema import ICONS, MOODS, scene_vocabulary_from_schema
+    icons, moods = scene_vocabulary_from_schema(DEFAULT)
+    assert tuple(icons) == ICONS and tuple(moods) == MOODS and len(icons) == 14 and len(moods) == 6
 
 
 def test_captions_overrides_cannot_change_times_mon28():
@@ -187,7 +240,8 @@ def test_python_validation_agrees_with_the_template_json_schema(tmp_path):
         assert not list(validator.iter_errors(plan))
     cases = [lambda p: p.update(version=2), lambda p: p["inserts"][0].update(kind="x"), lambda p: p["inserts"][0].pop("beat"),
              lambda p: p["segments"].append({"id": "s"}), lambda p: p["sfx"][0].update(name="wilhelm"), lambda p: p.update(extra=1),
-             lambda p: p["inserts"][1]["props"].update(result="draw"), lambda p: p["format"].update(fps=120)]
+             lambda p: p["inserts"][1]["props"].update(big="я" * 13), lambda p: p["format"].update(fps=120),
+             lambda p: p["inserts"][1]["props"].update(active=["костёр"]), lambda p: p["inserts"][1].update(dur_ms=100)]
     for mutate in cases:
         p = make_plan()
         mutate(p)

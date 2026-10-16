@@ -38,14 +38,14 @@
     },
     "font_px": {
       "vertical": 64,
-      "horizontal": 56,
+      "horizontal": 64,
       "square": 64
     },
     "max_chars": 28,
     "max_width_ratio": 0.92,
     "height_ratio": {
       "vertical": 0.0546,
-      "horizontal": 0.0881,
+      "horizontal": 0.097,
       "square": 0.097
     },
     "zone_at_default": {
@@ -57,9 +57,9 @@
       },
       "horizontal": {
         "x": 0.04,
-        "y": 0.7759,
+        "y": 0.7715,
         "w": 0.92,
-        "h": 0.0881
+        "h": 0.097
       },
       "square": {
         "x": 0.04,
@@ -70,88 +70,67 @@
     }
   },
   "components": {
-    "chamber_card": {
+    "chamber_sign": {
       "avoid_captions": true,
       "vertical": {
-        "x": 0.07,
-        "y": 0.14,
-        "w": 0.86,
-        "h": 0.5
+        "x": 0.0833,
+        "y": 0.276,
+        "w": 0.8333,
+        "h": 0.4479
       },
       "horizontal": {
-        "x": 0.2,
-        "y": 0.25,
-        "w": 0.6,
-        "h": 0.5
+        "x": 0.2839,
+        "y": 0.1019,
+        "w": 0.4323,
+        "h": 0.7963
       },
       "square": {
-        "x": 0.07,
-        "y": 0.25,
-        "w": 0.86,
-        "h": 0.5
+        "x": 0.0833,
+        "y": 0.1019,
+        "w": 0.8333,
+        "h": 0.7963
       }
     },
-    "hazard_banner": {
+    "result_sign": {
       "avoid_captions": true,
       "vertical": {
-        "x": 0,
-        "y": 0.22,
-        "w": 1,
-        "h": 0.12
+        "x": 0.0833,
+        "y": 0.276,
+        "w": 0.8333,
+        "h": 0.4479
       },
       "horizontal": {
-        "x": 0,
-        "y": 0.12,
-        "w": 1,
-        "h": 0.12
+        "x": 0.2839,
+        "y": 0.1019,
+        "w": 0.4323,
+        "h": 0.7963
       },
       "square": {
-        "x": 0,
-        "y": 0.15,
-        "w": 1,
-        "h": 0.12
+        "x": 0.0833,
+        "y": 0.1019,
+        "w": 0.8333,
+        "h": 0.7963
       }
     },
-    "test_result": {
+    "glados_room": {
       "avoid_captions": true,
       "vertical": {
-        "x": 0.08,
-        "y": 0.3,
-        "w": 0.84,
-        "h": 0.24
+        "x": 0.2293,
+        "y": 0.2816,
+        "w": 0.5413,
+        "h": 0.42
       },
       "horizontal": {
-        "x": 0.25,
-        "y": 0.3,
-        "w": 0.5,
-        "h": 0.36
+        "x": 0.3736,
+        "y": 0.1776,
+        "w": 0.2528,
+        "h": 0.62
       },
       "square": {
-        "x": 0.1,
-        "y": 0.3,
-        "w": 0.8,
-        "h": 0.34
-      }
-    },
-    "lower_third": {
-      "avoid_captions": true,
-      "vertical": {
-        "x": 0.06,
-        "y": 0.7,
-        "w": 0.7,
-        "h": 0.08
-      },
-      "horizontal": {
-        "x": 0.05,
-        "y": 0.66,
-        "w": 0.4,
-        "h": 0.1
-      },
-      "square": {
-        "x": 0.06,
-        "y": 0.62,
-        "w": 0.6,
-        "h": 0.1
+        "x": 0.2753,
+        "y": 0.1776,
+        "w": 0.4495,
+        "h": 0.62
       }
     },
     "cta": {
@@ -218,27 +197,6 @@
       }
     },
     "blackout": {
-      "avoid_captions": false,
-      "vertical": {
-        "x": 0,
-        "y": 0,
-        "w": 1,
-        "h": 1
-      },
-      "horizontal": {
-        "x": 0,
-        "y": 0,
-        "w": 1,
-        "h": 1
-      },
-      "square": {
-        "x": 0,
-        "y": 0,
-        "w": 1,
-        "h": 1
-      }
-    },
-    "pixel_transition": {
       "avoid_captions": false,
       "vertical": {
         "x": 0,

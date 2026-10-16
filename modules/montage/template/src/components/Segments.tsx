@@ -4,6 +4,7 @@ import {AbsoluteFill, Sequence, interpolate, staticFile, useCurrentFrame, useVid
 import {msToFrames} from '../motion';
 import type {MainProps, Segment} from '../schema';
 import {audio, colors} from '../style/tokens';
+import {FootageFrame} from './FootageFrame';
 
 // Путь из плана (sources/x_h264.mp4 в папке задачи) -> файл в public/media (ссылки на исходники, ТЗ 20 §6)
 export function mediaUrl(source: string): string {
@@ -41,6 +42,7 @@ const SegmentView: React.FC<{seg: Segment; vo: MainProps['voiceover']}> = ({seg,
 					style={{width: '100%', height: '100%', objectPosition: 'center'}}
 				/>
 			</ZoomBox>
+			{seg.frame === 'hud' ? <FootageFrame label={seg.frame_label} /> : null}
 		</Sequence>
 	);
 };

@@ -54,29 +54,30 @@
 | Компонент | Где в плане | Регламент |
 |---|---|---|
 | `Segments` | `segments` (склейка, `crop.mode` `center`/`face`, `zoom` до 0.04, источник под закадром приглушается) | 9 |
-| `Captions` | `captions` (слова по страницам, `source` `transcript`/`voiceover`/`both`, `overrides`, `y_ratio`) | 4.1 |
+| `Captions` | `captions` (слова по страницам, `source` `transcript`/`voiceover`/`both`, `overrides`, `y_ratio`); рисуются только в вертикали (ТЗ 23, SC-4) | 4.4 |
 | `Voiceover` | `voiceover` | 5 |
-| `ChamberCard` | `inserts[].kind = chamber_card` | 4.2 |
-| `HazardBanner` | `hazard_banner` | 4.3 |
-| `TestResult` | `test_result` | 4.4 |
-| `PixelTransition` | `pixel_transition` (`direction` `in`/`out`, 400-600 мс) | 4.5 |
-| `Pictogram` | внутри `chamber_card.props.pictograms` | 4.6 |
-| `LowerThird` | `lower_third` | 4.7 |
+| `Intro` | `inserts[].kind = intro` (`subtitle`, `wordmark`; 4 с) | 4.1 |
+| `Blueprint` | `blueprint` (`title`, `kicker`, `note`, `callouts[]` до 4, `drawing[]`: line/rect/circle/path в долях кадра) | 4.2 |
+| `GladosRoom` | `glados_room` (`moods[]`, `speech[]`; голос из `voiceover` и `public/vo/<id>.wav`) | 4.3 |
+| `ChamberSign`, `ResultSign` | `chamber_sign`, `result_sign` (`big`, `small`, `done`, `total`, `active[]`, `title`; 2,5-3,5 с) | 4.5 |
+| `Icon` | внутри табличек: 14 залитых иконок, имена в `src/style/icons.ts` | 4.6 |
+| `FootageFrame` | у сегмента `frame: "hud"` и `frame_label` (рамка `public/hud/hud-frame.svg`, горизонтальные ролики) | 4.7 |
 | `Blackout` | `blackout` (поверх видео, звук и субтитры остаются) | 4.8 |
 | `JournalLog` | `custom` с `props.component = "JournalLog"` | 4.9 |
 | `Sfx` | `sfx` (и `music`) | 5 |
 | `Cta` | `cta` | 8 |
 
 Свои компоненты агент кладёт в `work/src/custom/` и регистрирует в `work/src/custom/index.ts`; в плане это вставка
-`kind: "custom"` с `props.component`. `FontSpecimen` и `PictogramSheet` служебные (проверка шрифтов и пиктограмм).
+`kind: "custom"` с `props.component`. `FontSpecimen` и `PictogramSheet` служебные (проверка шрифтов и старого набора пиктограмм; в плане роликов пиктограмм больше нет, их заменили иконки табличек).
 
-Звуковые эффекты сами не включаются: звук к вставке (`chime_up` для карточки, `buzz_error` для баннера) агент добавляет в
+Звуковые эффекты сами не включаются: звук к вставке (`chime_up` к табличке и успеху, `chime_down` к провалу) агент добавляет в
 `sfx` плана отдельно, не больше одного эффекта в секунду.
 
 ### Токены и зоны
 
 Цвета, шрифты, размеры, движение и зоны компонентов: `template/src/style/tokens.ts` (повторяет регламент; тест сверяет
-цвета с таблицей в `resources/<Имя>/montage/APERTURE_STYLE.md`). Зоны экспортируются в `template/qa_zones.json` (`npm run gen:qa-zones`) для
+цвета с таблицей в `resources/<Имя>/montage/APERTURE_STYLE.md`, а `npm run check-scenes` значения с `template/design/tokens.json`
+дизайн-системы v2 и проверяет математику сцен без браузера). Зоны экспортируются в `template/qa_zones.json` (`npm run gen:qa-zones`) для
 проверок качества: доли кадра (x, y, w, h) по форматам, безопасные зоны площадок, признак «вытесняет субтитры».
 Схема плана для сверки с `agent/plan_schema.py`: `template/plan.schema.json` (`npm run gen:schema`).
 

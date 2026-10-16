@@ -1,17 +1,17 @@
 import React, {useMemo} from 'react';
 import {AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
 import type {MainProps} from '../schema';
-import {captions as T, colors, fontStyle, orientationOf, withAlpha, opacity} from '../style/tokens';
+import {captions as T, captionsBurned, colors, fontStyle, orientationOf, withAlpha, opacity} from '../style/tokens';
 import {buildPages, captionWords, captionYRatio, pageWindows} from '../timeline';
 
-// Субтитры по словам (4.1): createTikTokStyleCaptions (550 мс), кроссфейд ~100 мс, без запятых, без теней и масштабирования.
+// Субтитры по словам (4.1), только вертикальные ролики (ТЗ 23, SC-4: в горизонтальных и квадратных рядом с финалом кладётся .srt): createTikTokStyleCaptions (550 мс), кроссфейд ~100 мс, без запятых, без теней и масштабирования.
 // Её реплики помечены полоской portalOrange слева; одно ключевое слово на страницу можно выделить portalOrange.
 export const Captions: React.FC<{plan: MainProps}> = ({plan}) => {
 	const frame = useCurrentFrame();
 	const {fps, width, height} = useVideoConfig();
 	const pages = useMemo(() => buildPages(captionWords(plan)), [plan]);
 	const windows = useMemo(() => pageWindows(pages), [pages]);
-	if (!plan.captions.enabled) return null;
+	if (!plan.captions.enabled || !captionsBurned(width, height)) return null; // субтитры только в вертикальных роликах (SC-4)
 	const tMs = (frame * 1000) / fps;
 	const o = orientationOf(width, height);
 	const fontPx = T.fontPx[o];
