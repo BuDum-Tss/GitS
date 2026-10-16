@@ -306,6 +306,9 @@ async def _run(config: dict):
                                      or layer.focus.slot is not None)
     await episodes.start()
     episode_routes.set_service(episodes)
+    if episodes.scheduler is not None:                    # сон это состояние ассистента: профиль sleep, пока идёт разбор памяти
+        layer.profiles.sleeping = lambda: episodes.scheduler.state == "sleeping"
+        episodes.scheduler.on_change = layer.profiles.poke
     layer.requests.episodes = episodes                    # core.memory.episodes
     lessons = lesson_service.build(companion, episodes)   # ТЗ 28: разбор ошибок после сна, уроки и убеждения в контексте
     lesson_routes.set_hub(lessons)

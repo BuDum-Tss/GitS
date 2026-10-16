@@ -41,6 +41,7 @@ class SleepScheduler:
         self._loop_task: asyncio.Task | None = None
         self._asked_at: float | None = None
         self._started_at = 0.0
+        self.on_change: Callable[[], None] | None = None      # сон начался или закончился (состояние ассистента пересчитывается)
 
     # ── политика для менеджера фокуса ────────────────────────────────────────
 
@@ -80,12 +81,31 @@ class SleepScheduler:
 
     # ── ход сна ──────────────────────────────────────────────────────────────
 
+    def _notify(self) -> None:
+        if self.on_change is not None:
+            try:
+                self.on_change()
+            except Exception as e:
+                logger.warning(f"Сон: реакция на смену состояния: {e}")
+
     def start(self, plan: dom.SleepPlan) -> asyncio.Task:
         self._stop = asyncio.Event()
         self._asked_at = None
         self.plan, self.state, self._started_at = plan, "sleeping", self.clock()
         self._task = asyncio.create_task(self._run(plan))
+        self._notify()
         return self._task
+
+    def force(self) -> bool:
+        """Принудительный сон по кнопке: ввод, сообщения и разговор его не прерывают, будит только `interrupt` (кнопка «Проснуться»
+        или переход в другое состояние). Уже идущий сон становится принудительным. False, если его как раз прерывают."""
+        if self.state == "sleeping":
+            if self._stop.is_set():
+                return False
+            self.plan = dom.SleepPlan(dom.FORCED, None)
+            return True
+        self.start(dom.SleepPlan(dom.FORCED, None))
+        return True
 
     def should_stop(self) -> bool:
         return self._stop.is_set()
@@ -104,6 +124,8 @@ class SleepScheduler:
         """Пока идёт сон, следит за возвращением пользователя и занятостью."""
         while True:
             await asyncio.sleep(self.watch_s)
+            if self.plan is not None and self.plan.mode == dom.FORCED:
+                continue                                                        # принудительный сон будит только команда
             if 0.0 < float(self.idle_seconds() or 0.0) < WAKE_IDLE_S:          # 0 - модуль desktop не прислал простой
                 self.interrupt("ввод")
             elif self.last_user_ts() > self._started_at:
@@ -125,6 +147,7 @@ class SleepScheduler:
             if self._asked_at is not None:
                 self.interrupted_after_s = round(self.clock() - self._asked_at, 3)
             self.state = "awake"
+            self._notify()
 
     # ── жизненный цикл ───────────────────────────────────────────────────────
 
@@ -157,5 +180,6 @@ class SleepScheduler:
     def status(self) -> dict:
         counts = self.store.counts()
         return {"state": self.state, "mode": self.plan.mode if self.plan and self.state == "sleeping" else None,
+                "since": self._started_at if self.state == "sleeping" else None,
                 "last_sleep": self.store.get_meta("last_sleep", 0.0), "episodes": counts, "last_report": self.last_report,
                 "interrupted_after_s": self.interrupted_after_s}

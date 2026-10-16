@@ -4,8 +4,8 @@ GET  /api/episodes?limit=&offset=&status=&day=   список эпизодов (
 GET  /api/episodes/{id}                          эпизод с событиями-источниками
 GET  /api/diary                                  дневник и суточные сводки
 GET  /api/sleep                                  статус сна и счётчики эпизодов
-POST /api/sleep/now                              начать сон сейчас (режим scheduled, без бюджета)
-POST /api/sleep/interrupt                        прервать сон
+POST /api/sleep/now              уснуть сейчас (режим forced: ввод и разговор не будят, без бюджета)
+POST /api/sleep/interrupt        разбудить (прервать сон)
 Сервис ставит ядро (`set_service`); без него ответы пустые."""
 from aiohttp import web
 
@@ -17,6 +17,21 @@ _SERVICE = None
 def set_service(service) -> None:
     global _SERVICE
     _SERVICE = service
+
+
+def force_sleep() -> bool:
+    """Уснуть сейчас (принудительно: ввод и разговор не будят). False, если эпизоды не подключены."""
+    return _SERVICE is not None and _SERVICE.scheduler is not None and _SERVICE.scheduler.force()
+
+
+def wake(reason: str = "команда") -> None:
+    """Разбудить: прервать сон на ближайшей безопасной точке."""
+    if _SERVICE is not None and _SERVICE.scheduler is not None:
+        _SERVICE.scheduler.interrupt(reason)
+
+
+def sleep_status() -> dict:
+    return _SERVICE.scheduler.status() if _SERVICE is not None and _SERVICE.scheduler is not None else {"state": "off"}
 
 
 def _int(request: web.Request, name: str, default: int, lo: int, hi: int) -> int:
@@ -58,15 +73,11 @@ async def handle_sleep(request: web.Request) -> web.Response:
 async def handle_sleep_now(request: web.Request) -> web.Response:
     if _SERVICE is None or _SERVICE.scheduler is None:
         return web.json_response({"ok": False, "error": "эпизоды не подключены"}, status=503)
-    if _SERVICE.scheduler.state == "sleeping":
-        return web.json_response({"ok": False, "error": "уже спит"})
-    _SERVICE.scheduler.start(dom.SleepPlan("scheduled", None))
-    return web.json_response({"ok": True})
+    return web.json_response({"ok": force_sleep()})
 
 
 async def handle_sleep_interrupt(request: web.Request) -> web.Response:
-    if _SERVICE is not None and _SERVICE.scheduler is not None:
-        _SERVICE.scheduler.interrupt("дашборд")
+    wake("дашборд")
     return web.json_response({"ok": True})
 
 

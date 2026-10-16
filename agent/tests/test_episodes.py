@@ -666,6 +666,47 @@ async def test_user_message_and_conversation_interrupt_sleep(tmp_path):
     assert sch.last_report["interrupted"]
 
 
+async def test_forced_sleep_ignores_input_and_wakes_only_on_command(tmp_path):
+    """Сон по кнопке: ввод, реплики и разговор его не будят; будит interrupt (кнопка «Проснуться», смена состояния)."""
+    j = Journal()
+    chat_day(j, T0)
+
+    async def slow(system, user, n):
+        await asyncio.sleep(30)
+
+    r = make_runner(tmp_path, j, LLM(slow), Clock(T0 + 86400))
+    last, changes = {"v": 0.0}, []
+    sch = make_scheduler(r, idle_seconds=lambda: 0.5, last_user_ts=lambda: last["v"], busy=lambda: True)
+    sch.on_change = lambda: changes.append(sch.state)
+    assert sch.force() and sch.state == "sleeping" and sch.plan.mode == "forced" and changes == ["sleeping"]
+    last["v"] = r.clock() + 1                           # клавиши, реплика и разговор подряд
+    await asyncio.sleep(0.15)
+    assert sch.state == "sleeping" and not sch.should_stop() and sch.status()["mode"] == "forced" and sch.status()["since"]
+    sch.interrupt("команда")
+    await asyncio.wait_for(sch._task, 5)
+    assert sch.state == "awake" and sch.last_report["interrupted"] and changes == ["sleeping", "awake"]
+
+
+async def test_force_turns_a_running_idle_sleep_into_a_forced_one(tmp_path):
+    j = Journal()
+    chat_day(j, T0)
+
+    async def slow(system, user, n):
+        await asyncio.sleep(30)
+
+    r = make_runner(tmp_path, j, LLM(slow), Clock(T0 + 86400))
+    idle = {"v": 20 * MIN}
+    sch = make_scheduler(r, idle_seconds=lambda: idle["v"])
+    await sch.tick()
+    assert sch.plan.mode == "idle" and sch.force() and sch.plan.mode == "forced"
+    idle["v"] = 0.1                                     # пользователь вернулся: принудительный сон не прерывается
+    await asyncio.sleep(0.1)
+    assert sch.state == "sleeping"
+    sch.interrupt()
+    assert not sch.force()                              # уже прерывают
+    await asyncio.wait_for(sch._task, 5)
+
+
 async def test_scheduler_loop_and_stop(tmp_path):
     j = Journal()
     r = make_runner(tmp_path, j, LLM(text_or_summary), Clock(T0 + 86400))

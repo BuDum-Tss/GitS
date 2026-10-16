@@ -225,3 +225,28 @@ async def test_graph_format_with_live_and_default_subgraphs():                # 
 
 async def _none():
     return None
+
+
+def test_memory_sleep_is_a_state_with_reason_and_history():
+    pm, src, clock = make()
+    asleep = {"on": False}
+    pm.sleeping = lambda: asleep["on"]
+    asleep["on"] = True
+    clock.t += 5
+    assert pm.evaluate() == SLEEP and pm._why == "идёт разбор памяти"
+    asleep["on"] = False
+    clock.t += 5
+    assert pm.evaluate() == HUB
+    hist = list(pm.history)
+    assert [(h["from"], h["to"]) for h in hist] == [(SLEEP, HUB), (HUB, SLEEP)] and hist[1]["why"] == "идёт разбор памяти"
+
+
+def test_sleep_cannot_be_chosen_by_the_setting_and_states_are_ordered():
+    pm, src, _ = make()
+    src["choice"] = "sleep"
+    assert pm.manual_choice() is None and pm.evaluate() == HUB
+    ids = [s["id"] for s in pm.states()]
+    assert ids[0] == HUB and ids.index("sleep") < ids.index("minecraft") and ids[-2:] == ["minecraft", "programming"]
+    rim = next(s for s in pm.states() if s["id"] == "rimworld")
+    assert "rimworldwin64" in rim["how"] and "game_running" in rim["how"]
+    assert next(s for s in pm.states() if s["id"] == "sleep")["how"].startswith("Сама: простой")
