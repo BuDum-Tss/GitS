@@ -108,8 +108,8 @@ async def test_afk_tick_only_watches_and_sends_critical_events_with_needs_focus(
     await ctrl._tick()
     await asyncio.sleep(0)
     assert ctrl.policies.current == "afk" and stub == [] and ctrl.sent == []      # ни ходов, ни команд игре
-    assert [k for k, _, _ in sent_events] == ["raid"]                              # критичное уходит ядру...
-    assert sent_events[0][1]["needs_focus"] is True                                # ...с признаком «нужен фокус»
+    assert [k for k, _, _ in sent_events] == ["game_started", "raid"]                              # критичное уходит ядру...
+    assert sent_events[1][1]["needs_focus"] is True                                # ...с признаком «нужен фокус»
 
 
 async def test_combat_cycle_pauses_decides_resumes_and_waits_for_the_slice(ctrl, monkeypatch):

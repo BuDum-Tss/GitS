@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import prompts
 from adapters.impulse_store import JsonReminders, JsonThoughts
+from app import impulse_origin
 from app.impulse_timer import ImpulseTimer
 from app.plan_nudge import PlanNudger
 from app.reflection import ReflectionService
@@ -33,7 +34,8 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
 
     async def plan(text: str):
         r = router()
-        return await r.handle(text, announce=False) if r is not None else None
+        with impulse_origin.as_self():          # ТЗ 32: то, что планировщик сделает по этому намерению, это действие по самоимпульсу
+            return await r.handle(text, announce=False) if r is not None else None
 
     service = ReflectionService(
         llm=companion._llm, memory=companion.memory_reader, writer=companion.memory_writer, journal=journal,

@@ -33,7 +33,7 @@ async def test_shared_settings_emits_and_settings_schema():
                                            "telegram_after_run", "record_runs"]
     emits = {e["kind"]: e["default_urgency"] for e in manifest["emits"]}
     assert emits == {"rimworld.colonists": 0, "rimworld.run_ended": 3, "rimworld.raid": 5, "rimworld.death": 4,
-                     "rimworld.fire": 4, "rimworld.letter": 2, "rimworld.goal": 3, "rimworld.run_video": 2}
+                     "rimworld.fire": 4, "rimworld.letter": 2, "rimworld.goal": 3, "rimworld.run_video": 2, "rimworld.game_started": 1}
     assert manifest["settings_schema"]["auto_montage"]["default"] is False
     import settings
     assert set(manifest["shared_settings"]) <= set(settings.DEFAULTS)         # общие настройки есть и в настройках модуля

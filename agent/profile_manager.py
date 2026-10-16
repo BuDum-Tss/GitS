@@ -69,6 +69,7 @@ class Profile:
     sticky_s: float = 0.0
     planned: bool = False                            # профиль ещё не написан: на графе виден, включить нельзя
     focus_quiet: tuple[str, ...] = ()                # модули, которым профиль не даёт переключать фокус (ТЗ 18, focus.quiet_modules)
+    workspace: str = ""                              # среда агента (ТЗ 32): профиль включается, пока агент в этой среде
 
 
 def _str_list(value, where: str) -> tuple[str, ...]:
@@ -114,7 +115,8 @@ def parse_profile(data) -> Profile:
         memory_scopes=_str_list(data.get("memory_scopes"), "memory_scopes"),
         knowledge=_str_list(data.get("knowledge"), "knowledge"), attention=attention,
         activate={"foreground_apps": apps, "module_state": state} if (apps or state) else {},
-        priority=priority, sticky_s=sticky, planned=bool(data.get("planned", False)), focus_quiet=focus_quiet)
+        priority=priority, sticky_s=sticky, planned=bool(data.get("planned", False)), focus_quiet=focus_quiet,
+        workspace=str(data.get("workspace") or "").strip())
 
 
 def load_profiles(directory: Path | str = PROFILES_DIR) -> dict[str, Profile]:
@@ -148,6 +150,7 @@ class ProfileManager:
     def __init__(self, profiles: dict[str, Profile] | None = None, *,
                  battery: Callable[[], dict] = lambda: {},
                  foreground_app: Callable[[], str | None] = lambda: None,
+                 workspace_of: Callable[[], str] = lambda: "assistant",
                  module_state: Callable[[str], dict | None] = lambda module_id: None,
                  choice: Callable[[], str] | None = None,
                  streamer: Callable[[], bool] | None = None,
@@ -162,6 +165,7 @@ class ProfileManager:
         self.profiles = profiles if profiles is not None else load_profiles()
         self._battery = battery
         self._foreground = foreground_app
+        self._workspace = workspace_of
         self._module_state = module_state
         self._choice = choice or (lambda: str(settings.load().get("profile", "auto")))
         self._streamer = streamer or (lambda: bool(settings.load().get("streamer")))
@@ -200,6 +204,11 @@ class ProfileManager:
         return False
 
     def _pick_auto(self, now: float) -> str:
+        # ТЗ 32, WS-5: профиль среды модуля (тон, видимые инструменты) включает сама среда; окно игры и состояние модуля нет
+        ws = self._workspace()
+        for p in self.profiles.values():
+            if p.workspace and p.workspace == ws and not p.planned:
+                return p.id
         matched = [p for p in self.profiles.values() if not p.planned and p.id != SLEEP and self._matches(p)]
         for p in matched:
             self._last_match[p.id] = now

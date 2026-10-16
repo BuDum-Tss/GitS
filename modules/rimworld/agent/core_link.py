@@ -46,10 +46,11 @@ EVENTS = {
     "letter": ("rimworld.letter", 2),
     "goal": ("rimworld.goal", 3),
     "run_video": ("rimworld.run_video", 2),
+    "game_started": ("rimworld.game_started", 1),   # игра запущена: сигнал для ядра, среду он не включает (ТЗ 32, WS-5)
 }
 # сколько секунд событие остаётся актуальным (после этого ядро его не озвучивает)
 EXPIRES_S = {"rimworld.raid": 180, "rimworld.fire": 180, "rimworld.death": 300, "rimworld.letter": 300,
-             "rimworld.goal": 600, "rimworld.run_ended": 1800, "rimworld.run_video": 3600}
+             "rimworld.goal": 600, "rimworld.run_ended": 1800, "rimworld.run_video": 3600, "rimworld.game_started": 300}
 
 
 class CoreLink:

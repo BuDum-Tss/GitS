@@ -189,8 +189,30 @@ MANIFEST = {
   (`{task_id, policy, goal, checkpoint, subgoals}`). На `unknown` от `focus.resume` ядро вызовет `policy.activate` с
   `restored: true`. SDK: `@client.on_request("policy.activate")`, `"focus.release"`, `"focus.resume"`.
 
+### Среда агента (ТЗ 32)
+
+Модуль, в который агент может «зайти» (игра, монтаж), объявляет среду полем `workspace`:
+
+```python
+"workspace": {"id": "montage", "title": "Монтаж", "purpose": "монтаж роликов",
+              "entry": ["user_message", "self_impulse", "critical"], "interruptible": True,
+              "safe_points": ["между стадиями задачи"], "signals_in": ["telegram.*"], "done_when": "задачи готовы"}
+```
+
+- `id` равен id модуля, `title` обязателен. `entry` - как можно войти: `user_message`, `self_impulse`, `schedule`, `critical`,
+  `fallback`; по умолчанию первые два и `critical`. Запуск процесса, окно и состояние модуля среду не включают.
+- `signals_in` - какие чужие события (шаблоны видов) среда принимает уведомлениями; остальные копятся в сводке. Критическое
+  событие (срочность 5) переключает среду по правилам без LLM, если среда его модуля разрешает `critical`; текущая среда вправе
+  отказать в небезопасной точке (`status.interruptible: false`).
+- Модулю нужна активная политика (`focus: active`): вход в среду это её включение. Запросы ядра: `workspace.enter`,
+  `workspace.exit` (checkpoint), `workspace.resume`. Прежние `policy.activate`, `focus.release`, `focus.resume` остаются алиасами на
+  один релиз: SDK ведёт оба имени к одному обработчику (`@client.on_request("workspace.enter")` принимает и `policy.activate`), а ядро,
+  получив `unknown` на новое имя, повторяет запрос под прежним. В тестах: `FakeCore.workspace("enter" | "exit" | "resume", legacy=...)`.
+- Среда кончается, когда модуль вернулся в фоновую политику (задача готова), сообщил `blocked` или отключился: агент возвращается
+  в `assistant`. Поэтому после входа модуль переходит в активную политику, а по концу работы возвращается в фон.
+
 Текущие политики модулей этого репозитория: `telegram` (`available`, `do_not_disturb`), `voice` и `pet` (`ambient`),
-`desktop` (`idle`). Все фоновые, фокус они пока не берут.
+`desktop` (`idle`) - все фоновые, фокус не берут. Среды объявляют `rimworld` (политики `afk`, `observe`, ...) и `montage` (`idle`, `working`).
 
 ## Правила
 

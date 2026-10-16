@@ -41,4 +41,4 @@ ignore = [
 asyncio_mode = "auto"
 testpaths = ["agent/tests"]
 # agent: модули монтажа; resources/GlaDOS/montage/assets/sfx: generate.py (синтез звуков); SDK ядра до установки пакета (pip install -e ..\GitS\sdk)
-pythonpath = ["agent", "../../resources/GlaDOS/montage/assets/sfx"]
+pythonpath = ["agent", "../../resources/GlaDOS/montage/assets/sfx", "../../sdk"]

@@ -248,4 +248,4 @@ def test_attach_registers_focus_resume_handler():
             return {"ok": True}
 
     module_manifest.attach(FakeClient(), [], order=None, graph=None, focus=FakeFocus())
-    assert {"policy.activate", "focus.release", "focus.resume"} <= set(seen)
+    assert {"workspace.enter", "workspace.exit", "workspace.resume"} <= set(seen)

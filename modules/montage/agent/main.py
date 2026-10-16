@@ -50,6 +50,19 @@ def wire(client: ModuleClient, manager: Manager) -> None:
     for action in ap.ACTIONS:
         client.panel_action(action)(decision(action))
 
+    # среда агента (ТЗ 32, WS-4): новые имена запросов; прежние policy.activate / focus.release / focus.resume SDK ведёт сюда же
+    @client.on_request("workspace.enter")
+    async def ws_enter(body):
+        return await manager.enter_workspace(body or {})
+
+    @client.on_request("workspace.exit")
+    async def ws_exit(body):
+        return await manager.exit_workspace(body or {})
+
+    @client.on_request("workspace.resume")
+    async def ws_resume(body):
+        return await manager.enter_workspace({**(body or {}), "restored": True})
+
     @client.tool("status")
     async def status(args):
         return await manager.status(args)

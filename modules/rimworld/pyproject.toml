@@ -42,4 +42,4 @@ asyncio_mode = "auto"
 markers = ["slow: медленный тест (настоящий ffmpeg, около минуты); по умолчанию check.ps1 его пропускает",
            "game: тест запускает настоящую RimWorld (с объявлением пользователю); по умолчанию check.ps1 его пропускает, -All запускает"]
 testpaths = ["agent/tests"]
-pythonpath = ["agent"]
+pythonpath = ["agent", "../../sdk"]

@@ -353,9 +353,9 @@ window.ARCH_DATA = {
      "t": "FocusManager (фасад)",
      "tag": "A",
      "new": false,
-     "do": "один слот, протокол переключения, команды пользователя, журнал; прежние публичные методы",
+     "do": "протокол входа, выхода и checkpoint по просьбе менеджера сред, команды пользователя, журнал; слот больше не выбирает среду (auto_switch выключен), прежние публичные методы",
      "out": "FocusDecision",
-     "now": "focus.py: фасад над четырьмя частями (ТЗ 29, ARC-6)"
+     "now": "focus.py: фасад над четырьмя частями (ТЗ 29, ARC-6); запросы модулю workspace.enter / exit / resume, прежние policy.activate / focus.release / focus.resume как откат (ТЗ 32)"
     },
     {
      "id": "fpol",
@@ -389,9 +389,9 @@ window.ARCH_DATA = {
      "t": "WorkspaceManager",
      "tag": "A",
      "new": false,
-     "do": "в какой среде агент сейчас: assistant, sleep, rimworld, montage; причина, цель, история; в среду модуля входят только по импульсу",
+     "do": "в какой среде агент сейчас: assistant, sleep и среды модулей из их манифестов (rimworld, montage); причина, цель, история. В среду модуля входят только по импульсу (сообщение, самоимпульс), события чужих сред это сигналы, критическое (срочность 5) переключает по правилам без LLM",
      "out": "Workspace",
-     "now": "app/workspace_manager.py (ТЗ 32): поверх FocusManager, сон приходит от планировщика сна"
+     "now": "app/workspace_manager.py (ТЗ 32): поверх FocusManager, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"
     },
     {
      "id": "wsdom",
@@ -810,9 +810,9 @@ window.ARCH_DATA = {
   ],
   [
    "disp",
-   "fmgr",
+   "wsm",
    "flow",
-   "route focus"
+   "событие модуля: сигнал или критическое"
   ],
   [
    "disp",
@@ -986,7 +986,19 @@ window.ARCH_DATA = {
    "wsm",
    "fmgr",
    "use",
-   "активация модуля"
+   "вход, выход, checkpoint"
+  ],
+  [
+   "hub",
+   "wsm",
+   "use",
+   "манифесты сред, статус модулей"
+  ],
+  [
+   "plan",
+   "wsm",
+   "ctl",
+   "workspace.switch"
   ],
   [
    "fmgr",
@@ -1016,7 +1028,7 @@ window.ARCH_DATA = {
    "fmgr",
    "hubout",
    "ctl",
-   "policy.activate"
+   "workspace.enter / exit / resume"
   ],
   [
    "queue",

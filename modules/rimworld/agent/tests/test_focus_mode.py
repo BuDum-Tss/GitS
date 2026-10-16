@@ -69,7 +69,7 @@ def no_launch(monkeypatch):
 
 def test_normalize_keeps_known_modes_and_defaults_the_rest():
     assert [focus_mode.normalize(m) for m in ("auto", "core", "manual")] == ["auto", "core", "manual"]
-    assert focus_mode.normalize("bogus") == "auto" and focus_mode.normalize(None) == "auto"
+    assert focus_mode.normalize("bogus") == "core" and focus_mode.normalize(None) == "core"
 
 
 def test_auto_grab_rule():
@@ -249,7 +249,7 @@ def test_manifest_declares_the_focus_setting_and_panel_actions_and_validates():
     m = module_manifest.build_manifest([])
     assert P.validate_manifest(m, []) == []
     schema = m["settings_schema"]["focus_mode"]
-    assert schema["default"] == "auto" and schema["enum"] == ["auto", "core", "manual"]
+    assert schema["default"] == "core" and schema["enum"] == ["auto", "core", "manual"]
     assert m["panel"]["actions"] == ["take_focus", "release_focus"]
 
 

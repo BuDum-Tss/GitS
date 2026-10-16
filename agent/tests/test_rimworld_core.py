@@ -103,8 +103,11 @@ async def test_order_goes_to_game_module_in_focus_and_skips_conversation(tmp_pat
     async with Wired(tmp_path, monkeypatch) as w:
         client = w.client()
         async with running_client(client, _core_of(w)):
-            await client.state("игра: колония «Дом»", {"game_running": True})            # CORE-19: профиль rimworld по state модуля
-            await w.wait(lambda: w.layer.profiles.current_id == "rimworld")
+            await client.state("игра: колония «Дом»", {"game_running": True})            # ТЗ 32, WS-5: игра профиль не включает
+            await asyncio.sleep(0.2)
+            assert w.layer.profiles.current_id != "rimworld" and w.layer.workspaces.current == "assistant"
+            settings.update(profile="rimworld")                                           # приказ идёт модулю фокуса профиля
+            w.layer.profiles.evaluate()
             await w.companion.on_user_message("построй стену у входа")
             assert client.orders == ["построй стену у входа"]
             assert w.converse == []                                                       # приказ принят игрой: разговор не нужен

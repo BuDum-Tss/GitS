@@ -471,6 +471,8 @@ class ModuleClient:
             log.warning("лишнее сообщение «%s» после рукопожатия: игнорируется", t)
         elif t in self._requests:
             self._spawn(self._serve(env, gen, self._requests[t], env.body))
+        elif P.WORKSPACE_ALIASES.get(t) in self._requests:      # ТЗ 32: старое и новое имя запроса среды - один обработчик
+            self._spawn(self._serve(env, gen, self._requests[P.WORKSPACE_ALIASES[t]], env.body))
         elif t == "tool.call":
             self._spawn(self._serve(env, gen, self._tool_call, env.body))
         elif t == "tool.check":

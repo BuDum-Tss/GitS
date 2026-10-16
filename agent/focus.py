@@ -21,6 +21,13 @@ checkpoint, см. docs/FOCUS.md).
 (focus_dispatch.py) вызывается только для неоднозначных случаев. Каждое решение помечено эшелоном (`rules`, `gliner`,
 `gemma`) и уверенностью в журнале.
 
+ТЗ 32 (среды агента): слот перестаёт быть способом выбирать среду. С `auto_switch=False` события модулей не ставятся в
+очередь и фокус сам не переключают и не возобновляют задачи (среду выбирает `WorkspaceManager`: сообщение пользователя,
+самоимпульс, критический сигнал), а менеджер остаётся исполнителем протокола входа, выхода и checkpoint. С
+`workspace_names=True` модулю уходят новые имена запросов (`workspace.enter`, `workspace.exit`, `workspace.resume`), а модулю,
+который их не знает (`unknown`), прежние (`policy.activate`, `focus.release`, `focus.resume`). По умолчанию (оба выключены)
+менеджер работает как раньше.
+
 Состояние (очередь, checkpoint, пины, «не беспокоить») живёт в памяти и записывается в файл (`focus.json` в папке памяти),
 чтобы перезапуск ядра не терял прерванные задачи. «Не беспокоить» для всего агента общее с настройкой ядра `dnd` /
 `quiet_until` (одно состояние пользователя), разовые исключения и закрепление живут здесь. Все сетевые вызовы асинхронные,
@@ -61,6 +68,10 @@ JOURNAL_MAX = 300
 TICK_S = 0.5
 MAX_POLICY_OPTIONS = 12
 
+# имена запросов модулю: действие -> (новое имя ТЗ 32, прежнее имя ТЗ 18)
+RPC_NAMES = {"activate": ("workspace.enter", "policy.activate"), "release": ("workspace.exit", "focus.release"),
+             "resume": ("workspace.resume", "focus.resume")}
+
 _EVENT_ALIVE = EVENT_ALIVE
 _confirmed = policy.confirmed                               # domain/focus_policy.py
 Connect = Callable[[str], Any]
@@ -93,14 +104,18 @@ class FocusManager:
                  busy_of: Callable[[], bool] | None = None,
                  recheck: Callable[[dict], Awaitable[Any]] | None = None, title_of: Callable[[str], str] | None = None,
                  dnd_all_of: Callable[[], bool] | None = None, set_dnd_all: Callable[[bool], None] | None = None,
-                 profile_quiet_of: Callable[[], Any] | None = None, modules_of: Callable[[], Any] | None = None):
+                 profile_quiet_of: Callable[[], Any] | None = None, modules_of: Callable[[], Any] | None = None,
+                 auto_switch: bool = True, workspace_names: bool = False):
         """connection_of(модуль) -> подключение с request(type, body, timeout) или None; status_of(модуль) -> status из
         `state` (active_policy, interruptible, blocked, ...) или None; policies_of(модуль) -> {default_policy, policies}
         из манифеста или None (модуль без политик - без фокуса, режим совместимости); busy_of() -> True, пока пользователь
         в разговоре; llm(контекст) -> ответ диспетчера (None - LLM выключена); recheck(событие) -> новая срочность (0..5).
         dnd_all_of() / set_dnd_all(on) - общее состояние «не беспокоить» для всего агента (настройки ядра dnd/quiet_until);
         без них хранится здесь. profile_quiet_of() -> модули, которым профиль не даёт переключать фокус (не сохраняется);
-        modules_of() -> ids модулей для подсказок политики (по умолчанию модули, которые присылали события)."""
+        modules_of() -> ids модулей для подсказок политики (по умолчанию модули, которые присылали события).
+        auto_switch=False: события не переключают фокус сами (ТЗ 32); workspace_names=True: новые имена запросов с откатом."""
+        self.auto_switch = auto_switch
+        self.workspace_names = workspace_names
         self.connection_of = connection_of
         self.status_of = status_of
         self.policies_of = policies_of
@@ -218,6 +233,8 @@ class FocusManager:
         входа, сама очередь меняется в tick(). Не переключает фокус сразу, чтобы не звать модуль из обработчика внимания."""
         if decision == "D0" or rule in ("R1", "R2", "R3"):      # выброшено или пользовательский разговор / mute
             return
+        if not self.auto_switch:                                # ТЗ 32: событие это сигнал среды, а не претендент на слот
+            return
         module = getattr(item, "module", None)
         if module is None or self.policies_of(module) is None:  # модуль без политик: фокус ему не назначается
             return
@@ -268,8 +285,8 @@ class FocusManager:
             self.queue.age(now)
             await self._check_holder(now)
             self._refresh_context(now)
-            switched = await self._evaluate_queue(now)
-            if not switched:
+            switched = await self._evaluate_queue(now) if self.auto_switch else False
+            if not switched and self.auto_switch:
                 await self._resume_next(now)
             self._prune(now)
             await self._save()
@@ -320,6 +337,10 @@ class FocusManager:
         table = self._policy_table(module) or {}
         return table.get(pid) if isinstance(pid, str) else None
 
+    def is_background(self, module: str, policy: str | None) -> bool:
+        """Фоновая ли политика модуля (возврат в неё значит, что задача кончилась)."""
+        return self._is_background(module, policy)
+
     def _is_background(self, module: str, policy: str | None) -> bool:
         table = self._policy_table(module) or {}
         return policy in table and table[policy].get("focus") == "background"
@@ -329,6 +350,18 @@ class FocusManager:
         return policy.holder_priority(slot.origin if slot is not None else None)
 
     # ── протокол фокуса ─────────────────────────────────────────────────────
+
+    async def _rpc(self, conn: Any, action: str, body: dict, timeout: float) -> Any:
+        """Запрос модулю: новое имя (ТЗ 32) и откат на прежнее, если модуль нового не знает. Без `workspace_names` только прежнее."""
+        new, old = RPC_NAMES[action]
+        if not self.workspace_names:
+            return await conn.request(old, body, timeout=timeout)
+        try:
+            return await conn.request(new, body, timeout=timeout)
+        except ModuleError as e:
+            if e.code != "unknown":
+                raise
+            return await conn.request(old, body, timeout=timeout)
 
     async def _check_holder(self, now: float) -> None:
         """Фокус держит модуль: если он отключился, ушёл в фон сам (задача кончилась) или сообщил блокировку."""
@@ -371,9 +404,8 @@ class FocusManager:
             self.slot = None
             return True, ""
         try:
-            value = await conn.request("focus.release", {"reason": reason, "task_id": slot.task_id, "force": force,
-                                                         "event_id": event_id, "checkpoint": True},
-                                       timeout=RELEASE_TIMEOUT_S)
+            value = await self._rpc(conn, "release", {"reason": reason, "task_id": slot.task_id, "force": force,
+                                                      "event_id": event_id, "checkpoint": True}, RELEASE_TIMEOUT_S)
         except ModuleError as e:
             return False, f"{e.code}: {e.message}"
         if not isinstance(value, dict) or value.get("ok") is False:
@@ -423,10 +455,9 @@ class FocusManager:
         prev = slot.module if slot is not None else "пользователь"
         ev.status = PROCESSING
         try:
-            value = await conn.request("policy.activate", {"policy": pol, "goal": goal, "task_id": task_id,
-                                                           "event_id": ev.id, "priority": ev.priority,
-                                                           "reason": f"фокус передан с «{prev}»"},
-                                       timeout=ACTIVATE_TIMEOUT_S)
+            value = await self._rpc(conn, "activate", {"policy": pol, "goal": goal, "task_id": task_id,
+                                                       "event_id": ev.id, "priority": ev.priority, "workspace": module,
+                                                       "reason": f"фокус передан с «{prev}»"}, ACTIVATE_TIMEOUT_S)
             err = "" if _confirmed(value, pol) else f"модуль не подтвердил политику «{pol}»"
         except ModuleError as e:
             err = f"{e.code}: {e.message}"
@@ -621,13 +652,12 @@ class FocusManager:
                 "subgoals": cp["subgoals"]}
         value: Any = None
         try:
-            value = await conn.request("focus.resume", body, timeout=RESUME_TIMEOUT_S)
+            value = await self._rpc(conn, "resume", body, RESUME_TIMEOUT_S)
         except ModuleError as e:
             if e.code == "unknown":                             # модуль без focus.resume (ТЗ 11e): возврат через policy.activate
                 try:
-                    value = await conn.request("policy.activate", {**body, "restored": True,
-                                                                   "reason": "возобновление задачи"},
-                                               timeout=ACTIVATE_TIMEOUT_S)
+                    value = await self._rpc(conn, "activate", {**body, "restored": True, "workspace": cp["module"],
+                                                               "reason": "возобновление задачи"}, ACTIVATE_TIMEOUT_S)
                 except ModuleError as e2:
                     self._log("resume", module=cp["module"], task=cp["task_id"], status="failed", reason=e2.message)
             else:
@@ -673,6 +703,20 @@ class FocusManager:
         ok = await self._switch(ev, now, origin="user")
         self.store.touch()
         return {"ok": ok, "reason": ev.reason, "policy": pol if ok else None}
+
+    async def resume_module(self, module: str) -> dict:
+        """Вернуть модулю его приостановленную задачу по checkpoint (вход в среду без новой цели, ТЗ 32). {"ok": False}, если
+        возобновлять нечего или модуль не вернул задачу."""
+        async with self._lock:
+            now = self.clock()
+            conn = self.connection_of(module)
+            if conn is None or self.slot is not None:
+                return {"ok": False, "reason": "модуль не подключён или фокус занят"}
+            for cp in self.store.resumable():
+                if cp["module"] == module and now - cp["created"] <= CHECKPOINT_MAX_AGE_S:
+                    if await self._resume(cp, conn, now):
+                        return {"ok": True, "resumed": True, "policy": cp["policy"], "goal": cp["goal"]}
+            return {"ok": False, "reason": "нет приостановленной задачи"}
 
     async def release_holder(self, *, reason: str = "user", force: bool = False) -> dict:
         """Освободить слот фокуса по просьбе (выход из среды, ТЗ 32): модуль отдаёт checkpoint. Отказ модуля оставляет фокус."""
