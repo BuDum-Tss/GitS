@@ -171,15 +171,36 @@ class FactStore:
         return [{"mem_id": r["mem_id"], "uuid": r["uuid"], "fact": r["fact"], "mtype": r["mtype"],
                  "weight": float(r["weight"] or 0), "source": r["source"]} for r in rows]
 
+    def _area(self, group: str) -> tuple[str, list]:
+        """Условие «группа персонажа и все её области»: `group` и `group:*`."""
+        return "(group_id=? OR substr(group_id, 1, ?)=?)", [group, len(group) + 1, group + ":"]
+
     def snapshot(self, group: str, limit: int) -> dict:
+        """Свежие факты персонажа (все его области) для дашборда: связи с датами, областью, каноном и источником."""
+        cond, args = self._area(group)
         with self._lock:
-            rows = self._db.execute("SELECT subject, relation, object, fact, uuid, valid_at, invalid_at FROM facts "
-                                    "WHERE group_id=? ORDER BY created_at DESC LIMIT ?", (group, limit)).fetchall()
+            rows = self._db.execute("SELECT subject, relation, object, fact, uuid, valid_at, invalid_at, created_at, group_id, canon, "
+                                    f"source FROM facts WHERE {cond} ORDER BY created_at DESC LIMIT ?", (*args, limit)).fetchall()
         names = list(dict.fromkeys(n for r in rows for n in (r["subject"], r["object"])))
         edges = [{"from": r["subject"], "relation": r["relation"], "to": r["object"], "fact": r["fact"], "uuid": r["uuid"],
-                  "valid_at": (iso(r["valid_at"]) or "")[:10] or None, "invalid_at": (iso(r["invalid_at"]) or "")[:10] or None}
+                  "valid_at": (iso(r["valid_at"]) or "")[:10] or None, "invalid_at": (iso(r["invalid_at"]) or "")[:10] or None,
+                  "created": (iso(r["created_at"]) or "")[:16].replace("T", " ") or None, "group": r["group_id"],
+                  "canon": bool(r["canon"]), "source": r["source"]}
                  for r in rows]
         return {"entities": names, "edges": edges}
+
+    def stats(self, group: str) -> dict:
+        """Сводка по фактам персонажа: сколько действующих, устаревших, канонических, по областям и источникам."""
+        cond, args = self._area(group)
+        with self._lock:
+            rows = self._db.execute("SELECT group_id, COUNT(*) n, SUM(invalid_at IS NULL) alive, SUM(canon) canon, MAX(created_at) last "
+                                    f"FROM facts WHERE {cond} GROUP BY group_id", args).fetchall()
+            src = self._db.execute(f"SELECT COALESCE(source, 'extract') s, COUNT(*) FROM facts WHERE {cond} GROUP BY s", args).fetchall()
+        areas = {r["group_id"]: {"active": r["alive"] or 0, "outdated": r["n"] - (r["alive"] or 0)} for r in rows}
+        total = sum(r["n"] for r in rows)
+        alive = sum(r["alive"] or 0 for r in rows)
+        return {"total": total, "active": alive, "outdated": total - alive, "canon": sum(r["canon"] or 0 for r in rows),
+                "areas": areas, "sources": {r[0]: r[1] for r in src}, "last_added": max((r["last"] or 0 for r in rows), default=0) or None}
 
     def import_row(self, row: dict) -> bool:
         """Перенос готовой связи (из старого графа) как есть; False, если такой uuid уже есть."""

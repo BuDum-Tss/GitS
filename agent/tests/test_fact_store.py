@@ -108,3 +108,26 @@ async def test_migration_from_falkordb_rows_is_idempotent_and_searchable(tmp_pat
     assert await mig.migrate([row], b) == {"imported": 1, "skipped": 0, "embedded": 1}
     assert await mig.migrate([row], b) == {"imported": 0, "skipped": 1, "embedded": 0}
     assert [f["fact"] for f in await b.search("Аня живёт в Казани", 3, "glados")] == ["Аня живёт в Казани"]
+
+
+async def test_stats_snapshot_and_explain_for_the_dashboard(tmp_path):
+    import settings
+    settings.init(str(tmp_path))
+    b = SqliteBackend(tmp_path / "graph.db", embedder=HashEmbedder())
+    await b.add_fact(Fact("Аня", "ЖИВЁТ_В", "Москва", "Аня живёт в Москве"), T0, "glados")
+    await b.add_fact(Fact("Аня", "ЖИВЁТ_В", "Казань", "Аня переехала в Казань и живёт в Казани"), T0 + timedelta(days=1), "glados")
+    await b.add_fact(Fact("Бурый", "КОЛОНИСТ", "Ферма", "Бурый колонист фермы"), T0, "glados:rimworld")
+    uuid = await b.add_fact(Fact("ГЛаДОС", "ПОМНИТ", "m-1", "Я помню камеру"), T0, "glados")
+    await b.mark_memory("glados", uuid, "m-1", "episodic", "ГЛаДОС", 0.8, "seed")
+    st = await b.stats("glados")
+    assert (st["total"], st["active"], st["outdated"], st["canon"]) == (4, 3, 1, 1)
+    assert st["areas"]["glados:rimworld"] == {"active": 1, "outdated": 0} and st["sources"] == {"extract": 3, "seed": 1}
+    assert st["db_bytes"] > 0 and st["indexed"] == 4
+    edges = (await b.snapshot(group="glados"))["edges"]
+    assert {e["group"] for e in edges} == {"glados", "glados:rimworld"} and any(e["canon"] for e in edges)
+    g = gm.GraphMemory(str(tmp_path), backend=b)
+    g._healthy, g._health_at = True, float("inf")
+    full = await g.stats()
+    assert full["group"] == "glados" and full["queue"] == 0 and full["active"] == 3 and full["min_score"] == gm.MIN_SCORE
+    out = await g.explain("Аня переехала в Казань и живёт в Казани")
+    assert out["hits"][0]["fact"].startswith("Аня переехала") and "Аня переехала" in out["context"]

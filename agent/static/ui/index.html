@@ -248,6 +248,60 @@
       <!-- Память -->
       <div id="tab-memory" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-4">
+          <details id="mem-howto" class="rounded-box border border-base-300 p-3" open>
+            <summary class="cursor-pointer font-medium">Как устроена память</summary>
+            <p class="text-sm opacity-80 mt-2">Память это не один склад, а шесть слоёв. У каждого свой способ записи и своё применение: так в ответ попадает только
+              то, что относится к теме, а не вся история. Всё хранится локально, в папке памяти персонажа; наружу ничего не уходит.</p>
+            <div class="grid gap-2 mt-2 md:grid-cols-2">
+                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
+                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Заметки и цели</span><span id="mem-n-notes" class="text-xs text-right">-</span></div>
+                  <div><span class="opacity-60">Что там:</span> «Запомни, что…», цели (долгие намерения, не дела на сегодня) и напоминания (файл <code>memory.json</code>)</div>
+                  <div><span class="opacity-60">Как попадает:</span> Ты просишь словами в чате или она сама назначает себе напоминание</div>
+                  <div><span class="opacity-60">Как используется:</span> Подмешиваются в ответ, когда подходят к теме; напоминания всплывают к сроку. «Забудь про…» или ✕ убирает. Ближайшие планы и дела живут не здесь, а в краткосрочной памяти рядом с задачами</div>
+                </div>
+                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
+                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Отношения</span><span id="mem-n-rel" class="text-xs text-right">-</span></div>
+                  <div><span class="opacity-60">Что там:</span> Кто есть кто и как она к ним относится (<code>relationships.json</code>)</div>
+                  <div><span class="opacity-60">Как попадает:</span> Копятся из общения: Telegram, игра, голос</div>
+                  <div><span class="opacity-60">Как используется:</span> Задают тон и то, кого она узнаёт по имени</div>
+                </div>
+                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
+                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Факты</span><span id="mem-n-facts" class="text-xs text-right">-</span></div>
+                  <div><span class="opacity-60">Что там:</span> Устойчивые факты о людях и жизни («Аня живёт в Казани»), воспоминания самого персонажа (канон) и данные игры (файл <code>graph.db</code>)</div>
+                  <div><span class="opacity-60">Как попадает:</span> В паузах разговора локальная модель выписывает факты из реплик; каждая реплика сначала встаёт в очередь</div>
+                  <div><span class="opacity-60">Как используется:</span> Перед ответом ищется до 3 фактов по теме (слова и смысл); новый факт закрывает старый («переехала» закрывает «живёт в Москве»)</div>
+                </div>
+                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
+                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Эпизоды и сон</span><span id="mem-n-eps" class="text-xs text-right">-</span></div>
+                  <div><span class="opacity-60">Что там:</span> События дня, нарезанные на эпизоды, их резюме от первого лица и дневник</div>
+                  <div><span class="opacity-60">Как попадает:</span> Во сне (простой, расписание) она разбирает журнал: пишет резюме, достаёт факты</div>
+                  <div><span class="opacity-60">Как используется:</span> Вспоминает эпизод по запросу; резюме и цитаты ищутся так же, как факты</div>
+                </div>
+                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
+                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Уроки и убеждения</span><span id="mem-n-lessons" class="text-xs text-right">-</span></div>
+                  <div><span class="opacity-60">Что там:</span> Выводы из своих ошибок и принятые убеждения</div>
+                  <div><span class="opacity-60">Как попадает:</span> После сна: повторяющиеся ошибки складываются в урок, подтверждённый урок становится убеждением</div>
+                  <div><span class="opacity-60">Как используется:</span> В контекст идут, если включено в настройках; убеждение можно отменить ниже</div>
+                </div>
+                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
+                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Справочник</span><span id="mem-n-kb" class="text-xs text-right">-</span></div>
+                  <div><span class="opacity-60">Что там:</span> Справочные тексты модулей (вики игры, регламенты монтажа) и их опыт</div>
+                  <div><span class="opacity-60">Как попадает:</span> Модули загружают сами или скрипт <code>tools/knowledge_ingest.py</code></div>
+                  <div><span class="opacity-60">Как используется:</span> Ищется, когда нужна справка (инструмент <code>knowledge.lookup</code>); в ответ по умолчанию не подмешивается</div>
+                </div>
+            </div>
+            <div class="text-xs opacity-70 mt-3 mb-1">Путь одной реплики до факта</div>
+            <div class="flex flex-wrap items-center gap-1 text-xs">
+              <span class="badge badge-outline">реплика (чат, голос, Telegram)</span>→
+              <span class="badge badge-outline">очередь <code>graph_queue.json</code></span>→
+              <span class="badge badge-outline">локальная модель выписывает факты</span>→
+              <span class="badge badge-outline">таблица фактов <code>graph.db</code></span>→
+              <span class="badge badge-outline">индекс слов и смысла (FTS5 + векторы)</span>→
+              <span class="badge badge-outline">поиск перед ответом</span>→
+              <span class="badge badge-outline">до 3 фактов в подсказку модели</span>
+            </div>
+          </details>
+          <div class="divider my-0"></div>
           <div>
             <div class="font-medium mb-2">Что ассистентка помнит</div>
             <div id="facts" class="space-y-3"></div>
@@ -257,6 +311,34 @@
           <div>
             <div class="font-medium mb-2">Отношения</div>
             <ul id="relations" class="space-y-2 text-sm"></ul>
+          </div>
+          <div class="divider my-0"></div>
+          <div>
+            <div class="flex flex-wrap items-center gap-3 mb-1">
+              <div class="font-medium">Факты</div>
+              <span id="facts-status" class="text-xs opacity-60 ml-auto"></span>
+            </div>
+            <p class="text-xs opacity-60 mb-2">Факт это связь «кто, что, с чем» с датой и пометкой, откуда он взялся. Новые факты появляются не сразу: они разбираются
+              в паузах разговора, пока очередь не пуста. Неверный факт можно удалить (✕); канонические воспоминания персонажа удаляются только правкой <code>memories.yaml</code>.</p>
+            <div id="facts-stats" class="flex flex-wrap gap-2 mb-3"></div>
+            <div class="rounded-box border border-base-300 p-3 mb-3">
+              <div class="text-sm font-medium">Проверить поиск</div>
+              <div class="text-xs opacity-60 mb-2">Введи реплику, как её написал бы собеседник: покажу, какие факты находятся (косинус близости, порог <span id="facts-min">0,5</span>)
+                и какой блок уйдёт в подсказку модели.</div>
+              <div class="flex flex-wrap items-center gap-2">
+                <input id="facts-q" class="input input-bordered input-sm w-72" placeholder="Например: где я живу?">
+                <button id="facts-go" class="btn btn-sm btn-outline">Найти</button>
+              </div>
+              <div id="facts-hits" class="space-y-1 text-sm mt-2"></div>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <input id="facts-filter" class="input input-bordered input-sm w-56" placeholder="Фильтр по тексту…">
+              <select id="facts-area" class="select select-bordered select-sm"><option value="">все области</option></select>
+              <label class="label cursor-pointer gap-2 py-0"><span class="label-text text-xs">показывать устаревшие</span>
+                <input id="facts-old" type="checkbox" class="toggle toggle-sm"></label>
+              <span id="facts-count" class="text-xs opacity-60 ml-auto"></span>
+            </div>
+            <div id="facts-list" class="space-y-1"></div>
           </div>
           <div class="divider my-0"></div>
           <div>
@@ -302,27 +384,6 @@
               <button id="kb-go" class="btn btn-sm btn-outline">Найти</button>
             </div>
             <div id="kb-hits" class="space-y-1 text-sm mt-2"></div>
-          </div>
-          <div class="divider my-0"></div>
-                    <div class="flex flex-wrap items-center gap-3">
-            <div class="font-medium">Граф памяти</div>
-            <input id="graph-search" class="input input-bordered input-sm w-48" placeholder="Найти узел…" list="graph-names">
-            <datalist id="graph-names"></datalist>
-            <label class="label cursor-pointer gap-2 py-0"><span class="label-text text-xs">устаревшее</span>
-              <input id="graph-old" type="checkbox" class="toggle toggle-sm"></label>
-            <button id="graph-fit" class="btn btn-sm btn-ghost">По центру</button>
-            <span id="graph-status" class="text-xs opacity-60 ml-auto"></span>
-          </div>
-          <div class="grid gap-3">
-            <div id="graph-canvas" class="rounded-box border border-base-300 bg-base-100" style="height:52vh;min-height:340px"></div>
-            <div id="graph-panel" class="rounded-box border border-base-300 p-3 text-sm overflow-auto" style="max-height:38vh">
-              <div class="opacity-60">Нажми на узел: здесь появятся его факты, связи и кнопка удаления неверного факта.</div>
-            </div>
-          </div>
-          <div class="flex flex-wrap gap-3 text-xs opacity-70">
-            <span><span style="color:#a855f7">●</span> <span data-char-name></span></span><span><span style="color:#f59e0b">●</span> поселение</span>
-            <span><span style="color:#22c55e">●</span> колонист</span><span><span style="color:#3b82f6">●</span> человек, место, вещь</span>
-            <span><span style="color:#94a3b8">●</span> выбывший или устаревший</span>
           </div>
         </div>
       </div>
@@ -458,7 +519,7 @@ document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   if (tab.dataset.tab === 'status') { loadModes().then(() => MD.cy && fitGraph(MD.cy)); }
   if (tab.dataset.tab === 'modules') { loadModules().catch(() => {}); }
   if (tab.dataset.tab === 'thoughts') { loadThoughts().catch(() => {}); }
-  if (tab.dataset.tab === 'memory') { loadGraph().then(() => GR.cy && fitGraph(GR.cy)); }
+  if (tab.dataset.tab === 'memory') { loadFacts().catch(() => {}); }
   if (tab.dataset.tab === 'arch') { showArch(); }
 });
 
@@ -502,23 +563,6 @@ function profileStyle(c) {
       'text-background-color': c.b1, 'text-background-opacity': 1, 'text-background-padding': '2px'}},
     {selector: 'edge.arrow', style: {'line-color': alpha(c.bc, 0.35), 'target-arrow-color': alpha(c.bc, 0.35), 'target-arrow-shape': 'triangle'}},
   ];
-}
-// стиль графа памяти: точки по типу узла, размер по числу связей, устаревшее бледнее и пунктиром
-function memoryStyle(c) {
-  const kinds = {self: c.s, place: c.wa, colonist: c.su, old: alpha(c.bc, 0.35), thing: c.in};
-  const st = [
-    {selector: 'node', style: {label: 'data(label)', 'font-size': 12, 'font-family': 'inherit', color: c.bc, 'text-valign': 'bottom', 'text-margin-y': 5,
-      'background-color': c.in, width: 'mapData(deg, 0, 10, 16, 42)', height: 'mapData(deg, 0, 10, 16, 42)', 'border-width': 2, 'border-color': c.b1,
-      'text-outline-color': c.b1, 'text-outline-width': 2, 'transition-property': 'background-color, border-color, border-width', 'transition-duration': '200ms'}},
-    {selector: 'node:selected', style: {'border-color': c.p, 'border-width': 4}},
-    {selector: 'edge', style: {width: 1.5, 'line-color': alpha(c.bc, 0.3), 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'target-arrow-color': alpha(c.bc, 0.3),
-      label: 'data(label)', 'font-size': 9, 'font-family': 'inherit', color: alpha(c.bc, 0.65), 'text-rotation': 'autorotate',
-      'text-background-color': c.b1, 'text-background-opacity': 0.9, 'text-background-padding': '1px'}},
-    {selector: 'edge.old', style: {'line-style': 'dashed', opacity: 0.5}},
-    {selector: 'edge:selected', style: {'line-color': c.p, 'target-arrow-color': c.p, width: 2.5}},
-  ];
-  for (const [k, col] of Object.entries(kinds)) st.push({selector: `node.${k}`, style: {'background-color': col}});
-  return st;
 }
 function makeGraph(container, styleFn, opts = {}) {
   THEME.c = themeColors(); THEME.key = themeKey();
@@ -688,95 +732,121 @@ async function loadModes() {
 setInterval(() => loadModes().catch(() => {}), 3000);
 loadModes().catch(() => {});
 
-// ── граф памяти ──
-const GR = {cy: null, model: null, sig: '', selected: null};
-const ATTR_REL = new Set(['НАВЫКИ', 'ЧЕРТЫ', 'СОСТОЯНИЕ']);     // служебные узлы колониста рисуем внутри панели, не на холсте
+// ── факты (память-граф в SQLite) и сводка по слоям памяти ──
+const MEMSTAT = {};          // последние данные слоёв для таблицы «Как устроена память»
+const FC = {data: null, sig: '', open: new Set()};
 const relName = r => String(r || '').toLowerCase().replaceAll('_', ' ');
-
-function graphModel(g, showOld) {
-  const all = [...(g.current || []), ...(g.outdated || [])];
-  const hidden = new Set(), owner = {}, facts = {};
-  all.forEach(e => {
-    (facts[e.from] ||= []).push(e); (facts[e.to] ||= []).push(e);
-    if (ATTR_REL.has(e.relation)) { hidden.add(e.to); owner[e.to] = e.from; }
-  });
-  const alive = new Set(all.filter(e => e.relation === 'КОЛОНИСТ' && !e.invalid_at).map(e => e.from));
-  const retired = new Set(all.filter(e => e.relation === 'КОЛОНИСТ' && e.invalid_at).map(e => e.from));
-  const places = new Set(all.filter(e => e.relation === 'КОЛОНИСТ').map(e => e.to));
-  const live = new Set(all.filter(e => !e.invalid_at).flatMap(e => [e.from, e.to]));
-  const kind = n => n === CHAR_NAME ? 'self' : places.has(n) ? 'place' : alive.has(n) ? 'colonist'
-    : (retired.has(n) || !live.has(n)) ? 'old' : 'thing';
-  const names = new Set();
-  (g.nodes || []).forEach(n => { if (!hidden.has(n) && (showOld || live.has(n))) names.add(n); });
-  const edges = all.filter(e => !ATTR_REL.has(e.relation) && (showOld || !e.invalid_at) && names.has(e.from) && names.has(e.to));
-  const deg = {};
-  edges.forEach(e => { deg[e.from] = (deg[e.from] || 0) + 1; deg[e.to] = (deg[e.to] || 0) + 1; });
-  const nodes = [...names].map(n => ({group: 'nodes', data: {id: n, label: n, deg: deg[n] || 0}, classes: kind(n)}));
-  const vedges = edges.map(e => ({group: 'edges', data: {id: e.uuid, source: e.from, target: e.to, label: relName(e.relation)}, classes: e.invalid_at ? 'old' : ''}));
-  return {nodes, edges: vedges, facts, owner, kind, hidden};
+const SOURCE_TITLE = {extract: 'из разговора', seed: 'канон персонажа', life: 'пережитое', game: 'из игры'};
+function fmtBytes(n) { return n < 1024 ? n + ' Б' : n < 1048576 ? (n / 1024).toFixed(0) + ' КБ' : (n / 1048576).toFixed(1) + ' МБ'; }
+function fmtAgo(ts) {
+  if (!ts) return 'ещё не было';
+  const s = Date.now() / 1000 - ts;
+  return s < 90 ? 'только что' : s < 5400 ? Math.round(s / 60) + ' мин назад' : s < 129600 ? Math.round(s / 3600) + ' ч назад' : Math.round(s / 86400) + ' дн назад';
+}
+function areaTitle(group, base) {
+  return group === base ? 'личная' : String(group).startsWith(base + ':') ? String(group).slice(base.length + 1) : group;
+}
+function layerCounts() {
+  const set = (id, text) => { const el = $(id); if (el) el.innerHTML = text; };
+  const n = MEMSTAT.notes || [], by = k => n.filter(m => m.kind === k).length;
+  set('mem-n-notes', `${n.length} <span class="opacity-60 text-xs">(о тебе ${by('user')}, о ней ${by('self')}, целей ${by('plan')})</span>`);
+  set('mem-n-rel', MEMSTAT.relations === undefined ? '-' : String(MEMSTAT.relations));
+  const g = MEMSTAT.graph;
+  set('mem-n-facts', !g ? '-' : g.enabled === false ? 'выключено' : `${g.active ?? 0} действуют` + (g.outdated ? `, ${g.outdated} устарели` : '') + (g.queue ? `<br><span class="opacity-60 text-xs">в очереди ${g.queue}</span>` : ''));
+  const e = MEMSTAT.eps;
+  set('mem-n-eps', e ? `${(e.embedded || 0) + (e.summarized || 0)} готово` + ((e.pending || 0) ? `<br><span class="opacity-60 text-xs">ждут сна: ${e.pending}</span>` : '') : '-');
+  const l = MEMSTAT.lessons;
+  set('mem-n-lessons', l ? `уроков ${l.active || 0}, убеждений ${l.beliefs || 0}` : '-');
+  const k = MEMSTAT.kb;
+  set('mem-n-kb', k ? `коллекций ${k.cols}, кусков ${k.chunks}` : '-');
 }
 
-function showGraphNode(name) {
-  const m = GR.model; if (!m) return;
-  const own = Object.keys(m.owner).filter(a => m.owner[a] === name);
-  const rows = [...(m.facts[name] || [])];
-  own.forEach(a => (m.facts[a] || []).forEach(e => { if (!rows.includes(e)) rows.push(e); }));
-  const KIND = {self: CHAR_NAME, place: 'поселение', colonist: 'колонист', old: 'выбыл или устарел', thing: 'человек, место или вещь'};
-  const uniq = [...new Map(rows.map(e => [e.uuid, e])).values()];
-  const neigh = [...new Set(uniq.filter(e => !ATTR_REL.has(e.relation)).flatMap(e => [e.from, e.to]).filter(n => n !== name && !m.hidden.has(n)))];
-  const fact = e => `<li class="flex items-start justify-between gap-2 ${e.invalid_at ? 'opacity-60' : ''}"><span>${esc(e.fact)}
-    <span class="text-xs opacity-60">(${esc(e.valid_at || '?')}${e.invalid_at ? ' – ' + esc(e.invalid_at) : ''})</span></span>
-    <button class="btn btn-ghost btn-xs" data-graph-uuid="${esc(e.uuid)}" title="Удалить факт">✕</button></li>`;
-  $('graph-panel').innerHTML = `<div class="text-lg font-medium">${esc(name)}</div>
-    <div class="badge badge-ghost badge-sm mb-2">${KIND[m.kind(name)]}</div>
-    <div class="font-medium mt-2 mb-1">Факты (${uniq.length})</div>
-    <ul class="space-y-2">${uniq.map(fact).join('') || '<li class="opacity-60">Фактов нет.</li>'}</ul>
-    ${neigh.length ? `<div class="font-medium mt-3 mb-1">Связан с</div><div class="flex flex-wrap gap-1">${neigh.map(n =>
-      `<button class="btn btn-xs btn-outline" data-graph-go="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}`;
-  $('graph-panel').querySelectorAll('[data-graph-uuid]').forEach(b => b.onclick = async () => {
-    await post('/api/graph/forget', {uuid: b.dataset.graphUuid}); loadGraph();
-  });
-  $('graph-panel').querySelectorAll('[data-graph-go]').forEach(b => b.onclick = () => focusGraphNode(b.dataset.graphGo));
-  GR.selected = name;
+function factsView() {
+  const g = FC.data; if (!g || g.enabled === false) return [];
+  const q = $('facts-filter').value.trim().toLowerCase(), area = $('facts-area').value, old = $('facts-old').checked;
+  const all = [...(g.current || []), ...(old ? g.outdated || [] : [])];
+  const rows = all.filter(e => (!area || e.group === area) &&
+    (!q || (e.fact + ' ' + e.from + ' ' + e.to + ' ' + e.relation).toLowerCase().includes(q)));
+  const by = new Map();
+  rows.forEach(e => { if (!by.has(e.from)) by.set(e.from, []); by.get(e.from).push(e); });
+  return [...by.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
 }
 
-function focusGraphNode(name) {
-  const n = GR.cy && GR.cy.getElementById(name);
-  if (!n || !n.length) return false;
-  GR.cy.elements().unselect(); n.select();
-  GR.cy.animate({center: {eles: n}, zoom: Math.max(GR.cy.zoom(), 1.1)}, {duration: 300});
-  showGraphNode(name); return true;
+function renderFacts() {
+  const g = FC.data; if (!g) return;
+  const st = g.stats || {}, base = st.group || '';
+  if (g.enabled === false) {
+    $('facts-stats').innerHTML = ''; $('facts-list').innerHTML = '<div class="opacity-60 text-sm">Память-граф не подключена.</div>'; return;
+  }
+  const chip = (text, cls = 'badge-ghost', title = '') => `<span class="badge ${cls}" title="${esc(title)}">${text}</span>`;
+  const chips = [
+    chip(`действуют: ${st.active ?? 0}`, 'badge-success', 'Факты, которые она считает верными сейчас'),
+    chip(`устарели: ${st.outdated ?? 0}`, 'badge-ghost', 'Закрыты датой, потому что появился более новый факт; в ответ не идут'),
+    chip(`канон персонажа: ${st.canon ?? 0}`, 'badge-secondary', 'Воспоминания из memories.yaml: их нельзя закрыть или стереть разговором'),
+    chip(`в очереди на разбор: ${st.queue ?? 0}`, st.queue ? 'badge-warning' : 'badge-ghost', 'Реплики, из которых факты ещё не выписаны'),
+    chip(`в индексе поиска: ${st.indexed ?? 0}`, 'badge-ghost', 'Кусков с векторами и словами в graph.db (факты, эпизоды, справочник)'),
+    chip(`файл graph.db: ${fmtBytes(st.db_bytes || 0)}`, 'badge-ghost'),
+    chip(`последний факт: ${esc(fmtAgo(st.last_added))}`, 'badge-ghost'),
+  ];
+  Object.entries(st.sources || {}).filter(([k]) => k !== 'seed').forEach(([k, v]) => chips.push(chip(`${esc(SOURCE_TITLE[k] || k)}: ${v}`, 'badge-outline')));
+  $('facts-stats').innerHTML = chips.join('');
+  $('facts-status').textContent = g.status || '';
+  if (st.min_score) $('facts-min').textContent = String(st.min_score).replace('.', ',');
+  const sel = $('facts-area'), keep = sel.value;
+  const areas = Object.keys(st.areas || {});
+  sel.innerHTML = '<option value="">все области</option>' + areas.map(a => `<option value="${esc(a)}">${esc(areaTitle(a, base))} (${(st.areas[a].active || 0)})</option>`).join('');
+  sel.value = areas.includes(keep) ? keep : '';
+  sel.classList.toggle('hidden', areas.length < 2);
+  const view = factsView(), total = view.reduce((s, [, r]) => s + r.length, 0), filtering = !!$('facts-filter').value.trim();
+  $('facts-count').textContent = `показано фактов: ${total}, о ${view.length} сущностях`;
+  const fact = e => `<li class="flex items-start justify-between gap-2 ${e.invalid_at ? 'opacity-60' : ''}"><span class="min-w-0">${esc(e.fact)}
+      <span class="block text-xs opacity-60">${esc(relName(e.relation))} · с ${esc(e.valid_at || '?')}${e.invalid_at ? ' по ' + esc(e.invalid_at) + ' (устарел)' : ''}
+      ${e.group !== base ? ' · область ' + esc(areaTitle(e.group, base)) : ''} · ${esc(SOURCE_TITLE[e.source] || e.source || '')}${e.canon ? ' · <b>канон</b>' : ''}</span></span>
+    ${e.canon ? '' : `<button class="btn btn-ghost btn-xs shrink-0" data-fact-uuid="${esc(e.uuid)}" title="Удалить факт">✕</button>`}</li>`;
+  $('facts-list').innerHTML = view.map(([name, rows]) => `<details class="rounded-box border border-base-300 px-3 py-1" data-subj="${esc(name)}" ${filtering || FC.open.has(name) ? 'open' : ''}>
+      <summary class="cursor-pointer text-sm"><b>${esc(name)}</b> <span class="opacity-60 text-xs">фактов: ${rows.length}</span></summary>
+      <ul class="space-y-2 py-2">${rows.map(fact).join('')}</ul></details>`).join('')
+    || '<div class="opacity-60 text-sm">Фактов пока нет. Они появятся после разговора: из реплик выписываются в паузах, очередь видна выше.</div>';
 }
 
-async function loadGraph() {
+async function loadFacts() {
   if ($('tab-memory').classList.contains('hidden')) return;
   const g = await (await fetch('/api/graph')).json();
-  $('graph-status').textContent = g.status || '';
-  if (!window.cytoscape) { $('graph-canvas').innerHTML = '<div class="p-4 opacity-60">Не загрузилась библиотека графа (static/ui/vendor/cytoscape.min.js).</div>'; return; }
-  const m = graphModel(g, $('graph-old').checked);
-  GR.model = m;
-  $('graph-names').innerHTML = m.nodes.map(n => `<option value="${esc(n.data.id)}">`).join('');
-  if (!GR.cy) {
-    GR.cy = makeGraph($('graph-canvas'), memoryStyle);
-    GR.cy.on('tap', 'node', e => { showGraphNode(e.target.id()); });
-    $('graph-fit').onclick = () => fitGraph(GR.cy);
-    $('graph-old').onchange = () => { loadGraph(); };
-    $('graph-search').onchange = e => focusGraphNode(e.target.value.trim());
-  }
-  const changed = syncGraph(GR.cy, [...m.nodes, ...m.edges]);
-  if (changed) {
-    GR.cy.layout({name: 'cose', animate: false, fit: true, padding: 28, nodeRepulsion: () => 9000, idealEdgeLength: () => 90, randomize: !GR.laidOut}).run();
-    GR.laidOut = true;
-  }
-  if (GR.selected && GR.cy.getElementById(GR.selected).length) showGraphNode(GR.selected);
+  const st = g.stats || {};
+  MEMSTAT.graph = {enabled: g.enabled !== false, active: st.active, outdated: st.outdated, queue: st.queue ?? g.pending};
+  layerCounts();
+  const sig = JSON.stringify([g.status, g.pending, st, (g.current || []).length, (g.outdated || []).length, (g.current || []).map(e => e.uuid)]);
+  FC.data = g;
+  if (sig !== FC.sig) { FC.sig = sig; renderFacts(); }
 }
-setInterval(() => loadGraph().catch(() => {}), 6000);
+async function factsSearch() {
+  const q = $('facts-q').value.trim(); if (!q) return;
+  const d = await (await fetch('/api/graph/search?q=' + encodeURIComponent(q))).json();
+  const hits = (d.hits || []).map(h => `<div class="rounded-box border border-base-300 p-2 ${h.invalid_at ? 'opacity-60' : ''}"><div>${esc(h.fact)}</div>
+    <div class="text-xs opacity-60">близость ${h.score ?? '-'}${h.invalid_at ? ' · устарел с ' + esc(String(h.invalid_at).slice(0, 10)) : ''}</div></div>`).join('');
+  $('facts-hits').innerHTML = (hits || '<div class="opacity-60">Ничего не прошло порог близости: в ответ ничего из фактов не попадёт.</div>') +
+    (d.context ? `<div class="text-xs opacity-60 mt-2">В подсказку модели уйдёт:</div><pre class="text-xs bg-base-200 rounded p-2 whitespace-pre-wrap">${esc(d.context)}</pre>`
+      : (hits ? '<div class="text-xs opacity-60 mt-2">Из действующих фактов в подсказку ничего не попадёт.</div>' : ''));
+}
+$('facts-go').onclick = factsSearch;
+$('facts-q').addEventListener('keydown', e => { if (e.key === 'Enter') factsSearch(); });
+['facts-filter', 'facts-area', 'facts-old'].forEach(id => $(id).addEventListener(id === 'facts-filter' ? 'input' : 'change', renderFacts));
+$('facts-list').addEventListener('toggle', e => {
+  const d = e.target; if (!d.dataset || d.dataset.subj === undefined) return;
+  d.open ? FC.open.add(d.dataset.subj) : FC.open.delete(d.dataset.subj);
+}, true);
+$('facts-list').addEventListener('click', async e => {
+  const uuid = e.target.dataset && e.target.dataset.factUuid; if (!uuid) return;
+  await post('/api/graph/forget', {uuid}); FC.sig = ''; loadFacts();
+});
+setInterval(() => loadFacts().catch(() => {}), 6000);
 
 // ── эпизоды, дневник и сон (ТЗ 27) ──
 async function loadEpisodes() {
   if ($('tab-memory').classList.contains('hidden')) return;
   const [eps, dia, sl] = await Promise.all(['/api/episodes?limit=20', '/api/diary?limit=10', '/api/sleep'].map(u => fetch(u).then(r => r.json())));
   const c = eps.counts || {};
+  MEMSTAT.eps = c; layerCounts();
   $('sleep-status').textContent = (sl.state === 'sleeping' ? 'спит (' + (sl.mode || '') + ')' : 'бодрствует') +
     ` · эпизодов: ${c.embedded || 0} готово, ${c.pending || 0} ждут, ${c.failed || 0} без резюме`;
   $('episodes').innerHTML = (eps.episodes || []).map(e => `<details class="rounded-box border border-base-300 p-2" data-ep="${esc(e.id)}">
@@ -804,6 +874,7 @@ async function loadLessons() {
   $('lessons-alert').classList.toggle('hidden', !d.unseen);
   $('lessons-alert-text').textContent = d.unseen ? `Она сама приняла новых убеждений: ${d.unseen}. Их можно отменить в журнале ниже.` : '';
   const c = d.counts || {};
+  MEMSTAT.lessons = {...c, beliefs: (d.beliefs || []).length}; layerCounts();
   $('lessons-status').textContent = `уроков: ${c.active || 0} действуют, ${c.expired || 0} устарели · в контекст: ${d.context ? 'да' : 'нет'}`;
   $('beliefs').innerHTML = (d.beliefs || []).map(b => `<div class="rounded-box border border-base-300 p-2"><div>${esc(b.text)}</div>
     <div class="text-xs opacity-60">подтверждений ${b.confirmations}, эпизодов ${(b.episodes || []).length}${b.previous ? ' · прежнее: ' + esc(b.previous) : ''}</div></div>`).join('') || '<div class="opacity-60">Убеждений пока нет.</div>';
@@ -837,6 +908,7 @@ loadLessons().catch(() => {});
 async function loadKnowledge() {
   const d = await (await fetch('/api/knowledge/collections')).json();
   const cols = d.collections || [], s = d.settings || {};
+  MEMSTAT.kb = {cols: cols.length, chunks: cols.reduce((n, c) => n + (c.chunks || 0), 0)}; layerCounts();
   $('kb-status').textContent = `коллекций: ${cols.length} · порог cos ${s.min_cos ?? '-'} · справка в ответе: ${d.chat ? 'да' : 'нет'}`;
   $('kb-collections').innerHTML = cols.map(c => {
     const when = c.updated ? new Date(c.updated * 1000).toLocaleString() : '-';
@@ -920,7 +992,7 @@ const SETTINGS_CATALOG = [
   {title: 'Поведение', items: [
     {key: 'chattiness', type: 'select', label: 'Разговорчивость', hint: 'Как часто она сама начинает разговор.',
      options: [['quiet', 'Редко'], ['normal', 'Обычно'], ['chatty', 'Часто']]},
-    {key: 'graph_memory', type: 'toggle', label: 'Память-граф', hint: 'Запоминает факты о людях и жизни из разговора в граф (локально: Gemma и EmbeddingGemma в LM Studio, база SQLite в папке памяти, Docker не нужен). Без моделей отключается сама.'},
+    {key: 'graph_memory', type: 'toggle', label: 'Память: факты', hint: 'Запоминает факты о людях и жизни из разговора (локально: Gemma и EmbeddingGemma в LM Studio, база SQLite в папке памяти, Docker не нужен). Без моделей отключается сама.'},
     {key: 'claude_usage', type: 'select', label: 'Расход Claude', hint: 'Как часто работают игровые контуры на подписке Claude. Срочное (налёт, приказ) идёт сразу в любом режиме.',
      options: [['frugal', 'Экономный'], ['normal', 'Обычный'], ['generous', 'Щедрый (как раньше)']]},
     {key: 'claude_token_budget', type: 'select', label: 'Ёмкость батарейки Claude', hint: 'Сколько токенов Claude агент может потратить за окно лимита (5 часов). Когда заряд кончается, он уходит в сон. Подбери по опыту: точного числа подписка не отдаёт.',
@@ -1041,7 +1113,8 @@ function renderActivity(list) {
 }
 
 function renderMemory(core) {
-  const KIND_TITLE = {user: ['О тебе', 'badge-neutral'], self: ['О ней самой', 'badge-secondary'], plan: ['Планы', 'badge-warning'], episode: ['События', 'badge-ghost']};
+  MEMSTAT.notes = core.memories || []; MEMSTAT.relations = (core.relations || []).length; layerCounts();
+  const KIND_TITLE = {user: ['О тебе', 'badge-neutral'], self: ['О ней самой', 'badge-secondary'], plan: ['Цели', 'badge-warning'], episode: ['События', 'badge-ghost']};
   const groups = ['user', 'self', 'plan', 'episode'].map(k => {
     const items = (core.memories || []).filter(m => m.kind === k);
     if (!items.length) return '';

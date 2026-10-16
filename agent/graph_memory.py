@@ -204,8 +204,17 @@ class SqliteBackend:
         await asyncio.to_thread(self.store.delete, uuid)
         await self.search_service.delete(group, uuid)
 
-    async def snapshot(self, limit: int = 300, group: str = character.DEFAULT_ID) -> dict:
+    async def snapshot(self, limit: int = 500, group: str = character.DEFAULT_ID) -> dict:
         return await asyncio.to_thread(self.store.snapshot, group, limit)
+
+    async def stats(self, group: str = character.DEFAULT_ID) -> dict:
+        """Сводка для дашборда: факты по состояниям, областям и источникам, размер файла и число проиндексированных кусков."""
+        def work() -> dict:
+            out = self.store.stats(group)
+            out["db_bytes"] = sum(p.stat().st_size for p in (self.path, Path(str(self.path) + "-wal")) if p.exists())
+            out["indexed"] = self.search_service.index.count()
+            return out
+        return await asyncio.to_thread(work)
 
     # ── память персонажа: канон, загрузка, воспоминания о себе (ТЗ 05, CHR-16…CHR-19) ────────────────────────────
 
@@ -338,8 +347,8 @@ class GraphMemory:
 
     def status_text(self) -> str:
         if not settings.load().get("graph_memory", True):
-            return "Память-граф: выключена в настройках."
-        return f"Память-граф: {self._status}" + (f" (в очереди {len(self._queue)})" if self._queue else "") + "."
+            return "Факты: запись выключена в настройках."
+        return f"Факты: {self._status}" + (f" (в очереди {len(self._queue)})" if self._queue else "") + "."
 
     # фоновый разбор
     async def _ready(self) -> bool:
@@ -580,3 +589,21 @@ class GraphMemory:
             return await self.backend.snapshot(group=self.group())
         except Exception as e:
             return {"entities": [], "edges": [], "error": str(e)[:200]}
+
+    async def stats(self) -> dict:
+        """Состояние памяти-графа для дашборда: включена ли, что с моделями, очередь и сводка по фактам."""
+        out = {"enabled": bool(settings.load().get("graph_memory", True)), "healthy": self._healthy, "status": self._status,
+               "queue": len(self._queue), "group": self.group(), "min_score": MIN_SCORE, "context_facts": CONTEXT_FACTS}
+        fn = getattr(self.backend, "stats", None)
+        if fn is not None:
+            try:
+                out.update(await fn(self.group()))
+            except Exception as e:
+                out["error"] = str(e)[:200]
+        return out
+
+    async def explain(self, query: str) -> dict:
+        """Проверка поиска для дашборда: какие факты находятся по запросу (с косинусом) и какой блок уйдёт в промпт."""
+        hits = await self.search(query, limit=8, include_old=True)
+        return {"query": query, "hits": hits, "context": await self.context_block(query), "min_score": MIN_SCORE,
+                "context_facts": CONTEXT_FACTS}
