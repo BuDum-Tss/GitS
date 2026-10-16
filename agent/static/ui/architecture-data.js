@@ -519,9 +519,9 @@ window.ARCH_DATA = {
      "t": "Справочники и опыт модулей (KnowledgeBase)",
      "tag": "A",
      "new": false,
-     "do": "коллекции общего гибридного поиска: вики и описания RimWorld, регламенты монтажа (куски 250-450 слов по заголовкам, knowledge.db); опыт модулей идёт в уроки области <модуль>.experience; запросы core.kb.ingest (права по манифесту), core.lookup, core.experience.add; загрузка скриптом tools/knowledge_ingest.py",
+     "do": "коллекции общего гибридного поиска: вики и описания RimWorld, регламенты монтажа (куски 250-450 слов по заголовкам, knowledge.db); опыт модулей идёт в уроки области <модуль>.experience; запросы core.kb.ingest (права по манифесту), core.lookup, core.experience.add; загрузка скриптом tools/knowledge_ingest.py; инструмент планировщика knowledge.lookup (без каскада, web.search отдельно); справка и опыт в ответе разговора по настройке knowledge.chat (по умолчанию выкл.); перевод запроса по настройке knowledge.translate; раздел «Справочник» дашборда; набор проверки tools/knowledge_eval.py",
      "out": "Hit, kb chunk",
-     "now": "есть (ТЗ 04): knowledge_base.py, knowledge_service.py, core_requests.py; в игре уроки в промпте подбираются по ситуации (modules/rimworld core_link.lessons_for)"
+     "now": "есть (ТЗ 04): knowledge_base.py, knowledge_service.py, knowledge_routes.py, core_requests.py; в игре уроки в промпте подбираются по ситуации (modules/rimworld core_link.lessons_for)"
     },
     {
      "id": "beliefs",
@@ -555,7 +555,7 @@ window.ARCH_DATA = {
      "t": "FactGraph (контракт)",
      "tag": "I",
      "new": false,
-     "do": "Graphiti: факты с интервалами валидности",
+     "do": "Graphiti: факты с интервалами валидности; области global и <id>:<область> по профилю (graph_scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
      "out": "контракт графа",
      "now": "graph_memory.py: 701 строка"
     },
@@ -1131,6 +1131,18 @@ window.ARCH_DATA = {
    "lessons",
    "use",
    "опыт модулей"
+  ],
+  [
+   "ctx",
+   "kb",
+   "r",
+   "справка и опыт (knowledge.chat)"
+  ],
+  [
+   "reg",
+   "kb",
+   "use",
+   "knowledge.lookup"
   ],
   [
    "lessons",

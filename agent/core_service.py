@@ -25,6 +25,8 @@ import events_log
 import fast_brain
 import episode_routes
 import episode_service
+import graph_scope
+import knowledge_routes
 import knowledge_service
 import lesson_routes
 import lesson_service
@@ -270,6 +272,10 @@ async def _run(config: dict):
         companion._owner_name(), rel.people_terms(), [f["text"] for f in memory.facts()])      # core.privacy_terms (TG-12)
     graph = GraphMemory(mem_dir, busy=lambda: _time.time() - companion._last_user_ts < 20 or companion.is_speaking())
     companion.graph = graph
+    graph.scopes_of = lambda: list(layer.profiles.current().memory_scopes)        # ТЗ 04, KB-12/13: области графа по профилю
+    graph.scope_of = graph_scope.make_scope_of(
+        layer.attention.decider, graph.scopes_of,
+        lambda s: next((p.description or p.title for p in layer.profiles.profiles.values() if s in p.memory_scopes), s))
     dashboard.set_graph(graph)
     layer.character_switch = CharacterSwitch(companion=companion, rel=rel, graph=graph, attention=layer.attention,
                                              hub=layer.hub, mem_root=Path(mem_dir), affect=affect)
@@ -302,7 +308,8 @@ async def _run(config: dict):
     layer.requests.episodes = episodes                    # core.memory.episodes
     lessons = lesson_service.build(companion, episodes)   # ТЗ 28: разбор ошибок после сна, уроки и убеждения в контексте
     lesson_routes.set_hub(lessons)
-    layer.requests.knowledge = knowledge_service.build(lessons, episodes)       # ТЗ 04: справочники и опыт модулей (core.lookup и др.)
+    layer.requests.knowledge = knowledge_service.build(lessons, episodes, companion=companion, profiles=layer.profiles)
+    knowledge_routes.set_kb(layer.requests.knowledge)     # KB-22: раздел «Справочник» дашборда       # ТЗ 04: справочники и опыт модулей (core.lookup и др.)
     await impulses.plans.start()                         # планы пользователя -> напоминания себе (без опроса модели, ТЗ 30)
 
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──

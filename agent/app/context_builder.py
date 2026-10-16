@@ -18,6 +18,9 @@ class ContextBuilder:
         self.mood_of = None        # ТЗ 26: callable() -> факт о настроении; ядро ставит AffectService.mood_block
         self.lessons_of = None     # ТЗ 28: async callable(query) -> блок уроков по ситуации; ядро ставит LessonHub.select
         self.beliefs_of = None     # ТЗ 28: callable() -> блок убеждений; ядро ставит LessonHub.beliefs_block
+        self.knowledge_of = None   # ТЗ 04, KB-11: async callable(query) -> блок справки и опыта; ядро ставит KnowledgeBase.chat_block
+        self.knowledge_on = None   # callable() -> включена ли справка в ответе (настройка knowledge.chat, по умолчанию нет)
+        self._knowledge_block = ("", 0.0)     # (текст, когда подобран): живёт одну реплику, не дольше LESSONS_TTL_S
         self._lessons_block = ("", 0.0)       # (текст, когда подобран): блок живёт одну реплику, не дольше LESSONS_TTL_S
 
     def claude_note(self) -> str:
@@ -89,6 +92,9 @@ class ContextBuilder:
         lessons, picked_at = self._lessons_block
         if lessons and not skip_memory and time.time() - picked_at <= LESSONS_TTL_S:
             blocks.append(("lessons", lessons))
+        know, know_at = self._knowledge_block
+        if know and not skip_memory and time.time() - know_at <= LESSONS_TTL_S:
+            blocks.append(("knowledge", know))
         if self.mood_of is not None:
             try:
                 mood = self.mood_of()
@@ -124,6 +130,23 @@ class ContextBuilder:
         except (asyncio.TimeoutError, Exception):
             h._self_block = ""
         await self.refresh_lessons(query)
+        await self.refresh_knowledge(query)
+
+    def clear_knowledge(self) -> None:
+        self._knowledge_block = ("", 0.0)
+
+    async def refresh_knowledge(self, query: str) -> None:
+        """Справка и опыт по реплике (ТЗ 04, KB-11): только при настройке `knowledge.chat`, не дольше `chat_budget_ms`;
+        без попаданий или по тайм-ауту блока нет."""
+        text = ""
+        if self.knowledge_of is not None and self.knowledge_on is not None:
+            try:
+                if self.knowledge_on():
+                    cfg = self._h._settings.load().get("knowledge") or {}
+                    text = await asyncio.wait_for(self.knowledge_of(query), float(cfg.get("chat_budget_ms", 300)) / 1000.0)
+            except (asyncio.TimeoutError, Exception):
+                text = ""
+        self._knowledge_block = (text or "", time.time())
 
     async def refresh_lessons(self, query: str) -> None:
         """Уроки по ситуации реплики (ТЗ 28, LRN-4): быстрый поиск, не дольше двух секунд; без уроков блок пуст."""

@@ -289,6 +289,20 @@
             <div id="repeat-rates" class="text-sm"></div>
           </div>
           <div class="divider my-0"></div>
+          <div>
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <div class="font-medium">Справочник</div>
+              <span id="kb-status" class="text-xs opacity-70"></span>
+            </div>
+            <div id="kb-collections" class="space-y-1 text-sm"></div>
+            <div class="flex flex-wrap items-center gap-2 mt-3">
+              <input id="kb-q" class="input input-bordered input-sm w-64" placeholder="Пробный поиск по справочнику…">
+              <select id="kb-c" class="select select-bordered select-sm"><option value="">все коллекции</option></select>
+              <button id="kb-go" class="btn btn-sm btn-outline">Найти</button>
+            </div>
+            <div id="kb-hits" class="space-y-1 text-sm mt-2"></div>
+          </div>
+          <div class="divider my-0"></div>
                     <div class="flex flex-wrap items-center gap-3">
             <div class="font-medium">Граф памяти</div>
             <input id="graph-search" class="input input-bordered input-sm w-48" placeholder="Найти узел…" list="graph-names">
@@ -817,6 +831,38 @@ $('belief-log').addEventListener('click', async e => {
 $('lessons-seen').onclick = () => fetch('/api/lessons/seen', {method: 'POST'}).then(loadLessons);
 setInterval(() => loadLessons().catch(() => {}), 8000);
 loadLessons().catch(() => {});
+
+// ── справочник (ТЗ 04, KB-22) ──
+async function loadKnowledge() {
+  const d = await (await fetch('/api/knowledge/collections')).json();
+  const cols = d.collections || [], s = d.settings || {};
+  $('kb-status').textContent = `коллекций: ${cols.length} · порог cos ${s.min_cos ?? '-'} · справка в ответе: ${d.chat ? 'да' : 'нет'}`;
+  $('kb-collections').innerHTML = cols.map(c => {
+    const when = c.updated ? new Date(c.updated * 1000).toLocaleString() : '-';
+    const del = c.kind === 'experience' ? '' : `<button class="btn btn-xs btn-outline" data-kbdel="${esc(c.name)}">Удалить</button>`;
+    return `<div class="rounded-box border border-base-300 p-2 flex flex-wrap items-center gap-2"><div class="flex-1 min-w-0"><b>${esc(c.name)}</b>
+      <span class="opacity-60 text-xs">область ${esc(c.scope)} · ${esc(c.kind === 'experience' ? 'опыт' : 'справочник')} · документов ${c.docs}, кусков ${c.chunks} · обновлено ${esc(when)}</span></div>${del}</div>`;
+  }).join('') || '<div class="opacity-60">Справочники пока пусты: модули загружают их сами (core.kb.ingest) или скриптом tools/knowledge_ingest.py.</div>';
+  const sel = $('kb-c'), keep = sel.value;
+  sel.innerHTML = '<option value="">все коллекции</option>' + cols.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  sel.value = keep;
+}
+async function kbSearch() {
+  const q = $('kb-q').value.trim(); if (!q) return;
+  const hits = (await (await fetch('/api/knowledge/search?q=' + encodeURIComponent(q) + '&c=' + encodeURIComponent($('kb-c').value))).json()).hits || [];
+  $('kb-hits').innerHTML = hits.map(h => `<div class="rounded-box border border-base-300 p-2"><div><b>${esc(h.title)}</b> <span class="opacity-60 text-xs">${esc(h.collection)} · score ${h.score} · cos ${h.cos ?? '-'} · bm25 ${h.bm25_rank ?? '-'}</span></div>
+    <div class="text-xs opacity-70">${esc(h.text)}</div></div>`).join('') || '<div class="opacity-60">Ничего не прошло порог.</div>';
+}
+$('kb-go').onclick = kbSearch;
+$('kb-q').addEventListener('keydown', e => { if (e.key === 'Enter') kbSearch(); });
+$('kb-collections').addEventListener('click', async e => {
+  const name = e.target.dataset && e.target.dataset.kbdel; if (!name) return;
+  if (!confirm('Удалить коллекцию «' + name + '» целиком?')) return;
+  await fetch('/api/knowledge/collection/' + encodeURIComponent(name), {method: 'DELETE'});
+  loadKnowledge();
+});
+setInterval(() => loadKnowledge().catch(() => {}), 15000);
+loadKnowledge().catch(() => {});
 
 // ── чат ──
 let stick = true;

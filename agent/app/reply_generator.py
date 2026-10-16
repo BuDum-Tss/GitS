@@ -188,7 +188,9 @@ class ReplyGenerator:
         if use_memory:
             deadline = self._cfg().get("memory_deadline_ms", 300)
             await h.context_builder.use_retrieval(retrieval, text, deadline / 1000 if deadline else None)
+            await h.context_builder.refresh_knowledge(text)      # ТЗ 04, KB-11: справка и опыт, если включено (knowledge.chat)
         else:
+            h.context_builder.clear_knowledge()
             if retrieval is not None:
                 retrieval.cancel()
             h._self_block = ""

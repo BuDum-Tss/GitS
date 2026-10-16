@@ -41,9 +41,9 @@ class HybridSearch:
 
     async def search(self, query: str, *, tail: list[str] | None = None, collections: list[str] | None = None,
                      k: int = 5, since: float | None = None, until: float | None = None, meta: dict | None = None,
-                     include_stale: bool = False, rewrite: bool = True) -> list[Hit]:
+                     include_stale: bool = False, rewrite: bool = True, fts_text: str | None = None) -> list[Hit]:
         q = await rewrite_query(self.llm, query, tail) if rewrite else query
         vecs = await self._embed([q], True)
         return await asyncio.to_thread(
             self.index.search, q, vecs[0] if vecs else None, collections=collections, k=k, since=since, until=until,
-            meta=meta, include_stale=include_stale, cfg=self.cfg)
+            meta=meta, include_stale=include_stale, cfg=self.cfg, fts_text=fts_text)
