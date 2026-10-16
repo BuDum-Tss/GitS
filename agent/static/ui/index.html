@@ -900,7 +900,9 @@ $('approval-no').onclick = async () => { await post('/api/approval', {allow: fal
 
 // ── настройки: описаны схемой, форма строится и обновляется из неё ──
 const HOTKEYS = ['Ctrl+Shift+Space', 'Alt+Shift+Space', 'Ctrl+Alt+A', 'Ctrl+Alt+Q'];
-const SETTINGS_SCHEMA = [
+// Каталог всех общих настроек. Настройки модулей (голос, питомец, компьютер, Telegram, RimWorld) показываются на странице
+// самого модуля (вкладка «Модули»), здесь, в общих, остаётся только то, что принадлежит ядру.
+const SETTINGS_CATALOG = [
   {title: 'Голос и питомец', items: [
     {key: 'voice_muted', type: 'toggle', invert: true, label: 'Озвучка', hint: 'Выключает голос, текст остаётся в чате и в облачке. Горячая клавиша Ctrl+Alt+M.'},
     {key: 'volume', type: 'range', label: 'Громкость', hint: 'Применяется со следующей фразы.'},
@@ -912,7 +914,7 @@ const SETTINGS_SCHEMA = [
     {key: 'vision', type: 'toggle', label: 'Зрение', hint: 'Смотреть на активное окно. Всё обрабатывается локально, окна с паролями и банками пропускаются.'},
     {key: 'game_model', type: 'select', label: 'Модель игрока (ходы и планирование)', options: [['haiku', 'Haiku: быстро и дёшево'], ['sonnet', 'Sonnet: думает глубже, дороже по лимиту']]},
     {key: 'streamer', type: 'toggle', label: 'Режим стримера', hint: 'В игре она вслух ведёт стрим: что видит, о чём думает, планы, цель игры. Без него комментирует только заметные события.'},
-    {key: 'mic', type: 'toggle', label: 'Микрофон (разговор голосом)', hint: 'Слушает тебя и узнаёт по голосу. Звук идёт только на локальный сервер WhisperX (docker compose up whisperx), в облако не уходит.'},
+    {key: 'mic', type: 'toggle', label: 'Микрофон (разговор голосом)', hint: 'Слушает тебя и узнаёт по голосу. Распознаётся локально (GigaAM; WhisperX, если запущен, добавляет узнавание голосов), в облако звук не уходит.'},
     {key: 'hearing', type: 'toggle', label: 'Слух', hint: 'Слушать системный звук (фильм, видео). Локально, звонки и мессенджеры не слушаются.'}]},
   {title: 'Поведение', items: [
     {key: 'chattiness', type: 'select', label: 'Разговорчивость', hint: 'Как часто она сама начинает разговор.',
@@ -936,6 +938,17 @@ const SETTINGS_SCHEMA = [
     {key: 'auto_accept', type: 'toggle', label: 'Авто-разрешать все действия',
      hint: 'Она будет выполнять действия без вопросов: команды, запись файлов, игровые команды. Всё равно спрашивается: удаление данных, файлы с секретами, установка программ, запись вне проекта. Включай, только если доверяешь всему, что она читает (страницы, файлы): такой текст может пытаться ею управлять. Включается только здесь и в трее, не из чата.'}]},
 ];
+const MODULE_SETTING_KEYS = {
+  voice: ['voice_muted', 'volume', 'mic', 'hearing'],
+  pet: ['pet_visible', 'pet_pinned', 'hotkey_input'],
+  desktop: ['vision'],
+  telegram: ['telegram', 'telegram_voice', 'telegram_confirm'],
+  rimworld: ['game_model', 'streamer', 'record_runs', 'telegram_after_run'],
+};
+const MODULE_OWNED = new Set(Object.values(MODULE_SETTING_KEYS).flat());
+const SETTINGS_SCHEMA = SETTINGS_CATALOG.map(sec => ({...sec, items: sec.items.filter(it => !MODULE_OWNED.has(it.key))})).filter(sec => sec.items.length);
+const SETTING_ITEMS = Object.fromEntries(SETTINGS_CATALOG.flatMap(sec => sec.items).map(it => [it.key, it]));
+let lastSettings = {};
 let settingsBuilt = false;
 const sid = k => 'st-' + k;
 function buildSettings() {
@@ -990,6 +1003,7 @@ async function switchCharacter(id) {
 
 function renderSettings(s) {
   if (!s) return;
+  lastSettings = s;
   if (!settingsBuilt) buildSettings();
   SETTINGS_SCHEMA.forEach(sec => sec.items.forEach(it => {
     const v = s[it.key], el = $(sid(it.key));
@@ -1442,6 +1456,15 @@ const JOB_STATE = {queued: ['в очереди', 'badge-ghost'], running: ['ид
 const JOB_FINISHED = ['done', 'failed', 'cancelled'];
 const MD2 = {sig: '', jobSig: '', coreSig: ''};
 
+// Общая настройка (ядра), которую показывает страница модуля: те же значения, что раньше были во вкладке настроек
+function sharedSettingControl(it) {
+  const v = lastSettings[it.key], a = `data-act="gset" data-key="${esc(it.key)}" data-type="${esc(it.type)}" ${it.invert ? 'data-invert="1"' : ''}`;
+  let control;
+  if (it.type === 'toggle') control = `<input type="checkbox" class="toggle toggle-sm" ${a} ${(it.invert ? !v : !!v) ? 'checked' : ''}>`;
+  else if (it.type === 'range') control = `<input type="range" min="0" max="100" step="5" class="range range-xs w-32" ${a} value="${esc(v)}">`;
+  else control = `<select class="select select-bordered select-xs" ${a}>${(it.options || []).map(o => `<option value="${esc(o[0])}" ${String(o[0]) === String(v) ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+  return `<div class="flex items-center justify-between gap-3"><span class="min-w-0"><span class="text-sm">${esc(it.label)}</span>${it.hint ? `<span class="block text-xs opacity-60">${esc(it.hint)}</span>` : ''}</span>${control}</div>`;
+}
 function modSettingControl(m, key, spec) {
   const v = (m.module_settings || {})[key], a = `data-act="setting" data-id="${esc(m.id)}" data-key="${esc(key)}" data-type="${esc(spec.type)}"`;
   let control;
@@ -1625,6 +1648,7 @@ function modPageHtml(m, data, jobs, events) {
   const modLinks = (panel.links || []).filter(l => l.args_from !== 'job');
   const svcOpen = MODTAB.open[m.id] ?? !hasSpace;
   const schema = Object.entries(m.settings_schema || {});
+  const shared = (MODULE_SETTING_KEYS[m.id] || []).map(k => SETTING_ITEMS[k]).filter(Boolean);
   const tools = (m.tools || []).map(t => `<li class="flex items-start gap-2"><span class="badge ${(RISK[t.risk] || RISK.ask)[1]} badge-xs shrink-0 mt-1">${esc((RISK[t.risk] || RISK.ask)[0])}</span><span class="min-w-0"><span class="font-mono text-xs">${esc(t.id)}</span><span class="opacity-70 bubble-text text-xs block">${esc(t.description)}</span></span></li>`).join('');
   const msg = MODTAB.msg[m.id];
   return `<div data-modpage="${esc(m.id)}" class="space-y-4">
@@ -1639,11 +1663,12 @@ function modPageHtml(m, data, jobs, events) {
     ${panel.embed_url ? `<iframe src="${esc(panel.embed_url)}" title="${esc(panel.title || m.title)}" class="w-full rounded-box border border-base-300 bg-base-100" style="height:60vh"></iframe>` : ''}
     ${blocks.length ? `<div class="space-y-4">${panelBlocks(m.id, blocks, '')}</div>` : ''}
     ${msg ? `<div class="text-xs bubble-text" data-panel-msg="${esc(m.id)}">${esc(msg)}</div>` : ''}
+    ${shared.length || schema.length ? `<section class="rounded-box border border-base-300 p-3"><div class="text-sm font-medium mb-2">Настройки</div><div class="space-y-3">${shared.map(sharedSettingControl).join('')}${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></section>` : ''}
     <details class="rounded-box border border-base-300 p-3" data-svc="${esc(m.id)}" ${svcOpen ? 'open' : ''}>
       <summary class="cursor-pointer text-sm font-medium">Служебное</summary>
       <div class="space-y-4 mt-3">
         <section><div class="text-sm font-medium mb-2">Задачи модуля</div><ul class="space-y-2 text-sm">${jobs.map(renderJob).join('') || '<li class="opacity-60">Задач нет.</li>'}</ul></section>
-        ${schema.length ? `<section><div class="text-sm font-medium mb-2">Настройки</div><div class="space-y-2">${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></section>` : ''}
+
         ${tools ? `<section><div class="text-sm font-medium mb-2">Инструменты (${m.tools.length})</div><ul class="space-y-1">${tools}</ul></section>` : ''}
         <section><div class="text-sm font-medium mb-2">События модуля</div><ul class="space-y-1">${modEventRows(events)}</ul></section>
       </div>
@@ -1721,7 +1746,13 @@ $('mod-page').addEventListener('click', async e => {
 $('tab-modules').addEventListener('change', async e => {
   const el = e.target, id = el.dataset.id;
   if (el.dataset.act === 'enable') await post(`/api/modules/${encodeURIComponent(id)}/enabled`, {enabled: el.checked});
-  else if (el.dataset.act === 'setting') {
+  else if (el.dataset.act === 'gset') {
+    let value = el.type === 'checkbox' ? el.checked : (el.type === 'range' ? +el.value : el.value);
+    if (el.dataset.invert) value = !value;
+    lastSettings = {...lastSettings, [el.dataset.key]: value};                       // сразу, до очередного опроса состояния
+    await post('/api/settings', {[el.dataset.key]: value});
+    MODTAB.pageSig = '';
+  } else if (el.dataset.act === 'setting') {
     let value = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.type === 'integer') value = parseInt(value, 10); else if (el.dataset.type === 'number') value = parseFloat(value);
     const r = await post(`/api/modules/${encodeURIComponent(id)}/settings`, {key: el.dataset.key, value});

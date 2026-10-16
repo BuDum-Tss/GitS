@@ -1,8 +1,12 @@
-"""Локальный распознаватель на процессоре (faster-whisper, int8): запасной путь для микрофона и общий для слуха.
+"""Локальный распознаватель на процессоре: запасной путь для микрофона и общий для слуха.
+
+Основной движок GigaAM v3 (RNN-T, int8, через onnx-asr; только русский, около 0,9 с на 7 с речи): `LocalGigaAM`. Если он не
+открылся (нет onnx-asr или весов), работает прежний faster-whisper (int8) `LocalWhisper`. Выбор: `GITS_STT_ENGINE`
+(`gigaam` по умолчанию | `whisper`).
 
 Один экземпляр на процесс модуля (`shared()`): микрофон (запасной путь STTClient) и слух системного звука (hearing.py)
 делят одну загруженную модель, а не грузят её дважды. Потоков процессора не больше `GITS_STT_THREADS` (по умолчанию 2),
-чтобы не душить игру и LM Studio. Модель: `GITS_STT_MODEL` (по умолчанию small).
+чтобы не душить игру и LM Studio. Модель Whisper: `GITS_STT_MODEL` (по умолчанию small), GigaAM: `GITS_STT_GIGAAM` (`gigaam-v3-e2e-rnnt`).
 
 Веса НЕ скачиваются: модель открывается с `local_files_only=True`. Если веса не лежат в кэше, распознавание просто
 недоступно, и состояние честно говорит «модель не загружена». Загрузка из сети только по разрешению владельца (правило
@@ -21,6 +25,8 @@ logger = logging.getLogger("local_stt")
 
 SR = 16000
 MODEL_NAME = env("GITS_STT_MODEL", "small")
+GIGAAM_MODEL = env("GITS_STT_GIGAAM", "gigaam-v3-e2e-rnnt")
+GIGAAM_REPO = "istupakov/gigaam-v3-onnx"         # веса onnx-asr для моделей gigaam-v3-*; кэш Hugging Face
 RETRY_S = 60.0                      # модель не нашлась: следующая проверка не раньше, чем через столько секунд
 MIN_LOGPROB = -1.0                  # сегменты с худшей уверенностью отбрасываем (как в прежнем слухе)
 LANGUAGE = env("GITS_STT_LANGUAGE", os.getenv("WHISPERX_LANGUAGE", "ru"))     # язык задан явно: автоопределение на коротких фразах выдаёт корейский и прочие выдумки
@@ -116,6 +122,58 @@ class LocalWhisper:
             return " ".join(out)
 
 
+def _gigaam_loader(name: str, threads: int):
+    """Открыть GigaAM из кэша Hugging Face (скачивания нет). Нет пакета или весов: исключение."""
+    import onnx_asr
+    import onnxruntime as ort
+    from huggingface_hub import try_to_load_from_cache
+
+    encoder = try_to_load_from_cache(GIGAAM_REPO, "v3_e2e_rnnt_encoder.int8.onnx")       # onnx-asr кладёт в кэш только нужные файлы
+    if not isinstance(encoder, str):
+        raise FileNotFoundError(f"весов {GIGAAM_REPO} нет в кэше Hugging Face")
+    path = os.path.dirname(encoder)
+    opts = ort.SessionOptions()
+    opts.intra_op_num_threads = threads
+    return onnx_asr.load_model(name, path, quantization="int8", sess_options=opts, providers=["CPUExecutionProvider"])
+
+
+class LocalGigaAM(LocalWhisper):
+    """GigaAM v3 вместо Whisper (тот же интерфейс). `fallback` (LocalWhisper) подхватывает, если GigaAM не открылся."""
+
+    def __init__(self, model_name: str = GIGAAM_MODEL, threads: int | None = None, loader=None, clock=time.monotonic,
+                 fallback: LocalWhisper | None = None):
+        super().__init__(model_name, threads, loader or _gigaam_loader, clock)
+        self._fallback = fallback
+
+    def _fell_back(self) -> bool:
+        return self._model is None and self._fallback is not None and self._fallback.state == "загружена"
+
+    @property
+    def state(self) -> str:
+        return self._fallback.state if self._fell_back() else self._state
+
+    @property
+    def active_model(self) -> str:
+        return self._fallback.model_name if self._fell_back() else self.model_name
+
+    def ensure_model(self):
+        try:
+            return super().ensure_model()
+        except LocalSTTUnavailable as e:
+            if self._fallback is None:
+                raise
+            logger.info(f"GigaAM не открылся ({e}), распознаю faster-whisper")
+            return self._fallback.ensure_model()
+
+    def transcribe_array(self, audio: np.ndarray) -> str:
+        with self._lock:
+            self.ensure_model()
+            if self._model is None:                                  # GigaAM недоступен: прежний путь
+                return self._fallback.transcribe_array(audio)
+            text = str(self._model.recognize(audio.astype(np.float32), sample_rate=SR) or "").strip()
+            return "" if _JUNK.search(text) else text
+
+
 _shared: LocalWhisper | None = None
 _shared_lock = threading.Lock()
 
@@ -125,5 +183,6 @@ def shared() -> LocalWhisper:
     global _shared
     with _shared_lock:
         if _shared is None:
-            _shared = LocalWhisper()
+            whisper = LocalWhisper()
+            _shared = whisper if env("GITS_STT_ENGINE", "gigaam").strip().lower() == "whisper" else LocalGigaAM(fallback=whisper)
         return _shared

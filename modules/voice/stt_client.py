@@ -102,7 +102,7 @@ class STTClient:
         if self.mode == MODE_LOCAL:
             if self._local.state == "загружена":
                 return LABEL_LOCAL
-            return f"{LABEL_LOCAL}; модель {self._local.model_name} не загружена, речь не распознаётся"
+            return f"{LABEL_LOCAL}; модель {self._model_name()} не загружена, речь не распознаётся"
         return LABEL_UNKNOWN
 
     def short(self) -> str:
@@ -112,9 +112,12 @@ class STTClient:
             return "локально (CPU)" if self._local.state == "загружена" else "локально, модель не загружена"
         return "не проверено"
 
+    def _model_name(self) -> str:
+        return getattr(self._local, "active_model", self._local.model_name)     # GigaAM или Whisper, если откатились
+
     def status(self) -> dict:
         return {"mode": self.mode, "label": self.label(), "short": self.short(), "diarized": self.diarized,
-                "model": self._local.model_name, "model_state": self._local.state}
+                "model": self._model_name(), "model_state": self._local.state}
 
     def _notify(self) -> None:
         """Сообщить о переходе (ключ: режим и состояние модели), один раз на переход."""

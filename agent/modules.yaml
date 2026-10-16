@@ -92,6 +92,20 @@ modules:
     autostart: true
     restart: on-failure
 
+  # Синтез речи ESpeech-TTS-1 (F5-TTS, русский): сервис для модуля голоса, окружение Python 3.12 + CUDA torch в
+  # services/f5-tts/.venv (установка и веса: services/f5-tts/README.md). Пока модель грузится, /health отвечает 503.
+  # Нет сервиса: модуль голоса пользуется Fish Speech, потом edge-tts (`TTS_ENGINE`, modules/voice/tts_engine.py).
+  - id: espeech
+    title: Синтез речи ESpeech
+    description: "русский голос персонажа по референсу (F5-TTS); работает отдельным процессом на видеокарте"
+    kind: service
+    cwd: "{GITS}/services/f5-tts"
+    command: "{GITS}/services/f5-tts/.venv/Scripts/python.exe"
+    args: ["f5_server.py"]
+    health_url: "http://127.0.0.1:8771/health"
+    autostart: true
+    restart: on-failure
+
 # Запланированные модули: ядро их не запускает, вкладка «Модули» показывает серые карточки «ещё не установлен - запланирован».
 # Поля: id, title, tz (номер ТЗ, если оно есть). Когда модуль появится, запись переезжает в modules выше.
 planned:

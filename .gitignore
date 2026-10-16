@@ -27,3 +27,8 @@ agent/logs/
 # сервис decider (ТЗ 03): окружение Python 3.12 и веса классификатора (1,1 ГБ), не в git
 services/decider/.venv/
 services/decider/hf/
+
+# сервис синтеза речи ESpeech (F5-TTS): окружение Python 3.12, веса (2,5 ГБ), вывод проб
+services/f5-tts/.venv/
+services/f5-tts/weights/
+services/f5-tts/out/

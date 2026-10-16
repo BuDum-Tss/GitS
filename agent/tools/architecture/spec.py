@@ -29,7 +29,7 @@ def N(id, t, tag, do, out, now, new=False):
 GROUPS = [
     dict(id="g_src", col="A", title="Источники событий", tag="I",
          summary="Модули (голос, Telegram, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.", out="Event", nodes=[
-        N("voice", "voice", "I", "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (Fish Speech)", "Event voice.utterance", "modules/voice"),
+        N("voice", "voice", "I", "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (ESpeech, запасные Fish Speech и edge-tts)", "Event voice.utterance", "modules/voice"),
         N("desk", "desktop", "I", "экран, активность, мышь и клавиатура, Claude-помощник", "Event desktop.*, job.update", "modules/desktop"),
         N("tg", "telegram", "I", "бот, её аккаунт, посты канала", "Event telegram.*", "modules/telegram"),
         N("rim", "rimworld", "I", "игровой агент: ходы, комментатор, запись забега", "Event raid, death, colonists", "modules/rimworld"),
@@ -109,11 +109,11 @@ GROUPS = [
         N("char", "CharacterRepo", "I", "resources/<Имя>: конституция, prompt, канон, голос", "Character", "character.py + resources/"),
     ]),
     dict(id="g_ext", col="BOTTOM2", title="Внешний слой и сборка", tag="X",
-         summary="Модели и службы: LM Studio, GLiNER, FalkorDB, Fish Speech, WhisperX, Claude. Сборка: core_service.", out="", nodes=[
+         summary="Модели и службы: LM Studio, GLiNER, FalkorDB, ESpeech, Fish Speech, WhisperX, Claude. Сборка: core_service.", out="", nodes=[
         N("lms", "LM Studio :1234", "X", "Gemma (речь, план, факты) и EmbeddingGemma", "", ""),
         N("gli", "GLiNER decider :8768", "X", "классификатор событий и обращений", "", ""),
         N("falk", "FalkorDB :6380", "X", "база графа фактов", "", ""),
-        N("fish", "Fish Speech / edge-tts", "X", "синтез речи", "", ""),
+        N("fish", "ESpeech :8771 / Fish Speech / edge-tts", "X", "синтез речи (F5-TTS, русский)", "", ""),
         N("wx", "WhisperX / Whisper", "X", "распознавание речи", "", ""),
         N("cl", "Claude Agent SDK", "X", "долгие и сложные задачи", "", ""),
         N("sup", "Supervisor", "I", "запуск и перезапуск процессов модулей", "", "supervisor.py: 573 строки; режим «только ядро» (GITS_NO_MODULES=1 или настройка only_core); устойчивость ядра проверяет tools/soak_core.py"),
