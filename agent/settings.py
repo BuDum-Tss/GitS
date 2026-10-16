@@ -51,6 +51,12 @@ DEFAULTS = {
     "latency_budget": {"stt_done": 1500, "core_in": 400, "classify_done": 400, "route": 100, "retrieve_done": 450,
                        "llm_first_token": 2500, "first_sentence_ready": 1200, "llm_done": 6000, "tts_first_audio": 1500,
                        "play_start": 400, "end_to_sound": 4500},
+    # уроки и убеждения (ТЗ 28): разбор ошибок во сне; context=True кладёт убеждения и уроки по ситуации в контекст ответа (по
+    # умолчанию выключено, поведение прежнее); K подтверждений из M разных эпизодов делают урок убеждением, не больше
+    # belief_per_day в сутки и beliefs_max активных; expire_repeats повторов после применения устаревляют урок
+    "lessons": {"enabled": True, "context": False, "max_context": 3, "merge_cos": 0.90, "merge_sim": 0.6, "group_sim": 0.25,
+                "promote_k": 3, "promote_m": 2, "belief_per_day": 2, "beliefs_max": 12, "belief_chars": 600,
+                "expire_repeats": 2, "stale_days": 60, "batch": 200},
     "dev_mode": False,          # режим разработчика: во вкладке «Модули» видны примеры для разработчиков (модуль echo)
     "pet_visible": True,        # показывать окно питомца (модуль pet при этом остаётся подключённым)
     "volume": 100,              # громкость озвучки, 0-100
@@ -76,7 +82,7 @@ DEFAULTS = {
     },
 }
 # словари, которые update() сливает на один уровень вглубь (modules.<id> и attention.<ключ> целиком не затираются)
-_DEEP_KEYS = ("modules", "attention", "context", "reflection", "episodes", "fast_contour", "latency_budget")
+_DEEP_KEYS = ("modules", "attention", "context", "reflection", "episodes", "fast_contour", "latency_budget", "lessons")
 _dir = Path(os.getenv("MEMORY_DIR", "./memory"))
 
 

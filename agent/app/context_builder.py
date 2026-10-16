@@ -1,6 +1,7 @@
 """ContextBuilder: контекст ответа (ТЗ 29, ARC-5). Пока в точности прежняя склейка шести источников:
 память и диалог, справка о возможностях, услышанное, воспоминания о себе, факты графа, отношение к игроку.
-Состояние (`_graph_block`, `_self_block`, `_heard`) живёт на фасаде `Companion`."""
+Состояние (`_graph_block`, `_self_block`, `_heard`) живёт на фасаде `Companion`.
+ТЗ 28: к ним по настройке `lessons.context` добавляются блок убеждений (после конституции и характера) и блок уроков по ситуации реплики."""
 import asyncio
 import logging
 import time
@@ -8,12 +9,16 @@ import time
 logger = logging.getLogger("companion")
 
 PREFETCH_TTL_S = 600.0     # найденное с опозданием годится для следующей реплики не дольше этого (ТЗ 25, FAST-6)
+LESSONS_TTL_S = 120.0       # столько секунд подобранные уроки считаются относящимися к последней реплике
 
 
 class ContextBuilder:
     def __init__(self, host):
         self._h = host
         self.mood_of = None        # ТЗ 26: callable() -> факт о настроении; ядро ставит AffectService.mood_block
+        self.lessons_of = None     # ТЗ 28: async callable(query) -> блок уроков по ситуации; ядро ставит LessonHub.select
+        self.beliefs_of = None     # ТЗ 28: callable() -> блок убеждений; ядро ставит LessonHub.beliefs_block
+        self._lessons_block = ("", 0.0)       # (текст, когда подобран): блок живёт одну реплику, не дольше LESSONS_TTL_S
 
     def claude_note(self) -> str:
         import claude_quota
@@ -60,7 +65,15 @@ class ContextBuilder:
         mode = mode or cfg.get("mode") or "push"
         skip_memory = mode == "pull" or needs_memory == "no"
         budget = (cfg.get("budget_tokens") or {}).get(role) or {}
-        blocks: list[tuple[str, str]] = [
+        blocks: list[tuple[str, str]] = []
+        if self.beliefs_of is not None:                      # ТЗ 28, LRN-8: убеждения после конституции и характера; пусто, пока выключено
+            try:
+                beliefs = self.beliefs_of()
+            except Exception:
+                beliefs = ""
+            if beliefs:
+                blocks.append(("beliefs", beliefs))
+        blocks += [
             ("memory", h._memory_reader.context_block(dialogue=12, query="" if skip_memory else query)),
             ("capabilities", h._capabilities())]
         if include_hearing and h._settings.load()["hearing"]:
@@ -73,6 +86,9 @@ class ContextBuilder:
             blocks.append(("self", h._self_block))
         if h._graph_block and not skip_memory:
             blocks.append(("graph", h._graph_block))
+        lessons, picked_at = self._lessons_block
+        if lessons and not skip_memory and time.time() - picked_at <= LESSONS_TTL_S:
+            blocks.append(("lessons", lessons))
         if self.mood_of is not None:
             try:
                 mood = self.mood_of()
@@ -107,6 +123,17 @@ class ContextBuilder:
             h._self_block = await asyncio.wait_for(h._memory_reader.self_block(query), 3.0)
         except (asyncio.TimeoutError, Exception):
             h._self_block = ""
+        await self.refresh_lessons(query)
+
+    async def refresh_lessons(self, query: str) -> None:
+        """Уроки по ситуации реплики (ТЗ 28, LRN-4): быстрый поиск, не дольше двух секунд; без уроков блок пуст."""
+        text = ""
+        if self.lessons_of is not None:
+            try:
+                text = await asyncio.wait_for(self.lessons_of(query), 2.0)
+            except (asyncio.TimeoutError, Exception):
+                text = ""
+        self._lessons_block = (text or "", time.time())
 
     # ── поиск в памяти с дедлайном (ТЗ 25, FAST-6) ───────────────────────────────
 

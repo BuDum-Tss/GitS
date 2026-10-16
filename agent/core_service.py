@@ -25,6 +25,8 @@ import events_log
 import fast_brain
 import episode_routes
 import episode_service
+import lesson_routes
+import lesson_service
 import impulse_service
 import focus_dispatch
 import profile_manager
@@ -296,6 +298,8 @@ async def _run(config: dict):
     await episodes.start()
     episode_routes.set_service(episodes)
     layer.requests.episodes = episodes                    # core.memory.episodes
+    lessons = lesson_service.build(companion, episodes)   # ТЗ 28: разбор ошибок после сна, уроки и убеждения в контексте
+    lesson_routes.set_hub(lessons)
     asyncio.create_task(companion.proactive_loop())      # опрос выключен настройкой proactive_tick (по умолчанию), см. ТЗ 30
 
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
