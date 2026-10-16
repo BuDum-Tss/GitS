@@ -59,7 +59,7 @@
 
 ```
 agent/characters/glados/
-  character.yaml       # id, name, aliases, gender, language, voice, emotions, defaults
+  core/character.yaml  # id, name, aliases, gender, language, voice, emotions, defaults
   constitution.yaml    # перенос agent/resources/prompts/constitution.yaml (МЕНЯЕТ ТОЛЬКО ЧЕЛОВЕК)
   prompt.yaml          # перенос agent/resources/prompts/prompt.yaml
   persona.md           # тексты-персоны, которые сейчас зашиты в код (Telegram PERSONA и т.п.)

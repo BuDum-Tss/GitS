@@ -6,7 +6,8 @@ from gits_sdk import resources
 
 def _card(folder, cid):
     folder.mkdir(parents=True)
-    (folder / "character.yaml").write_text(f"# карточка\nid: {cid}            # id\nname: X\n", encoding="utf-8")
+    (folder / "core").mkdir(exist_ok=True)
+    (folder / "core" / "character.yaml").write_text(f"# карточка\nid: {cid}            # id\nname: X\n", encoding="utf-8")
 
 
 def test_folder_is_found_by_card_id_not_by_name(tmp_path):

@@ -69,8 +69,9 @@ def world(tmp_path, monkeypatch):
     root = tmp_path / "characters"
     shutil.copytree(REAL / "GlaDOS", root / "glados")
     shutil.copytree(REAL / "GlaDOS", root / "tester")        # второй персонаж: карточка с id tester
-    (root / "tester" / "character.yaml").write_text(
-        (REAL / "GlaDOS" / "character.yaml").read_text(encoding="utf-8").replace("id: glados", "id: tester")
+    (root / "tester" / "core").mkdir(exist_ok=True)
+    (root / "tester" / "core" / "character.yaml").write_text(
+        (REAL / "GlaDOS" / "core" / "character.yaml").read_text(encoding="utf-8").replace("id: glados", "id: tester")
         .replace("name: ГЛаДОС", "name: Тестерша").replace("aliases: [ГЛаДОС, гладос, GLaDOS, глэдос]",
                                                          "aliases: [Тестерша]"),
         encoding="utf-8")

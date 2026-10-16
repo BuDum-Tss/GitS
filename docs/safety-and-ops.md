@@ -31,7 +31,7 @@ Self-mod меняет prompt.yaml итерация за итерацией. Че
 
 ```
 resources/prompts/
-  constitution.yaml   ← read-only для агента: ядро персонажа, ценности, запреты
+  character.yaml (constitution) ← read-only для агента: ядро персонажа, ценности, запреты
   prompt.yaml         ← mutable: тон, стиль, тактики — агент меняет свободно
 ```
 

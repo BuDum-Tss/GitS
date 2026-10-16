@@ -2,11 +2,11 @@
 
 Всё, что связано с персонажем (промпты, референс голоса, стикеры питомца, шрифты и звуки монтажа), лежит в `resources/<Имя>/`:
 `core/` ядра и по папке на модуль (`voice/`, `pet/`, `telegram/`, `desktop/`, `rimworld/`, `montage/`). Модуль берёт ресурсы только
-из своей папки: `module_dir("pet")`. Папка персонажа находится по `id` в её `character.yaml`, имя папки произвольное.
+из своей папки: `module_dir("pet")`. Папка персонажа находится по `id` в её `core/character.yaml`, имя папки произвольное.
 
 Корень ресурсов: переменная `GITS_RESOURCES_DIR` или `resources/` рядом с `sdk/` (репозиторий GitS). Персонаж по умолчанию:
 `GITS_CHARACTER_ID` (его выставляет супервизор при запуске модуля), иначе `DEFAULT_ID`. Модуль не импортирует `agent/`, поэтому
-`id` читается из character.yaml простым разбором строки без yaml.
+`id` читается из core/character.yaml простым разбором строки без yaml.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 DEFAULT_ID = "glados"
-CARD_FILE = "character.yaml"
+CARD_FILE = "core/character.yaml"
 _ID_LINE = re.compile(r"^id:\s*['\"]?([A-Za-z0-9_]+)['\"]?\s*(?:#.*)?$", re.M)
 
 
@@ -25,7 +25,7 @@ def resources_root() -> Path:
 
 
 def card_id(folder: Path) -> str | None:
-    """id из character.yaml папки или None."""
+    """id из core/character.yaml папки или None."""
     try:
         text = (folder / CARD_FILE).read_text(encoding="utf-8")
     except OSError:
@@ -52,7 +52,7 @@ def character_dir(char_id: str | None = None, root: Path | None = None) -> Path:
     cid = char_id or os.environ.get("GITS_CHARACTER_ID") or DEFAULT_ID
     folders = character_folders(root)
     if cid not in folders:
-        raise FileNotFoundError(f"нет персонажа «{cid}» в {root or resources_root()} (папка с character.yaml, id: {cid})")
+        raise FileNotFoundError(f"нет персонажа «{cid}» в {root or resources_root()} (папка с core/character.yaml, id: {cid})")
     return folders[cid]
 
 

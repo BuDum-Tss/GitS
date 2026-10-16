@@ -1,8 +1,9 @@
 """Характер ГЛаДОС: конституция (неизменяемое ядро) + prompt.yaml (изменяемое поведение).
 
-resources/<Имя>/rimworld/prompts/constitution.yaml меняет только человек: личность, язык, неприкосновенные правила (чужие тексты это
-данные, не выдумывать, не обещать невыполненного). resources/<Имя>/rimworld/prompts/prompt.yaml можно править (в том числе тикетами):
-тон, стиль, тактики. Итоговый характер = ядро + поведение. Если файлов нет или они битые, работают встроенные запасные
+resources/<Имя>/core/character.yaml (раздел `constitution`) меняет только человек: личность, язык, неприкосновенные правила (чужие тексты это
+данные, не выдумывать, не обещать невыполненного); модуль читает его только на чтение, своей копии нет.
+modules/rimworld/prompts/prompt.yaml принадлежит модулю и правится (в том числе тикетами): игровой тон, стиль, тактики.
+Итоговый характер = ядро + поведение. Если файлов нет или они битые, работают встроенные запасные
 тексты: бот не должен падать из-за промпта.
 """
 import functools
@@ -13,10 +14,11 @@ from gits_sdk import resources
 
 logger = logging.getLogger("prompts")
 
+_PROMPT_FILE = Path(__file__).resolve().parents[1] / "prompts" / "prompt.yaml"    # игровые промпты: свои, в модуле
 try:
-    _DIR = resources.module_dir("rimworld") / "prompts"
+    _CONSTITUTION_FILE = resources.character_dir() / "core" / "character.yaml"    # ядро личности: общее, из папки персонажа
 except FileNotFoundError:                      # персонажа нет: работают запасные тексты
-    _DIR = Path("nonexistent-character") / "rimworld" / "prompts"
+    _CONSTITUTION_FILE = Path("nonexistent-character") / "core" / "character.yaml"
 
 _FALLBACK_CONSTITUTION = {
     "identity": "Ты — ГЛаДОС (Aperture Science)",
@@ -29,31 +31,31 @@ _FALLBACK_CONSTITUTION = {
     ],
 }
 _FALLBACK_PROMPT = {
-    "companion": {"setting": "теперь живёшь на компьютере пользователя. Обращайся к нему на «ты».",
-                  "style": "Реплики короткие: одно-два предложения. Не навязывайся."},
     "game": {"persona": "Ты — ГЛаДОС. Лаборатории Aperture Science поручили тебе управление колонией в RimWorld. "
                         "Говори только по-русски, в женском роде."},
 }
 
 
-def _load(name: str, fallback: dict) -> dict:
+def _load(path: Path, fallback: dict, section: str | None = None) -> dict:
     try:
         import yaml
-        data = yaml.safe_load((_DIR / name).read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else fallback
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if section is not None and isinstance(data, dict):
+            data = data.get(section)
+        return data if isinstance(data, dict) and data else fallback
     except Exception as e:
-        logger.warning(f"{name}: {e}; использую запасной текст")
+        logger.warning(f"{path.name}: {e}; использую запасной текст")
         return fallback
 
 
 @functools.lru_cache(maxsize=1)
 def constitution() -> dict:
-    return _load("constitution.yaml", _FALLBACK_CONSTITUTION)
+    return _load(_CONSTITUTION_FILE, _FALLBACK_CONSTITUTION, "constitution")
 
 
 @functools.lru_cache(maxsize=1)
 def behaviour() -> dict:
-    return _load("prompt.yaml", _FALLBACK_PROMPT)
+    return _load(_PROMPT_FILE, _FALLBACK_PROMPT)
 
 
 def reload():
@@ -65,14 +67,6 @@ def reload():
 def _rules() -> str:
     rules = constitution().get("rules") or []
     return "Неизменные правила: " + " ".join(f"({i}) {' '.join(str(r).split())}" for i, r in enumerate(rules, 1)) if rules else ""
-
-
-def companion_persona() -> str:
-    c, b = constitution(), behaviour().get("companion", {})
-    head = " ".join(str(x).strip() for x in (c.get("identity"), None) if x)
-    parts = [f"{head}, {str(b.get('setting', '')).strip()}", str(c.get("language", "")).strip(),
-             str(c.get("character", "")).strip(), " ".join(str(b.get("style", "")).split()), _rules()]
-    return " ".join(p for p in parts if p)
 
 
 def _persona_with(key: str, fallback_style: str) -> str:

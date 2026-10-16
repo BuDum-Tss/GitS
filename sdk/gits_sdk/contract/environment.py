@@ -39,7 +39,7 @@ SUPERVISOR_VARS = tuple(v.name for v in ENV_VARS if v.by == SUPERVISOR and v.req
 
 # правила папки ресурсов модуля
 RESOURCE_RULES = (
-    "Ресурсы персонажа лежат в `resources/<Имя>/`; папка находится по `id` в `character.yaml`, имя папки любое.",
+    "Ресурсы персонажа лежат в `resources/<Имя>/`; папка находится по `id` в `core/character.yaml`, имя папки любое.",
     "Модуль читает ресурсы только из своей папки `resources/<Имя>/<id модуля>/`: `gits_sdk.resources.module_dir(<id>)`.",
     "Персонаж берётся из `GITS_CHARACTER_ID`, иначе `glados`; смена персонажа перезапускает модуль.",
     "Папка модуля не создаётся SDK и не изменяется модулем; изменяемые данные модуля лежат в `MEMORY_DIR`.",

@@ -85,14 +85,14 @@ pythonw tray.py                          # трей: поднимает толь
 **События** (протокол), **Схема** (архитектура), **Настройки**.
 
 ## Персонажи
-Персонаж (ГЛаДОС сейчас) это данные, а не код: папка `resources/<Имя>/` с `character.yaml` (карточка), `core/` (промпты и воспоминания ядра)
+Персонаж (ГЛаДОС сейчас) это данные, а не код: папка `resources/<Имя>/` с `core/character.yaml` (карточка), `core/` (промпты и воспоминания ядра)
 и по папке на модуль (`voice/`, `pet/`, `telegram/`, `desktop/`, `rimworld/`, `montage/`). Модуль берёт ресурсы только из своей папки
 (`gits_sdk.resources.module_dir("pet")`). Память у каждого персонажа своя (`memory/` для `glados`, `memory/characters/<id>/` для остальных).
 
 Как добавить персонажа:
-1. Скопировать `resources/_template/` в `resources/<Имя>/` (id в `character.yaml`: строчные латинские буквы, цифры, `_`).
-2. Заполнить `character.yaml`: `id`, `name`, `aliases`, `anchor` (до 600 символов), `voice`.
-3. Написать `core/prompt.yaml` и `<модуль>/persona.yaml`. `core/constitution.yaml` меняет только человек.
+1. Скопировать `resources/_template/` в `resources/<Имя>/` (id в `core/character.yaml`: строчные латинские буквы, цифры, `_`).
+2. Заполнить `core/character.yaml`: `id`, `name`, `aliases`, `anchor` (до 600 символов), `voice`.
+3. Написать `core/prompt.yaml` и `<модуль>/persona.yaml`. `core/character.yaml` (карточка и конституция) меняет только человек.
 4. Воспоминания: `core/memories.yaml`, загрузка в граф `python -m character seed <id>` (`--dry-run` только проверяет файл).
 5. Переключение: дашборд (`POST /api/character`) или инструмент `core.set_character`.
 

@@ -1,15 +1,17 @@
 """Персонаж (ТЗ 05, CHR-5, CHR-6, CHR-8, CHR-10): загрузка карточки, список, пути памяти, неизменность конституции."""
 import hashlib
+import json
 import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 
 import character
 import prompts
 import settings
 
-CONSTITUTION_SHA256 = "0e67c04987058f224d0da6114ec59fda79153296c03cef0bc8edc52106222854"   # CHR-5: до переноса и после
+CONSTITUTION_SHA256 = "bd95c53c07d006c81627569b0e253d2058a324a5bcfbcae98694edd54cf6bea2"   # CHR-5: sha256 json раздела constitution (sort_keys)
 
 
 def _card(folder: Path, char_id: str, **over):
@@ -18,7 +20,8 @@ def _card(folder: Path, char_id: str, **over):
               "anchor": "Короткий якорь.", "voice": {"reference": "voice/x.wav"}}
     fields.update(over)
     import yaml
-    (folder / "character.yaml").write_text(yaml.safe_dump(fields, allow_unicode=True), encoding="utf-8")
+    (folder / "core").mkdir(exist_ok=True)
+    (folder / "core" / "character.yaml").write_text(yaml.safe_dump(fields, allow_unicode=True), encoding="utf-8")
     return folder
 
 
@@ -29,7 +32,8 @@ def chars(tmp_path, monkeypatch):
     shutil.copytree(Path(character.CHARACTERS_DIR) / "GlaDOS", root / "GlaDOS")
     _card(root / "tester", "tester", name="Тестерша")
     (root / "_template").mkdir()
-    (root / "_template" / "character.yaml").write_text("id: TODO_id\n", encoding="utf-8")
+    (root / "_template" / "core").mkdir(parents=True, exist_ok=True)
+    (root / "_template" / "core" / "character.yaml").write_text("id: TODO_id\n", encoding="utf-8")
     monkeypatch.setattr(character, "CHARACTERS_DIR", root)
     return root
 
@@ -44,9 +48,11 @@ def test_glados_card_is_loaded_from_its_folder():
 
 
 def test_constitution_content_is_unchanged():
-    """CHR-5: constitution.yaml переносится git mv, содержимое не меняется (меняет только человек)."""
-    path = Path(character.CHARACTERS_DIR) / "GlaDOS" / "core" / "constitution.yaml"
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == CONSTITUTION_SHA256
+    """CHR-5: раздел `constitution` файла character.yaml не меняется (меняет только человек)."""
+    path = Path(character.CHARACTERS_DIR) / "GlaDOS" / "core" / "character.yaml"
+    section = yaml.safe_load(path.read_text(encoding="utf-8"))["constitution"]
+    blob = json.dumps(section, sort_keys=True, ensure_ascii=False).encode()
+    assert hashlib.sha256(blob).hexdigest() == CONSTITUTION_SHA256
 
 
 def test_list_skips_template_and_unfinished_folders(chars):
@@ -80,7 +86,7 @@ def test_module_resources_live_in_the_module_folder_of_the_character():
     assert (resources.module_dir("pet", "glados") / "stickers" / "idle.png").is_file()
     assert (resources.module_dir("voice", "glados") / "GlaDos.wav").is_file()
     assert (resources.module_dir("montage", "glados") / "assets" / "fonts" / "OFL.txt").is_file()
-    assert (resources.module_dir("rimworld", "glados") / "prompts" / "constitution.yaml").is_file()
+    assert not (resources.module_dir("rimworld", "glados") / "prompts").exists()    # игровые промпты в modules/rimworld/prompts
     assert (resources.character_dir("glados") / "core" / "prompt.yaml").is_file()
 
 
@@ -133,11 +139,10 @@ def test_persona_sections_are_parsed(chars):
 
 def test_persona_fallback_uses_the_character_name(chars):
     """CHR-4: у персонажа без prompt.yaml запасной текст собирается из его имени, без зашитого имени ГЛаДОС."""
-    character.set_active("tester")                # в папке tester нет prompt.yaml и constitution.yaml
+    character.set_active("tester")                # в папке tester нет prompt.yaml и раздела constitution
     prompts.reload()
     assert "Тестерша" in prompts.persona_card()
-    assert "Тестерша" in prompts.game_persona()
-    assert "ГЛаДОС" not in prompts.companion_persona() + prompts.game_persona()
+    assert "ГЛаДОС" not in prompts.companion_persona()
 
 
 def test_persona_name_stays_out_of_agent_code():

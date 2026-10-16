@@ -10,9 +10,10 @@ def test_persona_has_core_and_rules():
     assert "Не навязывайся" in p                                     # поведение из prompt.yaml
 
 
-def test_game_persona_keeps_rules():
-    g = prompts.game_persona()
-    assert "RimWorld" in g and "Неизменные правила" in g
+def test_core_has_no_game_prompts():
+    """Игровое только в modules/rimworld: ни функций, ни разделов prompt.yaml в ядре."""
+    assert not hasattr(prompts, "game_persona") and not hasattr(prompts, "commentary_persona")
+    assert not {"game", "commentary", "streamer"} & set(prompts.behaviour())
 
 
 def test_fallback_when_files_are_missing(tmp_path, monkeypatch):
@@ -23,7 +24,7 @@ def test_fallback_when_files_are_missing(tmp_path, monkeypatch):
     prompts.reload()
     try:
         assert "Тест" in prompts.companion_persona()
-        assert "Неизменные правила" in prompts.game_persona()
+        assert "Неизменные правила" in prompts.companion_persona()
     finally:
         monkeypatch.undo()
         prompts.reload()

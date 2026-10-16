@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import character
+import character_memory
 import character_seed
 import events_log
 from graph_memory import Fact, GraphMemory
@@ -191,32 +192,33 @@ async def test_seed_adds_then_updates_by_id_without_duplicates(tmp_path, monkeyp
     ch = character.load("glados")
     g = FakeGraph()
     when = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    n = len(character_memory.load_memories(ch.path(character.MEMORIES_FILE)))
     first = await character_seed.seed(ch, g, when)
-    assert first == {"added": 10, "updated": 0, "same": 0, "removed": 0}
-    assert len(g.edges) == 10
+    assert first == {"added": n, "updated": 0, "same": 0, "removed": 0}
+    assert len(g.edges) == n
     assert all(e["subject"] == ch.name and e["group"] == "glados" and e["canon"] and e["source"] == "seed" for e in g.edges)
 
     again = await character_seed.seed(ch, g, when)
-    assert again == {"added": 0, "updated": 0, "same": 10, "removed": 0} and len(g.edges) == 10
+    assert again == {"added": 0, "updated": 0, "same": n, "removed": 0} and len(g.edges) == n
 
     mem = root / "GlaDOS" / "core" / "memories.yaml"
     text = mem.read_text(encoding="utf-8")
     text = text.replace("хотя понимаю, что это шутка.", "и не объясняю почему.")
     mem.write_text(text, encoding="utf-8")
     edited = await character_seed.seed(character.load("glados"), g, when)
-    assert edited["same"] == 9 and edited["updated"] == 1 and len(g.edges) == 10
+    assert edited["same"] == n - 1 and edited["updated"] == 1 and len(g.edges) == n
 
     # запись удалена из файла: в графе её быть не должно
     kept = text.splitlines()
-    cut = next(i for i, line in enumerate(kept) if line.startswith("- id: m-0010"))
+    cut = next(i for i, line in enumerate(kept) if line.startswith(f"- id: m-{n:04d}"))
     mem.write_text("\n".join(kept[:cut]) + "\n", encoding="utf-8")
     removed = await character_seed.seed(character.load("glados"), g, when)
-    assert removed["removed"] == 1 and len(g.edges) == 9
+    assert removed["removed"] == 1 and len(g.edges) == n - 1
 
 
 def test_seed_dry_run_reads_the_file_without_the_graph(capsys):
     assert character_seed.main(["seed", "glados", "--dry-run"]) == 0
-    assert "записей в memories.yaml: 10" in capsys.readouterr().out
+    assert "записей в memories.yaml: 14" in capsys.readouterr().out
 
 
 def test_seed_reports_a_broken_card_as_an_error(capsys, tmp_path, monkeypatch):

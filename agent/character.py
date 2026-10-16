@@ -21,7 +21,7 @@ log = logging.getLogger("character")
 
 CHARACTERS_DIR = resources.resources_root()      # resources/<Имя>/: папка персонажа находится по id в character.yaml
 DEFAULT_ID = "glados"                # id данных: граф и корень памяти (без переноса), см. ТЗ 05 CHR-9, CHR-10
-CARD_FILE = "character.yaml"
+CARD_FILE = "core/character.yaml"
 CORE_DIR = "core"                    # промпты и воспоминания ядра внутри папки персонажа
 PERSONA_FILE = "persona.yaml"        # в папке модуля: разделы персоны (ключ -> текст), модуль получает их через core.persona
 MEMORIES_FILE = "core/memories.yaml"
