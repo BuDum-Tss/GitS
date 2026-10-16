@@ -9,6 +9,9 @@ $tests = $LASTEXITCODE
 Write-Host "== pytest sdk (gits_sdk) ==" -ForegroundColor Cyan
 python -m pytest -q sdk/tests
 $sdktests = $LASTEXITCODE
+Write-Host "== pytest sdk/template (шаблон модуля) ==" -ForegroundColor Cyan
+python -m pytest -q sdk/template/tests
+if ($LASTEXITCODE -ne 0) { $sdktests = $LASTEXITCODE }
 # тесты каждого модуля идут отдельным запуском: у модулей одинаковые имена файлов (app.py, manifest.py, common.py)
 Write-Host "== pytest modules/telegram (модуль Telegram) ==" -ForegroundColor Cyan
 python -m pytest -q modules/telegram/tests

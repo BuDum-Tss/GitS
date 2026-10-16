@@ -91,7 +91,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "следит только за сроками напоминаний; когда срок пришёл, шлёт событие. Не тик болтовни",
      "out": "Event self.reminder",
-     "now": "есть (ТЗ 30): app/impulse_timer.py, один таймер на ближайший срок, восстановление и склейка просроченного; proactive_loop выключен настройкой proactive_tick"
+     "now": "есть (ТЗ 30): app/impulse_timer.py, один таймер на ближайший срок, восстановление и склейка просроченного; прежний опрос proactive_loop удалён"
+    },
+    {
+     "id": "plans",
+     "t": "PlanNudger",
+     "tag": "A",
+     "new": false,
+     "do": "планы пользователя со сроком в ближайшие сутки превращает в напоминания себе (без модели)",
+     "out": "напоминание за полчаса до срока",
+     "now": "есть (ТЗ 30): app/plan_nudge.py, просмотр раз в час и при старте; стимул недоверенный"
     }
    ]
   },
@@ -243,7 +252,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов",
      "out": "Intent: сказать, сделать, напомнить, записать, ничего",
-     "now": "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route); лимиты шагов, токенов, часа, глубины"
+     "now": "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route); лимиты шагов, токенов, часа, глубины; после разговора (self.after_conversation) и эпизода подводит итог: настроение и вывод (IMP-10)"
     },
     {
      "id": "thoughts",
@@ -252,7 +261,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов",
      "out": "Thought",
-     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), GET /api/thoughts"
+     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), GET /api/thoughts, вкладка «Мысли» дашборда"
     }
    ]
   },
@@ -615,6 +624,24 @@ window.ARCH_DATA = {
    "timer",
    "use",
    "срок"
+  ],
+  [
+   "mr",
+   "plans",
+   "r",
+   "планы пользователя"
+  ],
+  [
+   "plans",
+   "reminders",
+   "w",
+   "напомнить"
+  ],
+  [
+   "conv",
+   "reflect",
+   "flow",
+   "разговор затих"
   ],
   [
    "timer",

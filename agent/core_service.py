@@ -83,7 +83,8 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     companion.io = io
     attention = Attention(companion, io, idle_source=lambda: float(desktop_state(modules).get("idle_s") or 0.0))
     companion.attention = attention                      # речь идёт через очередь внимания (ТЗ 03, ATT-13)
-    requests = CoreRequests(attention=attention)
+    requests = CoreRequests(attention=attention, memory_reader=getattr(companion, "memory_reader", None),
+                            memory_writer=getattr(companion, "memory_writer", None))
     holder: dict = {}                                    # profiles появится ниже, а реестру и шине он нужен уже при создании
     modules = ModuleRegistry(registry, on_state=lambda: holder["profiles"].poke())
     hub = ModuleHub(modules, attention=attention, requests=requests, battery_source=battery, presence=presence,
@@ -408,7 +409,7 @@ async def _run(config: dict):
     impulses = impulse_service.build(companion, layer.attention, router=lambda: companion.router)   # ТЗ 30: импульсы и размышление
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     dashboard.set_impulses(impulses)
-    asyncio.create_task(companion.proactive_loop())      # опрос выключен настройкой proactive_tick (по умолчанию), см. ТЗ 30
+    await impulses.plans.start()                         # планы пользователя -> напоминания себе (без опроса модели, ТЗ 30)
 
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
     layer.attention.kind_handlers["rimworld.colonists"] = make_colonists_handler(rel, graph)

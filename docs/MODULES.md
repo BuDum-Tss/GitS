@@ -100,7 +100,8 @@ asyncio.run(main())
 ```
 
 Готовый полный пример с задачей (`echo.count`: прогресс, вопрос пользователю на середине, итог) лежит в
-[`sdk/examples/echo_module.py`](../sdk/examples/echo_module.py).
+[`sdk/examples/echo_module.py`](../sdk/examples/echo_module.py). Заготовку нового модуля с тестами на `FakeCore` берите из
+[`sdk/template/`](../sdk/template/README.md).
 
 ## Что умеет клиент
 

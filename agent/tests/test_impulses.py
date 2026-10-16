@@ -351,23 +351,14 @@ async def test_module_cannot_pose_as_self_origin(tmp_path):
 
 # ── болтовни по таймеру нет ───────────────────────────────────────────────────
 
-async def test_no_speech_without_stimulus(tmp_path, monkeypatch):
+async def test_no_speech_without_stimulus(tmp_path):
+    """Опроса по таймеру нет совсем: ни файла, ни настройки, ни метода; без стимула модель не зовётся и слова нет."""
+    import importlib.util
     c, llm = make_companion(tmp_path)
-    import app.proactive_legacy as legacy
-    calls = {"n": 0}
-    real_sleep = asyncio.sleep
-
-    async def fast_sleep(_s):
-        calls["n"] += 1
-        if calls["n"] > 5:
-            raise asyncio.CancelledError
-        await real_sleep(0)
-
-    monkeypatch.setattr(legacy.asyncio, "sleep", fast_sleep)
     from settings import DEFAULTS
-    assert DEFAULTS["proactive_tick"] is False
-    with pytest.raises(asyncio.CancelledError):
-        await c.proactive_loop()
+    assert importlib.util.find_spec("app.proactive_legacy") is None and "proactive_tick" not in DEFAULTS
+    assert not hasattr(c, "proactive_loop")
+    await asyncio.sleep(0.05)
     assert llm.calls == [] and c.speech.spoken == []                            # ни вызова модели, ни слова
 
 

@@ -19,7 +19,8 @@ from typing import Any, Awaitable, Callable
 
 from contracts import LanguageModel, MemoryReader, MemoryWriter, ThoughtJournal
 from domain import impulses
-from domain.event import Event
+from domain.event import KIND_AFTER_CONVERSATION, Event
+from domain.rules import EPISODE_KINDS
 
 logger = logging.getLogger("reflection")
 
@@ -132,6 +133,8 @@ class ReflectionService:
         p = self.prompt()
         system = f"{p.get('system', '')}\n{p.get('format', '')}".strip()
         base = self.context(event.text) if self.context else ""
+        if event.kind == KIND_AFTER_CONVERSATION or event.kind.endswith(EPISODE_KINDS):
+            system = f"{system}\n{p.get('after', '')}".strip()           # IMP-10: итог разговора или эпизода: настроение и вывод
         notes: list[str] = []
         last: list[Intent] = []
         for n in range(1, lim["max_steps"] + 1):

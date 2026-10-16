@@ -888,14 +888,14 @@ class ModuleClient:
         return str(R.as_dict(await self._core("core.lookup", body, timeout=timeout)).get("text") or "")
 
     async def memory_recall(self, query: str, limit: int | None = None) -> list[dict]:
-        """`core.memory.recall` (planned): вспомнить факты. Пока ToolError(unavailable)."""
+        """`core.memory.recall`: вспомнить факты из личной памяти ядра (`[{text, kind, importance}]`)."""
         body: dict = {"query": query}
         if limit:
             body["limit"] = limit
         return list(R.as_dict(await self._core("core.memory.recall", body)).get("facts", []))
 
     async def memory_remember(self, text: str, source: str | None = None) -> bool:
-        """`core.memory.remember` (planned): запомнить факт. Пока ToolError(unavailable)."""
+        """`core.memory.remember`: запомнить факт в личной памяти ядра; False, если такой уже есть."""
         body: dict = {"text": text}
         if source:
             body["source"] = source

@@ -2,7 +2,7 @@
   "name": "core.memory.remember",
   "direction": "module->core",
   "kind": "request",
-  "status": "planned",
+  "status": "stable",
   "since": "1.0",
   "errors": [
     "bad_request",

@@ -84,6 +84,7 @@
       <div role="tablist" class="tabs tabs-boxed bg-base-100 shadow-sm">
         <a role="tab" class="tab tab-active" data-tab="status">Состояние</a>
         <a role="tab" class="tab" data-tab="memory">Память</a>
+        <a role="tab" class="tab" data-tab="thoughts" title="Журнал мыслей и напоминания себе">Мысли</a>
         <a role="tab" class="tab" data-tab="modules">Модули</a>
         <a role="tab" class="tab" data-tab="events">События</a>
         <a role="tab" class="tab" data-tab="arch" title="Схема архитектуры ядра">Схема</a>
@@ -149,6 +150,11 @@
             </div>
             <div class="text-xs opacity-70 mt-1">Миллисекунды, p50 и p95: шаг - время от предыдущего этапа, «до звука» - от конца фразы до начала воспроизведения</div>
             <table class="table table-xs mt-1"><tbody id="latency-rows"></tbody></table>
+            <div id="latency-budget" class="mt-2 text-xs hidden">
+              <div class="font-medium text-sm">Бюджеты задержки</div>
+              <div id="latency-budget-sum" class="opacity-70" title="Трасс, где этап не уложился в бюджет (настройка latency_budget)"></div>
+              <div id="latency-budget-stages" class="flex flex-wrap gap-1 mt-1"></div>
+            </div>
           </div>
           <div id="att-box">
             <div class="flex flex-wrap items-center gap-3">
@@ -257,6 +263,24 @@
             <span><span style="color:#a855f7">●</span> <span data-char-name></span></span><span><span style="color:#f59e0b">●</span> поселение</span>
             <span><span style="color:#22c55e">●</span> колонист</span><span><span style="color:#3b82f6">●</span> человек, место, вещь</span>
             <span><span style="color:#94a3b8">●</span> выбывший или устаревший</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Мысли (ТЗ 30, IMP-6): журнал размышлений и напоминания, которые она назначила себе -->
+      <div id="tab-thoughts" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
+        <div class="card-body gap-4">
+          <div>
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="font-medium">Журнал мыслей</div>
+              <span id="thoughts-n" class="badge badge-ghost badge-sm"></span>
+            </div>
+            <div class="text-xs opacity-70 mt-1">Её размышления по событиям и напоминаниям. Вслух они не звучат: говорит она только через очередь речи и не при «не отвлекать».</div>
+            <div id="thoughts-list" class="space-y-2 mt-2"></div>
+          </div>
+          <div>
+            <div class="font-medium">Напоминания себе</div>
+            <div id="reminders-list" class="space-y-1 mt-2 text-sm"></div>
           </div>
         </div>
       </div>
@@ -370,9 +394,10 @@ $('btn-theme').onclick = () => {
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('tab-active', t === tab));
-  ['status', 'memory', 'modules', 'events', 'arch', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
+  ['status', 'memory', 'thoughts', 'modules', 'events', 'arch', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
   if (tab.dataset.tab === 'status') { loadModes().then(() => MD.cy && fitGraph(MD.cy)); }
   if (tab.dataset.tab === 'modules') { loadModules().catch(() => {}); }
+  if (tab.dataset.tab === 'thoughts') { loadThoughts().catch(() => {}); }
   if (tab.dataset.tab === 'memory') { loadGraph().then(() => GR.cy && fitGraph(GR.cy)); }
   if (tab.dataset.tab === 'arch') { showArch(); }
 });
@@ -1107,10 +1132,43 @@ async function loadLatency() {
   const e = L.end_to_sound || {};
   rows.push(`<tr class="font-medium"><td>от конца фразы до звука</td><td>${e.p50 ?? '-'}</td><td>${e.p95 ?? '-'}</td><td>${e.n || 0}</td></tr>`);
   $('latency-rows').innerHTML = rows.join('');
+  // ТЗ 25, FAST-8: превышения бюджетов задержки (поле budget есть, когда включён быстрый контур)
+  const B = L.budget, box = $('latency-budget');
+  box.classList.toggle('hidden', !B);
+  if (B) {
+    const over = B.traces_over || 0, stages = Object.entries(B.by_stage || {});
+    $('latency-budget-sum').textContent = over ? `не уложились в бюджет: ${over} из ${L.traces || 0} трасс` : 'все трассы уложились в бюджет';
+    $('latency-budget-stages').innerHTML = stages.map(([k, v]) => `<span class="badge badge-warning badge-sm">${esc(k)}: ${v}</span>`).join('');
+  }
 }
 setInterval(() => loadLatency().catch(() => {}), 10000);
 loadLatency().catch(() => {});
 loadFocus().catch(() => {});
+
+// ── мысли (ТЗ 30, IMP-6): GET /api/thoughts ──
+const INTENT_NAME = {say: 'сказать', do: 'сделать', remind: 'напомнить себе', remember: 'запомнить', none: 'ничего'};
+function thoughtCard(t) {
+  const trig = t.trigger || {}, when = new Date((t.ts || 0) * 1000).toLocaleString();
+  const origin = trig.origin === 'self' ? 'сама себе' : 'событие';
+  const status = t.status && t.status !== 'done' ? `<span class="badge badge-warning badge-xs" title="Размышление оборвано ограничением">${esc(t.status)}</span>` : '';
+  const steps = (t.steps || []).map(st => `<li>${esc(st.text || '')}${st.query ? ` <span class="opacity-60">(вспоминала: ${esc(st.query)}, найдено ${st.found ?? 0})</span>` : ''}</li>`).join('');
+  const intents = (t.intents || []).map((i, k) => `<li><span class="badge badge-ghost badge-xs">${esc(INTENT_NAME[i.kind] || i.kind)}</span> ${esc(i.text || '')} <span class="opacity-60">${esc((t.results || [])[k] || '')}</span></li>`).join('');
+  return `<div class="border border-base-300 rounded-box p-2 text-sm">
+    <div class="flex flex-wrap items-center gap-2 text-xs opacity-70"><span>${esc(when)}</span><span class="badge badge-outline badge-xs">${esc(origin)}</span><span>${esc(trig.kind || '')}</span>${status}</div>
+    <div class="mt-1">${esc(trig.text || '')}</div>
+    ${steps ? `<ul class="list-disc ml-5 mt-1 text-xs opacity-80">${steps}</ul>` : ''}
+    ${intents ? `<ul class="ml-1 mt-1 space-y-0.5">${intents}</ul>` : ''}
+  </div>`;
+}
+async function loadThoughts() {
+  if ($('tab-thoughts').classList.contains('hidden')) return;
+  const D = await fetch('/api/thoughts?n=50').then(r => r.json());
+  const ts = D.thoughts || [], rs = D.reminders || [];
+  $('thoughts-n').textContent = `мыслей: ${ts.length}`;
+  $('thoughts-list').innerHTML = ts.length ? ts.map(thoughtCard).join('') : '<div class="text-sm opacity-60">Пока нет мыслей: без стимула она молчит и не думает.</div>';
+  $('reminders-list').innerHTML = rs.length ? rs.map(r => `<div><span class="opacity-60">${esc(new Date((r.due || 0) * 1000).toLocaleString())}</span> ${esc(r.text || '')}</div>`).join('') : '<div class="opacity-60">Нет назначенных напоминаний.</div>';
+}
+setInterval(() => loadThoughts().catch(() => {}), 5000);
 
 // ── модули и задачи (ТЗ 02, CORE-38) ──
 const MOD_STATUS = {connected: ['подключён', 'badge-success'], disabled: ['выключен', 'badge-ghost'],

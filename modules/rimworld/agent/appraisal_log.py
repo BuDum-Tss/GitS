@@ -5,11 +5,23 @@
 Файлы: memory/appraisal_log.jsonl (записи, только дописываются) и memory/appraisal_labels.json (отметки по id)."""
 import json
 import os
+import threading
 import time
 from pathlib import Path
 
 MAX_TEXT = 300
 _DIR = Path(os.getenv("MEMORY_DIR") or Path(__file__).parent / "memory")
+_last_ms = 0
+_ids_lock = threading.Lock()
+
+
+def _next_id(ts: float) -> str:
+    """Идентификатор по миллисекундам, но всегда новый: две записи в одну миллисекунду не делят id (иначе итог и отметка
+    попадали бы не в ту запись, а порядок «новые первыми» терялся)."""
+    global _last_ms
+    with _ids_lock:
+        _last_ms = max(int(ts * 1000), _last_ms + 1)
+        return f"a{_last_ms}"
 
 
 def _log_file() -> Path:
@@ -23,7 +35,7 @@ def _labels_file() -> Path:
 def append(kind: str, text: str, answers: dict, derived: dict) -> str:
     """Записать оценку; вернуть её id."""
     ts = time.time()
-    entry_id = f"a{int(ts * 1000)}"
+    entry_id = _next_id(ts)
     row = {"id": entry_id, "ts": round(ts, 2), "kind": kind, "text": text[:MAX_TEXT],
            "model": {k: {"answer": v.get("answer"), "confidence": v.get("confidence")} for k, v in (answers or {}).items() if isinstance(v, dict)},
            "derived": derived, "outcome": ""}

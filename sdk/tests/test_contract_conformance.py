@@ -260,7 +260,7 @@ async def test_typed_client_methods_use_the_contract():
             with pytest.raises(ValueError):
                 await client.tts("")                                          # неверное исходящее тело
             with pytest.raises(ToolError) as e:
-                await client.memory_recall("что-то")
+                await client.lookup("что-то")
             assert e.value.code == "unavailable"
         finally:
             await client.stop()
