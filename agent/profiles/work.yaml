@@ -6,7 +6,6 @@ tone: >
   сосредоточенности, предлагай помощь только если видишь конкретную проблему.
 focus_modules: [desktop]
 memory_scopes: [assistant]
-knowledge: []
 attention:
   weights: {}
 activate:

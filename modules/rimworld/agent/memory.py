@@ -92,17 +92,7 @@ class Memory:
     def get_lessons(self) -> list[str]:
         return self._load(self._lessons, [])
 
-    # Подбор уроков по ситуации (KB-20): коллекция опыта ядра; без подборщика или пока он пуст - последние 15
-    lesson_picker = None        # callable(situation: str) -> list[str]; ставит контроллер (CoreLink.lessons_for)
-
     def lessons_for_prompt(self, situation: str = "") -> list[str]:
-        if self.lesson_picker is not None and situation.strip():
-            try:
-                picked = [str(x) for x in self.lesson_picker(situation) if str(x).strip()]
-            except Exception:
-                picked = []
-            if picked:
-                return picked
         return self.get_lessons()[-15:]
 
     # Pawn records (cross-run) ---------------------------------------------

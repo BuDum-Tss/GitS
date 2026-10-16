@@ -280,18 +280,6 @@
                   <div><span class="opacity-60">Как попадает:</span> Во сне (простой, расписание) она разбирает журнал: пишет резюме, достаёт факты</div>
                   <div><span class="opacity-60">Как используется:</span> Вспоминает эпизод по запросу; резюме и цитаты ищутся так же, как факты</div>
                 </div>
-                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
-                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Уроки и убеждения</span><span id="mem-n-lessons" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> Выводы из своих ошибок и принятые убеждения</div>
-                  <div><span class="opacity-60">Как попадает:</span> После сна: повторяющиеся ошибки складываются в урок, подтверждённый урок становится убеждением</div>
-                  <div><span class="opacity-60">Как используется:</span> В контекст идут, если включено в настройках; убеждение можно отменить ниже</div>
-                </div>
-                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
-                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Справочник</span><span id="mem-n-kb" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> Справочные тексты модулей (вики игры, регламенты монтажа) и их опыт</div>
-                  <div><span class="opacity-60">Как попадает:</span> Модули загружают сами или скрипт <code>tools/knowledge_ingest.py</code></div>
-                  <div><span class="opacity-60">Как используется:</span> Ищется, когда нужна справка (инструмент <code>knowledge.lookup</code>); в ответ по умолчанию не подмешивается</div>
-                </div>
             </div>
             <div class="text-xs opacity-70 mt-3 mb-1">Путь одной реплики до факта</div>
             <div class="flex flex-wrap items-center gap-1 text-xs">
@@ -354,39 +342,6 @@
             <div id="episodes" class="space-y-2 text-sm"></div>
             <div class="font-medium mt-4 mb-2">Дневник</div>
             <div id="diary" class="space-y-2 text-sm"></div>
-          </div>
-          <div class="divider my-0"></div>
-          <div>
-            <div class="flex flex-wrap items-center gap-3 mb-2">
-              <div class="font-medium">Уроки и убеждения</div>
-              <span id="lessons-status" class="text-xs opacity-70"></span>
-            </div>
-            <div id="lessons-alert" class="alert alert-info text-sm py-2 mb-2 hidden">
-              <span id="lessons-alert-text"></span>
-              <button id="lessons-seen" class="btn btn-xs btn-ghost">Понятно</button>
-            </div>
-            <div class="text-xs opacity-60 mb-1">Убеждения (она принимает их сама, владелец может отменить)</div>
-            <div id="beliefs" class="space-y-2 text-sm"></div>
-            <div class="text-xs opacity-60 mt-3 mb-1">Журнал изменений убеждений</div>
-            <div id="belief-log" class="space-y-1 text-sm"></div>
-            <div class="text-xs opacity-60 mt-3 mb-1">Уроки</div>
-            <div id="lessons" class="space-y-1 text-sm"></div>
-            <div class="text-xs opacity-60 mt-3 mb-1">Повторы ошибок после применённых уроков</div>
-            <div id="repeat-rates" class="text-sm"></div>
-          </div>
-          <div class="divider my-0"></div>
-          <div>
-            <div class="flex flex-wrap items-center gap-3 mb-2">
-              <div class="font-medium">Справочник</div>
-              <span id="kb-status" class="text-xs opacity-70"></span>
-            </div>
-            <div id="kb-collections" class="space-y-1 text-sm"></div>
-            <div class="flex flex-wrap items-center gap-2 mt-3">
-              <input id="kb-q" class="input input-bordered input-sm w-64" placeholder="Пробный поиск по справочнику…">
-              <select id="kb-c" class="select select-bordered select-sm"><option value="">все коллекции</option></select>
-              <button id="kb-go" class="btn btn-sm btn-outline">Найти</button>
-            </div>
-            <div id="kb-hits" class="space-y-1 text-sm mt-2"></div>
           </div>
         </div>
       </div>
@@ -704,10 +659,6 @@ function layerCounts() {
   set('mem-n-facts', !g ? '-' : g.enabled === false ? 'выключено' : `${g.active ?? 0} действуют` + (g.outdated ? `, ${g.outdated} устарели` : '') + (g.queue ? `<br><span class="opacity-60 text-xs">в очереди ${g.queue}</span>` : ''));
   const e = MEMSTAT.eps;
   set('mem-n-eps', e ? `${(e.embedded || 0) + (e.summarized || 0)} готово` + ((e.pending || 0) ? `<br><span class="opacity-60 text-xs">ждут сна: ${e.pending}</span>` : '') : '-');
-  const l = MEMSTAT.lessons;
-  set('mem-n-lessons', l ? `уроков ${l.active || 0}, убеждений ${l.beliefs || 0}` : '-');
-  const k = MEMSTAT.kb;
-  set('mem-n-kb', k ? `коллекций ${k.cols}, кусков ${k.chunks}` : '-');
 }
 
 function factsView() {
@@ -813,78 +764,6 @@ document.addEventListener('toggle', async ev => {
 $('sleep-now').onclick = () => fetch('/api/sleep/now', {method: 'POST'}).then(loadEpisodes);
 $('sleep-stop').onclick = () => fetch('/api/sleep/interrupt', {method: 'POST'}).then(loadEpisodes);
 setInterval(() => loadEpisodes().catch(() => {}), 8000);
-
-// ── уроки и убеждения (ТЗ 28) ──
-const BELIEF_ACTION = {accepted: 'принято', updated: 'изменено', revoked: 'отменено', rejected: 'отклонено', dropped: 'снято по лимиту'};
-async function loadLessons() {
-  const d = await (await fetch('/api/lessons?limit=30')).json();
-  const memTab = document.querySelector('[data-tab="memory"]');
-  memTab.textContent = 'Память' + (d.unseen ? ' •' : '');
-  $('lessons-alert').classList.toggle('hidden', !d.unseen);
-  $('lessons-alert-text').textContent = d.unseen ? `Она сама приняла новых убеждений: ${d.unseen}. Их можно отменить в журнале ниже.` : '';
-  const c = d.counts || {};
-  MEMSTAT.lessons = {...c, beliefs: (d.beliefs || []).length}; layerCounts();
-  $('lessons-status').textContent = `уроков: ${c.active || 0} действуют, ${c.expired || 0} устарели · в контекст: ${d.context ? 'да' : 'нет'}`;
-  $('beliefs').innerHTML = (d.beliefs || []).map(b => `<div class="rounded-box border border-base-300 p-2"><div>${esc(b.text)}</div>
-    <div class="text-xs opacity-60">подтверждений ${b.confirmations}, эпизодов ${(b.episodes || []).length}${b.previous ? ' · прежнее: ' + esc(b.previous) : ''}</div></div>`).join('') || '<div class="opacity-60">Убеждений пока нет.</div>';
-  $('belief-log').innerHTML = (d.changes || []).map(ch => {
-    const when = new Date(ch.ts * 1000).toLocaleString();
-    const undo = (ch.action === 'accepted' || ch.action === 'updated') && !ch.reverted
-      ? `<button class="btn btn-xs btn-outline" data-revoke="${ch.id}">Отменить</button>` : (ch.reverted ? '<span class="badge badge-ghost badge-sm">отменено</span>' : '');
-    return `<div class="rounded-box border border-base-300 p-2 flex flex-wrap items-start gap-2"><div class="flex-1 min-w-0">
-      <b>${esc(BELIEF_ACTION[ch.action] || ch.action)}</b> <span class="opacity-60 text-xs">${esc(when)} · ${esc(ch.who === 'owner' ? 'владелец' : 'она сама')}</span>
-      <div>${esc(ch.text)}</div>
-      <div class="text-xs opacity-60">${esc(ch.reason || '')}${(ch.episodes || []).length ? ' · эпизоды: ' + esc(ch.episodes.join(', ')) : ''}${ch.previous ? ' · прежнее значение: ' + esc(ch.previous) : ''}</div></div>${undo}</div>`;
-  }).join('') || '<div class="opacity-60">Изменений пока не было.</div>';
-  $('lessons').innerHTML = (d.lessons || []).map(l => `<details class="rounded-box border border-base-300 p-2">
-    <summary class="cursor-pointer">${esc(l.better)} <span class="opacity-60 text-xs">${esc(l.scope)} · ${esc(l.status)} · подтверждений ${l.confirmations} · применён ${l.applied}</span></summary>
-    <div class="text-xs opacity-70 mt-1">Ситуация: ${esc(l.situation)}${l.action ? '<br>Было: ' + esc(l.action) : ''}${l.outcome ? '<br>Исход: ' + esc(l.outcome) : ''}
-    <br>Уверенность ${l.confidence}, повторов после применения: ${l.repeats_after_apply}${l.expired_reason ? ', причина устаревания: ' + esc(l.expired_reason) : ''}</div></details>`).join('') || '<div class="opacity-60">Уроков пока нет: они появляются во сне из ошибок.</div>';
-  const rr = Object.entries(d.repeat_rates || {});
-  $('repeat-rates').innerHTML = rr.map(([k, v]) => `<span class="badge badge-ghost mr-1">${esc(k)}: ${Math.round(v.rate * 100)}% (${v.repeats} из ${v.mistakes})</span>`).join('') || '<span class="opacity-60">Данных пока нет.</span>';
-}
-$('belief-log').addEventListener('click', async e => {
-  const id = e.target.dataset && e.target.dataset.revoke; if (!id) return;
-  const r = await fetch('/api/beliefs/' + id + '/revoke', {method: 'POST'});
-  if (!r.ok) alert((await r.json()).error || 'Не вышло отменить');
-  loadLessons();
-});
-$('lessons-seen').onclick = () => fetch('/api/lessons/seen', {method: 'POST'}).then(loadLessons);
-setInterval(() => loadLessons().catch(() => {}), 8000);
-loadLessons().catch(() => {});
-
-// ── справочник (ТЗ 04, KB-22) ──
-async function loadKnowledge() {
-  const d = await (await fetch('/api/knowledge/collections')).json();
-  const cols = d.collections || [], s = d.settings || {};
-  MEMSTAT.kb = {cols: cols.length, chunks: cols.reduce((n, c) => n + (c.chunks || 0), 0)}; layerCounts();
-  $('kb-status').textContent = `коллекций: ${cols.length} · порог cos ${s.min_cos ?? '-'} · справка в ответе: ${d.chat ? 'да' : 'нет'}`;
-  $('kb-collections').innerHTML = cols.map(c => {
-    const when = c.updated ? new Date(c.updated * 1000).toLocaleString() : '-';
-    const del = c.kind === 'experience' ? '' : `<button class="btn btn-xs btn-outline" data-kbdel="${esc(c.name)}">Удалить</button>`;
-    return `<div class="rounded-box border border-base-300 p-2 flex flex-wrap items-center gap-2"><div class="flex-1 min-w-0"><b>${esc(c.name)}</b>
-      <span class="opacity-60 text-xs">область ${esc(c.scope)} · ${esc(c.kind === 'experience' ? 'опыт' : 'справочник')} · документов ${c.docs}, кусков ${c.chunks} · обновлено ${esc(when)}</span></div>${del}</div>`;
-  }).join('') || '<div class="opacity-60">Справочники пока пусты: модули загружают их сами (core.kb.ingest) или скриптом tools/knowledge_ingest.py.</div>';
-  const sel = $('kb-c'), keep = sel.value;
-  sel.innerHTML = '<option value="">все коллекции</option>' + cols.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
-  sel.value = keep;
-}
-async function kbSearch() {
-  const q = $('kb-q').value.trim(); if (!q) return;
-  const hits = (await (await fetch('/api/knowledge/search?q=' + encodeURIComponent(q) + '&c=' + encodeURIComponent($('kb-c').value))).json()).hits || [];
-  $('kb-hits').innerHTML = hits.map(h => `<div class="rounded-box border border-base-300 p-2"><div><b>${esc(h.title)}</b> <span class="opacity-60 text-xs">${esc(h.collection)} · score ${h.score} · cos ${h.cos ?? '-'} · bm25 ${h.bm25_rank ?? '-'}</span></div>
-    <div class="text-xs opacity-70">${esc(h.text)}</div></div>`).join('') || '<div class="opacity-60">Ничего не прошло порог.</div>';
-}
-$('kb-go').onclick = kbSearch;
-$('kb-q').addEventListener('keydown', e => { if (e.key === 'Enter') kbSearch(); });
-$('kb-collections').addEventListener('click', async e => {
-  const name = e.target.dataset && e.target.dataset.kbdel; if (!name) return;
-  if (!confirm('Удалить коллекцию «' + name + '» целиком?')) return;
-  await fetch('/api/knowledge/collection/' + encodeURIComponent(name), {method: 'DELETE'});
-  loadKnowledge();
-});
-setInterval(() => loadKnowledge().catch(() => {}), 15000);
-loadKnowledge().catch(() => {});
 
 // ── чат ──
 let stick = true;
@@ -1477,9 +1356,12 @@ function thoughtCard(t) {
   const status = t.status && t.status !== 'done' ? `<span class="badge badge-warning badge-xs" title="Размышление оборвано ограничением">${esc(t.status)}</span>` : '';
   const steps = (t.steps || []).map(st => `<li>${esc(st.text || '')}${st.query ? ` <span class="opacity-60">(вспоминала: ${esc(st.query)}, найдено ${st.found ?? 0})</span>` : ''}</li>`).join('');
   const intents = (t.intents || []).map((i, k) => `<li><span class="badge badge-ghost badge-xs">${esc(INTENT_NAME[i.kind] || i.kind)}</span> ${esc(i.text || '')} <span class="opacity-60">${esc((t.results || [])[k] || '')}</span></li>`).join('');
+  const STAGE = {short: 'краткосрочная', long: 'перенесена в память', dropped: 'забыта'};
+  const mem = t.stage ? `<span class="badge badge-ghost badge-xs" title="Важность 1-5; важные мысли переносятся в долговременную память, мелкие забываются через сутки">важность ${t.importance ?? '?'} · ${esc(STAGE[t.stage] || t.stage)}</span>` : '';
   return `<div class="border border-base-300 rounded-box p-2 text-sm">
-    <div class="flex flex-wrap items-center gap-2 text-xs opacity-70"><span>${esc(when)}</span><span class="badge badge-outline badge-xs">${esc(origin)}</span><span>${esc(trig.kind || '')}</span>${status}</div>
-    <div class="mt-1">${esc(trig.text || '')}</div>
+    <div class="flex flex-wrap items-center gap-2 text-xs opacity-70"><span>${esc(when)}</span><span class="badge badge-outline badge-xs">${esc(origin)}</span><span>${esc(trig.kind || '')}</span>${mem}${status}</div>
+    ${t.text ? `<div class="mt-1 font-medium">${esc(t.text)}</div>` : ''}
+    <div class="mt-1 opacity-70">${esc(trig.text || '')}</div>
     ${steps ? `<ul class="list-disc ml-5 mt-1 text-xs opacity-80">${steps}</ul>` : ''}
     ${intents ? `<ul class="ml-1 mt-1 space-y-0.5">${intents}</ul>` : ''}
   </div>`;

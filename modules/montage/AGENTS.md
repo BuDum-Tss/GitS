@@ -43,9 +43,9 @@
 ## Карта модулей
 | Путь | Назначение | Состояние |
 |---|---|---|
-| `agent/main.py` | точка входа: `ModuleClient`, подключение обработчиков (`wire`), восстановление и справочник при подключении | готов |
-| `agent/manifest.py` | манифест модуля: инструменты `start`, `status`, `revise`, `cancel`, настройки, знания, `announce` у `start` | готов |
-| `agent/manager.py` | очередь (одна задача за раз), проверки `start` (MON-5), отмена, правки, `state` (MON-33), справочник (MON-31) | готов |
+| `agent/main.py` | точка входа: `ModuleClient`, подключение обработчиков (`wire`), восстановление при подключении | готов |
+| `agent/manifest.py` | манифест модуля: инструменты `start`, `status`, `revise`, `cancel`, настройки, `announce` у `start` | готов |
+| `agent/manager.py` | очередь (одна задача за раз), проверки `start` (MON-5), отмена, правки, `state` (MON-33) | готов |
 | `agent/pipeline.py` | стадии `intake`, `clarify`, `transcribe`, `story`, `plan`, `plan_approval`, `voiceover`, `build`, `preview`, `review`, `final`; вопросы, батарейка, автоисправление по QA | готов |
 | `agent/jobs.py`, `agent/layout.py`, `agent/workspace.py` | `jobs/<id>/` (job.json, log.jsonl, уборка), пути репозитория, рабочая копия шаблона | готовы |
 | `agent/intake.py`, `agent/media.py`, `agent/render.py` | проверка и перекодирование файлов, ffmpeg/ffprobe, Remotion (tsc, проверка плана, still, render) | готовы |
@@ -55,7 +55,7 @@
 | `agent/qa.py`, `agent/review_mode.py` | технические проверки и проверки ремесла, смысловая проверка, отчёт, режимы приёмки | готовы |
 | `agent/studio.py` | Remotion Studio по задаче (ТЗ 15, TAB-4): один Studio на задачу на свободном порту 127.0.0.1, гаснет с задачей и после 30 минут без обращений |
 | `agent/approval_panel.py` | одобрение по этапам в пространстве (ТЗ 15b): подпись этапа, файлы истории и плана, видео черновика, кнопки этапа; ответ идёт через `Pipeline.deliver_answer` |
-| `agent/core_api.py` | всё, что конвейер берёт у ядра (`core.tts`, `core.persona`, `core.kb.ingest`, ...), интерфейс для заглушек | готов |
+| `agent/core_api.py` | всё, что конвейер берёт у ядра (`core.tts`, `core.persona`, ...), интерфейс для заглушек | готов |
 | `agent/prompts/` | `editor_system.md`, `stage_*.md`, `qa_rubric.md` | готовы |
 | `template/` | проект Remotion: композиция `Main`, схема `src/schema.ts`, токены `src/style/tokens.ts` (равны `design/tokens.json` дизайн-системы v2), сцены `components/` (`Intro`, `Blueprint`, `GladosRoom`, `Sign`, `FootageFrame`, `Icon`), математика сцен `src/sceneMath.ts`, ассеты `public/scenes`, `public/pet`, `public/hud`, демо | готов |
 | `template/qa_zones.json` | зоны компонентов для проверок качества, строится из токенов (`npm run gen:qa-zones`) | готов |

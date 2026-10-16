@@ -6,8 +6,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 import logging
 import os
 import shutil
@@ -30,7 +28,6 @@ from studio import StudioError, StudioPool
 log = logging.getLogger("montage.manager")
 
 DISK_FACTOR = 5                 # свободного места не меньше 5 × размер исходников (MON-5)
-KB_RETRY_S = 600
 PANEL_ROWS = 20                 # сколько задач в таблице пространства «Монтаж» (TZ 15, TAB-9)
 PANEL_EVERY_S = 2               # как часто пересчитывать пространство (SDK шлёт не чаще раза в секунду)
 REPORT_EXCERPT_MAX = 2500       # отчёт проверки в пространстве: начало текста, не весь файл
@@ -455,39 +452,6 @@ class Manager:
         while True:
             await self.publish_panel()
             await asyncio.sleep(PANEL_EVERY_S)
-
-    # ================================================================================================ справочник (MON-31)
-
-    def kb_documents(self) -> tuple[str, list[dict]]:
-        style = (self.layout.style).read_text(encoding="utf-8")
-        craft = (self.layout.docs / "EDITING_CRAFT.md").read_text(encoding="utf-8")
-        digest = hashlib.sha256((style + "\0" + craft).encode()).hexdigest()
-        docs = [{"uri": "montage:style", "title": "Регламент монтажа Aperture Science", "text": style, "meta": {"kind": "style"}},
-                {"uri": "montage:craft", "title": "Ремесло монтажа: история, ритм, склейка, звук", "text": craft, "meta": {"kind": "craft"}}]
-        return digest, docs
-
-    async def sync_kb(self) -> bool:
-        """При первом подключении и при изменении регламента (по хешу) отправить его в `montage.style`. Хеш запоминается
-        только после успеха; справочник ещё недоступен (ТЗ 04): False, повторит `kb_loop`."""
-        digest, docs = await asyncio.to_thread(self.kb_documents)
-        state_path = self.store.dir / "kb_state.json"
-        try:
-            known = json.loads(state_path.read_text(encoding="utf-8")).get("hash")
-        except (OSError, ValueError):
-            known = None
-        if known == digest:
-            return True
-        try:
-            await self.core.kb_ingest("montage.style", docs, replace=True, final=True)
-        except (ToolError, asyncio.TimeoutError) as e:
-            log.info("регламент не загружен в справочник: %s", getattr(e, "message", None) or type(e).__name__)
-            return False
-        await asyncio.to_thread(state_path.write_text, json.dumps({"hash": digest, "ts": time.time()}), "utf-8")
-        return True
-
-    async def kb_loop(self) -> None:
-        while not await self.sync_kb():
-            await asyncio.sleep(KB_RETRY_S)
 
 
 __all__ = ["Manager", "FINISHED", "intake_mod"]

@@ -50,6 +50,18 @@ class EpisodeService:
 
     # ── части для текущего персонажа ─────────────────────────────────────────
 
+    def _thought_notes(self, day: str) -> list[str]:
+        """Мысли дня (ГГГГ-ММ-ДД), перенесённые в долговременную память: дополнительный материал дневника."""
+        import time as _t
+        impulses = getattr(self.companion, "impulses", None)
+        if impulses is None:
+            return []
+        out = []
+        for t in reversed(impulses.journal.recent(200)):
+            if t.get("stage") == "long" and _t.strftime("%Y-%m-%d", _t.localtime(float(t.get("ts") or 0))) == day and t.get("text"):
+                out.append(str(t["text"])[:200])
+        return out
+
     def parts(self) -> SimpleNamespace:
         folder = Path(self.companion._dir)
         key = str(folder)
@@ -83,7 +95,7 @@ class EpisodeService:
                                first_upto=None if first else self.source.last_id)
         summarizer = EpisodeSummarizer(llm=llm, prompt=prompts.episode, allow=allow, settings=self.settings)
         days = DayWriter(llm=llm, store=store, search=search, digest_prompt=prompts.digest, diary_prompt=prompts.diary,
-                         allow=allow, character=lambda: character.active().id)
+                         allow=allow, character=lambda: character.active().id, notes=self._thought_notes)
         runner = SleepRunner(cutter=cutter, summarizer=summarizer, store=store, search=search,
                              writer=self.companion.memory_writer, days=days, source=self.source, settings=self.settings,
                              clock=self.clock, notify=self._notify, hooks=self.hooks)

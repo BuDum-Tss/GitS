@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Removed
+- Справочник и опыт ядра больше не используются (решение владельца): убраны инструмент `kb_lookup`, загрузка регламента в `montage.style` (`Manager.sync_kb`, `kb_loop`), вывод опыта по правкам (`Pipeline._experience`, промпт `stage_experience.md`) и поле манифеста `knowledge`. Регламент остаётся в системном промпте `editor_system.md`.
+
 ### Added
 - ТЗ 32, этап B: среда агента «Монтаж». Манифест объявляет `workspace` и активную политику `working`; обработчики `workspace.enter` / `workspace.exit` / `workspace.resume` (старые имена те же) в `main.wire`, состояние среды в `env_state.py`, статус для ядра в `state.data.status` (`active_policy`, `interruptible`: во время сборки и финала выходить нельзя). Среда кончается сама, когда задачи, начатые при ней, готовы: модуль возвращается в `idle`, ядро возвращает агента в `assistant`.
 

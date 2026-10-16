@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .. import protocol as P
 
-CONTRACT_VERSION = "1.5"
+CONTRACT_VERSION = "1.6"
 PROTOCOL = P.PROTOCOL
 
 # версия контракта, в которой появился элемент (поле `since` у Message): "1.0" - исходный состав ТЗ 01
@@ -26,6 +26,7 @@ HISTORY = (
     ("1.4", "ТЗ 04: core.lookup, core.experience.add, core.kb.ingest реализованы (были planned)"),
     ("1.5", "ТЗ 32: поле манифеста workspace, запросы workspace.enter / workspace.exit / workspace.resume "
             "(policy.activate, focus.release, focus.resume остаются алиасами на один релиз)"),
+    ("1.6", "удалены справочник и уроки ядра: запросы core.lookup, core.experience.add, core.kb.ingest и поле манифеста knowledge"),
 )
 
 # Устаревшее: (элемент, дата удаления, чем заменить). Пока пусто: ни один элемент не устарел.

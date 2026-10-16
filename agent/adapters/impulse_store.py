@@ -80,3 +80,16 @@ class JsonThoughts:
     def recent(self, n: int = 50) -> list[dict]:
         items = _read(Path(self._path_of()), [])
         return list(reversed(items[-n:])) if isinstance(items, list) else []
+
+    def update(self, thought_id: str, **fields) -> bool:
+        """Поменять поля мысли (стадия краткосрочной памяти); True, если мысль нашлась."""
+        path = Path(self._path_of())
+        items = _read(path, [])
+        found = False
+        for t in items if isinstance(items, list) else []:
+            if t.get("id") == thought_id:
+                t.update(fields)
+                found = True
+        if found:
+            _write(path, items)
+        return found

@@ -124,7 +124,6 @@ class SdkRunner:
             ("synthesize_voice", "Синтезировать реплику её голосом в work/public/vo/<id>.wav. Возвращает duration_ms. "
                                  "Единственный способ получить закадр.",
              {"id": str, "text": str, "emotion": str}, tools.synthesize_voice),
-            ("kb_lookup", "Поиск по справочнику монтажа (регламент и опыт) без интернета.", {"query": str}, tools.kb_lookup),
             ("transcript_words", "Слова расшифровки с таймингами в отрезке from_ms..to_ms (не весь файл).",
              {"from_ms": int, "to_ms": int}, tools.transcript_words),
         ]

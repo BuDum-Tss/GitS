@@ -789,7 +789,7 @@ async def test_oversized_outgoing_message_is_refused_locally(core):
         with pytest.raises(P.ProtocolError):
             await client.event("demo.thing", "x", data={"blob": "я" * (2 * 1024 * 1024)})
         with pytest.raises(P.ProtocolError):
-            await client.request("core.kb.ingest", {"blob": "я" * (2 * 1024 * 1024)})
+            await client.request("core.web_search", {"blob": "я" * (2 * 1024 * 1024)})
         assert client.connected
 
 

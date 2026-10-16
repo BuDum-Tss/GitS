@@ -6,8 +6,9 @@
 обычные разрешения), `remind` (напоминание себе позже), `remember` (запись в память), `none`.
 
 Ограничения: шагов и токенов на размышление, глубина цепочки импульсов, размышлений в час; «не отвлекать» запрещает речь, а не
-размышление; действие не исполняется по недоверенному стимулу (чужие тексты это данные). Каждое размышление пишется в журнал мыслей
-(`Thought`), не озвучивается. Модель подставляется снаружи (контракт `LanguageModel`), в тестах это заглушка.
+размышление; действие не исполняется по недоверенному стимулу (чужие тексты это данные). Значимое размышление пишется в журнал мыслей
+(`Thought`) краткосрочной памятью с оценкой важности (`domain/thoughts.py`), не озвучивается; пустое, оборванное лимитом или
+ничего не решившее в журнал не попадает. Событие с `data.silent` (размышление в простое) говорить не может. Модель подставляется снаружи (контракт `LanguageModel`), в тестах это заглушка.
 """
 import asyncio
 import json
@@ -19,7 +20,8 @@ from typing import Any, Awaitable, Callable
 
 from contracts import LanguageModel, MemoryReader, MemoryWriter, ThoughtJournal
 from domain import impulses
-from domain.event import KIND_AFTER_CONVERSATION, Event
+from domain import thoughts as thought_dom
+from domain.event import KIND_AFTER_CONVERSATION, KIND_IDLE, Event
 from domain.rules import EPISODE_KINDS
 
 logger = logging.getLogger("reflection")
@@ -99,18 +101,20 @@ class ReflectionService:
         lim = self.limits()
         thought = {"id": "t-" + secrets.token_hex(4), "ts": now,
                    "trigger": {"kind": event.kind, "origin": event.origin, "text": event.text[:300], "item": event.item_id},
-                   "depth": event.depth, "steps": [], "intents": [], "results": [], "tokens": 0, "status": "done"}
+                   "depth": event.depth, "steps": [], "intents": [], "results": [], "tokens": 0, "status": "done",
+                   "text": "", "importance": thought_dom.IMPORTANCE_DEFAULT, "stage": thought_dom.SHORT}
         if not impulses.rate_allowed(self._stamps, now, lim["max_per_hour"]):
             thought["status"] = "skipped: limit per hour"
-            await self._record(thought)
-            return thought
+            return thought                                       # служебные записи в журнал мыслей не идут
         self._stamps = [t for t in self._stamps if now - t < impulses.HOUR_S] + [now]
         self.running += 1
         try:
             intents = await self._think(event, lim, thought)
             thought["intents"] = [i.as_dict() for i in intents]
             for intent in intents:
-                thought["results"].append(await self._execute(event, intent, lim))
+                thought["results"].append(await self._execute(event, intent, lim, thought["importance"]))
+            if "remembered" in thought["results"]:
+                thought["stage"] = thought_dom.LONG                # явное «запомни» уже записано в долговременную память
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -122,6 +126,9 @@ class ReflectionService:
         return thought
 
     async def _record(self, thought: dict) -> None:
+        if not thought_dom.worth_keeping(status=thought["status"], text=thought["text"], intents=thought["intents"],
+                                         importance=thought["importance"]):
+            return
         try:
             await asyncio.to_thread(self.journal.append, thought)
         except Exception as e:
@@ -135,6 +142,8 @@ class ReflectionService:
         base = self.context(event.text) if self.context else ""
         if event.kind == KIND_AFTER_CONVERSATION or event.kind.endswith(EPISODE_KINDS):
             system = f"{system}\n{p.get('after', '')}".strip()           # IMP-10: итог разговора или эпизода: настроение и вывод
+        elif event.kind == KIND_IDLE:
+            system = f"{system}\n{p.get('idle', '')}".strip()            # размышление в простое: осмыслить события, ничего не говорить
         notes: list[str] = []
         last: list[Intent] = []
         for n in range(1, lim["max_steps"] + 1):
@@ -150,6 +159,10 @@ class ReflectionService:
                 thought["steps"].append({"n": n, "kind": "unparsed"})
                 return last
             step = {"n": n, "kind": "think", "text": str(data.get("thought") or "")[:TEXT_MAX]}
+            if step["text"]:
+                thought["text"] = step["text"]
+            if "importance" in data:
+                thought["importance"] = thought_dom.clean_importance(data.get("importance"))
             intents = parse_intents(data.get("intents"))
             query = str(data.get("recall") or "").strip()
             if query and not intents and n < lim["max_steps"]:
@@ -200,11 +213,13 @@ class ReflectionService:
 
     # ── исполнение намерений ─────────────────────────────────────────────────
 
-    async def _execute(self, event: Event, intent: Intent, lim: dict) -> str:
+    async def _execute(self, event: Event, intent: Intent, lim: dict, importance: int = thought_dom.IMPORTANCE_DEFAULT) -> str:
         try:
             if intent.kind == "none":
                 return "none"
             if intent.kind == "say":
+                if event.data.get("silent"):
+                    return "suppressed: silent reflection"
                 return await self.speak(event, intent) if self.speak else "no speech"
             if intent.kind == "do":
                 if not impulses.allow_do(event.trusted):
@@ -225,7 +240,7 @@ class ReflectionService:
                                   untrusted=not event.trusted)
                 return "reminder set"
             if intent.kind == "remember":
-                await asyncio.to_thread(self.writer.add_fact, intent.text, "episode", 2)
+                await asyncio.to_thread(self.writer.add_fact, intent.text, "episode", max(2, importance))
                 return "remembered"
         except asyncio.CancelledError:
             raise

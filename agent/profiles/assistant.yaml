@@ -6,7 +6,6 @@ tone: >
   Просто общайся и поддерживай компанию.
 focus_modules: [desktop, telegram]
 memory_scopes: [assistant]
-knowledge: []
 attention:
   weights: {}
 activate: {}

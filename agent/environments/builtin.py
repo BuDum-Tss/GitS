@@ -318,31 +318,6 @@ def register(registry, companion, memory, profiles=None):
         import web_search
         return await web_search.search(a["query"])
 
-    async def knowledge_lookup(a):
-        kb = getattr(companion, "knowledge", None)
-        if kb is None:
-            raise ToolError("справочник ещё не подключён")
-        query = str(a.get("query") or "").strip()
-        if not query:
-            raise ToolError("нужен запрос")
-        text = await kb.tool_lookup(query, str(a.get("topic") or ""))
-        if not text:
-            raise ToolError("в справочнике по этой теме ничего не нашлось")
-        return text
-
-    # справочник (ТЗ 04, KB-8): без интернета и каскада; для сети есть отдельный web.search
-    registry.add(Environment(
-        id="knowledge", title="Справочник",
-        description="Справочные материалы и накопленный опыт по темам (вики игр, документация): как устроено, сколько нужно, что такое.",
-        tools=[_tool("knowledge", "lookup", "Найти справку в её справочнике по теме (вики и описания игр, регламенты, накопленный опыт): "
-                     "как устроено, сколько нужно, что такое, как лучше. Возвращает куски текста с названием источника. "
-                     "Если в справочнике нет, для сети есть отдельный поиск в интернете.",
-                     {"query": {"type": "string", "description": "что узнать, как вопрос или ключевые слова"},
-                      "topic": {"type": "string", "required": False, "description": "область справочника, например rimworld (необязательно: без неё ищет по справочнику профиля)"}},
-                     knowledge_lookup, informative=True,
-                     keywords=("справочник", "справка", "вики", "wiki", "как устроено", "сколько нужно", "что такое", "регламент",
-                               "руководство", "документация"))]))
-
     # общий для всех профилей: поиск нужен и ассистенту, и игре, и монтажу (module=core: включён всегда)
     registry.add(Environment(
         id="web", title="Интернет",

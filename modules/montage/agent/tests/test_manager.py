@@ -58,20 +58,6 @@ def core_with_handlers(tmp, **kw):
         write_silence_wav(path, seconds)
         return {"path": str(path), "duration_ms": int(seconds * 1000)}
 
-    core.ingested = []
-
-    @core.on_request("core.kb.ingest")
-    def ingest(body):
-        core.ingested.append(body)
-        return {"added": len(body["documents"]), "updated": 0, "skipped": 0}
-
-    core.experience = []
-
-    @core.on_request("core.experience.add")
-    def exp(body):
-        core.experience.append(body)
-        return {"id": "e1", "merged": False}
-
     @core.on_request("core.claude_usage")
     def usage(body):
         return {}
@@ -116,10 +102,6 @@ async def test_job_through_the_real_protocol(tmp_path):
         assert "montage.launch" in kinds and "montage.done" in kinds
         launch = next(e for e in core.events if e["kind"] == "montage.launch")
         assert launch["announce"] is True and "финальный рендер" in launch["text"]
-        # MON-31: регламент ушёл в справочник один раз
-        await core.wait_for(lambda: core.ingested, 10)
-        assert core.ingested[0]["collection"] == "montage.style" and core.ingested[0]["replace"] and core.ingested[0]["final"]
-        assert {d["uri"] for d in core.ingested[0]["documents"]} == {"montage:style", "montage:craft"}
         # MON-33: state
         await core.wait_for(lambda: core.states["montage"]["data"]["current"] is None and "ничего не выполняется" in core.states["montage"]["summary"], 10)
         status = await core.call_tool("status", {})
@@ -251,14 +233,3 @@ async def test_unfinished_jobs_are_recovered_on_start(tmp_path):
         await answer_when_asked(core, job.job_id, ["утвердить", "готово"])
         await core.wait_for(lambda: last_update(core, job.job_id)["state"] == "done", 120)
         assert layout.jobs == env.layout.jobs
-
-
-async def test_kb_sync_is_skipped_when_the_style_did_not_change(tmp_path):
-    core = core_with_handlers(tmp_path)
-    async with core, Env(tmp_path, core):
-        await core.wait_for(lambda: core.ingested, 10)
-        await core.wait_for(lambda: (tmp_path / "jobs" / "kb_state.json").is_file(), 10)
-    core2 = core_with_handlers(tmp_path)
-    async with core2, Env(tmp_path, core2):
-        await asyncio.sleep(0.5)
-        assert core2.ingested == []                                          # тот же хеш: повторной загрузки нет

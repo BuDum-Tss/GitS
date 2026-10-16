@@ -52,9 +52,9 @@ OLD_BODIES = {
     "focus.resume": [{"task_id": "t-1", "policy": "working", "goal": "g", "checkpoint": {}, "subgoals": []}],
 }
 
-# имена сообщений версии 1.0: удалять нельзя без повышения PROTOCOL
+# имена сообщений версии 1.0: удалять нельзя без повышения PROTOCOL (исключение: справочник удалён в контракте 1.6 по решению владельца)
 NAMES_1_0 = {"hello", "event", "say", "emotion", "state", "job.update", "panel.set", "core.ask", "core.tts", "core.tool.call",
-             "core.lookup", "core.memory.recall", "core.memory.remember", "core.experience.add", "core.kb.ingest",
+             "core.memory.recall", "core.memory.remember",
              "core.persona", "core.privacy_terms", "core.claude_usage", "core.web_search", "tool.call", "tool.check",
              "job.cancel", "job.list", "graph.get", "deliver", "tts.synthesize", "panel.action", "policy.activate",
              "focus.release", "focus.resume", "welcome", "reject", "job.answer", "speak", "speak.stop", "shutdown",

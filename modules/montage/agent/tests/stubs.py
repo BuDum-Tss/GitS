@@ -11,7 +11,6 @@ import wave
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from gits_sdk import ToolError
 
 import media
 import qa as qa_mod
@@ -74,9 +73,6 @@ class StubCore:
         self.events: list[dict] = []
         self.usage: list[tuple] = []
         self.tts_calls: list[str] = []
-        self.kb: list[tuple] = []
-        self.experience: list[dict] = []
-        self.kb_error: ToolError | None = None
         self.persona_card = "Сухая учтивость, научный протокол."
 
     async def tts(self, text, emotion="neutral"):
@@ -91,19 +87,6 @@ class StubCore:
 
     async def claude_usage(self, tokens, source, limit_text=None):
         self.usage.append((tokens, source, limit_text))
-
-    async def kb_ingest(self, collection, documents, *, replace=False, final=False):
-        if self.kb_error:
-            raise self.kb_error
-        self.kb.append((collection, [d["uri"] for d in documents], replace, final))
-        return {"added": len(documents), "updated": 0, "skipped": 0}
-
-    async def experience_add(self, entry):
-        self.experience.append(entry)
-        return {"id": "e1", "merged": False}
-
-    async def lookup(self, query, collections):
-        return "найдено: регламент"
 
     async def job_update(self, job_id, **fields):
         self.updates.append({"job_id": job_id, **fields})
@@ -198,8 +181,6 @@ class FakeRunner:
             reply = self.review_replies.pop(0) if self.review_replies else {
                 "criteria": {"readability": {"score": 5, "issues": []}}, "overall": 5, "verdict": "pass"}
             text = json.dumps(reply, ensure_ascii=False)
-        elif stage == "experience":
-            text = json.dumps({"conclusions": [{"statement": "Субтитры в шортсах держать выше.", "context": "шортс"}]}, ensure_ascii=False)
         return StageResult(text=text, tokens=self.tokens, session_id="sess-1", turns=3)
 
 

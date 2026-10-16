@@ -26,10 +26,6 @@ import fast_brain
 import episode_routes
 import episode_service
 import graph_scope
-import knowledge_routes
-import knowledge_service
-import lesson_routes
-import lesson_service
 import impulse_service
 import task_wiring
 import focus_dispatch
@@ -341,11 +337,15 @@ async def _run(config: dict):
         layer.profiles.sleeping = lambda: episodes.scheduler.state == "sleeping"
         episodes.scheduler.on_change = layer.profiles.poke
     layer.requests.episodes = episodes                    # core.memory.episodes
-    lessons = lesson_service.build(companion, episodes)   # ТЗ 28: разбор ошибок после сна, уроки и убеждения в контексте
-    lesson_routes.set_hub(lessons)
-    layer.requests.knowledge = knowledge_service.build(lessons, episodes, companion=companion, profiles=layer.profiles)
-    knowledge_routes.set_kb(layer.requests.knowledge)     # KB-22: раздел «Справочник» дашборда       # ТЗ 04: справочники и опыт модулей (core.lookup и др.)
     await impulses.plans.start()                         # планы пользователя -> напоминания себе (без опроса модели, ТЗ 30)
+
+    def free_to_reflect() -> bool:
+        """Размышление в простое: разговора и вопросов нет, слот фокуса пуст, она не спит, «не отвлекать» выключено, пользователь
+        молчит не меньше пяти минут."""
+        since_user = _time.time() - float(getattr(companion, "_last_user_ts", 0.0) or 0.0)
+        return (layer.attention.top_focus().kind not in ("conversation", "question") and layer.focus.slot is None
+                and episodes.scheduler.state != "sleeping" and not settings.quiet_active() and since_user >= 300)
+    impulse_service.attach_idle(impulses, companion, is_free=free_to_reflect).start()      # осмысление событий в свободное время
 
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
     layer.attention.kind_handlers["rimworld.colonists"] = make_colonists_handler(rel, graph)
@@ -356,6 +356,8 @@ async def _run(config: dict):
         affect.stop()
         await episodes.stop()
         await impulses.timer.stop()
+        if impulses.idle is not None:
+            impulses.idle.stop()
         await layer.stop()
 
 

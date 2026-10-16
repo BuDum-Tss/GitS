@@ -66,7 +66,6 @@ class Profile:
     tone: str = ""                                   # добавка к характеру в разговоре
     focus_modules: tuple[str, ...] = ()              # инструменты availability=profile этих модулей видны
     memory_scopes: tuple[str, ...] = ()              # области памяти (к global всегда); используется в ТЗ 04
-    knowledge: tuple[str, ...] = ()                  # коллекции справочника (ТЗ 04)
     attention: dict = field(default_factory=dict)    # {"weights": {шаблон kind: вес}} (ТЗ 03; здесь только хранится)
     activate: dict = field(default_factory=dict)     # {"foreground_apps": [...], "module_state": {модуль: {ключ: значение}}}
     priority: int = 0
@@ -117,7 +116,7 @@ def parse_profile(data) -> Profile:
         tone=" ".join(str(data.get("tone") or "").split()),
         focus_modules=_str_list(data.get("focus_modules"), "focus_modules"),
         memory_scopes=_str_list(data.get("memory_scopes"), "memory_scopes"),
-        knowledge=_str_list(data.get("knowledge"), "knowledge"), attention=attention,
+        attention=attention,
         activate={"foreground_apps": apps, "module_state": state} if (apps or state) else {},
         priority=priority, sticky_s=sticky, planned=bool(data.get("planned", False)), focus_quiet=focus_quiet,
         workspace=str(data.get("workspace") or "").strip())

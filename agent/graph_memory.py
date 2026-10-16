@@ -24,6 +24,7 @@ import character
 import character_memory
 import events_log
 import graph_scope
+import memory_store
 import settings
 from envcompat import env
 from fact_store import FactStore, iso
@@ -529,7 +530,7 @@ class GraphMemory:
         названа сущность, которая в графе есть лишь в ней (точное имя узла без регистра)."""
         base = self.group()
         groups = [base]
-        if self.scopes_of is None or not settings.load().get("knowledge", {}).get("scopes", True):
+        if self.scopes_of is None:
             return groups
         try:
             own = [character.group_id(self._character, s) for s in self.scopes_of() if s and s != graph_scope.GLOBAL]
@@ -554,8 +555,11 @@ class GraphMemory:
             if not cands:
                 return []
             scores = await self.backend.scores(query, [c["fact"] for c in cands])
+            q_stems = memory_store.stems(query)       # общие слова с репликой поднимают оценку: «прошлая жизнь» ↔ «была человеком»
+            scores = [s + character_memory.WORD_BONUS * min(2, len(q_stems & memory_store.stems(c["fact"])))
+                      for s, c in zip(scores, cands, strict=False)]
             self._self_replies += 1
-            picked, nudged = character_memory.pick(cands, scores, n=n, min_score=MIN_SCORE,
+            picked, nudged = character_memory.pick(cands, scores, n=n, min_score=character_memory.SELF_MIN_SCORE,
                                                    nudge=self._self_replies >= character_memory.NUDGE_EVERY)
             if nudged:
                 self._self_replies = 0

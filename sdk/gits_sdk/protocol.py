@@ -122,8 +122,8 @@ class ToolError(Exception):
 MODULE_TO_CORE_NOTES = ("hello", "event", "say", "emotion", "state", "job.update", "result", "panel.set",
                         "log")                 # log: ТЗ 31, запись в журнал ядра вместо прямого events_log
 CORE_REQUESTS = (
-    "core.ask", "core.tts", "core.tool.call", "core.lookup", "core.memory.recall", "core.memory.remember",
-    "core.experience.add", "core.kb.ingest", "core.persona", "core.privacy_terms", "core.claude_usage",
+    "core.ask", "core.tts", "core.tool.call", "core.memory.recall", "core.memory.remember",
+    "core.persona", "core.privacy_terms", "core.claude_usage",
     "core.web_search",
     # ТЗ 31 (контракт 1.1): локальная модель, чтение журнала, путь к Claude
     "core.llm.ask", "core.events.tail", "core.claude.locate",
@@ -535,25 +535,6 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
                 if not _is_int(urgency) or not URGENCY_MIN <= urgency <= URGENCY_MAX:
                     problems.append(f"{where}.default_urgency: целое {URGENCY_MIN}–{URGENCY_MAX}")
 
-    if "knowledge" in manifest:
-        knowledge = manifest["knowledge"]
-        if not isinstance(knowledge, list):
-            problems.append("knowledge: должен быть списком")
-        else:
-            names: set[str] = set()
-            for i, coll in enumerate(knowledge):
-                where = f"knowledge[{i}]"
-                if not isinstance(coll, dict):
-                    problems.append(f"{where}: должен быть объектом")
-                    continue
-                for key in ("collection", "title", "scope", "kind"):
-                    if not isinstance(coll.get(key), str) or not coll[key].strip():
-                        problems.append(f"{where}.{key}: обязательная непустая строка")
-                if isinstance(coll.get("collection"), str):
-                    if coll["collection"] in names:
-                        problems.append(f"{where}.collection: «{coll['collection']}» повторяется")
-                    names.add(coll["collection"])
-
     for flag in ("graph", "state"):
         if flag in manifest and not isinstance(manifest[flag], bool):
             problems.append(f"{flag}: должно быть true или false")
@@ -703,16 +684,6 @@ class EmitSpec:
     kind: str
     description: str
     default_urgency: int
-
-
-@dataclass
-class KnowledgeSpec:
-    """Коллекция справочника, которой владеет модуль (ТЗ 04)."""
-
-    collection: str
-    title: str
-    scope: str
-    kind: str
 
 
 @dataclass
@@ -1148,7 +1119,6 @@ class Manifest:
     settings_schema: dict = field(default_factory=dict)
     tools: list[ToolSpec] = field(default_factory=list)
     emits: list[EmitSpec] = field(default_factory=list)
-    knowledge: list[KnowledgeSpec] = field(default_factory=list)
     graph: bool = False
     state: bool = False
     panel: PanelSpec | None = None                      # пространство модуля (TZ 15); None - вкладки нет
@@ -1170,8 +1140,6 @@ class Manifest:
             shared_settings=list(d.get("shared_settings") or []), settings_schema=dict(d.get("settings_schema") or {}),
             tools=[ToolSpec.from_dict(t) for t in d.get("tools") or []],
             emits=[EmitSpec(e["kind"], e["description"], e["default_urgency"]) for e in d.get("emits") or []],
-            knowledge=[KnowledgeSpec(k["collection"], k["title"], k["scope"], k["kind"])
-                       for k in d.get("knowledge") or []],
             graph=bool(d.get("graph", False)), state=bool(d.get("state", False)),
             panel=panel, panel_warnings=panel_warnings,
             policies=[PolicySpec.from_dict(p) for p in d.get("policies") or []],
@@ -1184,8 +1152,6 @@ class Manifest:
                "tools": [t.to_dict() for t in self.tools],
                "emits": [{"kind": e.kind, "description": e.description, "default_urgency": e.default_urgency}
                          for e in self.emits],
-               "knowledge": [{"collection": k.collection, "title": k.title, "scope": k.scope, "kind": k.kind}
-                             for k in self.knowledge],
                "graph": self.graph, "state": self.state}
         if self.panel is not None:
             out["panel"] = self.panel.to_dict()

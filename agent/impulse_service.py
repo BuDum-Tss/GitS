@@ -11,9 +11,11 @@ from types import SimpleNamespace
 import prompts
 from adapters.impulse_store import JsonReminders, JsonThoughts
 from app import impulse_origin
+from app.idle_reflection import IdleReflector
 from app.impulse_timer import ImpulseTimer
 from app.plan_nudge import PlanNudger
 from app.reflection import ReflectionService
+from app.thought_memory import ThoughtConsolidator
 from domain.event import KIND_AFTER_CONVERSATION
 from memory_store import effective_due
 
@@ -53,6 +55,23 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
         task.add_done_callback(lambda t: t.cancelled() or t.exception() is None or logger.warning(f"Итог разговора: {t.exception()}"))
 
     companion.on_conversation_end = conversation_ended
-    impulses = SimpleNamespace(timer=timer, reflection=service, journal=journal, reminders=reminders, plans=plans)
+    consolidator = ThoughtConsolidator(journal=journal, writer=companion.memory_writer, clock=clock)
+    impulses = SimpleNamespace(timer=timer, reflection=service, journal=journal, reminders=reminders, plans=plans,
+                               consolidator=consolidator, idle=None)
     companion.impulses = impulses
     return impulses
+
+
+def attach_idle(impulses, companion, *, is_free, events_since=None, settings_source=None, clock=None) -> IdleReflector:
+    """Размышление в свободное время: `is_free()` - свободна ли она (фокус, внимание, сон, «не отвлекать»); события для осмысления
+    берутся из журнала событий, если `events_since` не задан. Запуск: `impulses.idle.start()`."""
+    import time
+
+    import events_log
+    clock = clock or time.time
+    kinds = {"user", "say", "telegram", "game", "module_event", "vision", "hearing", "plan"}
+    events_since = events_since or (lambda since, limit: events_log.tail(limit, kinds, since))
+    idle = IdleReflector(reflection=impulses.reflection, consolidator=impulses.consolidator, is_free=is_free,
+                         events_since=events_since, settings=settings_source or companion._settings.load, clock=clock)
+    impulses.idle = idle
+    return idle

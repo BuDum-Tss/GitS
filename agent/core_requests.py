@@ -1,7 +1,6 @@
 """Запросы модулей к ядру (ТЗ 02, раздел 10): `core.ask`, `core.tts`, `core.tool.call`, `core.persona`,
 `core.claude_usage`, `core.web_search`, `core.privacy_terms` (ТЗ 10), `core.memory.recall` / `core.memory.remember` (поверх
-контрактов `MemoryReader` и `MemoryWriter`), справочник и опыт (`core.lookup`, `core.experience.add`, `core.kb.ingest`, ТЗ 04,
-поверх `knowledge_base.KnowledgeBase`; без него `unavailable`).
+контрактов `MemoryReader` и `MemoryWriter`).
 
 Тело каждого запроса проверяется по контракту `gits_sdk.contract` (CORE-32, ТЗ 31 MC-2): обязательные поля и типы; ошибка -
 `bad_request`. Запросы со статусом planned отвечают `unavailable` с версией контракта. Ответ ядра
@@ -63,7 +62,6 @@ class CoreRequests:
         self.privacy_terms = privacy_terms
         self.memory_reader = memory_reader        # MemoryReader / MemoryWriter ядра (core.memory.*); None: unavailable
         self.memory_writer = memory_writer
-        self.knowledge = None                     # KnowledgeBase (ТЗ 04): core.lookup / core.kb.ingest / core.experience.add
         self.hub = None                           # ModuleHub: core.tts передаёт запрос модулю голоса
         self.episodes = None                      # EpisodeService (ТЗ 27): ставит ядро; без него core.memory.episodes недоступен
 
@@ -74,7 +72,6 @@ class CoreRequests:
             "core.privacy_terms": self._privacy_terms, "core.llm.ask": self._llm_ask,
             "core.events.tail": self._events_tail, "core.claude.locate": self._claude_locate,
             "core.memory.episodes": self._episodes,
-            "core.lookup": self._lookup, "core.kb.ingest": self._kb_ingest, "core.experience.add": self._experience_add,
             "core.memory.recall": self._memory_recall, "core.memory.remember": self._memory_remember,
         }.get(msg_type)
         if contract.is_planned(msg_type):                      # MC-5: запрос описан, реализации пока нет
@@ -138,37 +135,6 @@ class CoreRequests:
         if not ok:
             raise ModuleError(code or "internal", text)
         return {"text": text}
-
-    # ── core.lookup / core.kb.ingest / core.experience.add (ТЗ 04) ──────────
-
-    def _kb(self):
-        if self.knowledge is None:
-            raise ModuleError("unavailable", "справочник ядра не подключён")
-        return self.knowledge
-
-    async def _lookup(self, conn: ModuleConnection, body: Any) -> dict:
-        kb = self._kb()
-        try:
-            return {"text": await kb.lookup(body["query"], body.get("collections"), int(body.get("k") or 5))}
-        except Exception as e:
-            logger.warning("core.lookup: %s", e)
-            raise ModuleError("internal", "поиск по справочнику не удался") from e
-
-    async def _kb_ingest(self, conn: ModuleConnection, body: Any) -> dict:
-        kb = self._kb()
-        if not kb.allowed(conn.module_id, conn.manifest, body["collection"]):
-            raise ModuleError("denied", f"коллекция «{body['collection']}» не объявлена в knowledge манифеста модуля")
-        if len(body["documents"]) > 50:
-            raise _bad("документов в одном запросе не больше 50")
-        return await kb.ingest(body["collection"], [d for d in body["documents"] if isinstance(d, dict)],
-                               replace=bool(body.get("replace")), final=bool(body.get("final")))
-
-    async def _experience_add(self, conn: ModuleConnection, body: Any) -> dict:
-        kb = self._kb()
-        try:
-            return await kb.add_experience(body["scope"], body["statement"], body.get("context") or "", data=body.get("data"))
-        except RuntimeError as e:
-            raise ModuleError("unavailable", str(e)) from e
 
     # ── core.memory.* ───────────────────────────────────────────────────────
 

@@ -23,7 +23,6 @@ def test_manifest_matches_spec():
     assert m["subscribe"] == ["settings", "module", "battery"]
     assert m["shared_settings"] == ["dnd", "quiet_until", "claude_usage"]
     assert m["state"] is True
-    assert {k["collection"] for k in m["knowledge"]} == {"montage.style", "montage.experience"}
     schema = m["settings_schema"]
     assert schema["approve_plan"]["default"] is True and schema["auto_final"]["default"] is False
     assert (schema["plan_model"]["default"], schema["build_model"]["default"]) == ("opus", "sonnet")

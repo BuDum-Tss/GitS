@@ -67,7 +67,8 @@ GROUPS = [
     dict(id="g_think", col="D", title="Размышление", tag="A",
          summary="Внутренний диалог агента: получает событие или импульс, думает, читая память, и решает: сказать, сделать, напомнить себе или записать.", out="Intent", nodes=[
         N("reflect", "ReflectionService", "A", "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов", "Intent: сказать, сделать, напомнить, записать, ничего", "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route); лимиты шагов, токенов, часа, глубины; после разговора (self.after_conversation) и эпизода подводит итог: настроение и вывод (IMP-10)"),
-        N("thoughts", "Журнал мыслей", "I", "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов", "Thought", "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), GET /api/thoughts, вкладка «Мысли» дашборда"),
+        N("thoughts", "Журнал мыслей", "I", "краткосрочная память: значимые рассуждения с оценкой важности 1-5 (пустые и оборванные не пишутся), важные переносятся в долговременную память, мелкие забываются через сутки; не озвучиваются", "Thought", "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), domain/thoughts.py, GET /api/thoughts, вкладка «Мысли» дашборда"),
+        N("idle", "Размышление в простое (IdleReflector + ThoughtConsolidator)", "A", "когда фокус свободен, разговора нет и она не спит: осмысляет накопившиеся события (self.idle, молча, недоверенно), записывает вывод в память; созревшие мысли переносит в долговременную память", "Intent: записать, ничего", "есть: app/idle_reflection.py, app/thought_memory.py; настройка reflection.idle; материал дневника (app/diary.py)"),
     ]),
     dict(id="g_act", col="E", title="Дела", tag="A",
          summary="Строит план из доступных инструментов, спрашивает разрешение на опасное, выполняет в модулях, ведёт долгие задачи.", out="ToolResult", nodes=[
@@ -106,9 +107,6 @@ GROUPS = [
         N("epi", "Эпизоды (нарезка + хранилище)", "A", "журнал -> эпизоды: границы без LLM (пауза, фокус, задача, собеседник), пики яркости, окно вокруг пика; episodes.db со статусами и версиями", "Episode", "есть (ТЗ 27): domain/episodes.py, app/episode_cutter.py, adapters/episode_store.py"),
         N("sleep", "Режим сна (SleepScheduler + SleepRunner)", "A", "фоновая политика памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами", "episode.summary, дневник", "есть (ТЗ 27): app/sleep.py, app/sleep_scheduler.py, app/episode_summary.py, app/diary.py"),
         N("erecall", "EpisodeRecall", "A", "поиск эпизодов и дневника по смыслу, recall_episode(id) с разворотом до событий, core.memory.episodes", "MemoryHit[]", "есть (ТЗ 27): app/episode_recall.py, episode_routes.py"),
-        N("lessons", "Уроки на ошибках (LessonService)", "A", "шаг после сна: метки mistake журнала по ситуациям -> урок (ситуация, действие, исход, что делать иначе, уверенность, подтверждения, эпизоды); похожие сливаются (cos >= 0,90); неэффективные устаревают; доля повторов по видам ошибок", "Lesson", "есть (ТЗ 28): domain/lessons.py, app/lessons.py, adapters/lesson_store.py, lesson_service.py"),
-        N("kb", "Справочники и опыт модулей (KnowledgeBase)", "A", "коллекции общего гибридного поиска: вики и описания RimWorld, регламенты монтажа (куски 250-450 слов по заголовкам, knowledge.db); опыт модулей идёт в уроки области <модуль>.experience; запросы core.kb.ingest (права по манифесту), core.lookup, core.experience.add; загрузка скриптом tools/knowledge_ingest.py; инструмент планировщика knowledge.lookup (без каскада, web.search отдельно); справка и опыт в ответе разговора по настройке knowledge.chat (по умолчанию выкл.); перевод запроса по настройке knowledge.translate; раздел «Справочник» дашборда; набор проверки tools/knowledge_eval.py", "Hit, kb chunk", "есть (ТЗ 04): knowledge_base.py, knowledge_service.py, knowledge_routes.py, core_requests.py; в игре уроки в промпте подбираются по ситуации (modules/rimworld core_link.lessons_for)"),
-        N("beliefs", "Убеждения (принимает сама)", "A", "урок с подтверждениями >= K из >= M эпизодов становится убеждением без подтверждения человека; запись в журнал (причина, эпизоды, прежнее значение); проверка по конституции (шаблоны + модель), лимит в сутки и 12 активных; отмена владельцем в дашборде", "Belief, belief_log", "есть (ТЗ 28): те же файлы, lesson_routes.py; блок убеждений и уроков по ситуации в ContextBuilder по настройке lessons.context"),
         N("elog", "EventLog", "I", "SQLite events.db: журнал событий, трасса, решения", "контракт журнала", "events_log.py: глобальные функции, 16 импортов"),
         N("stores", "Диалог, записи, люди", "I", "JSON: диалог, MemoryStore (планы, напоминания), отношения", "репозитории", "user_memory.py, memory_store.py, relationships.py"),
         N("graph", "FactGraph (контракт)", "I", "SQLite graph.db (fact_store.py, поиск через HybridIndex): факты с интервалами валидности; области global и <id>:<область> по профилю (graph_scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов", "контракт графа", "graph_memory.py: 701 строка"),
@@ -148,6 +146,8 @@ EDGES = [
     ("reflect", "mr", "r", "вспоминает", None), ("reflect", "thoughts", "w", "мысль", None),
     ("reflect", "queue", "flow", "хочет сказать", None), ("reflect", "plan", "flow", "хочет сделать", None),
     ("reflect", "reminders", "w", "напомнить себе", None), ("reflect", "mw", "w", "записать", None),
+    ("idle", "elog", "r", "события для осмысления", None), ("idle", "reflect", "flow", "self.idle", None),
+    ("idle", "thoughts", "w", "перенос или забывание", None), ("idle", "mw", "w", "важные мысли в память", None),
     ("reg", "plan", "use", "Tool[]", None), ("plan", "risk", "flow", "Plan", 12), ("risk", "exec", "flow", "разрешённый шаг", 13),
     ("exec", "hubout", "flow", "tool.call", 14), ("exec", "jobs", "use", None, None), ("jobs", "queue", "flow", "итог", None),
     ("exec", "queue", "flow", "итог-факт", 15),
@@ -161,11 +161,6 @@ EDGES = [
     ("sleep", "mw", "w", "факты со ссылкой на эпизод", None), ("sleep", "lms", "ext", "резюме, дневник (короткие запросы)", None),
     ("sleep", "norm", "flow", "episode.summary", None), ("erecall", "epi", "r", "эпизоды, источники", None),
     ("mr", "erecall", "use", "recall: эпизоды и факты", None),
-    ("sleep", "lessons", "flow", "разбор ошибок после сна", None), ("lessons", "elog", "r", "метки mistake", None),
-    ("lessons", "epi", "r", "эпизоды ошибок", None), ("lessons", "lms", "ext", "урок, проверка убеждения", None),
-    ("hub", "kb", "flow", "core.kb.ingest, core.lookup", None), ("kb", "lessons", "use", "опыт модулей", None),
-    ("ctx", "kb", "r", "справка и опыт (knowledge.chat)", None), ("reg", "kb", "use", "knowledge.lookup", None),
-    ("lessons", "beliefs", "use", "подтверждённый урок", None), ("ctx", "beliefs", "r", "убеждения и уроки по ситуации", None),
 ]
 # ссылки макроуровня (когда конец свёрнут): номер шага
 MACRO_STEPS = {

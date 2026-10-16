@@ -229,3 +229,34 @@ def test_seed_reports_a_broken_card_as_an_error(capsys, tmp_path, monkeypatch):
 
 def test_events_kinds_include_memory_conflict():
     assert "memory_conflict" in events_log.KINDS
+
+
+async def test_question_about_the_past_reaches_the_low_cosine_memory_about_caroline(tmp_path):
+    """Вопрос «помнишь свою прошлую жизнь?» далёк по смыслу от текста про Кэролайн (косинус ниже порога фактов), но воспоминание о себе
+    проходит по своему, более низкому порогу."""
+    g = FakeGraph()
+    fact = "Когда-то я была человеком, и меня звали Кэролайн."
+    g.edges.append({"uuid": "b1", "group": "glados", "subject": "ГЛаДОС", "relation": "ПОМНИТ", "object": "воспоминание m-11",
+                    "fact": fact, "canon": True, "source": "seed", "mem_id": "m-11", "mtype": "biography", "about": "self",
+                    "weight": 0.7})
+    g.score_map[fact] = 0.42
+    gm = _gm(tmp_path, g)
+
+    async def ready():
+        return True
+    gm._ready = ready
+    assert [m["mem_id"] for m in await gm.self_memories("ты помнишь о своей прошлой жизни?")] == ["m-11"]
+
+
+async def test_self_memory_far_from_the_reply_is_still_left_out(tmp_path):
+    g = FakeGraph()
+    g.edges.append({"uuid": "b2", "group": "glados", "subject": "ГЛаДОС", "relation": "ПОМНИТ", "object": "воспоминание m-1",
+                    "fact": "Люблю тишину", "canon": True, "source": "seed", "mem_id": "m-1", "mtype": "biography", "about": "self",
+                    "weight": 0.7})
+    g.score_map["Люблю тишину"] = 0.2
+    gm = _gm(tmp_path, g)
+
+    async def ready():
+        return True
+    gm._ready = ready
+    assert await gm.self_memories("какая погода") == []

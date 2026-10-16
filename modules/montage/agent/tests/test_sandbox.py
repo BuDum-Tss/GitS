@@ -145,7 +145,7 @@ def test_tools_outside_the_policy_are_denied(box):
     for name in ("WebFetch", "WebSearch", "Task", "Agent", "NotebookEdit", "mcp__other__tool", "mcp__montage__delete_everything"):
         ok, why = run(box, name, url="https://x")
         assert not ok, name
-    for name in ("Skill", "TodoWrite", "mcp__montage__progress", "mcp__montage__synthesize_voice", "mcp__montage__kb_lookup",
+    for name in ("Skill", "TodoWrite", "mcp__montage__progress", "mcp__montage__synthesize_voice",
                  "mcp__montage__transcript_words", "mcp__montage__ask_user"):
         assert run(box, name)[0], name
 

@@ -22,6 +22,8 @@ from pathlib import Path
 
 KINDS = ("user", "self", "plan", "episode")
 _MAX = 300
+BASE_IMPORTANCE = 5      # «базовое» о пользователе: попадает в контекст и вне темы разговора
+BASE_MAX = 3             # но не больше стольких записей
 _DUP = 0.6               # доля общих основ, начиная с которой записи считаются дублем
 _WORD = re.compile(r"[а-яёa-z0-9]{3,}", re.I)
 _STOP = {"что", "как", "это", "про", "мне", "меня", "или", "для", "все", "всё", "обо", "мой", "моя",
@@ -199,22 +201,23 @@ class MemoryStore:
         return due_soon
 
     def relevant(self, query: str = "", k: int = 8) -> list[dict]:
-        """Записи для контекста: по теме разговора, плюс самое важное всегда."""
+        """Записи для контекста: те, что по теме разговора, плюс только базовое (важность 5, до `BASE_MAX` штук).
+        Остальные факты о пользователе без связи с темой в контекст не идут: их достаёт поиск по запросу (recall)."""
         data = self._load()
         q = stems(query)
         now = time.time()
-        scored = []
+        on_topic, base = [], []
         for it in data["items"]:
             overlap = len(q & stems(it["text"]))
             if it["kind"] == "plan" and (overlap == 0 or effective_due(it) < now - 12 * 3600):
                 continue   # планы подмешиваются только по теме разговора и пока не устарели
-            scored.append((overlap * 3 + self._worth(it), it))
-        scored.sort(key=lambda x: -x[0])
-        picked = [it for _, it in scored[:k]]
-        for it in sorted((i for i in data["items"] if i["importance"] >= 5 and i["kind"] in ("user", "self")),
-                         key=lambda i: -i["ts"])[:2]:
-            if it not in picked:
-                picked.append(it)
+            if overlap:
+                on_topic.append((overlap * 3 + self._worth(it), it))
+            elif it["importance"] >= BASE_IMPORTANCE and it["kind"] in ("user", "self"):
+                base.append((self._worth(it), it))
+        on_topic.sort(key=lambda x: -x[0])
+        base.sort(key=lambda x: -x[0])
+        picked = [it for _, it in on_topic[:k]] + [it for _, it in base[:BASE_MAX]]
         ids = {i["id"] for i in picked}
         for it in data["items"]:
             if it["id"] in ids:

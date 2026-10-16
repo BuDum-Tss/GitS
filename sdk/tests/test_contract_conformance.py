@@ -42,8 +42,7 @@ def test_every_protocol_message_is_described():
 def test_acceptance_counts():
     assert len(contract.CORE_REQUESTS) >= 12 and len(contract.MODULE_REQUESTS) == 14
     base12 = {"core.ask", "core.tts", "core.tool.call", "core.persona", "core.privacy_terms", "core.claude_usage",
-              "core.web_search", "core.lookup", "core.memory.recall", "core.memory.remember", "core.experience.add",
-              "core.kb.ingest"}
+              "core.web_search", "core.memory.recall", "core.memory.remember"}
     assert base12 <= set(contract.CORE_REQUESTS)
 
 
@@ -259,7 +258,6 @@ async def test_typed_client_methods_use_the_contract():
             await client.claude_usage(10, "t")
             with pytest.raises(ValueError):
                 await client.tts("")                                          # неверное исходящее тело
-            assert isinstance(await client.lookup("что-то"), str)                 # справочник реализован (контракт 1.4)
         finally:
             await client.stop()
             await asyncio.wait_for(task, 5)

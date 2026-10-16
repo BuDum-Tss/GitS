@@ -144,11 +144,6 @@ def launch_spec() -> dict:
             "risk": "auto", "availability": "profile", "timeout_s": 120, "keywords": list(KEYWORDS)}
 
 
-# коллекции справочника и опыта в ядре (ТЗ 04, KB-17): вики и описания из файлов игры загружает agent/tools/knowledge_ingest.py
-KNOWLEDGE = (("rimworld.wiki", "Вики RimWorld", "reference"), ("rimworld.defs", "Описания из файлов игры", "reference"),
-             ("rimworld.experience", "Опыт игры", "experience"))
-
-
 def build_manifest(tools: list[dict]) -> dict:
     from game_panel import panel_spec
     import policies
@@ -159,7 +154,6 @@ def build_manifest(tools: list[dict]) -> dict:
             "panel": panel_spec(),                       # пространство в дашборде (TZ 15, TAB-5, TAB-9)
             # политики (ТЗ 18, FOC-1; ТЗ 11e, POL-11/13): минимум одна с focus background (афк), она по умолчанию;
             # переходы в формате ядра (из фоновой только запрашиваемые, см. policies.Registry.transitions)
-            "knowledge": [{"collection": c, "title": t, "scope": "rimworld", "kind": k} for c, t, k in KNOWLEDGE],
             "policies": policies.get().manifest(), "default_policy": policies.get().default,
             "workspace": dict(WORKSPACE)}
 

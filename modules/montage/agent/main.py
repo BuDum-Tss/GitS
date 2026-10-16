@@ -117,7 +117,7 @@ def build(layout: Layout = DEFAULT, *, client: ModuleClient | None = None, runne
 
 
 async def run(client: ModuleClient, manager: Manager) -> int:
-    """Подключение к ядру и работа: восстановление задач, очередь, загрузка регламента в справочник."""
+    """Подключение к ядру и работа: восстановление задач, очередь."""
     manager.start_worker()
     background: list[asyncio.Task] = []
 
@@ -126,7 +126,6 @@ async def run(client: ModuleClient, manager: Manager) -> int:
         manager.pipeline.set_sleeping(bool((client.battery or {}).get("sleeping")))
         await manager.recover()
         await manager.publish_state()
-        await manager.kb_loop()
     background.append(asyncio.create_task(after_connect()))
     try:
         return await client.run()

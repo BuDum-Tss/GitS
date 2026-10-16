@@ -39,7 +39,6 @@ async def test_full_run_with_human_approvals(tmp_path):
     assert all(v["duration_ms"] for v in plan["voiceover"])
     verdicts = rig.store.verdicts()
     assert [(v["stage"], v["answer"]) for v in verdicts] == [("plan_approval", "утвердить"), ("review", "готово")]
-    assert not rig.core.experience                                                                # правок не было
     assert job.data["claude"]["tokens"] > 0 and job.data["claude"]["session_id"] == "sess-1"
     models = {c["stage"]: c["model"] for c in rig.runner.calls}
     assert models["story"] == "opus" and models["plan"] == "opus" and models["build"] == "sonnet"
@@ -73,9 +72,6 @@ async def test_redo_plan_then_story_then_edits_go_back(tmp_path):
     build_prompts = [c["prompt"] for c in rig.runner.calls if c["stage"] == "build"]
     assert "субтитры выше" not in build_prompts[0] and "субтитры выше" in build_prompts[1]
     assert job.data["revisions"][0]["applied"] is True
-    # MON-32: правки -> опыт
-    assert rig.core.experience and rig.core.experience[0]["scope"] == "montage" and rig.core.experience[0]["confidence"] == 0.8
-    assert rig.core.experience[0]["source"] == "user"
     kinds = [(v["stage"], v["answer"]) for v in rig.store.verdicts()]
     assert kinds == [("plan_approval", "переделать план"), ("plan_approval", "переделать историю"), ("plan_approval", "утвердить"),
                      ("review", "правки"), ("review", "готово")]

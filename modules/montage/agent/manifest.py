@@ -107,10 +107,6 @@ MANIFEST = {
         {"kind": "montage.done", "description": "Ролик готов", "default_urgency": 3},
         {"kind": "montage.failed", "description": "Задача монтажа не удалась", "default_urgency": 3},
     ],
-    "knowledge": [
-        {"collection": "montage.style", "title": "Регламент монтажа", "scope": "montage", "kind": "reference"},
-        {"collection": "montage.experience", "title": "Опыт монтажа", "scope": "montage", "kind": "experience"},
-    ],
     "state": True,
     # политики фокуса (ТЗ 18, FOC-1; ТЗ 11e, POL-13; ТЗ 32): вне среды монтаж идёт в фоне (idle), в среде политика working.
     # Переходы запросами workspace.enter / workspace.exit / workspace.resume (прежние policy.activate, focus.release, focus.resume

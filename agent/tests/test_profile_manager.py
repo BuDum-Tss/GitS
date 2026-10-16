@@ -39,7 +39,6 @@ def test_files_cover_the_spec_table():
     assert profiles["work"].focus_modules == ("desktop",) and profiles["work"].priority == 20
     assert profiles["rimworld"].focus_modules == ("rimworld",) and profiles["rimworld"].priority == 50
     assert not profiles["rimworld"].activate and profiles["rimworld"].workspace == "rimworld"      # ТЗ 32, WS-5: окно и game_running не входят
-    assert profiles["rimworld"].knowledge == ("rimworld.wiki", "rimworld.defs", "rimworld.experience")
     assert profiles["rimworld"].attention["weights"] == {"rimworld.*": 1.5, "telegram.group": 0.4}
     assert profiles["editing"].focus_modules == ("montage", "desktop") and profiles["editing"].priority == 30
     assert profiles["editing"].activate["foreground_apps"] == ["davinciresolve", "resolve", "premiere pro", "vegas"]

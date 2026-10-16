@@ -6,7 +6,6 @@ tone: >
   только если видишь конкретную проблему.
 focus_modules: [montage, desktop]
 memory_scopes: [montage]
-knowledge: []
 attention:
   weights: {}
 # окно редактора включает только тон и инструменты (ситуация внутри assistant, ТЗ 32 WS-7); среда montage только по импульсу

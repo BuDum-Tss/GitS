@@ -240,6 +240,8 @@ class ThoughtJournal(Protocol):
 
     def recent(self, n: int = 50) -> list[dict]: ...
 
+    def update(self, thought_id: str, **fields: Any) -> bool: ...
+
 
 @runtime_checkable
 class EventSink(Protocol):

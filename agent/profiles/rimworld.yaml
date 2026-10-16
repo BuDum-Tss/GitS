@@ -6,7 +6,6 @@ tone: >
   речами, говори о происходящем в колонии.
 focus_modules: [rimworld]
 memory_scopes: [rimworld]
-knowledge: [rimworld.wiki, rimworld.defs, rimworld.experience]
 attention:
   weights: {"rimworld.*": 1.5, "telegram.group": 0.4}
 # ТЗ 32, WS-5: окно игры и game_running профиль не включают; он действует, пока агент в среде rimworld

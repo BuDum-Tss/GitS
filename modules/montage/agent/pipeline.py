@@ -945,41 +945,9 @@ class Pipeline:
                         text=f"Ролик готов: {out}" if out else "Ролик готов")
         await self._emit(job, "montage.done", f"Монтаж «{job.data['title']}» закончен, файл: {out}.",
                          data={"job_id": job.job_id, "path": out, "qa_report": qa_final}, urgency_hint=3)
-        try:
-            await self._experience(job)
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:                                    # опыт не должен ломать готовую задачу
-            await self._log(job, "experience_failed", error=str(e)[:200])
         removed = await asyncio.to_thread(self.store.cleanup, int(self.setting("keep_jobs")))
         if removed:
             log.info("убраны старые задачи: %s", ", ".join(removed))
-
-    async def _experience(self, job: Job) -> None:
-        """MON-32: если были правки, агент формулирует 1-3 вывода, они идут в опыт (scope montage, source user, 0.8)."""
-        revs = [r["notes"] for r in job.data.get("revisions", []) if r.get("notes")]
-        if not revs:
-            return
-        r = self._request(job)
-        prompt = self._prompt("experience", revisions="\n".join(f"{i}. {n}" for i, n in enumerate(revs, 1)),
-                              context=f"площадка {r.get('platform')}, вид {r.get('source_kind')}, формат {r.get('format')}")
-        res = await self._agent(job, "experience", prompt, model=self._model("build"), readonly=True, fresh=True)
-        a, b = res.text.find("{"), res.text.rfind("}")
-        try:
-            doc = json.loads(res.text[a:b + 1])
-        except ValueError:
-            return
-        for c in (doc.get("conclusions") or [])[:3]:
-            statement = str((c or {}).get("statement") or "").strip()
-            if not statement:
-                continue
-            try:
-                await self.core.experience_add({"scope": "montage", "statement": statement, "context": str(c.get("context") or "")[:300],
-                                                "outcome": "success", "source": "user", "confidence": 0.8,
-                                                "evidence": [f"montage:{job.job_id}"]})
-            except ToolError as e:
-                await self._log(job, "experience_unavailable", code=e.code)
-                return
 
 
 # ==================================================================================================== вспомогательное

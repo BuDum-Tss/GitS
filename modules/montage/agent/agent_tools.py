@@ -19,7 +19,6 @@ from core_api import CoreAPI
 from jobs import Job, JobStore
 from layout import Layout
 
-KB_COLLECTIONS = ["montage.style", "montage.experience"]
 VOICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 MAX_ASKS = {"clarify": 2, "build": 1}                      # ТЗ 20 §6 и §8.2
 MAX_VOICE_CHARS = 400
@@ -78,14 +77,6 @@ class AgentTools:
             raise ToolError(f"text: от 1 до {MAX_VOICE_CHARS} символов", code="bad_request")
         out = await synthesize_to(env, id, text, emotion or "neutral")
         return out
-
-    # -------------------------------------------------------------------------------------------- kb_lookup
-    async def kb_lookup(self, query: str) -> str:
-        try:
-            text = await self.env.core.lookup(query, KB_COLLECTIONS)
-        except ToolError as e:
-            return f"справочник недоступен ({e.code}): {e.message}. Опирайся на регламент в системном промпте."
-        return text or "по этому запросу в справочнике ничего нет"
 
     # -------------------------------------------------------------------------------------------- transcript_words
     async def transcript_words(self, from_ms: int, to_ms: int) -> list[dict]:

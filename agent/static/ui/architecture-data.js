@@ -277,9 +277,18 @@ window.ARCH_DATA = {
      "t": "Журнал мыслей",
      "tag": "I",
      "new": false,
-     "do": "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов",
+     "do": "краткосрочная память: значимые рассуждения с оценкой важности 1-5 (пустые и оборванные не пишутся), важные переносятся в долговременную память, мелкие забываются через сутки; не озвучиваются",
      "out": "Thought",
-     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), GET /api/thoughts, вкладка «Мысли» дашборда"
+     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), domain/thoughts.py, GET /api/thoughts, вкладка «Мысли» дашборда"
+    },
+    {
+     "id": "idle",
+     "t": "Размышление в простое (IdleReflector + ThoughtConsolidator)",
+     "tag": "A",
+     "new": false,
+     "do": "когда фокус свободен, разговора нет и она не спит: осмысляет накопившиеся события (self.idle, молча, недоверенно), записывает вывод в память; созревшие мысли переносит в долговременную память",
+     "out": "Intent: записать, ничего",
+     "now": "есть: app/idle_reflection.py, app/thought_memory.py; настройка reflection.idle; материал дневника (app/diary.py)"
     }
    ]
   },
@@ -558,33 +567,6 @@ window.ARCH_DATA = {
      "do": "поиск эпизодов и дневника по смыслу, recall_episode(id) с разворотом до событий, core.memory.episodes",
      "out": "MemoryHit[]",
      "now": "есть (ТЗ 27): app/episode_recall.py, episode_routes.py"
-    },
-    {
-     "id": "lessons",
-     "t": "Уроки на ошибках (LessonService)",
-     "tag": "A",
-     "new": false,
-     "do": "шаг после сна: метки mistake журнала по ситуациям -> урок (ситуация, действие, исход, что делать иначе, уверенность, подтверждения, эпизоды); похожие сливаются (cos >= 0,90); неэффективные устаревают; доля повторов по видам ошибок",
-     "out": "Lesson",
-     "now": "есть (ТЗ 28): domain/lessons.py, app/lessons.py, adapters/lesson_store.py, lesson_service.py"
-    },
-    {
-     "id": "kb",
-     "t": "Справочники и опыт модулей (KnowledgeBase)",
-     "tag": "A",
-     "new": false,
-     "do": "коллекции общего гибридного поиска: вики и описания RimWorld, регламенты монтажа (куски 250-450 слов по заголовкам, knowledge.db); опыт модулей идёт в уроки области <модуль>.experience; запросы core.kb.ingest (права по манифесту), core.lookup, core.experience.add; загрузка скриптом tools/knowledge_ingest.py; инструмент планировщика knowledge.lookup (без каскада, web.search отдельно); справка и опыт в ответе разговора по настройке knowledge.chat (по умолчанию выкл.); перевод запроса по настройке knowledge.translate; раздел «Справочник» дашборда; набор проверки tools/knowledge_eval.py",
-     "out": "Hit, kb chunk",
-     "now": "есть (ТЗ 04): knowledge_base.py, knowledge_service.py, knowledge_routes.py, core_requests.py; в игре уроки в промпте подбираются по ситуации (modules/rimworld core_link.lessons_for)"
-    },
-    {
-     "id": "beliefs",
-     "t": "Убеждения (принимает сама)",
-     "tag": "A",
-     "new": false,
-     "do": "урок с подтверждениями >= K из >= M эпизодов становится убеждением без подтверждения человека; запись в журнал (причина, эпизоды, прежнее значение); проверка по конституции (шаблоны + модель), лимит в сутки и 12 активных; отмена владельцем в дашборде",
-     "out": "Belief, belief_log",
-     "now": "есть (ТЗ 28): те же файлы, lesson_routes.py; блок убеждений и уроков по ситуации в ContextBuilder по настройке lessons.context"
     },
     {
      "id": "elog",
@@ -956,6 +938,30 @@ window.ARCH_DATA = {
    "записать"
   ],
   [
+   "idle",
+   "elog",
+   "r",
+   "события для осмысления"
+  ],
+  [
+   "idle",
+   "reflect",
+   "flow",
+   "self.idle"
+  ],
+  [
+   "idle",
+   "thoughts",
+   "w",
+   "перенос или забывание"
+  ],
+  [
+   "idle",
+   "mw",
+   "w",
+   "важные мысли в память"
+  ],
+  [
    "reg",
    "plan",
    "use",
@@ -1206,66 +1212,6 @@ window.ARCH_DATA = {
    "erecall",
    "use",
    "recall: эпизоды и факты"
-  ],
-  [
-   "sleep",
-   "lessons",
-   "flow",
-   "разбор ошибок после сна"
-  ],
-  [
-   "lessons",
-   "elog",
-   "r",
-   "метки mistake"
-  ],
-  [
-   "lessons",
-   "epi",
-   "r",
-   "эпизоды ошибок"
-  ],
-  [
-   "lessons",
-   "lms",
-   "ext",
-   "урок, проверка убеждения"
-  ],
-  [
-   "hub",
-   "kb",
-   "flow",
-   "core.kb.ingest, core.lookup"
-  ],
-  [
-   "kb",
-   "lessons",
-   "use",
-   "опыт модулей"
-  ],
-  [
-   "ctx",
-   "kb",
-   "r",
-   "справка и опыт (knowledge.chat)"
-  ],
-  [
-   "reg",
-   "kb",
-   "use",
-   "knowledge.lookup"
-  ],
-  [
-   "lessons",
-   "beliefs",
-   "use",
-   "подтверждённый урок"
-  ],
-  [
-   "ctx",
-   "beliefs",
-   "r",
-   "убеждения и уроки по ситуации"
   ]
  ],
  "macroLabels": [

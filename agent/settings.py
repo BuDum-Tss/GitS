@@ -35,7 +35,9 @@ DEFAULTS = {
     "claude_token_budget": 3000000,   # ёмкость «батарейки»: токенов Claude за окно лимита (5 часов), см. claude_battery.py
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
     # размышление (ТЗ 30, IMP-7): шагов и токенов на мысль, размышлений в час, глубина цепочки напоминаний
-    "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3},
+    "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3,
+                   # размышление в свободное время: проверка раз в check_s, не чаще раза в min_gap_s, нужно не меньше min_events событий
+                   "idle": {"enabled": True, "check_s": 120, "min_gap_s": 1800, "max_events": 40, "min_events": 3, "text_chars": 1800}},
     # эпизоды и режим сна (ТЗ 27): сон при простое, расписании или «догоняющий»; нарезка `cut`; в контекст ответа эпизоды идут,
     # если context=True (по умолчанию выключено); raw_keep_days > 0 удаляет сырые события уже записанных эпизодов
     "episodes": {"enabled": True, "idle_min": 15, "min_gap_min": 20, "schedule_hours": [3], "catchup_after_h": 12,
@@ -50,18 +52,6 @@ DEFAULTS = {
     "latency_budget": {"stt_done": 1500, "core_in": 400, "classify_done": 400, "route": 100, "retrieve_done": 450,
                        "llm_first_token": 2500, "first_sentence_ready": 1200, "llm_done": 6000, "tts_first_audio": 1500,
                        "play_start": 400, "end_to_sound": 4500},
-    # уроки и убеждения (ТЗ 28): разбор ошибок во сне; context=True кладёт убеждения и уроки по ситуации в контекст ответа (по
-    # умолчанию выключено, поведение прежнее); K подтверждений из M разных эпизодов делают урок убеждением, не больше
-    # belief_per_day в сутки и beliefs_max активных; expire_repeats повторов после применения устаревляют урок
-    "lessons": {"enabled": True, "context": False, "max_context": 3, "merge_cos": 0.90, "merge_sim": 0.6, "group_sim": 0.25,
-                "promote_k": 3, "promote_m": 2, "belief_per_day": 2, "beliefs_max": 12, "belief_chars": 600,
-                "expire_repeats": 2, "stale_days": 60, "batch": 200},
-    # справочники (ТЗ 04, KB-21): пороги поиска, справка в ответе разговора (chat, по умолчанию выключено: поведение прежнее),
-    # перевод запроса для поиска по иноязычному справочнику (translate: код языка или "" - выключено, KB-6), области графа (scopes)
-    "knowledge": {"min_cos": 0.60, "min_cos_bm25": 0.45, "experience_boost": 1.2, "chat": False, "chat_budget_ms": 300,
-                  "chat_k": 3, "chat_chars": 1200, "chat_experience": 3, "chat_experience_chars": 600,
-                  "lookup_k": 5, "lookup_chunk_chars": 600, "lookup_chars": 2500, "translate": "", "translate_cache": 1000,
-                  "scopes": True},
     "dev_mode": False,          # режим разработчика: во вкладке «Модули» видны примеры для разработчиков (модуль echo)
     "pet_visible": True,        # показывать окно питомца (модуль pet при этом остаётся подключённым)
     "volume": 100,              # громкость озвучки, 0-100
@@ -91,7 +81,7 @@ DEFAULTS = {
     },
 }
 # словари, которые update() сливает на один уровень вглубь (modules.<id> и attention.<ключ> целиком не затираются)
-_DEEP_KEYS = ("modules", "attention", "context", "reflection", "episodes", "fast_contour", "latency_budget", "lessons", "knowledge")
+_DEEP_KEYS = ("modules", "attention", "context", "reflection", "episodes", "fast_contour", "latency_budget")
 _dir = Path(os.getenv("MEMORY_DIR", "./memory"))
 
 

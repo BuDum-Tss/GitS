@@ -29,7 +29,6 @@ GOOD = {
         {"kind": "rimworld.raid", "description": "Начался набег на колонию", "default_urgency": 5},
         {"kind": "rimworld.letter", "description": "Игровое письмо", "default_urgency": 2},
     ],
-    "knowledge": [{"collection": "rimworld.wiki", "title": "Вики RimWorld", "scope": "rimworld", "kind": "reference"}],
     "graph": True,
     "state": True,
 }
@@ -110,7 +109,6 @@ def test_semver_ok(version):
     (make(settings_schema=[]), "settings_schema"),
     (make(tools={}), "tools"),
     (make(emits={}), "emits"),
-    (make(knowledge={}), "knowledge"),
     (make(graph="yes"), "graph"),
     (make(state=1), "state"),
 ])
@@ -193,19 +191,6 @@ def test_emit_invalid(emit, needle):
 def test_emit_kinds_unique():
     e = {"kind": "rimworld.raid", "description": "x", "default_urgency": 3}
     assert any("повторяется" in p for p in problems_of(make(emits=[e, dict(e)])))
-
-
-@pytest.mark.parametrize("missing", ["collection", "title", "scope", "kind"])
-def test_knowledge_fields_required(missing):
-    coll = dict(GOOD["knowledge"][0])
-    coll.pop(missing)
-    problems = problems_of(make(knowledge=[coll]))
-    assert any(missing in p for p in problems), problems
-
-
-def test_knowledge_collections_unique():
-    coll = dict(GOOD["knowledge"][0])
-    assert any("повторяется" in p for p in problems_of(make(knowledge=[coll, dict(coll)])))
 
 
 @pytest.mark.parametrize("name, spec, needle", [

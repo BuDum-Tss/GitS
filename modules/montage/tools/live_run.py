@@ -56,14 +56,6 @@ async def run(smoke: bool, models: str, resume: str | None = None) -> int:
         usage.append(body)
         return {}
 
-    @core.on_request("core.kb.ingest")
-    def ingest(body):
-        return {"added": len(body["documents"]), "updated": 0, "skipped": 0}
-
-    @core.on_request("core.experience.add")
-    def experience(body):
-        return {"id": "e", "merged": False}
-
     t0 = time.time()
     async with core:
         client = ModuleClient(build_manifest(), url=core.url, token=core.token)

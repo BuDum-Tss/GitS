@@ -7,7 +7,6 @@ tone: >
   Сейчас ты спишь: разбираешь память и отдыхаешь. Сложных задач не берёшь, только лёгкий разговор. Говори спокойно и коротко.
 focus_modules: []
 memory_scopes: [assistant]
-knowledge: []
 attention:
   weights: {}
 activate: {}

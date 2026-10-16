@@ -25,7 +25,7 @@ from pathlib import Path
 from layout import Layout
 
 MCP_PREFIX = "mcp__montage__"
-OWN_TOOLS = ("ask_user", "progress", "synthesize_voice", "kb_lookup", "transcript_words")
+OWN_TOOLS = ("ask_user", "progress", "synthesize_voice", "transcript_words")
 READ_TOOLS = ("Read", "Glob", "Grep")
 WRITE_TOOLS = ("Write", "Edit")
 PASS_TOOLS = ("Skill", "TodoWrite")
