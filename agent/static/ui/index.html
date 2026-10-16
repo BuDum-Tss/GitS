@@ -238,6 +238,18 @@
             <ul id="relations" class="space-y-2 text-sm"></ul>
           </div>
           <div class="divider my-0"></div>
+          <div>
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <div class="font-medium">Эпизоды и сон</div>
+              <span id="sleep-status" class="text-xs opacity-70"></span>
+              <button id="sleep-now" class="btn btn-xs btn-ghost">Спать сейчас</button>
+              <button id="sleep-stop" class="btn btn-xs btn-ghost">Прервать</button>
+            </div>
+            <div id="episodes" class="space-y-2 text-sm"></div>
+            <div class="font-medium mt-4 mb-2">Дневник</div>
+            <div id="diary" class="space-y-2 text-sm"></div>
+          </div>
+          <div class="divider my-0"></div>
                     <div class="flex flex-wrap items-center gap-3">
             <div class="font-medium">Граф памяти</div>
             <input id="graph-search" class="input input-bordered input-sm w-48" placeholder="Найти узел…" list="graph-names">
@@ -686,6 +698,29 @@ async function loadGraph() {
   if (GR.selected && GR.cy.getElementById(GR.selected).length) showGraphNode(GR.selected);
 }
 setInterval(() => loadGraph().catch(() => {}), 6000);
+
+// ── эпизоды, дневник и сон (ТЗ 27) ──
+async function loadEpisodes() {
+  if ($('tab-memory').classList.contains('hidden')) return;
+  const [eps, dia, sl] = await Promise.all(['/api/episodes?limit=20', '/api/diary?limit=10', '/api/sleep'].map(u => fetch(u).then(r => r.json())));
+  const c = eps.counts || {};
+  $('sleep-status').textContent = (sl.state === 'sleeping' ? 'спит (' + (sl.mode || '') + ')' : 'бодрствует') +
+    ` · эпизодов: ${c.embedded || 0} готово, ${c.pending || 0} ждут, ${c.failed || 0} без резюме`;
+  $('episodes').innerHTML = (eps.episodes || []).map(e => `<details class="rounded-box border border-base-300 p-2" data-ep="${esc(e.id)}">
+    <summary class="cursor-pointer"><b>${esc(e.title || 'без резюме')}</b> <span class="opacity-60">${esc(e.when)} · ${esc(e.status)} · v${e.version}</span></summary>
+    <div class="mt-1">${esc(e.summary || '')}</div>${e.outcome ? `<div class="opacity-70">Исход: ${esc(e.outcome)}</div>` : ''}
+    ${(e.quotes || []).map(q => `<div class="opacity-70">«${esc(q)}»</div>`).join('')}
+    <div class="ep-src text-xs opacity-70 mt-1"></div></details>`).join('') || '<div class="opacity-60">Эпизодов пока нет: они появляются во сне.</div>';
+  $('diary').innerHTML = (dia.diary || []).map(d => `<div class="rounded-box border border-base-300 p-2"><div class="text-xs opacity-60">${esc(d.day)}</div>${esc(d.text)}</div>`).join('') || '<div class="opacity-60">Записей пока нет.</div>';
+}
+document.addEventListener('toggle', async ev => {
+  const d = ev.target; if (!d.dataset || !d.dataset.ep || !d.open) return;
+  const ep = await (await fetch('/api/episodes/' + encodeURIComponent(d.dataset.ep))).json();
+  d.querySelector('.ep-src').innerHTML = (ep.events || []).map(e => `[${e.id}] ${esc(e.when)} ${esc(e.kind)}: ${esc(e.text)}`).join('<br>');
+}, true);
+$('sleep-now').onclick = () => fetch('/api/sleep/now', {method: 'POST'}).then(loadEpisodes);
+$('sleep-stop').onclick = () => fetch('/api/sleep/interrupt', {method: 'POST'}).then(loadEpisodes);
+setInterval(() => loadEpisodes().catch(() => {}), 8000);
 
 // ── чат ──
 let stick = true;

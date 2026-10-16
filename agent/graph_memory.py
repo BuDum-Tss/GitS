@@ -478,13 +478,13 @@ class GraphMemory:
         except OSError:
             pass
 
-    def enqueue(self, speaker: str, text: str, ts: float | None = None):
-        """Положить реплику в очередь на разбор. Короткое и пустое не берём."""
+    def enqueue(self, speaker: str, text: str, ts: float | None = None, source: str | None = None):
+        """Положить реплику в очередь на разбор. Короткое и пустое не берём. `source` - id эпизода (ТЗ 27): факт знает, откуда он."""
         text = text.strip()
         if len(text) < MIN_CHARS:
             return
         self._queue.append({"speaker": speaker or "Пользователь", "text": text[:1500], "ts": ts or time.time(), "tries": 0,
-                            "character": self._character})
+                            "character": self._character, **({"source": str(source)[:60]} if source else {})})
         self._queue = self._queue[-MAX_QUEUE:]
         self._save()
         self._wake.set()
@@ -528,7 +528,9 @@ class GraphMemory:
             self._queue.pop(0)
             self._save()
             if facts:
-                events_log.log("memory", f"граф: +{len(facts)} фактов: " + "; ".join(f.fact for f in facts)[:300])
+                src = f" [эпизод {item['source']}]" if item.get("source") else ""
+                events_log.log("memory", f"граф: +{len(facts)} фактов{src}: " + "; ".join(f.fact for f in facts)[:300],
+                               **({"episode": item["source"]} if item.get("source") else {}))
             return True
         except Exception as e:
             item["tries"] += 1

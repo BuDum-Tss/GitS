@@ -86,7 +86,7 @@ class Companion:
         self.job_wait = None                     # async (module_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
         if memory_reader is None or memory_writer is None:
             self._mem = UserMemory(memory_dir)                 # личная память на диске (адаптеры по умолчанию)
-            default_memory = UserMemoryAdapter(lambda: self._mem, lambda: self.graph)
+            default_memory = UserMemoryAdapter(lambda: self._mem, lambda: self.graph, lambda: getattr(self, "episodes", None))
         else:
             self._mem = None                                   # память передана контрактами: диска не трогаем
             default_memory = None

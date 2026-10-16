@@ -894,6 +894,12 @@ class ModuleClient:
             body["limit"] = limit
         return list(R.as_dict(await self._core("core.memory.recall", body)).get("facts", []))
 
+    async def memory_episodes(self, query: str | None = None, *, id: str | None = None, day: str | None = None,
+                              limit: int | None = None) -> list[dict]:
+        """`core.memory.episodes` (ТЗ 27): эпизоды памяти ядра по смыслу запроса, за сутки или один по id (с событиями-источниками)."""
+        body: dict = {k: v for k, v in (("query", query), ("id", id), ("day", day), ("limit", limit)) if v}
+        return list(R.as_dict(await self._core("core.memory.episodes", body)).get("episodes", []))
+
     async def memory_remember(self, text: str, source: str | None = None) -> bool:
         """`core.memory.remember` (planned): запомнить факт. Пока ToolError(unavailable)."""
         body: dict = {"text": text}

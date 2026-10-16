@@ -438,7 +438,7 @@ window.ARCH_DATA = {
      "t": "MemoryWriter",
      "tag": "A",
      "new": false,
-     "do": "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; (план) эпизоды и сон",
+     "do": "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; во сне: факты эпизодов в граф со ссылкой на эпизод (ТЗ 27)",
      "out": "MemoryRecord",
      "now": "app/memory_capture.py: _learn, _consolidate, remember_text + graph_memory.step"
     },
@@ -447,9 +447,36 @@ window.ARCH_DATA = {
      "t": "MemoryReader",
      "tag": "A",
      "new": false,
-     "do": "граф + воспоминания о себе + записи; гибридный поиск (search/) готов, подключение коллекций в чтение памяти - дальше",
+     "do": "граф + воспоминания о себе + записи; гибридный поиск (search/) подключён: recall() ищет в записях, эпизодах и дневнике (ТЗ 27)",
      "out": "MemoryHit[]",
      "now": "graph.search, self_memories, MemoryStore.relevant (два поиска); search/: HybridIndex (FTS5 + векторы + свежесть), HybridSearch, переписывание запроса, Embedder"
+    },
+    {
+     "id": "epi",
+     "t": "Эпизоды (нарезка + хранилище)",
+     "tag": "A",
+     "new": true,
+     "do": "журнал -> эпизоды: границы без LLM (пауза, фокус, задача, собеседник), пики яркости, окно вокруг пика; episodes.db со статусами и версиями",
+     "out": "Episode",
+     "now": "есть (ТЗ 27): domain/episodes.py, app/episode_cutter.py, adapters/episode_store.py"
+    },
+    {
+     "id": "sleep",
+     "t": "Режим сна (SleepScheduler + SleepRunner)",
+     "tag": "A",
+     "new": true,
+     "do": "фоновая политика памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами",
+     "out": "episode.summary, дневник",
+     "now": "есть (ТЗ 27): app/sleep.py, app/sleep_scheduler.py, app/episode_summary.py, app/diary.py"
+    },
+    {
+     "id": "erecall",
+     "t": "EpisodeRecall",
+     "tag": "A",
+     "new": true,
+     "do": "поиск эпизодов и дневника по смыслу, recall_episode(id) с разворотом до событий, core.memory.episodes",
+     "out": "MemoryHit[]",
+     "now": "есть (ТЗ 27): app/episode_recall.py, episode_routes.py"
     },
     {
      "id": "elog",
@@ -924,6 +951,48 @@ window.ARCH_DATA = {
    "falk",
    "ext",
    null
+  ],
+  [
+   "sleep",
+   "epi",
+   "use",
+   "нарезка и статусы"
+  ],
+  [
+   "epi",
+   "elog",
+   "r",
+   "события после отметки N"
+  ],
+  [
+   "sleep",
+   "mw",
+   "w",
+   "факты со ссылкой на эпизод"
+  ],
+  [
+   "sleep",
+   "lms",
+   "ext",
+   "резюме, дневник (короткие запросы)"
+  ],
+  [
+   "sleep",
+   "norm",
+   "flow",
+   "episode.summary"
+  ],
+  [
+   "erecall",
+   "epi",
+   "r",
+   "эпизоды, источники"
+  ],
+  [
+   "mr",
+   "erecall",
+   "use",
+   "recall: эпизоды и факты"
   ]
  ],
  "macroLabels": [

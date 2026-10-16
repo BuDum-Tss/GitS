@@ -10,9 +10,12 @@ import character_memory
 
 
 class UserMemoryAdapter:
-    def __init__(self, get_mem: Callable[[], Any], get_graph: Callable[[], Any]):
+    def __init__(self, get_mem: Callable[[], Any], get_graph: Callable[[], Any],
+                 get_episodes: Callable[[], Any] | None = None):
+        """get_episodes() -> сервис эпизодов (`episode_service`, у него `.recall`) или None: тогда `recall` отдаёт только записи."""
         self._get_mem = get_mem
         self._get_graph = get_graph
+        self._get_episodes = get_episodes or (lambda: None)
 
     def _store(self):
         mem = self._get_mem()
@@ -62,6 +65,19 @@ class UserMemoryAdapter:
         store = self._store()
         return store.search(query, k=k) if store is not None else []
 
+    async def recall(self, query: str, k: int = 6) -> list[dict]:
+        """Записи по теме (как `search`) и, если подключены эпизоды, эпизоды и дневник по смыслу (гибридный поиск, ТЗ 27).
+        Сбой поиска эпизодов не мешает запискам."""
+        import asyncio
+        out = [{"text": h.get("text", ""), "kind": "fact", "id": ""} for h in await asyncio.to_thread(self.search, query, k)]
+        eps = self._get_episodes()
+        if eps is not None:
+            try:
+                out += [{"text": h["text"], "kind": h["kind"], "id": h["id"]} for h in await eps.recall.find(query, k=max(1, k // 2))]
+            except Exception:
+                pass
+        return out[:k + 3]
+
     def plans_to_nudge(self) -> list[dict]:
         store = self._store()
         return store.plans_to_nudge() if store is not None else []
@@ -86,10 +102,13 @@ class UserMemoryAdapter:
         if mem is not None:
             mem.add_activity(app, category, summary)
 
-    def enqueue_for_graph(self, speaker: str, text: str) -> None:
+    def enqueue_for_graph(self, speaker: str, text: str, source: str | None = None) -> None:
         graph = self._get_graph()
         if graph is not None:
-            graph.enqueue(speaker, text)
+            if source:
+                graph.enqueue(speaker, text, source=source)         # ТЗ 27: факт из эпизода помнит, из какого
+            else:
+                graph.enqueue(speaker, text)
 
     def forget_matching(self, text: str) -> int:
         mem = self._get_mem()
