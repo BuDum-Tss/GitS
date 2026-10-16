@@ -1,0 +1,18 @@
+{"q": "какой минимальный размер спальни, чтобы колонисты не злились", "expect_uri_contains": ["Bedroom"]}
+{"q": "сколько хранится пеммикан", "expect_uri_contains": ["Food"]}
+{"q": "что нужно изучить для солнечных панелей", "expect_uri_contains": ["Research"]}
+{"q": "как лечить чуму у колонистов", "expect_uri_contains": ["Plague"]}
+{"q": "чем защититься от налёта пиратов", "expect_uri_contains": ["Raid"]}
+{"q": "точность пистолета на большой дальности", "expect_uri_contains": ["Pistol"]}
+{"q": "холодильник и морозильная комната электричество", "expect_uri_contains": ["Cooler"]}
+{"q": "от чего зависит настроение колониста", "expect_uri_contains": ["Mood"]}
+{"q": "как не дать пленнику сбежать из тюрьмы", "expect_uri_contains": ["Prison"]}
+{"q": "чем торговать с караванами и как купить лекарства", "expect_uri_contains": ["Trade"]}
+{"q": "как тушить пожар в колонии", "expect_uri_contains": ["Fire"]}
+{"q": "что сажать зимой в теплице", "expect_uri_contains": ["Farm"]}
+{"q": "сырое мясо портится без холодильника", "expect_uri_contains": ["Food", "Cooler"]}
+{"q": "какая погода сегодня в Париже", "offtopic": true}
+{"q": "как дела", "offtopic": true}
+{"q": "расскажи анекдот про программистов", "offtopic": true}
+{"q": "кто выиграл чемпионат мира по шахматам", "offtopic": true}
+{"q": "напомни купить молоко завтра", "offtopic": true}

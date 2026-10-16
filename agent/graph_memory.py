@@ -29,6 +29,7 @@ os.environ.setdefault("SEMAPHORE_LIMIT", "2")           # локальной м�
 import character
 import character_memory
 import events_log
+import graph_scope
 import settings
 from envcompat import env
 
@@ -42,6 +43,7 @@ FALKOR_PORT = int(env("GITS_GRAPH_PORT", "6380"))
 MIN_SCORE = 0.5                   # косинус «запрос ↔ факт»: ниже считаем несвязанным (релевантное ~0.75, мусор ~0.3)
 MIN_CHARS = 12                    # короче реплику на факты не разбираем
 MAX_QUEUE = 300
+CONTEXT_FACTS = 3                 # фактов графа в контексте ответа (ТЗ 04, KB-13)
 MAX_ATTEMPTS = 3
 
 _emb_mode = contextvars.ContextVar("emb_mode", default="document")   # query | document: у EmbeddingGemma разные приставки
@@ -243,11 +245,22 @@ class GraphitiBackend:
         await g.add_triplet(s, e, o)
         return e.uuid
 
-    async def search(self, query: str, limit: int, group: str = character.DEFAULT_ID) -> list[dict]:
+    async def groups_with_entities(self, group: str, names: list[str]) -> list[str]:
+        """Области (группы той же базы), где есть узел с одним из имён (без регистра): для поиска в чужой области (KB-13)."""
+        from falkordb import FalkorDB
+
+        def run() -> list[str]:
+            gr = FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT).select_graph(character.database_of(group))
+            rows = gr.query("MATCH (n:Entity) WHERE toLower(n.name) IN $names RETURN DISTINCT n.group_id",
+                            {"names": [n.lower() for n in names]}).result_set
+            return [r[0] for r in rows]
+        return await asyncio.to_thread(run)
+
+    async def search(self, query: str, limit: int, group: str = character.DEFAULT_ID, groups: list[str] | None = None) -> list[dict]:
         g = await self._client(character.database_of(group))
         tok = _emb_mode.set("query")
         try:
-            edges = await g.search(query, group_ids=[group], num_results=limit)
+            edges = await g.search(query, group_ids=groups or [group], num_results=limit)
         finally:
             _emb_mode.reset(tok)
         return [{"uuid": e.uuid, "fact": e.fact, "valid_at": e.valid_at, "invalid_at": e.invalid_at} for e in edges]
@@ -438,6 +451,9 @@ class GraphMemory:
         self.backend = backend or GraphitiBackend()
         self.extractor = extractor or FactExtractor()
         self._busy = busy or (lambda: False)         # () -> True, пока идёт разговор: тогда не занимаем модель
+        # области (ТЗ 04, KB-12/13): scopes_of() - области активного профиля, scope_of(текст) - область нового факта; без них все в global
+        self.scopes_of = None
+        self.scope_of = None
         self._queue: list[dict] = self._load()
         self._wake = asyncio.Event()
         self._status = "ещё не проверялась"
@@ -517,12 +533,20 @@ class GraphMemory:
             facts = await self.extractor.extract(item["speaker"], item["text"])
             when = datetime.fromtimestamp(item["ts"], timezone.utc)
             names = self._names(char_id)
+            fact_group = group
+            if facts and self.scope_of is not None:       # KB-12: факт по теме профиля уходит в его область, при сомнении global
+                try:
+                    scope = item.get("scope") or await self.scope_of(item["text"])
+                except Exception:
+                    scope = graph_scope.GLOBAL
+                if scope and scope != graph_scope.GLOBAL:
+                    fact_group = character.group_id(char_id, scope)
             written = []
             for f in facts:
                 if f.subject.lower() in names:            # CHR-18: реплика собеседника не пишет в «я» персонажа
                     await self._about_character(f, group)
                     continue
-                await self.backend.add_fact(f, when, group)
+                await self.backend.add_fact(f, when, fact_group)
                 written.append(f)
             facts = written
             self._queue.pop(0)
@@ -644,7 +668,11 @@ class GraphMemory:
         if not query.strip() or not await self._ready():
             return []
         try:
-            found = await self.backend.search(query, limit * 2, self.group())
+            groups = await self.search_groups(query)
+            if len(groups) > 1:                       # KB-13: global + области профиля (+ чужая по названной сущности)
+                found = await self.backend.search(query, limit * 2, self.group(), groups=groups)
+            else:
+                found = await self.backend.search(query, limit * 2, self.group())
             if not include_old:
                 found = [f for f in found if not f.get("invalid_at")]
             if not found:
@@ -655,6 +683,27 @@ class GraphMemory:
         except Exception as e:
             logger.warning(f"Граф, поиск: {e}")
             return []
+
+    async def search_groups(self, query: str) -> list[str]:
+        """Группы поиска (KB-13): личная память + области активного профиля; чужая область добавляется, только если в реплике
+        названа сущность, которая в графе есть лишь в ней (точное имя узла без регистра)."""
+        base = self.group()
+        groups = [base]
+        if self.scopes_of is None or not settings.load().get("knowledge", {}).get("scopes", True):
+            return groups
+        try:
+            own = [character.group_id(self._character, s) for s in self.scopes_of() if s and s != graph_scope.GLOBAL]
+            groups += [g for g in own if g not in groups]
+            finder = getattr(self.backend, "groups_with_entities", None)
+            if finder is not None:
+                names = graph_scope.entity_candidates(query)
+                if names:
+                    foreign = await finder(base, names)
+                    if foreign and not set(foreign) & set(groups):
+                        groups += [g for g in foreign if g not in groups][:graph_scope.MAX_FOREIGN]
+        except Exception as e:
+            logger.info(f"Граф, области поиска: {e}")
+        return groups
 
     async def self_memories(self, query: str, n: int = character_memory.N_PICK) -> list[dict]:
         """Воспоминания персонажа о себе, подходящие к реплике (ТЗ 05, CHR-19). Пусто, если ничего не прошло порог."""
@@ -682,7 +731,7 @@ class GraphMemory:
             return self._character
 
     async def context_block(self, query: str) -> str:
-        facts = await self.search(query, limit=6)
+        facts = await self.search(query, limit=CONTEXT_FACTS)
         if not facts:
             return ""
         return "Что ты знаешь по теме (из памяти-графа, это проверенные факты):\n" + "\n".join(f"- {f['fact']}" for f in facts)

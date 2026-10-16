@@ -120,7 +120,7 @@ PUBLIC_ROUTES = {
     ("POST", "/api/modules/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"),
     ("POST", "/api/attention/rules/clear"), ("GET", "/api/focus"), ("GET", "/api/affect"), ("POST", "/api/affect/reset"),
     ("GET", "/api/thoughts"), ("GET", "/api/episodes"), ("GET", "/api/episodes/{id}"), ("GET", "/api/diary"), ("GET", "/api/sleep"),
-    ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("GET", "/api/lessons"), ("POST", "/api/lessons/seen"), ("POST", "/api/beliefs/{change}/revoke"), ("POST", "/api/focus/pin"), ("POST", "/api/focus/dnd"), ("POST", "/api/focus/allow_once"),
+    ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("GET", "/api/lessons"), ("GET", "/api/knowledge/collections"), ("GET", "/api/knowledge/search"), ("DELETE", "/api/knowledge/doc/{id}"), ("DELETE", "/api/knowledge/collection/{id}"), ("POST", "/api/lessons/seen"), ("POST", "/api/beliefs/{change}/revoke"), ("POST", "/api/focus/pin"), ("POST", "/api/focus/dnd"), ("POST", "/api/focus/allow_once"),
     ("POST", "/api/notify"), ("GET", "/api/jobs"), ("POST", "/api/jobs/{module}/{job_id}/cancel"),
     ("POST", "/api/jobs/{module}/{job_id}/answer"),
 }

@@ -125,6 +125,31 @@ class HybridIndex:
         with self._lock:
             return [r[0] for r in self._db.execute("SELECT key FROM docs WHERE collection=?", (collection,)).fetchall()]
 
+    def delete_collection(self, collection: str) -> int:
+        with self._lock:
+            ids = [r[0] for r in self._db.execute("SELECT id FROM docs WHERE collection=?", (collection,)).fetchall()]
+            for i in ids:
+                self._db.execute("DELETE FROM docs_fts WHERE rowid=?", (i,))
+            self._db.execute("DELETE FROM docs WHERE collection=?", (collection,))
+            self._db.commit()
+            return len(ids)
+
+    def stats(self) -> dict[str, dict]:
+        """По коллекциям: куски, документы (по `meta.uri`, иначе по ключу без `#номер`) и время последнего обновления."""
+        out: dict[str, dict] = {}
+        with self._lock:
+            rows = self._db.execute("SELECT collection, key, ts, meta FROM docs").fetchall()
+        for coll, key, ts, meta_json in rows:
+            st = out.setdefault(coll, {"chunks": 0, "docs": set(), "updated": 0.0})
+            try:
+                uri = json.loads(meta_json or "{}").get("uri")
+            except ValueError:
+                uri = None
+            st["chunks"] += 1
+            st["docs"].add(uri or key.rsplit("#", 1)[0])
+            st["updated"] = max(st["updated"], ts or 0.0)
+        return {c: {"chunks": v["chunks"], "docs": len(v["docs"]), "updated": v["updated"]} for c, v in out.items()}
+
     def collections(self) -> dict[str, int]:
         with self._lock:
             return dict(self._db.execute("SELECT collection, COUNT(*) FROM docs GROUP BY collection").fetchall())
@@ -154,11 +179,12 @@ class HybridIndex:
 
     def search(self, query: str, qvec: list[float] | None = None, *, collections: list[str] | None = None, k: int = 5,
                since: float | None = None, until: float | None = None, meta: dict | None = None,
-               include_stale: bool = False, cfg: SearchConfig | None = None) -> list[Hit]:
-        """meta: точное совпадение полей мета-данных записи. qvec нет (эмбеддер недоступен): только FTS, без порога cos."""
+               include_stale: bool = False, cfg: SearchConfig | None = None, fts_text: str | None = None) -> list[Hit]:
+        """meta: точное совпадение полей мета-данных записи. qvec нет (эмбеддер недоступен): только FTS, без порога cos.
+        fts_text: другой текст для поиска по словам (перевод запроса, ТЗ 04 KB-6); вектор строится по `query`."""
         cfg = cfg or SearchConfig()
         where, args = self._where(collections, since, until, meta, include_stale)
-        match = fts_query(query)
+        match = fts_query(fts_text if fts_text else query)
         with self._lock:
             fts_rank: dict[int, int] = {}
             if match:
