@@ -3,6 +3,8 @@
 import asyncio
 import logging
 
+import flow_trace
+
 logger = logging.getLogger("hub")
 
 PRESENCE_MIN_INTERVAL_S = 0.1          # CORE-5: тема presence не чаще 10 раз в секунду
@@ -66,6 +68,11 @@ class Outbound:
         if data is not None:
             self._presence_last = self._hub._monotonic()
             self.notify("presence", data)
+            try:
+                if self._hub.is_connected("pet"):                        # ТЗ 17: питомец получает присутствие, это его «вывод»
+                    flow_trace.step(None, "out_pet", "speech_queue", "out_pet", "presence", label="presence")
+            except Exception:
+                pass
 
     async def send_job_answer(self, module_id: str, job_id: str, question_id: str, answer) -> bool:
         """Ответ на вопрос задачи (MOD-20) уходит модулю как job.answer. False: модуль не подключён (отправим при

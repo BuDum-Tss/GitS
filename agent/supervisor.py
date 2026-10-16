@@ -205,6 +205,8 @@ class _Proc:
 
 
 class Supervisor:
+    _only_core = staticmethod(lambda: False)         # настройка «только ядро»; в __init__ заменяется на источник из ядра
+
     def __init__(self, specs: list[ModuleSpec], *, token: str, core_url: str,
                  enabled: Callable[[str], bool] = lambda module_id: True,
                  is_connected: Callable[[str], bool] = lambda module_id: False,
@@ -215,7 +217,8 @@ class Supervisor:
                  shutdown_wait: float = SHUTDOWN_WAIT_S, poll_manual: float = POLL_MANUAL_S,
                  pythonpath: list[str] | None = None, memory_dir: Path | str | None = None,
                  probe: Callable[[str], Awaitable[bool]] | None = None, health_interval: float = HEALTH_INTERVAL_S,
-                 announce: Callable[[str, str], Awaitable[None]] | None = None):
+                 announce: Callable[[str, str], Awaitable[None]] | None = None,
+                 only_core: Callable[[], bool] = lambda: False):
         """enabled(id) - включён ли модуль (ModuleRegistry.is_enabled); is_connected(id) - подключён ли он сейчас;
         send_shutdown(id) - послать модулю shutdown; sleep и clock подменяются в тестах (задержки перезапуска);
         pythonpath - что добавить в PYTHONPATH процессов (до установки пакета gits-sdk это GitS/sdk);
@@ -224,6 +227,7 @@ class Supervisor:
         announce(id, text) - объявление о запуске процесса модуля (правило 14: включили, перезапуск по кнопке, перезапуск
         после сбоя); текст - факт, фразу строит модель. Без него объявлений нет (тесты, скрипты)."""
         self.specs = {s.id: s for s in specs}
+        self._only_core = only_core                 # настройка «только ядро» (ТЗ 17, FLOW-1); как GITS_NO_MODULES=1, при старте
         self._announce = announce
         self.token, self.core_url = token, core_url
         self._enabled, self._is_connected, self._send_shutdown = enabled, is_connected, send_shutdown
@@ -325,7 +329,7 @@ class Supervisor:
         return self.logs_dir / f"{module_id}.log"
 
     def should_run(self, module_id: str) -> bool:
-        if os.environ.get("GITS_NO_MODULES") == "1":      # ТЗ 17, FLOW-1: режим «только ядро», службы ядра (decider) остаются
+        if os.environ.get("GITS_NO_MODULES") == "1" or self._only_core():     # ТЗ 17, FLOW-1: режим «только ядро», службы ядра (decider) остаются
             spec = self.specs[module_id]
             if spec.kind != "service" or os.environ.get("GITS_NO_DECIDER") == "1":
                 return False

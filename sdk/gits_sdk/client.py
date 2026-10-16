@@ -134,6 +134,7 @@ class ModuleClient:
         self._on_shutdown: Handler | None = None
 
         self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._connecting_ws: aiohttp.ClientWebSocketResponse | None = None    # открыто, welcome ещё не получен
         self._gen = 0                       # номер соединения: ответы старого соединения новому не шлём
         self._welcomes = 0
         self._pending: dict[str, asyncio.Future] = {}
@@ -281,9 +282,9 @@ class ModuleClient:
     async def stop(self) -> None:
         """Остановить `run()` (закрыть соединение и не переподключаться)."""
         self._stop.set()
-        ws = self._ws
-        if ws is not None and not ws.closed:
-            await ws.close()
+        for ws in (self._ws, self._connecting_ws):          # и во время рукопожатия: иначе run() ждёт welcome до 10 с
+            if ws is not None and not ws.closed:
+                await ws.close()
 
     async def run(self) -> int:
         """Подключиться, пройти рукопожатие, обслуживать ядро. Не возвращается до shutdown или вытеснения (4000).
@@ -341,7 +342,10 @@ class ModuleClient:
             return False
 
         welcomed = False
+        self._connecting_ws = ws
         try:
+            if self._stop.is_set():                    # stop() пришёл, пока шло соединение
+                return False
             kind, payload = await self._handshake(ws)
             if kind == "reject":
                 reason = str(payload)
@@ -377,6 +381,7 @@ class ModuleClient:
         except Exception:
             log.exception("сбой соединения с ядром")
         finally:
+            self._connecting_ws = None
             self._ws = None
             self._ready.clear()
             self._fail_pending()

@@ -163,7 +163,8 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     sup = supervisor_mod.Supervisor(specs, token=hub.token, core_url=f"ws://127.0.0.1:{port}/module/ws",
                                     enabled=modules.is_enabled, is_connected=hub.is_connected,
                                     send_shutdown=send_shutdown, memory_dir=settings.memory_dir(),
-                                    announce=announce_launch)
+                                    announce=announce_launch,
+                                    only_core=lambda: bool(settings.load().get("only_core")))
     modules.supervisor = sup
     builtin.register_core_tools(registry, modules, attention, focus_mgr,
                                 switch=lambda cid: layer.character_switch.tool(cid))   # ТЗ 05, CHR-7

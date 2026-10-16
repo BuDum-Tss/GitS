@@ -1,6 +1,7 @@
 """Роутер дашборда: страница, состояние, журналы, оценки, настройки, профили, персонаж (ТЗ 29, ARC-8)."""
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 
@@ -74,7 +75,8 @@ async def handle_api_flow(request: web.Request) -> web.Response:
         return lat[-20:][::-1]
     latency = await asyncio.to_thread(build)
     return web.json_response({**flow_spec.topology(_module_ids()), "stats": flow_trace.edge_stats(),
-                              "turns": flow_trace.turns(30), "latency_turns": latency})
+                              "turns": flow_trace.turns(30), "latency_turns": latency,
+                              "errors": flow_trace.error_nodes(), "only_core": os.environ.get("GITS_NO_MODULES") == "1" or bool(ctx.settings.load().get("only_core"))})
 
 
 async def handle_api_flow_node(request: web.Request) -> web.Response:

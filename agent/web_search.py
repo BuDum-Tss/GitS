@@ -7,11 +7,13 @@
 Другие агенты (игра) вызывают его через `POST /api/web_search` дашборда, чтобы поиск был один и общий."""
 import asyncio
 import logging
+import time
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage
 
 import claude_battery
 import claude_quota
+import flow_trace
 from claude_cli import _CLI_PATH
 from envcompat import env
 
@@ -59,15 +61,19 @@ async def search(query: str) -> str:
                     claude_battery.record_result(msg, "web")
                     break
 
+    t0 = time.perf_counter()
     try:
         await asyncio.wait_for(_run(), TIMEOUT)
     except asyncio.TimeoutError:
+        flow_trace.step(None, "claude", "planner", "claude", "error", ms=(time.perf_counter() - t0) * 1000, label="web:error")
         return "Поиск не уложился в отведённое время."
     except Exception as e:
+        flow_trace.step(None, "claude", "planner", "claude", "error", ms=(time.perf_counter() - t0) * 1000, label="web:error")
         if claude_quota.note(str(e)):
             return f"Поиск недоступен: лимит Claude исчерпан до {claude_quota.until_text()}."
         logger.error(f"Поиск: {e}", exc_info=True)
         return "Поиск не удался."
+    flow_trace.step(None, "claude", "planner", "claude", "llm", ms=(time.perf_counter() - t0) * 1000, size=len(answer), label="web")
     if claude_quota.note(answer):
         return f"Поиск недоступен: лимит Claude исчерпан до {claude_quota.until_text()}."
     return answer or "Ничего не нашла."

@@ -108,12 +108,18 @@ def forget_down() -> None:
     _down_until[0] = 0.0
 
 
+last_failure: list = [None]       # причина последнего сбоя клиента: "down", "timeout", "error" (ТЗ 17: ошибки GLiNER отдельно); None - успех
+
+
 async def decide(state: str, questions: dict, timeout: float | None = None, down_on_timeout: bool = True) -> dict | None:
     """Ответы на вопросы о тексте: {id: {"answer", "probabilities", "confidence"}} или None, если сервис недоступен.
     down_on_timeout=False: тайм-аут не запоминается как недоступность (сервис жив, но занят очередью)."""
     global _client
     if not available() or not questions:
+        if questions:
+            last_failure[0] = "down"
         return None
+    last_failure[0] = None
     if _client is None:
         _client = httpx.AsyncClient(timeout=TIMEOUT)
     try:
@@ -123,11 +129,13 @@ async def decide(state: str, questions: dict, timeout: float | None = None, down
         answers = r.json().get("answers")
         return answers if isinstance(answers, dict) else None
     except httpx.TimeoutException as e:
+        last_failure[0] = "timeout"
         if down_on_timeout:
             _down_until[0] = time.time() + _DOWN_FOR
         logger.info(f"Классификатор не успел ответить ({type(e).__name__})")
         return None
     except Exception as e:
+        last_failure[0] = "error"
         _down_until[0] = time.time() + _DOWN_FOR
         logger.info(f"Классификатор недоступен ({e})")
         return None
@@ -141,24 +149,33 @@ class Decider:
     def __init__(self, backend: Callable[..., Awaitable[dict | None]] | None = None):
         self._backend = backend
         self.last_ms: float | None = None          # время последнего вызова, мс
+        self.last_error: str | None = None         # причина сбоя последнего вызова (down, timeout, error, backend); None - без сбоя
 
     async def classify(self, text: str, questions: dict, *, timeout: float = EVENT_TIMEOUT_S) -> dict | None:
         text = (text or "").strip()
         if not text or not questions:
             return None
         t0 = time.perf_counter()
+        self.last_error = None
         try:
             if self._backend is not None:
                 answers = await self._backend(text[:MAX_CHARS], questions, timeout)
             else:
                 answers = await decide(text[:MAX_CHARS], questions, timeout=timeout, down_on_timeout=False)
+                self.last_error = last_failure[0]
         except Exception as e:
             logger.warning(f"Классификатор: {e}")
             answers = None
+            self.last_error = "backend"
         finally:
             self.last_ms = round((time.perf_counter() - t0) * 1000, 1)
-            flow_trace.step(None, "gliner", "bus", "gliner", "classify", ms=self.last_ms, size=len(text),
-                            label="ok" if answers else "none")
+            # сбой сервиса пишется отдельным видом `error` (вкладка «Состояние» считает его отдельно от «нет ответа»)
+            if self.last_error:
+                flow_trace.step(None, "gliner", "bus", "gliner", "error", ms=self.last_ms, size=len(text),
+                                label=f"error:{self.last_error}")
+            else:
+                flow_trace.step(None, "gliner", "bus", "gliner", "classify", ms=self.last_ms, size=len(text),
+                                label="ok" if answers else "none")
         return answers if isinstance(answers, dict) and answers else None
 
 

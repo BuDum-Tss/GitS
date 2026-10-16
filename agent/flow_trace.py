@@ -18,6 +18,9 @@ CAPACITY = 5000
 LABEL_MAX = 48
 WINDOWS = (60.0, 600.0)
 
+# модуль-канал -> узел вывода на схеме (flow_spec.OUTPUT_OF_MODULE повторяет это для узлов модулей)
+OUTPUT_NODES = {"voice": "out_voice", "pet": "out_pet", "telegram": "out_telegram"}
+
 _lock = threading.Lock()
 _buf: collections.deque = collections.deque(maxlen=CAPACITY)
 _seq = 0
@@ -104,6 +107,29 @@ def edge_stats(now: float | None = None) -> dict:
                 "error_rate": round(v["err"] / v["n"], 3) if v["n"] else 0.0} for k, v in stats.items()}
 
 
+def node_errors(node: str, now: float | None = None) -> dict:
+    """Ошибки узла отдельно (ТЗ 17: GLiNER, Claude, выходы): число за 10 минут и всего, причина и время последней."""
+    now = time.time() if now is None else now
+    errs = [r for r in records() if (r["node"] == node or r["to"] == node) and is_error(r)]
+    last = errs[-1] if errs else None
+    return {"node": node, "total": len(errs), "per_10min": sum(1 for r in errs if now - r["t"] <= WINDOWS[1]),
+            "last_t": last["t"] if last else None, "last_label": last["label"] if last else "",
+            "reasons": {lab: sum(1 for r in errs if r["label"] == lab) for lab in sorted({r["label"] for r in errs})}}
+
+
+ERROR_NODES = ("gliner", "claude", "out_voice", "out_pet", "out_telegram")
+
+
+def error_nodes(now: float | None = None) -> dict:
+    """Узлы с ошибками за последние 10 минут (для красной рамки на схеме): GLiNER, Claude и выходы. Узлы без ошибок не входят."""
+    out = {}
+    for n in ERROR_NODES:
+        info = node_errors(n, now)
+        if info["total"]:
+            out[n] = info
+    return out
+
+
 def turns(limit: int = 30) -> list[dict]:
     """Последние ходы (новые первыми): id, начало, число шагов, длительность и итог."""
     by: dict[str, list[dict]] = {}
@@ -144,7 +170,7 @@ def node_info(node: str, limit: int = 20) -> dict:
     return {"node": node, "count": len(recs), "per_min": sum(1 for r in recs if now - r["t"] <= 60),
             "kinds": kinds, "labels": dict(sorted(labels.items(), key=lambda kv: -kv[1])[:12]),
             "last_ms": ms[-1] if ms else None, "p95_ms": _p95(ms), "size_avg": round(sum(sizes) / len(sizes), 1) if sizes else None,
-            "errors": sum(1 for r in recs if is_error(r)), "recent": recs[-limit:][::-1]}
+            "errors": sum(1 for r in recs if is_error(r)), "error_info": node_errors(node, now), "recent": recs[-limit:][::-1]}
 
 
 # ── путь по записям журнала задержки (ТЗ 24) ───────────────────────────────────────────────────
