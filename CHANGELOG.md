@@ -32,6 +32,7 @@
 - Тесты: `agent/tests/test_trace_journal.py`, `test_trace_endpoints.py`, `test_measure_e2e.py`, `modules/voice/tests/test_voice_trace.py`, `sdk/tests/test_trace_field.py`.
 
 ### Fixed
+- Дашборд: маршруты эпизодов, дневника и сна (`/api/episodes`, `/api/diary`, `/api/sleep`) снова зарегистрированы после слияния пакета `agent/dashboard/`; тест публичных адресов их проверяет.
 - Журнал трассы и решений после ревью (ТЗ 24): `intensity` «Infinity» из ответа модели больше не роняет разбор (`journal.clamp_intensity`); `GET /api/decisions?trace_id=` находит решение за пределами последних `limit` записей; токены ботов и значения `api_key`/`пароль` вычищаются из меток `mistake` и `decision` (ошибки инструментов могут нести адрес с токеном); `POST /api/rating` с телом не-объектом отвечает 400, а не 500; `misroute` не пишется, когда планировщика нет; id трассы из шины обрезается одинаково при поиске; голосовая трасса уходит ядру сразу, если звука не было (тишина, сбой, замена), а не после таймаута 15 с; фоновые проверки поправок держатся сильной ссылкой; эмоция берёт причину (id трассы или имя события) в одном месте; импорт `salience` в `fast_brain` вынесен наверх; `ModuleHub.notify` без цикла событий закрывает корутину рассылки (раньше оставалась непроверенной с предупреждением `never awaited`).
 - Тесты: `agent/tests/test_trace_fixes.py`, `modules/voice/tests/test_voice_trace.py` (случай без звука).
 

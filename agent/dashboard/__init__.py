@@ -11,6 +11,7 @@ from pathlib import Path
 
 from aiohttp import web
 
+import episode_routes
 import events_log
 import settings
 from envcompat import env
@@ -100,6 +101,7 @@ def build_app() -> web.Application:
     for router in _ROUTERS:
         for method, path, handler in router.ROUTES:
             app.router.add_route(method, path, handler)
+    episode_routes.add_routes(app)                      # ТЗ 27: эпизоды, дневник, сон
     if ctx.hub is not None:
         ctx.hub.attach(app)
     static_dir = Path(__file__).resolve().parents[1] / "static"

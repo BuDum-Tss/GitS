@@ -119,7 +119,8 @@ PUBLIC_ROUTES = {
     ("GET", "/api/modules/{id}/panel"), ("POST", "/api/modules/{id}/panel/action"),
     ("POST", "/api/modules/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"),
     ("POST", "/api/attention/rules/clear"), ("GET", "/api/focus"), ("GET", "/api/affect"), ("POST", "/api/affect/reset"),
-    ("GET", "/api/thoughts"), ("POST", "/api/focus/pin"), ("POST", "/api/focus/dnd"), ("POST", "/api/focus/allow_once"),
+    ("GET", "/api/thoughts"), ("GET", "/api/episodes"), ("GET", "/api/episodes/{id}"), ("GET", "/api/diary"), ("GET", "/api/sleep"),
+    ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("POST", "/api/focus/pin"), ("POST", "/api/focus/dnd"), ("POST", "/api/focus/allow_once"),
     ("POST", "/api/notify"), ("GET", "/api/jobs"), ("POST", "/api/jobs/{module}/{job_id}/cancel"),
     ("POST", "/api/jobs/{module}/{job_id}/answer"),
 }
