@@ -906,6 +906,7 @@ const SETTINGS_CATALOG = [
   {title: 'Голос и питомец', items: [
     {key: 'voice_muted', type: 'toggle', invert: true, label: 'Озвучка', hint: 'Выключает голос, текст остаётся в чате и в облачке. Горячая клавиша Ctrl+Alt+M.'},
     {key: 'volume', type: 'range', label: 'Громкость', hint: 'Применяется со следующей фразы.'},
+    {key: 'tts_speed', type: 'range', min: 60, max: 130, step: 5, unit: '%', label: 'Скорость речи', hint: '100% - как записан образец голоса, меньше - медленнее. Применяется со следующей фразы (ESpeech и запасной edge-tts).'},
     {key: 'pet_visible', type: 'toggle', label: 'Показывать питомца', hint: 'Голос работает и при скрытом питомце.'},
     {key: 'pet_pinned', type: 'toggle', label: 'Закрепить питомца', hint: 'Окно нельзя сдвинуть мышью.'},
     {key: 'hotkey_input', type: 'select', label: 'Клавиша строки быстрого ввода', hint: 'Глобальная клавиша, открывает строку, в которую пишешь ассистентке.',
@@ -939,7 +940,7 @@ const SETTINGS_CATALOG = [
      hint: 'Она будет выполнять действия без вопросов: команды, запись файлов, игровые команды. Всё равно спрашивается: удаление данных, файлы с секретами, установка программ, запись вне проекта. Включай, только если доверяешь всему, что она читает (страницы, файлы): такой текст может пытаться ею управлять. Включается только здесь и в трее, не из чата.'}]},
 ];
 const MODULE_SETTING_KEYS = {
-  voice: ['voice_muted', 'volume', 'mic', 'hearing'],
+  voice: ['voice_muted', 'volume', 'tts_speed', 'mic', 'hearing'],
   pet: ['pet_visible', 'pet_pinned', 'hotkey_input'],
   desktop: ['vision'],
   telegram: ['telegram', 'telegram_voice', 'telegram_confirm'],
@@ -958,7 +959,7 @@ function buildSettings() {
       <div class="space-y-4">${sec.items.map(it => {
         let control = '';
         if (it.type === 'toggle') control = `<input id="${sid(it.key)}" type="checkbox" class="toggle ${sec.danger ? 'toggle-warning' : ''}">`;
-        else if (it.type === 'range') control = `<span class="flex items-center gap-2"><input id="${sid(it.key)}" type="range" min="0" max="100" step="5" class="range range-xs w-32"><span id="${sid(it.key)}-v" class="text-xs w-8 text-right opacity-70"></span></span>`;
+        else if (it.type === 'range') control = `<span class="flex items-center gap-2"><input id="${sid(it.key)}" type="range" min="${it.min ?? 0}" max="${it.max ?? 100}" step="${it.step ?? 5}" class="range range-xs w-32"><span id="${sid(it.key)}-v" class="text-xs w-12 text-right opacity-70"></span></span>`;
         else if (it.type === 'select') control = `<select id="${sid(it.key)}" class="select select-bordered select-sm">${it.options.map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select>`;
         else if (it.type === 'quiet') control = `<span class="flex items-center gap-2"><span id="${sid(it.key)}-t" class="text-xs opacity-70"></span><input id="${sid(it.key)}" type="checkbox" class="toggle"></span>`;
         return `<div class="flex items-center justify-between gap-4"><span class="min-w-0"><span class="font-medium">${esc(it.label)}</span>${it.hint ? `<span class="block text-xs opacity-60">${esc(it.hint)}</span>` : ''}</span>${control}</div>`;
@@ -968,7 +969,7 @@ function buildSettings() {
     const el = $(sid(it.key)); if (!el) return;
     if (it.type === 'toggle') el.onchange = e => post('/api/settings', {[it.key]: it.invert ? !e.target.checked : e.target.checked});
     else if (it.type === 'range') {
-      el.oninput = e => { $(sid(it.key) + '-v').textContent = e.target.value; };
+      el.oninput = e => { $(sid(it.key) + '-v').textContent = e.target.value + (it.unit || ''); };
       el.onchange = e => post('/api/settings', {[it.key]: +e.target.value});
     } else if (it.type === 'select') el.onchange = e => post('/api/settings', {[it.key]: e.target.value});
     else if (it.type === 'quiet') el.onchange = e => post('/api/settings', e.target.checked ? {dnd: true} : {dnd: false, quiet_until: 0});
@@ -1013,7 +1014,7 @@ function renderSettings(s) {
       if (document.activeElement !== el) el.checked = !!s.dnd || left > 0;
     } else if (el && document.activeElement !== el) {
       if (it.type === 'toggle') el.checked = it.invert ? !v : !!v;
-      else { el.value = v; if (it.type === 'range') $(sid(it.key) + '-v').textContent = v; }
+      else { el.value = v; if (it.type === 'range') $(sid(it.key) + '-v').textContent = v + (it.unit || ''); }
     }
   }));
 }
@@ -1461,7 +1462,7 @@ function sharedSettingControl(it) {
   const v = lastSettings[it.key], a = `data-act="gset" data-key="${esc(it.key)}" data-type="${esc(it.type)}" ${it.invert ? 'data-invert="1"' : ''}`;
   let control;
   if (it.type === 'toggle') control = `<input type="checkbox" class="toggle toggle-sm" ${a} ${(it.invert ? !v : !!v) ? 'checked' : ''}>`;
-  else if (it.type === 'range') control = `<input type="range" min="0" max="100" step="5" class="range range-xs w-32" ${a} value="${esc(v)}">`;
+  else if (it.type === 'range') control = `<span class="flex items-center gap-2"><input type="range" min="${it.min ?? 0}" max="${it.max ?? 100}" step="${it.step ?? 5}" class="range range-xs w-32" ${a} value="${esc(v)}" oninput="this.nextElementSibling.textContent = this.value + '${it.unit || ''}'"><span class="text-xs w-12 text-right opacity-70">${esc(v)}${it.unit || ''}</span></span>`;
   else control = `<select class="select select-bordered select-xs" ${a}>${(it.options || []).map(o => `<option value="${esc(o[0])}" ${String(o[0]) === String(v) ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
   return `<div class="flex items-center justify-between gap-3"><span class="min-w-0"><span class="text-sm">${esc(it.label)}</span>${it.hint ? `<span class="block text-xs opacity-60">${esc(it.hint)}</span>` : ''}</span>${control}</div>`;
 }

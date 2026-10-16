@@ -79,3 +79,45 @@ def test_engine_setting_limits_the_chain(monkeypatch, tmp_path, engine, expected
     monkeypatch.setattr(tts_engine, "ENGINE", engine)
     tts_engine.synth_file("Привет.")
     assert calls == expected
+
+
+@pytest.mark.parametrize("raw,expected", [(100, 1.0), (80, 0.8), (10, 0.5), (900, 1.5), ("85", 0.85), (None, 1.0), ("мусор", 1.0),
+                                          (float("nan"), 1.0)])
+def test_set_speed_is_clamped(monkeypatch, raw, expected):
+    monkeypatch.setattr(tts_engine, "_speed", 1.0)
+    tts_engine.set_speed(raw)
+    assert tts_engine._speed == pytest.approx(expected)
+
+
+def test_speed_goes_to_espeech_request_and_edge_rate(monkeypatch, tmp_path):
+    import asyncio
+    sent = {}
+
+    class Resp:
+        content = b"RIFFdata"
+
+        def raise_for_status(self):
+            pass
+
+    class Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json):
+            sent.update(json)
+            return Resp()
+
+    (tmp_path / "espeech_ref.wav").write_bytes(b"x")
+    (tmp_path / "espeech_ref.txt").write_text("текст", encoding="utf-8")
+    monkeypatch.setattr(tts_engine, "FISH_REFERENCE", tmp_path / "ref.wav")
+    monkeypatch.setattr(tts_engine.httpx, "AsyncClient", Client)
+    monkeypatch.setattr(tts_engine, "_speed", 1.0)
+    tts_engine.set_speed(85)
+    assert asyncio.run(tts_engine._espeech_synth("привет", tmp_path)) and sent["speed"] == pytest.approx(0.85)
+    assert tts_engine._shifted("-12%", (tts_engine._speed - 1.0) * 100.0) == "-27%"

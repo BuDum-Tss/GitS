@@ -47,6 +47,18 @@ VOICE    = "ru-RU-SvetlanaNeural"
 PITCH    = "-25Hz"
 RATE     = "-12%"
 _tone = {"pitch_hz": 0.0, "rate_pct": 0.0}     # сдвиг от настроения персонажа (ТЗ 26), только для edge-tts
+_speed = 1.0                                    # скорость речи из настройки tts_speed: 1.0 - обычная (ESpeech: speed, edge-tts: rate)
+SPEED_MIN, SPEED_MAX = 0.5, 1.5
+
+
+def set_speed(percent) -> None:
+    """Скорость речи в процентах (настройка `tts_speed`): 100 - обычная, меньше - медленнее. Вне 50-150 и мусор приводятся к границам."""
+    try:
+        value = float(percent)
+    except (TypeError, ValueError):
+        value = 100.0
+    global _speed
+    _speed = max(SPEED_MIN, min(SPEED_MAX, value / 100.0)) if value == value else 1.0
 
 
 def set_tone(tone) -> None:
@@ -229,7 +241,7 @@ async def _espeech_synth(text: str, directory: Path | None = None) -> str | None
         return None
     try:
         async with httpx.AsyncClient(timeout=ESPEECH_TIMEOUT) as client:
-            resp = await client.post(f"{ESPEECH_URL}/tts", json={"text": text, "ref_audio": str(ref[0]), "ref_text": ref[1]})
+            resp = await client.post(f"{ESPEECH_URL}/tts", json={"text": text, "ref_audio": str(ref[0]), "ref_text": ref[1], "speed": _speed})
             resp.raise_for_status()
     except Exception as e:
         logger.warning(f"ESpeech ошибка: {type(e).__name__}: {e}")
@@ -248,7 +260,7 @@ async def _edge_synth(text: str, directory: Path | None = None) -> str:
     """Синтезировать текст через edge-tts → MP3."""
     import edge_tts
     communicate = edge_tts.Communicate(text, voice=VOICE, pitch=_shifted(PITCH, _tone['pitch_hz']),
-                                       rate=_shifted(RATE, _tone['rate_pct']))
+                                       rate=_shifted(RATE, _tone['rate_pct'] + (_speed - 1.0) * 100.0))
     tmp = _tmp_path(".mp3", "gits_edge_", directory)
     await communicate.save(tmp)
     return tmp

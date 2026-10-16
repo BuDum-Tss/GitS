@@ -27,7 +27,7 @@ MANIFEST = {
     "version": "1.0.0",
     "capabilities": ["voice.output", "voice.input"],
     "subscribe": ["settings", "module", "character"],
-    "shared_settings": ["voice_muted", "volume", "mic", "hearing", "dnd", "quiet_until"],
+    "shared_settings": ["voice_muted", "volume", "tts_speed", "mic", "hearing", "dnd", "quiet_until"],
     "settings_schema": {
         "barge_in": {"type": "boolean", "title": "Перебивание: её речь обрывается, когда говорит владелец "
                                                  "(на колонках без подавления эха возможны ложные срабатывания)",
