@@ -3,17 +3,6 @@
 # встроенный локальный Whisper (веса Fish Speech по-прежнему в agent/resources/tts/checkpoints, референс голоса у модуля voice). На видеокарте с 6 ГБ вместе с локальной моделью (LM Studio) и игрой видеопамяти может
 # не хватить, поэтому поднимай то, что нужно сейчас.
 services:
-  # База памяти-графа (Graphiti). Версия закреплена: образ latest (6.x) несовместим с текущим Graphiti.
-  graph:
-    image: falkordb/falkordb:v4.22.0
-    container_name: glados-graph
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${GRAPH_PORT:-6380}:6379"
-    volumes:
-      - graph_data:/var/lib/falkordb/data
-    mem_limit: 600m
-
   fish-speech:
     build:
       context: .
@@ -64,4 +53,3 @@ services:
 
 volumes:
   whisper_cache:
-  graph_data:

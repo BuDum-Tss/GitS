@@ -1,7 +1,7 @@
 """Граф по персонажам (ТЗ 05, CHR-9, CHR-16..CHR-19): группы, защита «я» и канона, отбор о себе, загрузка memories.yaml.
 
-Бэкенд подменён памятью (FakeGraph): FalkorDB и LM Studio в тестах не нужны. Настоящие запросы Cypher проверяются тем,
-что строки запросов содержат защиту канона (test_canon_guard_is_in_every_cleanup_query)."""
+Бэкенд подменён памятью (FakeGraph): LM Studio в тестах не нужна. Настоящее хранилище SQLite и защита канона проверяются
+в test_fact_store.py."""
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,7 +16,7 @@ REAL_CHARACTERS = Path(__file__).resolve().parents[2] / "resources"
 
 
 class FakeGraph:
-    """Память графа в списке словарей: по одной записи на связь, как в FalkorDB."""
+    """Память графа в списке словарей: по одной записи на связь."""
 
     def __init__(self):
         self.edges: list[dict] = []
@@ -225,12 +225,6 @@ def test_seed_reports_a_broken_card_as_an_error(capsys, tmp_path, monkeypatch):
     monkeypatch.setattr(character, "CHARACTERS_DIR", tmp_path)
     assert character_seed.main(["seed", "nobody", "--dry-run"]) == 2
     assert "ошибка" in capsys.readouterr().err
-
-
-def test_canon_guard_is_in_every_cleanup_query():
-    """CHR-17: колонисты, закрытие фактов и очистка не трогают канонические связи (проверка строк Cypher)."""
-    src = (Path(__file__).resolve().parents[1] / "graph_memory.py").read_text(encoding="utf-8")
-    assert src.count("r.canon IS NULL OR r.canon = false") == 3
 
 
 def test_events_kinds_include_memory_conflict():

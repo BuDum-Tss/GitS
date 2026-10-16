@@ -555,7 +555,7 @@ window.ARCH_DATA = {
      "t": "FactGraph (контракт)",
      "tag": "I",
      "new": false,
-     "do": "Graphiti: факты с интервалами валидности; области global и <id>:<область> по профилю (graph_scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
+     "do": "SQLite graph.db (fact_store.py, поиск через HybridIndex): факты с интервалами валидности; области global и <id>:<область> по профилю (graph_scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
      "out": "контракт графа",
      "now": "graph_memory.py: 701 строка"
     },
@@ -576,7 +576,7 @@ window.ARCH_DATA = {
    "title": "Внешний слой и сборка",
    "tag": "X",
    "new": false,
-   "summary": "Модели и службы: LM Studio, GLiNER, FalkorDB, ESpeech, Fish Speech, WhisperX, Claude. Сборка: core_service.",
+   "summary": "Модели и службы: LM Studio, GLiNER, ESpeech, Fish Speech, WhisperX, Claude. Сборка: core_service.",
    "out": "",
    "nodes": [
     {
@@ -594,15 +594,6 @@ window.ARCH_DATA = {
      "tag": "X",
      "new": false,
      "do": "классификатор событий и обращений",
-     "out": "",
-     "now": ""
-    },
-    {
-     "id": "falk",
-     "t": "FalkorDB :6380",
-     "tag": "X",
-     "new": false,
-     "do": "база графа фактов",
      "out": "",
      "now": ""
     },
@@ -1047,12 +1038,6 @@ window.ARCH_DATA = {
    "char",
    "r",
    "характер"
-  ],
-  [
-   "graph",
-   "falk",
-   "ext",
-   null
   ],
   [
    "sleep",

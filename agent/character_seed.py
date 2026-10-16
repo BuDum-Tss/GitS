@@ -2,13 +2,15 @@
 
 Граф персонажа (группа = id, ТЗ 05 CHR-9) приводится к memories.yaml: новые записи добавляются, изменённые заменяются
 (обновление по id, без дублей), удалённые из YAML удаляются. Факт: субъект — имя персонажа, отношение ПОМНИТ, объект —
-сама запись; связь помечена canon: true, source: seed, с типом и весом. Нужны FalkorDB и LM Studio (как для графа).
+сама запись; связь помечена canon: true, source: seed, с типом и весом. Нужны LM Studio (эмбеддинги) и файл `graph.db` в папке памяти (`--memory-dir`, по умолчанию `MEMORY_DIR` или `./memory`).
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
 import character
@@ -55,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("seed", help="загрузить воспоминания персонажа в граф (по memories.yaml)")
     s.add_argument("id", help="id персонажа: папка resources/<Имя> с этим id")
     s.add_argument("--dry-run", action="store_true", help="только проверить файл, граф не трогать")
+    s.add_argument("--memory-dir", default=os.getenv("MEMORY_DIR", "./memory"), help="папка памяти ядра (там graph.db)")
     args = ap.parse_args(argv)
     try:
         char = character.load(args.id)
@@ -65,8 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print(f"{char.id}: записей в memories.yaml: {len(items)}, файл в порядке")
         return 0
-    from graph_memory import GraphitiBackend
-    counts = asyncio.run(seed(char, GraphitiBackend()))
+    from graph_memory import SqliteBackend
+    counts = asyncio.run(seed(char, SqliteBackend(Path(args.memory_dir) / "graph.db")))
     print(f"{char.id}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
     return 0
 

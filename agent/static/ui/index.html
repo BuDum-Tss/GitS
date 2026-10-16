@@ -919,7 +919,7 @@ const SETTINGS_CATALOG = [
   {title: 'Поведение', items: [
     {key: 'chattiness', type: 'select', label: 'Разговорчивость', hint: 'Как часто она сама начинает разговор.',
      options: [['quiet', 'Редко'], ['normal', 'Обычно'], ['chatty', 'Часто']]},
-    {key: 'graph_memory', type: 'toggle', label: 'Память-граф', hint: 'Запоминает факты о людях и жизни из разговора в граф (локально: Gemma и EmbeddingGemma в LM Studio, база FalkorDB в Docker). Без них отключается сама.'},
+    {key: 'graph_memory', type: 'toggle', label: 'Память-граф', hint: 'Запоминает факты о людях и жизни из разговора в граф (локально: Gemma и EmbeddingGemma в LM Studio, база SQLite в папке памяти, Docker не нужен). Без моделей отключается сама.'},
     {key: 'claude_usage', type: 'select', label: 'Расход Claude', hint: 'Как часто работают игровые контуры на подписке Claude. Срочное (налёт, приказ) идёт сразу в любом режиме.',
      options: [['frugal', 'Экономный'], ['normal', 'Обычный'], ['generous', 'Щедрый (как раньше)']]},
     {key: 'claude_token_budget', type: 'select', label: 'Ёмкость батарейки Claude', hint: 'Сколько токенов Claude агент может потратить за окно лимита (5 часов). Когда заряд кончается, он уходит в сон. Подбери по опыту: точного числа подписка не отдаёт.',

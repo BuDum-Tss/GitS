@@ -26,7 +26,7 @@ DEFAULTS = {
     "telegram_after_run": False,   # писать пост-итог в канал после каждого забега (гибель колонии)
     "telegram_voice": False,       # посты в канал голосовым сообщением (текст идёт подписью)
     "telegram_confirm": False,  # спрашивать разрешение перед каждым постом (False: публикует сама)
-    "graph_memory": True,        # память-граф (Graphiti): факты из разговора; без базы и моделей тихо отключается
+    "graph_memory": True,        # память-граф (SQLite graph.db): факты из разговора; без моделей LM Studio тихо отключается
     "claude_usage": "normal",   # расход Claude: frugal / normal / generous (темп игровых контуров, см. claude_budget.py)
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
     "pet_visible": True,        # показывать окно питомца (голос при этом работает)

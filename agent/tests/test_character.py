@@ -122,12 +122,10 @@ def test_persist_writes_the_setting(chars):
     assert settings.load()["character"] == "tester"
 
 
-def test_group_and_database_follow_the_scheme():
-    """CHR-9 и ТЗ 04c WM-4: группа персонажа = id; область модуля = <id>:<модуль>; база = id персонажа."""
+def test_group_follows_the_scheme():
+    """CHR-9 и ТЗ 04c WM-4: группа персонажа = id; область модуля = <id>:<модуль>."""
     assert character.group_id("glados") == "glados"
     assert character.group_id("glados", "rimworld") == "glados:rimworld"
-    assert character.database_of("glados:rimworld") == "glados"
-    assert character.database_of("tester") == "tester"
 
 
 def test_persona_sections_are_parsed(chars):

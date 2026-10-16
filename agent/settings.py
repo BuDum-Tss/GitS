@@ -30,7 +30,7 @@ DEFAULTS = {
     "record_runs": False,       # записывать каждый забег RimWorld на видео (общая настройка для модуля rimworld, ТЗ 11)
     "telegram_voice": False,       # посты в канал голосовым сообщением (текст идёт подписью)
     "telegram_confirm": False,  # спрашивать разрешение перед каждым постом (False: публикует сама)
-    "graph_memory": True,        # память-граф (Graphiti): факты из разговора; без базы и моделей тихо отключается
+    "graph_memory": True,        # память-граф (SQLite graph.db): факты из разговора; без моделей LM Studio тихо отключается
     "claude_usage": "normal",   # расход Claude: frugal / normal / generous (темп игровых контуров, см. claude_budget.py)
     "claude_token_budget": 3000000,   # ёмкость «батарейки»: токенов Claude за окно лимита (5 часов), см. claude_battery.py
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
