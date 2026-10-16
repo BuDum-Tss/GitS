@@ -1,0 +1,65 @@
+{
+  "name": "presence",
+  "direction": "core->module",
+  "kind": "topic",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "speaking": {
+        "type": "boolean",
+        "description": "говорит ли"
+      },
+      "utterance_id": {
+        "type": "string",
+        "description": "id звучащей реплики"
+      },
+      "segment": {
+        "type": "string",
+        "description": "звучащий фрагмент"
+      },
+      "emotion": {
+        "type": "string",
+        "description": "эмоция"
+      },
+      "emotion_ts": {
+        "type": "number",
+        "description": "когда сменилась эмоция"
+      },
+      "busy": {
+        "type": "boolean",
+        "description": "занята ли"
+      },
+      "focus": {
+        "type": "string",
+        "description": "что в фокусе"
+      },
+      "user_speaking": {
+        "type": "boolean",
+        "description": "говорит ли человек"
+      },
+      "last_user_ts": {
+        "type": "number",
+        "description": "когда человек писал или говорил"
+      },
+      "last_say": {
+        "type": "string",
+        "description": "последняя реплика"
+      },
+      "last_say_ts": {
+        "type": "number",
+        "description": "когда она сказала"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "speaking",
+      "emotion"
+    ],
+    "title": "presence",
+    "description": "Присутствие: говорит ли она, эмоция, занятость, фокус (не чаще 10 раз в секунду)."
+  }
+}

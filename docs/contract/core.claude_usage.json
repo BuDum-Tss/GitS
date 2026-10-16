@@ -1,0 +1,42 @@
+{
+  "name": "core.claude_usage",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "tokens": {
+        "type": "integer",
+        "description": "расход токенов",
+        "minimum": 0
+      },
+      "source": {
+        "type": "string",
+        "description": "кто потратил"
+      },
+      "limit_text": {
+        "type": "string",
+        "description": "текст исчерпанного лимита"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "tokens"
+    ],
+    "title": "core.claude_usage",
+    "description": "Учесть расход токенов Claude модулем и, если лимит исчерпан, сообщить его текст."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "core.claude_usage (ответ)"
+  }
+}

@@ -133,6 +133,13 @@ class FactGraph(Protocol):
 
 
 @runtime_checkable
+class Embedder(Protocol):
+    """Эмбеддер текстов (EmbeddingGemma в LM Studio): тексты -> векторы; query отличает запрос от документа."""
+
+    async def embed(self, texts: list[str], query: bool = False) -> list[list[float]]: ...
+
+
+@runtime_checkable
 class Clock(Protocol):
     """Время в секундах (time.time по умолчанию, в тестах подменяется)."""
 
@@ -161,3 +168,50 @@ class ToolInvoker(Protocol):
     """Выполнение инструмента по id с обычным контролем (разрешения, риск). Возвращает (ok, результат, код ошибки)."""
 
     async def call(self, tool_id: str, args: dict) -> tuple[bool, str, str | None]: ...
+
+
+@runtime_checkable
+class ReminderRepository(Protocol):
+    """Напоминания, которые агент назначает себе (ТЗ 30, IMP-2). Запись: dict с полями id, due, text, source, status
+    (`pending` / `fired` / `cancelled`), depth, untrusted, created, ttl_s."""
+
+    def add(self, due: float, text: str, *, source: dict | None = None, depth: int = 0, untrusted: bool = False,
+            ttl_s: float | None = None) -> dict: ...
+
+    def get(self, reminder_id: str) -> dict | None: ...
+
+    def pending(self) -> list[dict]: ...
+
+    def set_status(self, reminder_id: str, status: str) -> None: ...
+
+
+@runtime_checkable
+class ThoughtJournal(Protocol):
+    """Журнал мыслей (ТЗ 30, IMP-6): записи не озвучиваются."""
+
+    def append(self, thought: dict) -> None: ...
+
+    def recent(self, n: int = 50) -> list[dict]: ...
+
+
+@runtime_checkable
+class EventSink(Protocol):
+    """Приёмник сообщений модулей (ТЗ 29, ARC-7): шина модулей передаёт сюда события, речь, эмоции, обновления задач и
+    вопросы задач, ничего не зная о менеджере внимания и модели. Реализация в ядре: `adapters/module_events.py`."""
+
+    async def submit(self, module_id: str, event: dict) -> None: ...
+
+    async def submit_speech(self, module_id: str, say: dict) -> None: ...
+
+    def on_emotion(self, module_id: str, emotion: Any) -> bool: ...
+
+    async def on_job_update(self, module_id: str, job: dict) -> None: ...
+
+    async def submit_question(self, module_id: str, job_id: str, question_id: str, question: dict) -> tuple[Any, str]: ...
+
+
+@runtime_checkable
+class RequestHandler(Protocol):
+    """Обработчик запросов модуля к ядру `core.*` (шина зовёт его для каждого запроса). Ошибки: `ModuleError`."""
+
+    async def handle(self, conn: Any, msg_type: str, body: dict) -> Any: ...

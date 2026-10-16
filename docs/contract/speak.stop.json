@@ -1,0 +1,29 @@
+{
+  "name": "speak.stop",
+  "direction": "core->module",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "utterance_id": {
+        "type": "string",
+        "description": "какую реплику"
+      },
+      "at": {
+        "type": "string",
+        "description": "когда",
+        "enum": [
+          "now",
+          "segment_end"
+        ]
+      }
+    },
+    "additionalProperties": true,
+    "title": "speak.stop",
+    "description": "Замолчать: сразу или после предложения."
+  }
+}

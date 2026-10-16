@@ -2,6 +2,11 @@
 checkpoint задач, дребезг, пользовательские «закрепить», «не беспокоить» и разовое исключение, LLM-диспетчер для
 неоднозначных случаев, аудит.
 
+Фасад над четырьмя частями (ТЗ 29, ARC-6): `domain/focus_policy.py` (FocusPolicy: чистые правила, пороги, дребезг,
+эшелон), `focus_queue.py` (FocusQueue: состояния событий, склейка, старение, сроки), `focus_store.py` (CheckpointStore:
+checkpoint и файл `focus.json`), `focus_dispatch.py` (FocusDispatch: контракт к модели). Здесь остаются слот, протокол
+переключения, команды пользователя, журнал и снимок для дашборда; публичные методы прежние.
+
 Надстройка над вниманием (attention.py): внимание оценивает событие и решает D0–D4, а менеджер фокуса получает решение
 через хук `Attention.on_decided` и решает, переключать ли модуль в активную политику. Слот фокуса один: в каждый момент
 модуль в политике `active` (или никто, тогда фокус у пользователя и разговора). Остальные модули в фоновых политиках.
@@ -23,103 +28,42 @@ checkpoint, см. docs/FOCUS.md).
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import secrets
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import events_log
 import focus_dispatch as dispatch
 from domain import focus_policy as policy
-from domain.focus_policy import ECHELON_GEMMA, ECHELON_GLINER, ECHELON_RULES, SWITCH_P, MARGIN, CONF_LOW, CONF_HIGH
+from domain.focus_policy import (ECHELON_GEMMA, ECHELON_GLINER, ECHELON_RULES, SWITCH_P, MARGIN, CONF_LOW,  # noqa: F401
+                                 CONF_HIGH, CRITICAL_URGENCY, USER_PRIORITY, HOLDER_PRIORITY_EVENT, RECHECK_CONF,
+                                 DANGER_CATEGORIES)
+from focus_dispatch import LLM_TIMEOUT_S  # noqa: F401
+from focus_queue import (PENDING, DEFERRED, PROCESSING, RESOLVED, EXPIRED, DISCARDED, EVENT_ALIVE,  # noqa: F401
+                         RECHECK_S, EVENT_TTL_S, DEDUPE_S, RESOLVED_KEEP_S, FocusQueue, QueuedEvent, decision_fields,
+                         event_echelon, new_id)
+from focus_store import (CHECKPOINT_MAX_AGE_S, CHECKPOINT_MAX_BYTES, CHECKPOINTS_KEEP, RESUME_RETRIES,  # noqa: F401
+                         STATE_FILE, CheckpointStore)
 from module_hub import ModuleError
 
 logger = logging.getLogger("focus")
 
-# ── пороги и сроки ───────────────────────────────────────────────────────────
-CRITICAL_URGENCY = 5           # срочность 5 - критическое: без дребезга, без LLM, без ожидания
-USER_PRIORITY = 95             # просьба пользователя (закрепить, «возьми фокус»)
-HOLDER_PRIORITY_EVENT = 60     # фокус, взятый по событию, держит приоритет 60: обычные события его не сдвигают
+# ── сроки протокола (пороги правил живут в domain/focus_policy.py) ───────────────────────────
 GRACE_S = 5.0                  # после передачи фокуса статусу модуля не верим этот срок (он может отстать)
-RECHECK_S = 30.0               # отложенные события переоцениваются раз в RECHECK_S (и при смене контекста)
-EVENT_TTL_S = 1800.0           # отложенное событие, которое так и не стало важным, истекает через полчаса
-DEDUPE_S = 60.0                # одинаковые события одного модуля в это окно склеиваются
-RECHECK_CONF = 0.5             # опасное событие с уверенностью классификатора ниже этого перепроверяется
-DANGER_CATEGORIES = ("danger", "death_injury", "disaster")
-CHECKPOINT_MAX_AGE_S = 6 * 3600.0
-CHECKPOINT_MAX_BYTES = 16 * 1024
-CHECKPOINTS_KEEP = 50
-RESUME_RETRIES = 3
 REFUSE_BACKOFF_S = 60.0         # модуль отказал в переходе: повтор к нему не раньше чем через столько (не трогая фокус)
 RELEASE_TIMEOUT_S = 15.0
 ACTIVATE_TIMEOUT_S = 20.0
 RESUME_TIMEOUT_S = 20.0
-LLM_TIMEOUT_S = 5.0
-RESOLVED_KEEP_S = 600.0
 JOURNAL_MAX = 300
 TICK_S = 0.5
-STATE_FILE = "focus.json"
 MAX_POLICY_OPTIONS = 12
 
-
-PENDING = "pending"            # ждёт оценки
-DEFERRED = "deferred"          # отложено, ждёт условия возобновления
-PROCESSING = "processing"      # идёт переход фокуса
-RESOLVED = "resolved"          # обработано (фокус передан или модуль сам справится)
-EXPIRED = "expired"            # срок вышел
-DISCARDED = "discarded"        # слито с другим событием
-
-_EVENT_ALIVE = (PENDING, DEFERRED, PROCESSING)
-
+_EVENT_ALIVE = EVENT_ALIVE
+_confirmed = policy.confirmed                               # domain/focus_policy.py
 Connect = Callable[[str], Any]
-
-
-@dataclass
-class QueuedEvent:
-    """Событие в очереди (ТЗ 18, FOC-3): состояние, приоритет до и после, условие возобновления."""
-
-    id: str
-    module: str
-    kind: str
-    text: str
-    priority: float
-    base: float
-    created: float
-    urgency: int | None = None
-    critical: bool = False
-    confidence: float | None = None
-    category: str | None = None
-    expires: float | None = None
-    dedupe_key: str | None = None
-    count: int = 1
-    status: str = PENDING
-    reason: str = ""
-    resume: dict = field(default_factory=dict)
-    initial: float = 0.0
-    last_eval: float = 0.0
-    updated: float = 0.0
-    user: bool = False
-    once: bool = False
-    preferred: bool = False
-    policy_pref: str | None = None
-    llm_asked: bool = False
-    rechecked: bool = False
-    hint: str | None = None              # подсказка GLiNER: «модуль/политика» или NONE_HINT
-    hint_conf: float = 0.0
-    focus_needed: bool | None = None     # GLiNER: нужен ли фокус
-    focus_conf: float = 0.0
-    echelon: str = ECHELON_RULES         # какой эшелон решил (см. ECHELON_*)
-    llm_used: bool = False               # диспетчер Gemma ответил операцией или перепроверкой
-
-    def public(self) -> dict:
-        return {"id": self.id, "module": self.module, "kind": self.kind, "text": self.text[:160],
-                "status": self.status, "priority": round(self.priority, 1), "initial": round(self.initial, 1),
-                "critical": self.critical, "count": self.count, "reason": self.reason, "resume": dict(self.resume),
-                "echelon": self.echelon, "confidence": self.confidence, "hint": self.hint}
 
 
 @dataclass
@@ -142,39 +86,6 @@ class Slot:
                 "echelon": self.echelon}
 
 
-def _new_id(prefix: str) -> str:
-    return f"{prefix}-{secrets.token_hex(4)}"
-
-
-def _json_safe(payload: Any) -> dict | None:
-    """Checkpoint модуля: только JSON и не больше CHECKPOINT_MAX_BYTES; иначе сохраняется пометка."""
-    if not isinstance(payload, dict):
-        return None
-    try:
-        text = json.dumps(payload, ensure_ascii=False, default=str)
-    except (TypeError, ValueError):
-        return {"note": "checkpoint модуля не сериализуется"}
-    if len(text.encode("utf-8")) > CHECKPOINT_MAX_BYTES:
-        return {"note": "checkpoint модуля больше лимита и не сохранён целиком"}
-    return json.loads(text)
-
-
-_confirmed = policy.confirmed                               # domain/focus_policy.py
-_hint = policy.hint_value                                   # domain/focus_policy.py
-
-
-def _decision_fields(ev: QueuedEvent) -> dict:
-    """Эшелон и уверенность для записи решения (ТЗ 18, FOC-8, аудит)."""
-    return {"echelon": ev.echelon, "confidence": ev.confidence, "hint": ev.hint}
-
-
-def _write_json(path: Path, data: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(data, encoding="utf-8")
-    tmp.replace(path)
-
-
 class FocusManager:
     def __init__(self, *, connection_of: Connect, status_of: Callable[[str], dict | None],
                  policies_of: Callable[[str], dict | None], clock: Callable[[], float] = time.time,
@@ -194,10 +105,7 @@ class FocusManager:
         self.status_of = status_of
         self.policies_of = policies_of
         self.clock = clock
-        self.state_path = state_path
-        self.llm = llm
         self.busy_of = busy_of
-        self.recheck = recheck
         self.title_of = title_of or (lambda mid: mid)
         self.slot: Slot | None = None
         self.pinned: str | None = None
@@ -207,19 +115,66 @@ class FocusManager:
         self._modules_of = modules_of
         self._dnd_local = False
         self.dnd_modules: set[str] = set()
-        self._once: set[str] = set()
-        self.events: dict[str, QueuedEvent] = {}
-        self.checkpoints: dict[str, dict] = {}
-        self._inbox: list[dict] = []
+        self.store = CheckpointStore(state_path)
+        self.queue = FocusQueue(log=self._log, touch=self.store.touch)
+        self.dispatch = dispatch.FocusDispatch(llm, recheck)
         self._journal: deque = deque(maxlen=JOURNAL_MAX)
         self._switch_times: deque = deque(maxlen=64)
         self._refused_at: dict[str, float] = {}      # модуль -> когда он последний раз отказал в переходе
-        self._modules_seen: set[str] = set()
         self._sig: tuple | None = None
         self._last_llm: dict | None = None
-        self._dirty = False
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
+
+    # ── доступ к частям (прежние имена) ────────────────────────────────────
+
+    @property
+    def events(self) -> dict[str, QueuedEvent]:
+        return self.queue.events
+
+    @property
+    def checkpoints(self) -> dict[str, dict]:
+        return self.store.checkpoints
+
+    @property
+    def state_path(self) -> Path | None:
+        return self.store.state_path
+
+    @property
+    def _once(self) -> set[str]:
+        return self.queue.once
+
+    @property
+    def _modules_seen(self) -> set[str]:
+        return self.queue.modules_seen
+
+    @property
+    def _inbox(self) -> list[dict]:
+        return self.queue.inbox
+
+    @property
+    def _dirty(self) -> bool:
+        return self.store.dirty
+
+    @_dirty.setter
+    def _dirty(self, value: bool) -> None:
+        self.store.dirty = value
+
+    @property
+    def llm(self) -> Callable[[dict], Awaitable[Any]] | None:
+        return self.dispatch.llm
+
+    @llm.setter
+    def llm(self, value: Callable[[dict], Awaitable[Any]] | None) -> None:
+        self.dispatch.llm = value
+
+    @property
+    def recheck(self) -> Callable[[dict], Awaitable[Any]] | None:
+        return self.dispatch.recheck
+
+    @recheck.setter
+    def recheck(self, value: Callable[[dict], Awaitable[Any]] | None) -> None:
+        self.dispatch.recheck = value
 
     @property
     def dnd_all(self) -> bool:
@@ -268,7 +223,7 @@ class FocusManager:
             return
         data = getattr(item, "data", None) or {}
         urgency = getattr(item, "urgency", None)
-        self._inbox.append({
+        self.queue.push({
             "module": module, "kind": getattr(item, "kind", ""), "text": getattr(item, "text", "") or "",
             "priority": float(priority or 0.0), "urgency": urgency, "critical": (urgency or 0) >= CRITICAL_URGENCY,
             "confidence": data.get("category_conf"), "category": data.get("category"),
@@ -308,9 +263,9 @@ class FocusManager:
         """Один шаг: очередь входа, сроки, состояние фокуса, оценка очереди, возобновление задач."""
         async with self._lock:
             now = self.clock()
-            self._drain(now)
-            self._expire(now)
-            self._age(now)
+            self.queue.drain(now)
+            self.queue.expire(now)
+            self.queue.age(now)
             await self._check_holder(now)
             self._refresh_context(now)
             switched = await self._evaluate_queue(now)
@@ -319,95 +274,20 @@ class FocusManager:
             self._prune(now)
             await self._save()
 
-    # ── очередь ─────────────────────────────────────────────────────────────
-
-    def _drain(self, now: float) -> None:
-        """ATT-6 и FOC-3: одинаковое событие в окне DEDUPE_S склеивается с ожидающим, остальные становятся очередью."""
-        batch, self._inbox = self._inbox, []
-        for rec in batch:
-            module = rec["module"]
-            self._modules_seen.add(module)
-            key = rec["dedupe_key"] or rec["kind"]
-            twin = next((e for e in self.events.values() if e.status in (PENDING, DEFERRED) and e.module == module
-                         and (e.dedupe_key or e.kind) == key and now - e.created <= DEDUPE_S), None)
-            if twin is not None:
-                twin.count += 1
-                twin.text = rec["text"]
-                twin.base = max(twin.base, rec["priority"])
-                twin.critical = twin.critical or rec["critical"]
-                twin.updated = now
-                self._log("merge", event=twin.id, module=module, count=twin.count, priority=round(twin.base, 1))
-                continue
-            ev = QueuedEvent(id=_new_id("fe"), module=module, kind=rec["kind"], text=rec["text"], priority=rec["priority"],
-                             base=rec["priority"], created=now, urgency=rec["urgency"], critical=rec["critical"],
-                             confidence=rec["confidence"], category=rec["category"], expires=rec["expires"],
-                             dedupe_key=rec["dedupe_key"], initial=rec["priority"], last_eval=now, updated=now,
-                             hint=_hint(rec.get("hint")), hint_conf=float(rec.get("hint_conf") or 0.0),
-                             focus_needed=rec.get("focus_needed") if isinstance(rec.get("focus_needed"), bool) else None,
-                             focus_conf=float(rec.get("focus_conf") or 0.0))
-            if not ev.critical and module in self._once:
-                self._once.discard(module)
-                ev.once = True
-            ev.echelon = self._echelon(ev)
-            self.events[ev.id] = ev
-            self._dirty = True
-            self._log("enqueue", event=ev.id, module=module, kind=rec["kind"], priority_before=round(rec["priority"], 1),
-                      critical=ev.critical, status=PENDING, text=ev.text, **_decision_fields(ev))
-
-    def _expire(self, now: float) -> None:
-        for ev in self.events.values():
-            if ev.status not in (PENDING, DEFERRED):
-                continue
-            if ev.expires is not None and now > ev.expires:
-                self._finish(ev, EXPIRED, "срок события вышел", now)
-            elif ev.status == DEFERRED and now - ev.created > EVENT_TTL_S:
-                self._finish(ev, EXPIRED, "отложено дольше срока ожидания", now)
-
-    def _age(self, now: float) -> None:
-        """FOC-3, защита от вечного откладывания: ожидание поднимает приоритет до AGING_CAP."""
-        for ev in self.events.values():
-            if ev.status not in (PENDING, DEFERRED) or ev.critical:
-                continue
-            aged = policy.aged_priority(ev.base, now - ev.created)
-            if aged > ev.priority:
-                ev.priority = aged
-                self._log("aging", event=ev.id, module=ev.module, priority_before=round(ev.base, 1),
-                          priority_after=round(aged, 1), reason="ожидание поднимает приоритет")
+    # ── очередь (делегирование) ─────────────────────────────────────────────
 
     def _finish(self, ev: QueuedEvent, status: str, reason: str, now: float) -> None:
-        ev.status, ev.reason, ev.updated = status, reason, now
-        ev.resume = {}
-        self._dirty = True
-        self._log("resolve" if status == RESOLVED else status, event=ev.id, module=ev.module, kind=ev.kind,
-                  priority_before=round(ev.initial, 1), priority_after=round(ev.priority, 1), reason=reason,
-                  status=status, **_decision_fields(ev))
+        self.queue.finish(ev, status, reason, now)
 
     def _defer(self, ev: QueuedEvent, resume: dict, reason: str, now: float) -> None:
-        """FOC-3: отложить с причиной. Повтор той же причины не пишет журнал заново."""
-        ev.last_eval = now
-        if ev.status == DEFERRED and ev.reason == reason:
-            return
-        ev.status, ev.reason, ev.resume, ev.updated = DEFERRED, reason, dict(resume), now
-        self._dirty = True
-        self._log("defer", event=ev.id, module=ev.module, kind=ev.kind, priority_before=round(ev.initial, 1),
-                  priority_after=round(ev.priority, 1), reason=reason, resume=resume, status=DEFERRED,
-                  **_decision_fields(ev))
+        self.queue.defer(ev, resume, reason, now)
 
     def _refresh_context(self, now: float) -> None:
-        """FOC-3: отложенные события возвращаются на оценку при смене контекста (фокус, политики, «не беспокоить») и раз
-        в RECHECK_S; «время» возвращает, когда наступило."""
+        """FOC-3: отложенные возвращаются на оценку при смене контекста (фокус, политики, «не беспокоить»)."""
         sig = self._context_sig()
         changed = sig != self._sig
         self._sig = sig
-        for ev in self.events.values():
-            if ev.status != DEFERRED:
-                continue
-            kind = ev.resume.get("type")
-            if kind == "time":
-                if now >= float(ev.resume.get("at") or 0):
-                    ev.status = PENDING
-            elif changed or now - ev.last_eval >= RECHECK_S:
-                ev.status = PENDING
+        self.queue.refresh(now, changed)
 
     def _context_sig(self) -> tuple:
         holder = (self.slot.module, self.slot.policy) if self.slot else None
@@ -419,14 +299,8 @@ class FocusManager:
         return (holder, self.pinned, self.dnd_all, tuple(sorted(self._quiet_modules())), tuple(states))
 
     def _prune(self, now: float) -> None:
-        for eid in [e.id for e in self.events.values() if e.status not in _EVENT_ALIVE
-                    and now - e.updated > RESOLVED_KEEP_S]:
-            del self.events[eid]
-        if len(self.checkpoints) > CHECKPOINTS_KEEP:
-            done = sorted((c for c in self.checkpoints.values() if c["status"] in ("resumed", "stale")),
-                          key=lambda c: c["created"])
-            for cp in done[:len(self.checkpoints) - CHECKPOINTS_KEEP]:
-                self.checkpoints.pop(cp["task_id"], None)
+        self.queue.prune(now)
+        self.store.prune()
 
     # ── состояние модулей ───────────────────────────────────────────────────
 
@@ -452,9 +326,7 @@ class FocusManager:
 
     def _holder_priority(self, slot: Slot | None = None) -> float:
         slot = slot or self.slot
-        if slot is None:
-            return 0.0
-        return USER_PRIORITY if slot.origin == "user" else HOLDER_PRIORITY_EVENT
+        return policy.holder_priority(slot.origin if slot is not None else None)
 
     # ── протокол фокуса ─────────────────────────────────────────────────────
 
@@ -487,12 +359,7 @@ class FocusManager:
 
     def _checkpoint(self, slot: Slot, payload: Any, status: str, reason: str, resume: dict, now: float) -> dict:
         """FOC-5: checkpoint задачи. Лежит в памяти (слот `<модуль>/scratch` рабочей памяти) и пишется на диск в tick()."""
-        cp = {"task_id": slot.task_id, "module": slot.module, "policy": slot.policy, "goal": slot.goal,
-              "priority": slot.priority, "origin": slot.origin, "status": status, "reason": reason, "resume": resume,
-              "created": now, "attempts": 0, "subgoals": [], "payload": _json_safe(payload),
-              "scratch": f"{slot.module}/scratch"}
-        self.checkpoints[slot.task_id] = cp
-        self._dirty = True
+        cp = self.store.create(slot, payload, status, reason, resume, now)
         self._log("checkpoint", module=slot.module, task=slot.task_id, policy=slot.policy, status=status, reason=reason)
         return cp
 
@@ -551,7 +418,7 @@ class FocusManager:
             if not ok:
                 self._defer(ev, {"type": "context_changed"}, f"модуль «{slot.module}» не освободил фокус: {why}", now)
                 return False
-        task_id = _new_id("t")
+        task_id = new_id("t")
         goal = ev.text[:200]
         prev = slot.module if slot is not None else "пользователь"
         ev.status = PROCESSING
@@ -578,23 +445,20 @@ class FocusManager:
         self._finish(ev, RESOLVED, f"фокус передан модулю «{module}» ({pol})", now)
         self._log("switch", module=module, policy=pol, task=task_id, event=ev.id, previous=prev,
                   priority_before=round(ev.initial, 1), priority_after=round(ev.priority, 1), reason=ev.reason,
-                  **_decision_fields(ev))
+                  **decision_fields(ev))
         return True
 
     async def _evaluate_queue(self, now: float) -> bool:
         """FOC-2/FOC-4: очередь по приоритету. Не больше одного переключения за шаг."""
         switched = False
-        pending = sorted((e for e in self.events.values() if e.status == PENDING),
-                         key=lambda e: (not e.preferred, -e.priority, e.created))
-        for ev in pending:
+        for ev in self.queue.pending_sorted():
             if ev.status != PENDING:
                 continue
             ev.last_eval = now
             if self.slot is not None and ev.module == self.slot.module:
                 self._finish(ev, RESOLVED, "фокус у этого модуля: он обработает событие сам", now)
                 continue
-            if ev.category in DANGER_CATEGORIES and ev.confidence is not None and ev.confidence < RECHECK_CONF \
-                    and not ev.rechecked:
+            if policy.needs_recheck(ev.category, ev.confidence, ev.rechecked):
                 await self._recheck_danger(ev, now)
             why = self._ambiguity(ev, now)
             if why and not ev.llm_asked:
@@ -602,7 +466,7 @@ class FocusManager:
                 await self._ask_llm(ev, now, why)
                 if ev.status != PENDING:
                     continue
-            ev.echelon = self._echelon(ev)
+            ev.echelon = event_echelon(ev)
             action, reason, resume = self._gate(ev, now)
             if action == "defer":
                 self._defer(ev, resume, reason, now)
@@ -614,93 +478,48 @@ class FocusManager:
         return switched
 
     def _gate(self, ev: QueuedEvent, now: float) -> tuple[str, str, dict]:
-        """Детерминированные правила (FOC-4, FOC-6): что делать с событием. Возвращает (действие, причина, условие)."""
-        ctx = {"type": "context_changed"}
-        if ev.critical:
-            return "switch", "критическое событие: переключение без ожидания", ctx
-        if not ev.once:
-            if self.dnd_all or ev.module in self.dnd_modules:
-                return "defer", "не беспокоить: режим пользователя", {"type": "context_changed"}
-            if ev.module in self._profile_quiet():
-                return "defer", "профиль не даёт переключать фокус этому модулю", ctx
-            cur = self._current(ev.module)
-            if cur is not None and cur.get("quiet"):
-                return "defer", f"политика «{cur['id']}» не переключает фокус: сообщение сохранено", ctx
-        if self.pinned is not None and ev.module != self.pinned:
-            return "defer", f"фокус закреплён за «{self.title_of(self.pinned)}»", {"type": "unpin"}
-        if self.busy_of is not None and self.busy_of():
-            return "defer", "пользователь в разговоре", ctx
-        if ev.focus_needed is False and ev.focus_conf >= CONF_HIGH:
-            return "defer", "классификатор: событие не требует фокуса", ctx
-        if self.slot is None:
-            if ev.priority >= SWITCH_P:
-                return "switch", f"приоритет {round(ev.priority)} не ниже порога {SWITCH_P}", ctx
-            return "defer", f"приоритет {round(ev.priority)} ниже порога переключения {SWITCH_P}", ctx
-        damp = policy.dampening(now, self.slot.since, self._switch_times)
-        if damp == "short":
-            return "defer", "дребезг: мало времени в текущем фокусе", ctx
-        if damp == "rate":
-            return "defer", "дребезг: лимит переключений в минуту", ctx
-        holder = self._holder_priority()
-        if not policy.clears_focus(ev.priority, holder):
-            return "defer", f"не выше текущего фокуса на запас {MARGIN}", ctx
-        st = self.status_of(self.slot.module) or {}
-        if st.get("interruptible") is False:
-            return "defer", "модуль в фокусе сообщил небезопасную точку", ctx
-        return "switch", f"приоритет {round(ev.priority)} выше фокуса {round(holder)} на запас", ctx
+        """Детерминированные правила (FOC-4, FOC-6): состояние собирается здесь, решение чистое (domain/focus_policy)."""
+        cur = self._current(ev.module)
+        slot = self.slot
+        return policy.gate(
+            critical=ev.critical, once=ev.once, quiet=self.dnd_all or ev.module in self.dnd_modules,
+            profile_quiet=ev.module in self._profile_quiet(),
+            quiet_policy=cur["id"] if cur is not None and cur.get("quiet") else None,
+            pinned=self.pinned, pinned_title=self.title_of(self.pinned) if self.pinned is not None else "",
+            module=ev.module, busy=bool(self.busy_of is not None and self.busy_of()),
+            focus_needed=ev.focus_needed, focus_conf=ev.focus_conf, priority=ev.priority, has_slot=slot is not None,
+            slot_since=slot.since if slot is not None else 0.0, switch_times=self._switch_times, now=now,
+            holder=self._holder_priority(),
+            interruptible=slot is None or (self.status_of(slot.module) or {}).get("interruptible") is not False)
 
     # ── эшелоны решения (ТЗ 18, второй эшелон) ─────────────────────────────
 
-    def _near(self, ev: QueuedEvent) -> bool:
-        """Близко к порогу переключения или к приоритету фокуса: по правилам не решается однозначно."""
-        return policy.near_threshold(ev.priority, self._holder_priority(), self.slot is not None)
-
-    def _conflict(self, ev: QueuedEvent) -> bool:
-        """Конфликт подсказки: классификатор указывает на другой модуль или говорит «фокус не нужен» при высокой важности."""
-        return policy.hint_conflicts(ev.hint, ev.hint_conf, ev.priority, ev.focus_needed, ev.module)
-
-    def _claimant(self, ev: QueuedEvent) -> bool:
-        """Два претендента на фокус с близкой важностью от разных модулей."""
-        others = ((o.id, o.module, o.status, o.critical, o.priority) for o in self.events.values())
-        return policy.has_claimant(ev.priority, ev.module, ev.id, others, PENDING)
-
     def _ambiguity(self, ev: QueuedEvent, now: float) -> str | None:
-        """Почему событие неоднозначно (нужен второй эшелон) или None, если правила решают сами (ТЗ 18, FOC-7):
-        низкая уверенность GLiNER, близость к порогу без уверенного ответа, конфликт подсказки, два претендента.
-        Критические события, отсутствие LLM и уже отвеченные диспетчером не спрашиваем."""
+        """Почему событие неоднозначно (нужен второй эшелон) или None, если правила решают сами (ТЗ 18, FOC-7)."""
         if ev.critical or self.llm is None or ev.llm_used:
             return None
-        conf = ev.confidence
-        if conf is not None and conf < CONF_LOW:
-            return f"низкая уверенность классификатора ({conf:.2f})"
-        if self._near(ev) and (conf is None or conf < CONF_HIGH):
-            return "у порога переключения или у фокуса, без уверенного ответа классификатора"
-        if self._conflict(ev):
-            return f"конфликт подсказки: классификатор указывает «{ev.hint}»"
-        if self._claimant(ev):
-            return "два претендента на фокус с близкой важностью"
-        return None
+        others = ((o.id, o.module, o.status, o.critical, o.priority) for o in self.events.values())
+        return policy.ambiguity(
+            critical=ev.critical, has_llm=self.llm is not None, llm_used=ev.llm_used, confidence=ev.confidence,
+            near=policy.near_threshold(ev.priority, self._holder_priority(), self.slot is not None),
+            conflict=policy.hint_conflicts(ev.hint, ev.hint_conf, ev.priority, ev.focus_needed, ev.module),
+            claimant=policy.has_claimant(ev.priority, ev.module, ev.id, others, PENDING), hint=ev.hint)
 
     def _echelon(self, ev: QueuedEvent) -> str:
-        """Какой эшелон решил: Gemma (если ответила операцией или перепроверкой), иначе GLiNER (если давал ответ), иначе правила."""
-        return policy.echelon(ev.llm_used, ev.critical,
-                              ev.confidence is not None or ev.hint is not None or ev.focus_needed is not None)
+        return event_echelon(ev)
 
     async def _recheck_danger(self, ev: QueuedEvent, now: float) -> None:
         """FOC-3: опасное событие с низкой уверенностью не понижается: быстрая перепроверка, без неё - считаем опасным."""
         ev.rechecked = True
-        new = None
-        if self.recheck is not None:
-            try:
-                new = await asyncio.wait_for(self.recheck(self._llm_event(ev)), LLM_TIMEOUT_S)
-            except Exception as e:                              # тайм-аут и сбой перепроверки - правило ниже
-                self._log("recheck", event=ev.id, module=ev.module, status="failed", reason=str(e)[:160] or type(e).__name__)
+        new, error = await self.dispatch.urgency(dispatch.llm_event(ev), LLM_TIMEOUT_S)
+        if error:
+            self._log("recheck", event=ev.id, module=ev.module, status="failed", reason=error)
         if isinstance(new, int) and not isinstance(new, bool) and 0 <= new <= 5:
             ev.urgency = new
             ev.critical = new >= CRITICAL_URGENCY
             ev.llm_used = True
-            ev.echelon = self._echelon(ev)
-            self._log("recheck", event=ev.id, module=ev.module, status="done", reason=f"срочность {new}", **_decision_fields(ev))
+            ev.echelon = event_echelon(ev)
+            self._log("recheck", event=ev.id, module=ev.module, status="done", reason=f"срочность {new}", **decision_fields(ev))
             return
         before = ev.priority
         ev.base = max(ev.base, float(SWITCH_P))
@@ -710,64 +529,31 @@ class FocusManager:
 
     # ── LLM-диспетчер (FOC-7) ───────────────────────────────────────────────
 
-    @staticmethod
-    def _llm_event(ev: QueuedEvent) -> dict:
-        return {"id": ev.id, "module": ev.module, "kind": ev.kind, "text": ev.text[:200], "priority": round(ev.priority, 1),
-                "critical": ev.critical, "confidence": ev.confidence, "category": ev.category, "hint": ev.hint,
-                "hint_conf": round(ev.hint_conf, 3), "focus_needed": ev.focus_needed}
-
-    def _llm_context(self, ev: QueuedEvent, now: float) -> dict:
-        """Структурированное состояние для диспетчера: очередь, фокус, политики, задачи. Не полный снимок мира."""
-        queue = sorted((e for e in self.events.values() if e.status in (PENDING, DEFERRED)),
-                       key=lambda e: -e.priority)[:10]
-        modules = {}
-        for mod in {e.module for e in queue} | ({self.slot.module} if self.slot else set()):
-            table = self._policy_table(mod) or {}
-            modules[mod] = {"policies": {pid: p.get("focus") for pid, p in table.items()}}
-        holder = None
-        if self.slot is not None:
-            st = self.status_of(self.slot.module) or {}
-            holder = {"module": self.slot.module, "policy": self.slot.policy, "goal": self.slot.goal[:160],
-                      "interruptible": st.get("interruptible") is not False}
-        cps = [c for c in self.checkpoints.values() if c["status"] in ("paused", "blocked")][:5]
-        return {
-            "now": now, "event": self._llm_event(ev),
-            "events": {e.id: {"module": e.module, "status": e.status, "critical": e.critical,
-                              "priority": round(e.priority, 1)} for e in queue},
-            "modules": modules, "holder": holder,
-            "checkpoints": {c["task_id"]: {"module": c["module"], "status": c["status"], "goal": c["goal"][:120],
-                                           "subgoals": len(c["subgoals"])} for c in cps},
-            "pin": self.pinned, "dnd": {"all": self.dnd_all, "modules": sorted(self.dnd_modules)},
-        }
-
     async def _ask_llm(self, ev: QueuedEvent, now: float, why: str = "") -> None:
         """Диспетчер Gemma предлагает операции; каждая проверяется и применяется здесь. Сбой, тайм-аут или ответ не в
         формате JSON - детерминированные правила (ничего не меняется)."""
-        ctx = self._llm_context(ev, now)
-        if self.llm is None:
+        slot = self.slot
+        ctx = dispatch.FocusDispatch.context(
+            ev, now, waiting=self.queue.waiting(), tables=self._policy_table, holder=slot,
+            holder_status=self.status_of(slot.module) if slot is not None else None,
+            checkpoints=self.store.paused(), pin=self.pinned, dnd_all=self.dnd_all, dnd_modules=sorted(self.dnd_modules))
+        res = await self.dispatch.consult(ctx, now, LLM_TIMEOUT_S)
+        if res is None:
             return
-        try:
-            raw = await asyncio.wait_for(self.llm(ctx), LLM_TIMEOUT_S)
-        except asyncio.TimeoutError:
-            self._last_llm = {"ts": now, "status": "unavailable", "error": "тайм-аут"}
-            self._log("llm", event=ev.id, module=ev.module, status="unavailable", reason="тайм-аут диспетчера", why=why)
+        if res.status != "ok":
+            self._last_llm = {"ts": now, "status": res.status, "error": res.error}
+            reason = "ответ не JSON-объект" if res.status == "invalid" else (
+                "тайм-аут диспетчера" if res.error == "тайм-аут" else res.error)
+            self._log("llm", event=ev.id, module=ev.module, status=res.status, reason=reason, why=why)
             return
-        except ValueError as e:                                 # ответ не строгий JSON: как сбой, правила
-            self._last_llm = {"ts": now, "status": "invalid", "error": str(e)[:160]}
-            self._log("llm", event=ev.id, module=ev.module, status="invalid", reason="ответ не JSON-объект", why=why)
-            return
-        except Exception as e:
-            self._last_llm = {"ts": now, "status": "unavailable", "error": str(e)[:160] or type(e).__name__}
-            self._log("llm", event=ev.id, module=ev.module, status="unavailable", reason=self._last_llm["error"], why=why)
-            return
-        ops, rejected, reason = dispatch.validate(raw, {**ctx, "now": now})
+        ops, rejected, reason = res.ops, res.rejected, res.reason
         self._last_llm = {"ts": now, "status": "ok", "reason": reason, "accepted": ops, "rejected": rejected}
         self._log("llm", event=ev.id, module=ev.module, status="ok", reason=reason or "без пояснения",
                   accepted=ops, rejected=rejected, why=why, confidence=ev.confidence,
                   echelon=ECHELON_GEMMA if ops else ev.echelon)
         if ops:                                                 # решение диспетчера принято: эшелон Gemma
             ev.llm_used = True
-            ev.echelon = self._echelon(ev)
+            ev.echelon = event_echelon(ev)
         for op in ops:
             await self._apply_op(op, now)
 
@@ -803,7 +589,7 @@ class FocusManager:
         elif typ == "create_subgoal":
             cp = self.checkpoints[op["task_id"]]
             cp["subgoals"].append(op["goal"])
-            self._dirty = True
+            self.store.touch()
             self._log("llm_op", task=op["task_id"], reason=f"диспетчер: подцель «{op['goal'][:80]}»")
 
     # ── возобновление (FOC-4, resume/schedule) ──────────────────────────────
@@ -813,12 +599,10 @@ class FocusManager:
             return
         if any(e.status == PENDING and e.priority >= SWITCH_P for e in self.events.values()):
             return                                              # важнее ждущего события задача не возобновляется
-        cands = [c for c in self.checkpoints.values() if c["status"] in ("paused", "blocked")]
-        cands.sort(key=lambda c: (not c.get("resume_now"), -c["priority"], c["created"]))
-        for cp in cands:
+        for cp in self.store.resumable():
             if now - cp["created"] > CHECKPOINT_MAX_AGE_S:
                 cp["status"] = "stale"
-                self._dirty = True
+                self.store.touch()
                 self._log("checkpoint", module=cp["module"], task=cp["task_id"], status="stale",
                           reason="задача слишком давно на паузе, checkpoint устарел")
                 continue
@@ -854,12 +638,12 @@ class FocusManager:
             self.slot.priority = self._holder_priority(self.slot)
             cp["status"], cp["resume_now"] = "resumed", False
             self._switch_times.append(now)
-            self._dirty = True
+            self.store.touch()
             self._log("resume", module=cp["module"], task=cp["task_id"], policy=cp["policy"], status="resumed",
                       reason=cp["reason"])
             return True
         cp["attempts"] += 1
-        self._dirty = True
+        self.store.touch()
         if cp["attempts"] >= RESUME_RETRIES:
             cp["status"] = "stale"
             self._log("resume", module=cp["module"], task=cp["task_id"], status="stale",
@@ -880,14 +664,14 @@ class FocusManager:
         pol = policy or self._default_active(module)
         if self.slot is not None and self.slot.module == module and (pol is None or pol == self.slot.policy):
             return {"ok": True, "already": True, "policy": self.slot.policy}
-        ev = QueuedEvent(id=_new_id("fe"), module=module, kind=f"{module}.user_request",
+        ev = QueuedEvent(id=new_id("fe"), module=module, kind=f"{module}.user_request",
                          text=goal or f"просьба пользователя: фокус модулю «{self.title_of(module)}»",
                          priority=float(USER_PRIORITY), base=float(USER_PRIORITY), created=now, critical=False,
                          initial=float(USER_PRIORITY), last_eval=now, updated=now, user=True, policy_pref=pol)
-        self.events[ev.id] = ev
+        self.queue.add(ev)
         self._log("request", module=module, source=source, policy=pol, event=ev.id, reason=ev.text[:160])
         ok = await self._switch(ev, now, origin="user")
-        self._dirty = True
+        self.store.touch()
         return {"ok": ok, "reason": ev.reason, "policy": pol if ok else None}
 
     async def pin(self, module: str | None) -> dict:
@@ -895,7 +679,7 @@ class FocusManager:
         критических событий. Закрепление за модулем без фокуса сразу передаёт ему фокус."""
         async with self._lock:
             self.pinned = module or None
-            self._dirty = True
+            self.store.touch()
             self._log("pin", module=self.pinned or "", reason="фокус закреплён" if self.pinned else "закрепление снято")
             if self.pinned is None:
                 return {"ok": True, "pin": None}
@@ -919,7 +703,7 @@ class FocusManager:
                 self.dnd_modules.add(module)
             else:
                 self.dnd_modules.discard(module)
-            self._dirty = True
+            self.store.touch()
             self._log("dnd", module=module, reason="не беспокоить " + ("включено" if on else "выключено"))
             return {"ok": True, "all": self.dnd_all, "modules": sorted(self.dnd_modules),
                     "profile": sorted(self._profile_quiet())}
@@ -949,50 +733,22 @@ class FocusManager:
 
     def _state_dict(self) -> dict:
         return {"v": 1, "pin": self.pinned, "dnd_all": self.dnd_all, "dnd_modules": sorted(self.dnd_modules),
-                "checkpoints": list(self.checkpoints.values()),
-                "queue": [e.public() | {"priority": e.base, "dedupe_key": e.dedupe_key, "created": e.created}
-                          for e in self.events.values() if e.status in (PENDING, DEFERRED)][:200]}
+                "checkpoints": list(self.checkpoints.values()), "queue": self.queue.dump()}
 
     async def _save(self) -> None:
-        if self.state_path is None or not self._dirty:
+        if self.state_path is None or not self.store.dirty:
             return
-        text = json.dumps(self._state_dict(), ensure_ascii=False, default=str)
-        try:
-            await asyncio.to_thread(_write_json, self.state_path, text)
-            self._dirty = False
-        except OSError as e:                                    # checkpoint остаётся в памяти, запись повторится
-            logger.warning(f"Фокус: состояние не записано на диск, повтор позже: {e}")
+        await self.store.save(self._state_dict())
 
     def _load(self) -> None:
-        path = self.state_path
-        if path is None or not path.exists():
-            return
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as e:
-            logger.warning(f"Фокус: файл состояния не прочитан: {e}")
-            return
-        if not isinstance(data, dict):
+        data = self.store.read()
+        if data is None:
             return
         self.pinned = data.get("pin") if isinstance(data.get("pin"), str) else None
         self._dnd_local = bool(data.get("dnd_all"))
         self.dnd_modules = {m for m in data.get("dnd_modules") or [] if isinstance(m, str)}
-        for cp in data.get("checkpoints") or []:
-            if isinstance(cp, dict) and isinstance(cp.get("task_id"), str):
-                self.checkpoints[cp["task_id"]] = cp
-        now = self.clock()
-        for raw in data.get("queue") or []:
-            if not isinstance(raw, dict) or not isinstance(raw.get("module"), str):
-                continue
-            ev = QueuedEvent(id=str(raw.get("id") or _new_id("fe")), module=raw["module"], kind=str(raw.get("kind") or ""),
-                             text=str(raw.get("text") or ""), priority=float(raw.get("priority") or 0.0),
-                             base=float(raw.get("priority") or 0.0), created=float(raw.get("created") or now),
-                             dedupe_key=raw.get("dedupe_key"), initial=float(raw.get("initial") or 0.0),
-                             last_eval=now, updated=now, critical=bool(raw.get("critical")))
-            ev.status = DEFERRED if raw.get("status") == DEFERRED else PENDING
-            ev.resume = dict(raw.get("resume") or {})
-            self.events[ev.id] = ev
-        self._dirty = False
+        self.queue.load(data.get("queue"), self.clock())
+        self.store.dirty = False
 
     # ── снимок для дашборда (FOC-9) ─────────────────────────────────────────
 

@@ -37,6 +37,22 @@ FISH_RECHECK_S = 60.0    # недоступный Fish Speech проверяет
 VOICE    = "ru-RU-SvetlanaNeural"
 PITCH    = "-25Hz"
 RATE     = "-12%"
+_tone = {"pitch_hz": 0.0, "rate_pct": 0.0}     # сдвиг от настроения персонажа (ТЗ 26), только для edge-tts
+
+
+def set_tone(tone) -> None:
+    """Сдвиг голоса от ядра: {pitch_hz, rate_pct}, не больше ±40 Гц и ±25 %. Битое значение сбрасывает сдвиг."""
+    def num(key, lim):
+        v = tone.get(key) if isinstance(tone, dict) else 0
+        return max(-lim, min(lim, float(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+    _tone["pitch_hz"], _tone["rate_pct"] = num("pitch_hz", 40), num("rate_pct", 25)
+
+
+def _shifted(base: str, delta: float) -> str:
+    """'-25Hz' + 3 -> '-22Hz'; '-12%' + 2 -> '-10%'."""
+    unit = "%" if base.endswith("%") else "Hz"
+    value = int(round(float(base.rstrip("%Hz")) + delta))
+    return f"{value:+d}{unit}"
 
 MAX_CHARS = 600
 
@@ -173,7 +189,8 @@ async def _fish_synth(text: str, directory: Path | None = None) -> str | None:
 async def _edge_synth(text: str, directory: Path | None = None) -> str:
     """Синтезировать текст через edge-tts → MP3."""
     import edge_tts
-    communicate = edge_tts.Communicate(text, voice=VOICE, pitch=PITCH, rate=RATE)
+    communicate = edge_tts.Communicate(text, voice=VOICE, pitch=_shifted(PITCH, _tone['pitch_hz']),
+                                       rate=_shifted(RATE, _tone['rate_pct']))
     tmp = _tmp_path(".mp3", "gits_edge_", directory)
     await communicate.save(tmp)
     return tmp

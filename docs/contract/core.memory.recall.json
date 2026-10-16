@@ -1,0 +1,52 @@
+{
+  "name": "core.memory.recall",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "planned",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "о чём вспомнить",
+        "minLength": 1
+      },
+      "limit": {
+        "type": "integer",
+        "description": "сколько фактов",
+        "minimum": 1,
+        "maximum": 50
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "query"
+    ],
+    "title": "core.memory.recall",
+    "description": "Вспомнить: поиск по памяти (контракт `MemoryReader`)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "facts": {
+        "type": "array",
+        "description": "факты",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "facts"
+    ],
+    "title": "core.memory.recall (ответ)"
+  }
+}

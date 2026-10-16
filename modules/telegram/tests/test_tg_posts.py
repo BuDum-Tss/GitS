@@ -22,7 +22,7 @@ async def test_post_publishes_to_channel_and_reports_event(tmp_path, monkeypatch
     assert rig.asks == []                                                      # telegram_confirm выключен: не спрашивает
     assert state["posts"][-1]["text"] == POST and state["last_post"] > 0
     assert ev["kind"] == "telegram.posted" and POST[:40] in ev["text"]
-    assert any(r["text"] == "опубликовано по просьбе: " + POST for r in rig.journal())
+    assert any(r["text"] == "опубликовано по просьбе: " + POST for r in await rig.journal())
 
 
 async def test_confirm_asks_through_the_core_and_publishes_on_yes(tmp_path, monkeypatch):

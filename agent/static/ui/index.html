@@ -132,6 +132,16 @@
             <div class="text-xs opacity-60 mt-2">Последние решения фокуса</div>
             <ul id="focus-journal" class="space-y-1 text-xs"></ul>
           </div>
+          <div id="affect-box" class="mt-3">
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="font-medium">Настроение</div>
+              <span id="affect-word" class="badge badge-ghost badge-sm"></span>
+              <button id="affect-reset-btn" class="btn btn-xs btn-outline ml-auto" title="Вернуть эмоции и настроение к базовому уровню персонажа">сбросить</button>
+            </div>
+            <div class="text-xs opacity-70 mt-2" id="affect-meta"></div>
+            <svg id="affect-chart" viewBox="0 0 300 60" class="w-full h-16 mt-1 rounded border border-base-300" preserveAspectRatio="none"></svg>
+            <div class="text-xs opacity-60">Валентность и настроение за 24 часа</div>
+          </div>
           <div id="latency-box" class="mt-3">
             <div class="flex flex-wrap items-center gap-3">
               <div class="font-medium">Задержка реплики</div>
@@ -1073,6 +1083,21 @@ $('focus-dnd-btn').onclick = async () => {
   FOC.sig = ''; loadFocus().catch(() => {});
 };
 setInterval(() => loadFocus().catch(() => {}), 3000);
+// ТЗ 26, AFF-7: настроение и график за 24 часа
+function drawAffect(a) {
+  $('affect-word').textContent = `настроение ${a.mood_word} · эмоция ${a.mood_emotion}`;
+  $('affect-meta').textContent = `валентность ${a.valence.toFixed(2)}, возбуждение ${a.arousal.toFixed(2)}, настроение ${a.mood.toFixed(2)}` + (a.reason ? `. Причина: ${a.reason}` : '') + ((a.warnings || []).length ? `. Предупреждение: ${a.warnings.slice(-1)[0]}` : '');
+  const h = a.history || [], now = Date.now() / 1000, x = t => Math.max(0, 300 - (now - t) / 86400 * 300), y = v => 30 - v * 28;
+  const line = (i, c) => h.length ? `<polyline fill="none" stroke="${c}" stroke-width="1.5" points="${h.map(r => x(r[0]).toFixed(1) + ',' + y(r[i]).toFixed(1)).join(' ')}"/>` : '';
+  $('affect-chart').innerHTML = '<line x1="0" y1="30" x2="300" y2="30" stroke="currentColor" opacity="0.2"/>' + line(1, '#e07a5f') + line(2, '#3d85c6');
+}
+async function loadAffect() {
+  if ($('tab-status').classList.contains('hidden')) return;
+  const a = await fetch('/api/affect').then(r => r.json());
+  if (a.available) drawAffect(a);
+}
+$('affect-reset-btn').onclick = async () => { const a = await (await post('/api/affect/reset', {})).json(); if (a && a.available) drawAffect(a); };
+setInterval(() => loadAffect().catch(() => {}), 5000);
 // ТЗ 24, TRC-2: блок «Задержка реплики» во вкладке «Состояние»
 async function loadLatency() {
   if ($('tab-status').classList.contains('hidden')) return;

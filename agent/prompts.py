@@ -100,6 +100,21 @@ def _persona_with(key: str, fallback_style: str) -> str:
     return " ".join(p for p in parts if p)
 
 
+def reflection() -> dict:
+    """Промпт внутреннего диалога (ТЗ 30, IMP-5): {"system": характер и правила размышления, "format": формат ответа}.
+    Раздел `reflection` в prompt.yaml персонажа; нет раздела - запасной текст (имя подставляет character.fill)."""
+    b = behaviour().get("reflection", {})
+    c = constitution()
+    head = " ".join(p for p in (str(c.get("identity", "")).strip(), str(c.get("language", "")).strip(),
+                                str(c.get("character", "")).strip()) if p)
+    system = " ".join(str(b.get("system") or "Это твои мысли про себя, пользователь их не слышит. Реши, нужно ли что-то "
+                          "сказать, сделать, напомнить себе позже или записать в память; часто лучше промолчать.").split())
+    fmt = " ".join(str(b.get("format") or 'Ответь ТОЛЬКО JSON: {"thought": "<мысль>", "recall": "<о чём вспомнить, или пусто>", '
+                   '"intents": [{"kind": "say|do|remind|remember|none", "text": "<факт для реплики, дело, о чём напомнить, '
+                   'что запомнить>", "in_s": <секунд до напоминания>}]}. Пока не вспомнила нужное, intents пусты.').split())
+    return {"system": character.fill(f"{head} {system} {_rules()}".strip()), "format": fmt}
+
+
 def commentary_persona() -> str:
     """Характер для коротких реплик по ходу игры."""
     return _persona_with("commentary", "Коротко реагируй на происходящее в игре, одна-две фразы.")

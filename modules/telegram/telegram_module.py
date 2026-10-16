@@ -16,7 +16,7 @@ from privacy import Privacy
 from telegram_channel import TelegramChannel
 from telegram_user import LeakError, TelegramUser
 
-import events_log
+from gits_sdk import host
 
 log = logging.getLogger("tg_app")
 
@@ -60,7 +60,7 @@ class TelegramModule:
     def __init__(self, client: ModuleClient, memory_dir: str):
         self.client = client
         self.memory_dir = memory_dir
-        self.privacy = Privacy(client.request)
+        self.privacy = Privacy(client.privacy_terms)
         self.channel = TelegramChannel(memory_dir, client, self.privacy)
         self.user = TelegramUser(memory_dir, client, self.privacy)
         self.tasks: list[asyncio.Task] = []
@@ -175,8 +175,7 @@ class TelegramModule:
 
     async def _set_setting(self, key: str, value: bool) -> None:
         """TG-2/TG-13: общая настройка меняется встроенным инструментом ядра core.set_setting."""
-        await self.client.request("core.tool.call", {"tool": "core.set_setting", "args": {"key": key, "value": value}},
-                                  timeout=30)
+        await self.client.call_tool("core.set_setting", {"key": key, "value": value}, timeout=30)
 
     async def _voice_bytes(self, path) -> bytes | None:
         """OGG/Opus из voice_path (TG-17): только .ogg/.opus (OGG делает модуль голоса: core.tts, ТЗ 12). Другой формат, нет
@@ -188,13 +187,13 @@ class TelegramModule:
                 raise ValueError("нужен .ogg или .opus (перекодирования в модуле Telegram больше нет)")
             return await asyncio.to_thread(Path(path).read_bytes)
         except Exception as e:
-            events_log.log_nowait("error", "telegram: голос для ответа не подготовлен, пойдёт текстом: " + scrub(str(e))[:160])
+            host.log_nowait("error", "telegram: голос для ответа не подготовлен, пойдёт текстом: " + scrub(str(e))[:160])
             return None
 
     async def load_persona(self) -> None:
         """Персонаж от ядра (core.persona, ТЗ 05 CHR-4): разделы персоны и алиасы. Повторно при теме character."""
         try:
-            card = await self.client.request("core.persona", {}, timeout=20)
+            card = (await self.client.persona()).raw
         except Exception as e:
             log.warning("персона от ядра не получена: %s", e)
             return

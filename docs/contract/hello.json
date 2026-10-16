@@ -1,0 +1,44 @@
+{
+  "name": "hello",
+  "direction": "module->core",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "module_id": {
+        "type": "string",
+        "description": "id модуля"
+      },
+      "instance": {
+        "type": "string",
+        "description": "уникальный id запуска"
+      },
+      "pid": {
+        "type": "integer",
+        "description": "pid процесса"
+      },
+      "protocol": {
+        "type": "integer",
+        "description": "версия протокола"
+      },
+      "manifest": {
+        "type": "object",
+        "description": "манифест"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "module_id",
+      "instance",
+      "pid",
+      "protocol",
+      "manifest"
+    ],
+    "title": "hello",
+    "description": "Рукопожатие: первое сообщение модуля, с манифестом."
+  }
+}

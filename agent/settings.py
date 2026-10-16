@@ -22,6 +22,7 @@ DEFAULTS = {
     "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); переключает ядро (core.set_character), не правьте вручную
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (нужен docker compose up whisperx)
+    "context": {"mode": "push", "budget_tokens": {}},   # ТЗ 04: push/pull память; бюджет токенов на роль и блок
     "hearing": False,           # слушать системный звук (речь в колонках); по умолчанию выключено
     "auto_accept": False,       # авто-разрешать ВСЕ действия (кроме опасных, см. safety.py); включает только пользователь
     "telegram": False,          # публиковать мысли в Telegram-канал
@@ -33,6 +34,9 @@ DEFAULTS = {
     "claude_usage": "normal",   # расход Claude: frugal / normal / generous (темп игровых контуров, см. claude_budget.py)
     "claude_token_budget": 3000000,   # ёмкость «батарейки»: токенов Claude за окно лимита (5 часов), см. claude_battery.py
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
+    "proactive_tick": False,    # старая болтовня по таймеру (раз в 30 с модель решает, заговорить ли); выключена, ТЗ 30: теперь импульсы
+    # размышление (ТЗ 30, IMP-7): шагов и токенов на мысль, размышлений в час, глубина цепочки напоминаний
+    "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3},
     "dev_mode": False,          # режим разработчика: во вкладке «Модули» видны примеры для разработчиков (модуль echo)
     "pet_visible": True,        # показывать окно питомца (модуль pet при этом остаётся подключённым)
     "volume": 100,              # громкость озвучки, 0-100
@@ -58,7 +62,7 @@ DEFAULTS = {
     },
 }
 # словари, которые update() сливает на один уровень вглубь (modules.<id> и attention.<ключ> целиком не затираются)
-_DEEP_KEYS = ("modules", "attention")
+_DEEP_KEYS = ("modules", "attention", "context", "reflection")
 _dir = Path(os.getenv("MEMORY_DIR", "./memory"))
 
 

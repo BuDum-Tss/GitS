@@ -10,8 +10,10 @@ ids событий, задач, модулей и политик, текущий
 состояния (очередь, фокус, политики, checkpoint), а не из полного снимка мира."""
 from __future__ import annotations
 
+import asyncio
 import json
 import time
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 import character
@@ -284,4 +286,82 @@ def make_recheck(ask: Ask | None = None) -> Callable[[dict], Awaitable[int | Non
         text = await _call(RECHECK_SYSTEM, json.dumps(event, ensure_ascii=False, default=str), ask)
         return parse_urgency(text)
     return recheck
+
+
+# ── контракт менеджера фокуса к модели (ТЗ 29, ARC-6) ────────────────────────────────────────
+LLM_TIMEOUT_S = 5.0
+
+
+def llm_event(ev: Any) -> dict:
+    return {"id": ev.id, "module": ev.module, "kind": ev.kind, "text": ev.text[:200], "priority": round(ev.priority, 1),
+            "critical": ev.critical, "confidence": ev.confidence, "category": ev.category, "hint": ev.hint,
+            "hint_conf": round(ev.hint_conf, 3), "focus_needed": ev.focus_needed}
+
+
+@dataclass
+class Consult:
+    """Итог вызова диспетчера: status ok | unavailable | invalid; при ok - принятые и отклонённые операции."""
+
+    status: str
+    error: str = ""
+    ops: list = field(default_factory=list)
+    rejected: list = field(default_factory=list)
+    reason: str = ""
+
+
+class FocusDispatch:
+    """Второй эшелон для менеджера фокуса: хранит вызовы модели (`llm`, `recheck`), строит структурированный контекст,
+    вызывает с тайм-аутом и проверяет ответ. Применять операции и писать журнал - дело менеджера."""
+
+    def __init__(self, llm: Callable[[dict], Awaitable[Any]] | None = None,
+                 recheck: Callable[[dict], Awaitable[Any]] | None = None):
+        self.llm = llm
+        self.recheck = recheck
+
+    @staticmethod
+    def context(ev: Any, now: float, *, waiting: list, tables: Callable[[str], dict | None], holder: Any,
+                holder_status: dict | None, checkpoints: list, pin: str | None, dnd_all: bool,
+                dnd_modules: list) -> dict:
+        """Структурированное состояние для диспетчера: очередь, фокус, политики, задачи. Не полный снимок мира."""
+        queue = sorted(waiting, key=lambda e: -e.priority)[:10]
+        modules = {}
+        for mod in {e.module for e in queue} | ({holder.module} if holder else set()):
+            modules[mod] = {"policies": {pid: p.get("focus") for pid, p in (tables(mod) or {}).items()}}
+        holder_ctx = None
+        if holder is not None:
+            holder_ctx = {"module": holder.module, "policy": holder.policy, "goal": holder.goal[:160],
+                          "interruptible": (holder_status or {}).get("interruptible") is not False}
+        return {
+            "now": now, "event": llm_event(ev),
+            "events": {e.id: {"module": e.module, "status": e.status, "critical": e.critical,
+                              "priority": round(e.priority, 1)} for e in queue},
+            "modules": modules, "holder": holder_ctx,
+            "checkpoints": {c["task_id"]: {"module": c["module"], "status": c["status"], "goal": c["goal"][:120],
+                                           "subgoals": len(c["subgoals"])} for c in checkpoints},
+            "pin": pin, "dnd": {"all": dnd_all, "modules": dnd_modules},
+        }
+
+    async def consult(self, ctx: dict, now: float, timeout: float | None = None) -> Consult | None:
+        """Спросить диспетчера. None - LLM выключена. Сбой, тайм-аут или не JSON - статус без операций (правила)."""
+        if self.llm is None:
+            return None
+        try:
+            raw = await asyncio.wait_for(self.llm(ctx), timeout or LLM_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            return Consult("unavailable", "тайм-аут")
+        except ValueError as e:                                 # ответ не строгий JSON: как сбой, правила
+            return Consult("invalid", str(e)[:160])
+        except Exception as e:
+            return Consult("unavailable", str(e)[:160] or type(e).__name__)
+        ops, rejected, reason = validate(raw, {**ctx, "now": now})
+        return Consult("ok", ops=ops, rejected=rejected, reason=reason)
+
+    async def urgency(self, event: dict, timeout: float | None = None) -> tuple[Any, str]:
+        """Перепроверка срочности: (значение или None, причина сбоя). Без `recheck` - (None, '')."""
+        if self.recheck is None:
+            return None, ""
+        try:
+            return await asyncio.wait_for(self.recheck(event), timeout or LLM_TIMEOUT_S), ""
+        except Exception as e:                                  # тайм-аут и сбой перепроверки - правило менеджера
+            return None, str(e)[:160] or type(e).__name__
 

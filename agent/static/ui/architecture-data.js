@@ -59,10 +59,10 @@ window.ARCH_DATA = {
      "id": "dash",
      "t": "Дашборд и чат",
      "tag": "I",
-     "new": false,
+     "new": true,
      "do": "чат, настройки, пульт, оценки",
      "out": "UserInput как Event",
-     "now": "dashboard.py: 863 строки, 0 классов, ходит в хранилища напрямую"
+     "now": "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider"
     }
    ]
   },
@@ -71,7 +71,7 @@ window.ARCH_DATA = {
    "row": 0,
    "title": "Внутренние импульсы",
    "tag": "A",
-   "new": true,
+   "new": false,
    "summary": "Напоминания, которые агент назначил себе; сработавший срок становится событием. Болтовни по таймеру нет.",
    "out": "Event self.*",
    "nodes": [
@@ -79,19 +79,19 @@ window.ARCH_DATA = {
      "id": "reminders",
      "t": "ReminderStore",
      "tag": "I",
-     "new": true,
+     "new": false,
      "do": "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль",
      "out": "срок наступил",
-     "now": "нет: сейчас есть только план в MemoryStore с сроком"
+     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonReminders, файл reminders.json), контракт ReminderRepository; инструмент assistant.remind_self"
     },
     {
      "id": "timer",
      "t": "ImpulseTimer",
      "tag": "I",
-     "new": true,
+     "new": false,
      "do": "следит только за сроками напоминаний; когда срок пришёл, шлёт событие. Не тик болтовни",
      "out": "Event self.reminder",
-     "now": "нет: сейчас proactive_loop раз в 30 с"
+     "now": "есть (ТЗ 30): app/impulse_timer.py, один таймер на ближайший срок, восстановление и склейка просроченного; proactive_loop выключен настройкой proactive_tick"
     }
    ]
   },
@@ -111,16 +111,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "WebSocket :8766: рукопожатие, проверка формата, очередь входящих; запросы core.*",
      "out": "Event",
-     "now": "module_hub.py: 683 строки; импортирует attention и fast_brain, то есть транспорт знает домен"
+     "now": "module_hub.py: приёмник событий EventSink колбэком (adapters/module_events.py), без attention и fast_brain"
     },
     {
      "id": "event",
      "t": "Event",
      "tag": "D",
-     "new": true,
+     "new": false,
      "do": "единый конверт: kind, text, sender, hint, data, trace, ts; источник внешний или внутренний (self)",
      "out": "сущность",
-     "now": "нет: dict, Item, UserInput и SpeechCandidate по отдельности"
+     "now": "частично (ТЗ 30): domain/event.py (Event с origin external/self) для импульсов и размышления; внутри внимания остаётся Item (поле origin)"
     },
     {
      "id": "norm",
@@ -129,7 +129,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "нормализация, дедупликация за 60 с, склейка повторов, TTL",
      "out": "Event",
-     "now": "attention.submit и _merge_duplicate"
+     "now": "выделен (ТЗ 29, R3): app/normalizer.py, app/items.py (хранилище и склейка), domain/dedupe.py"
     },
     {
      "id": "people",
@@ -138,7 +138,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "sender → Person, первый контакт, заметки о человеке",
      "out": "Person",
-     "now": "attention._note_sender + relationships; лезет в companion._rel через getattr"
+     "now": "выделен (R3): Normalizer.note_sender через контракты PeopleDirectory и MemoryWriter; getattr(companion, \"_rel\") остался только в адаптере adapters/people.py"
     }
    ]
   },
@@ -158,7 +158,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»",
      "out": "RuleResult",
-     "now": "середина attention.submit; стоп-фразы и «похоже на просьбу» ещё и в router"
+     "now": "выделен (R3): app/process_event.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py"
     },
     {
      "id": "cls",
@@ -167,7 +167,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с",
      "out": "Classification",
-     "now": "decide.py + services/decider"
+     "now": "decide.py + services/decider; в Attention его зовёт app/event_classifier.py (R3)"
     },
     {
      "id": "score",
@@ -176,7 +176,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "срочность × 20 × веса (профиль, отправитель, правила, пользователь) × свежесть",
      "out": "priority 0..100",
-     "now": "attention._score"
+     "now": "выделен (R3): app/scorer.py поверх domain/scoring.py"
     },
     {
      "id": "disp",
@@ -185,7 +185,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "решение D0–D4 и routes[]: say, chat, task, focus, think, digest, ignore; пишет решение в журнал",
      "out": "Decision",
-     "now": "attention._decide, _act, _finish"
+     "now": "выделен (R3): app/dispatcher.py (finish, act) и app/decision_log.py; routes[] пока только say, digest, focus-хук"
     }
    ]
   },
@@ -205,16 +205,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "обращение владельца: проверки → ветка (болтовня / просьба / «что умеешь») → ответ",
      "out": "Reply или Task",
-     "now": "companion._handle_text и _converse"
+     "now": "app/conversation_service.py (фасад Companion)"
     },
     {
      "id": "ctx",
      "t": "ContextBuilder",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "собирает контекст: характер, память, диалог, состояние; бюджет токенов на роль",
      "out": "Context",
-     "now": "нет: companion._context склеивает 6 строк без бюджета"
+     "now": "app/context_builder.py: склейка 6 источников; бюджет токенов на роль и блок и режимы push (needs_memory) / pull (recall) в настройке context, по умолчанию прежнее поведение"
     },
     {
      "id": "reply",
@@ -223,7 +223,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля",
      "out": "ReplyCandidate",
-     "now": "companion._converse, _declutter + fast_brain"
+     "now": "app/reply_generator.py: _converse, _declutter + fast_brain"
     }
    ]
   },
@@ -232,7 +232,7 @@ window.ARCH_DATA = {
    "row": 3,
    "title": "Размышление",
    "tag": "A",
-   "new": true,
+   "new": false,
    "summary": "Внутренний диалог агента: получает событие или импульс, думает, читая память, и решает: сказать, сделать, напомнить себе или записать.",
    "out": "Intent",
    "nodes": [
@@ -240,19 +240,19 @@ window.ARCH_DATA = {
      "id": "reflect",
      "t": "ReflectionService",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов",
      "out": "Intent: сказать, сделать, напомнить, записать, ничего",
-     "now": "нет: сейчас только proactive_loop (опрос себя раз в 30 с)"
+     "now": "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route); лимиты шагов, токенов, часа, глубины"
     },
     {
      "id": "thoughts",
      "t": "Журнал мыслей",
      "tag": "I",
-     "new": true,
+     "new": false,
      "do": "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов",
      "out": "Thought",
-     "now": "нет"
+     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), GET /api/thoughts"
     }
    ]
   },
@@ -308,7 +308,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "долгие задачи: прогресс, вопросы, итог; Claude-помощник (Agent SDK)",
      "out": "JobState",
-     "now": "module_registry + attention.on_job_update + desktop.assistant_agent"
+     "now": "выделен (R3) для внимания: app/jobs.py (JobTracker); module_registry и desktop.assistant_agent как раньше"
     }
    ]
   },
@@ -323,21 +323,39 @@ window.ARCH_DATA = {
    "nodes": [
     {
      "id": "fmgr",
-     "t": "FocusManager",
+     "t": "FocusManager (фасад)",
      "tag": "A",
      "new": false,
-     "do": "один слот, очередь, переключение, дребезг, checkpoint",
+     "do": "один слот, протокол переключения, команды пользователя, журнал; прежние публичные методы",
      "out": "FocusDecision",
-     "now": "focus.py: 1061 строка, 60 методов в одном классе"
+     "now": "focus.py: фасад над четырьмя частями (ТЗ 29, ARC-6)"
     },
     {
      "id": "fpol",
      "t": "FocusPolicy",
      "tag": "D",
-     "new": true,
+     "new": false,
      "do": "чистые правила: приоритет, запас, критичное, старение, конфликты",
      "out": "FocusDecision",
-     "now": "внутри FocusManager: _gate, _near, _claimant"
+     "now": "domain/focus_policy.py: gate, ambiguity, дребезг, эшелон"
+    },
+    {
+     "id": "fque",
+     "t": "FocusQueue",
+     "tag": "A",
+     "new": true,
+     "do": "состояния событий, склейка, старение, сроки",
+     "out": "QueuedEvent",
+     "now": "focus_queue.py"
+    },
+    {
+     "id": "fstore",
+     "t": "CheckpointStore",
+     "tag": "A",
+     "new": true,
+     "do": "checkpoint задач и файл focus.json",
+     "out": "checkpoint",
+     "now": "focus_store.py"
     },
     {
      "id": "fdisp",
@@ -346,7 +364,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "Gemma только для неоднозначного; ответ строго проверяется",
      "out": "Op",
-     "now": "focus_dispatch.py: 288 строк"
+     "now": "focus_dispatch.py: класс FocusDispatch и validate"
     }
    ]
   },
@@ -375,7 +393,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "сводка событий D1 и предложение рассказать",
      "out": "SpeechCandidate",
-     "now": "attention._digest_*"
+     "now": "выделен (R3): app/digest.py"
     },
     {
      "id": "out",
@@ -391,18 +409,18 @@ window.ARCH_DATA = {
      "t": "Presence и эмоции",
      "tag": "A",
      "new": false,
-     "do": "говорит ли, эмоция, присутствие; (план) настроение",
+     "do": "говорит ли, эмоция, присутствие; настроение (валентность, возбуждение, быстрые эмоции) затухает к базовому уровню персонажа",
      "out": "PresenceState",
-     "now": "PresenceTracker + fast_brain.publish"
+     "now": "выделено (ТЗ 26): app/affect_service.py поверх domain/affect.py; PresenceTracker, fast_brain.publish; настроение в ContextBuilder, тон голоса, пороги внимания"
     },
     {
      "id": "hubout",
      "t": "ModuleHub (исходящие)",
      "tag": "I",
-     "new": false,
+     "new": true,
      "do": "доставка команд модулям: tool.call, speak, policy.activate, job.answer",
      "out": "ToolResult, события",
-     "now": "тот же module_hub.py, смешан с приёмом"
+     "now": "module_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как ModuleHub.outbound"
     }
    ]
   },
@@ -422,16 +440,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; (план) эпизоды и сон",
      "out": "MemoryRecord",
-     "now": "companion._learn, _consolidate + graph_memory.step"
+     "now": "app/memory_capture.py: _learn, _consolidate, remember_text + graph_memory.step"
     },
     {
      "id": "mr",
      "t": "MemoryReader",
      "tag": "A",
      "new": false,
-     "do": "граф + воспоминания о себе + записи; (план) гибридный поиск",
+     "do": "граф + воспоминания о себе + записи; гибридный поиск (search/) готов, подключение коллекций в чтение памяти - дальше",
      "out": "MemoryHit[]",
-     "now": "graph.search, self_memories, MemoryStore.relevant (два поиска)"
+     "now": "graph.search, self_memories, MemoryStore.relevant (два поиска); search/: HybridIndex (FTS5 + векторы + свежесть), HybridSearch, переписывание запроса, Embedder"
     },
     {
      "id": "elog",
@@ -550,7 +568,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "только собирает объекты и подставляет контракты; бизнес-логики быть не должно",
      "out": "",
-     "now": "core_service.py: 22 импорта, внутри обработчики voice, colonists, run_lost"
+     "now": "core_service.py: только сборка; обработчики voice, colonists, run_lost, game_order в app/handlers/"
+    },
+    {
+     "id": "hnd",
+     "t": "Обработчики модулей",
+     "tag": "A",
+     "new": true,
+     "do": "события voice.*, rimworld.colonists и run_ended, desktop.activity, приказ в игру (game_order)",
+     "out": "",
+     "now": "app/handlers/: voice.py, game.py, desktop.py"
     }
    ]
   }
@@ -603,6 +630,12 @@ window.ARCH_DATA = {
    "norm",
    "flow",
    "self.reminder"
+  ],
+  [
+   "root",
+   "hnd",
+   "use",
+   null
   ],
   [
    "hub",
@@ -801,6 +834,18 @@ window.ARCH_DATA = {
    "fdisp",
    "use",
    "неоднозначно"
+  ],
+  [
+   "fmgr",
+   "fque",
+   "use",
+   "события"
+  ],
+  [
+   "fmgr",
+   "fstore",
+   "use",
+   "checkpoint"
   ],
   [
    "fmgr",

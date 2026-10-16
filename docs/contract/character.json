@@ -1,0 +1,54 @@
+{
+  "name": "character",
+  "direction": "core->module",
+  "kind": "topic",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "id",
+        "minLength": 1
+      },
+      "name": {
+        "type": "string",
+        "description": "имя",
+        "minLength": 1
+      },
+      "aliases": {
+        "type": "array",
+        "description": "другие имена",
+        "items": {
+          "type": "string"
+        }
+      },
+      "gender": {
+        "type": "string",
+        "description": "род"
+      },
+      "language": {
+        "type": "string",
+        "description": "язык"
+      },
+      "world": {
+        "type": "string",
+        "description": "мир"
+      },
+      "voice": {
+        "type": "object",
+        "description": "голос"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "id",
+      "name"
+    ],
+    "title": "character",
+    "description": "Карточка активного персонажа при смене (ТЗ 05, CHR-6)."
+  }
+}

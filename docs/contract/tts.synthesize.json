@@ -1,0 +1,65 @@
+{
+  "name": "tts.synthesize",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable",
+    "timeout",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "текст",
+        "maxLength": 5000,
+        "minLength": 1
+      },
+      "emotion": {
+        "type": "string",
+        "description": "эмоция"
+      },
+      "format": {
+        "type": "string",
+        "description": "формат",
+        "enum": [
+          "wav",
+          "ogg"
+        ],
+        "default": "wav"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "text"
+    ],
+    "title": "tts.synthesize",
+    "description": "Синтез речи у модуля голоса (`capabilities: voice.output`), ответ на `core.tts`."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "путь к файлу"
+      },
+      "duration_ms": {
+        "type": "integer",
+        "description": "длительность, мс",
+        "minimum": 0
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "path",
+      "duration_ms"
+    ],
+    "title": "tts.synthesize (ответ)"
+  }
+}

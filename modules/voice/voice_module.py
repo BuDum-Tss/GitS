@@ -24,7 +24,7 @@ from stt_client import STTClient
 from voice_id import VoiceIdentity
 
 import common
-import events_log
+from gits_sdk import host
 import tts_engine
 
 log = logging.getLogger("voice")
@@ -191,7 +191,7 @@ class VoiceModule:
             line = "распознавание: WhisperX отвечает, работаю через него (с узнаванием голосов)"
         else:
             line = f"распознавание: {status.get('label')}"
-        events_log.log_nowait("hearing", line)
+        host.log_nowait("hearing", line)
         try:
             task = asyncio.get_running_loop().create_task(self.report_state())
         except RuntimeError:
@@ -374,6 +374,7 @@ class VoiceModule:
                 return None
             if not c.enabled:
                 return None
+            tts_engine.set_tone(body.get("tone"))        # ТЗ 26: ограниченный сдвиг голоса от настроения
             await self.speaker.speak(uid, text, body.get("emotion"), bool(body.get("replace")),
                                      trace=body.get("trace") if isinstance(body.get("trace"), dict) else None)
             return None

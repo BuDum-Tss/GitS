@@ -27,3 +27,24 @@ def looks_like_stop(text: str) -> bool:
 def looks_like_action(text: str) -> bool:
     """Быстрая проверка без модели: похоже ли сообщение на просьбу что-то сделать."""
     return bool(_VERB_RE.search(text.lower()))
+
+
+EPISODE_KINDS = ("episode.summary", "episode.ended")
+THINK_MIN_PRIORITY = 25.0
+
+
+def think_route(*, origin: str, kind: str, decision: str, urgency: int | None, priority: float, memorable: bool,
+                needs_reply: bool, spoken: bool = False) -> bool:
+    """Маршрут `think` (ТЗ 30, IMP-4): напоминание себе; итог эпизода; значимое событие без срочности (D1-D2);
+    вопрос без ответа. Мысль сама размышление не запускает (нет петли)."""
+    if kind == "self.thought":
+        return False
+    if origin == "self":
+        return kind == "self.reminder"
+    if kind.endswith(EPISODE_KINDS):
+        return True
+    if (urgency or 0) >= 4 or decision not in ("D1", "D2"):
+        return False
+    if needs_reply and not spoken:
+        return True
+    return memorable or priority >= THINK_MIN_PRIORITY

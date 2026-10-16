@@ -1,0 +1,21 @@
+{
+  "name": "shutdown",
+  "direction": "core->module",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "reason": {
+        "type": "string",
+        "description": "причина"
+      }
+    },
+    "additionalProperties": true,
+    "title": "shutdown",
+    "description": "Ядро просит модуль завершиться (в течение 10 секунд)."
+  }
+}

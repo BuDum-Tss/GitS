@@ -1,0 +1,42 @@
+{
+  "name": "log",
+  "direction": "module->core",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.1",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string",
+        "description": "вид записи",
+        "enum": [
+          "error",
+          "telegram",
+          "hearing",
+          "vision",
+          "approval",
+          "game",
+          "memory"
+        ]
+      },
+      "text": {
+        "type": "string",
+        "description": "текст",
+        "maxLength": 500
+      },
+      "data": {
+        "type": "object",
+        "description": "подробности"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "kind"
+    ],
+    "title": "log",
+    "description": "Запись в журнал событий ядра (замена прямого `events_log`). Ядро принимает только виды LOG_KINDS и обрезает текст до 500 символов; выключенный модуль не пишет."
+  }
+}

@@ -39,3 +39,6 @@
 - Поиск по `modules/` не находит импортов модулей ядра (кроме списка исключений); тест это ловит.
 - `docs/MODULE_CONTRACT.md` создан скриптом и совпадает с кодом.
 - Существующие модули (voice, telegram, pet, desktop, rimworld, montage) работают как раньше; `.\check.ps1` зелёный.
+
+## 6. Статус (выполнено)
+MC-1…MC-9 выполнены: `sdk/gits_sdk/contract/`, типизированный клиент, перевод модулей telegram, voice, desktop, pet, montage на SDK (rimworld и montage ядерных импортов не имели; rimworld оставлен на `client.request`, чтобы не менять его заглушки), тесты соответствия, совместимости и окружения, генератор `sdk/tools/gen_contract_doc.py`. Пять запросов памяти и справочника получили статус `planned` (ответ `unavailable` с версией контракта 1.1). Не сделано: MC-10 (шаблон модуля `sdk/template/`, обновление `echo_module.py`).

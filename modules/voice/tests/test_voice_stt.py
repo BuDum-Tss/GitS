@@ -326,7 +326,7 @@ async def test_self_voice_is_not_registered_without_diarization(tmp_path):
 
 async def test_mic_failure_message_no_longer_tells_to_start_docker(tmp_path, monkeypatch):
     logged = []
-    monkeypatch.setattr(ml.events_log, "log_nowait", lambda kind, text="", **d: logged.append((kind, text)))
+    monkeypatch.setattr(ml.host, "log_nowait", lambda kind, text="", **d: logged.append((kind, text)))
 
     class Broken:
         async def transcribe(self, *a, **k):
@@ -341,7 +341,7 @@ async def test_mic_failure_message_no_longer_tells_to_start_docker(tmp_path, mon
 
 async def test_module_shows_mode_in_panel_and_journals_each_change_once(tmp_path, monkeypatch):
     logged = []
-    monkeypatch.setattr(app.events_log, "log_nowait", lambda kind, text="", **d: logged.append((kind, text)))
+    monkeypatch.setattr(app.host, "log_nowait", lambda kind, text="", **d: logged.append((kind, text)))
     st, clock = server_state(up=False), Clock()
     eng, _ = make_engine(clock=clock)
     stt = STTClient(transport=server(st), local=eng, clock=clock)

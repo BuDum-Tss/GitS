@@ -1,0 +1,91 @@
+{
+  "name": "core.llm.ask",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.1",
+  "errors": [
+    "bad_request",
+    "unavailable",
+    "timeout",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "system": {
+        "type": "string",
+        "description": "системная часть промпта",
+        "maxLength": 60000
+      },
+      "user": {
+        "type": "string",
+        "description": "пользовательская часть",
+        "maxLength": 60000
+      },
+      "timeout_s": {
+        "type": "number",
+        "description": "тайм-аут вызова, секунд",
+        "minimum": 1,
+        "maximum": 120,
+        "default": 60
+      },
+      "max_tokens": {
+        "type": "integer",
+        "description": "лимит токенов ответа",
+        "minimum": 1,
+        "maximum": 2000,
+        "default": 40
+      },
+      "temperature": {
+        "type": "number",
+        "description": "температура",
+        "minimum": 0,
+        "maximum": 2,
+        "default": 0.3
+      },
+      "background": {
+        "type": "boolean",
+        "description": "фоновый вызов уступает срочным",
+        "default": false
+      },
+      "image_b64": {
+        "type": "string",
+        "description": "JPEG в base64 (до ~700 КБ)",
+        "maxLength": 700000
+      },
+      "json": {
+        "type": "boolean",
+        "description": "разобрать ответ как JSON и вернуть в data",
+        "default": false
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "system",
+      "user"
+    ],
+    "title": "core.llm.ask",
+    "description": "Один вызов локальной модели ядра (контракт `LanguageModel`). Срочный вызов вытесняет фоновый (`background: true`)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "ответ модели"
+      },
+      "data": {
+        "type": "object",
+        "description": "разобранный JSON (если просили и разобрался)"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "text"
+    ],
+    "title": "core.llm.ask (ответ)"
+  }
+}

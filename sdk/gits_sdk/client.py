@@ -10,14 +10,18 @@ import asyncio
 import copy
 import json
 import logging
+import os
 import sys
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 import aiohttp
 
+from . import contract, host
 from . import protocol as P
+from .contract import results as R
 from .protocol import Envelope, ManifestError, ProtocolError, ToolError
 from .envcompat import env
 
@@ -28,6 +32,8 @@ HANDSHAKE_TIMEOUT_S = 10.0       # сколько ждём welcome после he
 SHUTDOWN_HOOK_TIMEOUT_S = 8.0    # хук on_shutdown должен уложиться (ядро убивает процесс через 10 с)
 JOB_PROGRESS_INTERVAL_S = 2.0    # MOD-19: прогресс задачи не чаще раза в 2 с
 FINISHED_JOBS_KEPT = 20          # job.list: незавершённые и последние 20 завершённых
+LOG_BUFFER_MAX = 200             # записей журнала, ожидающих связи с ядром (ТЗ 31): старые вытесняются
+ENV_STRICT = "GITS_CONTRACT_STRICT"   # 1: режим разработки, клиент проверяет по контракту и входящее (запросы ядра, ответы)
 
 # причины reject, после которых переподключаться бессмысленно (MOD-12)
 _FATAL_REJECT_WORDS = ("протокол", "protocol", "манифест", "manifest")
@@ -51,7 +57,7 @@ class PanelClient:
 
     async def set(self, blocks: list) -> bool:
         body = {"blocks": blocks}
-        problems = P.validate_panel_set(body, self._client._panel_action_ids())
+        problems = contract.validate("panel.set", body, actions=self._client._panel_action_ids())
         if problems:
             raise ValueError("пространство модуля неверно: " + "; ".join(problems))
         body = json.loads(json.dumps(body, ensure_ascii=False))     # снимок: модуль может менять свой список дальше
@@ -142,6 +148,12 @@ class ModuleClient:
         # пространство модуля (TZ 15): блоки и обработчики действий кнопок и строк
         self.panel = PanelClient(self)
         self._panel_actions: dict[str, Handler] = {}
+
+        # журнал и услуги ядра для кода модуля (ТЗ 31): последний созданный клиент обслуживает `gits_sdk.host`
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._log_buffer: deque[dict] = deque(maxlen=LOG_BUFFER_MAX)
+        self.strict = os.environ.get(ENV_STRICT) == "1"
+        host.bind(self)
 
     # ------------------------------------------------------------ регистрация обработчиков
 
@@ -282,6 +294,7 @@ class ModuleClient:
         self._check_handlers()
         self._stop.clear()
         self._exit_code = 0
+        self._loop = asyncio.get_running_loop()
         attempt = 0
         async with aiohttp.ClientSession() as session:
             try:
@@ -351,6 +364,7 @@ class ModuleClient:
             self._ws = ws
             self._ready.set()
             log.info("модуль «%s» подключён к ядру %s", self.module_id, self.core_version or "")
+            self._flush_log()
             if self._last_state is not None:
                 self._spawn(self._send_env(Envelope("state", self._last_state), gen))
             if self.panel.latest is not None:                 # TZ 15: ядро могло начать заново
@@ -437,6 +451,11 @@ class ModuleClient:
 
     def _dispatch(self, env: Envelope, gen: int) -> None:
         t = env.type
+        if self.strict and t in contract.MODULE_REQUESTS:          # режим разработки (ТЗ 31, MC-2): запрос ядра по контракту
+            problems = contract.validate(t, env.body)
+            if problems:
+                self._spawn(self._send_env(P.result_error(env.id, "bad_request", "; ".join(problems)), gen))
+                return
         if t == "result":
             self._on_result(env)
         elif t == "topic":
@@ -628,7 +647,7 @@ class ModuleClient:
             raise TypeError("неизвестные поля события: " + ", ".join(sorted(extra)))
         body = {"kind": kind, "text": P.clip(str(text), P.EVENT_TEXT_MAX), **{k: v for k, v in fields.items()
                                                                               if v is not None}}
-        problems = P.validate_event(body)
+        problems = contract.validate("event", body)
         if not kind.startswith(self.module_id + "."):
             problems.append(f"kind должен начинаться с «{self.module_id}.»")
         if problems:
@@ -645,7 +664,7 @@ class ModuleClient:
         if extra:
             raise TypeError("неизвестные поля say: " + ", ".join(sorted(extra)))
         body = {"text": str(text), "mode": mode, **{k: v for k, v in fields.items() if v is not None}}
-        problems = P.validate_say(body)
+        problems = contract.validate("say", body)
         if problems:
             raise ValueError("say неверен: " + "; ".join(problems))
         if not self.enabled:
@@ -684,7 +703,13 @@ class ModuleClient:
             reply = await asyncio.wait_for(fut, timeout)
         finally:
             self._pending.pop(env.id, None)
-        return P.unwrap_result(reply)
+        value = P.unwrap_result(reply)
+        if self.strict and msg_type in contract.CORE_REQUESTS:
+            problems = contract.validate_response(msg_type, value)
+            if problems:
+                log.warning("ответ ядра на %s не по контракту: %s", msg_type, "; ".join(problems))
+                raise ToolError("ответ ядра не по контракту: " + "; ".join(problems), code="internal")
+        return value
 
     def _fail_pending(self) -> None:
         for fut in list(self._pending.values()):
@@ -703,7 +728,7 @@ class ModuleClient:
             body["context"] = context
         if urgency_hint is not None:
             body["urgency_hint"] = urgency_hint
-        problems = P.validate_ask(body)
+        problems = contract.validate("core.ask", body)
         if problems:
             raise ValueError("вопрос неверен: " + "; ".join(problems))
         value = await self.request("core.ask", body, timeout=timeout_s + ASK_GRACE_S)
@@ -742,7 +767,7 @@ class ModuleClient:
             merged.pop("question", None)
         if new_state != "failed" and "error" not in fields:
             merged.pop("error", None)
-        problems = P.validate_job_update(merged)
+        problems = contract.validate("job.update", merged)
         if problems:
             raise ValueError("job.update неверен: " + "; ".join(problems))
         self.jobs.pop(job_id, None)
@@ -774,3 +799,161 @@ class ModuleClient:
                 self._job_sent[job_id] = (copy.deepcopy(job), time.monotonic())
                 count += 1
         return count
+
+    # ------------------------------------------------------------ типизированные запросы к ядру (ТЗ 31, MC-3)
+
+    async def _core(self, name: str, body: dict, *, timeout: float = 60.0) -> Any:
+        """Запрос `core.*` с проверкой исходящего тела по контракту (ValueError, как у `ask`)."""
+        problems = contract.validate(name, body)
+        if problems:
+            raise ValueError(f"{name}: запрос неверен: " + "; ".join(problems))
+        return await self.request(name, body, timeout=timeout)
+
+    async def tts(self, text: str, emotion: str | None = None, format: str = "wav", *,
+                  timeout: float = 80.0) -> R.TtsResult:
+        """`core.tts`: синтез речи её голосом в файл (делает модуль голоса)."""
+        body: dict = {"text": text, "format": format}
+        if emotion:
+            body["emotion"] = emotion
+        return R.TtsResult.from_wire(await self._core("core.tts", body, timeout=timeout))
+
+    async def call_tool(self, tool: str, args: dict | None = None, *, timeout: float = 120.0) -> R.ToolResult:
+        """`core.tool.call`: инструмент любого окружения ядра по id `модуль.имя` (с разрешениями ядра)."""
+        body: dict = {"tool": tool}
+        if args:
+            body["args"] = args
+        return R.ToolResult.from_wire(await self._core("core.tool.call", body, timeout=timeout))
+
+    async def persona(self, *, timeout: float = 20.0) -> R.Persona:
+        """`core.persona`: карточка активного персонажа и разделы persona.md."""
+        return R.Persona.from_wire(await self._core("core.persona", {}, timeout=timeout))
+
+    async def privacy_terms(self, *, timeout: float = 20.0) -> list[str]:
+        """`core.privacy_terms`: личные слова для фильтров публикации."""
+        value = await self._core("core.privacy_terms", {}, timeout=timeout)
+        return [str(t) for t in R.as_dict(value).get("terms", [])]
+
+    async def claude_usage(self, tokens: int, source: str | None = None, limit_text: str | None = None, *,
+                           timeout: float = 15.0) -> None:
+        """`core.claude_usage`: учесть расход токенов Claude; `limit_text` - текст исчерпанного лимита."""
+        body: dict = {"tokens": int(tokens)}
+        if source:
+            body["source"] = source
+        if limit_text:
+            body["limit_text"] = limit_text
+        await self._core("core.claude_usage", body, timeout=timeout)
+
+    async def web_search(self, query: str, *, timeout: float = 60.0) -> str:
+        """`core.web_search`: поиск в интернете средствами ядра."""
+        value = await self._core("core.web_search", {"query": query}, timeout=timeout)
+        return str(R.as_dict(value).get("text", ""))
+
+    async def llm_ask(self, system: str, user: str, *, timeout: float = 60.0, max_tokens: int = 40,
+                      temperature: float = 0.3, background: bool = False, image_b64: str | None = None,
+                      as_json: bool = False) -> R.LlmAnswer:
+        """`core.llm.ask`: вызов локальной модели ядра. Срочные вызовы вытесняют фоновые (`background=True`)."""
+        body: dict = {"system": system, "user": user, "timeout_s": timeout, "max_tokens": max_tokens,
+                      "temperature": temperature}
+        if background:
+            body["background"] = True
+        if image_b64:
+            body["image_b64"] = image_b64
+        if as_json:
+            body["json"] = True
+        return R.LlmAnswer.from_wire(R.as_dict(await self._core("core.llm.ask", body, timeout=timeout + 20)))
+
+    async def events_tail(self, limit: int = 20, kinds: Any = None, since: float = 0.0, *,
+                          timeout: float = 15.0) -> list[R.JournalEvent]:
+        """`core.events.tail`: последние события журнала ядра (виды `contract.LOG_READ_KINDS`)."""
+        body: dict = {"limit": int(limit)}
+        if kinds:
+            body["kinds"] = sorted(kinds)
+        if since:
+            body["since"] = float(since)
+        value = await self._core("core.events.tail", body, timeout=timeout)
+        return [R.JournalEvent.from_wire(e) for e in R.as_dict(value).get("events", []) if isinstance(e, dict)]
+
+    async def claude_locate(self, *, timeout: float = 15.0) -> str | None:
+        """`core.claude.locate`: путь к claude.exe, найденный ядром (или None)."""
+        return R.as_dict(await self._core("core.claude.locate", {}, timeout=timeout)).get("path")
+
+    async def lookup(self, query: str, collections: list[str] | None = None, *, allow_web: bool = False, k: int | None = None,
+                     timeout: float = 30.0) -> str:
+        """`core.lookup` (planned): справочник знаний, текст найденного. Пока ядро отвечает ToolError(unavailable)."""
+        body: dict = {"query": query, "allow_web": allow_web}
+        if collections:
+            body["collections"] = list(collections)
+        if k:
+            body["k"] = k
+        return str(R.as_dict(await self._core("core.lookup", body, timeout=timeout)).get("text") or "")
+
+    async def memory_recall(self, query: str, limit: int | None = None) -> list[dict]:
+        """`core.memory.recall` (planned): вспомнить факты. Пока ToolError(unavailable)."""
+        body: dict = {"query": query}
+        if limit:
+            body["limit"] = limit
+        return list(R.as_dict(await self._core("core.memory.recall", body)).get("facts", []))
+
+    async def memory_remember(self, text: str, source: str | None = None) -> bool:
+        """`core.memory.remember` (planned): запомнить факт. Пока ToolError(unavailable)."""
+        body: dict = {"text": text}
+        if source:
+            body["source"] = source
+        return bool(R.as_dict(await self._core("core.memory.remember", body)).get("stored"))
+
+    async def experience_add(self, entry: dict, *, timeout: float = 30.0) -> dict:
+        """`core.experience.add` (planned): добавить опыт `{scope, statement, context?}`. Пока ToolError(unavailable)."""
+        return R.as_dict(await self._core("core.experience.add", dict(entry), timeout=timeout))
+
+    async def kb_ingest(self, collection: str, documents: list[dict], *, replace: bool = False, final: bool = False,
+                        timeout: float = 120.0) -> dict:
+        """`core.kb.ingest` (planned): документы в коллекцию базы знаний. Пока ToolError(unavailable)."""
+        body: dict = {"collection": collection, "documents": documents}
+        if replace:
+            body["replace"] = True
+        if final:
+            body["final"] = True
+        return R.as_dict(await self._core("core.kb.ingest", body, timeout=timeout))
+
+    # ------------------------------------------------------------ журнал ядра
+
+    def log(self, kind: str, text: str = "", **data: Any) -> None:
+        """Запись в журнал событий ядра (сообщение `log`); не ждёт, не бросает, безопасна из любого потока.
+
+        Нет связи с ядром: запись ждёт в буфере (до LOG_BUFFER_MAX) и уходит после подключения. Недопустимый вид
+        (не из `contract.LOG_KINDS`) отбрасывается. Заменяет прямой `events_log` ядра."""
+        body: dict = {"kind": kind, "text": P.clip(str(text), 500)}
+        if data:
+            try:
+                body["data"] = json.loads(json.dumps(data, ensure_ascii=False, default=str))
+            except (TypeError, ValueError):
+                pass
+        problems = contract.validate("log", body)
+        if problems:
+            log.debug("запись журнала отброшена: %s", problems)
+            return
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            self._log_buffer.append(body)
+            return
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is loop:
+            self._push_log(body)
+        else:
+            try:
+                loop.call_soon_threadsafe(self._push_log, body)
+            except RuntimeError:
+                self._log_buffer.append(body)
+
+    def _push_log(self, body: dict) -> None:
+        if not self.connected:
+            self._log_buffer.append(body)
+            return
+        self._spawn(self._notify("log", body))
+
+    def _flush_log(self) -> None:
+        while self._log_buffer:
+            self._spawn(self._notify("log", self._log_buffer.popleft()))

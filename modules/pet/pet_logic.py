@@ -54,7 +54,8 @@ def sticker_for(presence: dict, now: float, connected: bool = True) -> str:
         ts = 0.0
     if emotion in STICKER_MAP and now - ts < EMOTION_TTL_SECS:
         return emotion
-    return "idle"
+    mood_emotion = presence.get("mood_emotion")       # ТЗ 26: когда свежей реакции нет, стикер по настроению
+    return mood_emotion if mood_emotion in STICKER_MAP and mood_emotion != "idle" else "idle"
 
 
 def panel_blocks(settings: dict, presence: dict, now: float, connected: bool, enabled: bool) -> list[dict]:

@@ -1,0 +1,36 @@
+{
+  "name": "profile",
+  "direction": "core->module",
+  "kind": "topic",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "id профиля",
+        "minLength": 1
+      },
+      "title": {
+        "type": "string",
+        "description": "название"
+      },
+      "focus_modules": {
+        "type": "array",
+        "description": "модули фокуса",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "id"
+    ],
+    "title": "profile",
+    "description": "Активный профиль: id, название, модули фокуса."
+  }
+}

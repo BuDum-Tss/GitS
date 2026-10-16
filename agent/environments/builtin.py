@@ -135,6 +135,22 @@ def register(registry, companion, memory, profiles=None):
         stored = await companion.remember_text(a["text"], a.get("kind"))
         return "запомнила: " + "; ".join(stored) if stored else "это она уже помнила (запись обновлена)"
 
+    async def remind_self(a):
+        impulses = getattr(companion, "impulses", None)
+        if impulses is None:
+            raise ToolError("напоминания себе ещё не подключены")
+        text = str(a.get("text") or "").strip()
+        try:
+            minutes = float(a.get("in_minutes"))
+        except (TypeError, ValueError):
+            raise ToolError("не указано, через сколько минут напомнить")
+        if not text or minutes <= 0:
+            raise ToolError("нужен текст и срок больше нуля минут")
+        if minutes > 60 * 24 * 30:
+            raise ToolError("напоминание можно назначить не дальше чем на 30 суток")
+        await impulses.timer.add(time.time() + minutes * 60, text, source={"kind": "conversation"})
+        return f"напомнит себе через {int(minutes)} мин: она сама решит, сказать ли об этом, когда срок придёт"
+
     async def recall(a):
         parts = [i["text"] for i in memory.store.search(a["query"])]
         graph = getattr(companion, "graph", None)
@@ -195,6 +211,12 @@ def register(registry, companion, memory, profiles=None):
                             "description": "вид записи, по умолчанию user"},
                    "due_days": {"type": "integer", "required": False, "description": "срок плана в днях"}},
                   remember, keywords=("запомни", "запиши", "помни", "запомнить", "важно")),
+            _tool("assistant", "remind_self", "Назначить САМОЙ СЕБЕ напоминание на потом, чтобы вернуться к теме позже (например, "
+                  "когда человек сказал «напомни», «вернись к этому позже», «проверь через час»). В срок придёт внутреннее "
+                  "событие, она подумает и решит, сказать, сделать или промолчать.",
+                  {"text": {"type": "string", "description": "о чём вспомнить, одной фразой"},
+                   "in_minutes": {"type": "number", "description": "через сколько минут напомнить себе"}},
+                  remind_self, keywords=("напомни", "напоминание", "вернись", "позже", "через", "проверь", "не забудь")),
             _tool("assistant", "recall", "Вспомнить, что она помнит по теме или о ком-то (для вопросов «что ты помнишь про…»).",
                   {"query": {"type": "string", "description": "тема или слова для поиска в памяти"}},
                   recall, informative=True, keywords=("помнишь", "вспомни", "вспомнить", "память", "знаешь")),

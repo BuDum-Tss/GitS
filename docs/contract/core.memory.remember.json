@@ -1,0 +1,47 @@
+{
+  "name": "core.memory.remember",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "planned",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "что запомнить",
+        "minLength": 1
+      },
+      "source": {
+        "type": "string",
+        "description": "откуда факт"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "text"
+    ],
+    "title": "core.memory.remember",
+    "description": "Запомнить факт (контракт `MemoryWriter`)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "stored": {
+        "type": "boolean",
+        "description": "записано ли"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "stored"
+    ],
+    "title": "core.memory.remember (ответ)"
+  }
+}

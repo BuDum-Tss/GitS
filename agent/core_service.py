@@ -23,9 +23,8 @@ import claude_battery
 import dashboard
 import events_log
 import fast_brain
+import impulse_service
 import focus_dispatch
-import journal
-import latency_trace
 import profile_manager
 import settings
 import speech_out
@@ -40,7 +39,11 @@ import core_requests
 from core_requests import CoreRequests
 from environments import builtin
 from environments.registry import Registry
-from module_hub import ModuleError, ModuleHub
+from adapters.module_events import AttentionEventSink
+from app.handlers.desktop import desktop_state, make_activity_hook
+from app.handlers.game import make_colonists_handler, make_game_order, make_run_lost_hook
+from app.handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
+from module_hub import ModuleHub
 from module_registry import ModuleRegistry
 from graph_memory import GraphMemory
 from relationships import Relationships
@@ -49,26 +52,7 @@ from router import Router
 logger = logging.getLogger("core")
 
 DASHBOARD_PORT = 8766
-ORDER_TIMEOUT_S = 15           # RW-11: сколько ждём, пока модуль игры примет приказ
 SUBGRAPH_TIMEOUT_S = 1.5       # CORE-22: подграф профиля от модуля для дашборда
-
-
-def desktop_state(modules) -> dict:
-    """state.data модуля desktop (ТЗ 14, DESK-7): активное приложение, простой, текущая активность экрана.
-    Пусто, если модуль не подключён: тогда профиль по окну не выбирается, простоя нет, активности нет."""
-    return modules.state_data("desktop") or {}
-
-
-def make_activity_hook(companion):
-    """desktop.activity (ТЗ 14, DESK-3): итог анализа экрана пишется в память занятий (activity.json); событие само
-    идёт обычным путём внимания (urgency 1, как voice.heard)."""
-    async def on_activity(item) -> None:
-        data = item.data or {}
-        mem = getattr(companion, "_mem", None)
-        if mem is None or not data.get("app") or not data.get("summary"):
-            return
-        await asyncio.to_thread(mem.add_activity, str(data["app"]), str(data.get("category") or "other"), str(data["summary"]))
-    return on_activity
 
 
 def wire_modules(companion, registry, *, battery=claude_battery.status, specs=None,
@@ -85,8 +69,9 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     requests = CoreRequests(attention=attention)
     holder: dict = {}                                    # profiles появится ниже, а реестру и шине он нужен уже при создании
     modules = ModuleRegistry(registry, on_state=lambda: holder["profiles"].poke())
-    hub = ModuleHub(modules, attention=attention, requests=requests, battery_source=battery, presence=presence,
-                    profile_source=lambda: holder["profiles"].info())
+    hub = ModuleHub(modules, sink=AttentionEventSink(attention, presence), requests=requests, battery_source=battery,
+                    presence=presence, profile_source=lambda: holder["profiles"].info())
+    hub.attention = attention                            # только для диагностики и тестов: шина работает через sink (ARC-7)
     io.hub = hub
     attention.hub, attention.modules = hub, modules
     # менеджер фокуса (ТЗ 18): решения внимания попадают в его очередь; модули без policies в манифесте в фокусе не участвуют
@@ -127,27 +112,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
             return await conn.request("graph.get", {}, timeout=SUBGRAPH_TIMEOUT_S)
         return None
 
-    async def game_order(text: str) -> bool:
-        """RW-11: приказ игроку-агенту. Каждому модулю из focus_modules активного профиля, у которого есть capabilities
-        ["game"] и инструмент order, отправляется tool.call order (тайм-аут 15 с); accepted: true - обращение обработано игрой."""
-        for module_id in profiles.current().focus_modules:
-            rec = modules.get(module_id)
-            manifest = (rec.manifest if rec is not None else None) or {}
-            if "game" not in (manifest.get("capabilities") or []) or not modules.is_enabled(module_id):
-                continue
-            if not any(isinstance(t, dict) and t.get("name") == "order" for t in manifest.get("tools") or []):
-                continue
-            conn = hub.connection(module_id)
-            if conn is None:
-                continue
-            try:
-                value = await conn.request("tool.call", {"tool": "order", "args": {"text": text}}, timeout=ORDER_TIMEOUT_S)
-            except ModuleError as e:
-                logger.info(f"Приказ модулю «{module_id}» не принят: {e.message}")
-                continue
-            if isinstance(value, dict) and value.get("accepted"):
-                return True
-        return False
+    game_order = make_game_order(modules, hub, lambda: profiles)
 
     def foreground():
         return desktop_state(modules).get("foreground_app")
@@ -240,88 +205,24 @@ def _module_title(modules, module_id: str) -> str:
     return rec.title if rec is not None and rec.title else module_id
 
 
-VOICE_SILENT_KINDS = {"voice.speech", "voice.user_speaking", "voice.utterance", "voice.trace"}      # частые и служебные: в module_event не пишутся
-
-
-def make_voice_handlers(companion, attention, speech) -> dict:
-    """События модуля голоса, которые ядро обрабатывает само, мимо оценки внимания (ТЗ 12): voice.utterance - реплика
-    пользователя в разговор с каналом voice (VOICE-6); voice.speech и voice.user_speaking - присутствие (VOICE-17, VOICE-8);
-    voice.named - голосу назначено имя, человек заводится в памяти и отношениях (раньше это делал инструмент name_voice)."""
-
-    async def on_utterance(item) -> None:
-        speaker = (item.data or {}).get("speaker")
-        if not isinstance(speaker, dict):
-            sender = item.sender or {}
-            speaker = {"id": str(sender.get("id", "")).removeprefix("voice:") or None, "name": sender.get("name"),
-                       "new": False, "owner": bool(sender.get("is_owner")), "has_owner": bool(sender.get("is_owner"))}
-        if item.trace is not None:
-            await companion.on_voice(item.text, speaker, trace=item.trace)
-        else:
-            await companion.on_voice(item.text, speaker)
-
-    async def on_speech(item) -> None:
-        if hasattr(speech, "on_event"):
-            speech.on_event(item.data or {})
-
-    async def on_user_speaking(item) -> None:
-        attention.set_user_speaking(bool((item.data or {}).get("speaking")))
-
-    async def on_trace(item) -> None:
-        latency_trace.audio_arrived((item.data or {}).get("trace"))      # метки звука (ТЗ 24, TRC-1): запись трассы
-
-    async def on_named(item) -> None:
-        data = item.data or {}
-        name, voice_id = str(data.get("name") or "").strip(), data.get("voice_id")
-        if not name or not voice_id:
-            return
-        if data.get("is_owner"):
-            mem = getattr(companion, "_mem", None)
-            if mem is not None:
-                await asyncio.to_thread(mem.add_fact, f"Имя: {name}", kind="user", importance=5)
-        else:
-            rel = getattr(companion, "_rel", None)
-            if rel is not None:
-                await asyncio.to_thread(rel.ensure_person, f"voice:{voice_id}", name, source="voice")
-
-    return {"voice.utterance": on_utterance, "voice.speech": on_speech, "voice.user_speaking": on_user_speaking,
-            "voice.named": on_named, "voice.trace": on_trace}
-
-
-def make_run_lost_hook():
-    """Метка ошибки `run_lost` (ТЗ 24, TRC-5): забег проигран (колония погибла) - событие run_ended с исходом colony_died.
-    Событие идёт обычным путём внимания; хук только пишет метку."""
-    async def on_run_ended(item) -> None:
-        data = item.data or {}
-        if str(data.get("outcome") or "") == "colony_died":
-            journal.mistake("run_lost", item.text[:200], refs=[item.created], outcome="colony_died",
-                            trace_id=item.trace.id if item.trace is not None else None)
-    return on_run_ended
-
-
-def make_heard_hook(companion):
-    """VOICE-14: сводка услышанного в колонках дополнительно пишется в память занятий и в контекст разговора, а сам факт
-    «В колонках: ...» идёт обычным путём внимания (voice.heard, срочность 1: чаще всего в сводку)."""
-    async def on_heard(item) -> None:
-        summary = str((item.data or {}).get("summary") or item.text.removeprefix("В колонках:")).strip()
-        if not summary:
-            return
-        if hasattr(companion, "note_heard"):
-            companion.note_heard(summary)
-        mem = getattr(companion, "_mem", None)
-        if mem is not None:
-            await asyncio.to_thread(mem.add_activity, "звук", "audio", summary)
-    return on_heard
-
-
-def make_colonists_handler(rel, graph):
-    """Обработчик события rimworld.colonists (RW-9): `data` = {"pawns": [...], "colony": "имя"}. Раньше это делал канал
-    /api/event агента игры (link_event)."""
-    async def on_colonists(item) -> None:
-        data = item.data or {}
-        pawns, colony = data.get("pawns") or [], data.get("colony") or "колония"
-        rel.sync_colonists(pawns)
-        await graph.sync_colonists(pawns, colony)
-    return on_colonists
+def wire_affect(companion, layer, presence, speech, mem_root: Path):
+    """Состояние эмоций персонажа (ТЗ 26): оценка событий, настроение в контексте, питомец, голос, пороги внимания."""
+    import fast_brain as _fb
+    import journal as _journal
+    from app.affect_service import AffectService
+    from domain import affect as dom
+    char = character.active()
+    affect = AffectService(char.memory_dir(mem_root), dom.Params.from_card(char.emotions),
+                           on_change=lambda fields: presence.update(**fields))
+    _fb.set_affect(affect)
+    _journal.mistake_hook = affect.on_mistake
+    companion.context_builder.mood_of = affect.mood_block
+    layer.attention.ctx.threshold_offset = affect.proactivity_offset
+    voice = getattr(speech, "voice", None)
+    if voice is not None:
+        voice.tone_of = affect.tone
+    presence.update(**affect.presence_fields())
+    return affect
 
 
 async def _run(config: dict):
@@ -344,11 +245,13 @@ async def _run(config: dict):
     registry = Registry()
     registry.embedder = tool_search.ToolEmbeddings(Path(mem_dir) / "tool_embeddings.json")     # отбор инструментов по смыслу
     layer = wire_modules(companion, registry)
+    affect = wire_affect(companion, layer, presence, speech, Path(mem_dir))      # ТЗ 26: состояние эмоций
     companion.game_order = layer.game_order              # RW-11: приказ игроку-агенту (инструмент order модуля игры)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     dashboard.set_attention(layer.attention)
     dashboard.set_focus(layer.focus)                     # ТЗ 18: вкладка «Состояние», блок «Фокус»
     dashboard.set_presence(presence)
+    dashboard.set_affect(affect)
     loop = asyncio.get_running_loop()
     await dashboard.start_dashboard(
         memory_dir=mem_dir, chat_callback=lambda m: loop.create_task(layer.io.from_dashboard(m)))
@@ -363,7 +266,7 @@ async def _run(config: dict):
     companion.graph = graph
     dashboard.set_graph(graph)
     layer.character_switch = CharacterSwitch(companion=companion, rel=rel, graph=graph, attention=layer.attention,
-                                             hub=layer.hub, mem_root=Path(mem_dir))
+                                             hub=layer.hub, mem_root=Path(mem_dir), affect=affect)
     dashboard.set_character(layer.character_switch)
     asyncio.create_task(graph.run())
     migrated = graph.migrate_from_store(memory.store, companion._owner_name())
@@ -382,7 +285,10 @@ async def _run(config: dict):
     dashboard.set_registry(registry)
     dashboard.set_modes(layer.profiles)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
-    asyncio.create_task(companion.proactive_loop())
+    impulses = impulse_service.build(companion, layer.attention, router=lambda: companion.router)   # ТЗ 30: импульсы и размышление
+    await impulses.timer.start()                         # восстановить сроки напоминаний себе
+    dashboard.set_impulses(impulses)
+    asyncio.create_task(companion.proactive_loop())      # опрос выключен настройкой proactive_tick (по умолчанию), см. ТЗ 30
 
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
     layer.attention.kind_handlers["rimworld.colonists"] = make_colonists_handler(rel, graph)
@@ -390,6 +296,8 @@ async def _run(config: dict):
     try:
         await asyncio.Event().wait()
     finally:
+        affect.stop()
+        await impulses.timer.stop()
         await layer.stop()
 
 

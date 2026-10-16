@@ -3,9 +3,16 @@
 import asyncio
 import json
 
-import fast_brain
+import fast_brain  # только _json_of: разбор ответа, который в проде делает ядро (core.llm.ask)
 import pc_control
+from gits_sdk import host
 import screen_operator as so
+
+
+def _as_json(fake_ask):
+    async def llm_json(system, user, **kw):
+        return fast_brain._json_of(await fake_ask(system, user, **kw))
+    return llm_json
 
 
 def _setup(monkeypatch, replies, items=None):
@@ -17,7 +24,7 @@ def _setup(monkeypatch, replies, items=None):
 
     async def fake_ask(system, user, timeout, max_tokens=40, **kw):
         return json.dumps(queue.pop(0))
-    monkeypatch.setattr(fast_brain, "_ask", fake_ask)
+    monkeypatch.setattr(host, "llm_json", _as_json(fake_ask))
     monkeypatch.setattr(pc_control, "_click_xy", lambda x, y, b, d: clicks.append((x, y)) or "ok")
     monkeypatch.setattr(pc_control, "_type", lambda t: typed.append(t) or "набрала")
     return clicks, typed
@@ -69,7 +76,7 @@ def test_model_garbage_and_render(monkeypatch):
     async def fake_ask(system, user, timeout, max_tokens=40, **kw):
         return queue.pop(0)
     monkeypatch.setattr(so, "_snapshot", lambda: ("Окно", [("OK", 1, 2)]))
-    monkeypatch.setattr(fast_brain, "_ask", fake_ask)
+    monkeypatch.setattr(host, "llm_json", _as_json(fake_ask))
     assert "не смогла выбрать шаг" in asyncio.run(so.operate("цель", _no))
     text = so._render("Окно", [("Кнопка", 5, 6)])
     assert "0. «Кнопка» (5,6)" in text and "Окно: Окно" in text

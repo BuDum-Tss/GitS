@@ -2,7 +2,8 @@
 `core.claude_usage`, `core.web_search`, `core.privacy_terms` (ТЗ 10). Запросы памяти и справочника (`core.lookup`,
 `core.memory.*`, `core.experience.add`, `core.kb.ingest`) отвечают `unavailable` до ТЗ 04.
 
-Тело каждого запроса проверяется по схеме (CORE-32): обязательные поля и типы; ошибка - `bad_request`. Ответ ядра
+Тело каждого запроса проверяется по контракту `gits_sdk.contract` (CORE-32, ТЗ 31 MC-2): обязательные поля и типы; ошибка -
+`bad_request`. Запросы со статусом planned (память и справочник) отвечают `unavailable` с версией контракта. Ответ ядра
 всегда значение для `result.value` или `ModuleError(code, message)`; сообщения по-русски, без секретов.
 """
 import asyncio
@@ -10,6 +11,7 @@ import logging
 import re
 from typing import Any, Callable
 
+from gits_sdk import contract
 from gits_sdk import protocol as P
 
 from module_hub import ModuleConnection, ModuleError
@@ -17,9 +19,8 @@ from module_hub import ModuleConnection, ModuleError
 logger = logging.getLogger("core_requests")
 
 TTS_TIMEOUT_S = 80            # синтез у модуля голоса: Fish Speech до 30 с на фразу плюс перекодирование
-TTS_TEXT_MAX = 5000
+TTS_TEXT_MAX = contract.messages.TTS_TEXT_MAX
 
-_TO_TZ04 = "появится в ТЗ 04"
 _NAME_FACT = re.compile(r"\s*(?:имя(?: пользователя)?|зовут)\s*[:\-]\s*(.+)", re.I)
 _NAME_WORD = re.compile(r"[А-Яа-яЁёA-Za-z]{3,}")
 
@@ -51,30 +52,6 @@ def _bad(message: str) -> ModuleError:
     return ModuleError("bad_request", message)
 
 
-def _is_int(v: Any) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
-
-
-def _check_fields(body: Any, fields: dict[str, tuple]) -> dict:
-    """fields: имя -> (проверка типа, обязательно, пояснение). Возвращает тело; иначе bad_request со всеми проблемами."""
-    if not isinstance(body, dict):
-        raise _bad("тело запроса должно быть объектом")
-    problems = []
-    for name, (check, required, hint) in fields.items():
-        if name not in body or body[name] is None:
-            if required:
-                problems.append(f"{name}: обязательное поле ({hint})")
-        elif not check(body[name]):
-            problems.append(f"{name}: {hint}")
-    if problems:
-        raise _bad("; ".join(problems))
-    return body
-
-
-def _nonempty_str(v: Any) -> bool:
-    return isinstance(v, str) and bool(v.strip())
-
-
 class CoreRequests:
     def __init__(self, *, attention=None, router=None, privacy_terms: Callable[[], list[str]] | None = None):
         """attention - менеджер внимания (submit_question); router - Router (run_tool_ex); privacy_terms - () -> личные слова
@@ -88,21 +65,21 @@ class CoreRequests:
         handler = {
             "core.ask": self._ask, "core.tts": self._tts, "core.tool.call": self._tool_call,
             "core.persona": self._persona, "core.claude_usage": self._claude_usage, "core.web_search": self._web_search,
-            "core.privacy_terms": self._privacy_terms,
+            "core.privacy_terms": self._privacy_terms, "core.llm.ask": self._llm_ask,
+            "core.events.tail": self._events_tail, "core.claude.locate": self._claude_locate,
         }.get(msg_type)
-        if handler is not None:
-            return await handler(conn, body)
-        if msg_type in ("core.lookup", "core.memory.recall", "core.memory.remember", "core.experience.add",
-                        "core.kb.ingest"):
-            raise ModuleError("unavailable", f"запрос «{msg_type}» {_TO_TZ04}")
-        raise ModuleError("unknown", f"ядро не знает запрос «{msg_type}»")
+        if contract.is_planned(msg_type):                      # MC-5: запрос описан, реализации пока нет
+            raise ModuleError("unavailable", contract.planned_message(msg_type))
+        if handler is None:
+            raise ModuleError("unknown", f"ядро не знает запрос «{msg_type}»")
+        problems = contract.validate(msg_type, body)           # MC-2: одна проверка контракта вместо вшитых схем
+        if problems:
+            raise _bad("; ".join(problems))
+        return await handler(conn, body)
 
     # ── core.ask ────────────────────────────────────────────────────────────
 
     async def _ask(self, conn: ModuleConnection, body: Any) -> dict:
-        problems = P.validate_ask(body)
-        if problems:
-            raise _bad("; ".join(problems))
         if self.attention is None:
             raise ModuleError("unavailable", "менеджер внимания не подключён")
         from attention import Question
@@ -127,26 +104,17 @@ class CoreRequests:
     async def _tts(self, conn: ModuleConnection, body: Any) -> dict:
         """VOICE-16: синтез её голосом делает модуль голоса (запрос tts.synthesize); ядро только передаёт запрос и ответ
         {path, duration_ms}. Нет модуля голоса: unavailable."""
-        body = _check_fields(body, {
-            "text": (lambda v: _nonempty_str(v) and len(v) <= TTS_TEXT_MAX, True, f"непустая строка до {TTS_TEXT_MAX} символов"),
-            "emotion": (lambda v: isinstance(v, str), False, "строка"),
-            "format": (lambda v: v in ("wav", "ogg"), False, "wav или ogg"),
-        })
         voice = self._voice_connection()
         if voice is None:
             raise ModuleError("unavailable", "модуль голоса не подключён или выключен")
         value = await voice.request("tts.synthesize", {"text": body["text"], "emotion": body.get("emotion"),
                                                        "format": body.get("format", "wav")}, timeout=TTS_TIMEOUT_S)
-        if not (isinstance(value, dict) and isinstance(value.get("path"), str) and _is_int(value.get("duration_ms"))):
+        if contract.validate_response("tts.synthesize", value):
             raise ModuleError("internal", "модуль голоса вернул неверный ответ на tts.synthesize")
         return {"path": value["path"], "duration_ms": value["duration_ms"]}
     # ── core.tool.call ───────────────────────────────────────────────────────
 
     async def _tool_call(self, conn: ModuleConnection, body: Any) -> dict:
-        body = _check_fields(body, {
-            "tool": (_nonempty_str, True, "id инструмента вида модуль.имя"),
-            "args": (lambda v: isinstance(v, dict), False, "объект"),
-        })
         if self.router is None:
             raise ModuleError("unavailable", "маршрутизатор не подключён")
         tool = self.router.registry.get(body["tool"])
@@ -184,11 +152,6 @@ class CoreRequests:
             raise ModuleError("internal", "не удалось собрать список личных слов") from e
 
     async def _claude_usage(self, conn: ModuleConnection, body: Any) -> dict:
-        body = _check_fields(body, {
-            "tokens": (lambda v: _is_int(v) and v >= 0, True, "целое число токенов не меньше нуля"),
-            "source": (lambda v: isinstance(v, str), False, "строка"),
-            "limit_text": (lambda v: isinstance(v, str), False, "строка с текстом исчерпанного лимита"),
-        })
         import claude_battery
         import claude_quota
         if body.get("limit_text"):
@@ -197,6 +160,46 @@ class CoreRequests:
         return {}
 
     async def _web_search(self, conn: ModuleConnection, body: Any) -> dict:
-        body = _check_fields(body, {"query": (_nonempty_str, True, "непустая строка")})
         import web_search
         return {"text": await web_search.search(body["query"])}
+
+    # ── ТЗ 31: локальная модель, журнал, путь к Claude ─────────────────────────
+
+    async def _llm_ask(self, conn: ModuleConnection, body: dict) -> dict:
+        """Один вызов локальной модели ядра (`fast_brain._ask`). Срочное вытесняет фоновое (`background`)."""
+        import fast_brain
+        try:
+            text = await fast_brain._ask(
+                body["system"], body["user"], timeout=float(body.get("timeout_s", 60)),
+                max_tokens=int(body.get("max_tokens", 40)), image_b64=body.get("image_b64"),
+                temperature=float(body.get("temperature", 0.3)), background=bool(body.get("background", False)))
+        except fast_brain.Preempted as e:
+            raise ModuleError("unavailable", "локальная модель занята срочными вызовами") from e
+        except asyncio.TimeoutError as e:
+            raise ModuleError("timeout", "локальная модель не ответила вовремя") from e
+        except Exception as e:
+            logger.warning(f"core.llm.ask от {conn.module_id}: {type(e).__name__}: {e}")
+            raise ModuleError("unavailable", "локальная модель недоступна") from e
+        out: dict = {"text": text}
+        if body.get("json"):
+            data = fast_brain._json_of(text)
+            if isinstance(data, dict):
+                out["data"] = data
+        return out
+
+    async def _events_tail(self, conn: ModuleConnection, body: dict) -> dict:
+        import events_log
+        kinds = body.get("kinds")
+        if kinds:
+            bad = [k for k in kinds if k not in contract.LOG_READ_KINDS]
+            if bad:
+                raise _bad(f"kinds: модулю доступны только {list(contract.LOG_READ_KINDS)}")
+        else:
+            kinds = list(contract.LOG_READ_KINDS)
+        rows = await asyncio.to_thread(events_log.tail, int(body.get("limit", 20)), set(kinds), float(body.get("since", 0)))
+        return {"events": rows}
+
+    async def _claude_locate(self, conn: ModuleConnection, body: Any) -> dict:
+        from gits_sdk import claude_path
+        path = await asyncio.to_thread(claude_path.locate)
+        return {"path": path} if path else {}

@@ -1,0 +1,24 @@
+{
+  "name": "module",
+  "direction": "core->module",
+  "kind": "topic",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "включён ли"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "enabled"
+    ],
+    "title": "module",
+    "description": "Включение и выключение модуля (MOD-14). Клиент подписан всегда."
+  }
+}

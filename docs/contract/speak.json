@@ -1,0 +1,43 @@
+{
+  "name": "speak",
+  "direction": "core->module",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "utterance_id": {
+        "type": "string",
+        "description": "id реплики",
+        "minLength": 1
+      },
+      "text": {
+        "type": "string",
+        "description": "текст",
+        "minLength": 1
+      },
+      "emotion": {
+        "type": "string",
+        "description": "эмоция"
+      },
+      "replace": {
+        "type": "boolean",
+        "description": "заменить звучащую"
+      },
+      "trace": {
+        "type": "object",
+        "description": "трасса задержки"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "utterance_id",
+      "text"
+    ],
+    "title": "speak",
+    "description": "Произнести реплику (`capabilities: voice.output`)."
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "graph.get",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "unavailable",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "graph.get",
+    "description": "Подграф модуля фокуса для дашборда (манифест `graph: true`)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "description": "узлы",
+        "items": {
+          "type": "object"
+        }
+      },
+      "edges": {
+        "type": "array",
+        "description": "связи",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "additionalProperties": true,
+    "title": "graph.get (ответ)"
+  }
+}

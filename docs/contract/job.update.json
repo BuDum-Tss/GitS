@@ -1,0 +1,70 @@
+{
+  "name": "job.update",
+  "direction": "module->core",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "description": "id вида j-xxxxxxxx"
+      },
+      "state": {
+        "type": "string",
+        "description": "состояние",
+        "enum": [
+          "queued",
+          "running",
+          "waiting_user",
+          "done",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "title": {
+        "type": "string",
+        "description": "заголовок"
+      },
+      "stage": {
+        "type": "string",
+        "description": "этап"
+      },
+      "text": {
+        "type": "string",
+        "description": "пояснение"
+      },
+      "progress": {
+        "type": "number",
+        "description": "прогресс",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "question": {
+        "type": "object",
+        "description": "вопрос (обязателен в waiting_user)"
+      },
+      "artifacts": {
+        "type": "array",
+        "description": "результаты: объекты с path",
+        "items": {
+          "type": "object"
+        }
+      },
+      "error": {
+        "type": "object",
+        "description": "ошибка {code, message} (обязательна в failed)"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "job_id",
+      "state"
+    ],
+    "title": "job.update",
+    "description": "Состояние долгой задачи модуля (ТЗ 01, раздел 9)."
+  }
+}
