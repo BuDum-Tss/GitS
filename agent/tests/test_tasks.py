@@ -339,8 +339,9 @@ def test_task_reminders_follow_the_reminder_contract():
     assert r.pending() == [] and r.get(rec["id"])["status"] == "fired"
     r.set_status(rec["id"], "pending")                          # закрытое не оживает
     assert r.get(rec["id"])["status"] == "fired"
-    assert r.add(NOW, "о плане", source={"kind": "plan"})["id"] and log.count("task.created") == 2
-    assert repo.list(parent=None, kind=T.KIND_REMINDER)[1]["origin"] == T.USER
+    plan = r.add(NOW, "о плане", source={"kind": "plan"})
+    assert plan["id"] and log.count("task.created") == 2
+    assert repo.get(plan["id"])["origin"] == T.USER                  # порядок list() при равном времени не гарантирован
     assert r.get("нет") is None
 
 
