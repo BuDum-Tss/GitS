@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Added
+- ТЗ 32, этап A (WS-1, WS-2, WS-3, WS-5, WS-9 частично): `domain/workspace.py` (среды `assistant`, `sleep`, `rimworld`, `montage`, причины смены, правила входа: в среду модуля только по сообщению пользователя, самоимпульсу или критическому сигналу, не по запуску игры), `app/workspace_manager.py` (текущая среда, причина, цель, история; обмен с модулем через менеджер фокуса, добавлен `FocusManager.release_holder`), сон как среда (`SleepScheduler.on_state`), API `GET /api/workspace`, `POST /api/workspace/enter` и `/exit`, схема архитектуры (блоки `WorkspaceManager`, `WorkspaceRules`). Профили и автовыбор пока работают как раньше (этап E), промпт и инструменты от среды ещё не зависят (WS-10). Тесты `agent/tests/test_workspace.py`.
 - ТЗ 32 «Workspace» (`docs/tz/32-workspaces.md`, строка в `docs/tz/README.md`): среды агента (assistant, sleep, rimworld, montage), фокус как текущая среда, вход в модульную среду только по импульсу (сообщение пользователя или самоимпульс, не запуск игры), Telegram/голос/питомец как службы, общие задачи и планирование в ядре. Только документ, код не менялся; схему архитектуры (`spec.py`) менять не пришлось, она описывает код, а не ТЗ.
 
 ### Changed

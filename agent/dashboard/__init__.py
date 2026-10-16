@@ -23,6 +23,7 @@ from .context import ctx
 from .routes_attention import (  # noqa: F401  (прежние имена пакета)
     NOTIFY_TEXT_MAX, handle_api_affect, handle_api_affect_reset, handle_api_attention, handle_api_attention_clear,
     handle_api_focus, handle_api_focus_dnd, handle_api_focus_once, handle_api_focus_pin, handle_api_notify,
+    handle_api_workspace, handle_api_workspace_enter, handle_api_workspace_exit,
     handle_api_thoughts)
 from .routes_memory import (  # noqa: F401
     handle_api_approval, handle_api_chat_get, handle_api_chat_post, handle_api_core, handle_api_forget, handle_api_graph,
@@ -89,6 +90,10 @@ def set_impulses(impulses):
 
 def set_focus(focus):
     ctx.focus = focus
+
+
+def set_workspace(workspace) -> None:
+    ctx.workspace = workspace
 
 
 def set_affect(affect) -> None:

@@ -385,6 +385,24 @@ window.ARCH_DATA = {
      "now": "focus_store.py"
     },
     {
+     "id": "wsm",
+     "t": "WorkspaceManager",
+     "tag": "A",
+     "new": false,
+     "do": "в какой среде агент сейчас: assistant, sleep, rimworld, montage; причина, цель, история; в среду модуля входят только по импульсу",
+     "out": "Workspace",
+     "now": "app/workspace_manager.py (ТЗ 32): поверх FocusManager, сон приходит от планировщика сна"
+    },
+    {
+     "id": "wsdom",
+     "t": "WorkspaceRules",
+     "tag": "D",
+     "new": false,
+     "do": "чистые правила: кто и по какой причине может войти в среду и выйти из неё",
+     "out": "Workspace",
+     "now": "domain/workspace.py (ТЗ 32)"
+    },
+    {
      "id": "fdisp",
      "t": "FocusDispatch (контракт)",
      "tag": "A",
@@ -951,6 +969,24 @@ window.ARCH_DATA = {
    "queue",
    "flow",
    "итог-факт"
+  ],
+  [
+   "wsm",
+   "wsdom",
+   "use",
+   "правила входа и выхода"
+  ],
+  [
+   "sleep",
+   "wsm",
+   "flow",
+   "сон начался или кончился"
+  ],
+  [
+   "wsm",
+   "fmgr",
+   "use",
+   "активация модуля"
   ],
   [
    "fmgr",

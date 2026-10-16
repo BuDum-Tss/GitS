@@ -45,6 +45,35 @@ async def handle_api_focus(request: web.Request) -> web.Response:
     return web.json_response(ctx.focus.snapshot())
 
 
+async def handle_api_workspace(request: web.Request) -> web.Response:
+    """Среда агента (ТЗ 32): где он сейчас, почему, цель, доступные среды и история переключений."""
+    if ctx.workspace is None:
+        return web.json_response({"current": None, "available": [], "history": []})
+    return web.json_response(ctx.workspace.snapshot())
+
+
+async def handle_api_workspace_enter(request: web.Request) -> web.Response:
+    """{"workspace": "rimworld", "goal": "..."}: войти в среду по просьбе пользователя (причина user)."""
+    body, err = await json_body(request)
+    if err:
+        return err
+    if ctx.workspace is None:
+        return web.json_response({"error": "среды не подключены"}, status=503)
+    ws, goal = body.get("workspace"), body.get("goal") or ""
+    if not isinstance(ws, str) or not ws or not isinstance(goal, str):
+        return web.json_response({"error": "workspace: строка, goal: строка"}, status=400)
+    res = await ctx.workspace.enter(ws, "user", goal[:200])
+    return web.json_response(res, status=200 if res.get("ok") else 409)
+
+
+async def handle_api_workspace_exit(request: web.Request) -> web.Response:
+    """Вернуться в базовую среду (ассистент) по просьбе пользователя."""
+    if ctx.workspace is None:
+        return web.json_response({"error": "среды не подключены"}, status=503)
+    res = await ctx.workspace.leave("user")
+    return web.json_response(res, status=200 if res.get("ok") else 409)
+
+
 async def handle_api_focus_pin(request: web.Request) -> web.Response:
     """{"module": "rimworld"} закрепить фокус за модулем; {"module": null} снять закрепление."""
     body, err = await json_body(request)
@@ -130,6 +159,9 @@ ROUTES = [
     ("GET", "/api/attention", handle_api_attention),
     ("POST", "/api/attention/rules/clear", handle_api_attention_clear),
     ("GET", "/api/focus", handle_api_focus),
+    ("GET", "/api/workspace", handle_api_workspace),
+    ("POST", "/api/workspace/enter", handle_api_workspace_enter),
+    ("POST", "/api/workspace/exit", handle_api_workspace_exit),
     ("GET", "/api/affect", handle_api_affect),
     ("POST", "/api/affect/reset", handle_api_affect_reset),
     ("GET", "/api/thoughts", handle_api_thoughts),

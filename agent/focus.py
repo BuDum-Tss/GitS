@@ -674,6 +674,15 @@ class FocusManager:
         self.store.touch()
         return {"ok": ok, "reason": ev.reason, "policy": pol if ok else None}
 
+    async def release_holder(self, *, reason: str = "user", force: bool = False) -> dict:
+        """Освободить слот фокуса по просьбе (выход из среды, ТЗ 32): модуль отдаёт checkpoint. Отказ модуля оставляет фокус."""
+        async with self._lock:
+            if self.slot is None:
+                return {"ok": True, "already": True}
+            ok, why = await self._release(self.slot, reason=reason, force=force, event_id=None, now=self.clock())
+            self.store.touch()
+            return {"ok": ok, "reason": why}
+
     async def pin(self, module: str | None) -> dict:
         """Закрепить фокус за модулем (или снять закрепление, module=None): другие модули не переключают фокус, кроме
         критических событий. Закрепление за модулем без фокуса сразу передаёт ему фокус."""
