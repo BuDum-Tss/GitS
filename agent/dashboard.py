@@ -11,6 +11,7 @@ from datetime import datetime
 from aiohttp import web
 
 import approvals
+import episode_routes
 import events_log
 import journal
 import latency_trace
@@ -920,6 +921,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/affect", handle_api_affect)
     app.router.add_post("/api/affect/reset", handle_api_affect_reset)
     app.router.add_get("/api/thoughts", handle_api_thoughts)
+    episode_routes.add_routes(app)                      # ТЗ 27: эпизоды, дневник, сон
     app.router.add_post("/api/focus/pin", handle_api_focus_pin)
     app.router.add_post("/api/focus/dnd", handle_api_focus_dnd)
     app.router.add_post("/api/focus/allow_once", handle_api_focus_once)

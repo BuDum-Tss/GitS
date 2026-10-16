@@ -127,6 +127,8 @@ CORE_REQUESTS = (
     "core.web_search",
     # ТЗ 31 (контракт 1.1): локальная модель, чтение журнала, путь к Claude
     "core.llm.ask", "core.events.tail", "core.claude.locate",
+    # ТЗ 27 (контракт 1.2): эпизоды памяти
+    "core.memory.episodes",
 )
 MODULE_TO_CORE = frozenset(MODULE_TO_CORE_NOTES) | frozenset(CORE_REQUESTS)
 

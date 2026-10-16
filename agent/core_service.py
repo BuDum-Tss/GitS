@@ -23,6 +23,8 @@ import claude_battery
 import dashboard
 import events_log
 import fast_brain
+import episode_routes
+import episode_service
 import impulse_service
 import focus_dispatch
 import journal
@@ -408,6 +410,12 @@ async def _run(config: dict):
     impulses = impulse_service.build(companion, layer.attention, router=lambda: companion.router)   # ТЗ 30: импульсы и размышление
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     dashboard.set_impulses(impulses)
+    episodes = episode_service.build(companion, layer.attention,       # ТЗ 27: эпизоды и сон (простой, расписание, догоняющий)
+                                     busy=lambda: layer.attention.top_focus().kind in ("conversation", "question")
+                                     or layer.focus.slot is not None)
+    await episodes.start()
+    episode_routes.set_service(episodes)
+    layer.requests.episodes = episodes                    # core.memory.episodes
     asyncio.create_task(companion.proactive_loop())      # опрос выключен настройкой proactive_tick (по умолчанию), см. ТЗ 30
 
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
@@ -417,6 +425,7 @@ async def _run(config: dict):
         await asyncio.Event().wait()
     finally:
         affect.stop()
+        await episodes.stop()
         await impulses.timer.stop()
         await layer.stop()
 

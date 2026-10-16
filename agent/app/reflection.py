@@ -182,6 +182,11 @@ class ReflectionService:
             hits += await asyncio.to_thread(self.memory.relevant, query, 3)
         except Exception:
             return []
+        if hasattr(self.memory, "recall"):                       # ТЗ 27: эпизоды и дневник (если подключены); записи уже взяты выше
+            try:
+                hits += [h for h in await self.memory.recall(query, 4) if h.get("kind") != "fact"]
+            except Exception:
+                pass
         seen, out = set(), []
         for h in hits:
             text = str(h.get("text", "")).strip()

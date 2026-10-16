@@ -1,0 +1,57 @@
+{
+  "name": "core.memory.episodes",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.2",
+  "errors": [
+    "bad_request",
+    "unavailable"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "о чём вспомнить (гибридный поиск по эпизодам и дневнику)"
+      },
+      "id": {
+        "type": "string",
+        "description": "id эпизода: вернуть его целиком с событиями-источниками"
+      },
+      "day": {
+        "type": "string",
+        "description": "сутки YYYY-MM-DD: список эпизодов за них"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "сколько записей",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 5
+      }
+    },
+    "additionalProperties": true,
+    "title": "core.memory.episodes",
+    "description": "Эпизоды памяти ядра (ТЗ 27): найти по смыслу (`query`), список за сутки (`day`) или развернуть один эпизод до событий-источников (`id`)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "episodes": {
+        "type": "array",
+        "description": "эпизоды: id, title, summary, when, status; по id ещё events",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "episodes"
+    ],
+    "title": "core.memory.episodes (ответ)"
+  }
+}

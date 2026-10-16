@@ -60,6 +60,7 @@ class CoreRequests:
         self.router = router                      # ставится ядром после создания маршрутизатора
         self.privacy_terms = privacy_terms
         self.hub = None                           # ModuleHub: core.tts передаёт запрос модулю голоса
+        self.episodes = None                      # EpisodeService (ТЗ 27): ставит ядро; без него core.memory.episodes недоступен
 
     async def handle(self, conn: ModuleConnection, msg_type: str, body: Any) -> Any:
         handler = {
@@ -67,6 +68,7 @@ class CoreRequests:
             "core.persona": self._persona, "core.claude_usage": self._claude_usage, "core.web_search": self._web_search,
             "core.privacy_terms": self._privacy_terms, "core.llm.ask": self._llm_ask,
             "core.events.tail": self._events_tail, "core.claude.locate": self._claude_locate,
+            "core.memory.episodes": self._episodes,
         }.get(msg_type)
         if contract.is_planned(msg_type):                      # MC-5: запрос описан, реализации пока нет
             raise ModuleError("unavailable", contract.planned_message(msg_type))
@@ -198,6 +200,22 @@ class CoreRequests:
             kinds = list(contract.LOG_READ_KINDS)
         rows = await asyncio.to_thread(events_log.tail, int(body.get("limit", 20)), set(kinds), float(body.get("since", 0)))
         return {"events": rows}
+
+    async def _episodes(self, conn: ModuleConnection, body: dict) -> dict:
+        """ТЗ 27, EPI-9: эпизод по id (с источниками), список за сутки или поиск по смыслу."""
+        svc = self.episodes
+        if svc is None:
+            raise ModuleError("unavailable", "эпизоды памяти не подключены")
+        limit = int(body.get("limit", 5))
+        if body.get("id"):
+            ep = await svc.recall.expand(str(body["id"]))
+            return {"episodes": [ep] if ep else []}
+        if body.get("day"):
+            return {"episodes": await svc.recall.listing(limit=limit, day=str(body["day"]))}
+        if body.get("query"):
+            found = await svc.recall.find(str(body["query"]), k=limit)
+            return {"episodes": found}
+        return {"episodes": await svc.recall.listing(limit=limit)}
 
     async def _claude_locate(self, conn: ModuleConnection, body: Any) -> dict:
         from gits_sdk import claude_path

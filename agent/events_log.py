@@ -24,6 +24,7 @@
   emotion   — эмоция с интенсивностью 0..3 и причиной (ТЗ 24, journal)
   mistake   — метка ошибки: поправка, отказ, провал инструмента или плана, промах маршрута (ТЗ 24)
   decision  — решение диспетчера с trace_id: маршрут, уверенность, эшелон, версия правил (ТЗ 24)
+  boundary  — структурная граница для нарезки эпизодов: смена задачи, забега, собеседника (ТЗ 27, EPI-2)
 
 Пишут все процессы (ядро, трей, питомец): режим WAL и таймаут ожидания блокировки делают одновременную запись
 безопасной. Читает дашборд (/api/events), анализ и сводки. Старые события удаляются по сроку и по числу строк.
@@ -41,7 +42,7 @@ from pathlib import Path
 
 KINDS = ("user", "say", "proactive", "reflex", "vision", "hearing", "game", "telegram", "plan", "memory", "audit",
          "approval", "setting", "module", "module_event", "profile", "attention", "focus", "error", "memory_conflict",
-         "trace", "emotion", "mistake", "decision")
+         "trace", "emotion", "mistake", "decision", "boundary")
 KEEP_DAYS = 45
 KEEP_ROWS = 300_000
 _PRUNE_EVERY = 500            # раз в столько записей проверяем, не пора ли чистить
@@ -239,6 +240,64 @@ def tail(limit: int = 200, kinds: set | None = None, since: float = 0.0) -> list
     finally:
         conn.close()
     return [_row(r) for r in reversed(rows)]
+
+
+def after(after_id: int = 0, limit: int = 500, kinds: set | None = None) -> list[dict]:
+    """События строго после `after_id` (старые сверху) вместе с `id`: нужно эпизодам (ТЗ 27), которые ссылаются на событие
+    по номеру и помнят, «до какого события обработано». Сырые строки без пересчёта: поле `data` разобрано как в tail()."""
+    flush()
+    try:
+        conn = _connect()
+    except (OSError, sqlite3.Error):
+        return []
+    try:
+        sql, args = "SELECT ts, kind, text, data, id FROM events WHERE id > ?", [int(after_id)]
+        if kinds:
+            sql += f" AND kind IN ({','.join('?' * len(kinds))})"
+            args += sorted(kinds)
+        sql += " ORDER BY id ASC LIMIT ?"
+        args.append(int(limit))
+        rows = conn.execute(sql, args).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+    return [{**_row(r), "id": r[4]} for r in rows]
+
+
+def last_id() -> int:
+    """Номер последнего события журнала (0, если пусто)."""
+    flush()
+    try:
+        conn = _connect()
+        try:
+            return int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM events").fetchone()[0])
+        finally:
+            conn.close()
+    except (OSError, sqlite3.Error):
+        return 0
+
+
+def delete_ids(ids: list[int]) -> int:
+    """Удалить сырые события по номерам (срок хранения, ТЗ 27 EPI-10: вызывается только для событий уже записанных эпизодов)."""
+    ids = [int(i) for i in ids]
+    if not ids:
+        return 0
+    flush()
+    try:
+        with _lock:
+            conn = _connect()
+            try:
+                n = 0
+                for i in range(0, len(ids), 500):
+                    chunk = ids[i:i + 500]
+                    n += conn.execute(f"DELETE FROM events WHERE id IN ({','.join('?' * len(chunk))})", chunk).rowcount
+                conn.commit()
+                return n
+            finally:
+                conn.close()
+    except (OSError, sqlite3.Error):
+        return 0
 
 
 def count(kind: str | None = None, since: float = 0.0) -> int:

@@ -156,10 +156,23 @@ def register(registry, companion, memory, profiles=None):
         graph = getattr(companion, "graph", None)
         if graph is not None:
             parts += [f["fact"] for f in await graph.search(a["query"], limit=6)]     # память-граф: факты о людях и жизни
+        episodes = getattr(companion, "episodes", None)
+        if episodes is not None:                                   # ТЗ 27: эпизоды и дневник; id разворачивает recall_episode
+            for h in await episodes.recall.find(a["query"], k=3):
+                parts.append(f"{'эпизод ' + h['id'] if h['kind'] == 'episode' else h['kind']} ({h['when']}): {h['text'][:300]}")
         parts = list(dict.fromkeys(parts))
         if not parts:
             raise ToolError("по этой теме в памяти ничего нет")
         return "; ".join(parts)
+
+    async def recall_episode(a):
+        episodes = getattr(companion, "episodes", None)
+        if episodes is None:
+            raise ToolError("эпизоды ещё не подключены")
+        text = await episodes.recall.recall_episode(str(a.get("id") or ""))
+        if not text:
+            raise ToolError("такого эпизода нет")
+        return text
 
     async def quiet_mode(a):
         companion._set_quiet(a["minutes"])
@@ -220,6 +233,10 @@ def register(registry, companion, memory, profiles=None):
             _tool("assistant", "recall", "Вспомнить, что она помнит по теме или о ком-то (для вопросов «что ты помнишь про…»).",
                   {"query": {"type": "string", "description": "тема или слова для поиска в памяти"}},
                   recall, informative=True, keywords=("помнишь", "вспомни", "вспомнить", "память", "знаешь")),
+            _tool("assistant", "recall_episode", "Развернуть эпизод из памяти по его id (из ответа recall «эпизод e12-30»): резюме, "
+                  "цитаты и события-источники по порядку. Для просьб «расскажи подробнее, как это было», «что именно там было сказано».",
+                  {"id": {"type": "string", "description": "id эпизода, например e120-135"}},
+                  recall_episode, informative=True, keywords=("подробнее", "как это было", "эпизод", "помнишь как", "вспомни как")),
             _tool("assistant", "quiet_mode", "Не отвлекать пользователя заданное число минут (она сама не заговаривает).",
                   {"minutes": {"type": "integer", "description": "на сколько минут, до 240"}}, quiet_mode,
                   keywords=("отвлекай", "мешай", "занят", "смотрю", "работаю", "минут", "тишина")),

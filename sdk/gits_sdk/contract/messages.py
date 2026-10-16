@@ -491,8 +491,24 @@ _t_module = Message(
     request=(F("enabled", "boolean", True, "включён ли"),), valid=({"enabled": False},), invalid=({}, {"enabled": "нет"}),
 )
 
+_episodes = Message(
+    "core.memory.episodes", M2C, REQUEST, "Эпизоды памяти ядра (ТЗ 27): найти по смыслу (`query`), список за сутки (`day`) или развернуть один "
+    "эпизод до событий-источников (`id`).",
+    since="1.2",
+    request=(F("query", "string", False, "о чём вспомнить (гибридный поиск по эпизодам и дневнику)"),
+             F("id", "string", False, "id эпизода: вернуть его целиком с событиями-источниками"),
+             F("day", "string", False, "сутки YYYY-MM-DD: список эпизодов за них"),
+             F("limit", "integer", False, "сколько записей", min=1, max=50, default=5)),
+    response=(F("episodes", "array", True, "эпизоды: id, title, summary, when, status; по id ещё events", items="object"),),
+    errors=("bad_request", "unavailable"),
+    valid=({}, {"query": "поход на озеро"}, {"id": "e12-30"}, {"day": "2026-10-15", "limit": 10}),
+    invalid=({"limit": 0}, {"limit": 100}, {"id": 5}, {"query": ["x"]}),
+    response_valid=({"episodes": []}, {"episodes": [{"id": "e1-2", "title": "t"}]}),
+    response_invalid=({}, {"episodes": "нет"}),
+)
+
 CORE_REQUEST_MESSAGES = (_ask, _tts, _tool_call, _lookup, _recall, _remember, _exp_add, _kb_ingest, _persona, _privacy,
-                         _claude_usage, _web_search, _llm_ask, _events_tail, _claude_locate)
+                         _claude_usage, _web_search, _llm_ask, _events_tail, _claude_locate, _episodes)
 MODULE_NOTE_MESSAGES = (_hello, _event, _say, _emotion, _state, _job_update, _panel_set, _log)
 MODULE_REQUEST_MESSAGES = (_c_tool_call, _c_tool_check, _c_job_cancel, _c_job_list, _c_graph_get, _c_deliver, _c_tts,
                            _c_panel_action, _c_policy_activate, _c_focus_release, _c_focus_resume)

@@ -92,8 +92,11 @@ GROUPS = [
     ]),
     dict(id="g_mem", col="BOTTOM", title="Память", tag="A",
          summary="Запись и чтение памяти: диалог, факты, профили, воспоминания о себе. Источник правды — журнал событий.", out="MemoryRecord, MemoryHit", nodes=[
-        N("mw", "MemoryWriter", "A", "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; (план) эпизоды и сон", "MemoryRecord", "app/memory_capture.py: _learn, _consolidate, remember_text + graph_memory.step"),
-        N("mr", "MemoryReader", "A", "граф + воспоминания о себе + записи; гибридный поиск (search/) готов, подключение коллекций в чтение памяти - дальше", "MemoryHit[]", "graph.search, self_memories, MemoryStore.relevant (два поиска); search/: HybridIndex (FTS5 + векторы + свежесть), HybridSearch, переписывание запроса, Embedder"),
+        N("mw", "MemoryWriter", "A", "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; во сне: факты эпизодов в граф со ссылкой на эпизод (ТЗ 27)", "MemoryRecord", "app/memory_capture.py: _learn, _consolidate, remember_text + graph_memory.step"),
+        N("mr", "MemoryReader", "A", "граф + воспоминания о себе + записи; гибридный поиск (search/) подключён: recall() ищет в записях, эпизодах и дневнике (ТЗ 27)", "MemoryHit[]", "graph.search, self_memories, MemoryStore.relevant (два поиска); search/: HybridIndex (FTS5 + векторы + свежесть), HybridSearch, переписывание запроса, Embedder"),
+        N("epi", "Эпизоды (нарезка + хранилище)", "A", "журнал -> эпизоды: границы без LLM (пауза, фокус, задача, собеседник), пики яркости, окно вокруг пика; episodes.db со статусами и версиями", "Episode", "есть (ТЗ 27): domain/episodes.py, app/episode_cutter.py, adapters/episode_store.py", True),
+        N("sleep", "Режим сна (SleepScheduler + SleepRunner)", "A", "фоновая политика памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами", "episode.summary, дневник", "есть (ТЗ 27): app/sleep.py, app/sleep_scheduler.py, app/episode_summary.py, app/diary.py", True),
+        N("erecall", "EpisodeRecall", "A", "поиск эпизодов и дневника по смыслу, recall_episode(id) с разворотом до событий, core.memory.episodes", "MemoryHit[]", "есть (ТЗ 27): app/episode_recall.py, episode_routes.py", True),
         N("elog", "EventLog", "I", "SQLite events.db: журнал событий, трасса, решения", "контракт журнала", "events_log.py: глобальные функции, 16 импортов"),
         N("stores", "Диалог, записи, люди", "I", "JSON: диалог, MemoryStore (планы, напоминания), отношения", "репозитории", "user_memory.py, memory_store.py, relationships.py"),
         N("graph", "FactGraph (контракт)", "I", "Graphiti: факты с интервалами валидности", "контракт графа", "graph_memory.py: 701 строка"),
@@ -138,6 +141,10 @@ EDGES = [
     ("mw", "graph", "w", None, None), ("mw", "stores", "w", None, None),
     ("mr", "graph", "r", None, None), ("mr", "stores", "r", None, None), ("ctx", "char", "r", "характер", None),
     ("graph", "falk", "ext", None, None),
+    ("sleep", "epi", "use", "нарезка и статусы", None), ("epi", "elog", "r", "события после отметки N", None),
+    ("sleep", "mw", "w", "факты со ссылкой на эпизод", None), ("sleep", "lms", "ext", "резюме, дневник (короткие запросы)", None),
+    ("sleep", "norm", "flow", "episode.summary", None), ("erecall", "epi", "r", "эпизоды, источники", None),
+    ("mr", "erecall", "use", "recall: эпизоды и факты", None),
 ]
 # ссылки макроуровня (когда конец свёрнут): номер шага
 MACRO_STEPS = {
