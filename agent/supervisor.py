@@ -72,6 +72,7 @@ class ModuleSpec:
     health_url: str = ""
     description: str = ""            # подпись для дашборда: перекрывает описание из манифеста подключившегося модуля
     dev: bool = False                # для разработчиков: вкладка «Модули» показывает запись только при настройке dev_mode
+    skip_when_env: dict[str, list[str]] = field(default_factory=dict)   # не запускать, если переменная окружения равна одному из значений
 
 
 @dataclass
@@ -96,6 +97,15 @@ def load_planned(path: Path | str = MODULES_YAML) -> list[PlannedModule]:
             continue
         rows.append(PlannedModule(id=raw["id"], title=str(raw["title"]), tz=str(raw.get("tz") or "")))
     return rows
+
+
+def _skip_when_env(raw) -> dict[str, list[str]]:
+    """`skip_when_env: {ИМЯ: [значения]}` в modules.yaml: запись не запускается, если переменная равна одному из значений."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not all(isinstance(v, list) for v in raw.values()):
+        raise ValueError("skip_when_env: объект {ИМЯ: [значения]}")
+    return {str(k): [str(x).strip().lower() for x in v] for k, v in raw.items()}
 
 
 def load_specs(path: Path | str = MODULES_YAML) -> list[ModuleSpec]:
@@ -126,7 +136,8 @@ def load_specs(path: Path | str = MODULES_YAML) -> list[ModuleSpec]:
                                     args=[str(a) for a in args], autostart=bool(raw.get("autostart", True)),
                                     restart=restart, enabled=bool(raw.get("enabled", True)),
                                     title=str(raw.get("title") or ""), kind=kind, health_url=health_url,
-                                    description=str(raw.get("description") or ""), dev=bool(raw.get("dev", False))))
+                                    description=str(raw.get("description") or ""), dev=bool(raw.get("dev", False)),
+                                    skip_when_env=_skip_when_env(raw.get("skip_when_env"))))
         except (KeyError, ValueError) as e:
             logger.warning(f"modules.yaml, запись {i + 1}: {e}")
     return specs
@@ -332,6 +343,9 @@ class Supervisor:
         if os.environ.get("GITS_NO_MODULES") == "1" or self._only_core():     # ТЗ 17, FLOW-1: режим «только ядро», службы ядра (decider) остаются
             spec = self.specs[module_id]
             if spec.kind != "service" or os.environ.get("GITS_NO_DECIDER") == "1":
+                return False
+        for name, values in self.specs[module_id].skip_when_env.items():
+            if os.environ.get(name, "").strip().lower() in values:        # например TTS_ENGINE=fish: ESpeech не нужен
                 return False
         return self.specs[module_id].autostart and self._enabled(module_id)
 

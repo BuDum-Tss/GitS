@@ -356,3 +356,21 @@ def _cleanup_children():
             p.kill()
         except psutil.Error:
             pass
+
+
+def test_skip_when_env_keeps_the_module_from_starting(tmp_path, monkeypatch):
+    from supervisor import _skip_when_env
+    assert _skip_when_env(None) == {}
+    assert _skip_when_env({"TTS_ENGINE": ["Fish", " edge "]}) == {"TTS_ENGINE": ["fish", "edge"]}
+    with pytest.raises(ValueError):
+        _skip_when_env({"TTS_ENGINE": "fish"})
+    espeech = next(s for s in load_specs() if s.id == "espeech")
+    assert espeech.skip_when_env == {"TTS_ENGINE": ["fish", "edge"]}
+
+
+def test_espeech_does_not_start_when_another_tts_engine_is_chosen(monkeypatch):
+    sup = Supervisor([s for s in load_specs() if s.id == "espeech"], token=TOKEN, core_url="ws://x")
+    monkeypatch.delenv("GITS_NO_MODULES", raising=False)
+    for engine, expected in (("", True), ("auto", True), ("espeech", True), ("fish", False), (" Edge ", False)):
+        monkeypatch.setenv("TTS_ENGINE", engine)
+        assert sup.should_run("espeech") is expected, engine

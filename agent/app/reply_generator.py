@@ -250,11 +250,23 @@ class ReplyGenerator:
         stopper = asyncio.ensure_future(session.event.wait())
         nxt: asyncio.Future | None = None
 
+        merge_rest = bool(self._cfg().get("merge_rest", True))   # первое предложение сразу, остальное одним куском: один шов
+        held: list[str] = []
+
         async def deliver(sentences: list[str]) -> None:
             for sent in sentences:
                 if session.cancelled:
                     return
+                if merge_rest and session.sentences:
+                    held.append(sent)                 # первое уже ушло в синтез: остальные ждут конца генерации
+                    continue
                 await self._emit(session, sent)
+
+        async def flush_held() -> None:
+            if held and not session.cancelled:
+                text = " ".join(held)
+                held.clear()
+                await self._emit(session, text)
 
         try:
             while True:
@@ -294,6 +306,7 @@ class ReplyGenerator:
                 for sent in splitter.flush():
                     await deliver(decl.push(sent))
                 await deliver(decl.finish())
+                await flush_held()
         except asyncio.CancelledError:
             session.cancel("task_cancelled")
             raise
@@ -302,6 +315,7 @@ class ReplyGenerator:
             failed = True
             if session.sentences and not session.cancelled:   # часть ответа уже прозвучала: договаривать нечем, но и звать Claude поздно
                 await deliver(decl.finish())
+                await flush_held()
         finally:
             latency_trace.mark("llm_done")
             stopper.cancel()

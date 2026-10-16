@@ -103,6 +103,7 @@ modules:
     command: "{GITS}/services/f5-tts/.venv/Scripts/python.exe"
     args: ["f5_server.py"]
     health_url: "http://127.0.0.1:8771/health"
+    skip_when_env: {TTS_ENGINE: [fish, edge]}     # TTS_ENGINE=fish|edge в agent/secrets.env: этот голос не запускается
     autostart: true
     restart: on-failure
 

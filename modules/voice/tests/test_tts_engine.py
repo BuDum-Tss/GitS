@@ -1,4 +1,6 @@
 """Выбор движка синтеза (ESpeech → Fish Speech → edge-tts): без сети и видеокарты, движки подменены."""
+import types
+
 import pytest
 
 import tts_engine
@@ -22,8 +24,8 @@ def _rig(monkeypatch, tmp_path, *, espeech=True, fish=True, espeech_ok=True, fis
     (tmp_path / "espeech_ref.txt").write_text("текст референса", encoding="utf-8")
     monkeypatch.setattr(tts_engine, "FISH_REFERENCE", ref)
 
-    async def e_ping():
-        return espeech
+    async def e_state():
+        return "ready" if espeech else "down"
 
     async def f_ping():
         return fish
@@ -40,7 +42,7 @@ def _rig(monkeypatch, tmp_path, *, espeech=True, fish=True, espeech_ok=True, fis
         calls.append("edge")
         return "edge.mp3"
 
-    monkeypatch.setattr(tts_engine, "_espeech_ping", e_ping)
+    monkeypatch.setattr(tts_engine, "_espeech_state", e_state)
     monkeypatch.setattr(tts_engine, "_fish_ping", f_ping)
     monkeypatch.setattr(tts_engine, "_espeech_synth", e_synth)
     monkeypatch.setattr(tts_engine, "_fish_synth", f_synth)
@@ -125,20 +127,34 @@ def test_speed_goes_to_espeech_request_and_edge_rate(monkeypatch, tmp_path):
 
 
 async def test_espeech_wait_survives_loading_service(monkeypatch):
-    answers = iter([False, False, True])                                # сервис грузит модель, потом отвечает 200
+    answers = iter(["down", "loading", "loading", "ready"])            # порт открылся, модель грузится, потом готово
 
-    async def ping():
+    async def state():
         return next(answers)
 
     async def no_sleep(_):
         return None
-    monkeypatch.setattr(tts_engine, "_espeech_ping", ping)
+    monkeypatch.setattr(tts_engine, "_espeech_state", state)
     monkeypatch.setattr(tts_engine.asyncio, "sleep", no_sleep)
     assert await tts_engine._espeech_wait(60.0) is True
 
 
 async def test_espeech_wait_gives_up_at_the_limit(monkeypatch):
-    async def ping():
-        return False
-    monkeypatch.setattr(tts_engine, "_espeech_ping", ping)
+    async def state():
+        return "loading"
+    monkeypatch.setattr(tts_engine, "_espeech_state", state)
     assert await tts_engine._espeech_wait(0.0) is False
+
+
+async def test_espeech_wait_does_not_wait_for_a_service_that_is_not_running(monkeypatch):
+    clock = iter([0.0, 0.0, 5.0, 25.0, 25.0, 25.0])                    # порт молчит дольше ESPEECH_DOWN_GRACE_S
+
+    async def state():
+        return "down"
+
+    async def no_sleep(_):
+        return None
+    monkeypatch.setattr(tts_engine, "_espeech_state", state)
+    monkeypatch.setattr(tts_engine.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(tts_engine, "time", types.SimpleNamespace(monotonic=lambda: next(clock)))
+    assert await tts_engine._espeech_wait(90.0) is False

@@ -39,6 +39,7 @@ FISH_RECHECK_S = 60.0    # недоступный Fish Speech проверяет
 ESPEECH_URL       = os.getenv("ESPEECH_URL", "http://127.0.0.1:8771")
 ESPEECH_TIMEOUT   = 60.0
 ESPEECH_START_WAIT_S = 90.0    # при первой проверке ждём, пока сервис догрузит модель (пока грузится, /health отвечает 503), а не уходим в запасной голос
+ESPEECH_DOWN_GRACE_S = 20.0    # порт не открылся за это время после первой проверки: сервиса нет, идём дальше по цепочке
 ESPEECH_RECHECK_S = 30.0       # сервис грузит модель около 15 с после старта, поэтому проверяем чаще, чем Fish Speech
 ENGINE            = os.getenv("TTS_ENGINE", "auto").strip().lower()      # auto | espeech | fish | edge
 
@@ -235,13 +236,26 @@ async def _espeech_ping() -> bool:
         return False
 
 
+async def _espeech_state() -> str:
+    """ready (200) | loading (503: модель грузится) | down (порт не отвечает)."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as c:
+            code = (await c.get(f"{ESPEECH_URL}/health")).status_code
+    except Exception:
+        return "down"
+    return "ready" if code == 200 else "loading"
+
+
 async def _espeech_wait(limit: float) -> bool:
-    """Дождаться готовности ESpeech не дольше limit секунд (0 - одна проверка). Пока сервис не слушает порт или грузит модель, ждём."""
-    deadline = time.monotonic() + limit
+    """Дождаться готовности ESpeech не дольше limit секунд (0 - одна проверка). Пока сервис грузит модель (503), ждём до limit;
+    если порт не отвечает дольше ESPEECH_DOWN_GRACE_S (сервис не запущен, например выбран другой движок), не ждём."""
+    start = time.monotonic()
     while True:
-        if await _espeech_ping():
+        state = await _espeech_state()
+        if state == "ready":
             return True
-        if time.monotonic() >= deadline:
+        waited = time.monotonic() - start
+        if waited >= limit or (state == "down" and waited >= ESPEECH_DOWN_GRACE_S):
             return False
         await asyncio.sleep(1.0)
 

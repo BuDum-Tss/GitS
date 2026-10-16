@@ -44,7 +44,7 @@ DEFAULTS = {
                  "cut": {"pause_s": 600, "peak": 0.5, "dense_events": 8, "max_events": 40, "max_tokens": 1500}},
     # быстрый контур (ТЗ 25): stream - стриминг ответа по предложениям; memory_deadline_ms - дедлайн поиска в памяти (FAST-6);
     # ack_ms - через сколько без реплики на поручении уходит факт «принято» (FAST-3); filler_ms - факт-филлер при затянутом ответе
-    "fast_contour": {"stream": False, "reply_tokens": 90, "memory_deadline_ms": 300, "ack_ms": 300, "filler_ms": 4000},
+    "fast_contour": {"stream": True, "merge_rest": True, "reply_tokens": 90, "memory_deadline_ms": 300, "ack_ms": 300, "filler_ms": 4000},
     # бюджеты задержки по этапам трассы, мс (ТЗ 25, FAST-8): шаг от предыдущей метки до метки этапа; end_to_sound - от конца
     # фразы до начала звука. Превышение пишется в журнал (`budget_exceeded`) и видно в отчёте /api/latency
     "latency_budget": {"stt_done": 1500, "core_in": 400, "classify_done": 400, "route": 100, "retrieve_done": 450,
