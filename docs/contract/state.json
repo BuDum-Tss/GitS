@@ -1,0 +1,29 @@
+{
+  "name": "state",
+  "direction": "module->core",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "summary": {
+        "type": "string",
+        "description": "сводка",
+        "maxLength": 300
+      },
+      "data": {
+        "type": "object",
+        "description": "данные"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "summary"
+    ],
+    "title": "state",
+    "description": "Сводка состояния модуля для дашборда и выбора профиля."
+  }
+}

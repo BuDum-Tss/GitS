@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-# библиотечные файлы ядра без состояния (fast_brain, events_log) и SDK до установки пакета gits-sdk; свои файлы модуля первыми
-sys.path[:0] = [str(HERE), str(HERE.parent.parent / "agent"), str(HERE.parent.parent / "sdk")]
+# SDK до установки пакета gits-sdk; свои файлы модуля первыми. Внутренностей ядра (agent/) модуль не импортирует (ТЗ 31)
+sys.path[:0] = [str(HERE), str(HERE.parent.parent / "sdk")]
 
 from dotenv import load_dotenv  # noqa: E402
 
@@ -19,7 +19,6 @@ from common import default_memory_dir, secrets_file  # noqa: E402
 
 load_dotenv(secrets_file())                       # адреса сервисов и модели; файла нет - значения по умолчанию
 
-import events_log  # noqa: E402
 from app import VoiceModule  # noqa: E402
 from gits_sdk import ModuleClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
@@ -27,7 +26,6 @@ from manifest import build_manifest  # noqa: E402
 
 async def amain() -> int:
     memory_dir = default_memory_dir()
-    events_log.init(memory_dir)
     client = ModuleClient(build_manifest())
     module = VoiceModule(client, memory_dir)
     module.start()
@@ -35,7 +33,6 @@ async def amain() -> int:
         return await client.run()
     finally:
         await module.stop()
-        await asyncio.to_thread(events_log.flush)
 
 
 def main() -> None:

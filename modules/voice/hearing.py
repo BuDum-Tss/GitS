@@ -21,8 +21,7 @@ import time
 
 import numpy as np
 
-import events_log
-import fast_brain
+from gits_sdk import host
 import local_stt
 import window
 from local_stt import _JUNK  # noqa: F401  (прежнее место: mic_listener берёт фильтр отсюда)
@@ -101,7 +100,7 @@ class Hearing:
                 raise
             except Exception as e:
                 logger.warning(f"Сбой слуха: {e}")
-                events_log.log_nowait("error", f"слух: {e}")
+                host.log_nowait("error", f"слух: {e}")
                 await asyncio.sleep(30)
 
     async def _allowed_now(self) -> bool:
@@ -152,14 +151,13 @@ class Hearing:
                   '{"summary": "<одна фраза по-русски до 20 слов>"}. Не называй имена людей и не '
                   "цитируй дословно.")
         try:
-            data = fast_brain._json_of(await fast_brain._ask(system, fresh[-1500:], timeout=60, background=True,
-                                                             max_tokens=100, temperature=0.2))
+            data = await host.llm_json(system, fresh[-1500:], timeout=60, background=True, max_tokens=100, temperature=0.2)
         except Exception as e:
             logger.warning(f"Не удалось свести услышанное: {e}")
             return
         if data and data.get("summary"):
             summary = str(data["summary"])[:200]
-            events_log.log_nowait("hearing", summary)
+            host.log_nowait("hearing", summary)
             logger.info(f"[слух] {summary}")
             if self._on_gist is not None:
                 await self._on_gist(summary)

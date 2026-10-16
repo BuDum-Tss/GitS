@@ -23,8 +23,8 @@ from claude_agent_sdk import (
     PermissionResultAllow, PermissionResultDeny,
 )
 
-import safety
-from claude_cli import _CLI_PATH
+from gits_sdk import safety
+from gits_sdk.claude_path import CLI_PATH as _CLI_PATH
 from envcompat import env
 
 logger = logging.getLogger("desktop.assistant")

@@ -1,0 +1,58 @@
+{
+  "name": "panel.action",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unknown",
+    "unavailable",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "action_id": {
+        "type": "string",
+        "description": "id действия из panel.actions",
+        "minLength": 1
+      },
+      "args": {
+        "type": "object",
+        "description": "аргументы"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "action_id"
+    ],
+    "title": "panel.action",
+    "description": "Нажатие кнопки или строки пространства модуля (ТЗ 15)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean",
+        "description": "успех"
+      },
+      "message": {
+        "type": "string",
+        "description": "сообщение",
+        "maxLength": 300
+      },
+      "open_url": {
+        "type": "string",
+        "description": "что открыть"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "ok"
+    ],
+    "title": "panel.action (ответ)"
+  }
+}

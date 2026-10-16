@@ -1,0 +1,48 @@
+{
+  "name": "deliver",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "string",
+        "description": "адресат в канале (chat id и т.п.)"
+      },
+      "text": {
+        "type": "string",
+        "description": "текст",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "text"
+    ],
+    "title": "deliver",
+    "description": "Доставить ответ ассистентки в канал модуля (`capabilities: chat.channel`)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "delivered": {
+        "type": "boolean",
+        "description": "доставлено ли"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "delivered"
+    ],
+    "title": "deliver (ответ)"
+  }
+}

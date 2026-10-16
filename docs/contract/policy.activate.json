@@ -1,0 +1,78 @@
+{
+  "name": "policy.activate",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unknown",
+    "unavailable",
+    "denied",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "policy": {
+        "type": "string",
+        "description": "имя политики",
+        "minLength": 1
+      },
+      "goal": {
+        "type": "string",
+        "description": "цель"
+      },
+      "task_id": {
+        "type": "string",
+        "description": "id задачи"
+      },
+      "event_id": {
+        "type": "string",
+        "description": "id события"
+      },
+      "priority": {
+        "type": "number",
+        "description": "приоритет"
+      },
+      "reason": {
+        "type": "string",
+        "description": "причина"
+      },
+      "restored": {
+        "type": "boolean",
+        "description": "возобновление"
+      },
+      "checkpoint": {
+        "description": "сохранённое состояние"
+      },
+      "subgoals": {
+        "type": "array",
+        "description": "подцели"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "policy"
+    ],
+    "title": "policy.activate",
+    "description": "Менеджер фокуса просит включить политику модуля (ТЗ 18)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean",
+        "description": "принято"
+      },
+      "policy": {
+        "type": "string",
+        "description": "включённая политика"
+      }
+    },
+    "additionalProperties": true,
+    "title": "policy.activate (ответ)"
+  }
+}

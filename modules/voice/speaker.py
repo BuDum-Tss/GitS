@@ -20,7 +20,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
-import latency_trace
+from gits_sdk import trace as latency_trace  # метки трассы задержки: SDK, не внутренности ядра (ТЗ 31)
 from segmenter import split_sentences
 
 logger = logging.getLogger("speaker")

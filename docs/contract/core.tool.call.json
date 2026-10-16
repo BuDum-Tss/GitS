@@ -1,0 +1,50 @@
+{
+  "name": "core.tool.call",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unknown",
+    "unavailable",
+    "denied",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "tool": {
+        "type": "string",
+        "description": "id инструмента вида модуль.имя",
+        "minLength": 1
+      },
+      "args": {
+        "type": "object",
+        "description": "аргументы инструмента"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "tool"
+    ],
+    "title": "core.tool.call",
+    "description": "Вызов инструмента любого окружения ядра (кроме запрещённых правилами) по id `модуль.имя`."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "результат инструмента"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "text"
+    ],
+    "title": "core.tool.call (ответ)"
+  }
+}

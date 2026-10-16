@@ -24,7 +24,7 @@ from stt_client import STTClient
 from voice_id import VoiceIdentity
 
 import common
-import events_log
+from gits_sdk import host
 import tts_engine
 
 log = logging.getLogger("voice")
@@ -191,7 +191,7 @@ class VoiceModule:
             line = "распознавание: WhisperX отвечает, работаю через него (с узнаванием голосов)"
         else:
             line = f"распознавание: {status.get('label')}"
-        events_log.log_nowait("hearing", line)
+        host.log_nowait("hearing", line)
         try:
             task = asyncio.get_running_loop().create_task(self.report_state())
         except RuntimeError:

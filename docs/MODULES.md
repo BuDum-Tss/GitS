@@ -4,6 +4,11 @@
 получает вызовы. Внутри модуль устроен как угодно (Python, Node, C#). Здесь короткая версия для Python-модулей.
 Полная спецификация протокола, источник правды: [docs/tz/01-module-contract.md](tz/01-module-contract.md). Схема ядра и
 словарь: [docs/tz/00-architecture.md](tz/00-architecture.md).
+**Все запросы, сообщения, темы, переменные окружения и ресурсы со всеми полями и кодами ошибок:
+[docs/MODULE_CONTRACT.md](MODULE_CONTRACT.md)** (создаётся из кода скриптом `python sdk/tools/gen_contract_doc.py`, схемы в
+`docs/contract/*.json`). Модуль зависит только от SDK: журнал `client.log(...)`, локальная модель `gits_sdk.host.llm_ask` /
+`llm_json`, типизированные запросы `client.tts`, `persona`, `call_tool`, `claude_usage` и др.; внутренности `agent/` не
+импортируются (тест `agent/tests/test_architecture.py`).
 
 ## Как подключиться (5 шагов)
 

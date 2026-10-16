@@ -1,0 +1,36 @@
+{
+  "name": "job.list",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "job.list",
+    "description": "Список задач модуля (после переподключения ядра)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "jobs": {
+        "type": "array",
+        "description": "состояния задач",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "jobs"
+    ],
+    "title": "job.list (ответ)"
+  }
+}

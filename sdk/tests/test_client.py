@@ -416,7 +416,7 @@ async def test_request_error_raises_tool_error(core):
             await client.request("core.tts", {"text": "x"})
         assert e.value.code == "unavailable" and "голос" in e.value.message
         with pytest.raises(ToolError) as e:
-            await client.request("core.lookup", {"query": "q"})           # у FakeCore обработчика нет
+            await client.request("core.web_search", {"query": "q"})       # у FakeCore обработчика нет (core.lookup: planned)
         assert e.value.code == "unknown"
 
 

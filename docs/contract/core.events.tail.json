@@ -1,0 +1,58 @@
+{
+  "name": "core.events.tail",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.1",
+  "errors": [
+    "bad_request",
+    "unavailable"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "description": "сколько событий",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20
+      },
+      "kinds": {
+        "type": "array",
+        "description": "виды событий",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 5
+      },
+      "since": {
+        "type": "number",
+        "description": "не раньше (секунды epoch)",
+        "minimum": 0
+      }
+    },
+    "additionalProperties": true,
+    "title": "core.events.tail",
+    "description": "Последние события журнала ядра (только безопасные виды, см. LOG_READ_KINDS)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "events": {
+        "type": "array",
+        "description": "события: ts, kind, text, data",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "events"
+    ],
+    "title": "core.events.tail (ответ)"
+  }
+}

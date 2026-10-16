@@ -1,0 +1,25 @@
+{
+  "name": "reject",
+  "direction": "core->module",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "reason": {
+        "type": "string",
+        "description": "причина",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "reason"
+    ],
+    "title": "reject",
+    "description": "Отказ на hello (протокол или манифест неверны)."
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "core.privacy_terms",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "unavailable",
+    "internal"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "core.privacy_terms",
+    "description": "Личные слова для фильтров публикации (TG-12): имя владельца, имена знакомых."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "terms": {
+        "type": "array",
+        "description": "слова",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "terms"
+    ],
+    "title": "core.privacy_terms (ответ)"
+  }
+}

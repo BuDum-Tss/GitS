@@ -59,8 +59,7 @@ class ClientThread(threading.Thread):
     async def _set_visible(self, visible: bool) -> dict:
         """Показать или спрятать окно: инструмент ядра core.set_setting с ключом pet_visible. Ответ ядра - ok / сообщение."""
         try:
-            await self.client.request("core.tool.call", {"tool": "core.set_setting",
-                                                         "args": {"key": "pet_visible", "value": visible}}, timeout=10)
+            await self.client.call_tool("core.set_setting", {"key": "pet_visible", "value": visible}, timeout=10)
         except (ToolError, asyncio.TimeoutError) as e:
             return {"ok": False, "message": str(e) or "ядро не ответило"}
         return {"ok": True, "message": "питомец показан" if visible else "питомец скрыт"}

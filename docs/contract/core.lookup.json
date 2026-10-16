@@ -1,0 +1,61 @@
+{
+  "name": "core.lookup",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "planned",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unavailable"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "что искать",
+        "minLength": 1
+      },
+      "collections": {
+        "type": "array",
+        "description": "коллекции, например montage.style",
+        "items": {
+          "type": "string"
+        }
+      },
+      "allow_web": {
+        "type": "boolean",
+        "description": "можно ли дополнять поиском в сети",
+        "default": false
+      },
+      "k": {
+        "type": "integer",
+        "description": "сколько результатов",
+        "minimum": 1,
+        "maximum": 50
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "query"
+    ],
+    "title": "core.lookup",
+    "description": "Справочник знаний ядра: поиск по коллекциям базы знаний (монтаж берёт так стиль и опыт)."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "найденное одним текстом"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "text"
+    ],
+    "title": "core.lookup (ответ)"
+  }
+}

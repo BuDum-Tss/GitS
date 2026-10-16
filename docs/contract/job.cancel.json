@@ -1,0 +1,35 @@
+{
+  "name": "job.cancel",
+  "direction": "core->module",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [
+    "bad_request",
+    "unknown"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "description": "id задачи",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "job_id"
+    ],
+    "title": "job.cancel",
+    "description": "Отменить задачу модуля."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "job.cancel (ответ)"
+  }
+}

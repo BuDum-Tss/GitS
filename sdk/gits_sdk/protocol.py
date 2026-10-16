@@ -119,11 +119,14 @@ class ToolError(Exception):
 # ---------------------------------------------------------------- типы сообщений
 
 # модуль -> ядро
-MODULE_TO_CORE_NOTES = ("hello", "event", "say", "emotion", "state", "job.update", "result", "panel.set")
+MODULE_TO_CORE_NOTES = ("hello", "event", "say", "emotion", "state", "job.update", "result", "panel.set",
+                        "log")                 # log: ТЗ 31, запись в журнал ядра вместо прямого events_log
 CORE_REQUESTS = (
     "core.ask", "core.tts", "core.tool.call", "core.lookup", "core.memory.recall", "core.memory.remember",
     "core.experience.add", "core.kb.ingest", "core.persona", "core.privacy_terms", "core.claude_usage",
     "core.web_search",
+    # ТЗ 31 (контракт 1.1): локальная модель, чтение журнала, путь к Claude
+    "core.llm.ask", "core.events.tail", "core.claude.locate",
 )
 MODULE_TO_CORE = frozenset(MODULE_TO_CORE_NOTES) | frozenset(CORE_REQUESTS)
 

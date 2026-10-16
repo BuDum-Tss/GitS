@@ -21,6 +21,7 @@ from typing import Any
 import aiohttp
 from aiohttp import web
 
+from . import contract
 from . import protocol as P
 from .protocol import Envelope, ProtocolError, ToolError
 
@@ -60,6 +61,7 @@ class FakeCore:
         self.states: dict[str, dict] = {}        # последняя `state` каждого модуля
         self.panels: dict[str, dict] = {}        # последнее `panel.set` каждого модуля: {"blocks": [...]} (TZ 15)
         self.violations: list[str] = []          # нарушения протокола модулем (сообщения до welcome и т.п.)
+        self.logs: list[dict] = []               # принятые сообщения `log` (запись модуля в журнал ядра, ТЗ 31)
         self.bad_messages: list[str] = []        # кадры, которые не разобрались как конверт
         self.auth_failures = 0
         self.connections = 0                     # сколько WebSocket принято
@@ -177,10 +179,16 @@ class FakeCore:
         self.messages.append(env)
         if env.type == "state":
             self.states[conn.module_id or "?"] = env.body
+        if env.type in contract.REGISTRY and env.type in ("event", "say", "job.update", "log", "emotion", "state"):
+            problems = contract.validate(env.type, env.body)          # тот же контракт, что проверяет ядро (MC-7)
+            if problems:
+                self.violations.append(f"{env.type} неверен: " + "; ".join(problems))
+        if env.type == "log" and not contract.validate("log", env.body):
+            self.logs.append(env.body)
         if env.type == "panel.set":
             hello = getattr(conn, "hello", None) or {}
             actions = set(((hello.get("manifest") or {}).get("panel") or {}).get("actions") or [])
-            problems = P.validate_panel_set(env.body, actions)
+            problems = contract.validate("panel.set", env.body, actions=actions)
             if problems:
                 self.violations.append("panel.set неверен: " + "; ".join(problems))
             else:
@@ -194,7 +202,11 @@ class FakeCore:
 
     async def _answer(self, conn: _Conn, env: Envelope) -> None:
         fn = self.handlers.get(env.type)
-        if fn is None:
+        if fn is None and contract.is_planned(env.type):        # как ядро (MC-5): описан, но не реализован (обработчик теста главнее)
+            reply = P.result_error(env.id, "unavailable", contract.planned_message(env.type))
+        elif env.type in contract.CORE_REQUESTS and (problems := contract.validate(env.type, env.body)):
+            reply = P.result_error(env.id, "bad_request", "; ".join(problems))      # как ядро (MC-2, MC-7)
+        elif fn is None:
             reply = P.result_error(env.id, "unknown", f"FakeCore не знает запрос «{env.type}»")
         else:
             try:
@@ -269,6 +281,16 @@ class FakeCore:
 
         await self.wait_for(lambda: len(matches()) >= nth, timeout)
         return matches()[nth - 1]
+
+    def install_contract_defaults(self, *names: str) -> None:
+        """Ответить на запросы модуля к ядру образцовыми ответами из контракта (`response_valid[0]`), если обработчика нет.
+        Без аргументов: на все реализованные запросы (`core.*`, кроме planned). Так FakeCore строится из контракта."""
+        for name in names or contract.CORE_REQUESTS:
+            msg = contract.get(name)
+            if msg is None or contract.is_planned(name) or name in self.handlers or not msg.response_valid:
+                continue
+            sample = msg.response_valid[0]
+            self.handlers[name] = (lambda body, _s=sample: _s)
 
     def on_request(self, msg_type: str):
         """Обработчик запроса модуля к ядру: `@core.on_request("core.ask") def h(body): return {"answer": True}`.

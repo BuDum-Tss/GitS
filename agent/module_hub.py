@@ -24,6 +24,7 @@ from aiohttp import WSMsgType, web
 import events_log
 import fast_brain
 import settings
+from gits_sdk import contract
 from gits_sdk import protocol as P
 from gits_sdk.protocol import Envelope, Manifest, ProtocolError
 
@@ -366,7 +367,7 @@ class ModuleHub:
 
     # ── приём сообщений ─────────────────────────────────────────────────────────
 
-    _NOTES = ("event", "say", "emotion", "state", "job.update", "panel.set")
+    _NOTES = ("event", "say", "emotion", "state", "job.update", "panel.set", "log")
 
     def _on_text(self, conn: ModuleConnection, data: str) -> None:
         try:
@@ -416,7 +417,7 @@ class ModuleHub:
                 return
             rec = self.modules.get(mid)
             actions = set((rec.panel or {}).get("actions") or []) if rec is not None else set()
-            problems = P.validate_panel_set(body, actions)
+            problems = contract.validate("panel.set", body, actions=actions)
             if problems:
                 logger.warning(f"Модуль {mid}: panel.set неверен: {'; '.join(problems)}")
                 return
@@ -424,17 +425,25 @@ class ModuleHub:
                 logger.debug(f"Модуль {mid}: panel.set отброшен (не объявлено panel или чаще раза в секунду)")
             return
         if t == "job.update":
-            problems = P.validate_job_update(body)
+            problems = contract.validate("job.update", body)
             if problems:
                 logger.warning(f"Модуль {mid}: job.update неверный: {'; '.join(problems)}")
                 return
             await self._on_job_update(conn, body)
             return
+        if t == "log":                                 # ТЗ 31: запись модуля в журнал (вместо прямого events_log)
+            problems = contract.validate("log", body)
+            if problems:
+                logger.warning(f"Модуль {mid}: log неверный: {'; '.join(problems)}")
+                return
+            extra = {k: v for k, v in (body.get("data") or {}).items() if k not in ("kind", "text")}
+            events_log.log_nowait(body["kind"], body.get("text", ""), **extra)
+            return
         if not self._enabled(conn):                    # MOD-14: выключенный модуль событий и речи не шлёт
             logger.debug(f"Модуль {mid} выключен: «{t}» отброшено")
             return
         if t == "event":
-            problems = P.validate_event(body)
+            problems = contract.validate("event", body)
             if problems:
                 logger.warning(f"Модуль {mid}: event неверный: {'; '.join(problems)}")
                 return
@@ -448,7 +457,7 @@ class ModuleHub:
             if self.attention is not None:
                 await self.attention.submit(mid, body)
         elif t == "say":
-            problems = P.validate_say(body)
+            problems = contract.validate("say", body)
             if problems:
                 logger.warning(f"Модуль {mid}: say неверный: {'; '.join(problems)}")
                 return

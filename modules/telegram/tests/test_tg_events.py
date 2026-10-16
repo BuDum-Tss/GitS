@@ -120,9 +120,9 @@ async def test_failed_delivery_keeps_offset(tmp_path, monkeypatch):
 async def test_journal_records_incoming_without_token(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch) as rig:
         await rig.mod.channel._on_private(private_msg(text="запомни это"))
-        rows = rig.journal()
+        rows = await rig.journal()
     assert any("сообщение в боте: Маша: запомни это" in r["text"] for r in rows)
-    assert not any("SECRET-TOKEN" in json.dumps(r, ensure_ascii=False) for r in rig.journal())
+    assert not any("SECRET-TOKEN" in json.dumps(r, ensure_ascii=False) for r in await rig.journal())
 
 
 # ── её аккаунт (Telethon) ──
@@ -153,7 +153,7 @@ async def test_account_dm_event_and_inbox(tmp_path, monkeypatch):
         await rig.mod.user._on_incoming(FakeEvent(text="ты скоро?", sender_id=OWNER, chat_id=OWNER, first="Аня"))
         ev = (await rig.core.wait_message("event")).body
         inbox = json.loads((rig.mem / "tg_inbox.json").read_text(encoding="utf-8"))
-        rows = rig.journal()
+        rows = await rig.journal()
         unread = rig.mod.user.unread_count()
     assert ev["kind"] == "telegram.dm" and ev["text"] == "Сообщение от Аня в её личке: «ты скоро?»"
     assert ev["sender"] == {"id": f"tg:{OWNER}", "name": "Аня", "is_owner": True}

@@ -1,0 +1,56 @@
+{
+  "name": "say",
+  "direction": "module->core",
+  "kind": "note",
+  "status": "stable",
+  "since": "1.0",
+  "errors": [],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "что сказать",
+        "minLength": 1
+      },
+      "mode": {
+        "type": "string",
+        "description": "режим",
+        "enum": [
+          "fact",
+          "verbatim"
+        ],
+        "default": "fact"
+      },
+      "emotion": {
+        "type": "string",
+        "description": "эмоция"
+      },
+      "key": {
+        "type": "string",
+        "description": "ключ замены"
+      },
+      "announce": {
+        "type": "boolean",
+        "description": "объявление о долгом запуске"
+      },
+      "urgency_hint": {
+        "type": "integer",
+        "description": "подсказка срочности",
+        "minimum": 0,
+        "maximum": 5
+      },
+      "expires_in_s": {
+        "type": "number",
+        "description": "срок жизни, секунд"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "text"
+    ],
+    "title": "say",
+    "description": "Просьба сказать: режим fact (передать факт, формулирует модель) или verbatim (дословно)."
+  }
+}
