@@ -20,3 +20,11 @@ def test_append_outcome_label_and_accuracy(tmp_path, monkeypatch):
     st = al.accuracy()
     assert st["labeled"] == 2 and st["ok"] == 1 and st["accuracy"] == 0.5 and st["kind_mistakes"] == [("work", "trade")]
     assert al.recent(10)[0]["label"]["correct_kind"] == "trade"
+
+
+def test_ids_are_unique_even_within_one_millisecond(tmp_path, monkeypatch):
+    _fresh(tmp_path, monkeypatch)
+    monkeypatch.setattr(al.time, "time", lambda: 1000.0)               # время стоит: все записи в одну миллисекунду
+    ids = [al.append("letter", f"письмо {i}", {}, {}) for i in range(5)]
+    assert len(set(ids)) == 5
+    assert [r["id"] for r in al.recent(10)] == ids[::-1]

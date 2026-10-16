@@ -2,7 +2,7 @@
 
 Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора модуля: `docs/MODULES.md`, протокол: `docs/tz/01-module-contract.md`, ТЗ контракта: `docs/tz/31-module-contracts.md`.
 
-Версия протокола `PROTOCOL = 1`, версия контракта `1.2`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
+Версия протокола `PROTOCOL = 1`, версия контракта `1.3`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
 ## Версии и совместимость
 
@@ -19,6 +19,7 @@
 - `1.0`: ТЗ 01, ТЗ 02, ТЗ 10, ТЗ 15, ТЗ 18: рукопожатие, события, речь, вопросы, задачи, панель, фокус, темы
 - `1.1`: ТЗ 31: core.llm.ask, core.events.tail, core.claude.locate, сообщение log; типизированный клиент
 - `1.2`: ТЗ 27: core.memory.episodes (эпизоды памяти ядра)
+- `1.3`: core.memory.recall и core.memory.remember реализованы (были planned)
 
 Устаревшее: нет.
 
@@ -158,11 +159,11 @@
 
 Вспомнить: поиск по памяти (контракт `MemoryReader`).
 
-направление: module->core, вид: request, статус: **planned**, с версии 1.0, появится в ТЗ 04.
+направление: module->core, вид: request, статус: **stable**, с версии 1.0.
 
 Коды ошибок: `bad_request`, `unavailable`.
 
-Пока отвечает unavailable.
+Ядро ищет в личной памяти (`MemoryReader.search`); факт: text, kind, importance.
 
 Тело:
 
@@ -189,11 +190,11 @@
 
 Запомнить факт (контракт `MemoryWriter`).
 
-направление: module->core, вид: request, статус: **planned**, с версии 1.0, появится в ТЗ 04.
+направление: module->core, вид: request, статус: **stable**, с версии 1.0.
 
 Коды ошибок: `bad_request`, `unavailable`.
 
-Пока отвечает unavailable.
+Ядро пишет в личную память (`MemoryWriter.add_fact`); `stored` false, если факт уже был.
 
 Тело:
 

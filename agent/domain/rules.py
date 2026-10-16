@@ -35,12 +35,12 @@ THINK_MIN_PRIORITY = 25.0
 
 def think_route(*, origin: str, kind: str, decision: str, urgency: int | None, priority: float, memorable: bool,
                 needs_reply: bool, spoken: bool = False) -> bool:
-    """Маршрут `think` (ТЗ 30, IMP-4): напоминание себе; итог эпизода; значимое событие без срочности (D1-D2);
+    """Маршрут `think` (ТЗ 30, IMP-4, IMP-10): напоминание себе; итог разговора; итог эпизода; значимое событие без срочности (D1-D2);
     вопрос без ответа. Мысль сама размышление не запускает (нет петли)."""
     if kind == "self.thought":
         return False
     if origin == "self":
-        return kind == "self.reminder"
+        return kind in ("self.reminder", "self.after_conversation")
     if kind.endswith(EPISODE_KINDS):
         return True
     if (urgency or 0) >= 4 or decision not in ("D1", "D2"):

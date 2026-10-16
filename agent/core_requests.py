@@ -1,6 +1,7 @@
 """Запросы модулей к ядру (ТЗ 02, раздел 10): `core.ask`, `core.tts`, `core.tool.call`, `core.persona`,
-`core.claude_usage`, `core.web_search`, `core.privacy_terms` (ТЗ 10). Запросы памяти и справочника (`core.lookup`,
-`core.memory.*`, `core.experience.add`, `core.kb.ingest`) отвечают `unavailable` до ТЗ 04.
+`core.claude_usage`, `core.web_search`, `core.privacy_terms` (ТЗ 10), `core.memory.recall` / `core.memory.remember` (поверх
+контрактов `MemoryReader` и `MemoryWriter`). Справочник (`core.lookup`, `core.experience.add`, `core.kb.ingest`) отвечает
+`unavailable` до ТЗ 04.
 
 Тело каждого запроса проверяется по контракту `gits_sdk.contract` (CORE-32, ТЗ 31 MC-2): обязательные поля и типы; ошибка -
 `bad_request`. Запросы со статусом planned (память и справочник) отвечают `unavailable` с версией контракта. Ответ ядра
@@ -53,12 +54,15 @@ def _bad(message: str) -> ModuleError:
 
 
 class CoreRequests:
-    def __init__(self, *, attention=None, router=None, privacy_terms: Callable[[], list[str]] | None = None):
+    def __init__(self, *, attention=None, router=None, privacy_terms: Callable[[], list[str]] | None = None,
+                 memory_reader=None, memory_writer=None):
         """attention - менеджер внимания (submit_question); router - Router (run_tool_ex); privacy_terms - () -> личные слова
         (core.privacy_terms; ядро ставит после создания памяти). Шина модулей (hub) нужна для core.tts: ставит ModuleHub."""
         self.attention = attention
         self.router = router                      # ставится ядром после создания маршрутизатора
         self.privacy_terms = privacy_terms
+        self.memory_reader = memory_reader        # MemoryReader / MemoryWriter ядра (core.memory.*); None: unavailable
+        self.memory_writer = memory_writer
         self.hub = None                           # ModuleHub: core.tts передаёт запрос модулю голоса
         self.episodes = None                      # EpisodeService (ТЗ 27): ставит ядро; без него core.memory.episodes недоступен
 
@@ -69,6 +73,7 @@ class CoreRequests:
             "core.privacy_terms": self._privacy_terms, "core.llm.ask": self._llm_ask,
             "core.events.tail": self._events_tail, "core.claude.locate": self._claude_locate,
             "core.memory.episodes": self._episodes,
+            "core.memory.recall": self._memory_recall, "core.memory.remember": self._memory_remember,
         }.get(msg_type)
         if contract.is_planned(msg_type):                      # MC-5: запрос описан, реализации пока нет
             raise ModuleError("unavailable", contract.planned_message(msg_type))
@@ -131,6 +136,25 @@ class CoreRequests:
         if not ok:
             raise ModuleError(code or "internal", text)
         return {"text": text}
+
+    # ── core.memory.* ───────────────────────────────────────────────────────
+
+    async def _memory_recall(self, conn: ModuleConnection, body: Any) -> dict:
+        """Поиск по личной памяти (MemoryReader.search): только реально совпавшие записи."""
+        reader = self.memory_reader
+        if reader is None:
+            raise ModuleError("unavailable", "память ядра не подключена")
+        items = await asyncio.to_thread(reader.search, body["query"], body.get("limit") or 6)
+        return {"facts": [{"text": str(i.get("text", "")), "kind": i.get("kind", "user"),
+                           "importance": int(i.get("importance", 3))} for i in items]}
+
+    async def _memory_remember(self, conn: ModuleConnection, body: Any) -> dict:
+        """Запись факта в личную память (MemoryWriter.add_fact); дубль сливается и даёт stored=false."""
+        writer = self.memory_writer
+        if writer is None:
+            raise ModuleError("unavailable", "память ядра не подключена")
+        stored = await asyncio.to_thread(writer.add_fact, body["text"].strip(), "user", 3)
+        return {"stored": bool(stored)}
 
     # ── прочее ──────────────────────────────────────────────────────────────
 

@@ -39,7 +39,8 @@ GROUPS = [
     dict(id="g_imp", col="A", title="Внутренние импульсы", tag="A",
          summary="Напоминания, которые агент назначил себе; сработавший срок становится событием. Болтовни по таймеру нет.", out="Event self.*", nodes=[
         N("reminders", "ReminderStore", "I", "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль", "срок наступил", "есть (ТЗ 30): adapters/impulse_store.py (JsonReminders, файл reminders.json), контракт ReminderRepository; инструмент assistant.remind_self"),
-        N("timer", "ImpulseTimer", "I", "следит только за сроками напоминаний; когда срок пришёл, шлёт событие. Не тик болтовни", "Event self.reminder", "есть (ТЗ 30): app/impulse_timer.py, один таймер на ближайший срок, восстановление и склейка просроченного; proactive_loop выключен настройкой proactive_tick"),
+        N("timer", "ImpulseTimer", "I", "следит только за сроками напоминаний; когда срок пришёл, шлёт событие. Не тик болтовни", "Event self.reminder", "есть (ТЗ 30): app/impulse_timer.py, один таймер на ближайший срок, восстановление и склейка просроченного; прежний опрос proactive_loop удалён"),
+        N("plans", "PlanNudger", "A", "планы пользователя со сроком в ближайшие сутки превращает в напоминания себе (без модели)", "напоминание за полчаса до срока", "есть (ТЗ 30): app/plan_nudge.py, просмотр раз в час и при старте; стимул недоверенный"),
     ]),
     dict(id="g_in", col="B", title="Приём", tag="I",
          summary="Принимает событие из любого источника, проверяет, приводит к единому виду, склеивает повторы, узнаёт отправителя.", out="Event", nodes=[
@@ -65,8 +66,8 @@ GROUPS = [
     ]),
     dict(id="g_think", col="D", title="Размышление", tag="A",
          summary="Внутренний диалог агента: получает событие или импульс, думает, читая память, и решает: сказать, сделать, напомнить себе или записать.", out="Intent", nodes=[
-        N("reflect", "ReflectionService", "A", "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов", "Intent: сказать, сделать, напомнить, записать, ничего", "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route); лимиты шагов, токенов, часа, глубины"),
-        N("thoughts", "Журнал мыслей", "I", "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов", "Thought", "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), GET /api/thoughts"),
+        N("reflect", "ReflectionService", "A", "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов", "Intent: сказать, сделать, напомнить, записать, ничего", "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route); лимиты шагов, токенов, часа, глубины; после разговора (self.after_conversation) и эпизода подводит итог: настроение и вывод (IMP-10)"),
+        N("thoughts", "Журнал мыслей", "I", "внутренние рассуждения: не озвучиваются; основа дневника и эпизодов", "Thought", "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), GET /api/thoughts, вкладка «Мысли» дашборда"),
     ]),
     dict(id="g_act", col="E", title="Дела", tag="A",
          summary="Строит план из доступных инструментов, спрашивает разрешение на опасное, выполняет в модулях, ведёт долгие задачи.", out="ToolResult", nodes=[
@@ -126,7 +127,8 @@ BYID = {g["id"]: g for g in GROUPS}
 EDGES = [
     ("voice", "hub", "flow", "Event", None), ("desk", "hub", "flow", None, None), ("tg", "hub", "flow", None, None),
     ("rim", "hub", "flow", None, None), ("mont", "hub", "flow", "job.update", None), ("dash", "hub", "flow", "UserInput", None),
-    ("reminders", "timer", "use", "срок", None), ("timer", "norm", "flow", "self.reminder", None),
+    ("reminders", "timer", "use", "срок", None), ("mr", "plans", "r", "планы пользователя", None), ("plans", "reminders", "w", "напомнить", None),
+    ("conv", "reflect", "flow", "разговор затих", None), ("timer", "norm", "flow", "self.reminder", None),
     ("root", "hnd", "use", None, None), ("hub", "norm", "flow", "Event", 2), ("norm", "people", "use", "sender", None), ("norm", "rules", "flow", "Event", 3),
     ("rules", "cls", "flow", "не решено правилами", 4), ("cls", "score", "flow", "Classification", 5), ("score", "disp", "flow", "priority", 6),
     ("rules", "conv", "flow", "R1: владелец", None),

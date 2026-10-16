@@ -134,12 +134,14 @@ async def test_duplicate_module_replaces_the_old_connection(tmp_path):
         second = build_client(interval=0.01, url=core.url, token=core.token)
         t1 = asyncio.create_task(first.run())
         await core.wait_connected("echo")
+        await first.wait_connected(5)         # рукопожатие дошло до модуля: вытеснение посреди него шло бы по пути переподключения
         old = core.hub.connection("echo")
         t2 = asyncio.create_task(second.run())
         await core.wait_for(lambda: core.hub.connection("echo") not in (None, old))
         assert await asyncio.wait_for(t1, 5) == 0                    # SDK при коде 4000 завершается без переподключения
         assert core.hub.connection("echo").instance == second.instance
         assert core.modules.get("echo").connected and core.modules.get("echo").instance == second.instance
+        await second.wait_connected(5)        # stop() до конца рукопожатия не закрыл бы ещё не принятое соединение
         await second.stop()
         await asyncio.wait_for(t2, 5)
 
@@ -558,9 +560,11 @@ async def test_core_ask_bad_body_is_bad_request_and_memory_requests_unavailable(
             await raw.hello()
             assert (await raw.request("core.ask", {"kind": "choice", "question": "?"}))["error"]["code"] == "bad_request"
             assert (await raw.request("core.ask", {"question": "?"}))["error"]["code"] == "bad_request"
-            for t in ("core.lookup", "core.memory.recall", "core.memory.remember", "core.experience.add", "core.kb.ingest"):
+            for t in ("core.lookup", "core.experience.add", "core.kb.ingest"):
                 body = await raw.request(t, {})
                 assert body["error"]["code"] == "unavailable" and "ТЗ 04" in body["error"]["message"]
+            for t, body in (("core.memory.recall", {"query": "чай"}), ("core.memory.remember", {"text": "любит чай"})):
+                assert (await raw.request(t, body))["error"]["code"] == "unavailable"          # память к тестовому ядру не подключена
             assert (await raw.request("core.privacy_terms", {}))["error"]["code"] == "unavailable"       # список ставит ядро (ТЗ 10)
             assert (await raw.request("core.tool.call", {"tool": 5}))["error"]["code"] == "bad_request"
             assert (await raw.request("core.tool.call", {"tool": "no.such"}))["error"]["code"] == "unknown"

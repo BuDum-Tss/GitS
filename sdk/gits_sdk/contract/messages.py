@@ -89,7 +89,7 @@ _recall = Message(
     "core.memory.recall", M2C, REQUEST, "Вспомнить: поиск по памяти (контракт `MemoryReader`).",
     request=(F("query", "string", True, "о чём вспомнить", nonempty=True), F("limit", "integer", False, "сколько фактов", min=1, max=50)),
     response=(F("facts", "array", True, "факты", items="object"),),
-    errors=("bad_request", "unavailable"), status=PLANNED, planned_in="ТЗ 04", note="Пока отвечает unavailable.",
+    errors=("bad_request", "unavailable"), note="Ядро ищет в личной памяти (`MemoryReader.search`); факт: text, kind, importance.",
     valid=({"query": "день рождения"},), invalid=({}, {"query": " "}),
     response_valid=({"facts": []},), response_invalid=({},),
 )
@@ -97,7 +97,7 @@ _remember = Message(
     "core.memory.remember", M2C, REQUEST, "Запомнить факт (контракт `MemoryWriter`).",
     request=(F("text", "string", True, "что запомнить", nonempty=True), F("source", "string", False, "откуда факт")),
     response=(F("stored", "boolean", True, "записано ли"),),
-    errors=("bad_request", "unavailable"), status=PLANNED, planned_in="ТЗ 04", note="Пока отвечает unavailable.",
+    errors=("bad_request", "unavailable"), note="Ядро пишет в личную память (`MemoryWriter.add_fact`); `stored` false, если факт уже был.",
     valid=({"text": "любит чай"},), invalid=({}, {"text": ""}),
     response_valid=({"stored": True},), response_invalid=({},),
 )

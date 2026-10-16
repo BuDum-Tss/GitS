@@ -17,8 +17,8 @@
 модулей) они говорят сразу, как раньше. Ответ в канал модуля (Telegram) не речь: он доставляется сразу, мимо очереди.
 
 Companion теперь тонкий фасад (ТЗ 29, ARC-5): состояние и публичный интерфейс здесь, логика в `agent/app/`:
-ConversationService (путь обращения), ContextBuilder (контекст), ReplyGenerator (ответ), MemoryCapture (запоминание),
-ProactiveLegacy (временная проактивность по таймеру, до ТЗ 30).
+ConversationService (путь обращения), ContextBuilder (контекст), ReplyGenerator (ответ), MemoryCapture (запоминание).
+Проактивности по таймеру нет (ТЗ 30): её заменили внутренние импульсы, `impulse_service.py`.
 """
 import asyncio
 import collections
@@ -39,7 +39,6 @@ from adapters.settings_provider import SettingsModule
 from app.context_builder import ContextBuilder
 from app.conversation_service import ConversationService, _sender_ctx  # noqa: F401  (_sender_ctx: прежнее имя)
 from app.memory_capture import MemoryCapture
-from app.proactive_legacy import CONSULT as _CONSULT, MIN_GAP as _MIN_GAP, ProactiveLegacy  # noqa: F401
 from app.instant import InstantLevel, note_speech
 from app.reply_generator import ReplyGenerator
 from conversation_io import UserInput, current_channel
@@ -94,9 +93,8 @@ class Companion:
         self._memory_reader = memory_reader if memory_reader is not None else default_memory
         self._memory_writer = memory_writer if memory_writer is not None else default_memory
         self._last_say = self._load_last_say()   # переживает перезапуски
-        self._last_consult = time.time()
+        self.on_conversation_end = None  # (text) -> None: разговор затих, повод подвести итог (ставит impulse_service, ТЗ 30 IMP-10)
         self._idle_handle = None         # отложенное осмысление беседы после паузы (вместо опроса по таймеру, ТЗ 30)
-        self._away_since: float | None = None
         self._busy = asyncio.Lock()      # один разговор за раз
         self._pending_memory = 0         # сообщений с последнего осмысления беседы
         self._last_user_ts = 0.0
@@ -109,7 +107,6 @@ class Companion:
         self.reply_generator = ReplyGenerator(self)
         self.memory_capture = MemoryCapture(self)
         self.conversation = ConversationService(self)
-        self.proactive_legacy = ProactiveLegacy(self)
         self.instant = InstantLevel(self)    # мгновенный уровень: подтверждение и филлер (ТЗ 25, FAST-3)
 
     @property
@@ -355,18 +352,32 @@ class Companion:
     def _idle_consolidate(self) -> None:
         self._idle_handle = None
         if self._pending_memory >= 2 and not self._consolidating:
+            self._notify_conversation_end()
             asyncio.get_running_loop().create_task(self._consolidate())
 
-    # ── проактивность (временный сценарий app/proactive_legacy.py, до ТЗ 30) ──────
+    def _notify_conversation_end(self) -> None:
+        """IMP-10: разговор затих. Хуку идут факты (последние реплики), он решает, отдавать ли их на размышление."""
+        hook = self.on_conversation_end
+        if hook is None:
+            return
+        try:
+            lines = [f"{'Пользователь' if m['role'] == 'user' else 'Ты'}: {str(m['text'])[:160]}"
+                     for m in self._memory_reader.recent_dialogue(6)]
+            hook("Разговор с пользователем затих. Последние реплики:\n" + "\n".join(lines))
+        except Exception as e:
+            logger.warning(f"Итог разговора: {e}")
 
-    async def proactive_loop(self):
-        await self.proactive_legacy.loop()
-
-    def _digest(self, silent_mins: int) -> str:
-        return self.proactive_legacy.digest(silent_mins)
+    # ── повторы ───────────────────────────────────────────────────────────────
 
     def _repeats_recent(self, text: str) -> bool:
-        return self.proactive_legacy.repeats_recent(text)
-
-    async def _maybe_speak(self):
-        await self.proactive_legacy.maybe_speak()
+        """Не повторять недавние темы: сильное пересечение по словам с её последними репликами (очередь речи спрашивает это
+        у каждого кандидата)."""
+        from memory_store import stems
+        new = stems(text)
+        if len(new) < 3:
+            return False
+        for m in [m for m in self._memory_reader.recent_dialogue(10) if m["role"] != "user"][-5:]:
+            old = stems(m["text"])
+            if old and len(new & old) / min(len(new), len(old)) >= 0.5:
+                return True
+        return False

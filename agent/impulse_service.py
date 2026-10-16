@@ -1,15 +1,22 @@
 """Сборка внутренних импульсов и размышления (ТЗ 30): ReminderStore + ImpulseTimer + ReflectionService + журнал мыслей.
 
-Заменяет `Companion.proactive_loop`: агент не заговаривает по таймеру, он реагирует на события и на напоминания, которые назначил
+Заменил прежнюю проактивность по таймеру (`Companion.proactive_loop`, удалена): агент не заговаривает по таймеру, он реагирует на события и на напоминания, которые назначил
 себе. Срок напоминания -> событие `self.reminder` в тот же конвейер внимания -> маршрут `think` -> размышление -> намерения.
 """
+import asyncio
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
 import prompts
 from adapters.impulse_store import JsonReminders, JsonThoughts
 from app.impulse_timer import ImpulseTimer
+from app.plan_nudge import PlanNudger
 from app.reflection import ReflectionService
+from domain.event import KIND_AFTER_CONVERSATION
+from memory_store import effective_due
+
+logger = logging.getLogger("impulses")
 
 REMINDERS_FILE = "reminders.json"
 THOUGHTS_FILE = "thoughts.json"
@@ -34,6 +41,15 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
         settings=settings_source or companion._settings.load, clock=clock, speak=attention.reflect_speech, plan=plan,
         remind=timer.add)
     attention.attach_reflection(service)
-    impulses = SimpleNamespace(timer=timer, reflection=service, journal=journal, reminders=reminders)
+    plans = PlanNudger(companion.memory_reader, timer.add, due_of=effective_due, clock=clock)   # планы пользователя -> напоминания себе
+
+    def conversation_ended(text: str) -> None:
+        """IMP-10: разговор затих -> событие `self.after_conversation`; диспетчер отдаёт его в размышление (настроение, вывод)."""
+        event = {"kind": KIND_AFTER_CONVERSATION, "text": text, "urgency_hint": 1, "data": {"untrusted": True}}
+        task = asyncio.get_running_loop().create_task(attention.submit_self(event))
+        task.add_done_callback(lambda t: t.cancelled() or t.exception() is None or logger.warning(f"Итог разговора: {t.exception()}"))
+
+    companion.on_conversation_end = conversation_ended
+    impulses = SimpleNamespace(timer=timer, reflection=service, journal=journal, reminders=reminders, plans=plans)
     companion.impulses = impulses
     return impulses

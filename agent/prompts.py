@@ -101,7 +101,8 @@ def _persona_with(key: str, fallback_style: str) -> str:
 
 
 def reflection() -> dict:
-    """Промпт внутреннего диалога (ТЗ 30, IMP-5): {"system": характер и правила размышления, "format": формат ответа}.
+    """Промпт внутреннего диалога (ТЗ 30, IMP-5): {"system": характер и правила размышления, "format": формат ответа,
+    "after": что делать после разговора и эпизода (IMP-10)}.
     Раздел `reflection` в prompt.yaml персонажа; нет раздела - запасной текст (имя подставляет character.fill)."""
     b = behaviour().get("reflection", {})
     c = constitution()
@@ -112,7 +113,10 @@ def reflection() -> dict:
     fmt = " ".join(str(b.get("format") or 'Ответь ТОЛЬКО JSON: {"thought": "<мысль>", "recall": "<о чём вспомнить, или пусто>", '
                    '"intents": [{"kind": "say|do|remind|remember|none", "text": "<факт для реплики, дело, о чём напомнить, '
                    'что запомнить>", "in_s": <секунд до напоминания>}]}. Пока не вспомнила нужное, intents пусты.').split())
-    return {"system": character.fill(f"{head} {system} {_rules()}".strip()), "format": fmt}
+    after = " ".join(str(b.get("after") or "Разговор или эпизод закончился: подведи итог. Какое настроение осталось и какой "
+                     "вывод стоит запомнить на будущее? Если вывод есть, запиши его намерением remember; сказать "
+                     "что-то пользователю нужно только при настоящем поводе.").split())
+    return {"system": character.fill(f"{head} {system} {_rules()}".strip()), "format": fmt, "after": character.fill(after)}
 
 
 def _inner(key: str, system: str, fmt: str) -> dict:

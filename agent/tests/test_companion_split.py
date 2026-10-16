@@ -39,9 +39,9 @@ def make(tmp_path, *answers):
 
 def test_facade_keeps_components_and_public_interface(tmp_path):
     c, _ = make(tmp_path)
-    for name in ("conversation", "context_builder", "reply_generator", "memory_capture", "proactive_legacy"):
+    for name in ("conversation", "context_builder", "reply_generator", "memory_capture"):
         assert getattr(c, name) is not None
-    for name in ("on_voice", "on_user_message", "on_input", "say", "proactive_loop", "remember_text", "speak_about",
+    for name in ("on_voice", "on_user_message", "on_input", "say", "remember_text", "speak_about",
                  "run_claude", "note_heard", "recent_heard", "rebind_memory", "is_speaking"):
         assert callable(getattr(c, name))
     for name in ("_mem", "_rel", "graph", "router", "attention", "presence", "speech", "io", "game_order"):
@@ -83,8 +83,8 @@ async def test_memory_capture_remember_text_falls_back_to_raw_text(tmp_path):
     assert await c.remember_text("запомни это дело") == ["запомни это дело"]
 
 
-async def test_proactive_legacy_stays_silent_when_busy(tmp_path):
+async def test_no_timer_driven_chatter_left_on_the_facade(tmp_path):
+    """ТЗ 30: опроса «стоит ли заговорить» у компаньона больше нет, остались только импульсы."""
     c, llm = make(tmp_path)
-    async with c._busy:
-        await c._maybe_speak()
-    assert llm.calls == []
+    assert not any(hasattr(c, n) for n in ("proactive_loop", "_maybe_speak", "_digest", "proactive_legacy"))
+    assert c._repeats_recent("совсем новая тема про погоду на неделе") is False and llm.calls == []
