@@ -11,6 +11,8 @@ import time
 
 import events_log
 import settings
+from app.task_service import TaskError
+from domain import tasks as task_dom
 from .base import Environment, Tool, ToolError
 
 
@@ -151,6 +153,57 @@ def register(registry, companion, memory, profiles=None):
         await impulses.timer.add(time.time() + minutes * 60, text, source={"kind": "conversation"})
         return f"напомнит себе через {int(minutes)} мин: она сама решит, сказать ли об этом, когда срок придёт"
 
+    def _tasks():
+        svc = getattr(companion, "tasks", None)
+        if svc is None:
+            raise ToolError("общие задачи ещё не подключены")
+        return svc
+
+    async def _task_call(coro):
+        try:
+            return await coro
+        except TaskError as e:
+            raise ToolError(str(e))
+
+    def _task_line(t):
+        done, total = task_dom.progress(t)
+        bits = [f"{t.id} [{t.status}] {t.goal}"]
+        if total:
+            bits.append(f"шаги {done}/{total}")
+            nxt = task_dom.next_step(t)
+            if nxt is not None:
+                bits.append(f"дальше: {nxt.text}")
+        if t.due is not None:
+            bits.append("срок " + time.strftime("%d.%m %H:%M", time.localtime(t.due)))
+        return "; ".join(bits)
+
+    async def list_tasks(a):
+        svc = _tasks()
+        ws = str(a.get("workspace") or "").strip() or None
+        found = await svc.list_tasks(ws, only_open=not a.get("all"), kinds=(task_dom.KIND_TASK, task_dom.KIND_PLAN))
+        if not found:
+            return "в этой среде открытых задач нет" if not a.get("all") else "задач нет"
+        return "\n".join(_task_line(t) for t in found)
+
+    async def create_task(a):
+        svc = _tasks()
+        due = None
+        if a.get("in_minutes") not in (None, ""):
+            try:
+                due = time.time() + float(a["in_minutes"]) * 60
+            except (TypeError, ValueError):
+                raise ToolError("срок в минутах должен быть числом")
+        t = await _task_call(svc.create(str(a.get("goal") or ""), origin=task_dom.USER if a.get("origin") == "user" else task_dom.SELF,
+                                        priority=a.get("priority") or task_dom.PRIORITY_DEFAULT, due=due, plan=bool(a.get("plan", True)),
+                                        steps=a.get("steps") or ()))
+        return "задача создана: " + _task_line(t)
+
+    async def close_task(a):
+        svc = _tasks()
+        status = str(a.get("status") or task_dom.DONE)
+        t = await _task_call(svc.close(str(a.get("id") or ""), status=status, note=str(a.get("note") or "")))
+        return f"задача {t.id} закрыта ({t.status}): {t.goal}"
+
     async def recall(a):
         parts = [i["text"] for i in memory.store.search(a["query"])]
         graph = getattr(companion, "graph", None)
@@ -230,6 +283,25 @@ def register(registry, companion, memory, profiles=None):
                   {"text": {"type": "string", "description": "о чём вспомнить, одной фразой"},
                    "in_minutes": {"type": "number", "description": "через сколько минут напомнить себе"}},
                   remind_self, keywords=("напомни", "напоминание", "вернись", "позже", "через", "проверь", "не забудь")),
+            _tool("assistant", "tasks", "Показать открытые задачи текущей среды (цель, статус, шаги, срок): что она сейчас делает и что "
+                  "осталось. Для вопросов «чем ты занята», «что в планах», «какие у тебя задачи».",
+                  {"workspace": {"type": "string", "required": False, "description": "среда (assistant, rimworld, montage), по умолчанию текущая; * - все"},
+                   "all": {"type": "boolean", "required": False, "description": "показать и закрытые"}},
+                  list_tasks, informative=True, keywords=("задачи", "задача", "планы", "дела", "чем занята", "список дел")),
+            _tool("assistant", "create_task", "Завести задачу в текущей среде: цель, при желании срок. Если шагов нет, цель разобьётся на шаги "
+                  "сама (планировщик). Для долгих дел из нескольких шагов; короткое одно действие делай сразу, без задачи.",
+                  {"goal": {"type": "string", "description": "цель одной фразой"},
+                   "in_minutes": {"type": "number", "required": False, "description": "срок через сколько минут"},
+                   "priority": {"type": "integer", "required": False, "description": "важность 1-5, по умолчанию 3"},
+                   "plan": {"type": "boolean", "required": False, "description": "разбить на шаги (по умолчанию да)"},
+                   "origin": {"type": "string", "enum": ["user", "self"], "required": False,
+                              "description": "user - просьба пользователя, self - её собственное дело"}},
+                  create_task, keywords=("задача", "заведи", "запланируй", "сделай по шагам", "цель", "разбей")),
+            _tool("assistant", "close_task", "Закрыть задачу по id: done (выполнена), failed (не вышло) или cancelled (отменена).",
+                  {"id": {"type": "string", "description": "id задачи из списка задач"},
+                   "status": {"type": "string", "enum": ["done", "failed", "cancelled"], "required": False, "description": "по умолчанию done"},
+                   "note": {"type": "string", "required": False, "description": "коротко почему"}},
+                  close_task, keywords=("задача", "закрой", "отмени задачу", "выполнено", "готово")),
             _tool("assistant", "recall", "Вспомнить, что она помнит по теме или о ком-то (для вопросов «что ты помнишь про…»).",
                   {"query": {"type": "string", "description": "тема или слова для поиска в памяти"}},
                   recall, informative=True, keywords=("помнишь", "вспомни", "вспомнить", "память", "знаешь")),

@@ -80,9 +80,9 @@ window.ARCH_DATA = {
      "t": "ReminderStore",
      "tag": "I",
      "new": false,
-     "do": "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль",
+     "do": "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль; это задачи вида reminder со сроком",
      "out": "срок наступил",
-     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonReminders, файл reminders.json), контракт ReminderRepository; инструмент assistant.remind_self"
+     "now": "есть (ТЗ 30, ТЗ 32): adapters/task_reminders.py (TaskReminders поверх общих задач, tasks.db), контракт ReminderRepository; прежний reminders.json переносится один раз (adapters/task_migration.py); инструмент assistant.remind_self"
     },
     {
      "id": "timer",
@@ -401,6 +401,42 @@ window.ARCH_DATA = {
      "do": "чистые правила: кто и по какой причине может войти в среду и выйти из неё",
      "out": "Workspace",
      "now": "domain/workspace.py (ТЗ 32)"
+    },
+    {
+     "id": "tsvc",
+     "t": "TaskService",
+     "tag": "A",
+     "new": false,
+     "do": "общие задачи всех сред: создание, подзадачи, активная задача среды, checkpoint при уходе и возобновление, закрытие; события task.* в журнал",
+     "out": "Task",
+     "now": "app/task_service.py (ТЗ 32, WS-8); сборка task_wiring.py; инструменты assistant.tasks, create_task, close_task"
+    },
+    {
+     "id": "tdom",
+     "t": "TaskRules",
+     "tag": "D",
+     "new": false,
+     "do": "чистые правила задач: статусы, следующий шаг, статус родителя по подзадачам, можно ли прервать, какие пора напомнить",
+     "out": "Task",
+     "now": "domain/tasks.py (ТЗ 32)"
+    },
+    {
+     "id": "tplan",
+     "t": "Planner (задачи)",
+     "tag": "A",
+     "new": false,
+     "do": "цель → шаги через LanguageModel; одинаков для всех сред, сама среда не планирует",
+     "out": "Step[]",
+     "now": "app/planner.py (LlmPlanner), контракт Planner; промпт planner в prompt.yaml"
+    },
+    {
+     "id": "tstore",
+     "t": "TaskStore",
+     "tag": "I",
+     "new": false,
+     "do": "SQLite tasks.db в папке памяти персонажа: дерево задач, напоминания и планы как задачи",
+     "out": "Task",
+     "now": "adapters/task_store.py (ТЗ 32), контракт TaskRepository"
     },
     {
      "id": "fdisp",
@@ -966,6 +1002,48 @@ window.ARCH_DATA = {
    "wsdom",
    "use",
    "правила входа и выхода"
+  ],
+  [
+   "wsm",
+   "tsvc",
+   "use",
+   "среда задач, checkpoint и возобновление"
+  ],
+  [
+   "tsvc",
+   "tdom",
+   "use",
+   "правила"
+  ],
+  [
+   "tsvc",
+   "tplan",
+   "use",
+   "цель"
+  ],
+  [
+   "tplan",
+   "lms",
+   "use",
+   "разбить на шаги"
+  ],
+  [
+   "tsvc",
+   "tstore",
+   "w",
+   "задачи"
+  ],
+  [
+   "reminders",
+   "tsvc",
+   "use",
+   "задача со сроком"
+  ],
+  [
+   "plans",
+   "tsvc",
+   "w",
+   "план как задача"
   ],
   [
    "sleep",

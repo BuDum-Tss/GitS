@@ -22,12 +22,13 @@ REMINDERS_FILE = "reminders.json"
 THOUGHTS_FILE = "thoughts.json"
 
 
-def build(companion, attention, *, router=lambda: None, settings_source=None, clock=None) -> SimpleNamespace:
-    """companion - Companion (память, модель, контекст), attention - Attention, router() -> Router или None (планировщик)."""
+def build(companion, attention, *, router=lambda: None, settings_source=None, clock=None, tasks=None) -> SimpleNamespace:
+    """companion - Companion (память, модель, контекст), attention - Attention, router() -> Router или None (планировщик),
+    tasks - TaskService (ТЗ 32): напоминания себе и планы пользователя живут в общих задачах; без него прежний `reminders.json`."""
     import time
     clock = clock or time.time
     folder = lambda: Path(companion._dir)                      # noqa: E731  (папка памяти персонажа меняется при переключении)
-    reminders = JsonReminders(lambda: folder() / REMINDERS_FILE, clock)
+    reminders = tasks.reminders if tasks is not None and tasks.reminders is not None else JsonReminders(lambda: folder() / REMINDERS_FILE, clock)
     journal = JsonThoughts(lambda: folder() / THOUGHTS_FILE)
     timer = ImpulseTimer(reminders, attention.submit_self, clock=clock)
 
@@ -41,7 +42,7 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
         settings=settings_source or companion._settings.load, clock=clock, speak=attention.reflect_speech, plan=plan,
         remind=timer.add)
     attention.attach_reflection(service)
-    plans = PlanNudger(companion.memory_reader, timer.add, due_of=effective_due, clock=clock)   # планы пользователя -> напоминания себе
+    plans = PlanNudger(companion.memory_reader, timer.add, due_of=effective_due, clock=clock, tasks=tasks)   # планы пользователя -> напоминания себе
 
     def conversation_ended(text: str) -> None:
         """IMP-10: разговор затих -> событие `self.after_conversation`; диспетчер отдаёт его в размышление (настроение, вывод)."""
