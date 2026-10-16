@@ -981,6 +981,8 @@ const SETTINGS_CATALOG = [
     {key: 'tts_speed', type: 'range', min: 60, max: 130, step: 5, unit: '%', label: 'Скорость речи', hint: '100% - как записан образец голоса, меньше - медленнее. Применяется со следующей фразы (ESpeech и запасной edge-tts).'},
     {key: 'pet_visible', type: 'toggle', label: 'Показывать питомца', hint: 'Голос работает и при скрытом питомце.'},
     {key: 'pet_pinned', type: 'toggle', label: 'Закрепить питомца', hint: 'Окно нельзя сдвинуть мышью.'},
+    {key: 'pet_bubble', type: 'toggle', label: 'Облачко с текстом', hint: 'Показывать над питомцем текст того, что она говорит. Без облачка остаётся только стикер.'},
+    {key: 'pet_bubble_secs', type: 'range', min: 3, max: 120, step: 1, unit: ' с', label: 'Сколько держится облачко', hint: 'После конца речи. Пока она говорит, облачко не гаснет.'},
     {key: 'hotkey_input', type: 'select', label: 'Клавиша строки быстрого ввода', hint: 'Глобальная клавиша, открывает строку, в которую пишешь ассистентке.',
      options: HOTKEYS.map(h => [h, h])}]},
   {title: 'Восприятие', items: [
@@ -1013,7 +1015,7 @@ const SETTINGS_CATALOG = [
 ];
 const MODULE_SETTING_KEYS = {
   voice: ['voice_muted', 'volume', 'tts_speed', 'mic', 'hearing'],
-  pet: ['pet_visible', 'pet_pinned', 'hotkey_input'],
+  pet: ['pet_visible', 'pet_pinned', 'pet_bubble', 'pet_bubble_secs', 'hotkey_input'],
   desktop: ['vision'],
   telegram: ['telegram', 'telegram_voice', 'telegram_confirm'],
   rimworld: ['game_model', 'streamer', 'record_runs', 'telegram_after_run'],

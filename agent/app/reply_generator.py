@@ -134,6 +134,14 @@ class ReplyGenerator:
             cfg = None
         return cfg if isinstance(cfg, dict) else {}
 
+    def _reply_tokens(self) -> int:
+        """Потолок длины ответа в токенах (`fast_contour.reply_tokens`, 40-300): локальная модель выдаёт ~12 токенов в секунду,
+        а синтез речи тоже растёт с длиной, поэтому длинная реплика стоит секунд до звука."""
+        value = self._cfg().get("reply_tokens", 90)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return 90
+        return int(min(300, max(40, value)))
+
     def _stream_ok(self) -> bool:
         """Потоковый путь: включён в настройках, ответ не в канал модуля (там не речь), модель умеет поток, есть голос."""
         h = self._h
@@ -217,7 +225,7 @@ class ReplyGenerator:
         h = self._h
         reply, escalate, action_request = "", False, False   # escalate: только если локальная модель недоступна
         try:
-            reply = (await h._llm.ask(system, user, timeout=60, max_tokens=140, temperature=0.7)).strip()
+            reply = (await h._llm.ask(system, user, timeout=60, max_tokens=self._reply_tokens(), temperature=0.7)).strip()
             # без потоковой передачи первый токен приходит вместе с концом ответа
             latency_trace.mark("llm_first_token")
             latency_trace.mark("llm_done")
@@ -238,7 +246,7 @@ class ReplyGenerator:
         splitter, decl = SentenceSplitter(), StreamDeclutter(self)
         head, head_done, action_request, failed = "", False, False, False
         first_token = False
-        gen = h._llm.ask_stream(system, user, timeout=60, max_tokens=140, temperature=0.7)
+        gen = h._llm.ask_stream(system, user, timeout=60, max_tokens=self._reply_tokens(), temperature=0.7)
         stopper = asyncio.ensure_future(session.event.wait())
         nxt: asyncio.Future | None = None
 

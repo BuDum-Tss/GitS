@@ -167,20 +167,33 @@ class Companion:
             return
         note_speech()
         channel = current_channel.get()
-        self._record_say(text, emotion, channel)
         if channel is not None and channel.kind == "module":
             # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
+            self._record_say(text, emotion, channel)
             if self.io is not None:
                 await self.io.deliver(channel, text)
+            self._publish_emotion(emotion)
         else:
-            if emotion:
-                self.presence.update(emotion=emotion)
             utterance = new_utterance_id()
             self.last_utterance_id = utterance
-            await self.speech.speak(utterance, text, emotion, priority or 50)
-        if emotion:
-            fast_brain.publish("say", {"emotion": emotion, "action": "none"})
+            # синхронизатор речи и действий: текст в чате, запись в диалог и жест появляются, когда реплика зазвучала,
+            # а не когда она только отправлена на синтез (синтез занимает секунды); без голоса сразу
+            await self.speech.speak(utterance, text, emotion, priority or 50)      # реплика попадает среди звучащих до ожидания
+            self._when_audible(utterance, lambda: (self._record_say(text, emotion, channel), self._publish_emotion(emotion)))
         logger.info(f"[{character.active().name}] {text}")
+
+    def _when_audible(self, utterance: str, action) -> None:
+        """Выполнить action, когда реплика зазвучала (`speech.when_audible`); у вывода речи без такого метода сразу."""
+        hook = getattr(self.speech, "when_audible", None)
+        if hook is None:
+            action()
+        else:
+            hook(utterance, action)
+
+    def _publish_emotion(self, emotion: str | None) -> None:
+        if emotion:
+            self.presence.update(emotion=emotion)
+            fast_brain.publish("say", {"emotion": emotion, "action": "none"})
 
     def _record_say(self, text: str, emotion: str | None, channel) -> None:
         """Реплика сказана: диалог, журнал (в фоне, без ожидания диска: ТЗ 25 FAST-7), последняя реплика, присутствие."""

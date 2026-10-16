@@ -623,3 +623,12 @@ async def test_compare_stream_first_sentence_beats_whole_reply(tmp_path):
     whole = rep["whole"]["at"]["first_sentence_ready"]["p50"]
     stream = rep["stream"]["at"]["first_sentence_ready"]["p50"]
     assert stream < whole - 60                          # поток отдаёт первое предложение примерно на два предложения раньше
+
+
+def test_reply_tokens_setting_is_limited(rig):
+    r = rig(fast={"reply_tokens": 20})
+    assert r.companion.reply_generator._reply_tokens() == 40            # ниже 40 не бывает
+    settings.update(fast_contour={"reply_tokens": 5000})
+    assert r.companion.reply_generator._reply_tokens() == 300
+    settings.update(fast_contour={"reply_tokens": "много"})
+    assert r.companion.reply_generator._reply_tokens() == 90
