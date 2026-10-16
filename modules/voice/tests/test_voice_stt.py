@@ -373,3 +373,50 @@ def test_local_model_gets_explicit_language():
     eng, _ = make_engine(model=model)
     eng.transcribe_array(np.zeros(1600, dtype=np.float32))
     assert model.calls[0][1].get("language") == "ru"
+
+
+# ── GigaAM v3 как основной локальный движок, Whisper как запасной ─────────────────
+
+class FakeGiga:
+    def __init__(self, text="привет от гигаам"):
+        self.text, self.calls = text, []
+
+    def recognize(self, audio, sample_rate=16000):
+        self.calls.append((len(audio), sample_rate))
+        return self.text
+
+
+def test_gigaam_recognizes_and_filters_junk():
+    giga = FakeGiga()
+    eng = local_stt.LocalGigaAM("gigaam-v3-e2e-rnnt", threads=2, loader=lambda n, t: giga, clock=Clock())
+    assert eng.transcribe_pcm(PCM) == "привет от гигаам" and eng.state == "загружена"
+    assert giga.calls and giga.calls[0][1] == 16000
+    giga.text = "Субтитры сделал DimaTorzok"
+    assert eng.transcribe_pcm(PCM) == ""
+
+
+def test_gigaam_falls_back_to_whisper_when_it_does_not_open():
+    whisper, _ = make_engine()
+    def broken(n, t):
+        raise OSError("нет весов")
+    eng = local_stt.LocalGigaAM("gigaam-v3-e2e-rnnt", threads=2, loader=broken, clock=Clock(), fallback=whisper)
+    assert eng.transcribe_pcm(PCM) == "привет из локальной модели"
+    assert eng.state == "загружена" and eng.active_model == "small"
+
+
+def test_gigaam_without_fallback_reports_unavailable():
+    def broken(n, t):
+        raise OSError("нет весов")
+    eng = local_stt.LocalGigaAM("gigaam-v3-e2e-rnnt", threads=2, loader=broken, clock=Clock())
+    with pytest.raises(LocalSTTUnavailable):
+        eng.transcribe_pcm(PCM)
+    assert eng.state == "не загружена"
+
+
+def test_shared_engine_choice_follows_setting(monkeypatch):
+    monkeypatch.setattr(local_stt, "_shared", None)
+    monkeypatch.setenv("GITS_STT_ENGINE", "whisper")
+    assert type(local_stt.shared()) is LocalWhisper
+    monkeypatch.setattr(local_stt, "_shared", None)
+    monkeypatch.delenv("GITS_STT_ENGINE")
+    assert isinstance(local_stt.shared(), local_stt.LocalGigaAM)

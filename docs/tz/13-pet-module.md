@@ -35,7 +35,7 @@
 
 `id: pet`, `title: Питомец`, `capabilities: ["presence.view"]`,
 `subscribe: ["presence", "settings", "module"]`,
-`shared_settings: ["voice_muted", "pet_visible", "pet_pinned", "pet_x", "pet_y", "hotkey_input", "dnd",
+`shared_settings: ["voice_muted", "pet_visible", "pet_pinned", "pet_bubble", "pet_bubble_secs", "pet_x", "pet_y", "hotkey_input", "dnd",
 "quiet_until"]`. Инструментов нет. Событий нет. `state: false`.
 
 ## 5. Поведение

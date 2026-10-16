@@ -19,9 +19,10 @@ SWEEP_S = 3600.0            # как часто просматривать пл�
 
 class PlanNudger:
     def __init__(self, memory: Any, add: Callable[..., Awaitable[dict]], *, due_of: Callable[[dict], float | None],
-                 clock: Callable[[], float] = time.time, lead_s: float = LEAD_S, every_s: float = SWEEP_S):
-        """memory - MemoryReader (plans_to_nudge), add - `ImpulseTimer.add`, due_of - срок плана (эпоха) или None."""
-        self.memory, self.add, self.due_of, self.clock = memory, add, due_of, clock
+                 clock: Callable[[], float] = time.time, lead_s: float = LEAD_S, every_s: float = SWEEP_S, tasks: Any = None):
+        """memory - MemoryReader (plans_to_nudge), add - `ImpulseTimer.add`, due_of - срок плана (эпоха) или None,
+        tasks - `TaskService` (ТЗ 32): план становится задачей `plan` со сроком, напоминание берёт срок оттуда."""
+        self.memory, self.add, self.due_of, self.clock, self.tasks = memory, add, due_of, clock, tasks
         self.lead_s, self.every_s = lead_s, every_s
         self._task: asyncio.Task | None = None
 
@@ -31,6 +32,11 @@ class PlanNudger:
         now = self.clock()
         for plan in plans:
             due = self.due_of(plan) or now
+            if self.tasks is not None and plan.get("id"):
+                try:
+                    due = (await self.tasks.upsert_plan(str(plan["id"]), plan["text"], due)).due or due
+                except Exception as e:                       # задачи не должны ломать напоминание
+                    logger.warning(f"План как задача: {e}")
             await self.add(max(now, due - self.lead_s), f"У пользователя скоро запланировано: {plan['text']}",
                            source={"kind": "plan", "plan_id": plan.get("id")}, untrusted=True)
         return len(plans)

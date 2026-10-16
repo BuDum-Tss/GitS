@@ -206,6 +206,7 @@ async def run_compare(turns: int, memory_dir: str, sentence_ms: float = 250.0, s
             sub = Path(memory_dir) / mode
             sub.mkdir(parents=True, exist_ok=True)
             events_log.init(str(sub))
+            settings.update(fast_contour={"stream": mode == "stream"})       # потоковый путь выключен по умолчанию: сравнение включает его само
             companion = Companion(str(sub), Relationships(str(sub)), speech=_VoiceLikeSpeech(mode == "stream"),
                                   presence=speech_out.PresenceTracker(), llm=_SimLLM(sentence_ms, sentences))
             companion.io = _Io()

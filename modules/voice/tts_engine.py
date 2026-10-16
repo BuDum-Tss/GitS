@@ -1,11 +1,13 @@
 """
 Синтез речи ГЛаДОС (ТЗ 12, VOICE-1): текст в аудиофайл. Воспроизведение и очередь реплик это `speaker.py` и `player.py`.
 
-Приоритет:
-  1. Fish Speech S2-Pro (http://127.0.0.1:8080): клонирование голоса по референсу персонажа
-  2. edge-tts, запасной (ru-RU-SvetlanaNeural, pitch=-25Hz): если Fish Speech недоступен
+Приоритет (переменная окружения `TTS_ENGINE`: auto | espeech | fish | edge, по умолчанию auto):
+  1. ESpeech-TTS-1 (http://127.0.0.1:8771, сервис `services/f5-tts`): русский F5-TTS, клонирование по референсу персонажа
+     (`espeech_ref.wav` и `espeech_ref.txt` рядом с основным референсом в папке voice/ персонажа)
+  2. Fish Speech S2-Pro (http://127.0.0.1:8080): клонирование голоса по референсу персонажа
+  3. edge-tts, запасной (ru-RU-SvetlanaNeural, pitch=-25Hz): если ни один из них недоступен
 
-Оба пути записывают WAV/MP3 во временный файл. Блокирующий вызов: гонять через `asyncio.to_thread`.
+Все пути записывают WAV/MP3 во временный файл. Блокирующий вызов: гонять через `asyncio.to_thread`.
 """
 import asyncio
 import logging
@@ -32,12 +34,33 @@ FISH_TIMEOUT   = 30.0
 FISH_SR        = 44100   # Fish Speech S2-Pro default
 FISH_RECHECK_S = 60.0    # недоступный Fish Speech проверяется заново не чаще раза в минуту (раньше: только один раз за запуск)
 
+# ── ESpeech (F5-TTS) ──────────────────────────────────────────────────────────
+
+ESPEECH_URL       = os.getenv("ESPEECH_URL", "http://127.0.0.1:8771")
+ESPEECH_TIMEOUT   = 60.0
+ESPEECH_START_WAIT_S = 90.0    # при первой проверке ждём, пока сервис догрузит модель (пока грузится, /health отвечает 503), а не уходим в запасной голос
+ESPEECH_DOWN_GRACE_S = 20.0    # порт не открылся за это время после первой проверки: сервиса нет, идём дальше по цепочке
+ESPEECH_RECHECK_S = 30.0       # сервис грузит модель около 15 с после старта, поэтому проверяем чаще, чем Fish Speech
+ENGINE            = os.getenv("TTS_ENGINE", "auto").strip().lower()      # auto | espeech | fish | edge
+
 # ── edge-tts fallback ─────────────────────────────────────────────────────────
 
 VOICE    = "ru-RU-SvetlanaNeural"
 PITCH    = "-25Hz"
 RATE     = "-12%"
 _tone = {"pitch_hz": 0.0, "rate_pct": 0.0}     # сдвиг от настроения персонажа (ТЗ 26), только для edge-tts
+_speed = 1.0                                    # скорость речи из настройки tts_speed: 1.0 - обычная (ESpeech: speed, edge-tts: rate)
+SPEED_MIN, SPEED_MAX = 0.5, 1.5
+
+
+def set_speed(percent) -> None:
+    """Скорость речи в процентах (настройка `tts_speed`): 100 - обычная, меньше - медленнее. Вне 50-150 и мусор приводятся к границам."""
+    try:
+        value = float(percent)
+    except (TypeError, ValueError):
+        value = 100.0
+    global _speed
+    _speed = max(SPEED_MIN, min(SPEED_MAX, value / 100.0)) if value == value else 1.0
 
 
 def set_tone(tone) -> None:
@@ -60,6 +83,9 @@ MAX_CHARS = 600
 _reference_bytes: bytes | None = None
 _fish_available: bool | None   = None   # None = ещё не проверяли
 _fish_checked_at = 0.0
+_espeech_available: bool | None = None
+_espeech_checked_at = 0.0
+_last_backend: str | None = None         # чем озвучена последняя реплика
 
 
 def use_character_voice(reference, edge_voice: str | None = None) -> None:
@@ -72,13 +98,20 @@ def use_character_voice(reference, edge_voice: str | None = None) -> None:
 
 def reset() -> None:
     """Забыть кэш доступности Fish Speech и референса (тесты)."""
-    global _reference_bytes, _fish_available, _fish_checked_at
+    global _reference_bytes, _fish_available, _fish_checked_at, _espeech_available, _espeech_checked_at, _last_backend
     _reference_bytes, _fish_available, _fish_checked_at = None, None, 0.0
+    _espeech_available, _espeech_checked_at, _last_backend = None, 0.0, None
 
 
 def backend() -> str:
-    """Каким голосом сейчас синтезируется: fish, edge или unknown (ещё не проверяли): для состояния модуля."""
-    return "unknown" if _fish_available is None else ("fish" if _fish_available else "edge")
+    """Каким голосом синтезируется сейчас: espeech, fish, edge или unknown (ещё не проверяли): для состояния модуля."""
+    if _last_backend:
+        return _last_backend
+    if _espeech_available:
+        return "espeech"
+    if _fish_available is None and _espeech_available is None:
+        return "unknown"
+    return "fish" if _fish_available else "edge"
 
 
 def _get_reference() -> bytes | None:
@@ -184,22 +217,83 @@ async def _fish_synth(text: str, directory: Path | None = None) -> str | None:
     return tmp
 
 
+# ── ESpeech синтез ─────────────────────────────────────────────────────────────
+
+def _espeech_reference() -> tuple[Path, str] | None:
+    """Референс ESpeech (аудио и дословный текст) рядом с основным референсом персонажа; нет файлов: ESpeech не используется."""
+    audio, text = FISH_REFERENCE.parent / "espeech_ref.wav", FISH_REFERENCE.parent / "espeech_ref.txt"
+    if audio.is_file() and text.is_file():
+        return audio, text.read_text(encoding="utf-8").strip()
+    return None
+
+
+async def _espeech_ping() -> bool:
+    """Сервис ESpeech отвечает 200 только когда модель загружена (пока грузится, 503)."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as c:
+            return (await c.get(f"{ESPEECH_URL}/health")).status_code == 200
+    except Exception:
+        return False
+
+
+async def _espeech_state() -> str:
+    """ready (200) | loading (503: модель грузится) | down (порт не отвечает)."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as c:
+            code = (await c.get(f"{ESPEECH_URL}/health")).status_code
+    except Exception:
+        return "down"
+    return "ready" if code == 200 else "loading"
+
+
+async def _espeech_wait(limit: float) -> bool:
+    """Дождаться готовности ESpeech не дольше limit секунд (0 - одна проверка). Пока сервис грузит модель (503), ждём до limit;
+    если порт не отвечает дольше ESPEECH_DOWN_GRACE_S (сервис не запущен, например выбран другой движок), не ждём."""
+    start = time.monotonic()
+    while True:
+        state = await _espeech_state()
+        if state == "ready":
+            return True
+        waited = time.monotonic() - start
+        if waited >= limit or (state == "down" and waited >= ESPEECH_DOWN_GRACE_S):
+            return False
+        await asyncio.sleep(1.0)
+
+
+async def _espeech_synth(text: str, directory: Path | None = None) -> str | None:
+    """Синтезировать текст через ESpeech → временный WAV. Вернуть путь или None."""
+    ref = _espeech_reference()
+    if ref is None:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=ESPEECH_TIMEOUT) as client:
+            resp = await client.post(f"{ESPEECH_URL}/tts", json={"text": text, "ref_audio": str(ref[0]), "ref_text": ref[1], "speed": _speed})
+            resp.raise_for_status()
+    except Exception as e:
+        logger.warning(f"ESpeech ошибка: {type(e).__name__}: {e}")
+        return None
+    if not resp.content:
+        return None
+    tmp = _tmp_path(".wav", "gits_espeech_", directory)
+    with open(tmp, "wb") as f:
+        f.write(resp.content)
+    return tmp
+
+
 # ── edge-tts fallback ─────────────────────────────────────────────────────────
 
 async def _edge_synth(text: str, directory: Path | None = None) -> str:
     """Синтезировать текст через edge-tts → MP3."""
     import edge_tts
     communicate = edge_tts.Communicate(text, voice=VOICE, pitch=_shifted(PITCH, _tone['pitch_hz']),
-                                       rate=_shifted(RATE, _tone['rate_pct']))
+                                       rate=_shifted(RATE, _tone['rate_pct'] + (_speed - 1.0) * 100.0))
     tmp = _tmp_path(".mp3", "gits_edge_", directory)
     await communicate.save(tmp)
     return tmp
 
 
-def _synthesize(clean: str, directory: Path | None = None) -> str | None:
-    """Синтезировать один сегмент текста в аудиофайл (Fish Speech → fallback edge-tts)."""
+def _check_fish() -> bool:
     global _fish_available, _fish_checked_at
-
     now = time.monotonic()
     if _fish_available is None or (not _fish_available and now - _fish_checked_at >= FISH_RECHECK_S):
         was = _fish_available
@@ -208,18 +302,44 @@ def _synthesize(clean: str, directory: Path | None = None) -> str | None:
         if _fish_available:
             logger.info("Fish Speech доступен — использую голос персонажа")
         elif was is None:
-            logger.info("Fish Speech недоступен — fallback на edge-tts")
+            logger.info("Fish Speech недоступен")
+    return bool(_fish_available)
 
-    if _fish_available:
-        path = asyncio.run(_fish_synth(clean, directory))
-        if path is None:
-            path = asyncio.run(_edge_synth(clean, directory))  # разовая ошибка — пробуем edge-tts
-        return path
-    return asyncio.run(_edge_synth(clean, directory))
+
+def _check_espeech() -> bool:
+    global _espeech_available, _espeech_checked_at
+    now = time.monotonic()
+    if _espeech_available is None or (not _espeech_available and now - _espeech_checked_at >= ESPEECH_RECHECK_S):
+        was = _espeech_available
+        _espeech_available = asyncio.run(_espeech_wait(ESPEECH_START_WAIT_S if was is None else 0.0)) and _espeech_reference() is not None
+        _espeech_checked_at = now
+        if _espeech_available:
+            logger.info("ESpeech доступен — использую голос персонажа")
+        elif was is None:
+            logger.info("ESpeech недоступен")
+    return bool(_espeech_available)
+
+
+def _synthesize(clean: str, directory: Path | None = None) -> str | None:
+    """Синтезировать один сегмент текста в аудиофайл: ESpeech → Fish Speech → edge-tts (порядок и набор: `TTS_ENGINE`)."""
+    global _last_backend
+    order = {"espeech": ("espeech",), "fish": ("fish",), "edge": ()}.get(ENGINE, ("espeech", "fish"))
+    for name in order:
+        if name == "espeech" and _check_espeech():
+            path = asyncio.run(_espeech_synth(clean, directory))
+        elif name == "fish" and _check_fish():
+            path = asyncio.run(_fish_synth(clean, directory))
+        else:
+            continue
+        if path is not None:
+            _last_backend = name
+            return path
+    _last_backend = "edge"
+    return asyncio.run(_edge_synth(clean, directory))              # ни один не доступен или разовая ошибка
 
 
 def synth_file(text: str, directory: Path | None = None) -> str | None:
-    """Синтезировать текст в аудиофайл (Fish Speech, запасной edge-tts) БЕЗ воспроизведения. Блокирующий вызов (гонять
+    """Синтезировать текст в аудиофайл (ESpeech, Fish Speech, запасной edge-tts) БЕЗ воспроизведения. Блокирующий вызов (гонять
     через asyncio.to_thread). directory - куда класть файл (по умолчанию временная папка системы). Файл потом удалить самому;
     забытые удаляет чистка временной папки модуля. Ошибка синтеза: None."""
     clean = _clean(text)

@@ -30,7 +30,7 @@ def test_manifest_matches_the_spec():
     assert P.validate_manifest(m) == []
     assert (m["id"], m["title"], m["capabilities"], m["subscribe"]) == ("pet", "Питомец", ["presence.view"],
                                                                          ["presence", "settings", "module"])
-    assert m["shared_settings"] == ["voice_muted", "pet_visible", "pet_pinned", "pet_x", "pet_y", "hotkey_input",
+    assert m["shared_settings"] == ["voice_muted", "pet_visible", "pet_pinned", "pet_bubble", "pet_bubble_secs", "pet_x", "pet_y", "hotkey_input",
                                     "dnd", "quiet_until"]
     assert not m.get("tools") and not m.get("emits") and m["state"] is False
     assert build_manifest() == MANIFEST and build_manifest() is not MANIFEST

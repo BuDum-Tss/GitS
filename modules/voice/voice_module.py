@@ -92,7 +92,7 @@ class VoiceModule:
         self.client = client
         self.fake = common.fake_mode() if fake is None else fake
         self.tmp = Path(tmp_dir) if tmp_dir is not None else common.temp_dir()
-        self._synth_blocking = synth or (fake_synth_file if self.fake else tts_engine.synth_file)
+        self._synth_blocking = synth or (fake_synth_file if self.fake else self._synth_file)
         self.voices = VoiceIdentity(memory_dir)
         self._mem_root = memory_dir                      # папки личной памяти персонажей лежат внутри (ТЗ 05, CHR-12)
         self.stt = stt or STTClient(on_change=self._stt_changed)
@@ -270,6 +270,11 @@ class VoiceModule:
         """VOICE-14: сводка услышанного в колонках."""
         self.outbox.put("voice.heard", f"В колонках: {summary}", data={"summary": summary}, memorable=False)
 
+    def _synth_file(self, text: str, directory: Path | None = None) -> str | None:
+        """Настоящий синтез со скоростью из настройки `tts_speed` (читается на каждую фразу, переключать модуль не нужно)."""
+        tts_engine.set_speed(self.client.settings.get("tts_speed", 100))
+        return tts_engine.synth_file(text, directory)
+
     async def _on_barge_in(self) -> None:
         await self.speaker.stop(None, "now", reason="barge_in")
 
@@ -278,7 +283,7 @@ class VoiceModule:
         if self.fake:
             return b""
         import opus_encoder
-        path = await asyncio.to_thread(tts_engine.synth_file, SELF_SAMPLE_TEXT, self.tmp)
+        path = await asyncio.to_thread(self._synth_file, SELF_SAMPLE_TEXT, self.tmp)
         if not path:
             return b""
         try:

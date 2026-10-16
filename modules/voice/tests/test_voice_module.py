@@ -18,7 +18,7 @@ def test_manifest_is_valid_and_matches_the_spec():
     assert validate_manifest(m) == []
     assert (m["id"], m["title"], m["capabilities"], m["subscribe"], m["state"]) == \
         ("voice", "Голос", ["voice.output", "voice.input"], ["settings", "module", "character"], True)
-    assert m["shared_settings"] == ["voice_muted", "volume", "mic", "hearing", "dnd", "quiet_until"]
+    assert m["shared_settings"] == ["voice_muted", "volume", "tts_speed", "mic", "hearing", "dnd", "quiet_until"]
     assert m["settings_schema"]["barge_in"]["default"] is False
     assert m["settings_schema"]["echo_tail_ms"] == {"type": "integer", "title": m["settings_schema"]["echo_tail_ms"]["title"],
                                                       "default": 600, "min": 0, "max": 3000}
@@ -33,10 +33,10 @@ async def test_speak_gives_started_segment_ended_events(tmp_path):
     async with Rig(tmp_path) as rig:
         await rig.speak("u-1a2b3c4d", "Первое предложение. Второе предложение.", emotion="angry")
         end = await rig.wait_ended("u-1a2b3c4d")
-        await until(lambda: len(rig.core.events) >= 3)
-        assert [(d["phase"], d.get("seq")) for d in rig.speech()] == [("started", 0), ("segment", 1), ("ended", None)]
-        assert rig.speech("started")[0]["segment"] == "Первое предложение."
-        assert end == {"phase": "ended", "utterance_id": "u-1a2b3c4d", "completed": True, "spoken_upto": 2}
+        await until(lambda: len(rig.core.events) >= 2)
+        assert [(d["phase"], d.get("seq")) for d in rig.speech()] == [("started", 0), ("ended", None)]
+        assert rig.speech("started")[0]["segment"] == "Первое предложение. Второе предложение."
+        assert end == {"phase": "ended", "utterance_id": "u-1a2b3c4d", "completed": True, "spoken_upto": 1}
         assert all(e["kind"].startswith("voice.") for e in rig.core.events)
         assert all(e["text"] for e in rig.core.events)
 
@@ -63,7 +63,7 @@ async def test_stop_segment_end_over_the_protocol(tmp_path):
         assert rig.speech("ended") == []
         rig.player.finish()
         end = await rig.wait_ended("u-1")
-        assert end["completed"] is False and end["spoken_upto"] == 1 and end["reason"] == "stop"
+        assert end["completed"] is True and end["spoken_upto"] == 1
 
 
 async def test_muted_setting_gives_instant_events_without_sound(tmp_path):
@@ -424,3 +424,18 @@ async def test_panel_shows_mic_state_speaking_and_synth_samples(tmp_path):
         finally:
             loop_task.cancel()
         assert rig.core.violations == []
+
+
+def test_synth_reads_tts_speed_from_settings_on_every_phrase(monkeypatch):
+    from types import SimpleNamespace
+
+    import tts_engine
+    from voice_module import VoiceModule
+    seen = []
+    monkeypatch.setattr(tts_engine, "synth_file", lambda text, directory=None: seen.append(tts_engine._speed) or "x.wav")
+    monkeypatch.setattr(tts_engine, "_speed", 1.0)
+    me = SimpleNamespace(client=SimpleNamespace(settings={"tts_speed": 80}))
+    assert VoiceModule._synth_file(me, "привет") == "x.wav"
+    me.client.settings["tts_speed"] = 120
+    VoiceModule._synth_file(me, "ещё")
+    assert seen == [pytest.approx(0.8), pytest.approx(1.2)]

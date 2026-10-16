@@ -139,7 +139,8 @@ class VoiceModuleSpeech:
         self.hub = None                              # ModuleHub и ModuleRegistry: ставит ядро (attach)
         self.modules = None
         self.tone_of: Callable[[], dict] | None = None      # ТЗ 26: сдвиг голоса {rate_pct, pitch_hz}; ставит ядро
-        self._live: dict[str, dict] = {}             # utterance_id -> {sent, started, segment, stopping}
+        self._live: dict[str, dict] = {}             # utterance_id -> {sent, started, segment, stopping, emotion}
+        self._audible_cbs: dict[str, list[Callable[[], None]]] = {}   # ждут начала звука реплики (синхронизация текста и звука)
 
     def attach(self, hub, modules) -> None:
         self.hub, self.modules = hub, modules
@@ -175,7 +176,7 @@ class VoiceModuleSpeech:
         # replace: звучит (или готовится) реплика, которую внимание не просило остановить, - прежнее поведение speak_sequence;
         # после stop() (прерывание вниманием) реплика встаёт в очередь модуля и звучит после дослушанного предложения
         replace = not queue and any(not e["stopping"] for e in self._live.values())
-        self._live[utterance_id] = {"sent": self._clock(), "started": False, "segment": "", "stopping": False}
+        self._live[utterance_id] = {"sent": self._clock(), "started": False, "segment": "", "stopping": False, "emotion": emotion}
         t = latency_trace.current()                  # трасса задержки реплики (ТЗ 24, TRC-1): модуль голоса допишет звук
         body = {"utterance_id": utterance_id, "text": text, "emotion": emotion, "replace": replace}
         if self.tone_of is not None:                 # ТЗ 26: ограниченный сдвиг голоса от настроения
@@ -190,9 +191,8 @@ class VoiceModuleSpeech:
             await conn.send("speak", body)
         except Exception:
             self._live.pop(utterance_id, None)
+            self._fire_audible(utterance_id)
             raise
-        if emotion:
-            self.presence.update(emotion=emotion)
 
     async def stop(self, utterance_id: str | None = None) -> None:
         if utterance_id is not None and utterance_id not in self._live:
@@ -206,6 +206,27 @@ class VoiceModuleSpeech:
                 entry["stopping"] = True
         await conn.send("speak.stop", {"utterance_id": utterance_id, "at": "segment_end"})
 
+    def when_audible(self, utterance_id: str, callback: Callable[[], None]) -> None:
+        """Синхронизатор текста и звука: callback вызывается, когда реплика зазвучала (`started`). Если реплики нет среди звучащих
+        или она уже звучит, сразу. Если звук так и не начался (сбой, обрыв, тишина), callback всё равно вызовется: по `ended`,
+        по сбросу или через START_TIMEOUT_S, чтобы текст не терялся."""
+        entry = self._live.get(utterance_id)
+        if entry is None or entry["started"]:
+            callback()
+            return
+        self._audible_cbs.setdefault(utterance_id, []).append(callback)
+        try:
+            asyncio.get_running_loop().call_later(self.START_TIMEOUT_S + 1.0, self._fire_audible, utterance_id)
+        except RuntimeError:
+            pass                                      # нет цикла событий (тест без asyncio): остаётся срабатывание по событиям
+
+    def _fire_audible(self, utterance_id: str) -> None:
+        for cb in self._audible_cbs.pop(utterance_id, []):
+            try:
+                cb()
+            except Exception as e:
+                logger.warning(f"Действие по началу звука не выполнено: {e}")
+
     def is_speaking(self) -> bool:
         if not self._live:
             return False
@@ -217,6 +238,7 @@ class VoiceModuleSpeech:
         for uid in stale:
             logger.warning(f"Модуль голоса не начал реплику {uid} за {self.START_TIMEOUT_S:.0f} с: снимаю")
             del self._live[uid]
+            self._fire_audible(uid)
         return bool(self._live)
 
     def current_segment(self) -> str:
@@ -232,12 +254,17 @@ class VoiceModuleSpeech:
             return
         if phase in ("started", "segment"):
             entry = self._live.setdefault(uid, {"sent": self._clock(), "started": False, "segment": "", "stopping": False})
+            first = not entry["started"]
             entry["started"], entry["segment"] = True, str(data.get("segment") or "")
+            if first and entry.get("emotion"):
+                self.presence.update(emotion=entry["emotion"])      # стикер меняется вместе со звуком, а не раньше
         elif phase == "ended":
             self._live.pop(uid, None)
         else:
             return
         self._publish()
+        if phase in ("started", "ended"):
+            self._fire_audible(uid)
 
     def _publish(self) -> None:
         started = [(uid, e) for uid, e in self._live.items() if e["started"]]
@@ -248,8 +275,11 @@ class VoiceModuleSpeech:
             self.presence.update(speaking=False, utterance_id=None, segment="")
 
     def _reset(self) -> None:
+        uids = list(self._live)
         self._live.clear()
         self._publish()
+        for uid in uids:
+            self._fire_audible(uid)
 
 
 class SpeechSelector:
@@ -273,6 +303,13 @@ class SpeechSelector:
 
     def live_count(self) -> int:
         return self.voice.live_count()
+
+    def when_audible(self, utterance_id: str, callback) -> None:
+        """Текст и действия реплики показываются, когда она зазвучала; без голоса сразу (текст и есть вывод)."""
+        if self.voice.available():
+            self.voice.when_audible(utterance_id, callback)
+        else:
+            callback()
 
     async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int, *, queue: bool = False) -> None:
         if self.voice.available():

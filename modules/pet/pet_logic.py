@@ -113,11 +113,21 @@ class PetState:
     def bubble(self, now: float) -> tuple[str, bool]:
         """PET-4: (текст, виден ли). Пока она говорит, показывается presence.segment; после конца речи последний сегмент
         держится BUBBLE_HIDE_SECS."""
+        if not self.settings.get("pet_bubble", True):
+            return "", False                          # облачко выключено в настройках: остаётся только стикер
         if self.presence.get("speaking") and self.segment:
             return self.segment, True
-        if self.segment and now - self.segment_ts < BUBBLE_HIDE_SECS:
+        if self.segment and now - self.segment_ts < self.bubble_secs:
             return self.segment, True
         return "", False
+
+    @property
+    def bubble_secs(self) -> float:
+        """Сколько облачко держится после конца речи: настройка `pet_bubble_secs` (3-120 с), иначе BUBBLE_HIDE_SECS."""
+        value = self.settings.get("pet_bubble_secs")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return BUBBLE_HIDE_SECS
+        return min(120.0, max(3.0, float(value)))
 
     @property
     def visible(self) -> bool:

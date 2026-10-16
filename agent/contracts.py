@@ -129,7 +129,7 @@ class PeopleDirectory(Protocol):
 
 @runtime_checkable
 class FactGraph(Protocol):
-    """Граф фактов (FalkorDB/Graphiti): поиск, факты о себе, очередь записи, колонисты, состояние."""
+    """Граф фактов (SQLite, fact_store.py): поиск, факты о себе, очередь записи, колонисты, состояние."""
 
     def search(self, query: str, limit: int = 6, include_old: bool = False) -> Any: ...
 
@@ -195,6 +195,30 @@ class ReminderRepository(Protocol):
     def pending(self) -> list[dict]: ...
 
     def set_status(self, reminder_id: str, status: str) -> None: ...
+
+
+@runtime_checkable
+class TaskRepository(Protocol):
+    """Хранилище общих задач (ТЗ 32, WS-8). Задача это dict в виде `Task.to_dict()` (домен `domain/tasks.py`): id, workspace, goal,
+    parent, steps, status, origin, priority, due, created, updated, checkpoint, kind, meta. Методы блокирующие; зовите их
+    через `asyncio.to_thread`."""
+
+    def save(self, task: dict) -> None: ...
+
+    def get(self, task_id: str) -> dict | None: ...
+
+    def list(self, *, workspace: str | None = None, statuses: tuple[str, ...] | None = None, kind: str | None = None,
+             parent: str | None = None) -> list[dict]: ...
+
+    def delete(self, task_id: str) -> None: ...
+
+
+@runtime_checkable
+class Planner(Protocol):
+    """Разбиение цели на шаги (ТЗ 32, WS-8): `plan(goal, workspace_ctx)` -> [{"text": шаг}], по порядку. Универсально для всех
+    сред; `workspace_ctx` (среда, её назначение, инструменты, уже сделанное) только подсказка. Сбой модели -> пустой список."""
+
+    async def plan(self, goal: str, workspace_ctx: dict) -> list[dict]: ...
 
 
 @runtime_checkable

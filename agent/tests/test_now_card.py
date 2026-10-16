@@ -19,7 +19,6 @@ def test_now_card_has_its_controls():
 
 def test_graph_helpers_stay_for_memory_and_scheme():
     assert "function makeGraph" in HTML and "function syncGraph" in HTML and "function fitGraph" in HTML
-    assert 'id="graph-canvas"' in HTML
 
 
 def test_focus_details_and_game_panel_stay():

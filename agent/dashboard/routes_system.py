@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import character
+import episode_routes
 import events_log
 import flow_spec
 import flow_trace
@@ -182,17 +183,26 @@ async def handle_api_modes(request: web.Request) -> web.Response:
         return web.json_response({"nodes": [], "edges": [], "current": None})
     g = await ctx.profiles.graph()
     g["flags"] = {"streamer": bool(ctx.settings.load().get("streamer"))}   # стример: не профиль, а переключатель состояния
+    g["sleep"] = episode_routes.sleep_status()                              # сон памяти: состояние «Сон» и его ход
     return web.json_response(g)
 
 
 async def handle_api_mode_post(request: web.Request) -> web.Response:
-    """Ручной выбор профиля: {"mode": "rimworld"} или {"mode": "auto"} (пишет настройку profile)."""
+    """Ручной выбор состояния: {"mode": "rimworld"}, {"mode": "auto"} (пишет настройку profile) или {"mode": "sleep"} (уснуть сейчас)."""
     body, err = await raw_json_body(request)
     if err:
         return err
     if ctx.profiles is None:
         return web.json_response({"error": "режимы не подключены"}, status=503)
-    problem = ctx.profiles.set_override(body.get("mode"))
+    mode = body.get("mode")
+    if mode == "sleep":                                       # сон это состояние: «уснуть сейчас», ввод и разговор не будят
+        if not episode_routes.force_sleep():
+            return web.json_response({"error": "сон недоступен: эпизоды не подключены или сон как раз прерывают"}, status=503)
+        ctx.profiles.evaluate()
+        return web.json_response({"current": ctx.profiles.current_id, "override": ctx.profiles.override})
+    if mode not in (None, "", "auto"):
+        episode_routes.wake("состояние выбрано вручную")      # любое другое состояние будит
+    problem = ctx.profiles.set_override(mode)
     if problem:
         return web.json_response({"error": problem}, status=400)
     return web.json_response({"current": ctx.profiles.current_id, "override": ctx.profiles.override})

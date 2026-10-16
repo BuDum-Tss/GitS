@@ -121,9 +121,13 @@ async def test_speak_goes_to_the_module_and_speaking_follows_its_events(tmp_path
         assert mod.spoken == [{"utterance_id": "u-00000001", "text": "Первое предложение. Второе предложение.",
                                "emotion": "angry", "replace": False}]
         assert w.speech.is_speaking() and not w.presence.state["speaking"]          # ждём начала звука
-        assert w.presence.state["emotion"] == "angry"
+        assert w.presence.state["emotion"] != "angry"                               # стикер меняется вместе со звуком
+        shown = []
+        w.speech.when_audible("u-00000001", lambda: shown.append("text"))           # синхронизатор: ждёт начала звука
+        assert shown == []
         await mod.speech("started", "u-00000001", seq=0, segment="Первое предложение.")
         await w.wait(lambda: w.presence.state["speaking"])
+        assert shown == ["text"] and w.presence.state["emotion"] == "angry"
         assert (w.presence.state["utterance_id"], w.presence.state["segment"]) == ("u-00000001", "Первое предложение.")
         assert w.speech.current_segment() == "Первое предложение."
         await mod.speech("segment", "u-00000001", seq=1, segment="Второе предложение.")
@@ -425,8 +429,7 @@ async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tm
         assert voice.available() and not selector.is_speaking()
         await selector.speak("u-0000aaaa", "Первое предложение. Второе предложение.", "happy", 50)
         assert selector.is_speaking()
-        await wait(lambda: presence.state["speaking"] and presence.state["segment"] == "Первое предложение.")
-        await wait(lambda: presence.state["segment"] == "Второе предложение.")
+        await wait(lambda: presence.state["speaking"] and presence.state["segment"] == "Первое предложение. Второе предложение.")
         await wait(lambda: not presence.state["speaking"] and not selector.is_speaking())
         # «замолчи»: остановка на границе предложения
         await selector.speak("u-0000bbbb", "Раз. Два. Три. Четыре.", None, 50)
@@ -479,3 +482,18 @@ def test_core_process_has_no_audio_code_or_dependencies():
 async def test_frequent_voice_kinds_are_silent(tmp_path, kind):
     async with Wired(tmp_path) as w:
         assert kind in w.layer.attention.silent_kinds and kind in w.layer.attention.kind_handlers
+
+
+async def test_when_audible_fires_on_end_and_on_reset_so_text_is_never_lost(tmp_path):
+    async with Wired(tmp_path) as w:
+        mod = await w.module()
+        await w.speech.speak("u-00000002", "Тишина.", None, 50)
+        await w.wait(lambda: mod.spoken)
+        fired = []
+        w.speech.when_audible("u-00000002", lambda: fired.append("ended"))
+        await mod.speech("ended", "u-00000002", completed=False, spoken_upto=0, reason="error")      # звука не было
+        await w.wait(lambda: fired)
+        assert fired == ["ended"]
+        w.speech.when_audible("u-неизвестная", lambda: fired.append("unknown"))                      # не звучит: сразу
+        assert fired == ["ended", "unknown"]
+        await w.stop_module(mod)

@@ -45,4 +45,5 @@ PHASES = [
     ("R6", "Сборка и транспорт", "<code>core_service</code> только собирает; <code>module_hub</code> без импорта домена."),
     ("R7", "Дашборд", "Роутеры и презентеры, чтение через контракты."),
     ("ТЗ 30", "Внутренние импульсы и размышление", "ReminderStore, ImpulseTimer, ReflectionService, PlanNudger; <code>proactive_loop</code> убран."),
+    ("ТЗ 32", "Workspace и общие задачи", "WorkspaceManager, TaskService, Planner, TaskStore: задачи, напоминания себе и планы пользователя живут в <code>tasks.db</code>."),
 ]

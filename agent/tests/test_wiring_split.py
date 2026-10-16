@@ -114,7 +114,7 @@ PUBLIC_ROUTES = {
     ("GET", "/api/core"), ("GET", "/api/events"), ("GET", "/api/latency"), ("GET", "/api/flow"), ("GET", "/api/flow/stream"), ("GET", "/api/flow/node/{node}"), ("GET", "/api/flow/turn/{turn}"), ("POST", "/api/rating"),
     ("GET", "/api/decisions"), ("GET", "/api/capabilities"), ("GET", "/api/modes"), ("POST", "/api/appraisal_label"),
     ("POST", "/api/menu_click"), ("POST", "/api/mode"), ("POST", "/api/approval"), ("POST", "/api/memory/forget"),
-    ("GET", "/api/graph"), ("POST", "/api/graph/forget"), ("GET", "/api/chat"), ("GET", "/api/modules"),
+    ("GET", "/api/graph"), ("GET", "/api/graph/search"), ("POST", "/api/graph/forget"), ("GET", "/api/chat"), ("GET", "/api/modules"),
     ("POST", "/api/modules/{id}/enabled"), ("POST", "/api/modules/{id}/restart"), ("POST", "/api/modules/{id}/settings"),
     ("GET", "/api/modules/{id}/panel"), ("POST", "/api/modules/{id}/panel/action"),
     ("POST", "/api/modules/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"),

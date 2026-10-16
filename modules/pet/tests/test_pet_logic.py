@@ -176,3 +176,26 @@ def test_core_loss_turns_the_sticker_into_resting_and_back():
     q.put(("connected", True))
     c.pump()
     assert view.frames[-1][0] == "happy"
+
+
+def test_bubble_can_be_turned_off_in_settings():
+    s = PetState()
+    s.apply("settings", {"pet_bubble": False}, 0.0)
+    s.apply("presence", pres(speaking=True, segment="Говорю."), 1.0)
+    assert s.bubble(1.0) == ("", False)
+    s.apply("settings", {"pet_bubble": True}, 2.0)
+    assert s.bubble(2.0) == ("Говорю.", True)
+
+
+def test_bubble_hide_time_follows_the_setting_and_stays_in_limits():
+    s = PetState()
+    s.apply("presence", pres(speaking=True, segment="Фраза."), 100.0)
+    s.apply("presence", pres(speaking=False, segment="Фраза."), 100.0)
+    s.apply("settings", {"pet_bubble_secs": 5}, 100.0)
+    assert s.bubble(104.0) == ("Фраза.", True) and s.bubble(106.0) == ("", False)
+    s.apply("settings", {"pet_bubble_secs": 1}, 100.0)              # меньше 3 с не бывает
+    assert s.bubble(102.0) == ("Фраза.", True) and s.bubble(104.0) == ("", False)
+    s.apply("settings", {"pet_bubble_secs": 999}, 100.0)            # больше 120 с не бывает
+    assert s.bubble(219.0) == ("Фраза.", True) and s.bubble(221.0) == ("", False)
+    s.apply("settings", {"pet_bubble_secs": "много"}, 100.0)        # мусор: прежние 25 с
+    assert s.bubble(100.0 + pl.BUBBLE_HIDE_SECS - 1) == ("Фраза.", True)

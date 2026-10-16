@@ -183,13 +183,8 @@ CORE_AREA = "core"
 
 
 def group_id(char_id: str = DEFAULT_ID, area: str = CORE_AREA) -> str:
-    """group_id в графе: `<id персонажа>` для области ядра (личная память) и `<id>:<область>` для модуля (ТЗ 04c)."""
+    """group_id в памяти-графе: `<id персонажа>` для области ядра (личная память) и `<id>:<область>` для модуля (ТЗ 04c)."""
     return char_id if area == CORE_AREA else f"{char_id}:{area}"
-
-
-def database_of(group: str) -> str:
-    """База FalkorDB группы: id персонажа (до двоеточия). У каждого персонажа своя база."""
-    return group.split(":", 1)[0]
 
 
 if __name__ == "__main__":

@@ -370,9 +370,12 @@ def _strings(v, n: int, size: int) -> list[str]:
 
 # ── сон ────────────────────────────────────────────────────────────────────────────────────────────
 
+FORCED = "forced"                    # принудительный сон: будит только явная команда или переход в другое состояние
+
+
 @dataclass(frozen=True)
 class SleepPlan:
-    mode: str                        # idle | scheduled | catchup
+    mode: str                        # idle | scheduled | catchup | forced (по кнопке: ввод и разговор не будят)
     budget_tokens: int | None        # None - без ограничения
 
 

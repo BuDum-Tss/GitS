@@ -130,8 +130,7 @@ class Rig:
                                    llm=self.llm)
         self.router = self.companion.router = Router()
         self.companion.io = SimpleNamespace(deliver=None)
-        if fast is not None:
-            settings.update(fast_contour=fast)
+        settings.update(fast_contour={"stream": True, "merge_rest": False, **(fast or {})})      # потоковый путь выключен по умолчанию: тесты включают его сами
         self.att = None
         if attention:
             self.cfg = copy.deepcopy(settings.DEFAULTS)
@@ -624,3 +623,39 @@ async def test_compare_stream_first_sentence_beats_whole_reply(tmp_path):
     whole = rep["whole"]["at"]["first_sentence_ready"]["p50"]
     stream = rep["stream"]["at"]["first_sentence_ready"]["p50"]
     assert stream < whole - 60                          # поток отдаёт первое предложение примерно на два предложения раньше
+
+
+def test_reply_tokens_setting_is_limited(rig):
+    r = rig(fast={"reply_tokens": 20})
+    assert r.companion.reply_generator._reply_tokens() == 40            # ниже 40 не бывает
+    settings.update(fast_contour={"reply_tokens": 5000})
+    assert r.companion.reply_generator._reply_tokens() == 300
+    settings.update(fast_contour={"reply_tokens": "много"})
+    assert r.companion.reply_generator._reply_tokens() == 90
+
+
+async def test_merge_rest_speaks_first_sentence_at_once_and_the_rest_as_one_piece(rig):
+    r = rig(fast={"merge_rest": True})
+    gate = asyncio.Event()
+    r.llm.scripts = [["Первое предложение тут. Второе предложение ", "тоже здесь. ", gate, "Третье уже после ворот."]]
+    task = asyncio.create_task(r.say("расскажи что-нибудь интересное"))
+    await until(lambda: r.speech.spoken)
+    assert not gate.is_set() and not task.done()                  # генерация идёт, первое предложение уже ушло в синтез
+    assert r.speech.texts == ["Первое предложение тут."]
+    gate.set()
+    await task
+    assert r.speech.texts == ["Первое предложение тут.", "Второе предложение тоже здесь. Третье уже после ворот."]
+    assert [s[2] for s in r.speech.spoken] == [False, True]       # остаток встаёт в очередь вывода одним куском
+    assert r.dialogue()[-1] == " ".join(r.speech.texts)
+
+
+async def test_merge_rest_drops_held_text_when_cancelled(rig):
+    r = rig(fast={"merge_rest": True})
+    gate = asyncio.Event()
+    r.llm.scripts = [["Первое предложение тут. Второе предложение ", "тоже здесь. ", gate, "Третье уже после ворот."]]
+    task = asyncio.create_task(r.say("расскажи что-нибудь интересное"))
+    await until(lambda: r.speech.spoken)
+    r.companion.cancel_reply("stop")
+    gate.set()
+    await task
+    assert r.speech.texts == ["Первое предложение тут."]          # удержанный остаток после «замолчи» не озвучивается

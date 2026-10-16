@@ -4,8 +4,11 @@
 включённых модулей может быть сколько угодно, а их фоновые задачи идут независимо от профиля. Инструмент модуля с
 `availability: profile` виден планировщику, только когда модуль входит в `focus_modules` активного профиля.
 
+Профиль это «состояние» (занятие), на котором она сфокусирована: ассистент, игра, сон. Из любого можно перейти в любое: само по
+условиям или вручную. Сон такое же состояние: пока идёт разбор памяти (`sleeping()`), активен профиль `sleep`.
+
 Выбор профиля (CORE-19), каждые 2 секунды и при смене состояния модулей:
-  1. нет заряда Claude (`battery.sleeping`) -> `sleep` (сильнее ручного выбора);
+  1. нет заряда Claude (`battery.sleeping`) или идёт сон памяти (`sleeping()`) -> `sleep` (сильнее ручного выбора);
   2. настройка `profile` не `auto`, такой профиль есть и он не `planned` -> он;
   3. иначе из профилей с выполненным условием `activate` берётся с наибольшим `priority` (при равенстве текущий, иначе
      первый по алфавиту);
@@ -21,6 +24,7 @@
 import asyncio
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -177,6 +181,10 @@ class ProfileManager:
         self._auto = HUB
         self._last_match: dict[str, float] = {}      # когда профиль в последний раз подходил по activate
         self._evaluated = False
+        self.sleeping: Callable[[], bool] = lambda: False       # идёт ли сон памяти (ставит ядро)
+        self.history: deque = deque(maxlen=40)       # переходы между состояниями: {ts, from, to, why}
+        self._since = now()
+        self._why = ""
 
     # ── выбор ───────────────────────────────────────────────────────────────
 
@@ -185,7 +193,7 @@ class ProfileManager:
         raw = str(self._choice() or "auto")
         raw = LEGACY_CHOICES.get(raw, raw)
         p = self.profiles.get(raw)
-        return raw if p is not None and not p.planned else None
+        return raw if p is not None and not p.planned and raw != SLEEP else None      # сон не выбирается настройкой: он бывает по делу
 
     def _matches(self, p: Profile) -> bool:
         act = p.activate
@@ -225,16 +233,19 @@ class ProfileManager:
     def evaluate(self) -> str:
         """Пересчитать активный профиль (CORE-19). Возвращает его id; при смене вызывает on_change."""
         now = self._now()
-        sleeping = bool(self._battery().get("sleeping"))
+        battery_sleep = bool(self._battery().get("sleeping"))
+        sleeping = battery_sleep or bool(self.sleeping())
         auto = SLEEP if sleeping else self._pick_auto(now)
         manual = None if sleeping else self.manual_choice()
         new = SLEEP if sleeping else (manual or auto)
         self._auto = auto
         old = self._current
+        self._why = self._reason(new, manual, battery_sleep)
         if new != old or not self._evaluated:
-            self._current = new
+            self._current, self._since = new, now
             if self._evaluated:
                 logger.info(f"Профиль: {old} -> {new}" + (" (вручную)" if manual == new else ""))
+                self.history.appendleft({"ts": now, "from": old, "to": new, "why": self._why})
                 if self.on_change is not None:
                     try:
                         self.on_change(old, new)
@@ -242,6 +253,16 @@ class ProfileManager:
                         logger.warning(f"Реакция на смену профиля: {e}")
             self._evaluated = True
         return new
+
+    def _reason(self, new: str, manual: str | None, battery_sleep: bool) -> str:
+        """Почему сейчас это состояние (для дашборда)."""
+        if new == SLEEP:
+            return "нет заряда Claude" if battery_sleep else "идёт разбор памяти"
+        if manual == new:
+            return "выбрано вручную"
+        if new == HUB:
+            return "по умолчанию: других занятий нет"
+        return "сама: выполнены условия состояния"
 
     poke = evaluate      # событие смены окна или state модуля: пересчитать сразу
 
@@ -308,6 +329,34 @@ class ProfileManager:
     def override(self) -> str | None:
         return self.manual_choice()
 
+    # ── состояния для дашборда ────────────────────────────────────────────────
+
+    @staticmethod
+    def _how(p: Profile) -> str:
+        """Как наступает состояние (по условиям профиля): строка для карточки."""
+        if p.planned:
+            return "В планах, пока не написано"
+        if p.id == SLEEP:
+            return "Сама: простой, час расписания или нет заряда Claude. Или по кнопке «Уснуть сейчас»"
+        if p.id == HUB:
+            return "По умолчанию, когда нет других занятий"
+        act, parts = p.activate or {}, []
+        if act.get("foreground_apps"):
+            parts.append("на экране: " + ", ".join(act["foreground_apps"]))
+        for module_id, pairs in (act.get("module_state") or {}).items():
+            parts.append(f"модуль {module_id}: " + ", ".join(f"{k} = {v}" for k, v in pairs.items()))
+        return ("Сама, когда " + "; ".join(parts)) if parts else "Только вручную"
+
+    def states(self) -> list[dict]:
+        """Состояния (профили) для карточек: сначала ассистент, потом по приоритету, сон, затем ненаписанные."""
+        cur, manual = self._current, self.manual_choice()
+
+        def order(p: Profile):
+            return (p.planned, p.id == SLEEP, p.id != HUB, -p.priority, p.id)
+        return [{"id": p.id, "title": p.title, "description": p.description, "planned": p.planned, "current": p.id == cur,
+                 "manual": p.id == manual, "how": self._how(p), "priority": p.priority, "modules": list(p.focus_modules)}
+                for p in sorted(self.profiles.values(), key=order)]
+
     # ── граф для дашборда ─────────────────────────────────────────────────────
 
     async def graph(self) -> dict:
@@ -325,7 +374,8 @@ class ProfileManager:
             if sub:
                 subs[p.id] = {**sub, "live": bool(live)}
         return {"current": cur, "auto": self._auto, "override": self.manual_choice(), "battery": self._battery(),
-                "nodes": nodes, "edges": edges, "subgraphs": subs}
+                "nodes": nodes, "edges": edges, "subgraphs": subs, "states": self.states(), "why": self._why,
+                "since": self._since, "history": list(self.history)[:20]}
 
     async def _live_subgraph(self, profile: Profile) -> dict | None:
         if self.subgraph is None:

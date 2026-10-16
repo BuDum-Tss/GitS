@@ -46,7 +46,16 @@ async def handle_api_graph(request: web.Request) -> web.Response:
     if ctx.graph is None:
         return web.json_response({"enabled": False, "status": "память-граф не подключена"})
     snap = await ctx.graph.snapshot()
-    return web.json_response(presenters.graph_view(snap, status=ctx.graph.status_text(), pending=ctx.graph.pending()))
+    return web.json_response(presenters.graph_view(snap, status=ctx.graph.status_text(), pending=ctx.graph.pending(),
+                                                   stats=await ctx.graph.stats()))
+
+
+async def handle_api_graph_search(request: web.Request) -> web.Response:
+    """Пробный поиск по фактам: что нашлось (с косинусом) и какой блок попадёт в контекст ответа."""
+    query = request.query.get("q", "").strip()
+    if ctx.graph is None or not query:
+        return web.json_response({"query": query, "hits": [], "context": ""})
+    return web.json_response(await ctx.graph.explain(query[:300]))
 
 
 async def handle_api_graph_forget(request: web.Request) -> web.Response:
@@ -85,6 +94,7 @@ ROUTES = [
     ("POST", "/api/approval", handle_api_approval),
     ("POST", "/api/memory/forget", handle_api_forget),
     ("GET", "/api/graph", handle_api_graph),
+    ("GET", "/api/graph/search", handle_api_graph_search),
     ("POST", "/api/graph/forget", handle_api_graph_forget),
     ("GET", "/api/chat", handle_api_chat_get),
 ]

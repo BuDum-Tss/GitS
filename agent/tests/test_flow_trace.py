@@ -127,7 +127,7 @@ def test_core_only_mode_blocks_modules_but_keeps_services(monkeypatch):
 
     class S:
         def __init__(self, kind):
-            self.kind, self.autostart = kind, True
+            self.kind, self.autostart, self.skip_when_env = kind, True, {}
 
     sup = supervisor.Supervisor.__new__(supervisor.Supervisor)
     sup.specs = {"m": S("module"), "decider": S("service")}

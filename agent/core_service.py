@@ -31,6 +31,7 @@ import knowledge_service
 import lesson_routes
 import lesson_service
 import impulse_service
+import task_wiring
 import focus_dispatch
 import profile_manager
 import settings
@@ -324,7 +325,10 @@ async def _run(config: dict):
     dashboard.set_registry(registry)
     dashboard.set_modes(layer.profiles)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
-    impulses = impulse_service.build(companion, layer.attention, router=lambda: companion.router)   # ТЗ 30: импульсы и размышление
+    companion.tasks = task_wiring.build(companion, layer.workspaces)    # ТЗ 32, WS-8: общие задачи, напоминания себе и планы
+    layer.workspaces.on_change = companion.tasks.on_workspace_change    # checkpoint при уходе из среды, возобновление при входе
+    impulses = impulse_service.build(companion, layer.attention, router=lambda: companion.router,
+                                     tasks=companion.tasks)             # ТЗ 30: импульсы и размышление
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     dashboard.set_impulses(impulses)
     episodes = episode_service.build(companion, layer.attention,       # ТЗ 27: эпизоды и сон (простой, расписание, догоняющий)
@@ -333,6 +337,9 @@ async def _run(config: dict):
     await episodes.start()
     episodes.scheduler.on_state = layer.workspaces.on_sleep_state      # ТЗ 32: сон это среда sleep
     episode_routes.set_service(episodes)
+    if episodes.scheduler is not None:                    # сон это состояние ассистента: профиль sleep, пока идёт разбор памяти
+        layer.profiles.sleeping = lambda: episodes.scheduler.state == "sleeping"
+        episodes.scheduler.on_change = layer.profiles.poke
     layer.requests.episodes = episodes                    # core.memory.episodes
     lessons = lesson_service.build(companion, episodes)   # ТЗ 28: разбор ошибок после сна, уроки и убеждения в контексте
     lesson_routes.set_hub(lessons)

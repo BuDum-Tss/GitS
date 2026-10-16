@@ -15,7 +15,7 @@ window.ARCH_DATA = {
      "t": "voice",
      "tag": "I",
      "new": false,
-     "do": "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (Fish Speech)",
+     "do": "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (ESpeech, запасные Fish Speech и edge-tts)",
      "out": "Event voice.utterance",
      "now": "modules/voice"
     },
@@ -80,9 +80,9 @@ window.ARCH_DATA = {
      "t": "ReminderStore",
      "tag": "I",
      "new": false,
-     "do": "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль",
+     "do": "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль; это задачи вида reminder со сроком",
      "out": "срок наступил",
-     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonReminders, файл reminders.json), контракт ReminderRepository; инструмент assistant.remind_self"
+     "now": "есть (ТЗ 30, ТЗ 32): adapters/task_reminders.py (TaskReminders поверх общих задач, tasks.db), контракт ReminderRepository; прежний reminders.json переносится один раз (adapters/task_migration.py); инструмент assistant.remind_self"
     },
     {
      "id": "timer",
@@ -403,6 +403,42 @@ window.ARCH_DATA = {
      "now": "domain/workspace.py (ТЗ 32)"
     },
     {
+     "id": "tsvc",
+     "t": "TaskService",
+     "tag": "A",
+     "new": false,
+     "do": "общие задачи всех сред: создание, подзадачи, активная задача среды, checkpoint при уходе и возобновление, закрытие; события task.* в журнал",
+     "out": "Task",
+     "now": "app/task_service.py (ТЗ 32, WS-8); сборка task_wiring.py; инструменты assistant.tasks, create_task, close_task"
+    },
+    {
+     "id": "tdom",
+     "t": "TaskRules",
+     "tag": "D",
+     "new": false,
+     "do": "чистые правила задач: статусы, следующий шаг, статус родителя по подзадачам, можно ли прервать, какие пора напомнить",
+     "out": "Task",
+     "now": "domain/tasks.py (ТЗ 32)"
+    },
+    {
+     "id": "tplan",
+     "t": "Planner (задачи)",
+     "tag": "A",
+     "new": false,
+     "do": "цель → шаги через LanguageModel; одинаков для всех сред, сама среда не планирует",
+     "out": "Step[]",
+     "now": "app/planner.py (LlmPlanner), контракт Planner; промпт planner в prompt.yaml"
+    },
+    {
+     "id": "tstore",
+     "t": "TaskStore",
+     "tag": "I",
+     "new": false,
+     "do": "SQLite tasks.db в папке памяти персонажа: дерево задач, напоминания и планы как задачи",
+     "out": "Task",
+     "now": "adapters/task_store.py (ТЗ 32), контракт TaskRepository"
+    },
+    {
      "id": "fdisp",
      "t": "FocusDispatch (контракт)",
      "tag": "A",
@@ -573,7 +609,7 @@ window.ARCH_DATA = {
      "t": "FactGraph (контракт)",
      "tag": "I",
      "new": false,
-     "do": "Graphiti: факты с интервалами валидности; области global и <id>:<область> по профилю (graph_scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
+     "do": "SQLite graph.db (fact_store.py, поиск через HybridIndex): факты с интервалами валидности; области global и <id>:<область> по профилю (graph_scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
      "out": "контракт графа",
      "now": "graph_memory.py: 701 строка"
     },
@@ -594,7 +630,7 @@ window.ARCH_DATA = {
    "title": "Внешний слой и сборка",
    "tag": "X",
    "new": false,
-   "summary": "Модели и службы: LM Studio, GLiNER, FalkorDB, Fish Speech, WhisperX, Claude. Сборка: core_service.",
+   "summary": "Модели и службы: LM Studio, GLiNER, ESpeech, Fish Speech, WhisperX, Claude. Сборка: core_service.",
    "out": "",
    "nodes": [
     {
@@ -616,20 +652,11 @@ window.ARCH_DATA = {
      "now": ""
     },
     {
-     "id": "falk",
-     "t": "FalkorDB :6380",
-     "tag": "X",
-     "new": false,
-     "do": "база графа фактов",
-     "out": "",
-     "now": ""
-    },
-    {
      "id": "fish",
-     "t": "Fish Speech / edge-tts",
+     "t": "ESpeech :8771 / Fish Speech / edge-tts",
      "tag": "X",
      "new": false,
-     "do": "синтез речи",
+     "do": "синтез речи (F5-TTS, русский)",
      "out": "",
      "now": ""
     },
@@ -972,6 +999,48 @@ window.ARCH_DATA = {
   ],
   [
    "wsm",
+   "tsvc",
+   "use",
+   "среда задач, checkpoint и возобновление"
+  ],
+  [
+   "tsvc",
+   "tdom",
+   "use",
+   "правила"
+  ],
+  [
+   "tsvc",
+   "tplan",
+   "use",
+   "цель"
+  ],
+  [
+   "tplan",
+   "lms",
+   "use",
+   "разбить на шаги"
+  ],
+  [
+   "tsvc",
+   "tstore",
+   "w",
+   "задачи"
+  ],
+  [
+   "reminders",
+   "tsvc",
+   "use",
+   "задача со сроком"
+  ],
+  [
+   "plans",
+   "tsvc",
+   "w",
+   "план как задача"
+  ],
+  [
+   "wsm",
    "wsdom",
    "use",
    "правила входа и выхода"
@@ -1095,12 +1164,6 @@ window.ARCH_DATA = {
    "char",
    "r",
    "характер"
-  ],
-  [
-   "graph",
-   "falk",
-   "ext",
-   null
   ],
   [
    "sleep",

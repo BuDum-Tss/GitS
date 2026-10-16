@@ -134,6 +134,14 @@ class ReplyGenerator:
             cfg = None
         return cfg if isinstance(cfg, dict) else {}
 
+    def _reply_tokens(self) -> int:
+        """Потолок длины ответа в токенах (`fast_contour.reply_tokens`, 40-300): локальная модель выдаёт ~12 токенов в секунду,
+        а синтез речи тоже растёт с длиной, поэтому длинная реплика стоит секунд до звука."""
+        value = self._cfg().get("reply_tokens", 90)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return 90
+        return int(min(300, max(40, value)))
+
     def _stream_ok(self) -> bool:
         """Потоковый путь: включён в настройках, ответ не в канал модуля (там не речь), модель умеет поток, есть голос."""
         h = self._h
@@ -217,7 +225,7 @@ class ReplyGenerator:
         h = self._h
         reply, escalate, action_request = "", False, False   # escalate: только если локальная модель недоступна
         try:
-            reply = (await h._llm.ask(system, user, timeout=60, max_tokens=140, temperature=0.7)).strip()
+            reply = (await h._llm.ask(system, user, timeout=60, max_tokens=self._reply_tokens(), temperature=0.7)).strip()
             # без потоковой передачи первый токен приходит вместе с концом ответа
             latency_trace.mark("llm_first_token")
             latency_trace.mark("llm_done")
@@ -238,15 +246,27 @@ class ReplyGenerator:
         splitter, decl = SentenceSplitter(), StreamDeclutter(self)
         head, head_done, action_request, failed = "", False, False, False
         first_token = False
-        gen = h._llm.ask_stream(system, user, timeout=60, max_tokens=140, temperature=0.7)
+        gen = h._llm.ask_stream(system, user, timeout=60, max_tokens=self._reply_tokens(), temperature=0.7)
         stopper = asyncio.ensure_future(session.event.wait())
         nxt: asyncio.Future | None = None
+
+        merge_rest = bool(self._cfg().get("merge_rest", True))   # первое предложение сразу, остальное одним куском: один шов
+        held: list[str] = []
 
         async def deliver(sentences: list[str]) -> None:
             for sent in sentences:
                 if session.cancelled:
                     return
+                if merge_rest and session.sentences:
+                    held.append(sent)                 # первое уже ушло в синтез: остальные ждут конца генерации
+                    continue
                 await self._emit(session, sent)
+
+        async def flush_held() -> None:
+            if held and not session.cancelled:
+                text = " ".join(held)
+                held.clear()
+                await self._emit(session, text)
 
         try:
             while True:
@@ -286,6 +306,7 @@ class ReplyGenerator:
                 for sent in splitter.flush():
                     await deliver(decl.push(sent))
                 await deliver(decl.finish())
+                await flush_held()
         except asyncio.CancelledError:
             session.cancel("task_cancelled")
             raise
@@ -294,6 +315,7 @@ class ReplyGenerator:
             failed = True
             if session.sentences and not session.cancelled:   # часть ответа уже прозвучала: договаривать нечем, но и звать Claude поздно
                 await deliver(decl.finish())
+                await flush_held()
         finally:
             latency_trace.mark("llm_done")
             stopper.cancel()
