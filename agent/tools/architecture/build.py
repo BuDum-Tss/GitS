@@ -73,8 +73,8 @@ def render_docs_html() -> str:
 </div>
 
 <h2 class="text-xl font-semibold mt-8 mb-2">Основные сущности</h2>{ent}
-<h2 class="text-xl font-semibold mt-8 mb-2">Что не так в коде (по измерениям)</h2>
-<p class="opacity-70 mb-2">Ядро: 46 модулей, 12 054 строки. Измерено разбором исходников (<code>ast</code>): строки, методы, импорты; ссылки найдены поиском.</p>{smells}
+<h2 class="text-xl font-semibold mt-8 mb-2">Что было не так в коде до рефакторинга (измерения на 2026-10-15)</h2>
+<p class="opacity-70 mb-2">Ядро тогда: 46 модулей, 12 054 строки. Шаги R0–R7 и ТЗ 24–31 выполнены (см. статусы блоков схемы и записи CHANGELOG); таблица оставлена как история причин. Измерено разбором исходников (<code>ast</code>): строки, методы, импорты; ссылки найдены поиском.</p>{smells}
 <h2 class="text-xl font-semibold mt-8 mb-2">Где что окажется</h2>{mapping}
 <pre class="bg-base-100 border border-base-300 rounded-box p-3 text-sm overflow-auto my-3">agent/
   domain/      entities.py scoring.py rules.py risk.py focus_policy.py salience.py                 (без ввода-вывода)

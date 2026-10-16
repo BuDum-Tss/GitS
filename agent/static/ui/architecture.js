@@ -77,7 +77,7 @@
       Object.values(D.layers).map(l => `<span class="inline-flex items-center gap-1"><span style="display:inline-block;width:16px;height:12px;border-radius:3px;border:2px solid ${l[1]};background:${l[1]}33"></span><b>${esc(l[0])}</b></span>`).join('') +
       '<span class="opacity-40">|</span>' +
       Object.values(D.edgeKinds).map(k => `<span class="inline-flex items-center gap-1"><span style="display:inline-block;width:24px;border-top:3px ${k[2] ? 'dashed' : 'solid'} ${k[1]}"></span>${esc(k[0])}</span>`).join('') +
-      '<span class="opacity-40">|</span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:16px;height:12px;border-radius:3px;border:2px dashed currentColor"></span>нужно выделить</span>';
+      (D.groups.some(g => g.new || g.nodes.some(n => n.new)) ? '<span class="opacity-40">|</span><span class="inline-flex items-center gap-1"><span style="display:inline-block;width:16px;height:12px;border-radius:3px;border:2px dashed currentColor"></span>нужно выделить</span>' : '');
 
     const cy = cytoscape({container: canvas, elements: [], style: styleFor(colors()), wheelSensitivity: 0.25, minZoom: 0.15, maxZoom: 3, boxSelectionEnabled: false});
 

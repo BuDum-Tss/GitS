@@ -59,7 +59,7 @@ window.ARCH_DATA = {
      "id": "dash",
      "t": "Дашборд и чат",
      "tag": "I",
-     "new": true,
+     "new": false,
      "do": "чат, настройки, пульт, оценки",
      "out": "UserInput как Event",
      "now": "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider"
@@ -200,7 +200,7 @@ window.ARCH_DATA = {
      "id": "routes",
      "t": "Routes",
      "tag": "D",
-     "new": true,
+     "new": false,
      "do": "маршруты события и обращения: reflex (с already_done), chat, task, ignore, think; таблица D0-D4 и R1-R4 → маршруты; жёсткие правила из YAML",
      "out": "RouteDecision",
      "now": "есть (ТЗ 25): routes.py, routes/hard_rules.yaml, docs/ROUTES.md"
@@ -247,7 +247,7 @@ window.ARCH_DATA = {
      "id": "instant",
      "t": "InstantLevel",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "мгновенный уровень: на поручении через 300 мс факт «принято», при затянутом ответе факт-филлер; реплику формулирует модель",
      "out": "Utterance",
      "now": "есть (ТЗ 25): app/instant.py"
@@ -370,7 +370,7 @@ window.ARCH_DATA = {
      "id": "fque",
      "t": "FocusQueue",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "состояния событий, склейка, старение, сроки",
      "out": "QueuedEvent",
      "now": "focus_queue.py"
@@ -379,7 +379,7 @@ window.ARCH_DATA = {
      "id": "fstore",
      "t": "CheckpointStore",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "checkpoint задач и файл focus.json",
      "out": "checkpoint",
      "now": "focus_store.py"
@@ -444,7 +444,7 @@ window.ARCH_DATA = {
      "id": "hubout",
      "t": "ModuleHub (исходящие)",
      "tag": "I",
-     "new": true,
+     "new": false,
      "do": "доставка команд модулям: tool.call, speak, policy.activate, job.answer",
      "out": "ToolResult, события",
      "now": "module_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как ModuleHub.outbound"
@@ -482,7 +482,7 @@ window.ARCH_DATA = {
      "id": "epi",
      "t": "Эпизоды (нарезка + хранилище)",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "журнал -> эпизоды: границы без LLM (пауза, фокус, задача, собеседник), пики яркости, окно вокруг пика; episodes.db со статусами и версиями",
      "out": "Episode",
      "now": "есть (ТЗ 27): domain/episodes.py, app/episode_cutter.py, adapters/episode_store.py"
@@ -491,7 +491,7 @@ window.ARCH_DATA = {
      "id": "sleep",
      "t": "Режим сна (SleepScheduler + SleepRunner)",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "фоновая политика памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами",
      "out": "episode.summary, дневник",
      "now": "есть (ТЗ 27): app/sleep.py, app/sleep_scheduler.py, app/episode_summary.py, app/diary.py"
@@ -500,7 +500,7 @@ window.ARCH_DATA = {
      "id": "erecall",
      "t": "EpisodeRecall",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "поиск эпизодов и дневника по смыслу, recall_episode(id) с разворотом до событий, core.memory.episodes",
      "out": "MemoryHit[]",
      "now": "есть (ТЗ 27): app/episode_recall.py, episode_routes.py"
@@ -509,7 +509,7 @@ window.ARCH_DATA = {
      "id": "lessons",
      "t": "Уроки на ошибках (LessonService)",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "шаг после сна: метки mistake журнала по ситуациям -> урок (ситуация, действие, исход, что делать иначе, уверенность, подтверждения, эпизоды); похожие сливаются (cos >= 0,90); неэффективные устаревают; доля повторов по видам ошибок",
      "out": "Lesson",
      "now": "есть (ТЗ 28): domain/lessons.py, app/lessons.py, adapters/lesson_store.py, lesson_service.py"
@@ -518,7 +518,7 @@ window.ARCH_DATA = {
      "id": "beliefs",
      "t": "Убеждения (принимает сама)",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "урок с подтверждениями >= K из >= M эпизодов становится убеждением без подтверждения человека; запись в журнал (причина, эпизоды, прежнее значение); проверка по конституции (шаблоны + модель), лимит в сутки и 12 активных; отмена владельцем в дашборде",
      "out": "Belief, belief_log",
      "now": "есть (ТЗ 28): те же файлы, lesson_routes.py; блок убеждений и уроков по ситуации в ContextBuilder по настройке lessons.context"
@@ -646,7 +646,7 @@ window.ARCH_DATA = {
      "id": "hnd",
      "t": "Обработчики модулей",
      "tag": "A",
-     "new": true,
+     "new": false,
      "do": "события voice.*, rimworld.colonists и run_ended, desktop.activity, приказ в игру (game_order)",
      "out": "",
      "now": "app/handlers/: voice.py, game.py, desktop.py"
