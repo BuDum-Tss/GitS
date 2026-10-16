@@ -20,7 +20,7 @@ SMELLS = [
     ("Нет единой сущности события", "Словарь, <code>Item</code>, <code>UserInput</code>; правила «замолчи» и «похоже на просьбу» ещё и в <code>router</code>.", "<code>Event</code> и один модуль правил"),
     ("Проактивность по таймеру", "<code>app/proactive_legacy.py</code> (из <code>Companion.proactive_loop</code>) раз в 30 с спрашивает модель, стоит ли заговорить.", "заменить на внутренние импульсы и размышление (ТЗ 30)"),
     ("Интерфейс ходит в данные", "<code>dashboard.py</code>: 863 строки, 0 классов, прямой доступ к хранилищам.", "контракты чтения"),
-    ("ContextBuilder без бюджета", "<code>app/context_builder.py</code> повторяет прежнюю склейку шести источников; два разных поиска.", "бюджет токенов на роль"),
+    ("ContextBuilder: бюджет есть, поиск ещё два", "<code>app/context_builder.py</code>: бюджет токенов на роль и режимы push/pull есть (настройка <code>context</code>), по умолчанию прежняя склейка; общий гибридный поиск <code>search/</code> готов, но чтение памяти ещё идёт двумя поисками.", "подключить search/ к MemoryReader"),
 ]
 MAP = [
     ("attention.py (1108)", "Normalizer, PeopleDirectory, HardRules, PriorityScorer, Dispatcher, Digest, JobTracker (часть), вопросы"),

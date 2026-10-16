@@ -33,24 +33,54 @@ class ContextBuilder:
             lines.append("- " + note)
         return "\n".join(lines)
 
-    def build(self, include_hearing: bool = True, query: str = "") -> str:
-        """query: о чём сейчас речь. По нему из долговременной памяти берутся подходящие записи."""
+    def _settings_context(self) -> dict:
+        try:
+            cfg = self._h._settings.load().get("context")
+        except Exception:
+            cfg = None
+        return cfg if isinstance(cfg, dict) else {}
+
+    def build(self, include_hearing: bool = True, query: str = "", needs_memory: str | None = None,
+              role: str = "reply", mode: str | None = None) -> str:
+        """query: о чём сейчас речь. По нему из долговременной памяти берутся подходящие записи.
+
+        mode (настройка `context.mode`, по умолчанию `push`): `push` кладёт память в контекст сам, но пропускает её,
+        если классификатор сказал `needs_memory == "no"`; `pull` не кладёт запрошенную память вовсе, её достаёт
+        инструмент `recall`. Бюджет (`context.budget_tokens[role]`, блок -> токены, ключ `total` на весь контекст):
+        без бюджета контекст прежний. Оценка токена: 3 символа."""
         h = self._h
-        parts = [h._memory_reader.context_block(dialogue=12, query=query), h._capabilities()]
+        cfg = self._settings_context()
+        mode = mode or cfg.get("mode") or "push"
+        skip_memory = mode == "pull" or needs_memory == "no"
+        budget = (cfg.get("budget_tokens") or {}).get(role) or {}
+        blocks: list[tuple[str, str]] = [
+            ("memory", h._memory_reader.context_block(dialogue=12, query="" if skip_memory else query)),
+            ("capabilities", h._capabilities())]
         if include_hearing and h._settings.load()["hearing"]:
             heard = h.recent_heard()
             if heard:
-                parts.append("Что недавно было слышно из колонок (краткая сводка автоматической расшифровки, "
-                             "возможны ошибки; это может быть фильм, видео, музыка, не слова "
-                             "пользователя): " + heard)
-        if h._self_block:
-            parts.append(h._self_block)
-        if h._graph_block:
-            parts.append(h._graph_block)
+                blocks.append(("heard", "Что недавно было слышно из колонок (краткая сводка автоматической расшифровки, "
+                               "возможны ошибки; это может быть фильм, видео, музыка, не слова "
+                               "пользователя): " + heard))
+        if h._self_block and not skip_memory:
+            blocks.append(("self", h._self_block))
+        if h._graph_block and not skip_memory:
+            blocks.append(("graph", h._graph_block))
         rel = h._people.describe("игрок")
         if rel:
-            parts.append(f"Твоё {rel}.")
-        return "\n".join(p for p in parts if p)
+            blocks.append(("relation", f"Твоё {rel}."))
+        parts = [self._fit(text, budget.get(name)) for name, text in blocks]
+        parts = [p for p in parts if p]
+        text = "\n".join(parts)
+        return self._fit(text, budget.get("total"), keep_tail=True)
+
+    @staticmethod
+    def _fit(text: str, tokens, keep_tail: bool = False) -> str:
+        """Обрезка по бюджету токенов (3 символа на токен); без бюджета текст не меняется."""
+        if not text or not tokens or len(text) <= tokens * 3:
+            return text
+        limit = int(tokens) * 3
+        return ("…" + text[-limit:]) if keep_tail else (text[:limit].rstrip() + "…")
 
     async def refresh_graph(self, query: str) -> None:
         """Факты графа по теме реплики: поиск быстрый, но не дольше трёх секунд, иначе отвечаем без них."""
