@@ -62,7 +62,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "чат, настройки, пульт, оценки",
      "out": "UserInput как Event",
-     "now": "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (flow_trace.py, flow_spec.py, /api/flow)"
+     "now": "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (flow_trace.py, flow_spec.py, /api/flow; ошибки GLiNER, Claude и выходов отдельно; настройка «Только ядро»)"
     }
    ]
   },
@@ -176,7 +176,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с",
      "out": "Classification",
-     "now": "decide.py + services/decider; в Attention его зовёт app/event_classifier.py (R3)"
+     "now": "decide.py + services/decider; в Attention его зовёт app/event_classifier.py (R3); сбои сервиса пишутся в трассу потока отдельным видом error (причина down, timeout, error)"
     },
     {
      "id": "score",
@@ -640,7 +640,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "запуск и перезапуск процессов модулей",
      "out": "",
-     "now": "supervisor.py: 573 строки"
+     "now": "supervisor.py: 573 строки; режим «только ядро» (GITS_NO_MODULES=1 или настройка only_core); устойчивость ядра проверяет tools/soak_core.py"
     },
     {
      "id": "root",

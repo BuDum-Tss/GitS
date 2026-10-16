@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 
 import events_log
+import flow_trace
 
 logger = logging.getLogger("conversation")
 
@@ -77,6 +78,8 @@ class ConversationIO:
     async def deliver(self, channel: Channel, text: str) -> bool:
         """Доставить ответ в канал модуля (запрос `deliver`). False, если модуль офлайн, не принимает доставку или
         вернул ошибку: тогда ответ остаётся только в чате дашборда (CORE-25), причина пишется в журнал."""
+        t0 = time.perf_counter()
+        node = flow_trace.OUTPUT_NODES.get(channel.module or "")       # ТЗ 17: выход в Telegram и другие каналы модулей
         try:
             conn = self.hub.connection(channel.module) if self.hub is not None and channel.module else None
             if conn is None:
@@ -87,8 +90,14 @@ class ConversationIO:
                                        timeout=DELIVER_TIMEOUT_S)
             if not (isinstance(value, dict) and value.get("delivered")):
                 raise RuntimeError("модуль не доставил ответ")
+            if node:
+                flow_trace.step(None, node, "speech_queue", node, "deliver", ms=(time.perf_counter() - t0) * 1000,
+                                size=len(text or ""), label=f"{channel.module}:ok")
             return True
         except Exception as e:
+            if node:
+                flow_trace.step(None, node, "speech_queue", node, "error", ms=(time.perf_counter() - t0) * 1000,
+                                size=len(text or ""), label=f"{channel.module}:error")
             events_log.log("module", f"ответ в канал {channel.label()} не доставлен: {e}", module=channel.module,
                            deliver_failed=True)
             logger.warning(f"deliver в {channel.label()}: {e}")

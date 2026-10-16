@@ -21,6 +21,7 @@ import character
 import claude_battery
 import claude_quota
 import events_log
+import flow_trace
 import safety
 from claude_cli import _CLI_PATH
 from envcompat import env
@@ -195,16 +196,20 @@ async def analyze(question: str, hours: float = 6.0, extra: str = "") -> dict:
                     claude_battery.record_result(msg, "analysis")
                     break
 
+    t0 = time.perf_counter()
     try:
         await asyncio.wait_for(_run(), TIMEOUT)
     except asyncio.TimeoutError:
+        flow_trace.step(None, "claude", "planner", "claude", "error", ms=(time.perf_counter() - t0) * 1000, label="analysis:error")
         raise RuntimeError("анализ не уложился в 10 минут")
     except Exception as e:
+        flow_trace.step(None, "claude", "planner", "claude", "error", ms=(time.perf_counter() - t0) * 1000, label="analysis:error")
         if claude_quota.note(str(e)):
             raise RuntimeError(f"лимит Claude исчерпан до {claude_quota.until_text()}")
         logger.error(f"Анализ: {e}", exc_info=True)
         raise RuntimeError(str(e)[:300])
 
+    flow_trace.step(None, "claude", "planner", "claude", "llm", ms=(time.perf_counter() - t0) * 1000, size=len(answer), label="analysis")
     if claude_quota.note(answer):
         raise RuntimeError(f"лимит Claude исчерпан до {claude_quota.until_text()}")
     res = _parse(answer)

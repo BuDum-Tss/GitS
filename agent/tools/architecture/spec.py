@@ -34,7 +34,7 @@ GROUPS = [
         N("tg", "telegram", "I", "бот, её аккаунт, посты канала", "Event telegram.*", "modules/telegram"),
         N("rim", "rimworld", "I", "игровой агент: ходы, комментатор, запись забега", "Event raid, death, colonists", "modules/rimworld"),
         N("mont", "montage", "I", "конвейер роликов: Remotion + ffmpeg, агент Claude", "job.update, вопросы", "modules/montage"),
-        N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (flow_trace.py, flow_spec.py, /api/flow)"),
+        N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (flow_trace.py, flow_spec.py, /api/flow; ошибки GLiNER, Claude и выходов отдельно; настройка «Только ядро»)"),
     ]),
     dict(id="g_imp", col="A", title="Внутренние импульсы", tag="A",
          summary="Напоминания, которые агент назначил себе; сработавший срок становится событием. Болтовни по таймеру нет.", out="Event self.*", nodes=[
@@ -52,7 +52,7 @@ GROUPS = [
     dict(id="g_dec", col="C", title="Решение", tag="A",
          summary="Правила до моделей, быстрая классификация, оценка важности и выбор маршрута: сказать, ответить, сделать, сменить фокус, подумать, отложить.", out="Decision + routes", nodes=[
         N("rules", "HardRules", "D", "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»", "RuleResult", "выделен (R3): app/process_event.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py; жёсткие правила обращений владельца (ТЗ 25): routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"),
-        N("cls", "Classifier (контракт)", "A", "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с", "Classification", "decide.py + services/decider; в Attention его зовёт app/event_classifier.py (R3)"),
+        N("cls", "Classifier (контракт)", "A", "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с", "Classification", "decide.py + services/decider; в Attention его зовёт app/event_classifier.py (R3); сбои сервиса пишутся в трассу потока отдельным видом error (причина down, timeout, error)"),
         N("score", "PriorityScorer", "D", "срочность × 20 × веса (профиль, отправитель, правила, пользователь) × свежесть", "priority 0..100", "выделен (R3): app/scorer.py поверх domain/scoring.py"),
         N("disp", "Dispatcher", "A", "решение D0–D4 и routes[]: say, chat, task, focus, think, digest, ignore; пишет решение в журнал", "Decision", "выделен (R3): app/dispatcher.py (finish, act) и app/decision_log.py; ТЗ 25: routes[] (reflex, chat, task, ignore, think) по таблице D0-D4 в routes.py пишется в журнал решений"),
         N("routes", "Routes", "D", "маршруты события и обращения: reflex (с already_done), chat, task, ignore, think; таблица D0-D4 и R1-R4 → маршруты; жёсткие правила из YAML", "RouteDecision", "есть (ТЗ 25): routes.py, routes/hard_rules.yaml, docs/ROUTES.md"),
@@ -116,7 +116,7 @@ GROUPS = [
         N("fish", "Fish Speech / edge-tts", "X", "синтез речи", "", ""),
         N("wx", "WhisperX / Whisper", "X", "распознавание речи", "", ""),
         N("cl", "Claude Agent SDK", "X", "долгие и сложные задачи", "", ""),
-        N("sup", "Supervisor", "I", "запуск и перезапуск процессов модулей", "", "supervisor.py: 573 строки"),
+        N("sup", "Supervisor", "I", "запуск и перезапуск процессов модулей", "", "supervisor.py: 573 строки; режим «только ядро» (GITS_NO_MODULES=1 или настройка only_core); устойчивость ядра проверяет tools/soak_core.py"),
         N("root", "Composition root", "I", "только собирает объекты и подставляет контракты; бизнес-логики быть не должно", "", "core_service.py: только сборка; обработчики voice, colonists, run_lost, game_order в app/handlers/"),
         N("hnd", "Обработчики модулей", "A", "события voice.*, rimworld.colonists и run_ended, desktop.activity, приказ в игру (game_order)", "", "app/handlers/: voice.py, game.py, desktop.py"),
     ]),

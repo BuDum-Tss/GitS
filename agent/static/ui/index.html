@@ -136,6 +136,7 @@
           <div id="flow-box" class="mt-3">
             <div class="flex flex-wrap items-center gap-3">
               <div class="font-medium">Поток данных</div>
+              <span id="flow-only-core" class="badge badge-sm badge-warning hidden" title="Модули не запускаются (настройка «Только ядро» или GITS_NO_MODULES=1)">только ядро</span>
               <span id="flow-layers" class="flex flex-wrap gap-2 text-xs"></span>
               <button id="flow-pause-btn" class="btn btn-xs btn-outline ml-auto" title="Остановить обновление схемы">пауза</button>
               <button id="flow-play-btn" class="btn btn-xs btn-outline" title="Проиграть выбранный ход по шагам">проиграть ход</button>
@@ -883,6 +884,7 @@ const SETTINGS_SCHEMA = [
     {key: 'telegram_voice', type: 'toggle', label: 'Посты голосом', hint: 'Пост уходит голосовым сообщением её голосом, текст остаётся подписью.'},
     {key: 'telegram_confirm', type: 'toggle', label: 'Спрашивать перед публикацией', hint: 'Если выключено, она публикует сама.'}]},
   {title: 'Для разработчиков', items: [
+    {key: 'only_core', type: 'toggle', label: 'Только ядро (без модулей)', hint: 'Супервизор не запускает модули (голос, Telegram, питомец, игры), службы вроде классификатора остаются. Применяется при следующем запуске ядра. То же делает переменная GITS_NO_MODULES=1.'},
     {key: 'dev_mode', type: 'toggle', label: 'Режим разработчика', hint: 'Во вкладке «Модули» показывает примеры для разработчиков (пример модуля на SDK).'}]},
   {title: 'Безопасность', danger: true, items: [
     {key: 'auto_accept', type: 'toggle', label: 'Авто-разрешать все действия',
@@ -1226,6 +1228,7 @@ function flowStyle(c) {
     {selector: 'edge.path', style: {width: 3.5, 'line-color': c.wa, 'target-arrow-color': c.wa, opacity: 1}},
     {selector: 'node.path', style: {'border-width': 4, 'background-color': c.b3}},
     {selector: 'node.dim', style: {opacity: 0.25}},
+    {selector: 'node.err', style: {'border-color': '#ef4444', 'border-width': 4, 'border-style': 'dashed'}},
   ];
 }
 function flowLayout(t) {
@@ -1249,13 +1252,20 @@ function flowBuild(t) {
     const rows = (i.recent || []).map(r => `<li>${esc(r.kind)} ${esc(r.label)} ${r.ms != null ? r.ms + ' мс' : ''} ${r.size != null ? '· ' + r.size + ' симв.' : ''}</li>`).join('') || '<li class="opacity-60">записей нет</li>';
     const labs = Object.entries(i.labels || {}).map(([k, v]) => `${esc(k)}: ${v}`).join(', ');
     $('flow-side').innerHTML = `<div class="font-medium">${esc(ev.target.data('label'))}</div><div>записей ${i.count}, в минуту ${i.per_min}, ошибок ${i.errors}</div>` +
-      `<div>последняя ${i.last_ms ?? '–'} мс, p95 ${i.p95_ms ?? '–'} мс</div><div class="opacity-70">${labs}</div><ul class="mt-1 space-y-0.5">${rows}</ul>`;
+      `<div>последняя ${i.last_ms ?? '–'} мс, p95 ${i.p95_ms ?? '–'} мс</div><div class="opacity-70">${labs}</div>` +
+      flowErrorBlock(i.error_info) + `<ul class="mt-1 space-y-0.5">${rows}</ul>`;
   });
   $('flow-layers').innerHTML = t.layers.map(l => `<label class="cursor-pointer inline-flex items-center gap-1"><input type="checkbox" checked data-flow-layer="${l.id}"><span style="color:${l.color}">${esc(l.title)}</span></label>`).join('');
   document.querySelectorAll('[data-flow-layer]').forEach(cb => cb.onchange = () => {
     cb.checked ? FLOW.hidden.delete(cb.dataset.flowLayer) : FLOW.hidden.add(cb.dataset.flowLayer);
     FLOW.cy.nodes().forEach(n => n.style('display', FLOW.hidden.has(n.data('layer')) ? 'none' : 'element'));
   });
+}
+// Ошибки узла (GLiNER, Claude, выходы) показываются отдельно от обычных записей: причины и время последней
+function flowErrorBlock(e) {
+  if (!e || !e.total) return '';
+  const reasons = Object.entries(e.reasons || {}).map(([k, v]) => `${esc(k)}: ${v}`).join(', ');
+  return `<div class="text-error mt-1">Ошибок: ${e.total} (за 10 минут ${e.per_10min}); последняя ${e.last_t ? new Date(e.last_t * 1000).toLocaleTimeString() : ''}</div><div class="text-error opacity-80">${reasons}</div>`;
 }
 function flowPulse(r) {
   if (!FLOW.cy || FLOW.paused || !r.from || !r.to) return;
@@ -1289,6 +1299,10 @@ async function loadFlow() {
     const s = f.stats[e.id], el = FLOW.cy.getElementById(e.id);
     if (el.length) el.data('label', s ? `${s.per_min}/мин${s.p95_ms != null ? ' · p95 ' + s.p95_ms + ' мс' : ''}` : '');
   });
+  if (FLOW.cy) {
+    FLOW.cy.nodes().forEach(n => n.toggleClass('err', !!(f.errors && f.errors[n.id()] && f.errors[n.id()].per_10min)));
+    $('flow-only-core').classList.toggle('hidden', !f.only_core);
+  }
   const rows = (f.turns || []).map(t => ({id: t.turn, txt: `${t.steps} шаг., ${t.outcome}${t.errors ? ', ошибок ' + t.errors : ''}`}))
     .concat((f.latency_turns || []).map(t => ({id: t.turn, txt: `${t.source || ''} до звука ${t.end_to_sound_ms ?? '–'} мс`})));
   $('flow-turns').innerHTML = rows.slice(0, 30).map(r => `<li><a class="link ${r.id === FLOW.turn ? 'font-bold' : ''}" data-flow-turn="${esc(r.id)}">${esc(r.id.slice(0, 8))}</a> <span class="opacity-70">${esc(r.txt)}</span></li>`).join('')

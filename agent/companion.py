@@ -28,6 +28,7 @@ from pathlib import Path
 
 import claude_quota
 import fast_brain
+import flow_trace
 import character
 import prompts
 from adapters.approver import ApprovalsModule
@@ -325,8 +326,12 @@ class Companion:
         job_id = ModuleRegistry.job_id_from(text) if ok else None
         if job_id is None:
             return None
+        t0 = time.perf_counter()
         job = await self.job_wait("desktop", job_id, 600)
-        if job.get("state") == "done":
+        done = job.get("state") == "done"
+        flow_trace.step(None, "claude", "planner", "claude", "llm" if done else "error", ms=(time.perf_counter() - t0) * 1000,
+                        label="task" if done else "task:error")           # ТЗ 17: долгая задача Claude как отдельный выход схемы
+        if done:
             return str(job.get("text") or "")
         return None
 
@@ -376,8 +381,14 @@ class Companion:
         new = stems(text)
         if len(new) < 3:
             return False
+        cache = self.__dict__.setdefault("_stems_cache", {})          # основы старых реплик: прогон ядра (ТЗ 17) показал, что их пересчёт держал цикл событий
+        who = character.active().id                                    # алиасы персонажа входят в стоп-слова: при смене персонажа ключ другой
         for m in [m for m in self._memory_reader.recent_dialogue(10) if m["role"] != "user"][-5:]:
-            old = stems(m["text"])
+            old = cache.get((who, m["text"]))
+            if old is None:
+                if len(cache) > 64:
+                    cache.clear()
+                old = cache[(who, m["text"])] = stems(m["text"])
             if old and len(new & old) / min(len(new), len(old)) >= 0.5:
                 return True
         return False

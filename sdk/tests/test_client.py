@@ -791,3 +791,37 @@ async def test_oversized_outgoing_message_is_refused_locally(core):
         with pytest.raises(P.ProtocolError):
             await client.request("core.kb.ingest", {"blob": "я" * (2 * 1024 * 1024)})
         assert client.connected
+
+
+async def test_stop_during_handshake_returns_run_quickly():
+    """stop() до welcome закрывает соединение: run() возвращается сразу, а не после тайм-аута рукопожатия."""
+    from aiohttp import web
+
+    got_hello = asyncio.Event()
+
+    async def silent(request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        async for _ in ws:                      # читаем hello и молчим
+            got_hello.set()
+        return ws
+
+    app = web.Application()
+    app.router.add_get("/module/ws", silent)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    try:
+        manifest = copy.deepcopy(MANIFEST)
+        manifest["tools"] = [manifest["tools"][0]]
+        client = ModuleClient(manifest, url=f"ws://127.0.0.1:{port}/module/ws", token="t")
+        client.reconnect_delays = (0.05,)
+        client.tool("ping")(lambda a: {})
+        task = asyncio.create_task(client.run())
+        await asyncio.wait_for(got_hello.wait(), 5)
+        await client.stop()
+        assert await asyncio.wait_for(task, 3) == 0
+    finally:
+        await runner.cleanup()
