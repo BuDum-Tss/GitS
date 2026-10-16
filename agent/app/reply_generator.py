@@ -14,6 +14,7 @@ import re
 import fast_brain
 import latency_trace
 import prompts
+import reply_trace
 import speech_out
 from conversation_io import current_channel
 from speech_text import SentenceSplitter, clean_speech
@@ -179,6 +180,7 @@ class ReplyGenerator:
         except Exception as e:
             logger.info(f"Реплика мгновенного уровня не сформулирована: {e}")
             return None
+        reply_trace.begin("quick", system, user, max_tokens=40, temperature=0.7)
         return clean_speech(reply.strip()) or None
 
     # ── ответ ──────────────────────────────────────────────────────────────────
@@ -210,7 +212,9 @@ class ReplyGenerator:
         if about_self and h.router is not None:
             user += ("\n\nПользователь спрашивает о твоих возможностях. Отвечай строго по этому перечню, ничего не выдумывая:\n"
                      + h.router.registry.describe())
-        if self._stream_ok():
+        stream = self._stream_ok()
+        reply_trace.begin("converse", system, user, max_tokens=self._reply_tokens(), temperature=0.7, stream=stream)
+        if stream:
             action_request, escalate = await self._converse_stream(system, user)
         else:
             action_request, escalate = await self._converse_whole(system, user)
@@ -233,6 +237,7 @@ class ReplyGenerator:
                 action_request, reply = True, reply[len(ACTION_MARKER):].strip()
         except Exception as e:
             logger.warning(f"Локальная модель не ответила: {e}")
+            reply_trace.drop()
             escalate = True    # без локальной модели пусть отвечает Claude
         if reply:
             latency_trace.mark("first_sentence_ready")
@@ -326,6 +331,8 @@ class ReplyGenerator:
             except Exception:
                 pass
             self._session = None
+        if not session.sentences:
+            reply_trace.drop()
         if session.sentences:
             h.commit_reply(" ".join(session.sentences))      # в память и журнал уходит то, что она успела сказать
         return action_request, failed and not session.sentences and not session.cancelled
@@ -385,4 +392,5 @@ class ReplyGenerator:
             logger.warning(f"Не удалось решить, что сказать: {e}")
             return
         if data and data.get("say") and data.get("text"):
+            reply_trace.begin("fact", system, user, max_tokens=160, temperature=0.7, must=must, question=question)
             await h.say(str(data["text"]), direct=True)

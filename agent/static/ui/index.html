@@ -465,6 +465,15 @@
   </main>
 </div>
 
+<dialog id="reply-ctx" class="modal">
+  <div class="modal-box max-w-4xl">
+    <h3 class="font-bold text-lg">Контекст реплики</h3>
+    <p class="text-xs opacity-60 mb-2">Запрос, по которому локальная модель сформулировала эту фразу.</p>
+    <div id="reply-ctx-body" class="space-y-2 text-sm"></div>
+    <div class="modal-action"><form method="dialog"><button class="btn btn-sm">Закрыть</button></form></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>закрыть</button></form>
+</dialog>
 <script>
 let CHAR_NAME = '';   // имя активного персонажа: приходит в состоянии (/api/state, поле character)
 const $ = id => document.getElementById(id);
@@ -942,12 +951,14 @@ let stick = true;
 $('chat').addEventListener('scroll', () => {
   const c = $('chat'); stick = c.scrollHeight - c.scrollTop - c.clientHeight < 40;
 });
+let chatMsgs = [];
 function renderChat(dialogue, waiting) {
-  const html = dialogue.map(m => {
+  chatMsgs = dialogue;
+  const html = dialogue.map((m, i) => {
     const mine = m.role === 'user';
     const t = new Date(m.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
     return `<div class="chat ${mine ? 'chat-end' : 'chat-start'}">
-      <div class="chat-header text-xs opacity-60">${mine ? 'Ты' : 'Ассистент'} <time>${t}</time></div>
+      <div class="chat-header text-xs opacity-60">${mine ? 'Ты' : 'Ассистент'} <time>${t}</time>${mine ? '' : ` <button class="link link-hover" data-ctx="${i}" title="Показать запрос к модели, по которому родилась эта фраза">контекст</button>`}</div>
       <div class="chat-bubble ${mine ? 'chat-bubble-neutral' : ''} bubble-text">${esc(m.text)}</div></div>`;
   }).join('') + (waiting ? `<div class="chat chat-start"><div class="chat-bubble"><span class="loading loading-dots loading-sm"></span></div></div>` : '');
   if ($('chat').dataset.sig !== html) {
@@ -955,6 +966,25 @@ function renderChat(dialogue, waiting) {
     if (stick) $('chat').scrollTop = $('chat').scrollHeight;
   }
 }
+const CTX_KINDS = {converse: 'ответ в разговоре', fact: 'реплика по факту', quick: 'быстрая реплика'};
+$('chat').addEventListener('click', async e => {
+  const b = e.target.closest && e.target.closest('[data-ctx]'); if (!b) return;
+  const m = chatMsgs[+b.dataset.ctx]; if (!m) return;
+  const body = $('reply-ctx-body');
+  body.innerHTML = '<span class="loading loading-dots loading-sm"></span>';
+  $('reply-ctx').showModal();
+  let r = {found: false};
+  try { r = await (await fetch('/api/reply_context?text=' + encodeURIComponent(m.text))).json(); } catch (err) {}
+  const block = (title, text) => `<div><div class="text-xs opacity-60">${title}</div><pre class="whitespace-pre-wrap break-words rounded-box border border-base-300 p-2 text-xs max-h-72 overflow-y-auto">${esc(text || '')}</pre></div>`;
+  if (!r.found) {
+    body.innerHTML = block('Фраза', m.text) + '<div class="opacity-70">Контекста нет: фраза сказана без запроса к модели или ядро перезапускали после неё.</div>';
+    return;
+  }
+  const p = r.params || {};
+  body.innerHTML = block('Фраза', m.text)
+    + `<div class="text-xs opacity-60">${esc(CTX_KINDS[r.kind] || r.kind)} · токенов до ${esc(p.max_tokens ?? '-')} · температура ${esc(p.temperature ?? '-')}${p.stream ? ' · потоком' : ''}</div>`
+    + block('Инструкция (system)', r.system) + block('Контекст и сообщение (user)', r.user);
+});
 $('chat-form').onsubmit = async e => {
   e.preventDefault();
   const text = $('chat-input').value.trim(); if (!text) return;
