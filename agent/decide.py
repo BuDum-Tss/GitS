@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 import httpx
+
+import flow_trace
 from envcompat import env
 
 logger = logging.getLogger("decide")
@@ -155,6 +157,8 @@ class Decider:
             answers = None
         finally:
             self.last_ms = round((time.perf_counter() - t0) * 1000, 1)
+            flow_trace.step(None, "gliner", "bus", "gliner", "classify", ms=self.last_ms, size=len(text),
+                            label="ok" if answers else "none")
         return answers if isinstance(answers, dict) and answers else None
 
 

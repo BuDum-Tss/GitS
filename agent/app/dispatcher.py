@@ -1,6 +1,7 @@
 """Решение и действие по событию (ТЗ 29, ARC-4; ТЗ 03, ATT-10): приоритет, D0-D4, сводка, очередь речи, хук фокуса."""
 import logging
 
+import flow_trace
 import routes
 from domain import rules
 
@@ -28,6 +29,7 @@ class Dispatcher:
         item.priority = score["priority"]
         decision = force or self.scorer.decide(item.priority, att, score["away"])
         item.decision = decision
+        flow_trace.step(None, "attention", "gliner", "attention", "decision", ms=ms, size=len(item.text or ""), label=decision)
         think = self.think_route(item, decision)
         if not (think and item.origin == "self"):          # импульс самого агента не озвучивается и не уходит в сводку: он идёт в размышление
             self.act(item, decision)

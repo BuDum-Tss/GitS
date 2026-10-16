@@ -34,7 +34,7 @@ GROUPS = [
         N("tg", "telegram", "I", "бот, её аккаунт, посты канала", "Event telegram.*", "modules/telegram"),
         N("rim", "rimworld", "I", "игровой агент: ходы, комментатор, запись забега", "Event raid, death, colonists", "modules/rimworld"),
         N("mont", "montage", "I", "конвейер роликов: Remotion + ffmpeg, агент Claude", "job.update, вопросы", "modules/montage"),
-        N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider"),
+        N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (flow_trace.py, flow_spec.py, /api/flow)"),
     ]),
     dict(id="g_imp", col="A", title="Внутренние импульсы", tag="A",
          summary="Напоминания, которые агент назначил себе; сработавший срок становится событием. Болтовни по таймеру нет.", out="Event self.*", nodes=[

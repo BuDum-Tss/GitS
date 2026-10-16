@@ -16,11 +16,13 @@ handle() возвращает None, если это обычный разгов�
 import asyncio
 import json
 import logging
+import time
 
 from adapters.approver import ApprovalsModule
 from adapters.event_log_sqlite import SqliteEventLog
 from adapters.llm_lmstudio import LMStudioLLM
 from adapters.settings_provider import SettingsModule
+import flow_trace
 import journal
 from domain import risk as risk_policy
 from domain import rules
@@ -117,7 +119,19 @@ class Router:
     # ── исполнение ────────────────────────────────────────────────────────────
 
     async def _step(self, step: dict, candidates: dict) -> tuple[bool, str, str, str | None]:
-        """(успех, название, результат/причина, код ошибки по MOD-9 или None)."""
+        """(успех, название, результат/причина, код ошибки по MOD-9 или None); шаг пишется в трассу потока (ТЗ 17)."""
+        t0 = time.perf_counter()
+        res = await self._step_inner(step, candidates)
+        tool = candidates.get(str(step.get("tool", "")))
+        mod = str(tool.id).split(".", 1)[0] if tool is not None else "?"
+        ms = (time.perf_counter() - t0) * 1000
+        label = f"{step.get('tool', '?')}:{'ok' if res[0] else 'error'}"
+        flow_trace.step(None, "tools", "planner", "tools", "tool", label=label)
+        if tool is not None and "." in str(tool.id):
+            flow_trace.step(None, "tools", "tools", f"module:{mod}", "tool", ms=ms, label=label)
+        return res
+
+    async def _step_inner(self, step: dict, candidates: dict) -> tuple[bool, str, str, str | None]:
         tool = candidates.get(str(step.get("tool", "")))
         if tool is None:
             return False, str(step.get("tool", "?")), "такого инструмента у неё нет", "unknown"

@@ -18,6 +18,7 @@ import secrets
 import time
 from typing import Callable, Protocol
 
+import flow_trace
 import latency_trace
 
 logger = logging.getLogger("speech")
@@ -277,9 +278,11 @@ class SpeechSelector:
         if self.voice.available():
             try:
                 await self.voice.speak(utterance_id, text, emotion, priority, queue=queue)
+                flow_trace.step(None, "out_voice", "speech_queue", "out_voice", "speak", size=len(text or ""))
                 return
             except Exception as e:
                 logger.warning(f"Модуль голоса не принял реплику, остаётся текст: {e}")
+        flow_trace.step(None, "out_dashboard", "speech_queue", "out_dashboard", "speak", size=len(text or ""))
         await self.text.speak(utterance_id, text, emotion, priority)
 
     async def stop(self, utterance_id: str | None = None) -> None:
