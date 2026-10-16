@@ -425,8 +425,7 @@ async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tm
         assert voice.available() and not selector.is_speaking()
         await selector.speak("u-0000aaaa", "Первое предложение. Второе предложение.", "happy", 50)
         assert selector.is_speaking()
-        await wait(lambda: presence.state["speaking"] and presence.state["segment"] == "Первое предложение.")
-        await wait(lambda: presence.state["segment"] == "Второе предложение.")
+        await wait(lambda: presence.state["speaking"] and presence.state["segment"] == "Первое предложение. Второе предложение.")
         await wait(lambda: not presence.state["speaking"] and not selector.is_speaking())
         # «замолчи»: остановка на границе предложения
         await selector.speak("u-0000bbbb", "Раз. Два. Три. Четыре.", None, 50)

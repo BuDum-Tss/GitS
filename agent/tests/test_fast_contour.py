@@ -130,8 +130,7 @@ class Rig:
                                    llm=self.llm)
         self.router = self.companion.router = Router()
         self.companion.io = SimpleNamespace(deliver=None)
-        if fast is not None:
-            settings.update(fast_contour=fast)
+        settings.update(fast_contour={"stream": True, **(fast or {})})      # потоковый путь выключен по умолчанию: тесты включают его сами
         self.att = None
         if attention:
             self.cfg = copy.deepcopy(settings.DEFAULTS)

@@ -1,7 +1,7 @@
 """Очередь реплик и воспроизведение (ТЗ 12, раздел 5: протокол речи, VOICE-3, VOICE-4).
 
-Ядро шлёт `speak` (реплика целиком) и `speak.stop`; модуль режет реплику на предложения (`segmenter.split_sentences`),
-синтезирует и играет их по одному, а событиями `voice.speech` сообщает, что звучит: `started` (первое предложение),
+Ядро шлёт `speak` (реплика целиком) и `speak.stop`; модуль синтезирует и играет её одним куском (без разбивки на предложения),
+а событиями `voice.speech` сообщает, что звучит: `started` (первое предложение),
 `segment` (следующие), `ended` (`completed` или причина обрыва `stop` / `replaced` / `barge_in` / `muted` / `error`).
 
 Предзагрузка (VOICE-3): пока звучит предложение, следующее уже синтезируется, паузы между предложениями не растут. Реплика
@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 from gits_sdk import trace as latency_trace  # метки трассы задержки: SDK, не внутренности ядра (ТЗ 31)
-from segmenter import split_sentences
 
 logger = logging.getLogger("speaker")
 
@@ -94,7 +93,8 @@ class Speaker:
 
     async def speak(self, uid: str, text: str, emotion: str | None = None, replace: bool = False,
                     trace: dict | None = None) -> None:
-        segments = split_sentences(text or "")
+        whole = (text or "").strip()
+        segments = [whole] if whole else []               # реплика озвучивается одним куском: без разбивки на предложения
         if not segments:
             self._ended(Utterance(uid, text or "", []), completed=False, reason="error")
             return
