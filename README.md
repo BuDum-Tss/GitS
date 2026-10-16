@@ -53,7 +53,7 @@
   скриптом `python sdk/tools/gen_contract_doc.py` строятся [docs/MODULE_CONTRACT.md](docs/MODULE_CONTRACT.md) и схемы `docs/contract/*.json`
   (тест сверяет). Запросы модуля к ядру: `core.ask`, `core.tts`, `core.tool.call`, `core.persona`, `core.llm.ask`,
   `core.memory.recall` / `core.memory.remember` и другие; запросы справочника (`core.lookup`, `core.experience.add`, `core.kb.ingest`)
-  описаны, но пока отвечают `unavailable` (статус `planned`).
+  работают (ТЗ 04, контракт 1.4); справочники грузит `agent/tools/knowledge_ingest.py`.
 - **SDK** (`sdk/`, пакет `gits-sdk`): типизированный `ModuleClient`, `FakeCore` для тестов без ядра. Ядро берёт SDK напрямую из репозитория
   (`agent/main.py` добавляет `sdk` в `sys.path`), ставить его не нужно; для модуля в своём окружении: `pip install -e sdk`.
 - **Шаблон нового модуля**: [sdk/template/](sdk/template/README.md) (манифест, обработчики, точка входа, тесты на `FakeCore`);

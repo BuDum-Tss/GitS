@@ -2,7 +2,7 @@
   "name": "core.experience.add",
   "direction": "module->core",
   "kind": "request",
-  "status": "planned",
+  "status": "stable",
   "since": "1.0",
   "errors": [
     "bad_request",
@@ -45,7 +45,15 @@
     "properties": {
       "stored": {
         "type": "boolean",
-        "description": "записано ли"
+        "description": "записано ли (false: объединено с похожим)"
+      },
+      "id": {
+        "type": "integer",
+        "description": "номер записи"
+      },
+      "merged": {
+        "type": "boolean",
+        "description": "объединено с существующей"
       }
     },
     "additionalProperties": true,

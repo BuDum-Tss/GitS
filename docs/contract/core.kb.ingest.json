@@ -2,11 +2,12 @@
   "name": "core.kb.ingest",
   "direction": "module->core",
   "kind": "request",
-  "status": "planned",
+  "status": "stable",
   "since": "1.0",
   "errors": [
     "bad_request",
-    "unavailable"
+    "unavailable",
+    "denied"
   ],
   "request": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -49,7 +50,22 @@
     "properties": {
       "stored": {
         "type": "integer",
-        "description": "сколько документов принято",
+        "description": "сколько кусков записано",
+        "minimum": 0
+      },
+      "added": {
+        "type": "integer",
+        "description": "новых кусков",
+        "minimum": 0
+      },
+      "updated": {
+        "type": "integer",
+        "description": "обновлено",
+        "minimum": 0
+      },
+      "skipped": {
+        "type": "integer",
+        "description": "пропущено",
         "minimum": 0
       }
     },

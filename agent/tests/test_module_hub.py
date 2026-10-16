@@ -562,7 +562,7 @@ async def test_core_ask_bad_body_is_bad_request_and_memory_requests_unavailable(
             assert (await raw.request("core.ask", {"question": "?"}))["error"]["code"] == "bad_request"
             for t in ("core.lookup", "core.experience.add", "core.kb.ingest"):
                 body = await raw.request(t, {})
-                assert body["error"]["code"] == "unavailable" and "ТЗ 04" in body["error"]["message"]
+                assert body["error"]["code"] == "bad_request"                      # справочник реализован (ТЗ 04): пустое тело неверно
             for t, body in (("core.memory.recall", {"query": "чай"}), ("core.memory.remember", {"text": "любит чай"})):
                 assert (await raw.request(t, body))["error"]["code"] == "unavailable"          # память к тестовому ядру не подключена
             assert (await raw.request("core.privacy_terms", {}))["error"]["code"] == "unavailable"       # список ставит ядро (ТЗ 10)

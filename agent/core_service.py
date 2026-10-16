@@ -25,6 +25,7 @@ import events_log
 import fast_brain
 import episode_routes
 import episode_service
+import knowledge_service
 import lesson_routes
 import lesson_service
 import impulse_service
@@ -301,6 +302,7 @@ async def _run(config: dict):
     layer.requests.episodes = episodes                    # core.memory.episodes
     lessons = lesson_service.build(companion, episodes)   # ТЗ 28: разбор ошибок после сна, уроки и убеждения в контексте
     lesson_routes.set_hub(lessons)
+    layer.requests.knowledge = knowledge_service.build(lessons, episodes)       # ТЗ 04: справочники и опыт модулей (core.lookup и др.)
     await impulses.plans.start()                         # планы пользователя -> напоминания себе (без опроса модели, ТЗ 30)
 
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──

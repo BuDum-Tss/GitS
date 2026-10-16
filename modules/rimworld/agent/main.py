@@ -91,6 +91,7 @@ async def amain(config: dict) -> int:
 
     ctrl = Controller(config)
     ctrl.link = link
+    ctrl._memory.lesson_picker = link.lessons_for        # уроки в промпте по ситуации, а не последние 15 (ТЗ 04, KB-20)
     ctrl.recorder = RunRecorder(mem_dir, settings.load,
                                 max_hours=lambda: link.module_settings.get("max_record_hours", 6))
     ctrl.director = CameraDirector()

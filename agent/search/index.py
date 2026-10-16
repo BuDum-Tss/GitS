@@ -121,6 +121,14 @@ class HybridIndex:
             self._db.commit()
             return True
 
+    def keys(self, collection: str) -> list[str]:
+        with self._lock:
+            return [r[0] for r in self._db.execute("SELECT key FROM docs WHERE collection=?", (collection,)).fetchall()]
+
+    def collections(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._db.execute("SELECT collection, COUNT(*) FROM docs GROUP BY collection").fetchall())
+
     def count(self, collection: str | None = None) -> int:
         with self._lock:
             if collection:

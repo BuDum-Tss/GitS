@@ -101,6 +101,7 @@ GROUPS = [
         N("sleep", "Режим сна (SleepScheduler + SleepRunner)", "A", "фоновая политика памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами", "episode.summary, дневник", "есть (ТЗ 27): app/sleep.py, app/sleep_scheduler.py, app/episode_summary.py, app/diary.py"),
         N("erecall", "EpisodeRecall", "A", "поиск эпизодов и дневника по смыслу, recall_episode(id) с разворотом до событий, core.memory.episodes", "MemoryHit[]", "есть (ТЗ 27): app/episode_recall.py, episode_routes.py"),
         N("lessons", "Уроки на ошибках (LessonService)", "A", "шаг после сна: метки mistake журнала по ситуациям -> урок (ситуация, действие, исход, что делать иначе, уверенность, подтверждения, эпизоды); похожие сливаются (cos >= 0,90); неэффективные устаревают; доля повторов по видам ошибок", "Lesson", "есть (ТЗ 28): domain/lessons.py, app/lessons.py, adapters/lesson_store.py, lesson_service.py"),
+        N("kb", "Справочники и опыт модулей (KnowledgeBase)", "A", "коллекции общего гибридного поиска: вики и описания RimWorld, регламенты монтажа (куски 250-450 слов по заголовкам, knowledge.db); опыт модулей идёт в уроки области <модуль>.experience; запросы core.kb.ingest (права по манифесту), core.lookup, core.experience.add; загрузка скриптом tools/knowledge_ingest.py", "Hit, kb chunk", "есть (ТЗ 04): knowledge_base.py, knowledge_service.py, core_requests.py; в игре уроки в промпте подбираются по ситуации (modules/rimworld core_link.lessons_for)"),
         N("beliefs", "Убеждения (принимает сама)", "A", "урок с подтверждениями >= K из >= M эпизодов становится убеждением без подтверждения человека; запись в журнал (причина, эпизоды, прежнее значение); проверка по конституции (шаблоны + модель), лимит в сутки и 12 активных; отмена владельцем в дашборде", "Belief, belief_log", "есть (ТЗ 28): те же файлы, lesson_routes.py; блок убеждений и уроков по ситуации в ContextBuilder по настройке lessons.context"),
         N("elog", "EventLog", "I", "SQLite events.db: журнал событий, трасса, решения", "контракт журнала", "events_log.py: глобальные функции, 16 импортов"),
         N("stores", "Диалог, записи, люди", "I", "JSON: диалог, MemoryStore (планы, напоминания), отношения", "репозитории", "user_memory.py, memory_store.py, relationships.py"),
@@ -157,6 +158,7 @@ EDGES = [
     ("mr", "erecall", "use", "recall: эпизоды и факты", None),
     ("sleep", "lessons", "flow", "разбор ошибок после сна", None), ("lessons", "elog", "r", "метки mistake", None),
     ("lessons", "epi", "r", "эпизоды ошибок", None), ("lessons", "lms", "ext", "урок, проверка убеждения", None),
+    ("hub", "kb", "flow", "core.kb.ingest, core.lookup", None), ("kb", "lessons", "use", "опыт модулей", None),
     ("lessons", "beliefs", "use", "подтверждённый урок", None), ("ctx", "beliefs", "r", "убеждения и уроки по ситуации", None),
 ]
 # ссылки макроуровня (когда конец свёрнут): номер шага

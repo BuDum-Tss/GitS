@@ -281,7 +281,7 @@ class Controller:
         st = getattr(self, "_last_state", None) or {}
         intel = colony_intel.age_block(st) + colony_intel.survey_block(st, colony_intel.load_survey(st.get("save_id", "")))
         return (intel + self._ambition_block() + self._tasks_block() + action_journal.block() + knowledge.block(situation)
-                + self._memory.build_context_block() + self._rel.summary())
+                + self._memory.build_context_block(situation) + self._rel.summary())
 
     @staticmethod
     def _tasks_block() -> str:
