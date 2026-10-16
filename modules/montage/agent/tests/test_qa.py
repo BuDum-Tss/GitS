@@ -128,8 +128,8 @@ def test_voiceover_words_span_the_replica():
 
 def test_zone_findings_catch_overlaps_and_unsafe_zones():
     plan = make_plan()
-    plan["inserts"].append({"id": "i3", "kind": "chamber_card", "at_ms": 400, "dur_ms": 1500, "beat": "b1",
-                            "props": {"chamber": 1, "title": "Х", "pictograms": ["cube", "button"]}})
+    plan["inserts"].append({"id": "i3", "kind": "chamber_sign", "at_ms": 400, "dur_ms": 2500, "beat": "b1",
+                            "props": {"big": "1", "small": "Х", "done": 1, "total": 19, "active": [], "title": "Х"}})
     found = qa.zone_findings(plan, [], ZONES)
     assert any(f.check == "overlap" and "i1" in f.message and "i3" in f.message for f in found)
     plan2 = make_plan()
@@ -143,8 +143,8 @@ def test_captions_move_away_from_inserts():
     plan = make_plan()
     y_free, ok = qa.caption_y_ratio(plan, ZONES, 6000)
     assert ok and y_free == pytest.approx(0.62)
-    plan["inserts"].append({"id": "x", "kind": "chamber_card", "at_ms": 6000, "dur_ms": 1500, "beat": "b2",
-                            "props": {"chamber": 1, "title": "т", "pictograms": ["cube", "button"]}})
+    plan["inserts"].append({"id": "x", "kind": "chamber_sign", "at_ms": 6000, "dur_ms": 2500, "beat": "b2",
+                            "props": {"big": "1", "small": "т", "done": 1, "total": 19, "active": [], "title": "т"}})
     y_busy, ok = qa.caption_y_ratio(plan, ZONES, 6500)
     assert ok and y_busy != pytest.approx(0.62)
 

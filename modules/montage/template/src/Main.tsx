@@ -20,7 +20,7 @@ export const Main: React.FC<MainProps> = (plan) => {
 		<AbsoluteFill style={{backgroundColor: colors.chamberDark}}>
 			<Segments segments={plan.segments} voiceover={plan.voiceover} />
 			<Blackout items={plan.blackout} />
-			<Inserts inserts={plan.inserts} />
+			<Inserts inserts={plan.inserts} voiceover={plan.voiceover} />
 			<Captions plan={plan} />
 			{plan.cta ? <Cta cta={plan.cta} durationInFrames={durationInFrames} /> : null}
 			<Voiceover items={plan.voiceover} />

@@ -5,180 +5,253 @@
     "height": 1080,
     "fps": 30
   },
-  "duration_ms": 24000,
+  "duration_ms": 33000,
   "title": "demo_horizontal",
+  "blackout": [],
+  "music": null,
   "segments": [
     {
       "id": "s1",
       "source": "sources/demo_horizontal_h264.mp4",
       "in_ms": 0,
       "out_ms": 9000,
-      "at_ms": 0,
-      "volume": 1,
-      "crop": {
-        "mode": "center"
-      },
-      "zoom": 0,
-      "beat": "b1"
-    },
-    {
-      "id": "s2",
-      "source": "sources/demo_horizontal_h264.mp4",
-      "in_ms": 9000,
-      "out_ms": 18000,
-      "at_ms": 9000,
-      "volume": 1,
-      "crop": {
-        "mode": "center"
-      },
-      "zoom": 0.03,
-      "beat": "b2"
-    },
-    {
-      "id": "s3",
-      "source": "sources/demo_horizontal_h264.mp4",
-      "in_ms": 18000,
-      "out_ms": 24000,
       "at_ms": 18000,
       "volume": 1,
       "crop": {
         "mode": "center"
       },
+      "zoom": 0.03,
+      "beat": "b5",
+      "frame": "hud",
+      "frame_label": "КАМЕРА 07 · ЗАПИСЬ ИСПЫТАНИЯ"
+    },
+    {
+      "id": "s2",
+      "source": "sources/demo_horizontal_h264.mp4",
+      "in_ms": 19000,
+      "out_ms": 22000,
+      "at_ms": 30000,
+      "volume": 1,
+      "crop": {
+        "mode": "center"
+      },
       "zoom": 0,
-      "beat": "b3"
+      "beat": "b6",
+      "frame": "hud",
+      "frame_label": "КАМЕРА 07 · ЗАПИСЬ ИСПЫТАНИЯ"
     }
   ],
   "captions": {
-    "enabled": true,
-    "source": "both",
+    "enabled": false,
+    "source": "transcript",
     "style": "aperture_default",
-    "overrides": [
-      {
-        "word_index": 17,
-        "highlight": true
-      },
-      {
-        "word_index": 22,
-        "text": "жертв."
-      }
-    ],
+    "overrides": [],
     "words_file": "demo/words.json"
   },
   "voiceover": [
     {
       "id": "vo1",
-      "at_ms": 9500,
+      "at_ms": 7400,
       "text": "Наблюдение: подопытный уверен, что кнопка нажимается сама.",
       "emotion": "neutral",
       "tts_path": null,
       "duration_ms": 3400,
-      "beat": "b2",
+      "beat": "b3",
       "duck": false
     }
   ],
   "inserts": [
     {
       "id": "i1",
-      "kind": "chamber_card",
-      "at_ms": 300,
-      "dur_ms": 2400,
+      "kind": "intro",
+      "at_ms": 0,
+      "dur_ms": 4000,
       "beat": "b1",
       "props": {
-        "chamber": 7,
-        "of": 19,
-        "title": "Куб-компаньон: падение",
-        "pictograms": [
-          "cube",
+        "subtitle": "Лаборатория ГЛаДОС · отчёт об испытании № 07",
+        "wordmark": "APERTURE SCIENCE"
+      }
+    },
+    {
+      "id": "i2",
+      "kind": "chamber_sign",
+      "at_ms": 4000,
+      "dur_ms": 3000,
+      "beat": "b2",
+      "props": {
+        "big": "07",
+        "small": "07/19 · колония «Поселение» · день 1",
+        "done": 7,
+        "total": 19,
+        "active": [
+          "colonists",
+          "build",
+          "sleep",
+          "night"
+        ],
+        "title": "Испытание: первая ночь"
+      }
+    },
+    {
+      "id": "i3",
+      "kind": "glados_room",
+      "at_ms": 7000,
+      "dur_ms": 6000,
+      "beat": "b3",
+      "props": {
+        "moods": [
           {
-            "name": "button",
-            "active": true
+            "from_ms": 7000,
+            "to_ms": 9200,
+            "mood": "thinking"
           },
           {
-            "name": "gear",
-            "active": true,
-            "label": "x2"
-          },
+            "from_ms": 9200,
+            "to_ms": 11000,
+            "mood": "surprised"
+          }
+        ],
+        "speech": [
           {
-            "name": "clock",
-            "active": false
+            "from_ms": 11200,
+            "to_ms": 12600
           }
         ]
       }
     },
     {
-      "id": "i2",
-      "kind": "lower_third",
-      "at_ms": 3200,
-      "dur_ms": 3400,
-      "beat": "b1",
-      "props": {
-        "text": "Подопытный № 07",
-        "sub": "Камера 7, северное крыло"
-      }
-    },
-    {
-      "id": "i3",
-      "kind": "hazard_banner",
-      "at_ms": 7000,
-      "dur_ms": 2000,
-      "beat": "b1",
-      "props": {
-        "text": "Нарушение протокола"
-      }
-    },
-    {
       "id": "i4",
-      "kind": "pixel_transition",
-      "at_ms": 12400,
-      "dur_ms": 600,
-      "beat": "b2",
+      "kind": "blueprint",
+      "at_ms": 13000,
+      "dur_ms": 5000,
+      "beat": "b4",
       "props": {
-        "direction": "out"
-      }
-    },
-    {
-      "id": "i5",
-      "kind": "custom",
-      "at_ms": 13200,
-      "dur_ms": 2200,
-      "beat": "b2",
-      "props": {
-        "component": "JournalLog",
-        "lines": [
-          "00:13 нажатие: кнопка 1",
-          "00:14 падение: куб 1",
-          "00:15 вывод: протокол нарушен"
+        "title": "Спальня 4×4",
+        "kicker": "Отчёт для подопытных",
+        "note": "«Комната» — помещение по протоколу колонии, ред. 12 мартомая",
+        "drawing": [
+          {
+            "type": "rect",
+            "x": 0.3802,
+            "y": 0.3296,
+            "w": 0.1917,
+            "h": 0.3407
+          },
+          {
+            "type": "line",
+            "x1": 0.4281,
+            "y1": 0.3296,
+            "x2": 0.4281,
+            "y2": 0.6704,
+            "weight": "thin"
+          },
+          {
+            "type": "line",
+            "x1": 0.3802,
+            "y1": 0.4148,
+            "x2": 0.5719,
+            "y2": 0.4148,
+            "weight": "thin"
+          },
+          {
+            "type": "line",
+            "x1": 0.476,
+            "y1": 0.3296,
+            "x2": 0.476,
+            "y2": 0.6704,
+            "weight": "thin"
+          },
+          {
+            "type": "line",
+            "x1": 0.3802,
+            "y1": 0.5,
+            "x2": 0.5719,
+            "y2": 0.5,
+            "weight": "thin"
+          },
+          {
+            "type": "line",
+            "x1": 0.524,
+            "y1": 0.3296,
+            "x2": 0.524,
+            "y2": 0.6704,
+            "weight": "thin"
+          },
+          {
+            "type": "line",
+            "x1": 0.3802,
+            "y1": 0.5852,
+            "x2": 0.5719,
+            "y2": 0.5852,
+            "weight": "thin"
+          },
+          {
+            "type": "path",
+            "weight": "wall",
+            "d": "M 0.375 0.6796 V 0.3204 H 0.5771 V 0.6796 H 0.5048 M 0.4569 0.6796 H 0.375"
+          },
+          {
+            "type": "path",
+            "d": "M 0.4569 0.6796 A 0.0479 0.0479 0 0 1 0.5048 0.5944"
+          },
+          {
+            "type": "rect",
+            "x": 0.3922,
+            "y": 0.3509,
+            "w": 0.0431,
+            "h": 0.1278
+          },
+          {
+            "type": "rect",
+            "x": 0.397,
+            "y": 0.3594,
+            "w": 0.0335,
+            "h": 0.0298
+          }
+        ],
+        "callouts": [
+          {
+            "x": 0.5771,
+            "y": 0.4148,
+            "label": "Стена: гранит, 16 блоков"
+          },
+          {
+            "x": 0.4808,
+            "y": 0.6796,
+            "label": "Дверь: одна, наружу не открывать"
+          },
+          {
+            "x": 0.4138,
+            "y": 0.4148,
+            "label": "Кровать: одна на трёх подопытных"
+          },
+          {
+            "x": 0.476,
+            "y": 0.5,
+            "label": "Площадь: 4×4 клетки, впечатление «тесно»"
+          }
         ]
       }
     },
     {
-      "id": "i6",
-      "kind": "pixel_transition",
-      "at_ms": 15600,
-      "dur_ms": 600,
-      "beat": "b2",
+      "id": "i5",
+      "kind": "result_sign",
+      "at_ms": 27000,
+      "dur_ms": 3000,
+      "beat": "b6",
       "props": {
-        "direction": "in"
+        "big": "ПРОЙДЕНО",
+        "small": "потерь 0 · дней 12 · набегов отбито 2",
+        "done": 19,
+        "total": 19,
+        "active": [
+          "colonists",
+          "build",
+          "research",
+          "raid"
+        ],
+        "title": "Итог испытания"
       }
-    },
-    {
-      "id": "i7",
-      "kind": "test_result",
-      "at_ms": 18500,
-      "dur_ms": 3200,
-      "beat": "b3",
-      "props": {
-        "result": "fail",
-        "label": "Провал",
-        "text": "Куб цел, подопытный нет"
-      }
-    }
-  ],
-  "blackout": [
-    {
-      "from_ms": 13000,
-      "to_ms": 15600,
-      "opacity": 1
     }
   ],
   "sfx": [
@@ -187,31 +260,22 @@
       "name": "chime_up"
     },
     {
-      "at_ms": 3200,
-      "name": "tick"
-    },
-    {
-      "at_ms": 7000,
-      "name": "buzz_error"
-    },
-    {
-      "at_ms": 12400,
+      "at_ms": 4000,
       "name": "whoosh"
     },
     {
-      "at_ms": 18500,
-      "name": "chime_down"
+      "at_ms": 7000,
+      "name": "tick"
     },
     {
-      "at_ms": 21500,
-      "name": "elevator_ding"
+      "at_ms": 27000,
+      "name": "chime_up"
     }
   ],
-  "music": null,
   "cta": {
     "platform": "youtube",
-    "at_ms": 21500,
+    "at_ms": 30200,
     "text": "Следующие испытания уже ждут вас в лаборатории",
-    "beat": "b3"
+    "beat": "b6"
   }
 }

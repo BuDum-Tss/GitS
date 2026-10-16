@@ -115,10 +115,9 @@ export function pageWindows(pages: CaptionPage[]): {startMs: number; holdEndMs: 
 // ---------- положение субтитров рядом со вставками (регламент §4.1: «во время вставок субтитры двигаются») ----------
 export function insertZoneKind(ins: Insert): ZoneKind | null {
 	switch (ins.kind) {
-		case 'chamber_card':
-		case 'hazard_banner':
-		case 'test_result':
-		case 'lower_third':
+		case 'chamber_sign':
+		case 'result_sign':
+		case 'glados_room':
 			return ins.kind;
 		case 'custom':
 			return ins.props.component === 'JournalLog' ? 'journal' : ins.props.component === 'FontSpecimen' ? 'specimen' : null;

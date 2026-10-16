@@ -380,7 +380,7 @@ class Pipeline:
         else:
             parts.append("Слов расшифровки нет: субтитры только по закадру (`captions.source: voiceover`) или без них.")
         if not info.get("files"):
-            parts.append("Ролик собирается из графики Aperture (карточки, баннеры, журнал) и закадра; фон `chamberDark` с сеткой.")
+            parts.append("Ролик собирается из сцен Aperture (интро, схема-чертёж, комната ГЛаДОС, отбивки-таблички, журнал) и закадра.")
         return "\n".join(parts)
 
     def _references(self) -> str:
@@ -908,7 +908,9 @@ class Pipeline:
         _, mp = await asyncio.to_thread(qa_mod.write_report, job.qa, job.job_id, outcome, draft=False, fixed=[], stem="report_final")
         out_dir = Path(os.path.expandvars(str(self.setting("output_dir"))))
         copy = await asyncio.to_thread(self._copy_out, final, out_dir, platform, job.job_id)
-        if not (plan.get("captions") or {}).get("enabled"):                 # субтитры не вжигались: файл .srt рядом с финалом
+        fmt = plan.get("format") or {}
+        burned = bool((plan.get("captions") or {}).get("enabled")) and fmt.get("height", 0) > fmt.get("width", 0)   # ТЗ 23 SC-4: только вертикаль
+        if not burned:                                                      # субтитры не вжигались: файл .srt рядом с финалом
             text = await asyncio.to_thread(srt_mod.build_srt, plan, words, qa_mod.load_zones(self.layout))
             if text:
                 srt_path = final.with_suffix(".srt")

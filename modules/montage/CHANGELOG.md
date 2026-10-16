@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Changed (ТЗ 23: сцены дизайн-системы v2)
+- Сцены дизайн-системы «Лаборатория Aperture» v2 в шаблоне Remotion (ТЗ 23, SC-1..SC-7, ветка `tz/23-design-scenes`):
+  - SC-1: `template/src/style/tokens.ts` приведён к `tokens.json` дизайн-системы (копия `template/design/tokens.json`): цвета `sign-*`, `bp-*`, `chamberDark-plate`, прозрачности, длительности (`intro`, `bp-draw`, `pet-bob`, `pet-talk`, `caption-crossfade`, `bumper-hold`), размеры и типографика; `hazardYellow` и `alertRed` удалены, как и компоненты `ChamberCard`, `HazardBanner`, `TestResult`, `PixelTransition`, `LowerThird`. Градиенты и тени вынесены в `tokens.ts` (`effects`). Вариативный Plex Sans зарегистрирован с диапазоном осей (`plexStyle(вес, ширина)`).
+  - SC-2: компоненты `Intro` (ирис из 8 лопастей, 4 с), `Blueprint` (рисунок из `line|rect|circle|path` в долях кадра, выноски до 4 за пределами рисунка, прорисовка 2,5 с и подписи после), `GladosRoom` (фон комнаты, питомец 62 % или 42 % высоты, покачивание, пульс до 1,025 по громкости wav закадра или по отрезкам речи, кроссфейд эмоций 150 мс со сжатием 0,96 → 1), `ChamberSign` и `ResultSign` (выезд 300 мс, держится 2,5-3,5 с, уход к белому), `FootageFrame` (рамка HUD и подпись), `Icon` (14 иконок). Покадровая математика сцен вынесена в `src/sceneMath.ts` без React.
+  - SC-3: схема плана (`schema.ts` → `plan.schema.json`): вставки `intro`, `blueprint`, `glados_room`, `chamber_sign`, `result_sign`, `custom`; у сегмента `frame: "hud"` и `frame_label`. `plan_schema.py` проверяет те же поля и берёт виды вставок, иконки и эмоции из `plan.schema.json`.
+  - SC-4: `Captions` рисует субтитры только в вертикали; `.srt` рядом с финалом кладётся для горизонтали и квадрата (`Pipeline`: «не вжигались» = не вертикаль или `enabled: false`).
+  - SC-5: ассеты в `template/public/` (`scenes/glados-room.webp`, `pet/<6 эмоций>.png`, `hud/hud-frame.svg`) попадают в рабочую папку задачи (`workspace.PUBLIC_DIRS`). Питомец пока стикерами 145×200: нужна версия от 1000 px (README).
+  - SC-6: `resources/GlaDOS/montage/APERTURE_STYLE.md` переписан под пять сцен; `editor_system.md`, `stage_plan.md` и рубрика `qa_rubric.md` (новый критерий `scenes`) знают сцены и правило «субтитры только в вертикали»; `qa.py` зоны и OCR берут новые виды.
+  - SC-7: демо-планы шортса (интро, комната, схема, игра с субтитрами, итог, призыв) и YouTube (интро, отбивка, комната, схема, игра в рамке HUD, итог, призыв), квадрат и короткий вертикальный; `demo/render-demo-stills.mjs` выдаёт кадры сцен.
+  - Тесты: `test_template.py` (токены против регламента и `design/tokens.json`, `scripts/check-scenes.mjs`, ассеты, демо-планы, зоны), `test_plan_schema.py` (проверки сцен, рамка HUD, словари из схемы). Старые тесты правились только там, где опирались на удалённые виды вставок. Пиктограммы старого набора (`assets/pictograms`, `Pictogram`, `PictogramSheet`) оставлены служебными: в плане роликов их больше нет.
+
 ### Changed
 - ТЗ 05 (CHR-1, CHR-2, CHR-3, CHR-4): SDK `gits-sdk` (импорт `gits_sdk`, в проверках `PYTHONPATH` на `sdk` worktree GitS). Переменная
   `GLADOS_CORE_URL` переименована в `GITS_CORE_URL`; `agent/envcompat.py` читает новое имя и старое с предупреждением.

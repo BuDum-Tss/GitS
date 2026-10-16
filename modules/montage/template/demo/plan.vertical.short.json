@@ -7,24 +7,10 @@
   },
   "duration_ms": 9000,
   "title": "demo_vertical_short",
-  "segments": [
-    {
-      "id": "s1",
-      "source": "sources/demo_vertical_h264.mp4",
-      "in_ms": 0,
-      "out_ms": 9000,
-      "at_ms": 0,
-      "volume": 1,
-      "crop": {
-        "mode": "center"
-      },
-      "zoom": 0.02,
-      "beat": "b1"
-    }
-  ],
+  "segments": [],
   "captions": {
     "enabled": true,
-    "source": "both",
+    "source": "voiceover",
     "style": "aperture_default",
     "overrides": [],
     "words_file": "demo/words.json"
@@ -32,7 +18,7 @@
   "voiceover": [
     {
       "id": "vo1",
-      "at_ms": 5800,
+      "at_ms": 3400,
       "text": "Наблюдение: подопытный уверен, что кнопка нажимается сама.",
       "emotion": "neutral",
       "tts_path": null,
@@ -44,52 +30,59 @@
   "inserts": [
     {
       "id": "i1",
-      "kind": "chamber_card",
+      "kind": "chamber_sign",
       "at_ms": 200,
-      "dur_ms": 2300,
+      "dur_ms": 3000,
       "beat": "b1",
       "props": {
-        "chamber": 7,
-        "of": 19,
-        "title": "Куб-компаньон: падение",
-        "pictograms": [
-          "cube",
-          {
-            "name": "button",
-            "active": true
-          },
-          {
-            "name": "gear",
-            "active": true,
-            "label": "x2"
-          },
-          {
-            "name": "clock",
-            "active": false
-          }
-        ]
+        "big": "07",
+        "small": "07/19 · колония «Поселение» · день 1",
+        "done": 7,
+        "total": 19,
+        "active": [
+          "colonists",
+          "build",
+          "sleep",
+          "night"
+        ],
+        "title": "Испытание: первая ночь"
       }
     },
     {
       "id": "i2",
-      "kind": "hazard_banner",
-      "at_ms": 3600,
-      "dur_ms": 1800,
-      "beat": "b1",
+      "kind": "glados_room",
+      "at_ms": 3200,
+      "dur_ms": 3000,
+      "beat": "b2",
       "props": {
-        "text": "Нарушение протокола"
+        "moods": [
+          {
+            "from_ms": 3200,
+            "to_ms": 5200,
+            "mood": "happy"
+          }
+        ],
+        "speech": []
       }
     },
     {
       "id": "i3",
-      "kind": "test_result",
-      "at_ms": 6000,
-      "dur_ms": 2800,
+      "kind": "result_sign",
+      "at_ms": 6200,
+      "dur_ms": 3000,
       "beat": "b2",
       "props": {
-        "result": "pass",
-        "label": "Успех",
-        "text": "Куб на месте"
+        "big": "ПРОЙДЕНО",
+        "small": "потерь 0 · дней 12 · набегов отбито 2",
+        "done": 19,
+        "total": 19,
+        "active": [
+          "colonists",
+          "build",
+          "research",
+          "raid"
+        ],
+        "title": "Итог испытания"
       }
     }
   ],
@@ -100,11 +93,11 @@
       "name": "chime_up"
     },
     {
-      "at_ms": 3600,
-      "name": "buzz_error"
+      "at_ms": 3200,
+      "name": "whoosh"
     },
     {
-      "at_ms": 6000,
+      "at_ms": 6200,
       "name": "chime_up"
     }
   ],

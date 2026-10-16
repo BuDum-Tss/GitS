@@ -76,7 +76,7 @@ def _rects_overlap(a: dict, b: dict, min_share: float = 0.03) -> bool:
 def insert_zone_kind(ins: dict) -> str | None:
     """Порт `insertZoneKind` из timeline.ts."""
     kind = ins.get("kind")
-    if kind in ("chamber_card", "hazard_banner", "test_result", "lower_third"):
+    if kind in ("chamber_sign", "result_sign", "glados_room"):
         return kind
     if kind == "custom":
         comp = (ins.get("props") or {}).get("component")
@@ -360,7 +360,7 @@ def expected_texts(plan: dict, words: list[dict], zones: dict, max_pages: int = 
     out: list[tuple[int, str, str]] = []
     for ins in plan.get("inserts") or []:
         p = ins.get("props") or {}
-        text = p.get("title") if ins["kind"] == "chamber_card" else p.get("text") if ins["kind"] in ("hazard_banner", "test_result", "lower_third") else None
+        text = (p.get("title") if ins["kind"] in ("chamber_sign", "result_sign", "blueprint") else p.get("subtitle") if ins["kind"] == "intro" else None)
         if text:
             out.append((ins["at_ms"] + ins["dur_ms"] // 2, str(text), f"вставка {ins['id']}"))
     pages = caption_pages(plan, words, zones)
@@ -417,7 +417,6 @@ async def run_technical(plan: dict, words: list[dict], story: dict | None, video
     inserts = plan.get("inserts") or []
     cover = [(i["at_ms"] / 1000 - 0.2, (i["at_ms"] + i["dur_ms"]) / 1000 + 0.2) for i in inserts]
     black_ok = [(b["from_ms"] / 1000 - 0.2, b["to_ms"] / 1000 + 0.2) for b in plan.get("blackout") or []]
-    black_ok += [(i["at_ms"] / 1000 - 0.2, (i["at_ms"] + i["dur_ms"]) / 1000 + 0.2) for i in inserts if i["kind"] == "pixel_transition"]
     for a, b in await media.blackdetect(video, min_s=BLACK_MIN_S):
         for lo, hi in subtract((a, b), black_ok):
             if hi - lo >= BLACK_MIN_S:
@@ -531,7 +530,7 @@ def zone_findings(plan: dict, pages: list[dict], zones: dict) -> list[Finding]:
 
 # ---------------------------------------------------------------------------------------------------- смысловая проверка (MON-QA-2)
 
-CRITERIA = ("readability", "overlaps", "palette_fonts", "rhythm", "brief_match", "character_voice", "cta", "no_foreign_marks",
+CRITERIA = ("readability", "overlaps", "palette_fonts", "scenes", "rhythm", "brief_match", "character_voice", "cta", "no_foreign_marks",
             "hook", "story_clarity", "cuts", "sound", "voiceover", "ending")
 
 

@@ -20,7 +20,7 @@
   `template/`). Новая логика получает тест в `agent/tests/`. Тесты без Claude, сети, WhisperX, игры: подставляй заглушки.
 - **Всё асинхронно.** Блокирующий код (диск, subprocess, ffmpeg, Remotion) уводи в `asyncio.to_thread`.
 - **Стиль только из `resources/<Имя>/montage/APERTURE_STYLE.md`**, ремесло только из `docs/EDITING_CRAFT.md`. Цвета, шрифты и размеры в
-  коде компонентов берутся из `template/src/style/tokens.ts`, который повторяет регламент. Меняется регламент: правишь
+  коде компонентов берутся из `template/src/style/tokens.ts`, который повторяет регламент и `template/design/tokens.json` дизайн-системы v2. Меняется регламент: правишь
   его текст и токены вместе, и только по решению владельца.
 - **Шаблон (`template/`) и скиллы (`.claude/skills/`) меняются только отдельной задачей**, а не по ходу монтажа конкретного
   ролика. Монтажёр работает в копии шаблона внутри `jobs/<id>/work/`.
@@ -57,7 +57,7 @@
 | `agent/approval_panel.py` | одобрение по этапам в пространстве (ТЗ 15b): подпись этапа, файлы истории и плана, видео черновика, кнопки этапа; ответ идёт через `Pipeline.deliver_answer` |
 | `agent/core_api.py` | всё, что конвейер берёт у ядра (`core.tts`, `core.persona`, `core.kb.ingest`, ...), интерфейс для заглушек | готов |
 | `agent/prompts/` | `editor_system.md`, `stage_*.md`, `qa_rubric.md` | готовы |
-| `template/` | проект Remotion: композиция `Main`, схема `src/schema.ts`, токены `src/style/tokens.ts`, компоненты, демо | готов |
+| `template/` | проект Remotion: композиция `Main`, схема `src/schema.ts`, токены `src/style/tokens.ts` (равны `design/tokens.json` дизайн-системы v2), сцены `components/` (`Intro`, `Blueprint`, `GladosRoom`, `Sign`, `FootageFrame`, `Icon`), математика сцен `src/sceneMath.ts`, ассеты `public/scenes`, `public/pet`, `public/hud`, демо | готов |
 | `template/qa_zones.json` | зоны компонентов для проверок качества, строится из токенов (`npm run gen:qa-zones`) | готов |
 | `resources/<Имя>/montage/assets/fonts/`, `resources/<Имя>/montage/assets/sfx/`, `resources/<Имя>/montage/assets/pictograms/` | шрифты IBM Plex (OFL), синтезированные звуки, свои пиктограммы | готовы |
 | `resources/<Имя>/montage/APERTURE_STYLE.md`, `docs/EDITING_CRAFT.md` | регламент стиля и руководство по ремеслу (входят в системный промпт монтажёра) | готовы |
@@ -70,7 +70,8 @@
 Токены (если нужны новые значения) -> `template/src/style/tokens.ts` и регламент -> компонент в `template/src/components/` ->
 вид вставки в `template/src/schema.ts` (`insertKinds`) и в `Inserts.tsx` -> зона в `tokens.ts` (`zones`) и
 `npm run gen:qa-zones` -> кадр в `template/demo/render-demo-stills.mjs` (и демо-план в `make-demo-plans.mjs`) -> `npx remotion still` и просмотр
-кадра -> тесты `agent/tests/test_template.py` -> `CHANGELOG.md`. Агент-монтажёр может добавлять только компоненты в `work/src/custom/`.
+кадра -> проверка в `template/scripts/check-scenes.mjs` (математика сцены без браузера), тесты `agent/tests/test_template.py` и `test_plan_schema.py` -> `CHANGELOG.md`.
+Старые виды вставок (`chamber_card`, `hazard_banner`, `test_result`, `pixel_transition`, `lower_third`) удалены (ТЗ 23); ролик собирается из пяти сцен. Агент-монтажёр может добавлять только компоненты в `work/src/custom/`.
 
 ## Как проверить шаблон вручную
 ```

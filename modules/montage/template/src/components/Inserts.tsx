@@ -2,25 +2,24 @@ import React from 'react';
 import {Sequence, useVideoConfig} from 'remotion';
 import {customComponents} from '../custom';
 import {msToFrames} from '../motion';
-import type {Insert} from '../schema';
-import {ChamberCard} from './ChamberCard';
-import {HazardBanner} from './HazardBanner';
-import {LowerThird} from './LowerThird';
-import {PixelTransition} from './PixelTransition';
-import {TestResult} from './TestResult';
+import type {Insert, Voiceover} from '../schema';
+import {Blueprint} from './Blueprint';
+import {GladosRoom} from './GladosRoom';
+import {Intro} from './Intro';
+import {ChamberSign, ResultSign} from './Sign';
 
-const InsertView: React.FC<{insert: Insert; durationInFrames: number}> = ({insert, durationInFrames}) => {
+const InsertView: React.FC<{insert: Insert; durationInFrames: number; voiceover: Voiceover[]}> = ({insert, durationInFrames, voiceover}) => {
 	switch (insert.kind) {
-		case 'chamber_card':
-			return <ChamberCard insert={insert} durationInFrames={durationInFrames} />;
-		case 'hazard_banner':
-			return <HazardBanner insert={insert} durationInFrames={durationInFrames} />;
-		case 'pixel_transition':
-			return <PixelTransition insert={insert} durationInFrames={durationInFrames} />;
-		case 'test_result':
-			return <TestResult insert={insert} durationInFrames={durationInFrames} />;
-		case 'lower_third':
-			return <LowerThird insert={insert} durationInFrames={durationInFrames} />;
+		case 'intro':
+			return <Intro insert={insert} durationInFrames={durationInFrames} />;
+		case 'blueprint':
+			return <Blueprint insert={insert} durationInFrames={durationInFrames} />;
+		case 'glados_room':
+			return <GladosRoom insert={insert} durationInFrames={durationInFrames} voiceover={voiceover} />;
+		case 'chamber_sign':
+			return <ChamberSign insert={insert} durationInFrames={durationInFrames} />;
+		case 'result_sign':
+			return <ResultSign insert={insert} durationInFrames={durationInFrames} />;
 		case 'custom': {
 			const Component = customComponents[insert.props.component];
 			if (!Component) throw new Error(`custom: компонент "${insert.props.component}" не зарегистрирован в src/custom/index.ts`);
@@ -29,17 +28,16 @@ const InsertView: React.FC<{insert: Insert; durationInFrames: number}> = ({inser
 	}
 };
 
-// Вставки по плану; переходы «пиксели» рисуются последними (поверх остальных вставок), но под субтитрами
-export const Inserts: React.FC<{inserts: Insert[]}> = ({inserts}) => {
+// Вставки по плану в порядке массива (позже в плане: выше по слоям)
+export const Inserts: React.FC<{inserts: Insert[]; voiceover: Voiceover[]}> = ({inserts, voiceover}) => {
 	const {fps} = useVideoConfig();
-	const ordered = [...inserts.filter((i) => i.kind !== 'pixel_transition'), ...inserts.filter((i) => i.kind === 'pixel_transition')];
 	return (
 		<>
-			{ordered.map((ins) => {
+			{inserts.map((ins) => {
 				const dur = Math.max(1, msToFrames(ins.dur_ms, fps));
 				return (
 					<Sequence key={ins.id} name={`${ins.kind}:${ins.id}`} from={msToFrames(ins.at_ms, fps)} durationInFrames={dur} layout="none">
-						<InsertView insert={ins} durationInFrames={dur} />
+						<InsertView insert={ins} durationInFrames={dur} voiceover={voiceover} />
 					</Sequence>
 				);
 			})}
