@@ -312,6 +312,8 @@ class ModuleHub:
             await self._reject(ws, env.id, mid, f"protocol {body.get('protocol')} не поддерживается")
             return None
         problems = P.validate_hello(body)
+        if mid == "self":                                  # ТЗ 30: id внутренних импульсов ядра занят, модуль не может выдать себя за агента
+            problems = [*problems, "id «self» зарезервирован за внутренними событиями ядра"]
         if not problems:
             problems = self._extra_problems(body)
         if problems:

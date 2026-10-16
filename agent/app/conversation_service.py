@@ -126,6 +126,7 @@ class ConversationService:
                     route, routed = "task", True
                     await h._act(text, after_chat=True)   # модель заподозрила просьбу, которую не распознали глаголы
         h._log_route(text, route, routed, intent, cls)
+        h.arm_idle_consolidation()
         asyncio.create_task(fast_brain.react_chat(text, h._people))   # эмоция и отношение: уже после ответа
         if h._pending_memory >= 6:
             asyncio.create_task(h._consolidate())                  # осмыслить беседу и запомнить важное

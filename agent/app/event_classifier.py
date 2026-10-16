@@ -15,8 +15,8 @@ class EventClassifier:
 
     def needs(self, item: Item, att: dict) -> bool:
         """ATT-4a: подсказки модуля хватает, если есть и urgency_hint, и addressed_to_me, а текст не от человека."""
-        if not att["classifier"] or not item.text.strip():
-            return False
+        if not att["classifier"] or not item.text.strip() or item.origin == "self":
+            return False                                  # свои импульсы не классифицируются: срочность известна
         return item.sender is not None or item.urgency_hint is None or item.addressed_to_me is None
 
     async def run(self, item: Item, cfg: dict, att: dict, declared: int | None) -> None:

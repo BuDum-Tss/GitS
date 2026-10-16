@@ -23,6 +23,7 @@ import claude_battery
 import dashboard
 import events_log
 import fast_brain
+import impulse_service
 import focus_dispatch
 import journal
 import latency_trace
@@ -382,7 +383,10 @@ async def _run(config: dict):
     dashboard.set_registry(registry)
     dashboard.set_modes(layer.profiles)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
-    asyncio.create_task(companion.proactive_loop())
+    impulses = impulse_service.build(companion, layer.attention, router=lambda: companion.router)   # ТЗ 30: импульсы и размышление
+    await impulses.timer.start()                         # восстановить сроки напоминаний себе
+    dashboard.set_impulses(impulses)
+    asyncio.create_task(companion.proactive_loop())      # опрос выключен настройкой proactive_tick (по умолчанию), см. ТЗ 30
 
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
     layer.attention.kind_handlers["rimworld.colonists"] = make_colonists_handler(rel, graph)
@@ -390,6 +394,7 @@ async def _run(config: dict):
     try:
         await asyncio.Event().wait()
     finally:
+        await impulses.timer.stop()
         await layer.stop()
 
 

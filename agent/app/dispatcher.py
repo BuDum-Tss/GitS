@@ -1,6 +1,8 @@
 """Решение и действие по событию (ТЗ 29, ARC-4; ТЗ 03, ATT-10): приоритет, D0-D4, сводка, очередь речи, хук фокуса."""
 import logging
 
+from domain import rules
+
 from .attention_core import TEXT_MAX, AttentionContext, Item
 from .decision_log import DecisionLog
 from .digest import Digest
@@ -25,13 +27,25 @@ class Dispatcher:
         item.priority = score["priority"]
         decision = force or self.scorer.decide(item.priority, att, score["away"])
         item.decision = decision
-        self.act(item, decision)
-        self.decisions.write(item, att, score=score, rule=rule, ms=ms, rule_id=rule_id)
+        think = self.think_route(item, decision)
+        if not (think and item.origin == "self"):          # импульс самого агента не озвучивается и не уходит в сводку: он идёт в размышление
+            self.act(item, decision)
+        self.decisions.write(item, att, score=score, rule=rule, ms=ms, rule_id=rule_id, **({"route": "think"} if think else {}))
+        if think:
+            self.ctx.on_think(item)
         if self.ctx.on_decided is not None:                    # ТЗ 18: менеджер фокуса получает решение (не ждёт)
             try:
                 self.ctx.on_decided(item, decision, item.priority, rule)
             except Exception:
                 logger.exception("Хук менеджера фокуса упал (решение внимания уже применено)")
+
+    def think_route(self, item: Item, decision: str) -> bool:
+        """ТЗ 30, IMP-4: направить ли событие в размышление (правило в domain/rules.py). Без размышления маршрута нет."""
+        if self.ctx.on_think is None:
+            return False
+        return rules.think_route(origin=item.origin, kind=item.kind, decision=decision, urgency=item.urgency,
+                                 priority=item.priority, memorable=item.memorable, needs_reply=item.needs_reply,
+                                 spoken=item.spoken)
 
     def act(self, item: Item, decision: str) -> None:
         """Что происходит по решению (ATT-10)."""

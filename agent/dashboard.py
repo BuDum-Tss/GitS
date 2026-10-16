@@ -740,6 +740,27 @@ def set_attention(attention):
 _FOCUS = None      # менеджер фокуса (ТЗ 18), ставит ядро
 
 
+_IMPULSES = None   # импульсы и размышление (ТЗ 30), ставит ядро
+
+
+def set_impulses(impulses):
+    global _IMPULSES
+    _IMPULSES = impulses
+
+
+async def handle_api_thoughts(request: web.Request) -> web.Response:
+    """Журнал мыслей (ТЗ 30, IMP-6) и ожидающие напоминания себе. Мысли не озвучиваются."""
+    if _IMPULSES is None:
+        return web.json_response({"thoughts": [], "reminders": []})
+    try:
+        n = max(1, min(200, int(request.query.get("n", 50))))
+    except ValueError:
+        n = 50
+    thoughts = await asyncio.to_thread(_IMPULSES.journal.recent, n)
+    reminders = await asyncio.to_thread(_IMPULSES.reminders.pending)
+    return web.json_response({"thoughts": thoughts, "reminders": reminders})
+
+
 def set_focus(focus):
     global _FOCUS
     _FOCUS = focus
@@ -874,6 +895,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/attention", handle_api_attention)
     app.router.add_post("/api/attention/rules/clear", handle_api_attention_clear)
     app.router.add_get("/api/focus", handle_api_focus)
+    app.router.add_get("/api/thoughts", handle_api_thoughts)
     app.router.add_post("/api/focus/pin", handle_api_focus_pin)
     app.router.add_post("/api/focus/dnd", handle_api_focus_dnd)
     app.router.add_post("/api/focus/allow_once", handle_api_focus_once)
