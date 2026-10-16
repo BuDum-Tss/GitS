@@ -250,6 +250,25 @@
             <div id="diary" class="space-y-2 text-sm"></div>
           </div>
           <div class="divider my-0"></div>
+          <div>
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <div class="font-medium">Уроки и убеждения</div>
+              <span id="lessons-status" class="text-xs opacity-70"></span>
+            </div>
+            <div id="lessons-alert" class="alert alert-info text-sm py-2 mb-2 hidden">
+              <span id="lessons-alert-text"></span>
+              <button id="lessons-seen" class="btn btn-xs btn-ghost">Понятно</button>
+            </div>
+            <div class="text-xs opacity-60 mb-1">Убеждения (она принимает их сама, владелец может отменить)</div>
+            <div id="beliefs" class="space-y-2 text-sm"></div>
+            <div class="text-xs opacity-60 mt-3 mb-1">Журнал изменений убеждений</div>
+            <div id="belief-log" class="space-y-1 text-sm"></div>
+            <div class="text-xs opacity-60 mt-3 mb-1">Уроки</div>
+            <div id="lessons" class="space-y-1 text-sm"></div>
+            <div class="text-xs opacity-60 mt-3 mb-1">Повторы ошибок после применённых уроков</div>
+            <div id="repeat-rates" class="text-sm"></div>
+          </div>
+          <div class="divider my-0"></div>
                     <div class="flex flex-wrap items-center gap-3">
             <div class="font-medium">Граф памяти</div>
             <input id="graph-search" class="input input-bordered input-sm w-48" placeholder="Найти узел…" list="graph-names">
@@ -721,6 +740,44 @@ document.addEventListener('toggle', async ev => {
 $('sleep-now').onclick = () => fetch('/api/sleep/now', {method: 'POST'}).then(loadEpisodes);
 $('sleep-stop').onclick = () => fetch('/api/sleep/interrupt', {method: 'POST'}).then(loadEpisodes);
 setInterval(() => loadEpisodes().catch(() => {}), 8000);
+
+// ── уроки и убеждения (ТЗ 28) ──
+const BELIEF_ACTION = {accepted: 'принято', updated: 'изменено', revoked: 'отменено', rejected: 'отклонено', dropped: 'снято по лимиту'};
+async function loadLessons() {
+  const d = await (await fetch('/api/lessons?limit=30')).json();
+  const memTab = document.querySelector('[data-tab="memory"]');
+  memTab.textContent = 'Память' + (d.unseen ? ' •' : '');
+  $('lessons-alert').classList.toggle('hidden', !d.unseen);
+  $('lessons-alert-text').textContent = d.unseen ? `Она сама приняла новых убеждений: ${d.unseen}. Их можно отменить в журнале ниже.` : '';
+  const c = d.counts || {};
+  $('lessons-status').textContent = `уроков: ${c.active || 0} действуют, ${c.expired || 0} устарели · в контекст: ${d.context ? 'да' : 'нет'}`;
+  $('beliefs').innerHTML = (d.beliefs || []).map(b => `<div class="rounded-box border border-base-300 p-2"><div>${esc(b.text)}</div>
+    <div class="text-xs opacity-60">подтверждений ${b.confirmations}, эпизодов ${(b.episodes || []).length}${b.previous ? ' · прежнее: ' + esc(b.previous) : ''}</div></div>`).join('') || '<div class="opacity-60">Убеждений пока нет.</div>';
+  $('belief-log').innerHTML = (d.changes || []).map(ch => {
+    const when = new Date(ch.ts * 1000).toLocaleString();
+    const undo = (ch.action === 'accepted' || ch.action === 'updated') && !ch.reverted
+      ? `<button class="btn btn-xs btn-outline" data-revoke="${ch.id}">Отменить</button>` : (ch.reverted ? '<span class="badge badge-ghost badge-sm">отменено</span>' : '');
+    return `<div class="rounded-box border border-base-300 p-2 flex flex-wrap items-start gap-2"><div class="flex-1 min-w-0">
+      <b>${esc(BELIEF_ACTION[ch.action] || ch.action)}</b> <span class="opacity-60 text-xs">${esc(when)} · ${esc(ch.who === 'owner' ? 'владелец' : 'она сама')}</span>
+      <div>${esc(ch.text)}</div>
+      <div class="text-xs opacity-60">${esc(ch.reason || '')}${(ch.episodes || []).length ? ' · эпизоды: ' + esc(ch.episodes.join(', ')) : ''}${ch.previous ? ' · прежнее значение: ' + esc(ch.previous) : ''}</div></div>${undo}</div>`;
+  }).join('') || '<div class="opacity-60">Изменений пока не было.</div>';
+  $('lessons').innerHTML = (d.lessons || []).map(l => `<details class="rounded-box border border-base-300 p-2">
+    <summary class="cursor-pointer">${esc(l.better)} <span class="opacity-60 text-xs">${esc(l.scope)} · ${esc(l.status)} · подтверждений ${l.confirmations} · применён ${l.applied}</span></summary>
+    <div class="text-xs opacity-70 mt-1">Ситуация: ${esc(l.situation)}${l.action ? '<br>Было: ' + esc(l.action) : ''}${l.outcome ? '<br>Исход: ' + esc(l.outcome) : ''}
+    <br>Уверенность ${l.confidence}, повторов после применения: ${l.repeats_after_apply}${l.expired_reason ? ', причина устаревания: ' + esc(l.expired_reason) : ''}</div></details>`).join('') || '<div class="opacity-60">Уроков пока нет: они появляются во сне из ошибок.</div>';
+  const rr = Object.entries(d.repeat_rates || {});
+  $('repeat-rates').innerHTML = rr.map(([k, v]) => `<span class="badge badge-ghost mr-1">${esc(k)}: ${Math.round(v.rate * 100)}% (${v.repeats} из ${v.mistakes})</span>`).join('') || '<span class="opacity-60">Данных пока нет.</span>';
+}
+$('belief-log').addEventListener('click', async e => {
+  const id = e.target.dataset && e.target.dataset.revoke; if (!id) return;
+  const r = await fetch('/api/beliefs/' + id + '/revoke', {method: 'POST'});
+  if (!r.ok) alert((await r.json()).error || 'Не вышло отменить');
+  loadLessons();
+});
+$('lessons-seen').onclick = () => fetch('/api/lessons/seen', {method: 'POST'}).then(loadLessons);
+setInterval(() => loadLessons().catch(() => {}), 8000);
+loadLessons().catch(() => {});
 
 // ── чат ──
 let stick = true;

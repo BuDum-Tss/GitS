@@ -97,6 +97,8 @@ GROUPS = [
         N("epi", "Эпизоды (нарезка + хранилище)", "A", "журнал -> эпизоды: границы без LLM (пауза, фокус, задача, собеседник), пики яркости, окно вокруг пика; episodes.db со статусами и версиями", "Episode", "есть (ТЗ 27): domain/episodes.py, app/episode_cutter.py, adapters/episode_store.py", True),
         N("sleep", "Режим сна (SleepScheduler + SleepRunner)", "A", "фоновая политика памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами", "episode.summary, дневник", "есть (ТЗ 27): app/sleep.py, app/sleep_scheduler.py, app/episode_summary.py, app/diary.py", True),
         N("erecall", "EpisodeRecall", "A", "поиск эпизодов и дневника по смыслу, recall_episode(id) с разворотом до событий, core.memory.episodes", "MemoryHit[]", "есть (ТЗ 27): app/episode_recall.py, episode_routes.py", True),
+        N("lessons", "Уроки на ошибках (LessonService)", "A", "шаг после сна: метки mistake журнала по ситуациям -> урок (ситуация, действие, исход, что делать иначе, уверенность, подтверждения, эпизоды); похожие сливаются (cos >= 0,90); неэффективные устаревают; доля повторов по видам ошибок", "Lesson", "есть (ТЗ 28): domain/lessons.py, app/lessons.py, adapters/lesson_store.py, lesson_service.py", True),
+        N("beliefs", "Убеждения (принимает сама)", "A", "урок с подтверждениями >= K из >= M эпизодов становится убеждением без подтверждения человека; запись в журнал (причина, эпизоды, прежнее значение); проверка по конституции (шаблоны + модель), лимит в сутки и 12 активных; отмена владельцем в дашборде", "Belief, belief_log", "есть (ТЗ 28): те же файлы, lesson_routes.py; блок убеждений и уроков по ситуации в ContextBuilder по настройке lessons.context", True),
         N("elog", "EventLog", "I", "SQLite events.db: журнал событий, трасса, решения", "контракт журнала", "events_log.py: глобальные функции, 16 импортов"),
         N("stores", "Диалог, записи, люди", "I", "JSON: диалог, MemoryStore (планы, напоминания), отношения", "репозитории", "user_memory.py, memory_store.py, relationships.py"),
         N("graph", "FactGraph (контракт)", "I", "Graphiti: факты с интервалами валидности", "контракт графа", "graph_memory.py: 701 строка"),
@@ -145,6 +147,9 @@ EDGES = [
     ("sleep", "mw", "w", "факты со ссылкой на эпизод", None), ("sleep", "lms", "ext", "резюме, дневник (короткие запросы)", None),
     ("sleep", "norm", "flow", "episode.summary", None), ("erecall", "epi", "r", "эпизоды, источники", None),
     ("mr", "erecall", "use", "recall: эпизоды и факты", None),
+    ("sleep", "lessons", "flow", "разбор ошибок после сна", None), ("lessons", "elog", "r", "метки mistake", None),
+    ("lessons", "epi", "r", "эпизоды ошибок", None), ("lessons", "lms", "ext", "урок, проверка убеждения", None),
+    ("lessons", "beliefs", "use", "подтверждённый урок", None), ("ctx", "beliefs", "r", "убеждения и уроки по ситуации", None),
 ]
 # ссылки макроуровня (когда конец свёрнут): номер шага
 MACRO_STEPS = {
