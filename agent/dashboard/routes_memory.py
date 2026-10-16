@@ -2,6 +2,7 @@
 from datetime import datetime
 
 import approvals
+import reply_trace
 from aiohttp import web
 from memory_store import MemoryStore
 from user_memory import UserMemory
@@ -88,7 +89,17 @@ async def handle_api_chat_get(request: web.Request) -> web.Response:
     return web.json_response({"messages": ctx.chat_log[-20:]})
 
 
+async def handle_api_reply_context(request: web.Request) -> web.Response:
+    """Контекст реплики: запрос, по которому модель сформулировала фразу агента (кнопка «Контекст» в чате).
+    `?text=` текст реплики из диалога. Нет записи (реплика без модели или после перезапуска): found=false."""
+    entry = reply_trace.find(request.query.get("text", "")[:4000])
+    if entry is None:
+        return web.json_response({"found": False})
+    return web.json_response({"found": True, **entry})
+
+
 ROUTES = [
+    ("GET", "/api/reply_context", handle_api_reply_context),
     ("POST", "/api/chat", handle_api_chat_post),
     ("GET", "/api/core", handle_api_core),
     ("POST", "/api/approval", handle_api_approval),

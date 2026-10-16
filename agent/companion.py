@@ -31,6 +31,7 @@ import fast_brain
 import flow_trace
 import character
 import prompts
+import reply_trace
 from adapters.approver import ApprovalsModule
 from adapters.event_log_sqlite import SqliteEventLog
 from adapters.llm_lmstudio import LMStudioLLM
@@ -197,6 +198,7 @@ class Companion:
 
     def _record_say(self, text: str, emotion: str | None, channel) -> None:
         """Реплика сказана: диалог, журнал (в фоне, без ожидания диска: ТЗ 25 FAST-7), последняя реплика, присутствие."""
+        reply_trace.attach(text)                                         # запрос к модели, по которому родилась фраза (дашборд)
         self._memory_writer.add_dialogue(character.active().id, text)   # роль реплики персонажа: его id (данные диалога)
         self._log.log_nowait("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
         self._last_say = time.time()
