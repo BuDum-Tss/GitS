@@ -8,6 +8,7 @@ import tts_engine
 def _clean(monkeypatch):
     tts_engine.reset()
     monkeypatch.setattr(tts_engine, "ENGINE", "auto")
+    monkeypatch.setattr(tts_engine, "ESPEECH_START_WAIT_S", 0.0)       # без ожидания загрузки сервиса; ожидание проверяет свой тест
     yield
     tts_engine.reset()
 
@@ -121,3 +122,23 @@ def test_speed_goes_to_espeech_request_and_edge_rate(monkeypatch, tmp_path):
     tts_engine.set_speed(85)
     assert asyncio.run(tts_engine._espeech_synth("привет", tmp_path)) and sent["speed"] == pytest.approx(0.85)
     assert tts_engine._shifted("-12%", (tts_engine._speed - 1.0) * 100.0) == "-27%"
+
+
+async def test_espeech_wait_survives_loading_service(monkeypatch):
+    answers = iter([False, False, True])                                # сервис грузит модель, потом отвечает 200
+
+    async def ping():
+        return next(answers)
+
+    async def no_sleep(_):
+        return None
+    monkeypatch.setattr(tts_engine, "_espeech_ping", ping)
+    monkeypatch.setattr(tts_engine.asyncio, "sleep", no_sleep)
+    assert await tts_engine._espeech_wait(60.0) is True
+
+
+async def test_espeech_wait_gives_up_at_the_limit(monkeypatch):
+    async def ping():
+        return False
+    monkeypatch.setattr(tts_engine, "_espeech_ping", ping)
+    assert await tts_engine._espeech_wait(0.0) is False

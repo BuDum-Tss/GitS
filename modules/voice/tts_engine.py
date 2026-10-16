@@ -38,6 +38,7 @@ FISH_RECHECK_S = 60.0    # недоступный Fish Speech проверяет
 
 ESPEECH_URL       = os.getenv("ESPEECH_URL", "http://127.0.0.1:8771")
 ESPEECH_TIMEOUT   = 60.0
+ESPEECH_START_WAIT_S = 90.0    # при первой проверке ждём, пока сервис догрузит модель (пока грузится, /health отвечает 503), а не уходим в запасной голос
 ESPEECH_RECHECK_S = 30.0       # сервис грузит модель около 15 с после старта, поэтому проверяем чаще, чем Fish Speech
 ENGINE            = os.getenv("TTS_ENGINE", "auto").strip().lower()      # auto | espeech | fish | edge
 
@@ -234,6 +235,17 @@ async def _espeech_ping() -> bool:
         return False
 
 
+async def _espeech_wait(limit: float) -> bool:
+    """Дождаться готовности ESpeech не дольше limit секунд (0 - одна проверка). Пока сервис не слушает порт или грузит модель, ждём."""
+    deadline = time.monotonic() + limit
+    while True:
+        if await _espeech_ping():
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(1.0)
+
+
 async def _espeech_synth(text: str, directory: Path | None = None) -> str | None:
     """Синтезировать текст через ESpeech → временный WAV. Вернуть путь или None."""
     ref = _espeech_reference()
@@ -285,7 +297,7 @@ def _check_espeech() -> bool:
     now = time.monotonic()
     if _espeech_available is None or (not _espeech_available and now - _espeech_checked_at >= ESPEECH_RECHECK_S):
         was = _espeech_available
-        _espeech_available = asyncio.run(_espeech_ping()) and _espeech_reference() is not None
+        _espeech_available = asyncio.run(_espeech_wait(ESPEECH_START_WAIT_S if was is None else 0.0)) and _espeech_reference() is not None
         _espeech_checked_at = now
         if _espeech_available:
             logger.info("ESpeech доступен — использую голос персонажа")

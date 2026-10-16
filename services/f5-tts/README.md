@@ -32,7 +32,7 @@ services\f5-tts\.venv\Scripts\python.exe -c "from huggingface_hub import hf_hub_
 ## Запуск и настройки
 
 Обычно запускает супервизор ядра (запись `espeech` в `agent/modules.yaml`, `kind: service`). Вручную:
-`services\f5-tts\.venv\Scripts\python.exe services\f5-tts\f5_server.py`. `F5_NFE_STEP` (по умолчанию 32; больше шагов - лучше
+`services\f5-tts\.venv\Scripts\python.exe services\f5-tts\f5_server.py`. `F5_NFE_STEP` (по умолчанию 16; больше шагов - лучше
 качество и медленнее), `F5_DEVICE` (`cuda` или `cpu`), `F5_CKPT`, `F5_VOCAB`.
 
 Видеопамять: около 3,3 ГБ на модель, скорость около 1,2 от длительности звука на RTX с 6 ГБ.

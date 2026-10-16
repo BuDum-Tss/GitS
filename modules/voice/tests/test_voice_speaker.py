@@ -25,33 +25,16 @@ class Rig:
         return next(e for e in self.events if e["phase"] == "ended" and e["utterance_id"] == uid)
 
 
-async def test_speak_emits_started_segment_ended_in_order():
+async def test_speak_is_not_split_into_sentences():
     r = Rig()
     await r.sp.speak("u-1", "Первое. Второе! Третье?")
     end = await r.ended("u-1")
-    assert r.phases("u-1") == [("started", 0, None, None), ("segment", 1, None, None), ("segment", 2, None, None),
-                               ("ended", None, True, None)]
-    assert [e["segment"] for e in r.events if e["phase"] != "ended"] == ["Первое.", "Второе!", "Третье?"]
-    assert end["completed"] is True and end["spoken_upto"] == 3 and "reason" not in end
-    assert r.heard == ["Первое.", "Второе!", "Третье?"]                 # слух не слушает собственные предложения
-    assert r.player.volumes == [0.5, 0.5, 0.5] and not r.sp.is_speaking() and not r.sp.audible
-    await r.sp.aclose()
-
-
-async def test_next_segment_is_synthesized_while_current_plays():
-    synth, player = FakeSynth(), FakePlayer(hold=True)
-    r = Rig(player=player, synth=synth)
-    await r.sp.speak("u-1", "Первое. Второе. Третье.")
-    await until(lambda: len(player.played) == 1)
-    await until(lambda: len(synth.calls) == 2)                           # второе уже синтезируется, пока звучит первое
-    assert len(player.played) == 1 and r.sp.audible
-    player.finish()
-    await until(lambda: len(player.played) == 2)
-    await until(lambda: len(synth.calls) == 3)
-    player.finish()
-    await until(lambda: len(player.played) == 3)
-    player.finish()
-    assert (await r.ended("u-1"))["completed"]
+    assert r.phases("u-1") == [("started", 0, None, None), ("ended", None, True, None)]
+    assert [e["segment"] for e in r.events if e["phase"] != "ended"] == ["Первое. Второе! Третье?"]
+    assert end["completed"] is True and end["spoken_upto"] == 1 and "reason" not in end
+    assert r.heard == ["Первое. Второе! Третье?"]
+    assert r.synth.calls == ["Первое. Второе! Третье?"]                 # один синтез на всю реплику
+    assert r.player.volumes == [0.5] and not r.sp.is_speaking() and not r.sp.audible
     await r.sp.aclose()
 
 
@@ -113,18 +96,17 @@ async def test_stop_now_aborts_playback_and_ends_stopped():
     await r.sp.aclose()
 
 
-async def test_stop_segment_end_finishes_the_sentence_then_stops():
+async def test_stop_segment_end_finishes_the_utterance():
     player = FakePlayer(hold=True)
     r = Rig(player=player)
     await r.sp.speak("u-1", "Раз. Два. Три.")
     await until(lambda: len(player.played) == 1)
     await r.sp.stop("u-1", "segment_end")
     await asyncio.sleep(0.05)
-    assert player.cancelled == 0 and not any(e["phase"] == "ended" for e in r.events)      # предложение дослушивается
+    assert player.cancelled == 0 and not any(e["phase"] == "ended" for e in r.events)      # реплика дослушивается
     player.finish()
     end = await r.ended("u-1")
-    assert end["completed"] is False and end["reason"] == "stop" and end["spoken_upto"] == 1
-    assert len(player.played) == 1                                          # следующие не звучат
+    assert end["completed"] is True and end["spoken_upto"] == 1
     await r.sp.aclose()
 
 
@@ -200,14 +182,14 @@ async def test_mute_now_aborts_current_and_waiting():
     await r.sp.aclose()
 
 
-async def test_synthesis_failure_skips_the_sentence_and_reports_error():
+async def test_synthesis_failure_reports_error():
     synth = FakeSynth()
-    synth.fail = {"Сломано."}
+    synth.fail = {"Сломано. Снова."}
     r = Rig(synth=synth)
-    await r.sp.speak("u-1", "Хорошо. Сломано. Снова хорошо.")
+    await r.sp.speak("u-1", "Сломано. Снова.")
     end = await r.ended("u-1")
-    assert end["completed"] is False and end["reason"] == "error" and end["spoken_upto"] == 2
-    assert [e["seq"] for e in r.events if e["phase"] in ("started", "segment")] == [0, 2]
+    assert end["completed"] is False and end["reason"] == "error" and end["spoken_upto"] == 0
+    assert not any(e["phase"] == "started" for e in r.events)
     await r.sp.aclose()
 
 

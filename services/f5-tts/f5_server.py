@@ -25,7 +25,8 @@ HOST = "127.0.0.1"
 PORT = int(os.getenv("F5_PORT", "8771"))
 CKPT = Path(os.getenv("F5_CKPT") or HERE / "weights" / "espeech" / "espeech_tts_256k.pt")
 VOCAB = Path(os.getenv("F5_VOCAB") or HERE / "weights" / "espeech" / "vocab.txt")
-NFE_STEP = int(os.getenv("F5_NFE_STEP", "32"))
+NFE_STEP = int(os.getenv("F5_NFE_STEP", "16"))       # меньше шагов диффузии: синтез быстрее почти вдвое, качество чуть ниже (32 было прежним)
+WARMUP_DIR = HERE.parent.parent / "resources" / "GlaDOS" / "voice"
 DEVICE = os.getenv("F5_DEVICE", "cuda")
 
 logger = logging.getLogger("f5")
@@ -41,8 +42,34 @@ class TtsRequest(BaseModel):
     speed: float = 1.0
 
 
+_accent_cache: dict[str, str] = {}
+
+
 def _accent(text: str) -> str:
-    return _state["accent"].process_all(text)
+    """Ударения; результат запоминается (референс одинаков в каждом запросе, повторные реплики тоже)."""
+    hit = _accent_cache.get(text)
+    if hit is None:
+        hit = _state["accent"].process_all(text)
+        if len(_accent_cache) > 512:
+            _accent_cache.clear()
+        _accent_cache[text] = hit
+    return hit
+
+
+def _warmup(tts) -> None:
+    """Один холостой синтез на референсе персонажа: первый вызов компилирует ядра CUDA, пусть это случится до первой реплики."""
+    ref, txt = WARMUP_DIR / "espeech_ref.wav", WARMUP_DIR / "espeech_ref.txt"
+    if not (ref.is_file() and txt.is_file()):
+        return
+    try:
+        t = time.time()
+        ref_text = txt.read_text(encoding="utf-8").strip()
+        with _lock:
+            tts.infer(ref_file=str(ref), ref_text=_accent(ref_text), gen_text=_accent("Проверка связи."),
+                      nfe_step=NFE_STEP, seed=1)
+        logger.info("прогрев за %.1f с", time.time() - t)
+    except Exception:
+        logger.exception("прогрев не удался")
 
 
 def _load() -> None:
@@ -56,6 +83,7 @@ def _load() -> None:
     t = time.time()
     tts = F5TTS(model="F5TTS_v1_Base", ckpt_file=str(CKPT), vocab_file=str(VOCAB), device=DEVICE)
     logger.info("модель загружена за %.1f с", time.time() - t)
+    _warmup(tts)
     _state["tts"] = tts
 
 
