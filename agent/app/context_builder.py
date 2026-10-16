@@ -2,6 +2,12 @@
 память и диалог, справка о возможностях, услышанное, воспоминания о себе, факты графа, отношение к игроку.
 Состояние (`_graph_block`, `_self_block`, `_heard`) живёт на фасаде `Companion`."""
 import asyncio
+import logging
+import time
+
+logger = logging.getLogger("companion")
+
+PREFETCH_TTL_S = 600.0     # найденное с опозданием годится для следующей реплики не дольше этого (ТЗ 25, FAST-6)
 
 
 class ContextBuilder:
@@ -101,3 +107,72 @@ class ContextBuilder:
             h._self_block = await asyncio.wait_for(h._memory_reader.self_block(query), 3.0)
         except (asyncio.TimeoutError, Exception):
             h._self_block = ""
+
+    # ── поиск в памяти с дедлайном (ТЗ 25, FAST-6) ───────────────────────────────
+
+    def start_retrieval(self, query: str) -> "Retrieval":
+        """Запустить поиск фактов графа и воспоминаний о себе параллельно с классификатором и приказом в игру.
+        Результат - (факты графа, воспоминания о себе); ошибка поиска - пустые блоки, наружу не бросает."""
+        loop = asyncio.get_running_loop()
+        return Retrieval(asyncio.ensure_future(self._search(query)), loop.time(), query)
+
+    async def _search(self, query: str) -> tuple[str, str]:
+        h = self._h
+
+        async def one(coro) -> str:
+            try:
+                return await asyncio.wait_for(coro, 3.0)
+            except Exception:
+                return ""
+        graph, own = await asyncio.gather(one(h._memory_reader.graph_block(query)), one(h._memory_reader.self_block(query)))
+        return graph, own
+
+    async def use_retrieval(self, retrieval: "Retrieval | None", query: str, deadline_s: float | None) -> bool:
+        """Положить результат поиска в контекст ответа. Дедлайн отсчитывается от запуска поиска. Не успел: ответ без памяти
+        (блоки пустые либо найденное раньше с опозданием для предыдущей реплики), а когда поиск закончит, результат ждёт
+        следующей реплики (предзагрузка). Возвращает True, если блоки свежие."""
+        h = self._h
+        retrieval = retrieval or self.start_retrieval(query)
+        task = retrieval.task
+        try:
+            if deadline_s is None:
+                graph, own = await task
+            else:
+                left = deadline_s - (asyncio.get_running_loop().time() - retrieval.t0)
+                graph, own = await asyncio.wait_for(asyncio.shield(task), max(0.0, left))
+        except asyncio.TimeoutError:
+            task.add_done_callback(lambda t, q=retrieval.query: self._prefetched(t, q))
+            fresh = getattr(h, "_prefetch", None)
+            if fresh and time.time() - fresh["ts"] <= PREFETCH_TTL_S:
+                h._graph_block, h._self_block = fresh["graph"], fresh["self"]
+                h._prefetch = None
+            else:
+                h._graph_block = h._self_block = ""
+            return False
+        except Exception as e:
+            logger.info(f"Поиск в памяти не удался: {e}")
+            h._graph_block = h._self_block = ""
+            return False
+        h._graph_block, h._self_block = graph, own
+        h._prefetch = None
+        return True
+
+    def _prefetched(self, task: "asyncio.Task", query: str) -> None:
+        """Поиск закончился после дедлайна: результат кладётся на следующую реплику."""
+        if task.cancelled() or task.exception() is not None:
+            return
+        graph, own = task.result()
+        if graph or own:
+            self._h._prefetch = {"query": query, "graph": graph, "self": own, "ts": time.time()}
+
+
+class Retrieval:
+    """Идущий поиск в памяти: задача, момент запуска (от него считается дедлайн) и запрос."""
+
+    __slots__ = ("task", "t0", "query")
+
+    def __init__(self, task: "asyncio.Task", t0: float, query: str):
+        self.task, self.t0, self.query = task, t0, query
+
+    def cancel(self) -> None:
+        self.task.cancel()

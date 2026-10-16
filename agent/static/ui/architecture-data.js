@@ -158,7 +158,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»",
      "out": "RuleResult",
-     "now": "выделен (R3): app/process_event.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py"
+     "now": "выделен (R3): app/process_event.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py; жёсткие правила обращений владельца (ТЗ 25): routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
     },
     {
      "id": "cls",
@@ -185,7 +185,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "решение D0–D4 и routes[]: say, chat, task, focus, think, digest, ignore; пишет решение в журнал",
      "out": "Decision",
-     "now": "выделен (R3): app/dispatcher.py (finish, act) и app/decision_log.py; routes[] пока только say, digest, focus-хук"
+     "now": "выделен (R3): app/dispatcher.py (finish, act) и app/decision_log.py; ТЗ 25: routes[] (reflex, chat, task, ignore, think) по таблице D0-D4 в routes.py пишется в журнал решений"
+    },
+    {
+     "id": "routes",
+     "t": "Routes",
+     "tag": "D",
+     "new": true,
+     "do": "маршруты события и обращения: reflex (с already_done), chat, task, ignore, think; таблица D0-D4 и R1-R4 → маршруты; жёсткие правила из YAML",
+     "out": "RouteDecision",
+     "now": "есть (ТЗ 25): routes.py, routes/hard_rules.yaml, docs/ROUTES.md"
     }
    ]
   },
@@ -205,7 +214,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "обращение владельца: проверки → ветка (болтовня / просьба / «что умеешь») → ответ",
      "out": "Reply или Task",
-     "now": "app/conversation_service.py (фасад Companion)"
+     "now": "app/conversation_service.py (фасад Companion); ТЗ 25: жёсткие правила → параллельно классификатор, приказ в игру, поиск в памяти (дедлайн 300 мс), запись реплики в потоке → маршруты"
     },
     {
      "id": "ctx",
@@ -223,7 +232,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля",
      "out": "ReplyCandidate",
-     "now": "app/reply_generator.py: _converse, _declutter + fast_brain"
+     "now": "app/reply_generator.py: ТЗ 25: поток токенов → предложения (speech_text.SentenceSplitter) → StreamDeclutter (держит последнее предложение) → прямо в вывод речи, отмена обрывает запрос и очередь; без голоса прежний путь целиком"
+    },
+    {
+     "id": "instant",
+     "t": "InstantLevel",
+     "tag": "A",
+     "new": true,
+     "do": "мгновенный уровень: на поручении через 300 мс факт «принято», при затянутом ответе факт-филлер; реплику формулирует модель",
+     "out": "Utterance",
+     "now": "есть (ТЗ 25): app/instant.py"
     }
    ]
   },
@@ -729,6 +747,36 @@ window.ARCH_DATA = {
    "plan",
    "flow",
    "просьба"
+  ],
+  [
+   "rules",
+   "routes",
+   "use",
+   "жёсткое правило"
+  ],
+  [
+   "routes",
+   "conv",
+   "use",
+   "маршруты обращения"
+  ],
+  [
+   "conv",
+   "instant",
+   "use",
+   "task / долго"
+  ],
+  [
+   "instant",
+   "out",
+   "flow",
+   "факт: принято, филлер"
+  ],
+  [
+   "reply",
+   "out",
+   "flow",
+   "предложения потоком"
   ],
   [
    "reflect",

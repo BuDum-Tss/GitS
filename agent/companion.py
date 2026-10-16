@@ -40,6 +40,7 @@ from app.context_builder import ContextBuilder
 from app.conversation_service import ConversationService, _sender_ctx  # noqa: F401  (_sender_ctx: прежнее имя)
 from app.memory_capture import MemoryCapture
 from app.proactive_legacy import CONSULT as _CONSULT, MIN_GAP as _MIN_GAP, ProactiveLegacy  # noqa: F401
+from app.instant import InstantLevel, note_speech
 from app.reply_generator import ReplyGenerator
 from conversation_io import UserInput, current_channel
 from speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
@@ -102,12 +103,14 @@ class Companion:
         self._consolidating = False
         self._last_say_text = ""          # последняя реплика персонажа (для поправки «нет, не так», ТЗ 24 TRC-5)
         self._bg_tasks: set = set()       # фоновые проверки поправок (ТЗ 24)
+        self._prefetch = None             # поиск в памяти, закончившийся после дедлайна: ждёт следующей реплики (ТЗ 25, FAST-6)
         # компоненты (ТЗ 29, ARC-5): состояние остаётся здесь, логика в agent/app/
         self.context_builder = ContextBuilder(self)
         self.reply_generator = ReplyGenerator(self)
         self.memory_capture = MemoryCapture(self)
         self.conversation = ConversationService(self)
         self.proactive_legacy = ProactiveLegacy(self)
+        self.instant = InstantLevel(self)    # мгновенный уровень: подтверждение и филлер (ТЗ 25, FAST-3)
 
     @property
     def people(self):
@@ -164,12 +167,9 @@ class Companion:
         text = clean_speech(text)   # без разметки, ремарок в скобках и оборванного хвоста: это произносится вслух
         if not text:
             return
+        note_speech()
         channel = current_channel.get()
-        self._memory_writer.add_dialogue(character.active().id, text)   # роль реплики персонажа: его id (данные диалога)
-        self._log.log("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
-        self._last_say = time.time()
-        self._last_say_text = text
-        self.presence.update(last_say=text, last_say_ts=self._last_say)
+        self._record_say(text, emotion, channel)
         if channel is not None and channel.kind == "module":
             # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
             if self.io is not None:
@@ -183,6 +183,36 @@ class Companion:
         if emotion:
             fast_brain.publish("say", {"emotion": emotion, "action": "none"})
         logger.info(f"[{character.active().name}] {text}")
+
+    def _record_say(self, text: str, emotion: str | None, channel) -> None:
+        """Реплика сказана: диалог, журнал (в фоне, без ожидания диска: ТЗ 25 FAST-7), последняя реплика, присутствие."""
+        self._memory_writer.add_dialogue(character.active().id, text)   # роль реплики персонажа: его id (данные диалога)
+        self._log.log_nowait("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
+        self._last_say = time.time()
+        self._last_say_text = text
+        self.presence.update(last_say=text, last_say_ts=self._last_say)
+
+    async def say_part(self, text: str, *, first: bool) -> str | None:
+        """Предложение потокового ответа (ТЗ 25, FAST-4): прямо в вывод речи, мимо ожидания очереди речи внимания. Первое
+        заменяет звучащее, остальные встают в очередь вывода после него. Журнал и диалог пишет `commit_reply` по итогу.
+        Возвращает id реплики."""
+        note_speech()
+        utterance = new_utterance_id()
+        self.last_utterance_id = utterance
+        await self.speech.speak(utterance, text, None, 50, **({} if first else {"queue": True}))
+        return utterance
+
+    def commit_reply(self, text: str, emotion: str | None = None) -> None:
+        """Потоковый ответ закончен (или оборван): в память и журнал уходит то, что она успела сказать."""
+        text = text.strip()
+        if not text:
+            return
+        self._record_say(text, emotion, current_channel.get())
+        logger.info(f"[{character.active().name}] {text}")
+
+    def cancel_reply(self, reason: str = "stop") -> bool:
+        """Оборвать идущий потоковый ответ (ТЗ 25, FAST-5): «замолчи», перебивание, экстренное слово."""
+        return self.reply_generator.cancel(reason)
 
     # ── входящее сообщение ─────────────────────────────────────────────────────
 
@@ -266,8 +296,9 @@ class Companion:
     async def _refresh_graph(self, query: str):
         await self.context_builder.refresh_graph(query)
 
-    async def _converse(self, text: str, about_self: bool = False, use_memory: bool = True) -> bool:
-        return await self.reply_generator.converse(text, about_self, use_memory)
+    async def _converse(self, text: str, about_self: bool = False, use_memory: bool = True, retrieval=None,
+                        already_done=()) -> bool:
+        return await self.reply_generator.converse(text, about_self, use_memory, retrieval, already_done)
 
     def _store_memories(self, data) -> list[str]:
         return self.memory_capture.store_memories(data)

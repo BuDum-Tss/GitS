@@ -37,6 +37,14 @@ DEFAULTS = {
     "proactive_tick": False,    # старая болтовня по таймеру (раз в 30 с модель решает, заговорить ли); выключена, ТЗ 30: теперь импульсы
     # размышление (ТЗ 30, IMP-7): шагов и токенов на мысль, размышлений в час, глубина цепочки напоминаний
     "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3},
+    # быстрый контур (ТЗ 25): stream - стриминг ответа по предложениям; memory_deadline_ms - дедлайн поиска в памяти (FAST-6);
+    # ack_ms - через сколько без реплики на поручении уходит факт «принято» (FAST-3); filler_ms - факт-филлер при затянутом ответе
+    "fast_contour": {"stream": True, "memory_deadline_ms": 300, "ack_ms": 300, "filler_ms": 4000},
+    # бюджеты задержки по этапам трассы, мс (ТЗ 25, FAST-8): шаг от предыдущей метки до метки этапа; end_to_sound - от конца
+    # фразы до начала звука. Превышение пишется в журнал (`budget_exceeded`) и видно в отчёте /api/latency
+    "latency_budget": {"stt_done": 1500, "core_in": 400, "classify_done": 400, "route": 100, "retrieve_done": 450,
+                       "llm_first_token": 2500, "first_sentence_ready": 1200, "llm_done": 6000, "tts_first_audio": 1500,
+                       "play_start": 400, "end_to_sound": 4500},
     "dev_mode": False,          # режим разработчика: во вкладке «Модули» видны примеры для разработчиков (модуль echo)
     "pet_visible": True,        # показывать окно питомца (модуль pet при этом остаётся подключённым)
     "volume": 100,              # громкость озвучки, 0-100
@@ -62,7 +70,7 @@ DEFAULTS = {
     },
 }
 # словари, которые update() сливает на один уровень вглубь (modules.<id> и attention.<ключ> целиком не затираются)
-_DEEP_KEYS = ("modules", "attention", "context", "reflection")
+_DEEP_KEYS = ("modules", "attention", "context", "reflection", "fast_contour", "latency_budget")
 _dir = Path(os.getenv("MEMORY_DIR", "./memory"))
 
 

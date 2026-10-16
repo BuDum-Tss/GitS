@@ -347,9 +347,19 @@ class Attention:
 
     async def stop_speech(self, why: str = "stop") -> int:
         """«Замолчи» (ATT-18): речь обрывается немедленно, очередь очищается от кандидатов ниже 85."""
+        self._cancel_reply(why)
         n = await self.speech.stop_all(INTERRUPT_P)
         self._log.log_nowait("attention", "речь остановлена по просьбе пользователя", stop=True, why=why, dropped=n)
         return n
+
+    def _cancel_reply(self, why: str) -> bool:
+        """Оборвать идущий потоковый ответ компаньона (ТЗ 25, FAST-5): «замолчи», перебивание. Заглушки без метода - ничего."""
+        cancel = getattr(self.ctx.companion, "cancel_reply", None)
+        try:
+            return bool(cancel(why)) if cancel is not None else False
+        except Exception as e:
+            logger.warning(f"Не удалось оборвать ответ: {e}")
+            return False
 
     async def on_user_input(self, text: str) -> None:
         """Обращение пользователя пришло (ATT-20): фокус conversation; «замолчи» срабатывает до любых вызовов модели."""
@@ -366,6 +376,8 @@ class Attention:
         """Модуль voice (событие `voice.user_speaking`, VOICE-8) сообщает, говорит ли пользователь сейчас: нужно условию 2
         очереди речи. Когда человек закончил говорить, обновляется и `last_user_ts`."""
         self.presence.update(user_speaking=bool(speaking))
+        if speaking:
+            self._cancel_reply("barge_in")               # перебивание: генерация и очередь предложений обрываются (ТЗ 25, FAST-5)
         if not speaking:
             self.presence.update(last_user_ts=self._clock())
 
