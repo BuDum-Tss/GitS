@@ -214,7 +214,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "собирает контекст: характер, память, диалог, состояние; бюджет токенов на роль",
      "out": "Context",
-     "now": "app/context_builder.py: прежняя склейка 6 источников, бюджета токенов пока нет"
+     "now": "app/context_builder.py: склейка 6 источников; бюджет токенов на роль и блок и режимы push (needs_memory) / pull (recall) в настройке context, по умолчанию прежнее поведение"
     },
     {
      "id": "reply",
@@ -447,9 +447,9 @@ window.ARCH_DATA = {
      "t": "MemoryReader",
      "tag": "A",
      "new": false,
-     "do": "граф + воспоминания о себе + записи; (план) гибридный поиск",
+     "do": "граф + воспоминания о себе + записи; гибридный поиск (search/) готов, подключение коллекций в чтение памяти - дальше",
      "out": "MemoryHit[]",
-     "now": "graph.search, self_memories, MemoryStore.relevant (два поиска)"
+     "now": "graph.search, self_memories, MemoryStore.relevant (два поиска); search/: HybridIndex (FTS5 + векторы + свежесть), HybridSearch, переписывание запроса, Embedder"
     },
     {
      "id": "elog",

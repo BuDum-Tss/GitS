@@ -22,6 +22,7 @@ DEFAULTS = {
     "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); переключает ядро (core.set_character), не правьте вручную
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (нужен docker compose up whisperx)
+    "context": {"mode": "push", "budget_tokens": {}},   # ТЗ 04: push/pull память; бюджет токенов на роль и блок
     "hearing": False,           # слушать системный звук (речь в колонках); по умолчанию выключено
     "auto_accept": False,       # авто-разрешать ВСЕ действия (кроме опасных, см. safety.py); включает только пользователь
     "telegram": False,          # публиковать мысли в Telegram-канал
@@ -58,7 +59,7 @@ DEFAULTS = {
     },
 }
 # словари, которые update() сливает на один уровень вглубь (modules.<id> и attention.<ключ> целиком не затираются)
-_DEEP_KEYS = ("modules", "attention")
+_DEEP_KEYS = ("modules", "attention", "context")
 _dir = Path(os.getenv("MEMORY_DIR", "./memory"))
 
 

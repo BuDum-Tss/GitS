@@ -133,6 +133,13 @@ class FactGraph(Protocol):
 
 
 @runtime_checkable
+class Embedder(Protocol):
+    """Эмбеддер текстов (EmbeddingGemma в LM Studio): тексты -> векторы; query отличает запрос от документа."""
+
+    async def embed(self, texts: list[str], query: bool = False) -> list[list[float]]: ...
+
+
+@runtime_checkable
 class Clock(Protocol):
     """Время в секундах (time.time по умолчанию, в тестах подменяется)."""
 
