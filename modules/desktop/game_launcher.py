@@ -36,10 +36,27 @@ def mod_ready() -> bool:
     return gamenet.port_open(8765)
 
 
-def spawn_detached(exe: str, cwd: str):
+def windowed_args() -> tuple:
+    """Окно без рамки по размеру экрана вместо полноэкранного: полноэкранная RimWorld сворачивается, как только другое окно
+    берёт фокус, а свёрнутое окно агент не видит и не может нажать (копия `modules/rimworld/agent/game_launcher.py`:
+    модули друг друга не импортируют). Настройки игры (Prefs.xml) не трогаются."""
+    try:
+        import win32gui
+        import win32print
+        dc = win32gui.GetDC(0)
+        w, h = win32print.GetDeviceCaps(dc, 118), win32print.GetDeviceCaps(dc, 117)    # DESKTOPHORZRES, DESKTOPVERTRES
+        win32gui.ReleaseDC(0, dc)
+        if w >= 800 and h >= 600:
+            return ("-popupwindow", "-screen-width", str(w), "-screen-height", str(h))
+    except Exception:
+        pass
+    return ("-popupwindow",)
+
+
+def spawn_detached(exe: str, cwd: str, args: tuple = ()):
     """Запустить программу так, чтобы она НЕ была потомком бота: перезапуск бота (taskkill /T убивает дерево потомков)
     её не закрывает. Родителем становится промежуточный cmd, который сразу завершается."""
-    subprocess.Popen(["cmd.exe", "/c", "start", "", "/D", cwd, exe], creationflags=0x08000000, close_fds=True)
+    subprocess.Popen(["cmd.exe", "/c", "start", "", "/D", cwd, exe, *args], creationflags=0x08000000, close_fds=True)
 
 
 def launch(wait_seconds: float = 120.0) -> str:
@@ -50,7 +67,7 @@ def launch(wait_seconds: float = 120.0) -> str:
     exe = find_exe()
     if exe is None:
         raise RuntimeError("не нашла RimWorldWin64.exe: укажи путь в переменной GITS_RIMWORLD_EXE")
-    spawn_detached(exe, str(Path(exe).parent))
+    spawn_detached(exe, str(Path(exe).parent), windowed_args())     # игре нужно окно: в полном экране она сворачивается
     deadline = time.time() + wait_seconds
     while time.time() < deadline:
         time.sleep(3)
