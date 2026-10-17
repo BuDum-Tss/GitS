@@ -396,15 +396,20 @@ def _focus_tool(focus, modules) -> Tool:
 class _WorkspaceIds(list):
     """Допустимые значения параметра «среда»: среды, которые знает менеджер сред на момент вызова (модульные приходят и уходят)."""
 
-    def __init__(self, workspaces):
+    def __init__(self, workspaces, modules=None):
         super().__init__()
         self._ws = workspaces
+        self._modules = modules
 
     def _ids(self) -> list[str]:
         if self._ws is None:
             return []
         self._ws.sync()
-        return [s.id for s in self._ws.specs.values() if s.id != "sleep"]       # сон включает только планировщик сна
+        ids = [s.id for s in self._ws.specs.values() if s.id != "sleep"]        # сон включает только планировщик сна
+        for rec in (getattr(self._modules, "records", None) or {}).values():    # заявленные модули без подключения: ошибка скажет причину
+            if rec.kind == "module" and rec.id not in ids and rec.id != "sleep":
+                ids.append(rec.id)
+        return ids
 
     def __iter__(self):
         return iter(self._ids())
@@ -422,7 +427,20 @@ class _WorkspaceIds(list):
         return repr(self._ids())
 
 
-def _workspace_tools(workspaces) -> list[Tool]:
+def _why_no_workspace(workspaces, modules, ws: str) -> str:
+    """Почему среды нет, человеческими словами: модуль выключен, не запущен или среды не объявляет."""
+    rec = (getattr(modules, "records", None) or {}).get(ws)
+    if rec is None:
+        return f"среды «{ws}» не существует"
+    title = rec.title or ws
+    if not modules.is_enabled(ws):
+        return f"модуль «{title}» выключен: его надо включить во вкладке «Модули»"
+    if not getattr(rec, "manifest", None):
+        return f"модуль «{title}» ещё не подключился к ядру (не запущен или упал при старте); смотри журнал agent/logs/modules/{ws}.log"
+    return f"у модуля «{title}» нет своей среды"
+
+
+def _workspace_tools(workspaces, modules=None) -> list[Tool]:
     """ТЗ 32, WS-5/WS-10: сменить среду агента и узнать текущую. Вход в среду модуля идёт только по импульсу: по просьбе
     пользователя (риск auto, причина `user`) или по самоимпульсу из размышления (причина `self`, перед входом обычное разрешение)."""
     from app import impulse_origin
@@ -433,6 +451,9 @@ def _workspace_tools(workspaces) -> list[Tool]:
 
     async def switch(a):
         ws = str(a["workspace"])
+        workspaces.sync()
+        if ws not in workspaces.specs:
+            raise ToolError(_why_no_workspace(workspaces, modules, ws), code="unavailable")
         res = await workspaces.enter(ws, reason(), str(a.get("goal") or "")[:200])
         if not res.get("ok"):
             raise ToolError(str(res.get("error") or "не удалось сменить среду"), code="unavailable")
@@ -455,12 +476,12 @@ def _workspace_tools(workspaces) -> list[Tool]:
         return line + (f" Другие среды: {others}." if others else "") + (
             f" Сигналов из чужих сред: {sig['notify']} уведомлений, {sig['digest']} в сводке." if sig["notify"] or sig["digest"] else "")
 
-    ids = _WorkspaceIds(workspaces)
+    ids = _WorkspaceIds(workspaces, modules)
     return [
         Tool(id="workspace.switch", env="core", name="switch",
              description="Сменить среду агента: войти в игру («зайди в колонию», «давай поиграем»), в монтаж («давай монтировать») "
                          "или вернуться в обычную среду assistant. В среду модуля входят только по просьбе или собственному решению, "
-                         "запуск игры сам её не включает.",
+                         "запуск игры сам её не включает. Если модуль не подключён или выключен, инструмент вернёт причину: перескажи её как есть.",
              params={"workspace": {"type": "string", "enum": ids, "description": "id среды: assistant, rimworld, montage"},
                      "goal": {"type": "string", "required": False, "description": "цель входа одной фразой"}},
              risk="auto", danger=danger, call=switch, availability="always",
@@ -551,7 +572,7 @@ def register_core_tools(registry, modules, attention=None, focus=None, switch=No
     ]
 
     focus_tools = [] if focus is None else [_focus_tool(focus, modules)]     # ТЗ 18: независимо от внимания
-    focus_tools += [] if workspaces is None else _workspace_tools(workspaces)     # ТЗ 32: среды агента
+    focus_tools += [] if workspaces is None else _workspace_tools(workspaces, modules)     # ТЗ 32: среды агента
     registry.add(Environment(
         id="core", title="Ядро: задачи модулей и внимание",
         description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "
