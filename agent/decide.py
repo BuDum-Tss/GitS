@@ -74,30 +74,28 @@ EVENT_QUESTIONS = {
         "social": "small talk, jokes, greetings, chatter",
         "routine": "status, progress, normal operation, nothing changed",
         "spam": "advertising, scam, automated junk"}},
-    "addressed": {"type": "choice", "options": {
-        "assistant": "the text speaks to the AI assistant directly, by its name or by addressing it as you",
-        "user": "the text is meant for the human owner",
-        "group": "the text is addressed to many people",
-        "nobody": "a notification or status, not addressed to anyone"}},
-    "needs_reply": {"type": "noul", "instructions": "Does the message expect an answer or an action from its recipient?"},
-    # ТЗ 18, первый эшелон фокуса: нужно ли событие вниманию агента прямо сейчас (мимо текущей работы)
-    "focus_needed": {"type": "noul", "instructions": "Does this event need the agent's full attention right now, more than its current work?"},
+    # decide это роутер (маршруты `routes.py`): нужна ли реакция вообще и какая, можно несколько сразу
+    "react": {"type": "noul", "instructions": "Does the assistant need to react to this event at all?"},
+    "speak": {"type": "noul", "instructions": "Should the assistant say something aloud about this?"},
+    "act": {"type": "noul", "instructions": "Should the assistant take a quick action in response, not just talk?"},
+    "think": {"type": "noul", "instructions": "Does this deserve thinking over later, beyond an instant reaction?"},
     "emotion": EMOTION_QUESTION,
 }
 
-NONE_POLICY = "none"          # метка варианта «фокус никому не нужен» в вопросе policy
+NONE_FOCUS = "none"           # метка варианта «оставить фокус как есть» в вопросе active_focus
+FOCUS_MIN_CONF = 0.6          # фокус переключается редко: подсказка active_focus принимается только при высокой уверенности
 
 
 def event_questions(policy_options: dict | None = None) -> dict:
     """Вопросы о событии. policy_options {"модуль/политика": назначение} - варианты из активных политик модулей (манифесты):
-    вопрос «какой модуль и политика подходят событию» (подсказка политики для менеджера фокуса, ТЗ 18). Без вариантов -
-    базовые EVENT_QUESTIONS (тот же объект)."""
+    вопрос `active_focus` «чей фокус нужен после события» (rimworld, montage, агент...) с вариантом «оставить как есть»
+    (подсказка менеджеру фокуса, ТЗ 18). Без вариантов - базовые EVENT_QUESTIONS (тот же объект)."""
     if not policy_options:
         return EVENT_QUESTIONS
     options = dict(list(policy_options.items())[:MAX_POLICY_OPTIONS])
-    options[NONE_POLICY] = "no module needs the agent's focus for this event"
-    return {**EVENT_QUESTIONS, "policy": {"type": "choice", "options": options,
-                                          "instructions": "Which module and policy should take the agent's focus for this event?"}}
+    options[NONE_FOCUS] = "keep the current focus, nothing needs to switch"
+    return {**EVENT_QUESTIONS, "active_focus": {"type": "choice", "options": options,
+                                                "instructions": "Which module should hold the agent's focus after this event?"}}
 
 INPUT_QUESTIONS = {
     "intent": {"type": "choice", "options": {
@@ -228,12 +226,12 @@ class EventClass:
 
     category: str | None = None
     category_conf: float = 0.0
-    addressed: bool | None = None          # к ней ли обращаются (assistant) или нет; None - не уверен
-    needs_reply: bool | None = None
-    focus_needed: bool | None = None       # нужен ли фокус (ТЗ 18, 1 эшелон); None - не уверен
+    react: bool | None = None              # роутер: реагировать ли вообще; None - не уверен
+    speak: bool | None = None              # реплика (маршрут chat)
+    act: bool | None = None                # быстрое действие (маршрут reflex)
+    think: bool | None = None              # подумать (маршрут think)
+    active_focus: str | None = None        # чей фокус нужен: «модуль/политика» или NONE_FOCUS; None - не уверен (порог FOCUS_MIN_CONF)
     focus_conf: float = 0.0
-    policy: str | None = None              # подсказка: «модуль/политика» или NONE_POLICY; None - не уверен
-    policy_conf: float = 0.0
     emotion: str | None = None             # эмоция из EMOTION_OPTIONS, не idle; None - нет или не уверен
 
     @property
@@ -249,18 +247,13 @@ def parse_event(answers: dict | None, min_conf: float) -> EventClass | None:
     cat, conf = _answer(answers, "category")
     if cat in CATEGORY_URGENCY and conf >= min_conf:
         out.category, out.category_conf = cat, conf
-    who, conf = _answer(answers, "addressed")
-    if who is not None and conf >= min_conf:
-        out.addressed = who == "assistant"
-    reply, conf = _answer(answers, "needs_reply")
-    if reply in ("yes", "no") and conf >= min_conf:
-        out.needs_reply = reply == "yes"
-    need, conf = _answer(answers, "focus_needed")
-    if need in ("yes", "no") and conf >= min_conf:
-        out.focus_needed, out.focus_conf = need == "yes", conf
-    pol, conf = _answer(answers, "policy")
-    if pol and conf >= min_conf:
-        out.policy, out.policy_conf = pol, conf
+    for name in ("react", "speak", "act", "think"):
+        value, conf = _answer(answers, name)
+        if value in ("yes", "no") and conf >= min_conf:
+            setattr(out, name, value == "yes")
+    focus, conf = _answer(answers, "active_focus")
+    if focus and conf >= max(min_conf, FOCUS_MIN_CONF):
+        out.active_focus, out.focus_conf = focus, conf
     out.emotion = _emotion(answers)
     return out
 

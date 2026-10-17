@@ -48,9 +48,14 @@ class RouteDecision:
         return self
 
 
-def of_decision(decision: str | None, *, think: bool = False) -> list[str]:
-    """Маршруты решения внимания (таблица `DECISION_ROUTES`); `think` добавляет размышление (ТЗ 30)."""
+def of_decision(decision: str | None, *, think: bool = False, act: bool = False) -> list[str]:
+    """Маршруты решения внимания (таблица `DECISION_ROUTES`); `think` добавляет размышление (ТЗ 30), `act` быструю реакцию
+    (решение роутера decide)."""
     out = list(DECISION_ROUTES.get(decision or "", (IGNORE,)))
+    if act and REFLEX not in out:
+        out.append(REFLEX)
+        if IGNORE in out and len(out) > 1:
+            out.remove(IGNORE)                                  # действие это тоже реакция: «ничего» уже неверно
     if think and THINK not in out:
         out.append(THINK)
     return out

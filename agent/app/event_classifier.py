@@ -58,19 +58,18 @@ class EventClassifier:
             item.data = {**item.data, "category": cls.category, "category_conf": round(cls.category_conf, 3)}
         else:
             item.urgency = hint if hint is not None else 1
-        if cls is not None:                               # ТЗ 18: подсказки для менеджера фокуса (первый эшелон)
+        if cls is not None:
             extra = {}
-            if cls.focus_needed is not None:
-                extra.update(focus_needed=cls.focus_needed, focus_conf=round(cls.focus_conf, 3))
-            if cls.policy is not None:
-                extra.update(policy_hint=cls.policy, policy_conf=round(cls.policy_conf, 3))
+            if cls.active_focus is not None:              # ТЗ 18: подсказка менеджеру фокуса (первый эшелон), в прежнем формате
+                extra.update(focus_needed=cls.active_focus != decide.NONE_FOCUS, focus_conf=round(cls.focus_conf, 3),
+                             policy_hint=cls.active_focus, policy_conf=round(cls.focus_conf, 3))
+            flags = {f"route_{name}": getattr(cls, name) for name in ("react", "speak", "act", "think")
+                     if getattr(cls, name) is not None}
+            extra.update(flags)                           # решение роутера: реагировать ли и как (Dispatcher.finish)
             if extra:
                 item.data = {**item.data, **extra}
-        if item.addressed_to_me is None and cls is not None:
-            item.addressed_to_me = cls.addressed
-        # «ждёт ответа»: да/нет-вопрос модели на живой проверке сильно смещён в «нет» (10 из 20 ответов нужных не нашла), поэтому
-        # вопрос и просьба по категории тоже означают, что ответа ждут
-        item.needs_reply = bool(cls is not None and (cls.needs_reply or cls.category in REPLY_CATEGORIES))
+        # «ждёт ответа»: просьба и вопрос по категории означают, что ответа ждут (да/нет-вопросы модели смещены в «нет»)
+        item.needs_reply = bool(cls is not None and cls.category in REPLY_CATEGORIES)
 
     async def classify_input(self, text: str, stop_speech) -> decide.InputClass | None:
         """ATT-28: намерение обращения до маршрутизатора. None - классификатора нет или он не уверен (всё как раньше)."""

@@ -282,22 +282,20 @@ def test_policy_options_are_active_policies_of_connected_modules():
 
 def test_event_questions_add_policy_only_with_options():
     assert decide.event_questions() is decide.EVENT_QUESTIONS
-    assert "policy" not in decide.EVENT_QUESTIONS and "focus_needed" in decide.EVENT_QUESTIONS
+    assert "active_focus" not in decide.EVENT_QUESTIONS and "focus_needed" not in decide.EVENT_QUESTIONS
     q = decide.event_questions({"montage/working": "монтаж видео"})
-    assert q["policy"]["options"]["montage/working"] == "монтаж видео"
-    assert decide.NONE_POLICY in q["policy"]["options"]
-    assert "policy" not in decide.EVENT_QUESTIONS                   # базовый словарь не меняется
+    assert q["active_focus"]["options"]["montage/working"] == "монтаж видео"
+    assert decide.NONE_FOCUS in q["active_focus"]["options"]
+    assert "active_focus" not in decide.EVENT_QUESTIONS             # базовый словарь не меняется
 
 
 def test_parse_event_reads_focus_needed_and_policy_above_threshold():
-    answers = {"focus_needed": {"answer": "no", "confidence": 0.9},
-               "policy": {"answer": "none", "confidence": 0.7},
+    answers = {"active_focus": {"answer": "rimworld/combat", "confidence": 0.7},
                "category": {"answer": "news", "confidence": 0.8}}
     cls = decide.parse_event(answers, 0.35)
-    assert cls.focus_needed is False and cls.focus_conf == 0.9
-    assert cls.policy == "none" and cls.policy_conf == 0.7 and cls.category == "news"
-    low = decide.parse_event({"focus_needed": {"answer": "yes", "confidence": 0.2}}, 0.35)
-    assert low.focus_needed is None
+    assert cls.active_focus == "rimworld/combat" and cls.focus_conf == 0.7 and cls.category == "news"
+    assert decide.parse_event({"active_focus": {"answer": "rimworld/combat", "confidence": 0.59}}, 0.35).active_focus is None   # фокус переключается редко
+    assert decide.parse_event({"active_focus": {"answer": "none", "confidence": 0.9}}, 0.35).active_focus == decide.NONE_FOCUS
 
 
 # ── профиль: поле focus.quiet_modules ────────────────────────────────────────────────────────

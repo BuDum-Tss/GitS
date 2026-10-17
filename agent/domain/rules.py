@@ -29,6 +29,21 @@ def looks_like_action(text: str) -> bool:
     return bool(_VERB_RE.search(text.lower()))
 
 
+CRITICAL_URGENCY = 4        # с этой срочности слабый «нет» классификатора реакцию не гасит
+
+
+def route_flags(decision: str, urgency: int | None, *, react: bool | None = None, speak: bool | None = None,
+                think: bool | None = None) -> tuple[str, bool]:
+    """Решение роутера (decide): (решение D0-D4, подумать ли). Уверенное «реагировать не нужно» или «говорить не нужно» гасит
+    речь (D2-D4 -> D1, в сводку), кроме срочных событий: да/нет-вопросы классификатора смещены в «нет», критичное они не
+    отменяют. «Подумать» работает, если реакция не отменена. None - классификатор не уверен, решение формулы не меняется."""
+    critical = (urgency or 0) >= CRITICAL_URGENCY
+    if not critical and decision in ("D2", "D3", "D4") and (react is False or speak is False):
+        decision = "D1"
+    want_think = bool(think) and decision != "D0" and (critical or react is not False)
+    return decision, want_think
+
+
 EPISODE_KINDS = ("episode.summary", "episode.ended")
 THINK_MIN_PRIORITY = 25.0
 
