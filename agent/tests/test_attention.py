@@ -954,7 +954,7 @@ async def test_classify_input_threshold_and_switch(tmp_path):
     rig.cfg["attention"]["classifier"] = True
     rig.decider.answers = None
     assert await rig.att.classify_input("Открой браузер") is None     # сервис недоступен
-    assert rig.decider.calls[0][1] == ["intent", "needs_memory"]
+    assert rig.decider.calls[0][1] == ["intent", "needs_memory", "emotion"]
 
 
 async def test_enqueue_say_by_context(rig):

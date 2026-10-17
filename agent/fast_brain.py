@@ -55,9 +55,8 @@ _SYSTEM = (
 _CHAT_SYSTEM = (
     "Ты — рефлекторный слой {name}. Игрок написал сообщение. Оцени, как оно "
     "меняет её отношение к игроку (delta от -10 грубость, до +10 тепло и "
-    "уважение; 0 — нейтрально) и выбери эмоцию стикера. Ответь ТОЛЬКО JSON: "
-    '{"delta": <целое от -10 до 10>, "emotion": <одно из ' + json.dumps(EMOTIONS) + '>, '
-    '"intensity": <целое от 0 до 3: насколько сильна эмоция>}'
+    "уважение; 0 — нейтрально). Эмоцию выбирает классификатор, не ты. Ответь ТОЛЬКО JSON: "
+    '{"delta": <целое от -10 до 10>}'
 )
 
 # Запасные правила, если локальная модель недоступна
@@ -293,7 +292,7 @@ async def classify(evt: dict, rel=None, timeout: float = TIMEOUT) -> dict:
 
 
 _listeners: list = []
-_affect = None          # AffectService (ТЗ 26): оценка событий и интенсивность реплик; None - состояния эмоций нет
+_affect = None          # AffectService (ТЗ 26): текущая эмоция (контекст реплики); None - состояния эмоций нет
 
 
 def set_affect(service) -> None:
@@ -317,11 +316,8 @@ def publish(evt_name: str, res: dict):
     """Записать эмоцию для дашборда и сообщить подписчикам (presence для модулей) и в журнал (ТЗ 24, TRC-3)."""
     ts = time.time()
     intensity = res.get("intensity", 1)
-    if _affect is not None:
-        if evt_name == "say":                   # эмоция реплики: интенсивность из состояния (ТЗ 26, AFF-5)
-            intensity = _affect.reply_intensity(res["emotion"])
-        else:
-            _affect.on_emotion(evt_name, {**res, "intensity": intensity})
+    if _affect is not None:                     # новая эмоция перебивает старую и держится emotion_ttl_s секунд (ТЗ 26)
+        _affect.set(res["emotion"], evt_name)
     journal.emotion(res["emotion"], intensity, reason=evt_name, character=character.active().id)
     for callback in list(_listeners):
         try:
@@ -355,28 +351,23 @@ async def react(evt: dict, state: dict | None = None, rel=None) -> dict:
 
 
 async def react_chat(text: str, rel=None) -> dict | None:
-    """Реакция на сообщение игрока: эмоция и сдвиг отношения к игроку."""
+    """Реакция на сообщение игрока: сдвиг отношения к игроку (эмоцию выбирает классификатор, см. decide.INPUT_QUESTIONS)."""
     t0 = time.perf_counter()
     try:
         j = _json_of(await _ask(_CHAT_SYSTEM, text[:300], TIMEOUT, background=True))
-        emo = j.get("emotion") if j else None
         delta = max(-10, min(10, int(j.get("delta", 0)))) if j else 0
-        intensity = journal.clamp_intensity(j.get("intensity")) if j else 1
     except Exception as e:
         logger.warning(f"Не удалось оценить сообщение игрока: {e}")
         return None
-    if emo not in EMOTIONS:
-        emo = "looking"
-    res = {"emotion": emo, "action": "none", "source": "llm", "intensity": intensity, "delta": delta,
+    res = {"emotion": "idle", "action": "none", "source": "llm", "delta": delta,
            "ms": round((time.perf_counter() - t0) * 1000)}
-    publish("chat", res)
     sal, reasons = salience.score(salience.factors_of(delta=delta))
-    events_log.log("reflex", "оценка тона сообщения пользователя", emotion=emo, delta=delta, ms=res["ms"],
+    events_log.log("reflex", "оценка тона сообщения пользователя", delta=delta, ms=res["ms"],
                    salience=sal, reasons=reasons)
     if rel is not None and delta:
         from relationships import PLAYER
         rel.adjust(PLAYER, delta, f"написал: {text[:60]}")
-    logger.info(f"[fast] чат → {emo}, отношение к игроку {delta:+d} ({res['ms']} мс)")
+    logger.info(f"[fast] чат → отношение к игроку {delta:+d} ({res['ms']} мс)")
     return res
 
 

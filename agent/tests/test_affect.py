@@ -1,16 +1,16 @@
-"""ТЗ 26: эмоции персонажа. Часы управляемые, модель и сеть не нужны."""
-import json
+"""ТЗ 26: эмоция персонажа. Одна эмоция из стандартного набора, её выбирает классификатор, новая перебивает старую, держится
+`emotion_ttl_s` секунд. Часы управляемые, модель и сеть не нужны."""
+import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import decide
 import fast_brain
-import journal
 from app.affect_service import AffectService
 from app.context_builder import ContextBuilder
+from app.event_classifier import EventClassifier
 from domain import affect as dom
-
-P = dom.Params.from_card({"baseline_valence": 0.1, "emotion_decay_min": 10, "inertia": 0.0,
-                          "max_shift_per_hour": 0.5})
 
 
 class Clock:
@@ -21,170 +21,121 @@ class Clock:
         return self.t
 
 
-def svc(tmp_path, clock=None, params=P):
-    return AffectService(tmp_path, params, clock=clock or Clock())
+def svc(clock=None, ttl=3.0, on_change=None):
+    return AffectService(lambda: ttl, clock=clock or Clock(), on_change=on_change)
 
 
-def test_pet_labels_have_vectors():
-    assert set(dom.VECTORS) == set(fast_brain.EMOTIONS)
+def test_label_sets_are_the_same_everywhere():
+    assert set(dom.LABELS) == set(fast_brain.EMOTIONS) == set(decide.EMOTION_OPTIONS)
 
 
-def test_empty_card_is_neutral():
-    p = dom.Params.from_card({})
-    assert (p.baseline_valence, p.inertia) == (0.0, 0.3)
-    assert dom.Params.from_card({"inertia": "x", "baseline_valence": 9}).baseline_valence == 1.0
-
-
-def test_decay_returns_to_baseline_and_is_stepwise_exact():
-    s, _ = dom.appraise(dom.initial(P, 0), P, 0, label="angry", intensity=3, category="game")
-    assert s.valence < 0.1
-    one = dom.decay(s, P, 7200)
-    step = s
-    for t in range(600, 7201, 600):
-        step = dom.decay(step, P, t)
-    assert abs(one.valence - step.valence) < 1e-9 and abs(one.arousal - step.arousal) < 1e-9
-    far = dom.decay(s, P, 10 * 86400)
-    assert abs(far.valence - 0.1) < 1e-6 and not far.emotions
-
-
-def test_saturation_and_hour_cap():
-    p = dom.Params.from_card({"inertia": 0, "max_shift_per_hour": 2, "sensitivity": {"game": 5}})
-    s = dom.initial(p, 0)
-    prev = 0
-    for _ in range(30):
-        s, _w = dom.appraise(s, p, 0, label="happy", intensity=3, category="game")
-        assert prev <= s.valence <= 1.0
-        prev = s.valence
-    assert s.valence > 0.9
-    capped = dom.initial(P, 0)
-    warns = []
-    for _ in range(10):
-        capped, w = dom.appraise(capped, P, 0, label="sad", intensity=3, category="game")
-        warns += w
-    assert warns and abs(capped.valence - 0.1) <= P.max_shift_per_hour + 1e-9
-
-
-def test_inertia_reduces_shift():
-    p0 = dom.Params.from_card({"inertia": 0.0})
-    p9 = dom.Params.from_card({"inertia": 0.8})
-    a, _ = dom.appraise(dom.initial(p0, 0), p0, 0, label="sad", intensity=3, category="game")
-    b, _ = dom.appraise(dom.initial(p9, 0), p9, 0, label="sad", intensity=3, category="game")
-    assert abs(b.valence) < abs(a.valence)
-
-
-def test_neutral_labels_do_not_move_state():
-    s0 = dom.initial(P, 0)
-    s, _ = dom.appraise(s0, P, 0, label="thinking", intensity=3, category="chat")
-    assert s.valence == s0.valence and not s.emotions
-
-
-def test_bounds_for_tone_and_proactivity():
-    s = dom.State(valence=-1, arousal=1, ts=0)
-    t = dom.voice_tone(s, P)
-    assert abs(t["rate_pct"]) <= P.voice_rate_limit and abs(t["pitch_hz"]) <= P.voice_pitch_limit
-    assert abs(dom.proactivity_offset(s, P)) <= P.proactivity_limit
-    assert dom.proactivity_offset(s, P) > 0 > dom.proactivity_offset(dom.State(valence=1, ts=0), P)
-
-
-def test_bad_events_give_a_fast_emotion_that_fades_without_a_long_mood(tmp_path):
+def test_new_emotion_replaces_the_old_one_and_expires():
     c = Clock()
-    a = svc(tmp_path, c)
-    assert a.emotion_block() == "" and "mood" not in a.snapshot()          # ровный фон: в контекст нечего добавить
-    base = a.snapshot()["valence"]
-    for _ in range(3):
-        a.on_emotion("pawn_died", {"emotion": "sad", "intensity": 3})
-    low = a.snapshot()
-    assert low["valence"] < base and low["mood_emotion"] == "sad" and "pawn_died" in low["reason"]
-    assert "не меняет факты" in a.emotion_block() and "«sad»" in a.emotion_block()
-    c.t += 3600                                                            # через час реакции нет, настроения нет
-    after = a.snapshot()
-    assert abs(after["valence"] - P.baseline_valence) < 0.01 and after["mood_emotion"] == "idle"
-    assert a.emotion_block() == ""
+    a = svc(c, ttl=3.0)
+    assert a.current() == "idle" and a.emotion_block() == ""
+    a.set("angry", "chat")
+    assert a.current() == "angry"
+    c.t += 1
+    a.set("happy", "event:win")                     # новая сразу перебивает старую, срок отсчитывается заново
+    assert a.current() == "happy" and a.snapshot()["reason"] == "event:win"
+    c.t += 2.5
+    assert a.current() == "happy"
+    c.t += 1
+    assert a.current() == "idle" and a.emotion_block() == "" and a.snapshot()["reason"] == ""
 
 
-def test_own_reply_does_not_move_state_and_intensity_from_state(tmp_path):
-    a = svc(tmp_path)
-    before = a.snapshot()["valence"]
-    a.on_emotion("say", {"emotion": "angry", "intensity": 3})
-    assert a.snapshot()["valence"] == before
-    assert a.reply_intensity("angry") == 0
-    a.on_emotion("chat", {"emotion": "angry", "intensity": 3})
-    assert a.reply_intensity("angry") >= 1
-
-
-def test_relation_delta_and_mistake(tmp_path):
-    a = svc(tmp_path, params=dom.Params.from_card({"baseline_valence": 0.1, "inertia": 0.0, "max_shift_per_hour": 2}))
-    a.on_emotion("chat", {"emotion": "looking", "intensity": 1, "delta": -10})
-    v = a.snapshot()["valence"]
-    assert v < 0.1
-    a.on_mistake("denied")
-    assert a.snapshot()["valence"] < v
-
-
-def test_persist_restore_and_sleep_decay(tmp_path):
+def test_only_standard_non_idle_labels_count():
     c = Clock()
-    a = svc(tmp_path, c)
-    a.on_emotion("chat", {"emotion": "angry", "intensity": 3})
-    valence = a.snapshot()["valence"]
-    a.stop()
-    saved = json.loads((tmp_path / "affect.json").read_text(encoding="utf-8"))["state"]
-    assert abs(saved["valence"] - valence) < 0.01 and "mood" not in saved
-    c.t += 120
-    b = svc(tmp_path, c)                                                   # минуты сна: реакция ещё ослаблена, но помнится
-    assert P.baseline_valence > b.snapshot()["valence"] > valence
-    c.t += 3600
-    assert abs(svc(tmp_path, c).snapshot()["valence"] - P.baseline_valence) < 0.01      # час сна: всё прошло
-    (tmp_path / "affect.json").write_text("{мусор", encoding="utf-8")
-    assert abs(svc(tmp_path, c).snapshot()["valence"] - P.baseline_valence) < 1e-9
+    a = svc(c)
+    a.set("angry", "chat")
+    for bad in ("idle", "furious", None, 5, ""):
+        a.set(bad, "x")
+    assert a.current() == "angry"                   # мусор и idle прежнюю эмоцию не трогают
 
 
-def test_determinism(tmp_path):
-    def run(d):
-        d.mkdir()
-        c = Clock()
-        a = svc(d, c)
-        for i in range(5):
-            c.t += 60
-            a.on_emotion("chat", {"emotion": "happy" if i % 2 else "angry", "intensity": 2})
-        return a.snapshot(with_history=True)
-    assert run(tmp_path / "1") == run(tmp_path / "2")
-
-
-def test_character_switch_keeps_own_states(tmp_path):
+def test_ttl_comes_from_the_setting_and_is_clamped():
     c = Clock()
-    one, two = tmp_path / "one", tmp_path / "two"
-    a = AffectService(one, P, clock=c)
-    a.on_emotion("chat", {"emotion": "sad", "intensity": 3})
-    val_one = a.snapshot()["valence"]
-    a.switch(two, dom.Params.from_card({"baseline_valence": 0.5}))
-    assert a.snapshot()["valence"] == 0.5
-    a.on_emotion("chat", {"emotion": "happy", "intensity": 3})
-    a.switch(one, P)
-    assert abs(a.snapshot()["valence"] - val_one) < 1e-9
-    assert (two / "affect.json").exists()
+    ttl = {"v": 10.0}
+    a = AffectService(lambda: ttl["v"], clock=c)
+    a.set("sad", "chat")
+    c.t += 8
+    assert a.current() == "sad"
+    ttl["v"] = 5.0                                  # настройка меняется на лету
+    assert a.current() == "idle"
+    for raw, want in ((None, dom.DEFAULT_TTL_S), ("x", dom.DEFAULT_TTL_S), (True, dom.DEFAULT_TTL_S), (0, dom.TTL_MIN_S),
+                      (999, dom.TTL_MAX_S), (4, 4.0)):
+        assert dom.clamp_ttl(raw) == want
 
 
-def test_reset(tmp_path):
-    a = svc(tmp_path)
-    a.on_emotion("chat", {"emotion": "angry", "intensity": 3})
-    a.reset()
-    assert abs(a.snapshot()["valence"] - P.baseline_valence) < 1e-9 and not a.snapshot()["emotions"]
-
-
-def test_context_and_fast_brain_wiring(tmp_path):
-    a = svc(tmp_path)
+def test_context_fact_names_the_emotion_only_while_it_lasts():
+    c = Clock()
+    a = svc(c)
     cb = ContextBuilder(object())
-    a.on_emotion("chat", {"emotion": "angry", "intensity": 3})
     cb.emotion_of = a.emotion_block
-    assert "не меняет факты" in cb.emotion_of()
+    assert cb.emotion_of() == ""
+    a.set("surprised", "chat")
+    fact = cb.emotion_of()
+    assert "«surprised»" in fact and "причина: chat" in fact and "не меняет факты" in fact
+    c.t += 10
+    assert cb.emotion_of() == ""
+
+
+def test_fast_brain_publish_sets_the_emotion():
+    a = svc()
     fast_brain.set_affect(a)
     try:
-        fast_brain.publish("chat", {"emotion": "angry", "intensity": 3, "delta": -5})
-        assert a.snapshot()["emotions"].get("angry")
-        fast_brain.publish("say", {"emotion": "angry"})
+        fast_brain.publish("chat", {"emotion": "angry", "action": "none"})
+        assert a.current() == "angry"
+        fast_brain.publish("say", {"emotion": "happy", "action": "none"})
+        assert a.current() == "happy"
     finally:
         fast_brain.set_affect(None)
-    assert journal.mistake_hook is None or callable(journal.mistake_hook)
+
+
+async def test_presence_gets_idle_when_the_emotion_expires():
+    got = []
+    a = AffectService(lambda: 0.5, on_change=got.append)
+    a.set("scared", "event")
+    a._timer.cancel()                               # не ждём настоящих секунд: вызываем срок сами
+    a._expire(a.state.ts)
+    assert got and got[-1]["emotion"] == "idle"
+    a.set("happy", "event")                         # устаревший таймер новую эмоцию не гасит
+    got.clear()
+    a._expire(a.state.ts - 1)
+    assert got == []
+    a._timer.cancel()
+
+
+# ── эмоцию выбирает классификатор ──────────────────────────────────────────────
+
+def ans(value, conf):
+    return {"answer": value, "confidence": conf}
+
+
+def test_classifier_emotion_needs_confidence_and_is_never_idle():
+    assert decide.parse_input({"emotion": ans("angry", 0.6)}, 0.5).emotion == "angry"
+    assert decide.parse_input({"emotion": ans("angry", 0.2)}, 0.5).emotion is None
+    assert decide.parse_input({"emotion": ans("idle", 0.9)}, 0.5).emotion is None
+    assert decide.parse_input({"emotion": ans("furious", 0.9)}, 0.5).emotion is None
+    assert decide.parse_event({"emotion": ans("threat", 0.4)}, 0.9).emotion == "threat"     # свой порог, не порог категории
+    assert "emotion" in decide.EVENT_QUESTIONS and "emotion" in decide.INPUT_QUESTIONS
+    assert set(decide.EVENT_QUESTIONS["emotion"]["options"]) == set(fast_brain.EMOTIONS)
+
+
+async def test_user_message_emotion_from_classifier_goes_to_the_hook():
+    seen = []
+
+    class FakeDecider:
+        last_ms = 1
+
+        async def classify(self, text, questions, timeout=None):
+            return {"intent": ans("chat", 0.9), "emotion": ans("happy", 0.7)}
+
+    ctx = SimpleNamespace(
+        att=lambda: {"classifier": True, "min_conf_input": 0.5}, decider=FakeDecider(),
+        log=SimpleNamespace(log_nowait=lambda *a, **k: None), on_emotion=lambda label, reason: seen.append((label, reason)))
+    cls = await EventClassifier(ctx, None).classify_input("ты молодец", lambda why: asyncio.sleep(0))
+    assert cls.intent == "chat" and seen == [("happy", "chat")]
 
 
 def test_voice_tone_limits_in_engine():
