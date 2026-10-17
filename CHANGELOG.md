@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- `workspace.switch`: если модуль среды (например, RimWorld) выключен или не подключился, вместо «параметр должен быть одним из [assistant]» инструмент отвечает причиной («модуль выключен, включи во вкладке Модули» или «ещё не подключился, смотри журнал»), а список сред включает заявленные в `modules.yaml` модули. Схема архитектуры не менялась: состав и связи те же.
+
 ### Removed
 - Справочник (ТЗ 04, `knowledge_base.py`, `knowledge_service.py`, `knowledge_routes.py`, инструмент `knowledge.lookup`, блок «Справка» в ответе, настройка `knowledge`, поле `knowledge` профилей и манифестов) и уроки с убеждениями (ТЗ 28, `domain/lessons.py`, `app/lessons.py`, `adapters/lesson_store.py`, `lesson_service.py`, `lesson_routes.py`, настройка `lessons`, блоки убеждений и уроков в контексте, `/api/lessons`, `/api/beliefs`) удалены целиком по решению владельца: контекст реплики раздувался, а пользы они не давали. Из контракта модулей убраны запросы `core.lookup`, `core.experience.add`, `core.kb.ingest` и поле манифеста `knowledge`, `ModuleClient.lookup/experience_add/kb_ingest`; версия контракта 1.6 (`PROTOCOL` не менялся: все модули в этом репозитории обновлены вместе с ядром, проверка имён версии 1.0 в `test_contract_compat.py` исправлена). Модуль `montage` больше не грузит регламент в справочник, не пишет опыт по правкам (убраны `kb_lookup`, `Manager.sync_kb`, `Pipeline._experience`, промпт `stage_experience.md`), `rimworld` не сверяет `lessons.json` с ядром и не подбирает уроки через `core.lookup` (свои `lessons.json` и `knowledge.json` игры остались). Вкладка «Память» потеряла карточки и разделы «Уроки и убеждения» и «Справочник». Схема архитектуры пересобрана (`spec.py`). Файлы `lessons.db` и `knowledge.db` в папках памяти остаются на диске, их можно удалить вручную.
 
