@@ -101,8 +101,8 @@ class _Mem:
     def context_block(self, dialogue=6):
         return "ПАМЯТЬ " + "я" * 600
 
-    def profile_block(self):
-        return "ПРОФИЛЬ"
+    def profile_block(self, include_owner=True):
+        return "ПРОФИЛЬ" if include_owner else "ТОЛЬКО_ОНА"
 
     def graph_status(self):
         return None

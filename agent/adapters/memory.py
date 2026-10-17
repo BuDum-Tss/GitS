@@ -52,10 +52,11 @@ class UserMemoryAdapter:
             return ""
         return character_memory.block(await graph.self_memories(query))
 
-    def profile_block(self) -> str:
-        """Профиль владельца и её собственные выводы: всегда в контексте, вне темы разговора (читается напрямую, без моделей)."""
+    def profile_block(self, include_owner: bool = True) -> str:
+        """Профиль владельца и её собственные выводы: всегда в контексте, вне темы разговора (читается напрямую, без моделей).
+        `include_owner=False`: собеседник не владелец, профиль владельца пропускается."""
         fn = getattr(self._get_graph(), "profile_block", None)       # у заглушек графа в тестах метода может не быть
-        return fn() if fn is not None else ""
+        return fn(include_owner) if fn is not None else ""
 
     def graph_status(self) -> str | None:
         graph = self._get_graph()

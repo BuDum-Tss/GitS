@@ -550,10 +550,11 @@ class GraphMemory:
             logger.warning(f"Граф, профиль: {e}")
             return []
 
-    def profile_block(self) -> str:
-        """Блок контекста: главное о владельце и её собственные выводы о себе. Всегда в ответе, вне темы разговора."""
+    def profile_block(self, include_owner: bool = True) -> str:
+        """Блок контекста: главное о владельце и её собственные выводы о себе. Всегда в ответе, вне темы разговора.
+        `include_owner=False`: говорит не владелец, его профиль собеседнику не показываем."""
         lines = []
-        owner = self.profile_facts("owner", PROFILE_FACTS)
+        owner = self.profile_facts("owner", PROFILE_FACTS) if include_owner else []
         if owner:
             lines.append("Главное, что ты помнишь о пользователе:")
             lines += [f"  - {f['text']}" for f in owner]

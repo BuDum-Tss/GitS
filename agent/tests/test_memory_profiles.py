@@ -170,6 +170,30 @@ def test_profile_is_in_context_even_off_topic(tmp_path):
     assert "зелёный чай" in text
 
 
+def test_owner_profile_is_not_shown_to_another_speaker(tmp_path):
+    from app.context_builder import ContextBuilder
+    g = _graph(tmp_path)
+    g.remember("Пользователь любит зелёный чай по утрам", "owner", 5)
+    g.remember("Я обещала шутить реже", "self", 5)
+
+    class Host:
+        _graph_block = _self_block = ""
+        _memory_reader = UserMemoryAdapter(lambda: None, lambda: g)
+        _settings = SimpleNamespace(load=lambda: {"hearing": False})
+        _people = SimpleNamespace(describe=lambda _: "")
+
+        def _capabilities(self):
+            return ""
+
+        def _claude_note(self):
+            return ""
+
+    for query in ("[говорит Вася] привет", "[незнакомый голос] кто ты"):
+        text = ContextBuilder(Host()).build(query=query)
+        assert "зелёный чай" not in text and "шутить реже" in text            # профиль владельца скрыт, её выводы о себе остаются
+    assert "зелёный чай" in ContextBuilder(Host()).build(query="привет")
+
+
 @pytest.mark.parametrize("name", ["memory_store", "knowledge", "lessons"])
 def test_old_memory_layers_are_gone(name):
     import importlib

@@ -251,7 +251,14 @@
       <!-- Память -->
       <div id="tab-memory" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-4">
-          <details id="mem-howto" class="rounded-box border border-base-300 p-3" open>
+          <div role="tablist" id="mem-subtabs" class="tabs tabs-boxed bg-base-200 w-fit max-w-full flex-wrap">
+            <a role="tab" class="tab tab-active" data-mtab="user">Владелец <span id="mt-n-user" class="opacity-60 ml-1 text-xs"></span></a>
+            <a role="tab" class="tab" data-mtab="self">Она сама <span id="mt-n-self" class="opacity-60 ml-1 text-xs"></span></a>
+            <a role="tab" class="tab" data-mtab="plan">Цели <span id="mt-n-plan" class="opacity-60 ml-1 text-xs"></span></a>
+            <a role="tab" class="tab" data-mtab="eps">Эпизоды</a>
+            <a role="tab" class="tab" data-mtab="facts">Факты</a>
+          </div>
+          <details id="mem-howto" class="rounded-box border border-base-300 p-3">
             <summary class="cursor-pointer font-medium">Как устроена память</summary>
             <p class="text-sm opacity-80 mt-2">Память состоит из пяти частей: профиль владельца, её профиль о себе, цели и планы, эпизоды из жизни и важные факты. В память идёт только то,
               что она сама сочла важным; мелочь и сиюминутное не записываются. Всё хранится локально, в папке памяти персонажа; наружу ничего не уходит.</p>
@@ -292,13 +299,35 @@
               <span class="badge badge-outline">до 3 фактов в подсказку модели</span>
             </div>
           </details>
-          <div class="divider my-0"></div>
-          <div>
-            <div class="font-medium mb-2">Что ассистентка помнит</div>
-            <div id="facts" class="space-y-3"></div>
-            <p class="text-xs opacity-60 mt-2">Можно и словами в чате: «забудь про …».</p>
+          <div data-mpane="user">
+            <div class="font-medium mb-1">Профиль владельца</div>
+            <p class="text-xs opacity-60 mb-2">Главное о тебе, что она сама сочла важным (оценка 4-5). Всегда в контексте ответа. Можно и словами в чате: «забудь про …».</p>
+            <ul id="mem-user" class="space-y-1"></ul>
           </div>
-          <div class="divider my-0"></div>
+          <div data-mpane="self">
+            <div class="font-medium mb-1">Её профиль о себе</div>
+            <p class="text-xs opacity-60 mb-2">Её собственные выводы и обещания (вместе с каноном персонажа из memories.yaml, который здесь не показан и удаляется только правкой файла).</p>
+            <ul id="mem-self" class="space-y-1"></ul>
+          </div>
+          <div data-mpane="plan">
+            <div class="font-medium mb-1">Цели и планы</div>
+            <p class="text-xs opacity-60 mb-2">Дела со сроком: это задачи (tasks.db). ✕ отменяет задачу.</p>
+            <ul id="mem-plan" class="space-y-1"></ul>
+          </div>
+          <div data-mpane="eps">
+          <div>
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <div class="font-medium">Эпизоды и сон</div>
+              <span id="sleep-status" class="text-xs opacity-70"></span>
+              <button id="sleep-now" class="btn btn-xs btn-ghost">Спать сейчас</button>
+              <button id="sleep-stop" class="btn btn-xs btn-ghost">Прервать</button>
+            </div>
+            <div id="episodes" class="space-y-2 text-sm"></div>
+            <div class="font-medium mt-4 mb-2">Дневник</div>
+            <div id="diary" class="space-y-2 text-sm"></div>
+          </div>
+          </div>
+          <div data-mpane="facts">
           <div>
             <div class="font-medium mb-2">Отношения</div>
             <ul id="relations" class="space-y-2 text-sm"></ul>
@@ -331,18 +360,9 @@
             </div>
             <div id="facts-list" class="space-y-1"></div>
           </div>
-          <div class="divider my-0"></div>
-          <div>
-            <div class="flex flex-wrap items-center gap-3 mb-2">
-              <div class="font-medium">Эпизоды и сон</div>
-              <span id="sleep-status" class="text-xs opacity-70"></span>
-              <button id="sleep-now" class="btn btn-xs btn-ghost">Спать сейчас</button>
-              <button id="sleep-stop" class="btn btn-xs btn-ghost">Прервать</button>
-            </div>
-            <div id="episodes" class="space-y-2 text-sm"></div>
-            <div class="font-medium mt-4 mb-2">Дневник</div>
-            <div id="diary" class="space-y-2 text-sm"></div>
+
           </div>
+
         </div>
       </div>
 
@@ -478,6 +498,16 @@ $('btn-theme').onclick = () => {
   });
   window.addEventListener('resize', () => { const w = parseFloat(pane.style.getPropertyValue('--chat-w')); if (w) set(w); });
 })();
+
+// ── подвкладки памяти ──
+function showMemPane(name) {
+  try { localStorage.setItem('memPane', name); } catch (e) {}
+  document.querySelectorAll('[data-mtab]').forEach(t => t.classList.toggle('tab-active', t.dataset.mtab === name));
+  document.querySelectorAll('[data-mpane]').forEach(p => p.classList.toggle('hidden', p.dataset.mpane !== name));
+}
+document.querySelectorAll('[data-mtab]').forEach(t => t.onclick = () => showMemPane(t.dataset.mtab));
+let savedPane = 'user'; try { savedPane = localStorage.getItem('memPane') || 'user'; } catch (e) {}
+showMemPane(['user', 'self', 'plan', 'eps', 'facts'].includes(savedPane) ? savedPane : 'user');
 
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
@@ -981,18 +1011,16 @@ function renderActivity(list) {
 
 function renderMemory(core) {
   MEMSTAT.notes = core.memories || []; MEMSTAT.relations = (core.relations || []).length; layerCounts();
-  const KIND_TITLE = {user: ['Главное о тебе', 'badge-neutral'], self: ['Её выводы о себе', 'badge-secondary'], plan: ['Цели и планы', 'badge-warning']};
-  const groups = ['user', 'self', 'plan'].map(k => {
+  for (const k of ['user', 'self', 'plan']) {
     const items = (core.memories || []).filter(m => m.kind === k);
-    if (!items.length) return '';
-    return `<div><div class="mb-1"><span class="badge ${KIND_TITLE[k][1]} badge-sm">${KIND_TITLE[k][0]}</span></div><ul class="space-y-1">` +
-      items.map(m => `<li class="flex items-start justify-between gap-2"><span class="bubble-text">${esc(m.text)}${m.due ? ` <span class="text-xs opacity-60">(до ${new Date(m.due * 1000).toLocaleDateString()})</span>` : ''}</span>
-        <button class="btn btn-ghost btn-xs" data-forget-id="${esc(m.id)}" title="Забыть">✕</button></li>`).join('') + '</ul></div>';
-  }).join('');
-  $('facts').innerHTML = groups || '<li class="opacity-60 text-sm">Пока ничего. Расскажи о себе в чате или попроси «запомни, что…».</li>';
-  $('facts').querySelectorAll('[data-forget-id]').forEach(b => b.onclick = async () => {
-    await post('/api/memory/forget', {id: b.dataset.forgetId}); poll();
-  });
+    $('mt-n-' + k).textContent = items.length || '';
+    $('mem-' + k).innerHTML = items.length ? items.map(m => `<li class="flex items-start justify-between gap-2"><span class="bubble-text">${esc(m.text)}${m.due ? ` <span class="text-xs opacity-60">(до ${new Date(m.due * 1000).toLocaleDateString()})</span>` : ''}</span>
+        <button class="btn btn-ghost btn-xs" data-forget-id="${esc(m.id)}" title="Забыть">✕</button></li>`).join('')
+      : '<li class="opacity-60 text-sm">Пока пусто. Расскажи об этом в чате или попроси «запомни, что…».</li>';
+    $('mem-' + k).querySelectorAll('[data-forget-id]').forEach(b => b.onclick = async () => {
+      await post('/api/memory/forget', {id: b.dataset.forgetId}); poll();
+    });
+  }
   const BADGE = {pawn: ['игра', 'badge-success'], person: ['Telegram', 'badge-info'], player: ['ты', 'badge-neutral']};
   $('relations').innerHTML = core.relations.length ? core.relations.map(r => {
     const pct = Math.round((r.affinity + 100) / 2), b = BADGE[r.kind] || BADGE.pawn;
