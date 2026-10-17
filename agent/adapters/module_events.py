@@ -7,11 +7,17 @@ from gits_sdk import protocol as P
 
 
 class AttentionEventSink:
-    def __init__(self, attention, presence=None):
+    def __init__(self, attention, presence=None, recorder=None):
         self.attention = attention
         self.presence = presence
+        self.recorder = recorder          # (module_id, event) -> None: журнал событий для запроса и строки в чат
 
     async def submit(self, module_id: str, event: dict) -> None:
+        if self.recorder is not None:
+            try:
+                self.recorder(module_id, event)
+            except Exception:
+                pass                      # журнал не должен мешать доставке события
         await self.attention.submit(module_id, event)
 
     async def submit_speech(self, module_id: str, say: dict) -> None:

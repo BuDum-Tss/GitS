@@ -22,7 +22,7 @@ DEFAULTS = {
     "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); переключает ядро (core.set_character), не правьте вручную
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (нужен docker compose up whisperx)
-    "context": {"mode": "push", "budget_tokens": {}},   # ТЗ 04: push/pull память; бюджет токенов на роль и блок
+    "context": {"mode": "push", "budget_tokens": {"reply": {"dialogue": 500, "profile": 250, "capabilities": 350, "total": 1800}}},   # ТЗ 04: push/pull память; бюджет токенов на роль и блок
     "hearing": False,           # слушать системный звук (речь в колонках); по умолчанию выключено
     "auto_accept": False,       # авто-разрешать ВСЕ действия (кроме опасных, см. safety.py); включает только пользователь
     "telegram": False,          # публиковать мысли в Telegram-канал
@@ -46,7 +46,7 @@ DEFAULTS = {
                  "cut": {"pause_s": 600, "peak": 0.5, "dense_events": 8, "max_events": 40, "max_tokens": 1500}},
     # быстрый контур (ТЗ 25): stream - стриминг ответа по предложениям; memory_deadline_ms - дедлайн поиска в памяти (FAST-6);
     # ack_ms - через сколько без реплики на поручении уходит факт «принято» (FAST-3); filler_ms - факт-филлер при затянутом ответе
-    "fast_contour": {"stream": False, "merge_rest": True, "reply_tokens": 90, "memory_deadline_ms": 300, "ack_ms": 300, "filler_ms": 4000},
+    "fast_contour": {"stream": False, "merge_rest": True, "reply_tokens": 90, "memory_deadline_ms": 300, "ack_ms": 1200, "filler_ms": 4000},
     # бюджеты задержки по этапам трассы, мс (ТЗ 25, FAST-8): шаг от предыдущей метки до метки этапа; end_to_sound - от конца
     # фразы до начала звука. Превышение пишется в журнал (`budget_exceeded`) и видно в отчёте /api/latency
     "latency_budget": {"stt_done": 1500, "core_in": 400, "classify_done": 400, "route": 100, "retrieve_done": 450,

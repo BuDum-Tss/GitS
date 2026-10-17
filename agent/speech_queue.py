@@ -291,6 +291,10 @@ class SpeechQueue:
         while self._tasks:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
+    def urgent_waiting(self) -> bool:
+        """Ждёт ли очереди важное (приоритет от INTERRUPT_P, не реплика разговора): идущее долгое дело стоит прервать (ТЗ 03)."""
+        return any(c.priority >= INTERRUPT_P and c.family not in ("conversation", "question") for c in self.items)
+
     def snapshot(self) -> list[dict]:
         """Очередь для дашборда и отладки."""
         now = self._clock()

@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -19,6 +20,7 @@ from module_hub import ModuleError
 
 logger = logging.getLogger("modules")
 
+EVENTS_KEPT = 100               # недавних событий модулей для `core.module_events`
 FINISHED_JOBS_KEPT = 20          # завершённых задач модуля в реестре (ТЗ 01: job.list)
 CHECK_TIMEOUT_S = 2.0            # tool.check: ответ не позже чем за 2 с (CORE-35)
 ENABLED_CACHE_S = 0.5            # как долго помнится чтение настроек (is_enabled зовут часто)
@@ -85,6 +87,7 @@ class ModuleRegistry:
         self._enabled_cache: tuple[float, dict] = (0.0, {})
         self.context_for: Callable[[str], str] = lambda query: ""   # core_fills: краткий контекст разговора (ставит ядро, DESK-12)
         self._job_waiters: dict[tuple[str, str], asyncio.Future] = {}
+        self.events: deque = deque(maxlen=EVENTS_KEPT)           # недавние события модулей: в контекст не кладутся, читаются по запросу
 
     # ── записи ──────────────────────────────────────────────────────────────
 
@@ -185,18 +188,47 @@ class ModuleRegistry:
         rec.panel_blocks = {"blocks": body["blocks"], "ts": now}
         return True
 
-    def notes(self) -> list[str]:
-        """Строки для контекста разговора: что умеет каждый подключённый включённый модуль с инструментами и в каком он
-        состоянии (по сводке state). Это факты для неё, не готовые реплики."""
+    def notes(self, with_state: bool = False) -> list[str]:
+        """Строки о модулях: что умеет каждый подключённый включённый модуль с инструментами. Состояние (сводка state)
+        в контекст не кладётся, его она узнаёт по запросу инструментом `core.modules_status` (with_state=True).
+        Это факты для неё, не готовые реплики."""
         lines = []
         for rec in sorted(self.records.values(), key=lambda r: r.id):
             if rec.kind != "module" or not rec.connected or not rec.manifest or not (rec.manifest.get("tools")):
                 continue
             if not self.is_enabled(rec.id):
                 continue
-            summary = ((rec.state or {}).get("summary") or "").strip()
+            summary = ((rec.state or {}).get("summary") or "").strip() if with_state else ""
             lines.append(f"Модуль «{rec.title or rec.id}»: {rec.description}" + (f" Сейчас: {summary}." if summary else ""))
         return lines
+
+    def status_report(self) -> str:
+        """Состояние модулей по запросу (инструмент `core.modules_status`): подключён ли, включён ли, сводка state."""
+        lines = []
+        for rec in sorted(self.records.values(), key=lambda r: r.id):
+            if rec.kind != "module":
+                continue
+            if not self.is_enabled(rec.id):
+                lines.append(f"- {rec.title or rec.id}: выключен.")
+            elif not rec.connected:
+                lines.append(f"- {rec.title or rec.id}: не подключён.")
+            else:
+                summary = ((rec.state or {}).get("summary") or "").strip()
+                lines.append(f"- {rec.title or rec.id}: подключён" + (f", {summary}." if summary else "."))
+        return ("Состояние модулей:\n" + "\n".join(lines)) if lines else "модулей нет"
+
+    def note_event(self, module_id: str, event: dict) -> None:
+        self.events.append({"ts": time.time(), "module": module_id, "kind": str(event.get("kind") or ""),
+                            "text": " ".join(str(event.get("text") or "").split())[:200]})
+
+    def events_report(self, module: str | None = None, limit: int = 15) -> str:
+        """Недавние события модулей (инструмент `core.module_events`): свежие снизу."""
+        rows = [e for e in self.events if not module or e["module"] == module][-max(1, min(int(limit or 15), EVENTS_KEPT)):]
+        if not rows:
+            return "событий модулей нет" + (f" ({module})" if module else "")
+        now = time.time()
+        return "Недавние события модулей:\n" + "\n".join(
+            f"- {max(0, round((now - e['ts']) / 60))} мин назад, {e['module']} {e['kind']}: {e['text']}" for e in rows)
 
     def state_data(self, module_id: str) -> dict | None:
         """state.data подключённого модуля (для профилей) или None."""

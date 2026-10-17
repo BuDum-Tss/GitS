@@ -517,6 +517,12 @@ def register_core_tools(registry, modules, attention=None, focus=None, switch=No
             lines.append(f"- {j['module']} {j['job_id']}: {j.get('title') or 'без названия'}, {j['state']}{stage}{pct}")
         return "Задачи модулей:\n" + "\n".join(lines)
 
+    async def modules_status(a):
+        return modules.status_report()
+
+    async def module_events(a):
+        return modules.events_report(a.get("module"), a.get("limit") or 15)
+
     async def job_cancel(a):
         return await modules.cancel_job(a["module"], a["job_id"])
 
@@ -588,6 +594,16 @@ def register_core_tools(registry, modules, attention=None, focus=None, switch=No
             _tool("core", "jobs", "Перечень задач всех модулей: модуль, название, состояние, стадия, прогресс. "
                   "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",
                   {}, jobs, informative=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),
+            _tool("core", "modules_status", "Состояние модулей: какие подключены, включены ли и что у каждого сейчас (игра, Telegram, "
+                  "голос, питомец, компьютер, монтаж). В контекст состояние не кладётся: узнавай им, когда спрашивают или нужно знать. "
+                  "Для вопросов «что с модулями», «запущена ли игра», «работает ли телеграм».",
+                  {}, modules_status, informative=True, keywords=("модули", "модуль", "статус", "состояние", "подключён", "работает")),
+            _tool("core", "module_events", "Недавние события модулей (что происходило в игре RimWorld, Telegram, на компьютере): "
+                  "в контекст они не кладутся, читай их этим инструментом, когда спрашивают «что было в игре», «что нового» "
+                  "или нужно знать, что произошло.",
+                  {"module": {"type": "string", "required": False, "enum": _ModuleIds(modules), "description": "id модуля; без него все"},
+                   "limit": {"type": "integer", "required": False, "description": "сколько событий, по умолчанию 15"}},
+                  module_events, informative=True, keywords=("события", "что было", "что произошло", "что нового", "в игре", "колония")),
             _tool("core", "set_setting", "Включить или выключить общую настройку для модулей: telegram (посты-мысли), "
                   "telegram_after_run (пост-итог после забега), telegram_voice (посты голосом), telegram_confirm (спрашивать "
                   "перед публикацией), pet_visible (показывать окно питомца).",

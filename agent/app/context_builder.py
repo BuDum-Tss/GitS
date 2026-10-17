@@ -31,10 +31,11 @@ class ContextBuilder:
                  f"- Зрение: {'включено' if cfg['vision'] else 'выключено'}.",
                  f"- Слух (системный звук): {'включён' if cfg['hearing'] else 'выключен'}.",
                  f"- Голос: {'заглушён' if cfg['voice_muted'] else 'включён'}."]
-        lines += ["- " + note for note in h.module_notes()]
-        lines.append("- Помощник Claude (Клод, Claude Code): ты можешь поручить ему сложные задачи на компьютере: "
-                     "установку программ и библиотек, файлы, код, команды, интернет, анализ. Он сам спрашивает "
-                     "разрешение на каждое изменение. Просьбы, которые тебе не по силам, уходят к нему.")
+        lines += ["- " + self._short(note) for note in h.module_notes()]
+        lines.append("- Помощник Claude (Клод): сложные задачи на компьютере (программы, файлы, код, команды, интернет, анализ); "
+                     "разрешение на изменения он спрашивает сам.")
+        lines.append("- Состояние модулей и их недавние события в контекст не входят: узнавай инструментами "
+                     "core.modules_status и core.module_events.")
         status = h._memory_reader.graph_status()
         if status is not None:
             lines.append("- " + status)
@@ -42,6 +43,21 @@ class ContextBuilder:
         if note:
             lines.append("- " + note)
         return "\n".join(lines)
+
+    def owner_allowed(self) -> bool:
+        """Можно ли класть сведения о пользователе: только в среде `assistant` (ответ на реплику передаёт `owner=True`)."""
+        try:
+            return self._h.workspace_of() == "assistant"
+        except Exception:
+            return True
+
+    @staticmethod
+    def _short(note: str, limit: int = 110) -> str:
+        """Описание модуля до первого двоеточия-пояснения и первой точки: в справке нужны суть и название, не полный текст."""
+        head, sep, rest = note.partition(": ")
+        first = rest.split(". ")[0].rstrip(".") if sep else head
+        text = f"{head}: {first}" if sep else first
+        return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
     def _settings_context(self) -> dict:
         try:
@@ -51,22 +67,27 @@ class ContextBuilder:
         return cfg if isinstance(cfg, dict) else {}
 
     def build(self, include_hearing: bool = True, query: str = "", needs_memory: str | None = None,
-              role: str = "reply", mode: str | None = None) -> str:
+              role: str = "reply", mode: str | None = None, owner: bool | None = None) -> str:
         """query: о чём сейчас речь. По нему из долговременной памяти берутся подходящие записи.
 
         mode (настройка `context.mode`, по умолчанию `push`): `push` кладёт память в контекст сам, но пропускает её,
         если классификатор сказал `needs_memory == "no"`; `pull` не кладёт запрошенную память вовсе, её достаёт
         инструмент `recall`. Бюджет (`context.budget_tokens[role]`, блок -> токены, ключ `total` на весь контекст):
-        без бюджета контекст прежний. Оценка токена: 3 символа."""
+        без бюджета контекст прежний. Оценка токена: 3 символа.
+
+        owner: сведения о пользователе (профиль владельца, отношение к игроку) кладутся, только когда она с ним общается:
+        ответ на его реплику (`True`) либо она в среде `assistant` (`None` решает по `workspace_of`)."""
         h = self._h
+        if owner is None:
+            owner = self.owner_allowed()
         cfg = self._settings_context()
         mode = mode or cfg.get("mode") or "push"
         skip_memory = mode == "pull" or needs_memory == "no"
         budget = (cfg.get("budget_tokens") or {}).get(role) or {}
         blocks: list[tuple[str, str]] = []
         blocks += [
-            ("dialogue", h._memory_reader.context_block(dialogue=12)),
-            ("profile", "" if SPEAKER_TAG.match(query or "") else getattr(h._memory_reader, "profile_block", lambda: "")()),   # главное о владельце (если говорит он) и её выводы о себе: всегда, вне темы
+            ("dialogue", h._memory_reader.context_block(dialogue=8)),
+            ("profile", "" if (not owner or SPEAKER_TAG.match(query or "")) else getattr(h._memory_reader, "profile_block", lambda: "")()),   # главное о владельце (если говорит он) и её выводы о себе: всегда, вне темы
             ("capabilities", h._capabilities())]
         if include_hearing and h._settings.load()["hearing"]:
             heard = h.recent_heard()
@@ -85,10 +106,10 @@ class ContextBuilder:
                 mood = ""
             if mood:
                 blocks.append(("mood", mood))
-        rel = h._people.describe("игрок")
+        rel = h._people.describe("игрок") if owner else ""
         if rel:
             blocks.append(("relation", f"Твоё {rel}."))
-        parts = [self._fit(text, budget.get(name)) for name, text in blocks]
+        parts = [self._fit(text, budget.get(name), keep_tail=name == "dialogue") for name, text in blocks]   # у диалога важен конец
         parts = [p for p in parts if p]
         text = "\n".join(parts)
         return self._fit(text, budget.get("total"), keep_tail=True)

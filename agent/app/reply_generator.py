@@ -381,7 +381,7 @@ class ReplyGenerator:
                     "дословно и не выдумывай деталей. Ответь ТОЛЬКО JSON: "
                     '{"say": <true или false>, "text": "<реплика>"}')
         system = prompts.companion_persona() + " Ниже факт о том, что только что произошло. " + rule
-        user = (f"{h._context(query=user_text or fact)}\n\nФакт: {fact}"
+        user = (f"{h._context(query=user_text or fact, owner=True if user_text else None)}\n\nФакт: {fact}"
                 + (f"\nПользователь сказал: {user_text}" if user_text else ""))
         try:
             data = fast_brain._json_of(await h._llm.ask(system, user, timeout=60,

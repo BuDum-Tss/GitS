@@ -44,7 +44,7 @@ CONTEXT_FACTS = 3                 # фактов графа в контекст�
 MAX_ATTEMPTS = 3
 MIN_IMPORTANCE_PROFILE = 4        # факт о владельце и о самом персонаже идёт в память, только если она сама сочла его важным (4-5)
 MIN_IMPORTANCE_OTHER = 3          # факты о других людях и мире мягче: связи и события жизни (3-5), мелочь (1-2) не пишется
-PROFILE_FACTS = 8                 # фактов профиля владельца в контексте ответа (всегда, если говорит он)
+PROFILE_FACTS = 5                 # фактов профиля владельца в контексте ответа (всегда, если говорит он)
 
 # ── извлечение фактов ──────────────────────────────────────────────────────────
 
@@ -548,9 +548,22 @@ class GraphMemory:
             logger.warning(f"Граф, профиль: {e}")
             return []
 
+    @staticmethod
+    def _distinct(facts: list[dict], limit: int) -> list[dict]:
+        """Без почти одинаковых фактов (общих слов от 60% меньшего набора): так контекст короче и без повторов."""
+        kept: list[tuple[dict, set]] = []
+        for f in facts:
+            ws = {w[:5] for w in stemlib.words(f["text"])}
+            if any(ws and old and len(ws & old) >= 0.6 * min(len(ws), len(old)) for _, old in kept):
+                continue
+            kept.append((f, ws))
+            if len(kept) >= limit:
+                break
+        return [f for f, _ in kept]
+
     def profile_block(self) -> str:
         """Блок контекста: главное о владельце. Всегда в ответе владельцу, вне темы разговора."""
-        owner = self.profile_facts("owner", PROFILE_FACTS)
+        owner = self._distinct(self.profile_facts("owner", PROFILE_FACTS * 3), PROFILE_FACTS)
         if not owner:
             return ""
         return "Главное, что ты помнишь о пользователе (включая его пожелания к тебе):\n" + "\n".join(f"  - {f['text']}" for f in owner)
