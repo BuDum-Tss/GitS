@@ -66,7 +66,7 @@ class ContextBuilder:
         blocks: list[tuple[str, str]] = []
         blocks += [
             ("dialogue", h._memory_reader.context_block(dialogue=12)),
-            ("profile", getattr(h._memory_reader, "profile_block", lambda include_owner=True: "")(not SPEAKER_TAG.match(query or ""))),   # главное о владельце (если говорит он) и её выводы о себе: всегда, вне темы
+            ("profile", "" if SPEAKER_TAG.match(query or "") else getattr(h._memory_reader, "profile_block", lambda: "")()),   # главное о владельце (если говорит он) и её выводы о себе: всегда, вне темы
             ("capabilities", h._capabilities())]
         if include_hearing and h._settings.load()["hearing"]:
             heard = h.recent_heard()

@@ -35,7 +35,7 @@ class ScriptedLLM:
 def make(tmp_path, *answers):
     llm = ScriptedLLM(*answers)
     c = Companion(str(tmp_path / "memory"), rel=None, speech=Speech(), llm=llm)
-    c.graph = SimpleNamespace(remember=lambda text, about, importance, subject="": True, status_text=lambda: "граф")      # профиль в графе (запись без модели)
+    c.graph = SimpleNamespace(remember=lambda text, importance, subject="": True, status_text=lambda: "граф")      # профиль в графе (запись без модели)
     return c, llm
 
 

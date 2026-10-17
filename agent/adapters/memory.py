@@ -1,8 +1,8 @@
 """MemoryReader и MemoryWriter поверх рабочей памяти разговора (`UserMemory`), памяти-графа (`GraphMemory`), задач и эпизодов.
 
 Куда что пишется (пять мест вместо шести слоёв):
-  user    -> профиль владельца в графе (важность 4-5);
-  self    -> её профиль о себе в графе (то же самое для вида episode: событие, которое она сама сочла важным);
+  user    -> профиль владельца в графе (важность 4-5); сюда же self и episode: его пожелания к ней, договорённости и
+             то, что она сама сочла важным (собственного профиля у неё нет, характер задают карточка и системный промпт);
   plan    -> задача `plan` в `tasks.db` (срок из `due_days` или из слов текста);
   факты из разговора -> очередь графа (`enqueue_for_graph`), модель выписывает и оценивает важность;
   события жизни -> эпизоды (`episodes.db`) нарезаются из журнала сами, сюда не пишутся.
@@ -52,11 +52,10 @@ class UserMemoryAdapter:
             return ""
         return character_memory.block(await graph.self_memories(query))
 
-    def profile_block(self, include_owner: bool = True) -> str:
-        """Профиль владельца и её собственные выводы: всегда в контексте, вне темы разговора (читается напрямую, без моделей).
-        `include_owner=False`: собеседник не владелец, профиль владельца пропускается."""
+    def profile_block(self) -> str:
+        """Профиль владельца: всегда в контексте его разговора, вне темы (читается напрямую, без моделей)."""
         fn = getattr(self._get_graph(), "profile_block", None)       # у заглушек графа в тестах метода может не быть
-        return fn(include_owner) if fn is not None else ""
+        return fn() if fn is not None else ""
 
     def graph_status(self) -> str | None:
         graph = self._get_graph()
@@ -114,10 +113,8 @@ class UserMemoryAdapter:
         graph = self._get_graph()
         if getattr(graph, "remember", None) is None:
             return False
-        if kind == "user":
-            return graph.remember(text, "owner", importance, subject=self._get_owner())
-        if kind in ("self", "episode"):
-            return graph.remember(text, "self", importance)
+        if kind in ("user", "self", "episode"):
+            return graph.remember(text, importance, subject=self._get_owner())
         return False
 
     def _add_plan(self, text: str, importance: int, due_days: float | None) -> bool:

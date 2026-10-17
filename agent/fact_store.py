@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS facts_subject ON facts (group_id, subj_key, relation)
 CREATE INDEX IF NOT EXISTS facts_mem ON facts (group_id, mem_id);
 CREATE INDEX IF NOT EXISTS facts_object ON facts (obj_key);
 """
-PROFILES = ("owner", "self")         # профиль владельца и профиль персонажа о себе: главное, что всегда в контексте
+PROFILES = ("owner",)                # профиль владельца: главное, что всегда в контексте, когда говорит он
 _NEW_COLUMNS = (("importance", "INTEGER NOT NULL DEFAULT 3"), ("profile", "TEXT"))   # столбцы, добавленные к старым базам
 _COLS = ("uuid", "group_id", "subject", "relation", "object", "fact", "valid_at", "invalid_at", "canon", "source", "mem_id",
          "mtype", "about", "weight")

@@ -109,14 +109,11 @@ def register(registry, companion, memory, profiles=None):
             _analysis_running["on"] = True
             try:
                 res = await analysis.analyze(question, hours, extra)
-                saved = sum(bool(companion.memory_writer.add_fact(c, kind="self", importance=4)) for c in res["conclusions"])
-                events_log.log("audit", f"анализ готов: {question[:80]} (выводов в память: {saved})",
+                events_log.log("audit", f"анализ готов: {question[:80]}",
                                report=res["report_path"], fixes=res["fixes"], conclusions=res["conclusions"])
                 parts = [res["summary"] or "разбор готов", f"Подробный отчёт лежит здесь: {res['report_path']}"]
                 if res["fixes"]:
                     parts.append("Что стоит поправить: " + "; ".join(res["fixes"]))
-                if res["conclusions"]:
-                    parts.append(f"Выводов сохранено в память: {saved}.")
                 await companion._speak_about("Анализ закончен. " + "\n".join(parts), question, must=True)
             except Exception as e:
                 events_log.log("error", f"анализ не удался: {e}")
@@ -280,7 +277,7 @@ def register(registry, companion, memory, profiles=None):
                   {"text": {"type": "string", "description": "слово или фраза из записи"}}, forget,
                   keywords=("забудь", "забыть", "стереть", "память")),
             _tool("assistant", "remember", "Запомнить что-то надолго по просьбе («запомни, что…»). "
-                  "kind: user - факт о пользователе, self - о ней самой или пожелание к её поведению, "
+                  "kind: user - факт о пользователе или его пожелание к её поведению (self то же самое), "
                   "plan - план или дело пользователя (due_days - через сколько дней; станет задачей).",
                   {"text": {"type": "string", "description": "что запомнить, одной фразой"},
                    "kind": {"type": "string", "enum": ["user", "self", "plan"], "required": False,

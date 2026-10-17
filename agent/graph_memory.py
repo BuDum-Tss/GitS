@@ -44,8 +44,7 @@ CONTEXT_FACTS = 3                 # фактов графа в контекст�
 MAX_ATTEMPTS = 3
 MIN_IMPORTANCE_PROFILE = 4        # факт о владельце и о самом персонаже идёт в память, только если она сама сочла его важным (4-5)
 MIN_IMPORTANCE_OTHER = 3          # факты о других людях и мире мягче: связи и события жизни (3-5), мелочь (1-2) не пишется
-PROFILE_FACTS = 8                 # фактов профиля владельца в контексте ответа (всегда, вне темы разговора)
-SELF_PROFILE_FACTS = 4            # её собственных выводов о себе в контексте
+PROFILE_FACTS = 8                 # фактов профиля владельца в контексте ответа (всегда, если говорит он)
 
 # ── извлечение фактов ──────────────────────────────────────────────────────────
 
@@ -526,43 +525,35 @@ class GraphMemory:
 
     # ── профили: владелец и она сама (запись и чтение без модели) ──────────────────────────────
 
-    def remember(self, text: str, about: str = "owner", importance: int = 4, subject: str = "") -> bool:
-        """Запомнить факт в профиль: `owner` (о владельце, от третьего лица) или `self` (её собственный вывод о себе).
+    def remember(self, text: str, importance: int = 4, subject: str = "") -> bool:
+        """Запомнить факт в профиль владельца (от третьего лица; сюда же его пожелания к ней и договорённости).
         Записывается сразу, без очереди и модели. Мелочь (важность ниже порога профиля) не пишется. True, если запись новая."""
         text = re.sub(r"\s+", " ", str(text)).strip()[:300]
-        if len(text) < 6 or importance < MIN_IMPORTANCE_PROFILE or about not in ("owner", "self"):
+        if len(text) < 6 or importance < MIN_IMPORTANCE_PROFILE:
             return False
-        if text.lower() in {f["text"].lower() for f in self.profile_facts(about, 200)}:
+        if text.lower() in {f["text"].lower() for f in self.profile_facts("owner", 200)}:
             return False                                   # то же самое уже записано (имя владельца могло смениться)
-        who = (self._subject() if about == "self" else (subject or "Пользователь")).strip() or "Пользователь"
-        f = Fact(who, "ЗАМЕТКА", text[:60], text, int(importance))
+        f = Fact((subject or "Пользователь").strip() or "Пользователь", "ЗАМЕТКА", text[:60], text, int(importance))
         try:
-            return self.backend.remember_sync(f, time.time(), self.group(), profile=about, source="remember")
+            return self.backend.remember_sync(f, time.time(), self.group(), profile="owner", source="remember")
         except Exception as e:
             logger.warning(f"Граф, запись профиля: {e}")
             return False
 
-    def profile_facts(self, profile: str, limit: int = 20) -> list[dict]:
-        """Факты профиля (`owner` или `self`) без поиска и моделей: [{uuid, text, importance, ts}]."""
+    def profile_facts(self, profile: str = "owner", limit: int = 20) -> list[dict]:
+        """Факты профиля владельца без поиска и моделей: [{uuid, text, importance, ts}]."""
         try:
             return self.backend.profile_facts(self.group(), profile, limit)
         except Exception as e:
             logger.warning(f"Граф, профиль: {e}")
             return []
 
-    def profile_block(self, include_owner: bool = True) -> str:
-        """Блок контекста: главное о владельце и её собственные выводы о себе. Всегда в ответе, вне темы разговора.
-        `include_owner=False`: говорит не владелец, его профиль собеседнику не показываем."""
-        lines = []
-        owner = self.profile_facts("owner", PROFILE_FACTS) if include_owner else []
-        if owner:
-            lines.append("Главное, что ты помнишь о пользователе:")
-            lines += [f"  - {f['text']}" for f in owner]
-        own = self.profile_facts("self", SELF_PROFILE_FACTS)
-        if own:
-            lines.append("Твои собственные выводы о себе:")
-            lines += [f"  - {f['text']}" for f in own]
-        return "\n".join(lines)
+    def profile_block(self) -> str:
+        """Блок контекста: главное о владельце. Всегда в ответе владельцу, вне темы разговора."""
+        owner = self.profile_facts("owner", PROFILE_FACTS)
+        if not owner:
+            return ""
+        return "Главное, что ты помнишь о пользователе (включая его пожелания к тебе):\n" + "\n".join(f"  - {f['text']}" for f in owner)
 
     def forget_matching(self, text: str, strict: bool = False) -> int:
         """Забыть факты (кроме канона), где есть значимые слова фразы: «забудь что я люблю чай» находит «Любит чай»."""

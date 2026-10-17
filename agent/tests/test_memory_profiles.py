@@ -1,4 +1,4 @@
-"""Упрощённая память: профиль владельца и её профиль о себе в графе, планы как задачи, разовый перенос memories.json."""
+"""Упрощённая память: профиль владельца в графе, планы как задачи, разовый перенос memories.json."""
 import asyncio
 import json
 import sqlite3
@@ -50,19 +50,19 @@ def test_old_database_without_new_columns_is_upgraded(tmp_path):
 
 def test_remember_takes_only_important_and_builds_profile_block(tmp_path):
     g = _graph(tmp_path)
-    assert g.remember("Пользователь любит зелёный чай по утрам", "owner", 4, subject="Аня") is True
-    assert g.remember("Пользователь сегодня устал", "owner", 2) is False                       # мелочь не пишется
-    assert g.remember("Я пообещала шутить реже", "self", 5) is True
-    assert g.remember("Пользователь любит зелёный чай по утрам", "owner", 4) is False           # дубль
+    assert g.remember("Пользователь любит зелёный чай по утрам", 4, subject="Аня") is True
+    assert g.remember("Пользователь сегодня устал", 2) is False                                 # мелочь не пишется
+    assert g.remember("Просит меня шутить реже", 5) is True                                     # пожелание к ней тоже о нём
+    assert g.remember("Пользователь любит зелёный чай по утрам", 4) is False                     # дубль
     block = g.profile_block()
     assert "зелёный чай" in block and "шутить реже" in block and "устал" not in block
-    assert [f["text"] for f in g.profile_facts("owner")] == ["Пользователь любит зелёный чай по утрам"]
+    assert len(g.profile_facts("owner")) == 2
 
 
 def test_forget_matching_removes_profile_fact_by_words(tmp_path):
     g = _graph(tmp_path)
-    g.remember("Пользователь любит зелёный чай по утрам", "owner", 4)
-    g.remember("Пользователь работает дизайнером", "owner", 4)
+    g.remember("Пользователь любит зелёный чай по утрам", 4)
+    g.remember("Пользователь работает дизайнером", 4)
     assert g.forget_matching("забудь что я люблю зелёный чай") == 1
     assert [f["text"] for f in g.profile_facts("owner")] == ["Пользователь работает дизайнером"]
     assert g.forget_matching("дизайнером", strict=True) == 1 and g.profile_facts("owner") == []
@@ -85,7 +85,7 @@ def test_adapter_routes_kinds_to_graph_and_tasks(tmp_path):
     async def run():
         ad.loop = asyncio.get_running_loop()
         assert ad.add_fact("Любимый цвет пользователя зелёный", "user", 4) is True
-        assert ad.add_fact("Обещала не язвить по утрам", "self", 4) is True
+        assert ad.add_fact("Просит не язвить по утрам", "self", 4) is True                       # пожелание к ней: тоже профиль владельца
         assert ad.add_fact("Событие, которое она сама сочла важным", "episode", 5) is True
         assert ad.add_fact("Пустяк про погоду за окном", "user", 3) is False                    # ниже порога 4
         assert ad.add_fact("Завтра экзамен по физике", "plan", 3) is True
@@ -93,8 +93,7 @@ def test_adapter_routes_kinds_to_graph_and_tasks(tmp_path):
         await asyncio.sleep(0.05)
 
     asyncio.run(run())
-    assert {f["text"] for f in ad.facts()} == {"Любимый цвет пользователя зелёный"}
-    assert len(g.profile_facts("self")) == 2
+    assert len(ad.facts()) == 3 and "Любимый цвет пользователя зелёный" in {f["text"] for f in ad.facts()}
     texts = [p[1] for p in tasks.plans]
     assert texts == ["Завтра экзамен по физике", "Сдать отчёт в пятницу"]
     assert tasks.plans[0][0].startswith("m-") and tasks.plans[0][2] > time.time()
@@ -133,7 +132,7 @@ async def test_migration_moves_only_important_and_keeps_a_backup(tmp_path):
     _old_file(tmp_path, now)
     g, tasks = _graph(tmp_path), _Tasks()
     done = await migrate(tmp_path, g, tasks, owner="Аня", clock=lambda: now)
-    assert done == {"owner": 1, "self": 2, "plans": 1, "dropped": 2}
+    assert done == {"owner": 3, "plans": 1, "dropped": 2}
     assert [p[1] for p in tasks.plans] == ["Сдать отчёт"]
     assert not (tmp_path / FILE).exists() and (tmp_path / BACKUP).exists()
     assert json.loads((tmp_path / "memory_meta.json").read_text(encoding="utf-8")) == {"consolidated_ts": 123.0}
@@ -151,7 +150,7 @@ async def test_migration_ignores_unreadable_file(tmp_path):
 def test_profile_is_in_context_even_off_topic(tmp_path):
     from app.context_builder import ContextBuilder
     g = _graph(tmp_path)
-    g.remember("Пользователь любит зелёный чай по утрам", "owner", 5)
+    g.remember("Пользователь любит зелёный чай по утрам", 5)
     ad = UserMemoryAdapter(lambda: None, lambda: g)
 
     class Host:
@@ -173,8 +172,7 @@ def test_profile_is_in_context_even_off_topic(tmp_path):
 def test_owner_profile_is_not_shown_to_another_speaker(tmp_path):
     from app.context_builder import ContextBuilder
     g = _graph(tmp_path)
-    g.remember("Пользователь любит зелёный чай по утрам", "owner", 5)
-    g.remember("Я обещала шутить реже", "self", 5)
+    g.remember("Пользователь любит зелёный чай по утрам", 5)
 
     class Host:
         _graph_block = _self_block = ""
@@ -190,7 +188,7 @@ def test_owner_profile_is_not_shown_to_another_speaker(tmp_path):
 
     for query in ("[говорит Вася] привет", "[незнакомый голос] кто ты"):
         text = ContextBuilder(Host()).build(query=query)
-        assert "зелёный чай" not in text and "шутить реже" in text            # профиль владельца скрыт, её выводы о себе остаются
+        assert "зелёный чай" not in text                                         # профиль владельца чужому не показываем
     assert "зелёный чай" in ContextBuilder(Host()).build(query="привет")
 
 

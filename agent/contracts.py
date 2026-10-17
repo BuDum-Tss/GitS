@@ -59,13 +59,13 @@ class SettingsProvider(Protocol):
 
 @runtime_checkable
 class MemoryReader(Protocol):
-    """Чтение памяти для ответа: профиль владельца и её собственные выводы, факты графа по теме, воспоминания о себе, журнал
+    """Чтение памяти для ответа: профиль владельца, факты графа по теме, воспоминания о себе, журнал
     разговора и активности. `recall` (ТЗ 27) - факты по теме и эпизоды с дневником через гибридный поиск:
     [{"text", "kind" (fact|episode|diary|digest), "id", "importance"}]."""
 
     def context_block(self, dialogue: int = 6) -> str: ...
 
-    def profile_block(self, include_owner: bool = True) -> str: ...
+    def profile_block(self) -> str: ...
 
     async def graph_block(self, query: str) -> str: ...
 
@@ -86,7 +86,7 @@ class MemoryReader(Protocol):
 
 @runtime_checkable
 class MemoryWriter(Protocol):
-    """Запись в память: реплики, важное (профиль владельца и её профиль о себе, планы как задачи), активность, очередь графа,
+    """Запись в память: реплики, важное (профиль владельца, планы как задачи), активность, очередь графа,
     забывание, служебные отметки. `add_fact` берёт только важное (4-5, план от 3): мелочь не записывается."""
 
     def add_dialogue(self, role: str, text: str) -> None: ...

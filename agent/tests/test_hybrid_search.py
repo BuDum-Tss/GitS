@@ -101,8 +101,8 @@ class _Mem:
     def context_block(self, dialogue=6):
         return "ПАМЯТЬ " + "я" * 600
 
-    def profile_block(self, include_owner=True):
-        return "ПРОФИЛЬ" if include_owner else "ТОЛЬКО_ОНА"
+    def profile_block(self):
+        return "ПРОФИЛЬ"
 
     def graph_status(self):
         return None
@@ -139,6 +139,7 @@ def test_context_builder_default_is_unchanged_and_modes_budget_work():
     b = ContextBuilder(h)
     default = b.build(query="x")
     assert "ГРАФ" in default and "СЕБЯ" in default and "ПРОФИЛЬ" in default
+    assert "ПРОФИЛЬ" not in b.build(query="[говорит Вася] привет")           # чужому голосу профиль владельца не показываем
     skipped = b.build(query="x", needs_memory="no")
     assert "ГРАФ" not in skipped and "ПРОФИЛЬ" in skipped            # профиль владельца остаётся и без темы
     pulled = b.build(query="x", mode="pull")

@@ -13,12 +13,11 @@ from .routes_system import read_json
 
 
 async def memories_view() -> list[dict]:
-    """Что она помнит важного: профиль владельца (`user`), её выводы о себе (`self`) и цели-планы (`plan`, задачи)."""
+    """Что она помнит важного: профиль владельца (`user`) и цели-планы (`plan`, задачи)."""
     items: list[dict] = []
     if ctx.graph is not None:
-        for kind, profile in (("user", "owner"), ("self", "self")):
-            items += [{"id": f["uuid"], "kind": kind, "text": f["text"], "ts": f["ts"], "importance": f["importance"]}
-                      for f in ctx.graph.profile_facts(profile, 100)]
+        items += [{"id": f["uuid"], "kind": "user", "text": f["text"], "ts": f["ts"], "importance": f["importance"]}
+                  for f in ctx.graph.profile_facts("owner", 100)]
     tasks = ctx.tasks() if ctx.tasks is not None else None
     if tasks is not None:
         try:

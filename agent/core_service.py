@@ -220,7 +220,7 @@ async def _migrate_memory(companion, graph, folder: Path) -> None:
     try:
         done = await memory_migration.migrate(folder, graph, getattr(companion, "tasks", None), companion._owner_name())
         if done:
-            events_log.log("memory", f"старая память перенесена: владелец {done['owner']}, о себе {done['self']}, "
+            events_log.log("memory", f"старая память перенесена: владелец {done['owner']}, "
                                      f"планы {done['plans']}, отброшено мелочи {done['dropped']}")
     except Exception as e:
         logger.warning(f"Перенос старой памяти: {e}")

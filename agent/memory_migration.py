@@ -1,6 +1,6 @@
 """Разовый перенос старой памяти (`memories.json`, вид user/self/plan/episode) в новую структуру.
 
-user -> профиль владельца в графе, self и episode -> её профиль о себе, plan -> задача `plan` в `tasks.db`. Берётся только важное
+user, self и episode -> профиль владельца в графе (пожелания к ней и договорённости тоже о нём), plan -> задача `plan` в `tasks.db`. Берётся только важное
 (user/self/episode с важностью 4-5, планы от 3 и не устаревшие), остальное отбрасывается. Файл не удаляется: он переименовывается
 в `memories.json.bak` (откат: вернуть имя). Повторный запуск ничего не делает, пока нет нового `memories.json`.
 """
@@ -21,7 +21,7 @@ STALE_PLAN_S = 12 * 3600       # план, срок которого прошё�
 
 
 async def migrate(folder: Path, graph, tasks, owner: str = "", clock=time.time) -> dict:
-    """Перенести `folder/memories.json`. Возвращает счётчики {owner, self, plans, dropped} (пусто, если переносить нечего)."""
+    """Перенести `folder/memories.json`. Возвращает счётчики {owner, plans, dropped} (пусто, если переносить нечего)."""
     path = Path(folder) / FILE
     if not path.is_file():
         return {}
@@ -30,7 +30,7 @@ async def migrate(folder: Path, graph, tasks, owner: str = "", clock=time.time) 
     except (OSError, ValueError) as e:
         logger.warning(f"Старая память не читается ({e}): файл оставлен как есть")
         return {}
-    done = {"owner": 0, "self": 0, "plans": 0, "dropped": 0}
+    done = {"owner": 0, "plans": 0, "dropped": 0}
     now = clock()
     for it in data.get("items", []):
         kind, text = it.get("kind"), str(it.get("text") or "").strip()
@@ -39,12 +39,9 @@ async def migrate(folder: Path, graph, tasks, owner: str = "", clock=time.time) 
         except (TypeError, ValueError):
             importance = 3
         ok = False
-        if kind == "user" and graph is not None:
-            ok = graph.remember(text, "owner", importance, subject=owner)
+        if kind in ("user", "self", "episode") and graph is not None:
+            ok = graph.remember(text, importance, subject=owner)
             done["owner"] += ok
-        elif kind in ("self", "episode") and graph is not None:
-            ok = graph.remember(text, "self", importance)
-            done["self"] += ok
         elif kind == "plan" and tasks is not None and importance >= MIN_PLAN_IMPORTANCE:
             due = it.get("due") or plan_due.due_of_text(text, float(it.get("ts") or now))
             if due > now - STALE_PLAN_S:

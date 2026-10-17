@@ -253,21 +253,20 @@
         <div class="card-body gap-4">
           <div role="tablist" id="mem-subtabs" class="tabs tabs-boxed bg-base-200 w-fit max-w-full flex-wrap">
             <a role="tab" class="tab tab-active" data-mtab="user">Владелец <span id="mt-n-user" class="opacity-60 ml-1 text-xs"></span></a>
-            <a role="tab" class="tab" data-mtab="self">Она сама <span id="mt-n-self" class="opacity-60 ml-1 text-xs"></span></a>
             <a role="tab" class="tab" data-mtab="plan">Цели <span id="mt-n-plan" class="opacity-60 ml-1 text-xs"></span></a>
             <a role="tab" class="tab" data-mtab="eps">Эпизоды</a>
             <a role="tab" class="tab" data-mtab="facts">Факты</a>
           </div>
           <details id="mem-howto" class="rounded-box border border-base-300 p-3">
             <summary class="cursor-pointer font-medium">Как устроена память</summary>
-            <p class="text-sm opacity-80 mt-2">Память состоит из пяти частей: профиль владельца, её профиль о себе, цели и планы, эпизоды из жизни и важные факты. В память идёт только то,
+            <p class="text-sm opacity-80 mt-2">Память состоит из четырёх частей: профиль владельца (с его пожеланиями к ней), цели и планы, эпизоды из жизни и важные факты. В память идёт только то,
               что она сама сочла важным; мелочь и сиюминутное не записываются. Всё хранится локально, в папке памяти персонажа; наружу ничего не уходит.</p>
             <div class="grid gap-2 mt-2 md:grid-cols-2">
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
-                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Профили и цели</span><span id="mem-n-notes" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> Главное о тебе, её собственные выводы о себе (вместе с каноном персонажа) и цели с планами (задачи, файл <code>tasks.db</code>)</div>
+                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Профиль и цели</span><span id="mem-n-notes" class="text-xs text-right">-</span></div>
+                  <div><span class="opacity-60">Что там:</span> Главное о тебе, твои пожелания к ней и цели с планами (задачи, файл <code>tasks.db</code>)</div>
                   <div><span class="opacity-60">Как попадает:</span> Ты просишь «запомни, что…» или она сама решает, что это важно (4-5 из 5); план со сроком становится задачей</div>
-                  <div><span class="opacity-60">Как используется:</span> Профиль всегда в контексте ответа, вне темы разговора; планы всплывают к сроку. «Забудь про…» или ✕ убирает</div>
+                  <div><span class="opacity-60">Как используется:</span> Профиль всегда в контексте ответа тебе, вне темы разговора (чужим голосам он не показывается); планы всплывают к сроку. «Забудь про…» или ✕ убирает</div>
                 </div>
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
                   <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Отношения</span><span id="mem-n-rel" class="text-xs text-right">-</span></div>
@@ -277,7 +276,7 @@
                 </div>
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
                   <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Факты</span><span id="mem-n-facts" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> Важные факты о людях и жизни («Аня живёт в Казани»), воспоминания персонажа (канон) и данные игры (файл <code>graph.db</code>; профили лежат там же)</div>
+                  <div><span class="opacity-60">Что там:</span> Важные факты о людях и жизни («Аня живёт в Казани»), воспоминания персонажа (канон из memories.yaml) и данные игры (файл <code>graph.db</code>; профили лежат там же)</div>
                   <div><span class="opacity-60">Как попадает:</span> В паузах разговора локальная модель выписывает факты из реплик и сама оценивает важность; мелочь отбрасывается</div>
                   <div><span class="opacity-60">Как используется:</span> Перед ответом ищется до 3 фактов по теме (слова и смысл); новый факт закрывает старый («переехала» закрывает «живёт в Москве»)</div>
                 </div>
@@ -303,11 +302,6 @@
             <div class="font-medium mb-1">Профиль владельца</div>
             <p class="text-xs opacity-60 mb-2">Главное о тебе, что она сама сочла важным (оценка 4-5). Всегда в контексте ответа. Можно и словами в чате: «забудь про …».</p>
             <ul id="mem-user" class="space-y-1"></ul>
-          </div>
-          <div data-mpane="self">
-            <div class="font-medium mb-1">Её профиль о себе</div>
-            <p class="text-xs opacity-60 mb-2">Её собственные выводы и обещания (вместе с каноном персонажа из memories.yaml, который здесь не показан и удаляется только правкой файла).</p>
-            <ul id="mem-self" class="space-y-1"></ul>
           </div>
           <div data-mpane="plan">
             <div class="font-medium mb-1">Цели и планы</div>
@@ -507,7 +501,7 @@ function showMemPane(name) {
 }
 document.querySelectorAll('[data-mtab]').forEach(t => t.onclick = () => showMemPane(t.dataset.mtab));
 let savedPane = 'user'; try { savedPane = localStorage.getItem('memPane') || 'user'; } catch (e) {}
-showMemPane(['user', 'self', 'plan', 'eps', 'facts'].includes(savedPane) ? savedPane : 'user');
+showMemPane(['user', 'plan', 'eps', 'facts'].includes(savedPane) ? savedPane : 'user');
 
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
@@ -683,7 +677,7 @@ function areaTitle(group, base) {
 function layerCounts() {
   const set = (id, text) => { const el = $(id); if (el) el.innerHTML = text; };
   const n = MEMSTAT.notes || [], by = k => n.filter(m => m.kind === k).length;
-  set('mem-n-notes', `${n.length} <span class="opacity-60 text-xs">(о тебе ${by('user')}, о ней ${by('self')}, целей ${by('plan')})</span>`);
+  set('mem-n-notes', `${n.length} <span class="opacity-60 text-xs">(о тебе ${by('user')}, целей ${by('plan')})</span>`);
   set('mem-n-rel', MEMSTAT.relations === undefined ? '-' : String(MEMSTAT.relations));
   const g = MEMSTAT.graph;
   set('mem-n-facts', !g ? '-' : g.enabled === false ? 'выключено' : `${g.active ?? 0} действуют` + (g.outdated ? `, ${g.outdated} устарели` : '') + (g.queue ? `<br><span class="opacity-60 text-xs">в очереди ${g.queue}</span>` : ''));
@@ -1011,7 +1005,7 @@ function renderActivity(list) {
 
 function renderMemory(core) {
   MEMSTAT.notes = core.memories || []; MEMSTAT.relations = (core.relations || []).length; layerCounts();
-  for (const k of ['user', 'self', 'plan']) {
+  for (const k of ['user', 'plan']) {
     const items = (core.memories || []).filter(m => m.kind === k);
     $('mt-n-' + k).textContent = items.length || '';
     $('mem-' + k).innerHTML = items.length ? items.map(m => `<li class="flex items-start justify-between gap-2"><span class="bubble-text">${esc(m.text)}${m.due ? ` <span class="text-xs opacity-60">(до ${new Date(m.due * 1000).toLocaleDateString()})</span>` : ''}</span>
