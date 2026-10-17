@@ -18,7 +18,9 @@ def test_questions_match_the_protocol_and_urgency_table():
     cats = set(EVENT_QUESTIONS["category"]["options"])
     assert cats == set(CATEGORY_URGENCY)                                 # у каждой категории есть срочность
     assert CATEGORY_URGENCY["danger"] == 5 and CATEGORY_URGENCY["spam"] == 0
-    assert EVENT_QUESTIONS["category"]["type"] == "choice" and EVENT_QUESTIONS["needs_reply"]["type"] == "noul"
+    assert EVENT_QUESTIONS["category"]["type"] == "choice" and EVENT_QUESTIONS["react"]["type"] == "noul"
+    assert {"react", "speak", "act", "think", "emotion"} <= set(EVENT_QUESTIONS)         # decide это роутер
+    assert not {"addressed", "needs_reply", "focus_needed", "policy"} & set(EVENT_QUESTIONS)
     assert set(INPUT_QUESTIONS["intent"]["options"]) == {"chat", "action", "about_self", "approval", "attention_rule", "stop"}
     for q in (*EVENT_QUESTIONS.values(), *INPUT_QUESTIONS.values()):
         assert q["type"] in ("choice", "noul")                           # только категориальные вопросы, порядковых нет
@@ -26,20 +28,19 @@ def test_questions_match_the_protocol_and_urgency_table():
 
 
 def test_parse_event_uses_answers_only_above_the_confidence_threshold():
-    answers = {"category": ans("danger", 0.73), "addressed": ans("assistant", 0.5), "needs_reply": ans("yes", 0.52)}
+    answers = {"category": ans("danger", 0.73), "react": ans("yes", 0.5), "speak": ans("yes", 0.52), "act": ans("no", 0.6)}
     cls = parse_event(answers, 0.35)
-    assert (cls.category, cls.urgency, cls.addressed, cls.needs_reply) == ("danger", 5, True, True)
-    weak = parse_event({"category": ans("danger", 0.34), "addressed": ans("assistant", 0.2),
-                        "needs_reply": ans("yes", 0.1)}, 0.35)
-    assert (weak.category, weak.urgency, weak.addressed, weak.needs_reply) == (None, None, None, None)
+    assert (cls.category, cls.urgency, cls.react, cls.speak, cls.act, cls.think) == ("danger", 5, True, True, False, None)
+    weak = parse_event({"category": ans("danger", 0.34), "react": ans("yes", 0.2), "speak": ans("yes", 0.1)}, 0.35)
+    assert (weak.category, weak.urgency, weak.react, weak.speak) == (None, None, None, None)
     # порог из настроек: 0.35 - граница включительно
     assert parse_event({"category": ans("news", 0.35)}, 0.35).category == "news"
     assert parse_event({"category": ans("news", 0.35)}, 0.5).category is None
 
 
-def test_parse_event_addressed_values_and_garbage():
-    assert parse_event({"addressed": ans("user", 0.9)}, 0.35).addressed is False
-    assert parse_event({"addressed": ans("group", 0.9)}, 0.35).addressed is False
+def test_parse_event_router_flags_and_garbage():
+    assert parse_event({"think": ans("yes", 0.9), "react": ans("no", 0.9)}, 0.35).react is False
+    assert parse_event({"think": ans("maybe", 0.9)}, 0.35).think is None             # не yes/no: как будто ответа нет
     assert parse_event({"category": ans("нет-такой-категории", 0.99)}, 0.35).category is None
     assert parse_event({"category": "не словарь"}, 0.35).category is None
     assert parse_event(None, 0.35) is None and parse_event({}, 0.35) is None
@@ -152,3 +153,13 @@ async def test_client_http_error_is_none(fresh_client, monkeypatch):
     async with Service(status=500) as svc:
         monkeypatch.setattr(decide, "URL", svc.url)
         assert await http_decide("текст", EVENT_QUESTIONS) is None
+
+
+def test_route_flags_rules():
+    from domain import rules
+    assert rules.route_flags("D3", 3, speak=False) == ("D1", False)
+    assert rules.route_flags("D3", 3, react=False, think=True) == ("D1", False)        # реакция отменена: и думать незачем
+    assert rules.route_flags("D3", 5, react=False, speak=False, think=True) == ("D3", True)    # срочное не гасится
+    assert rules.route_flags("D2", 2, think=True) == ("D2", True)
+    assert rules.route_flags("D0", 1, think=True) == ("D0", False)
+    assert rules.route_flags("D2", 2) == ("D2", False)                                # классификатор не уверен: формула как была

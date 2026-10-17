@@ -423,15 +423,14 @@ async def test_low_confidence_answer_is_ignored(tmp_path):
     assert d["urgency"] == 5
 
 
-async def test_classifier_fills_address_and_needs_reply_unless_module_set_them(tmp_path):
-    rig = Rig(tmp_path, StubDecider({"category": ans("personal_message", 0.9), "addressed": ans("assistant", 0.9),
-                                     "needs_reply": ans("yes", 0.9)}))
+async def test_classifier_sets_needs_reply_by_category_and_keeps_module_address(tmp_path):
+    rig = Rig(tmp_path, StubDecider({"category": ans("question", 0.9)}))
     await rig.submit("tg", kind="tg.dm", sender={"id": "tg:8", "name": "Маша"}, reply_channel=CHAT, urgency_hint=3, text="Ответь мне")
     item = next(iter(rig.att._items.values()))
-    assert item.addressed_to_me is True and item.needs_reply is True
+    assert item.needs_reply is True and item.addressed_to_me is None           # адресата классификатор не определяет
     rig.att._items.clear()
     await rig.submit("tg", kind="tg.dm", sender={"id": "tg:8", "name": "Маша"}, addressed_to_me=False, urgency_hint=3, text="Ответь мне 2")
-    assert next(iter(rig.att._items.values())).addressed_to_me is False       # явное значение модуля сильнее
+    assert next(iter(rig.att._items.values())).addressed_to_me is False       # значение модуля остаётся как есть
 
 
 async def test_unavailable_classifier_falls_back_to_hints_and_default_one(tmp_path):
@@ -1110,3 +1109,24 @@ async def test_tg14_storage_failure_does_not_stop_the_event(rig):
     tg14_rig(rig, RecRel(fail=True))
     d = await rig.submit("telegram", kind="telegram.dm", text="т", urgency_hint=2, addressed_to_me=False, sender=MASHA)
     assert d["decision"] in ("D1", "D2", "D3", "D4")
+
+
+async def test_router_flags_silence_ordinary_events_but_never_critical_ones(tmp_path):
+    """decide это роутер: уверенное «не говорить» уводит обычное событие в сводку, критичное (срочность 4-5) не гасит."""
+    base = await Rig(tmp_path / "a", StubDecider({"category": ans("question")})).submit("tg", sender={"id": "a"}, text="Что с проектом?")
+    assert base["decision"] in ("D2", "D3", "D4")
+    quiet = await Rig(tmp_path / "b", StubDecider({"category": ans("question"), "speak": ans("no")})).submit(
+        "tg", sender={"id": "a"}, text="Что с проектом?")
+    assert quiet["decision"] == "D1" and quiet["routes"] == ["ignore"]
+    skipped = await Rig(tmp_path / "c", StubDecider({"category": ans("question"), "react": ans("no")})).submit(
+        "tg", sender={"id": "a"}, text="Что с проектом?")
+    assert skipped["decision"] == "D1"
+    loud = await Rig(tmp_path / "d", StubDecider({"category": ans("danger"), "react": ans("no"), "speak": ans("no")})).submit(
+        "tg", sender={"id": "a"}, text="Рейд!")
+    assert loud["decision"] != "D1" and loud["decision"] != "D0"
+
+
+async def test_router_act_flag_adds_the_reflex_route(tmp_path):
+    d = await Rig(tmp_path, StubDecider({"category": ans("question"), "act": ans("yes")})).submit(
+        "tg", sender={"id": "a"}, text="Что с проектом?")
+    assert "reflex" in d["routes"]
