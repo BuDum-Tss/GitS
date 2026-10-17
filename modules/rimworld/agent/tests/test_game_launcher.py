@@ -203,3 +203,13 @@ def test_launch_fact_says_the_character_launches_not_the_user():
     text = _REAL_ANNOUNCE("запись забега: игры не было")
     assert text.startswith(gl.SELF_LAUNCH_PREFIX) and "не пользователь" in text and text.endswith("игры не было")
     assert not text.startswith("Запускаю")
+
+
+def test_controller_always_launches_the_game_windowed(monkeypatch):
+    """Полноэкранная игра сворачивается при потере фокуса и становится слепой для агента: окно нужно и без записи забегов."""
+    import controller
+    seen = {}
+    monkeypatch.setattr(gl, "launch", lambda reason, wait_seconds=0, args=(): seen.update(args=args))
+    monkeypatch.setattr(controller.settings, "load", lambda: {"record_runs": False})
+    controller.Controller._launch_rimworld(object(), "тест")
+    assert "-popupwindow" in seen["args"]

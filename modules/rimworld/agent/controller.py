@@ -734,7 +734,7 @@ class Controller:
     def _launch_rimworld(self, reason: str = "наблюдатель за игрой: игра не запущена"):
         try:
             import game_launcher
-            game_launcher.launch(reason, wait_seconds=0, args=game_launcher.windowed_args() if settings.load().get("record_runs") else ())
+            game_launcher.launch(reason, wait_seconds=0, args=game_launcher.windowed_args())      # всегда окно: полноэкранная игра сворачивается и становится слепой для агента
             logger.info("RimWorld запускается")
         except Exception as e:
             logger.error(f"Не удалось запустить RimWorld: {e}")
