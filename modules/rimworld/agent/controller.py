@@ -66,6 +66,8 @@ LONG_TERM_INTERVAL_SECS   = 25 * 60         # стратегические це�
 REFLECTION_INTERVAL_SECS  = 40 * 60         # уроки — раз в 40 минут
 SELF_IMPROVEMENT_INTERVAL_SECS = 2 * 60 * 60  # правки собственного кода — раз в 2 часа
 _ASSISTANT_URL = env("GITS_CORE_HTTP_URL", "http://127.0.0.1:8766")
+QUICK_START_ATTEMPTS = 3                  # сколько раз нажимать «Быстрый запуск», прежде чем идти другим путём
+QUICK_START_WAIT_POLLS = 15               # после нажатия ждём загрузку поселения столько опросов по 2 с
 MENU_STUCK_THRESHOLD_SECS = 90              # торчим в главном меню дольше — проходим сами через UI
 _BASE                     = gamenet.base_url(8765)   # http://localhost:8765 (мод отвечает только на это имя)
 _GAME_PORT                = 8765
@@ -705,25 +707,36 @@ class Controller:
             self._last_speed_step = now
 
     async def _new_colony(self):
-        """Создать поселение из главного меню. Сначала быстро и точно: нажать кнопку «Быстрый запуск (Dev)». Если кнопки
-        нет на месте или игра не загрузилась, дальше идёт навигация через Claude по скриншотам."""
+        """Создать поселение из главного меню. Сначала быстро и точно: нажать кнопку «Быстрый запуск (Dev)» (до трёх попыток:
+        окно может ещё не отрисоваться, а после лишнего клика экран другой), потом нажатие по тексту кнопки через OCR, и только
+        затем навигация через Claude по скриншотам (она долгая и часто упирается в таймаут)."""
         if self._navigating:
             return
         import game_watchdog
         self._navigating = True
         try:
-            pressed = await asyncio.to_thread(game_watchdog.press_quick_start)
-            if pressed:
-                import game_launcher
-                game_launcher.announce_self("нажимаю «Быстрый запуск» в главном меню: поселения нет, создаю новое, "
-                                            "чтобы игра шла", kind="game")       # правило 14: заметное действие в игре
-                logger.info("Нажала «Быстрый запуск»: жду загрузку поселения")
-                for _ in range(45):
-                    await asyncio.sleep(2)
-                    if _state_ready(await asyncio.to_thread(_get_state)):
-                        return
+            for attempt in range(1, QUICK_START_ATTEMPTS + 1):
+                pressed = await asyncio.to_thread(game_watchdog.press_quick_start)
+                if pressed:
+                    import game_launcher
+                    game_launcher.announce_self("нажимаю «Быстрый запуск» в главном меню: поселения нет, создаю новое, "
+                                                "чтобы игра шла", kind="game")       # правило 14: заметное действие в игре
+                    logger.info(f"Нажала «Быстрый запуск» (попытка {attempt}): жду загрузку поселения")
+                    for _ in range(QUICK_START_WAIT_POLLS):
+                        await asyncio.sleep(2)
+                        if _state_ready(await asyncio.to_thread(_get_state)):
+                            return
+                    logger.info("Поселение не загрузилось после «Быстрого запуска»: пробую ещё раз")
+                else:
+                    logger.info(f"Кнопка «Быстрый запуск» не найдена на месте (попытка {attempt}): жду и пробую снова")
+                    await asyncio.sleep(3)
         finally:
             self._navigating = False
+        await self._menu_autostart()                     # кнопка по тексту (OCR), без Claude
+        for _ in range(QUICK_START_WAIT_POLLS):
+            await asyncio.sleep(2)
+            if _state_ready(await asyncio.to_thread(_get_state)):
+                return
         await self._navigate_to_game(MENU_GOAL)
 
     async def _camera(self, cmds: list[dict]):

@@ -143,8 +143,10 @@ def press_quick_start() -> bool:
     from PIL import Image
     import io
     show_window()
+    time.sleep(1.0)                                  # окно возвращается на передний план и перерисовывается не сразу
     w, h = game_ui.window_size()
     if w < 800:
+        logger.info(f"Быстрый запуск: окно игры слишком мало ({w}) или не найдено")
         return False
     img = Image.open(io.BytesIO(game_ui.screenshot_png())).convert("RGB")
     sx, sy = img.size
@@ -152,6 +154,7 @@ def press_quick_start() -> bool:
     # края кнопки без текста (слева и справа); подсветка под курсором меняет оттенок, поэтому допуск широкий
     edges = [img.getpixel((int(sx * fx), y)) for fx in (0.6915, 0.7935)]
     if not any(all(abs(a - b) <= 30 for a, b in zip(e, BUTTON_RGB, strict=True)) for e in edges):
+        logger.info(f"Быстрый запуск: на месте кнопки другие цвета {edges} (ждали около {BUTTON_RGB}): это не главное меню?")
         return False
     game_ui.click(int(w * QUICK_START_REL[0]), int(h * QUICK_START_REL[1]))
     return True

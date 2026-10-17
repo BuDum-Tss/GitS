@@ -80,6 +80,7 @@ class Router:
         self._say = say                          # как озвучить вопрос о разрешении
         self._dialogue = dialogue_provider       # () -> короткий текст последних реплик
         self.last_kind = "chat"                  # итог последнего handle: chat / cannot / done
+        self.after_tool = None                   # async (tool, args, ok, result) -> None: что делать после инструмента (ставит ядро)
         self.interrupted = lambda: False         # () -> важное событие ждёт реплики: цикл действий обрывается (ставит ядро)
         self._llm = llm if llm is not None else LMStudioLLM()
         self._log = event_log if event_log is not None else SqliteEventLog()
@@ -145,6 +146,11 @@ class Router:
         trace_id = tool_trace.start(executor, str(step.get("tool", "?")), tool_trace.summarize(step.get("args")))
         res = await self._step_inner(step, candidates)
         tool_trace.finish(trace_id, res[0], res[2])
+        if self.after_tool is not None and tool is not None:
+            try:
+                await self.after_tool(tool, step.get("args") or {}, res[0], res[2])
+            except Exception as e:
+                logger.warning(f"После инструмента {tool.id}: {e}")
         mod = str(tool.id).split(".", 1)[0] if tool is not None else "?"
         ms = (time.perf_counter() - t0) * 1000
         label = f"{step.get('tool', '?')}:{'ok' if res[0] else 'error'}"
