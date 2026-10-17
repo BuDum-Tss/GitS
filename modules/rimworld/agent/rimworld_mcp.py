@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import httpx
+import functools
 from mcp.server.fastmcp import FastMCP, Image
 
 # Ленивый импорт game_ui — не ломает MCP инициализацию если окна нет
@@ -23,6 +24,34 @@ _LESSONS_FILE   = Path(__file__).parent / "memory" / "lessons.json"  # тот ж
 _TERRITORY_FILE = Path(__file__).parent / "memory" / "territory.json"
 
 mcp = FastMCP("RimWorld Agent Bridge")
+
+RESULT_MAX_CHARS = 14000     # ответ инструмента длиннее раздувает контекст хода («Prompt is too long») и обрывает его
+
+
+def clip_result(text: str, limit: int = RESULT_MAX_CHARS) -> str:
+    """Слишком длинный ответ инструмента обрезается с пометкой, сколько потеряно."""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"{chr(10)}…[ответ обрезан: показано {limit} из {len(text)} символов; уточни запрос или зови точечные инструменты]"
+
+
+_tool_decorator = mcp.tool
+
+
+def _clipping_tool(*dargs, **dkwargs):
+    """mcp.tool с обрезкой текстовых ответов: каждый инструмент ниже получает защиту от огромного результата."""
+    register = _tool_decorator(*dargs, **dkwargs)
+
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            out = fn(*args, **kwargs)
+            return clip_result(out) if isinstance(out, str) else out
+        return register(inner)
+    return wrap
+
+
+mcp.tool = _clipping_tool
 _BASE = "http://localhost:8765"
 
 

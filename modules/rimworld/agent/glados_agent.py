@@ -26,6 +26,7 @@ from claude_agent_sdk import (
     query,
     ClaudeAgentOptions,
     AssistantMessage,
+    UserMessage,
     ResultMessage,
 )
 
@@ -453,7 +454,8 @@ PLANNING_SYSTEM_PROMPT = PERSONA + """
    unlock_for(имя, queue=true, waiting_task="<description шага>"). Шаг уйдёт в «ждём исследование», исследование встанет в
    очередь (срочное, если его ждёт шаг), правило наблюдения вернёт шаг, когда исследование завершится. Если unlock_for пишет
    blocked (цепочку построить нельзя), шаг останется заблокированным с причиной: так и пиши, не выдумывай обход.
-6б. Комментарий не нужен — это фоновый анализ.
+6б. Вслух ты не говоришь: твой голос формирует другая модель по фактам хода (какие вызовы, что вернулось, твои заметки).
+   В конце напиши 1-2 коротких предложения: что решила и почему (суть, а не список вызовов; без координат).
 """
 
 
@@ -535,7 +537,8 @@ priority="high"), выбрав из состояния колонии то, чт
 - Цель должна быть измерима и проверяема через get_colony_state
   (плохо: "укрепить оборону". хорошо: "построить 15 сегментов стены вокруг жилой зоны")
 - Долгосрочные цели живут десятки ходов — не переставляй их каждый раз
-- Комментарий не нужен — это фоновый анализ
+- Вслух ты не говоришь: твой голос формирует другая модель по фактам хода. В конце напиши 1-2 коротких предложения:
+  куда ведёшь колонию и почему (суть, а не список вызовов).
 """
 
 
@@ -720,6 +723,40 @@ async def run_game_navigation(goal: str) -> dict:
 MODEL = "claude-haiku-4-5-20251001"
 
 
+_tool_hook = None     # (имя, кратко) -> None: вызов инструмента игрового контура уходит в чат ядра (ставит контроллер)
+
+
+def set_tool_hook(hook) -> None:
+    global _tool_hook
+    _tool_hook = hook
+
+
+def tool_summary(inp) -> str:
+    """Коротко, с чем вызван инструмент: описание задачи, имя, текст. Для строки в чате."""
+    if not isinstance(inp, dict):
+        return ""
+    for key in ("description", "title", "name", "query", "item", "pawn_id", "pawn", "text"):
+        if inp.get(key):
+            return " ".join(str(inp[key]).split())[:160]
+    return ""
+
+
+def _result_text(content) -> str:
+    """Результат инструмента одной строкой: текст блоков, без переносов, коротко."""
+    if isinstance(content, list):
+        content = " ".join(str(b.get("text", "")) if isinstance(b, dict) else str(getattr(b, "text", b)) for b in content)
+    return " ".join(str(content or "").split())[:200]
+
+
+def _notify_tool(name: str, inp) -> None:
+    if _tool_hook is None:
+        return
+    try:
+        _tool_hook(name, tool_summary(inp))
+    except Exception as e:                     # показ в чате не должен ломать ход
+        logger.debug(f"tool hook: {e}")
+
+
 TURN_TIMEOUT = 300   # секунд на один ход любого контура: зависший ход не должен вечно держать игру
 
 
@@ -762,6 +799,9 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
 
     commentary = ""
     actions: list[str] = []
+    trace: list[dict] = []              # вызовы хода: имя, с чем, что вернулось (ГЛаДОС получает это фактом)
+    notes: list[str] = []               # что Claude писал по ходу: решения и доводы
+    by_id: dict[str, dict] = {}
     success = False
 
     if claude_quota.blocked():
@@ -778,9 +818,21 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
                         if claude_quota.note(block.text):
                             continue          # «you've hit your session limit»: не реплика
                         commentary = block.text.strip()
+                        notes.append(commentary)
                     elif hasattr(block, "name"):
                         actions.append(block.name)
-                        logger.info(f"[ход +{time.time() - started:.0f}с] {block.name.replace('mcp__rimworld__', '')}")
+                        short = block.name.replace('mcp__rimworld__', '')
+                        logger.info(f"[ход +{time.time() - started:.0f}с] {short}")
+                        entry = {"name": short, "summary": tool_summary(getattr(block, "input", None)), "result": "", "error": False}
+                        trace.append(entry)
+                        by_id[str(getattr(block, "id", ""))] = entry
+                        _notify_tool(short, getattr(block, "input", None))
+            elif isinstance(message, UserMessage) and isinstance(message.content, list):
+                for block in message.content:                       # результаты вызовов приходят отдельным сообщением
+                    entry = by_id.get(str(getattr(block, "tool_use_id", "")))
+                    if entry is not None:
+                        entry["result"] = _result_text(getattr(block, "content", ""))
+                        entry["error"] = bool(getattr(block, "is_error", False))
             elif isinstance(message, ResultMessage):
                 usage_report.push_result(message, contour)      # core.claude_usage, источник rimworld.<контур>
                 success = message.subtype == "success"
@@ -799,5 +851,5 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
         else:
             logger.error(f"GLaDOS agent error: {e}", exc_info=True)
 
-    return {"commentary": commentary, "actions": actions, "success": success,
-            "quota": claude_quota.blocked(), **outcome}
+    return {"commentary": commentary, "actions": actions, "success": success, "trace": trace, "notes": notes,
+            "contour": contour, "quota": claude_quota.blocked(), **outcome}

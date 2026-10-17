@@ -122,3 +122,14 @@ async def test_failed_post_is_only_logged(tmp_path, monkeypatch):
 def test_core_link_has_the_speechlink_interface():
     for name in ("online", "last_user_ts", "is_speaking", "repeats", "say", "emotion", "event", "run"):
         assert hasattr(CoreLink, name), name
+
+
+async def test_tool_call_goes_to_core_as_tool_stage_of_one_long_job(tmp_path):
+    async with Rig(tmp_path) as rig:
+        await rig.link.tool_call("set_task", "поставить грядки у реки")
+        await rig.link.tool_call("get_goals")
+        await rig.core.wait_message("job.update", nth=2)
+        msgs = [m.body for m in rig.core.messages_of("job.update")]
+        assert [m["stage"] for m in msgs] == ["tool:set_task:1", "tool:get_goals:2"]
+        assert len({m["job_id"] for m in msgs}) == 1
+        assert msgs[0]["state"] == "running" and msgs[0]["text"] == "поставить грядки у реки"

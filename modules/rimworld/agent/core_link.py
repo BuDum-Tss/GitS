@@ -15,6 +15,7 @@ import logging
 from collections import deque
 
 from gits_sdk import ToolError
+from gits_sdk.protocol import new_job_id
 
 import events_log
 import settings
@@ -22,6 +23,7 @@ import settings
 logger = logging.getLogger("core_link")
 
 SETTINGS_SYNC_S = 1.0           # как часто сверять общие настройки ядра с файлом настроек модуля
+FACT_EXPIRES_S = 120             # факты хода ждут очереди речи дольше готовой реплики
 SAY_EXPIRES_S = 20              # реплика комментатора устаревает за столько секунд (ядро не озвучит запоздавшую)
 POST_TIMEOUT_S = 150            # telegram.post может ждать разрешения; ядро само ограничивает инструмент 120 с
 MONTAGE_TIMEOUT_S = 150          # montage.start имеет риск ask: ядро может ждать ответа пользователя
@@ -53,6 +55,8 @@ class CoreLink:
         self._last_say_seen = ""
         self._applied: dict | None = None            # какие общие настройки уже записаны в файл настроек модуля
         self._background: set[asyncio.Task] = set()
+        self._tool_calls = 0
+        self._tool_job = new_job_id()      # одна долгая задача: каждый вызов инструмента это новая стадия tool:<Имя>:<номер>
         client.on_topic("presence")(self._on_presence)
         client.on_topic("settings")(self._on_settings)
 
@@ -127,6 +131,15 @@ class CoreLink:
         except Exception as e:
             logger.info(f"say не дошёл: {e}")
 
+    async def say_fact(self, fact: str) -> None:
+        """Факты хода для её голоса: ядро формулирует реплику (промпт виден в дашборде), может и промолчать."""
+        if not self.online:
+            return
+        try:
+            await self.client.say(fact, mode="fact", key="rimworld.comment", expires_in_s=FACT_EXPIRES_S)
+        except Exception as e:
+            logger.info(f"факт хода не дошёл: {e}")
+
     async def announce(self, text: str) -> bool:
         """Объявить пользователю действие модуля (REC-7: запуск игры): факт для персонажа, срочность 3. Ядро недоступно:
         False (вызывающий пробует другой путь)."""
@@ -138,6 +151,16 @@ class CoreLink:
         except Exception as e:
             logger.info(f"объявление не дошло: {e}")
             return False
+
+    async def tool_call(self, name: str, summary: str = "") -> None:
+        """Вызов инструмента игрового контура в чат дашборда: стадия `tool:<Имя>:<номер>` одной долгой задачи
+        (ядро: JobTracker кладёт её в журнал инструментов и не озвучивает)."""
+        self._tool_calls += 1
+        try:
+            await self.client.job_update(self._tool_job, title="Ходы в RimWorld", state="running",
+                                         stage=f"tool:{name}:{self._tool_calls}", text=summary or None)
+        except Exception as e:
+            logger.debug(f"tool_call не дошёл: {e}")
 
     async def emotion(self, event: str, emotion: str) -> None:
         try:

@@ -24,6 +24,7 @@ from pathlib import Path
 
 import httpx
 import claude_quota
+import glados_agent
 from collections import deque
 
 from glados_agent import (run_turn, run_planning, run_long_term_planning,
@@ -68,7 +69,8 @@ SELF_IMPROVEMENT_INTERVAL_SECS = 2 * 60 * 60  # правки собственн�
 _ASSISTANT_URL = env("GITS_CORE_HTTP_URL", "http://127.0.0.1:8766")
 QUICK_START_ATTEMPTS = 3                  # сколько раз нажимать «Быстрый запуск», прежде чем идти другим путём
 QUICK_START_WAIT_POLLS = 15               # после нажатия ждём загрузку поселения столько опросов по 2 с
-MENU_STUCK_THRESHOLD_SECS = 90              # торчим в главном меню дольше — проходим сами через UI
+NAVIGATION_TIMEOUT_SECS = 240               # сам проход меню через Claude по экрану: один снимок занимает 40+ с
+MENU_STUCK_THRESHOLD_SECS = 90             # торчим в главном меню дольше — проходим сами через UI
 _BASE                     = gamenet.base_url(8765)   # http://localhost:8765 (мод отвечает только на это имя)
 _GAME_PORT                = 8765
 RIMWORLD_EXE              = r"C:\GOG Games\RimWorld\RimWorldWin64.exe"
@@ -218,6 +220,7 @@ class Controller:
         self._seen_game_errors    = 0      # сколько ошибок игры из state.game_log уже записано в журнал
         self.watchdog             = None   # GameWatchdog: игра запущена, видна, подключена
         self.link                 = None   # CoreLink: речь, эмоции и события игры через ядро (модуль rimworld, ТЗ 11)
+        glados_agent.set_tool_hook(self._on_tool_call)
         self.on_phase_change      = None   # () -> None: игра загрузилась или забег закончился (модуль отправит состояние сразу)
         self._goal_status         = None   # статусы целей на прошлой проверке (id -> status): событие, когда цель закрыта
         self._goal_mtime          = 0.0
@@ -1126,18 +1129,9 @@ class Controller:
                                urgent=urgent, order=text, preempt=True)
         return True
 
-    async def _finish_turn(self, current_tick: int, event_type: str, result: dict):
-        commentary = result.get("commentary", "").strip()
-        actions    = result.get("actions", [])
-        if result.get("quota"):
-            return                     # лимит Claude исчерпан: ничего не говорим и не пишем в журнал решений
-        self._need_turn = bool(result.get("timed_out"))   # оборвался: повторить без долгого ожидания
-        if result.get("timed_out"):
-            events_log.log("error", f"ход в игре прерван по таймауту, сделано вызовов: {len(actions)}")
-        elif not actions:
-            events_log.log("game", "ход без единого действия")
-
-        commentary = _trim_commentary(commentary)
+    def _speak_commentary(self, commentary: str) -> str:
+        """Реплика хода: обрезать, отсеять служебное и повторы, озвучить. Возвращает то, что прозвучало (или пусто)."""
+        commentary = _trim_commentary((commentary or "").strip())
 
         _boring = ("отчёт", "тик ", "tick ", "мониторинг", "инициализация")
         _tech = ("localhost", ":8765", "mcp", "api не", "не подключен", "соединение с", "соединение потеряно")
@@ -1156,6 +1150,69 @@ class Controller:
             logger.info(f"[GLaDOS] {commentary}")
             self._last_commentary = commentary
             self._say(commentary)
+        return commentary
+
+    def _speak_background(self, result: dict) -> None:
+        """Итог фонового прохода (планирование, цели): ГЛаДОС получает факты хода, реплику формирует она. Лимит Claude: тишина."""
+        if result.get("quota"):
+            return
+        self._speak_facts(result)
+
+    def _turn_fact(self, result: dict) -> str:
+        """Факты хода для её голоса: вызовы с результатами и заметки Claude. Пусто, если ничего не происходило."""
+        trace, notes = result.get("trace") or [], result.get("notes") or []
+        if not trace and not notes:
+            return ""
+        names = {"turn": "ход в игре", "planning": "раскладка целей на задачи", "plan_check": "проверка плана",
+                 "goals": "пересмотр долгосрочных целей", "reflection": "рефлексия", "navigation": "проход по меню"}
+        lines = [f"Ты только что сама играла в RimWorld ({names.get(result.get('contour'), 'ход')}). Игрок слышит тебя, "
+                 "пока ты думаешь. Ниже что ты сделала; скажи об этом своими словами, коротко, по смыслу, без названий "
+                 "инструментов и координат."]
+        for t in trace[:14]:
+            mark = "ОШИБКА" if t.get("error") or str(t.get("result", "")).startswith("ERROR") else "итог"
+            lines.append(f"- {t['name']}" + (f" ({t['summary']})" if t.get("summary") else "")
+                         + (f": {mark}: {t['result'][:110]}" if t.get("result") else ""))
+        if len(trace) > 14:
+            lines.append(f"- … и ещё вызовов: {len(trace) - 14}")
+        if notes:
+            lines.append("Твои заметки по ходу: " + " ".join(n.strip() for n in notes[-3:])[:300])
+        return chr(10).join(lines)[:950]
+
+    def _speak_facts(self, result: dict) -> None:
+        """Отдать ядру факты хода (`say` режима fact): реплику формулирует она, промпт виден в дашборде."""
+        fact = self._turn_fact(result)
+        if not fact or self.link is None or settings.quiet_active():
+            return
+        try:
+            asyncio.get_running_loop().create_task(self.link.say_fact(fact))
+        except RuntimeError:
+            pass
+
+    def _on_tool_call(self, name: str, summary: str) -> None:
+        """Вызов инструмента игрового контура: строка в чат дашборда (job.update со стадией tool:, как у помощника)."""
+        link = self.link
+        if link is None or not link.online:
+            return
+        try:
+            asyncio.get_running_loop().create_task(link.tool_call(name, summary))
+        except RuntimeError:
+            pass
+
+    async def _finish_turn(self, current_tick: int, event_type: str, result: dict):
+        commentary = result.get("commentary", "").strip()
+        actions    = result.get("actions", [])
+        if result.get("quota"):
+            return                     # лимит Claude исчерпан: ничего не говорим и не пишем в журнал решений
+        self._need_turn = bool(result.get("timed_out"))   # оборвался: повторить без долгого ожидания
+        if result.get("timed_out"):
+            events_log.log("error", f"ход в игре прерван по таймауту, сделано вызовов: {len(actions)}")
+        elif not actions:
+            events_log.log("game", "ход без единого действия")
+
+        if result.get("trace") or result.get("notes"):
+            self._speak_facts(result)           # Claude молчит: факты хода уходят ей
+        else:
+            commentary = self._speak_commentary(commentary)       # локальный ход: реплика уже её
         if actions:
             logger.info(f"[ACTIONS] {actions}")
 
@@ -1349,6 +1406,7 @@ class Controller:
                             self._plan_reason = ""
                             if not self._turn_running():
                                 agent_mode.set_mode("observe", "")
+                    self._speak_background(result)
                     if result.get("actions"):
                         logger.info(f"[PLANNING] {result['actions']}")
                         if any("set_task" in a for a in result["actions"]):
@@ -1401,6 +1459,7 @@ class Controller:
                     logger.info("GLaDOS пересматривает стратегические цели…")
                     async with self._background_lock:
                         result = await run_long_term_planning(self._context())
+                    self._speak_background(result)
                     if result.get("actions"):
                         logger.info(f"[LONG-TERM] {result['actions']}")
                     if any("set_goal" in a or "update_goal" in a for a in result.get("actions", [])):
@@ -1499,12 +1558,9 @@ class Controller:
             import game_launcher
             game_launcher.announce_self(f"веду интерфейс игры (через Claude по экрану) к цели: {goal[:160]}", kind="game")
             logger.info(f"GLaDOS проходит интерфейс игры: {goal[:70]}…")
-            async with self._background_lock:
-                # Таймаут для навигации — если зависла, откатываем попытку и пробуем позже
-                result = await asyncio.wait_for(
-                    run_game_navigation(goal),
-                    timeout=MENU_STUCK_THRESHOLD_SECS  # 90 сек
-                )
+            # Замок фоновых контуров не берём: проход меню не должен держать пересмотр целей и планирование.
+            # Таймаут: если зависла, откатываем попытку и пробуем позже.
+            result = await asyncio.wait_for(run_game_navigation(goal), timeout=NAVIGATION_TIMEOUT_SECS)
             if result.get("actions"):
                 logger.info(f"[NAVIGATION] {result['actions']}")
         except asyncio.TimeoutError:
