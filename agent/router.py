@@ -32,6 +32,7 @@ from environments.base import ToolError, validate_args
 logger = logging.getLogger("router")
 
 MAX_STEPS = 4
+MAX_ROUNDS = 3             # ReAct: сколько раз подряд она может посмотреть на результаты и спланировать дальше
 
 RESULT_CHARS = 600
 
@@ -60,11 +61,13 @@ PLANNER = (
     "Telethon, библиотека Python): не отвечай, что такого нет. Если пользователь просит поручить что-то Клоду, "
     "Claude или помощнику, задачу возьми из его предыдущих реплик.\n\n"
     "Ответ строго JSON без пояснений:\n"
-    '{"kind": "chat" или "action", "feasible": true или false, "reason": "...", '
+    '{"kind": "chat" или "action", "feasible": true или false, "reason": "...", "observe": true или false, '
     '"say_first": "...", "steps": [{"tool": "id инструмента", "args": {}}]}\n'
     "say_first: очень короткая фраза (до 6 слов) от первого лица (по-русски, женский род), которую "
     "ты скажешь, пока выполняешь, например «Сейчас посмотрю» или «Хорошо, выключаю». Для kind=chat и "
-    "feasible=false оставь пустую строку."
+    "feasible=false оставь пустую строку. Для action say_first обязательна: коротко и по делу скажи, что именно сейчас сделаешь.\n"
+    "observe=true, если дальнейшие шаги зависят от результата этих (например, узнать статус и по нему решить, "
+    "запускать ли игру); тогда после выполнения ты увидишь результаты и спланируешь остаток. Иначе false."
 ) % MAX_STEPS
 
 
@@ -77,6 +80,7 @@ class Router:
         self._say = say                          # как озвучить вопрос о разрешении
         self._dialogue = dialogue_provider       # () -> короткий текст последних реплик
         self.last_kind = "chat"                  # итог последнего handle: chat / cannot / done
+        self.interrupted = lambda: False         # () -> важное событие ждёт реплики: цикл действий обрывается (ставит ядро)
         self._llm = llm if llm is not None else LMStudioLLM()
         self._log = event_log if event_log is not None else SqliteEventLog()
         self._settings = settings_provider if settings_provider is not None else SettingsModule()
@@ -118,6 +122,20 @@ class Router:
         return None
 
     # ── исполнение ────────────────────────────────────────────────────────────
+
+    async def _replan(self, text: str, tools, done: list) -> dict | None:
+        """Следующий круг ReAct: планировщик видит результаты уже выполненных шагов и даёт оставшиеся (пусто - всё сделано)."""
+        system = PLANNER.replace("{tools}", "\n".join("- " + t.signature() for t in tools))
+        seen = "\n".join(f"- {'сделано' if ok else 'НЕ получилось'}: {name} → {info}" for ok, name, info in done)
+        user = (f"{self._dialogue()}\n\nПоследнее сообщение пользователя: {text}\n\nУже выполнено, результаты:\n{seen}\n\n"
+                "Если для просьбы нужны ещё шаги с учётом этих результатов, верни kind=\"action\", feasible=true и ТОЛЬКО оставшиеся "
+                "steps (в say_first коротко скажи, что делаешь дальше; observe=true, если и после них надо смотреть результат). "
+                "Если всё уже сделано или идти дальше нельзя, верни steps=[].")
+        try:
+            return self._parse(await self._llm.ask(system, user, timeout=90, max_tokens=420, temperature=0.1))
+        except Exception as e:
+            logger.warning(f"Планировщик, следующий круг: {e}")
+            return None
 
     async def _step(self, step: dict, candidates: dict, executor: str = "fast") -> tuple[bool, str, str, str | None]:
         """(успех, название, результат/причина, код ошибки по MOD-9 или None); шаг пишется в трассу потока (ТЗ 17)
@@ -237,19 +255,40 @@ class Router:
             if name not in candidates and len(by_name.get(name.split(".")[-1], [])) == 1:
                 st["tool"] = by_name[name.split(".")[-1]][0]
         done, steps_log = [], []
-        for step in plan["steps"]:
-            ok, name, info = await self._run_step(step, candidates)
-            done.append((ok, name, info))
-            steps_log.append({"tool": name, "ok": ok, "result": info[:120]})
-            if not ok:
-                break   # дальше по плану идти нельзя
+        informative = any(candidates[str(st.get("tool"))].informative for st in plan["steps"] if str(st.get("tool")) in candidates)
+        rounds, cut = 1, False
+        while True:
+            for step in plan["steps"]:
+                if self.interrupted():
+                    cut = True
+                    break
+                ok, name, info = await self._run_step(step, candidates)
+                done.append((ok, name, info))
+                steps_log.append({"tool": name, "ok": ok, "result": info[:120]})
+                if not ok:
+                    break   # дальше по плану идти нельзя
+            if cut or not done[-1:] or not done[-1][0] or not plan.get("observe") or rounds >= MAX_ROUNDS:
+                break
+            nxt = await self._replan(text, tools, done)      # ReAct: смотрим на результаты и решаем, что дальше
+            if nxt is None or not nxt["steps"]:
+                break
+            plan, rounds = nxt, rounds + 1
+            for st in plan["steps"]:
+                name = str(st.get("tool", ""))
+                if name not in candidates and len(by_name.get(name.split(".")[-1], [])) == 1:
+                    st["tool"] = by_name[name.split(".")[-1]][0]
+            informative = informative or any(candidates[str(st.get("tool"))].informative for st in plan["steps"] if str(st.get("tool")) in candidates)
+            narration = str(plan.get("say_first") or "").strip()
+            if narration:
+                await self._say(narration)                   # что сделает дальше, пока идёт
+        if cut:
+            self._log.log("plan", f"прервано важным событием: {text}", feasible=True, steps=steps_log)
+            return ""                                        # важное скажет очередь речи
         self._log.log("plan", f"выполнено: {text}", feasible=True, steps=steps_log)
         if done and not any(ok for ok, _, _ in done):
             journal.mistake("plan_failed", text[:200], reason="no step ok")      # ни один шаг плана не прошёл
         # простое действие прошло, и она уже сказала «сейчас сделаю»: итог молчаливый
-        if announced and all(ok for ok, _, _ in done) and not any(
-                candidates[str(st.get("tool"))].informative for st in plan["steps"]
-                if str(st.get("tool")) in candidates):
+        if announced and rounds == 1 and all(ok for ok, _, _ in done) and not informative:
             return ""
         lines = [f"- {'сделано' if ok else 'НЕ получилось'}: {name} → {info}" for ok, name, info in done]
         return (f"Пользователь просил: «{text}». Ты действовала по плану:\n" + "\n".join(lines) +

@@ -69,6 +69,7 @@ class Companion:
         self.io = None                                         # ConversationIO: доставка ответов в каналы модулей
         self.attention = None                                  # Attention: очередь речи и фокус (ТЗ 03); None - говорит сразу
         self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
+        self.workspace_of = lambda: "assistant"                # () -> текущая среда (WorkspaceManager.current, ставит ядро)
         self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
         self._rel = rel
         self._people = people if people is not None else RelationshipsAdapter(lambda: self._rel)
@@ -296,8 +297,8 @@ class Companion:
     def _capabilities(self) -> str:
         return self.context_builder.capabilities()
 
-    def _context(self, include_hearing: bool = True, query: str = "") -> str:
-        return self.context_builder.build(include_hearing, query)
+    def _context(self, include_hearing: bool = True, query: str = "", owner: bool | None = None) -> str:
+        return self.context_builder.build(include_hearing, query, owner=owner)
 
     def _declutter(self, reply: str) -> str:
         return self.reply_generator.declutter(reply)

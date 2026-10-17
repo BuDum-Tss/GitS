@@ -90,3 +90,14 @@ async def test_no_timer_driven_chatter_left_on_the_facade(tmp_path):
     c, llm = make(tmp_path)
     assert not any(hasattr(c, n) for n in ("proactive_loop", "_maybe_speak", "_digest", "proactive_legacy"))
     assert c._repeats_recent("совсем новая тема про погоду на неделе") is False and llm.calls == []
+
+
+def test_owner_info_only_for_user_replies_or_assistant_workspace(tmp_path):
+    c, _ = make(tmp_path)
+    c._people.describe = lambda who: "отношение"
+    c._memory_reader.profile_block = lambda: "ПРОФИЛЬ"
+    c.workspace_of = lambda: "rimworld"
+    assert "ПРОФИЛЬ" not in c._context(query="x") and "отношение" not in c._context(query="x")
+    assert "ПРОФИЛЬ" in c._context(query="x", owner=True)
+    c.workspace_of = lambda: "assistant"
+    assert "ПРОФИЛЬ" in c._context(query="x")

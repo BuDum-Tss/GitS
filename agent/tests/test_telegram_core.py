@@ -169,7 +169,10 @@ def test_module_notes_describe_connected_modules_with_tools():
                                            state={"summary": "канал: готов, аккаунт: нет сессии", "data": {}, "ts": 1})
     reg.records["quiet"] = ModuleRecord("quiet", title="Тихий", connected=True, manifest={"tools": []})      # без инструментов
     reg.records["off"] = ModuleRecord("off", title="Нет", connected=False, manifest={"tools": [{"name": "x"}]})
-    assert reg.notes() == ["Модуль «Telegram»: Telegram: канал и бот. Сейчас: канал: готов, аккаунт: нет сессии."]
+    assert reg.notes() == ["Модуль «Telegram»: Telegram: канал и бот."]            # состояния в контексте нет
+    assert reg.notes(with_state=True) == ["Модуль «Telegram»: Telegram: канал и бот. Сейчас: канал: готов, аккаунт: нет сессии."]
+    report = reg.status_report()
+    assert "Telegram: подключён, канал: готов" in report and "Нет: не подключён" in report
     reg._settings_source = lambda: {"modules": {"telegram": {"enabled": False}}}
     reg.invalidate()
     assert reg.notes() == []                                                     # выключенный в контекст не попадает
@@ -183,7 +186,7 @@ async def test_companion_context_uses_module_notes_not_telegram_objects():
     assert not hasattr(c, "telegram") and not hasattr(c, "tg_user")
     c.module_notes = lambda: ["Модуль «Telegram»: канал и бот. Сейчас: канал: готов."]
     text = c._capabilities()
-    assert "- Модуль «Telegram»: канал и бот. Сейчас: канал: готов." in text
+    assert "- Модуль «Telegram»: канал и бот" in text and "Сейчас" not in text      # в справке суть модуля, состояние по запросу
 
 
 # ── в процессе ядра нет Telegram ──────────────────────────────────────────────────────────────
@@ -210,3 +213,26 @@ def test_core_import_does_not_pull_telegram_modules():
             f"bad = [m for m in {list(_FORBIDDEN)!r} if m in sys.modules]; print('BAD', bad); sys.exit(1 if bad else 0)")
     done = subprocess.run([sys.executable, "-c", code], cwd=AGENT, capture_output=True, text=True, timeout=120)
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_module_events_report_and_trace_of_module_launch():
+    from types import SimpleNamespace
+
+    import core_service
+    import tool_trace
+    from module_registry import ModuleRegistry
+    reg = ModuleRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"modules": {}})
+    assert reg.events_report() == "событий модулей нет"
+    tool_trace.clear()
+    record = core_service._module_event_recorder(reg, SimpleNamespace(silent_kinds={"voice.heard"}))
+    record("rimworld", {"kind": "rimworld.game_started", "text": "Игра RimWorld запущена."})
+    record("rimworld", {"kind": "rimworld.raid", "text": "Налёт"})
+    record("voice", {"kind": "voice.heard", "text": "шум"})                # тихие виды в журнал не идут
+    text = reg.events_report("rimworld")
+    assert "rimworld.game_started: Игра RimWorld запущена." in text and "rimworld.raid" in text and "voice" not in text
+    assert [e["tool"] for e in tool_trace.recent()] == ["rimworld.game_started"]      # запуск игры виден в чате
+    tool_trace.clear()
+    core_service._log_workspace("switch", {"from": "assistant", "to": "rimworld", "reason": "user"})
+    core_service._log_workspace("switch", {"from": "rimworld", "to": "assistant", "reason": "done"})
+    assert [e["summary"] for e in tool_trace.recent()] == ["rimworld -> assistant (done)"]    # по инструменту смена уже в чате
+    tool_trace.clear()

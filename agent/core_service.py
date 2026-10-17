@@ -22,6 +22,7 @@ import character
 import claude_battery
 import dashboard
 import events_log
+import tool_trace
 import fast_brain
 import episode_routes
 import episode_service
@@ -76,7 +77,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                             memory_writer=getattr(companion, "memory_writer", None))
     holder: dict = {}                                    # profiles появится ниже, а реестру и шине он нужен уже при создании
     modules = ModuleRegistry(registry, on_state=lambda: (holder["profiles"].poke(), holder["workspaces"].check()))
-    hub = ModuleHub(modules, sink=AttentionEventSink(attention, presence), requests=requests, battery_source=battery,
+    hub = ModuleHub(modules, sink=AttentionEventSink(attention, presence, recorder=_module_event_recorder(modules, attention)), requests=requests, battery_source=battery,
                     presence=presence, profile_source=lambda: holder["profiles"].info())
     hub.attention = attention                            # только для диагностики и тестов: шина работает через sink (ARC-7)
     io.hub = hub
@@ -113,7 +114,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         is_background=focus_mgr.is_background,
         modules_of=lambda: [(rec.id, rec.manifest, rec.title) for rec in modules.records.values() if rec.manifest],
         on_change=lambda rec: holder["profiles"].poke(),           # профиль среды (тон, инструменты) следует за средой
-        log=lambda kind, **data: events_log.log_nowait("workspace", f"{data.get('from')} -> {data.get('to')}", type=kind, **data))
+        log=lambda kind, **data: _log_workspace(kind, data))
     holder["workspaces"] = workspaces
     attention.on_decided = workspaces.on_event          # ТЗ 32, WS-6: события чужих сред это сигналы, а не претенденты на слот
     attention.policy_options = focus_mgr.policy_options         # подсказка политики для GLiNER (первый эшелон)
@@ -156,6 +157,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     profiles.evaluate()
     registry.focus = profiles.focus_modules
     companion.profile_hint = profiles.hint
+    companion.workspace_of = lambda: workspaces.current
     companion.module_notes = modules.notes                # что умеют подключённые модули и в каком они состоянии
     companion.idle_seconds = lambda: float(desktop_state(modules).get("idle_s") or 0.0)     # простой (ТЗ 14, DESK-7)
     companion.screen_activity = lambda: desktop_state(modules).get("activity")              # активность экрана (DESK-7)
@@ -224,6 +226,30 @@ async def _migrate_memory(companion, graph, folder: Path) -> None:
                                      f"планы {done['plans']}, отброшено мелочи {done['dropped']}")
     except Exception as e:
         logger.warning(f"Перенос старой памяти: {e}")
+
+
+AUTO_SWITCH_REASONS = ("schedule", "done", "blocked", "critical", "disconnect")      # смены среды не по инструменту: в чате их иначе не видно
+
+
+def _log_workspace(kind: str, data: dict) -> None:
+    events_log.log_nowait("workspace", f"{data.get('from')} -> {data.get('to')}", type=kind, **data)
+    if kind == "switch" and data.get("reason") in AUTO_SWITCH_REASONS:
+        tool_trace.note("external", "workspace.switch", f"{data.get('from')} -> {data.get('to')} ({data.get('reason')})")
+
+
+def _module_event_recorder(modules, attention):
+    """Журнал событий модулей по запросу (`core.module_events`) и строки в чат о том, что сделал модуль сам (запуск игры)."""
+    def record(module_id: str, event: dict) -> None:
+        kind = str(event.get("kind") or "")
+        if kind in attention.silent_kinds:
+            return
+        modules.note_event(module_id, event)
+        if kind in TRACED_EVENT_KINDS:
+            tool_trace.note("external", kind, str(event.get("text") or "")[:120])
+    return record
+
+
+TRACED_EVENT_KINDS = ("rimworld.game_started",)
 
 
 def _module_status(modules, module_id: str) -> dict | None:
@@ -331,6 +357,7 @@ async def _run(config: dict):
         return "Последние реплики:\n" + "\n".join(lines) if lines else ""
 
     companion.router = Router(registry, companion.say, recent_dialogue)
+    companion.router.interrupted = lambda: getattr(companion, "attention", None) is not None and companion.attention.speech.urgent_waiting()      # важное событие обрывает цепочку действий
     layer.requests.router = companion.router            # core.tool.call от модулей идёт тем же путём, что просьбы
     dashboard.set_router(companion.router)              # POST /api/menu_click идёт инструментом desktop.menu_click (DESK-14)
     dashboard.set_registry(registry)
