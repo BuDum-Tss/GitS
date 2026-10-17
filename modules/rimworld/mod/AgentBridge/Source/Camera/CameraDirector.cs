@@ -53,7 +53,7 @@ namespace AgentBridge
             if (UserCamera.Check(CamPos(), cam.RootSize)) { _followId = null; _holdUntil = now; _hard = false; }   // пользователь сам двигает кадр: режиссёр отступает
             if (_followId == null && now > _holdUntil)     // никто не ведёт: кадр у пользователя, цель следует за ним
             {
-                if (_init) { _pos = _target = CamPos(); _vel = Vector2.zero; _size = _targetSize = cam.RootSize; _velSize = 0f; }
+                if (_init) { _pos = _target = new Vector2(CamPos().x, CamPos().z); _vel = Vector2.zero; _size = _targetSize = cam.RootSize; _velSize = 0f; }
                 UserCamera.Remember(CamPos(), cam.RootSize);
                 return;
             }
@@ -70,7 +70,7 @@ namespace AgentBridge
             }
             _pos = Vector2.SmoothDamp(_pos, _target, ref _vel, _smooth, 80f, Time.unscaledDeltaTime);
             _size = Mathf.SmoothDamp(_size, _targetSize, ref _velSize, _smooth * 1.3f, 30f, Time.unscaledDeltaTime);
-            Find.CameraDriver.SetRootPosAndSize(_pos, Mathf.Clamp(_size, SizeMin, SizeMax));
+            Find.CameraDriver.SetRootPosAndSize(new Vector3(_pos.x, 0f, _pos.y), Mathf.Clamp(_size, SizeMin, SizeMax));
             UserCamera.Remember(CamPos(), Find.CameraDriver.RootSize);
         }
 
