@@ -499,9 +499,9 @@ window.ARCH_DATA = {
      "t": "Presence и эмоции",
      "tag": "A",
      "new": false,
-     "do": "говорит ли, эмоция, присутствие; быстрые эмоции-реакции на события (валентность, возбуждение) затухают за минуты к базовому уровню персонажа, долгого настроения нет",
+     "do": "говорит ли, эмоция, присутствие; одна эмоция из стандартного набора: её выбирает GLiNER по обращению или событию, новая перебивает старую, держится emotion_ttl_s секунд",
      "out": "PresenceState",
-     "now": "выделено (ТЗ 26): app/affect_service.py поверх domain/affect.py; PresenceTracker, fast_brain.publish; заметная эмоция в ContextBuilder, тон голоса, пороги внимания"
+     "now": "выделено (ТЗ 26): app/affect_service.py поверх domain/affect.py; PresenceTracker, fast_brain.publish; эмоция в ContextBuilder и в картинке питомца, пороги внимания"
     },
     {
      "id": "hubout",

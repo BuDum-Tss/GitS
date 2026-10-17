@@ -286,22 +286,15 @@ def _module_title(modules, module_id: str) -> str:
 
 
 def wire_affect(companion, layer, presence, speech, mem_root: Path):
-    """Состояние эмоций персонажа (ТЗ 26): оценка событий, настроение в контексте, питомец, голос, пороги внимания."""
+    """Эмоция персонажа (ТЗ 26): её выбирает классификатор, она идёт в контекст реплики и в картинку питомца."""
     import fast_brain as _fb
-    import journal as _journal
     from app.affect_service import AffectService
-    from domain import affect as dom
-    char = character.active()
-    affect = AffectService(char.memory_dir(mem_root), dom.Params.from_card(char.emotions),
+    affect = AffectService(lambda: settings.load().get("emotion_ttl_s"),
                            on_change=lambda fields: presence.update(**fields))
     _fb.set_affect(affect)
-    _journal.mistake_hook = affect.on_mistake
     companion.context_builder.emotion_of = affect.emotion_block
-    layer.attention.ctx.threshold_offset = affect.proactivity_offset
-    voice = getattr(speech, "voice", None)
-    if voice is not None:
-        voice.tone_of = affect.tone
-    presence.update(**affect.presence_fields())
+    layer.attention.ctx.on_emotion = lambda label, reason: _fb.publish(reason, {"emotion": label, "action": "none",
+                                                                                  "source": "decider"})
     return affect
 
 
@@ -352,7 +345,7 @@ async def _run(config: dict):
     dashboard.set_graph(graph)
     dashboard.set_tasks(lambda: getattr(companion, "tasks", None))
     layer.character_switch = CharacterSwitch(companion=companion, rel=rel, graph=graph, attention=layer.attention,
-                                             hub=layer.hub, mem_root=Path(mem_dir), affect=affect)
+                                             hub=layer.hub, mem_root=Path(mem_dir))
     dashboard.set_character(layer.character_switch)
     graph.set_character(character.active().id)           # новые факты пишутся в группу активного персонажа
     asyncio.create_task(graph.run())
@@ -420,7 +413,6 @@ async def _run(config: dict):
     try:
         await asyncio.Event().wait()
     finally:
-        affect.stop()
         await episodes.stop()
         await impulses.timer.stop()
         if impulses.idle is not None:

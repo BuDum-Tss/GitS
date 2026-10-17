@@ -55,8 +55,7 @@ class PresenceTracker:
     функция (шина модулей), она сама решает, как рассылать."""
 
     DEFAULTS = {"speaking": False, "utterance_id": None, "segment": "", "emotion": "idle", "emotion_ts": 0.0, "busy": False,
-                "focus": "idle", "user_speaking": False, "last_user_ts": 0.0, "last_say": "", "last_say_ts": 0.0,
-                "valence": 0.0, "arousal": 0.2, "mood_emotion": "idle"}
+                "focus": "idle", "user_speaking": False, "last_user_ts": 0.0, "last_say": "", "last_say_ts": 0.0}
 
     def __init__(self, listener: Callable[[dict], None] | None = None):
         self.state = dict(self.DEFAULTS)

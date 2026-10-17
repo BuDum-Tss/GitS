@@ -153,13 +153,10 @@
           </div>
           <div id="affect-box" class="mt-3">
             <div class="flex flex-wrap items-center gap-3">
-              <div class="font-medium">Настроение</div>
+              <div class="font-medium">Эмоция</div>
               <span id="affect-word" class="badge badge-ghost badge-sm"></span>
-              <button id="affect-reset-btn" class="btn btn-xs btn-outline ml-auto" title="Вернуть эмоции к базовому уровню персонажа">сбросить</button>
             </div>
             <div class="text-xs opacity-70 mt-2" id="affect-meta"></div>
-            <svg id="affect-chart" viewBox="0 0 300 60" class="w-full h-16 mt-1 rounded border border-base-300" preserveAspectRatio="none"></svg>
-            <div class="text-xs opacity-60">Валентность и возбуждение за 24 часа</div>
           </div>
           <div id="latency-box" class="mt-3">
             <div class="flex flex-wrap items-center gap-3">
@@ -872,6 +869,7 @@ const SETTINGS_CATALOG = [
     {key: 'pet_pinned', type: 'toggle', label: 'Закрепить питомца', hint: 'Окно нельзя сдвинуть мышью.'},
     {key: 'pet_bubble', type: 'toggle', label: 'Облачко с текстом', hint: 'Показывать над питомцем текст того, что она говорит. Без облачка остаётся только стикер.'},
     {key: 'pet_bubble_secs', type: 'range', min: 3, max: 120, step: 1, unit: ' с', label: 'Сколько держится облачко', hint: 'После конца речи. Пока она говорит, облачко не гаснет.'},
+    {key: 'emotion_ttl_s', type: 'range', min: 1, max: 15, step: 0.5, unit: ' с', label: 'Сколько держится эмоция', hint: 'Эмоцию выбирает классификатор по реплике или событию. Новая сразу заменяет прежнюю, через это время остаётся спокойная картинка. Применяется со следующей эмоции.'},
     {key: 'hotkey_input', type: 'select', label: 'Клавиша строки быстрого ввода', hint: 'Глобальная клавиша, открывает строку, в которую пишешь ассистентке.',
      options: HOTKEYS.map(h => [h, h])}]},
   {title: 'Восприятие', items: [
@@ -1349,21 +1347,17 @@ try {
   FLOW.es.onmessage = ev => { try { flowPulse(JSON.parse(ev.data)); } catch (e) {} };
 } catch (e) {}
 setInterval(() => loadFlow().catch(() => {}), 3000);
-// ТЗ 26, AFF-7: эмоции и график за 24 часа
+// ТЗ 26, AFF-7: эмоция сейчас (одна, из стандартного набора, держится emotion_ttl_s секунд)
 function drawAffect(a) {
-  $('affect-word').textContent = `эмоция ${a.mood_emotion}`;
-  $('affect-meta').textContent = `валентность ${a.valence.toFixed(2)}, возбуждение ${a.arousal.toFixed(2)}, базовый уровень ${a.baseline.valence.toFixed(2)}` + (a.reason ? `. Причина: ${a.reason}` : '') + ((a.warnings || []).length ? `. Предупреждение: ${a.warnings.slice(-1)[0]}` : '');
-  const h = a.history || [], now = Date.now() / 1000, x = t => Math.max(0, 300 - (now - t) / 86400 * 300), y = v => 30 - v * 28;
-  const line = (i, c) => h.length ? `<polyline fill="none" stroke="${c}" stroke-width="1.5" points="${h.map(r => x(r[0]).toFixed(1) + ',' + y(r[i]).toFixed(1)).join(' ')}"/>` : '';
-  $('affect-chart').innerHTML = '<line x1="0" y1="30" x2="300" y2="30" stroke="currentColor" opacity="0.2"/>' + line(1, '#e07a5f') + line(2, '#3d85c6');
+  $('affect-word').textContent = a.emotion;
+  $('affect-meta').textContent = a.emotion === 'idle' ? `спокойна. Эмоция держится ${a.ttl_s} с, выбирает классификатор` : `причина: ${a.reason || 'не указана'}. Держится ${a.ttl_s} с`;
 }
 async function loadAffect() {
   if ($('tab-status').classList.contains('hidden')) return;
   const a = await fetch('/api/affect').then(r => r.json());
   if (a.available) drawAffect(a);
 }
-$('affect-reset-btn').onclick = async () => { const a = await (await post('/api/affect/reset', {})).json(); if (a && a.available) drawAffect(a); };
-setInterval(() => loadAffect().catch(() => {}), 5000);
+setInterval(() => loadAffect().catch(() => {}), 1000);
 // ТЗ 24, TRC-2: блок «Задержка реплики» во вкладке «Состояние»
 async function loadLatency() {
   if ($('tab-status').classList.contains('hidden')) return;

@@ -23,8 +23,7 @@ SPEECH_WAIT_S = 15.0
 
 
 class CharacterSwitch:
-    def __init__(self, *, companion, rel, graph, attention, hub, mem_root: Path, speech_wait_s: float = SPEECH_WAIT_S,
-                 affect=None):
+    def __init__(self, *, companion, rel, graph, attention, hub, mem_root: Path, speech_wait_s: float = SPEECH_WAIT_S):
         self.companion = companion      # Companion: личная память (UserMemory) и речь
         self.rel = rel                  # Relationships
         self.graph = graph              # GraphMemory (None, если граф не подключён)
@@ -32,7 +31,6 @@ class CharacterSwitch:
         self.hub = hub                  # ModuleHub: рассылка темы character (None в тестах)
         self.mem_root = Path(mem_root)  # корень памяти ядра: папки персонажей лежат внутри
         self.speech_wait_s = speech_wait_s
-        self.affect = affect            # AffectService (ТЗ 26, AFF-8): у каждого персонажа своё состояние эмоций
         self._lock = asyncio.Lock()
 
     async def switch(self, char_id: str) -> dict:
@@ -53,9 +51,6 @@ class CharacterSwitch:
             self.rel.rebind(mdir)
             if self.attention is not None:
                 self.attention.rules.rebind(mdir / RULES_FILE)
-            if self.affect is not None:
-                from domain.affect import Params
-                self.affect.switch(mdir, Params.from_card(new.emotions))
             if self.graph is not None:
                 self.graph.set_character(new.id)
                 try:                                  # у этого персонажа ещё может лежать старая memories.json

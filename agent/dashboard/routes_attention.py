@@ -25,17 +25,10 @@ async def handle_api_thoughts(request: web.Request) -> web.Response:
 
 
 async def handle_api_affect(request: web.Request) -> web.Response:
-    """Состояние эмоций (ТЗ 26, AFF-7): настроение, эмоции, график за 24 часа."""
+    """Эмоция сейчас (ТЗ 26, AFF-7): подпись, причина и сколько секунд она держится."""
     if ctx.affect is None:
         return web.json_response({"available": False})
-    return web.json_response({"available": True, **ctx.affect.snapshot(with_history=True)})
-
-
-async def handle_api_affect_reset(request: web.Request) -> web.Response:
-    if ctx.affect is None:
-        return web.json_response({"available": False})
-    ctx.affect.reset()
-    return web.json_response({"available": True, **ctx.affect.snapshot(with_history=True)})
+    return web.json_response({"available": True, **ctx.affect.snapshot()})
 
 
 async def handle_api_focus(request: web.Request) -> web.Response:
@@ -163,7 +156,6 @@ ROUTES = [
     ("POST", "/api/workspace/enter", handle_api_workspace_enter),
     ("POST", "/api/workspace/exit", handle_api_workspace_exit),
     ("GET", "/api/affect", handle_api_affect),
-    ("POST", "/api/affect/reset", handle_api_affect_reset),
     ("GET", "/api/thoughts", handle_api_thoughts),
     ("POST", "/api/focus/pin", handle_api_focus_pin),
     ("POST", "/api/focus/dnd", handle_api_focus_dnd),
