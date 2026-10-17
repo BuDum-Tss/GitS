@@ -24,6 +24,7 @@ from adapters.llm_lmstudio import LMStudioLLM
 from adapters.settings_provider import SettingsModule
 import flow_trace
 import journal
+import tool_trace
 from domain import risk as risk_policy
 from domain import rules
 from environments.base import ToolError, validate_args
@@ -118,11 +119,14 @@ class Router:
 
     # ── исполнение ────────────────────────────────────────────────────────────
 
-    async def _step(self, step: dict, candidates: dict) -> tuple[bool, str, str, str | None]:
-        """(успех, название, результат/причина, код ошибки по MOD-9 или None); шаг пишется в трассу потока (ТЗ 17)."""
+    async def _step(self, step: dict, candidates: dict, executor: str = "fast") -> tuple[bool, str, str, str | None]:
+        """(успех, название, результат/причина, код ошибки по MOD-9 или None); шаг пишется в трассу потока (ТЗ 17)
+        и в журнал запусков для чата (`tool_trace`; executor: fast - планировщик, external - вызов со стороны)."""
         t0 = time.perf_counter()
-        res = await self._step_inner(step, candidates)
         tool = candidates.get(str(step.get("tool", "")))
+        trace_id = tool_trace.start(executor, str(step.get("tool", "?")), tool_trace.summarize(step.get("args")))
+        res = await self._step_inner(step, candidates)
+        tool_trace.finish(trace_id, res[0], res[2])
         mod = str(tool.id).split(".", 1)[0] if tool is not None else "?"
         ms = (time.perf_counter() - t0) * 1000
         label = f"{step.get('tool', '?')}:{'ok' if res[0] else 'error'}"
@@ -180,7 +184,7 @@ class Router:
         tool = self.registry.get(tool_id)
         if tool is None:
             return False, "такого инструмента нет", "unknown"
-        ok, _name, result, code = await self._step({"tool": tool_id, "args": args}, {tool_id: tool})
+        ok, _name, result, code = await self._step({"tool": tool_id, "args": args}, {tool_id: tool}, "external")
         return ok, result, code
 
     async def call(self, tool_id: str, args: dict) -> tuple[bool, str, str | None]:

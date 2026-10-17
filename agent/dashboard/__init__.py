@@ -69,6 +69,10 @@ def set_graph(graph):
     ctx.graph = graph
 
 
+def set_tasks(get_tasks):
+    ctx.tasks = get_tasks
+
+
 def set_modules(modules, hub, supervisor=None):
     """Реестр модулей, шина и супервизор: ставит ядро."""
     ctx.modules, ctx.hub, ctx.supervisor = modules, hub, supervisor

@@ -11,6 +11,7 @@ import time
 
 import events_log
 import settings
+from stems import stems
 from app.task_service import TaskError
 from domain import tasks as task_dom
 from .base import Environment, Tool, ToolError
@@ -108,14 +109,11 @@ def register(registry, companion, memory, profiles=None):
             _analysis_running["on"] = True
             try:
                 res = await analysis.analyze(question, hours, extra)
-                saved = sum(bool(memory.add_fact(c, kind="self", importance=4)) for c in res["conclusions"])
-                events_log.log("audit", f"анализ готов: {question[:80]} (выводов в память: {saved})",
+                events_log.log("audit", f"анализ готов: {question[:80]}",
                                report=res["report_path"], fixes=res["fixes"], conclusions=res["conclusions"])
                 parts = [res["summary"] or "разбор готов", f"Подробный отчёт лежит здесь: {res['report_path']}"]
                 if res["fixes"]:
                     parts.append("Что стоит поправить: " + "; ".join(res["fixes"]))
-                if res["conclusions"]:
-                    parts.append(f"Выводов сохранено в память: {saved}.")
                 await companion._speak_about("Анализ закончен. " + "\n".join(parts), question, must=True)
             except Exception as e:
                 events_log.log("error", f"анализ не удался: {e}")
@@ -128,7 +126,16 @@ def register(registry, companion, memory, profiles=None):
                 "результат она проговорит сама, когда будет готов")
 
     async def forget(a):
-        n = memory.forget_matching(a["text"])
+        n = companion.memory_writer.forget_matching(a["text"])
+        try:                                                        # планы это задачи: совпавшие открытые закрываются как отменённые
+            svc = _tasks()
+            want = stems(a["text"])
+            for t in await svc.list_tasks("*", kinds=(task_dom.KIND_PLAN,)):
+                if want and len(want & stems(t.goal)) * 10 >= len(want) * 6:
+                    await svc.close(t.id, status=task_dom.CANCELLED, note="забыто по просьбе")
+                    n += 1
+        except Exception:
+            pass
         if not n:
             raise ToolError("ничего такого в памяти не нашлось")
         return f"стёрто записей из памяти: {n}"
@@ -205,7 +212,7 @@ def register(registry, companion, memory, profiles=None):
         return f"задача {t.id} закрыта ({t.status}): {t.goal}"
 
     async def recall(a):
-        parts = [i["text"] for i in memory.store.search(a["query"])]
+        parts = [f["text"] for f in getattr(memory, "facts", list)() if stems(a["query"]) & stems(f["text"])]    # профиль владельца по теме
         graph = getattr(companion, "graph", None)
         if graph is not None:
             parts += [f["fact"] for f in await graph.search(a["query"], limit=6)]     # память-граф: факты о людях и жизни
@@ -270,10 +277,10 @@ def register(registry, companion, memory, profiles=None):
                   {"text": {"type": "string", "description": "слово или фраза из записи"}}, forget,
                   keywords=("забудь", "забыть", "стереть", "память")),
             _tool("assistant", "remember", "Запомнить что-то надолго по просьбе («запомни, что…»). "
-                  "kind: user - факт о пользователе, self - о ней самой или пожелание к её поведению, "
-                  "plan - план или дело пользователя (due_days - через сколько дней), episode - событие.",
+                  "kind: user - факт о пользователе или его пожелание к её поведению (self то же самое), "
+                  "plan - план или дело пользователя (due_days - через сколько дней; станет задачей).",
                   {"text": {"type": "string", "description": "что запомнить, одной фразой"},
-                   "kind": {"type": "string", "enum": ["user", "self", "plan", "episode"], "required": False,
+                   "kind": {"type": "string", "enum": ["user", "self", "plan"], "required": False,
                             "description": "вид записи, по умолчанию user"},
                    "due_days": {"type": "integer", "required": False, "description": "срок плана в днях"}},
                   remember, keywords=("запомни", "запиши", "помни", "запомнить", "важно")),
@@ -396,15 +403,20 @@ def _focus_tool(focus, modules) -> Tool:
 class _WorkspaceIds(list):
     """Допустимые значения параметра «среда»: среды, которые знает менеджер сред на момент вызова (модульные приходят и уходят)."""
 
-    def __init__(self, workspaces):
+    def __init__(self, workspaces, modules=None):
         super().__init__()
         self._ws = workspaces
+        self._modules = modules
 
     def _ids(self) -> list[str]:
         if self._ws is None:
             return []
         self._ws.sync()
-        return [s.id for s in self._ws.specs.values() if s.id != "sleep"]       # сон включает только планировщик сна
+        ids = [s.id for s in self._ws.specs.values() if s.id != "sleep"]        # сон включает только планировщик сна
+        for rec in (getattr(self._modules, "records", None) or {}).values():    # заявленные модули без подключения: ошибка скажет причину
+            if rec.kind == "module" and rec.id not in ids and rec.id != "sleep":
+                ids.append(rec.id)
+        return ids
 
     def __iter__(self):
         return iter(self._ids())
@@ -422,7 +434,20 @@ class _WorkspaceIds(list):
         return repr(self._ids())
 
 
-def _workspace_tools(workspaces) -> list[Tool]:
+def _why_no_workspace(workspaces, modules, ws: str) -> str:
+    """Почему среды нет, человеческими словами: модуль выключен, не запущен или среды не объявляет."""
+    rec = (getattr(modules, "records", None) or {}).get(ws)
+    if rec is None:
+        return f"среды «{ws}» не существует"
+    title = rec.title or ws
+    if not modules.is_enabled(ws):
+        return f"модуль «{title}» выключен: его надо включить во вкладке «Модули»"
+    if not getattr(rec, "manifest", None):
+        return f"модуль «{title}» ещё не подключился к ядру (не запущен или упал при старте); смотри журнал agent/logs/modules/{ws}.log"
+    return f"у модуля «{title}» нет своей среды"
+
+
+def _workspace_tools(workspaces, modules=None) -> list[Tool]:
     """ТЗ 32, WS-5/WS-10: сменить среду агента и узнать текущую. Вход в среду модуля идёт только по импульсу: по просьбе
     пользователя (риск auto, причина `user`) или по самоимпульсу из размышления (причина `self`, перед входом обычное разрешение)."""
     from app import impulse_origin
@@ -433,6 +458,9 @@ def _workspace_tools(workspaces) -> list[Tool]:
 
     async def switch(a):
         ws = str(a["workspace"])
+        workspaces.sync()
+        if ws not in workspaces.specs:
+            raise ToolError(_why_no_workspace(workspaces, modules, ws), code="unavailable")
         res = await workspaces.enter(ws, reason(), str(a.get("goal") or "")[:200])
         if not res.get("ok"):
             raise ToolError(str(res.get("error") or "не удалось сменить среду"), code="unavailable")
@@ -455,12 +483,12 @@ def _workspace_tools(workspaces) -> list[Tool]:
         return line + (f" Другие среды: {others}." if others else "") + (
             f" Сигналов из чужих сред: {sig['notify']} уведомлений, {sig['digest']} в сводке." if sig["notify"] or sig["digest"] else "")
 
-    ids = _WorkspaceIds(workspaces)
+    ids = _WorkspaceIds(workspaces, modules)
     return [
         Tool(id="workspace.switch", env="core", name="switch",
              description="Сменить среду агента: войти в игру («зайди в колонию», «давай поиграем»), в монтаж («давай монтировать») "
                          "или вернуться в обычную среду assistant. В среду модуля входят только по просьбе или собственному решению, "
-                         "запуск игры сам её не включает.",
+                         "запуск игры сам её не включает. Если модуль не подключён или выключен, инструмент вернёт причину: перескажи её как есть.",
              params={"workspace": {"type": "string", "enum": ids, "description": "id среды: assistant, rimworld, montage"},
                      "goal": {"type": "string", "required": False, "description": "цель входа одной фразой"}},
              risk="auto", danger=danger, call=switch, availability="always",
@@ -551,7 +579,7 @@ def register_core_tools(registry, modules, attention=None, focus=None, switch=No
     ]
 
     focus_tools = [] if focus is None else [_focus_tool(focus, modules)]     # ТЗ 18: независимо от внимания
-    focus_tools += [] if workspaces is None else _workspace_tools(workspaces)     # ТЗ 32: среды агента
+    focus_tools += [] if workspaces is None else _workspace_tools(workspaces, modules)     # ТЗ 32: среды агента
     registry.add(Environment(
         id="core", title="Ядро: задачи модулей и внимание",
         description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "

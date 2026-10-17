@@ -27,6 +27,7 @@ import episode_routes
 import episode_service
 import graph_scope
 import impulse_service
+import memory_migration
 import task_wiring
 import focus_dispatch
 import profile_manager
@@ -214,6 +215,17 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     return layer
 
 
+async def _migrate_memory(companion, graph, folder: Path) -> None:
+    """Перенос старой `memories.json` в граф и задачи (`memory_migration`); сбой переноса не мешает запуску."""
+    try:
+        done = await memory_migration.migrate(folder, graph, getattr(companion, "tasks", None), companion._owner_name())
+        if done:
+            events_log.log("memory", f"старая память перенесена: владелец {done['owner']}, "
+                                     f"планы {done['plans']}, отброшено мелочи {done['dropped']}")
+    except Exception as e:
+        logger.warning(f"Перенос старой памяти: {e}")
+
+
 def _module_status(modules, module_id: str) -> dict | None:
     """Статус модуля (ТЗ 18, FOC-1) из его последнего `state`: data.status; None, если модуль его не прислал."""
     rec = modules.get(module_id)
@@ -291,7 +303,7 @@ async def _run(config: dict):
     asyncio.create_task(fast_brain.warmup())
 
     # Окружения: встроенные плагины сразу, манифесты (MCP, вебхуки, RimWorld) подгружаются в фоне
-    memory = companion._mem                              # одна память на компаньона, инструменты и разговор
+    memory = companion.memory_reader                     # одна память на компаньона, инструменты и разговор
     layer.requests.privacy_terms = lambda: core_requests.collect_privacy_terms(
         companion._owner_name(), rel.people_terms(), [f["text"] for f in memory.facts()])      # core.privacy_terms (TG-12)
     graph = GraphMemory(mem_dir, busy=lambda: _time.time() - companion._last_user_ts < 20 or companion.is_speaking())
@@ -301,13 +313,16 @@ async def _run(config: dict):
         layer.attention.decider, graph.scopes_of,
         lambda s: next((p.description or p.title for p in layer.profiles.profiles.values() if s in p.memory_scopes), s))
     dashboard.set_graph(graph)
+    dashboard.set_tasks(lambda: getattr(companion, "tasks", None))
     layer.character_switch = CharacterSwitch(companion=companion, rel=rel, graph=graph, attention=layer.attention,
                                              hub=layer.hub, mem_root=Path(mem_dir), affect=affect)
     dashboard.set_character(layer.character_switch)
+    graph.set_character(character.active().id)           # новые факты пишутся в группу активного персонажа
     asyncio.create_task(graph.run())
-    migrated = graph.migrate_from_store(memory.store, companion._owner_name())
-    if migrated:
-        logger.info(f"Граф: в очередь на разбор поставлено {migrated} старых фактов о пользователе")
+    try:
+        companion.memory_writer.loop = loop             # планы из рабочих потоков ставятся задачами в цикл ядра
+    except AttributeError:
+        pass
     builtin.register(registry, companion, memory, profiles=layer.profiles)
 
     def recent_dialogue() -> str:
@@ -322,6 +337,7 @@ async def _run(config: dict):
     dashboard.set_modes(layer.profiles)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
     companion.tasks = task_wiring.build(companion, layer.workspaces)    # ТЗ 32, WS-8: общие задачи, напоминания себе и планы
+    await _migrate_memory(companion, graph, Path(companion._dir))      # старая memories.json -> граф и задачи (один раз)
     layer.workspaces.on_change = companion.tasks.on_workspace_change    # checkpoint при уходе из среды, возобновление при входе
     impulses = impulse_service.build(companion, layer.attention, router=lambda: companion.router,
                                      tasks=companion.tasks)             # ТЗ 30: импульсы и размышление

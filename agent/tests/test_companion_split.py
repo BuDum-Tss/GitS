@@ -1,4 +1,5 @@
 """Companion разрезан на компоненты agent/app (ТЗ 29, ARC-5): фасад сохраняет интерфейс, компоненты работают на заглушках."""
+from types import SimpleNamespace
 from companion import Companion
 
 
@@ -34,6 +35,7 @@ class ScriptedLLM:
 def make(tmp_path, *answers):
     llm = ScriptedLLM(*answers)
     c = Companion(str(tmp_path / "memory"), rel=None, speech=Speech(), llm=llm)
+    c.graph = SimpleNamespace(remember=lambda text, importance, subject="": True, status_text=lambda: "граф")      # профиль в графе (запись без модели)
     return c, llm
 
 

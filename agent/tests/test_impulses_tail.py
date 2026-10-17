@@ -4,6 +4,8 @@ import json
 from test_impulses import Clock, Journal, Mem, ScriptedLLM, Sink, Writer, js
 from test_impulses import ev as make_event
 
+from types import SimpleNamespace
+
 from adapters.impulse_store import JsonReminders
 from app.impulse_timer import ImpulseTimer
 from app.plan_nudge import PlanNudger
@@ -48,22 +50,27 @@ def test_real_prompt_has_the_after_section():
 
 # ── планы пользователя ────────────────────────────────────────────────────────
 
-class PlanMemory:
-    def __init__(self, plans):
-        self.plans, self.asked = list(plans), 0
+class PlanTasks:
+    """Планы-задачи: напоминание помечается (`mark_nudged`) и не повторяется."""
 
-    def plans_to_nudge(self):
-        self.asked += 1
-        out, self.plans = self.plans, []                  # как в хранилище: каждое напоминание помечается и не повторяется
-        return out
+    def __init__(self, plans):
+        self.plans = [SimpleNamespace(meta={}, **p) for p in plans]
+
+    async def due_for_nudge(self, lead_s=0.0, kinds=()):
+        return list(self.plans)
+
+    async def mark_nudged(self, task_id):
+        for p in self.plans:
+            if p.id == task_id:
+                p.meta["nudged"] = NOW
 
 
 async def test_plans_become_untrusted_reminders_before_the_due_time(tmp_path):
     clock, sink = Clock(), Sink()
     store = JsonReminders(lambda: tmp_path / "r.json", clock)
     timer = ImpulseTimer(store, sink, clock=clock)
-    memory = PlanMemory([{"id": "p1", "text": "сдать отчёт", "due": NOW + 3600}, {"id": "p2", "text": "позвонить маме", "due": NOW}])
-    nudger = PlanNudger(memory, timer.add, due_of=lambda p: p["due"], clock=clock, lead_s=1800)
+    tasks = PlanTasks([{"id": "p1", "goal": "сдать отчёт", "due": NOW + 3600}, {"id": "p2", "goal": "позвонить маме", "due": NOW}])
+    nudger = PlanNudger(tasks, timer.add, clock=clock, lead_s=1800)
     assert await nudger.sync() == 2 and await nudger.sync() == 0       # второй просмотр ничего нового
     pending = {r["text"]: r for r in store.pending()}
     assert pending["У пользователя скоро запланировано: сдать отчёт"]["due"] == NOW + 1800

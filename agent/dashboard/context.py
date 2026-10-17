@@ -34,6 +34,7 @@ class DashboardContext:
     profiles: Any = None           # ProfileManager
     router: Any = None             # Router (POST /api/menu_click)
     graph: Any = None              # GraphMemory
+    tasks: Callable[[], Any] | None = None   # () -> TaskService (цели и планы во вкладке «Память»)
     character: Any = None          # CharacterSwitch
     attention: Any = None          # Attention
     focus: Any = None              # FocusManager

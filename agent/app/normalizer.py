@@ -53,7 +53,7 @@ class Normalizer:
     def note_sender(self, item: Item, *, skip_memory: bool) -> None:
         """TG-14: общее правило для любых модулей. Если у события есть sender.id и sender.name: человек заводится в
         PeopleDirectory (ensure_person, source - модуль) и его реплика записывается (note). Если событие memorable: оно идёт
-        в очередь графа и фактом-эпизодом в память о пользователе (MemoryWriter). Всё до решения, чтобы профиль и память не
+        в очередь графа (MemoryWriter); сырой текст события в долгую память не пишется: событие запоминают эпизоды. Всё до решения, чтобы профиль и память не
         зависели от того, будет ли событие озвучено. Обращение владельца (R1) идёт разговором: его реплику в граф и память
         кладёт сам разговор, второй раз не пишем. Сбой записи событие не останавливает."""
         sender = item.sender
@@ -64,7 +64,6 @@ class Normalizer:
             item.first_contact = bool(self.ctx.people.ensure_person(ident, name, source=item.module))
             self.ctx.people.note(ident, item.text)
             if item.memorable and not skip_memory:
-                self.ctx.writer.add_fact(item.text[:300], kind="episode", importance=3)
                 self.ctx.writer.enqueue_for_graph(name, item.text)
                 item.memory_done = True
         except Exception as e:

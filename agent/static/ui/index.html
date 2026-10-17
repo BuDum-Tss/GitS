@@ -251,16 +251,22 @@
       <!-- Память -->
       <div id="tab-memory" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-4">
-          <details id="mem-howto" class="rounded-box border border-base-300 p-3" open>
+          <div role="tablist" id="mem-subtabs" class="tabs tabs-boxed bg-base-200 w-fit max-w-full flex-wrap">
+            <a role="tab" class="tab tab-active" data-mtab="user">Владелец <span id="mt-n-user" class="opacity-60 ml-1 text-xs"></span></a>
+            <a role="tab" class="tab" data-mtab="plan">Цели <span id="mt-n-plan" class="opacity-60 ml-1 text-xs"></span></a>
+            <a role="tab" class="tab" data-mtab="eps">Эпизоды</a>
+            <a role="tab" class="tab" data-mtab="facts">Факты</a>
+          </div>
+          <details id="mem-howto" class="rounded-box border border-base-300 p-3">
             <summary class="cursor-pointer font-medium">Как устроена память</summary>
-            <p class="text-sm opacity-80 mt-2">Память это не один склад, а шесть слоёв. У каждого свой способ записи и своё применение: так в ответ попадает только
-              то, что относится к теме, а не вся история. Всё хранится локально, в папке памяти персонажа; наружу ничего не уходит.</p>
+            <p class="text-sm opacity-80 mt-2">Память состоит из четырёх частей: профиль владельца (с его пожеланиями к ней), цели и планы, эпизоды из жизни и важные факты. В память идёт только то,
+              что она сама сочла важным; мелочь и сиюминутное не записываются. Всё хранится локально, в папке памяти персонажа; наружу ничего не уходит.</p>
             <div class="grid gap-2 mt-2 md:grid-cols-2">
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
-                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Заметки и цели</span><span id="mem-n-notes" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> «Запомни, что…», цели (долгие намерения, не дела на сегодня) и напоминания (файл <code>memory.json</code>)</div>
-                  <div><span class="opacity-60">Как попадает:</span> Ты просишь словами в чате или она сама назначает себе напоминание</div>
-                  <div><span class="opacity-60">Как используется:</span> Подмешиваются в ответ, когда подходят к теме; напоминания всплывают к сроку. «Забудь про…» или ✕ убирает. Ближайшие планы и дела живут не здесь, а в краткосрочной памяти рядом с задачами</div>
+                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Профиль и цели</span><span id="mem-n-notes" class="text-xs text-right">-</span></div>
+                  <div><span class="opacity-60">Что там:</span> Главное о тебе, твои пожелания к ней и цели с планами (задачи, файл <code>tasks.db</code>)</div>
+                  <div><span class="opacity-60">Как попадает:</span> Ты просишь «запомни, что…» или она сама решает, что это важно (4-5 из 5); план со сроком становится задачей</div>
+                  <div><span class="opacity-60">Как используется:</span> Профиль всегда в контексте ответа тебе, вне темы разговора (чужим голосам он не показывается); планы всплывают к сроку. «Забудь про…» или ✕ убирает</div>
                 </div>
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
                   <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Отношения</span><span id="mem-n-rel" class="text-xs text-right">-</span></div>
@@ -270,8 +276,8 @@
                 </div>
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
                   <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Факты</span><span id="mem-n-facts" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> Устойчивые факты о людях и жизни («Аня живёт в Казани»), воспоминания самого персонажа (канон) и данные игры (файл <code>graph.db</code>)</div>
-                  <div><span class="opacity-60">Как попадает:</span> В паузах разговора локальная модель выписывает факты из реплик; каждая реплика сначала встаёт в очередь</div>
+                  <div><span class="opacity-60">Что там:</span> Важные факты о людях и жизни («Аня живёт в Казани»), воспоминания персонажа (канон из memories.yaml) и данные игры (файл <code>graph.db</code>; профили лежат там же)</div>
+                  <div><span class="opacity-60">Как попадает:</span> В паузах разговора локальная модель выписывает факты из реплик и сама оценивает важность; мелочь отбрасывается</div>
                   <div><span class="opacity-60">Как используется:</span> Перед ответом ищется до 3 фактов по теме (слова и смысл); новый факт закрывает старый («переехала» закрывает «живёт в Москве»)</div>
                 </div>
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
@@ -292,13 +298,30 @@
               <span class="badge badge-outline">до 3 фактов в подсказку модели</span>
             </div>
           </details>
-          <div class="divider my-0"></div>
-          <div>
-            <div class="font-medium mb-2">Что ассистентка помнит</div>
-            <div id="facts" class="space-y-3"></div>
-            <p class="text-xs opacity-60 mt-2">Можно и словами в чате: «забудь про …».</p>
+          <div data-mpane="user">
+            <div class="font-medium mb-1">Профиль владельца</div>
+            <p class="text-xs opacity-60 mb-2">Главное о тебе, что она сама сочла важным (оценка 4-5). Всегда в контексте ответа. Можно и словами в чате: «забудь про …».</p>
+            <ul id="mem-user" class="space-y-1"></ul>
           </div>
-          <div class="divider my-0"></div>
+          <div data-mpane="plan">
+            <div class="font-medium mb-1">Цели и планы</div>
+            <p class="text-xs opacity-60 mb-2">Дела со сроком: это задачи (tasks.db). ✕ отменяет задачу.</p>
+            <ul id="mem-plan" class="space-y-1"></ul>
+          </div>
+          <div data-mpane="eps">
+          <div>
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <div class="font-medium">Эпизоды и сон</div>
+              <span id="sleep-status" class="text-xs opacity-70"></span>
+              <button id="sleep-now" class="btn btn-xs btn-ghost">Спать сейчас</button>
+              <button id="sleep-stop" class="btn btn-xs btn-ghost">Прервать</button>
+            </div>
+            <div id="episodes" class="space-y-2 text-sm"></div>
+            <div class="font-medium mt-4 mb-2">Дневник</div>
+            <div id="diary" class="space-y-2 text-sm"></div>
+          </div>
+          </div>
+          <div data-mpane="facts">
           <div>
             <div class="font-medium mb-2">Отношения</div>
             <ul id="relations" class="space-y-2 text-sm"></ul>
@@ -331,18 +354,9 @@
             </div>
             <div id="facts-list" class="space-y-1"></div>
           </div>
-          <div class="divider my-0"></div>
-          <div>
-            <div class="flex flex-wrap items-center gap-3 mb-2">
-              <div class="font-medium">Эпизоды и сон</div>
-              <span id="sleep-status" class="text-xs opacity-70"></span>
-              <button id="sleep-now" class="btn btn-xs btn-ghost">Спать сейчас</button>
-              <button id="sleep-stop" class="btn btn-xs btn-ghost">Прервать</button>
-            </div>
-            <div id="episodes" class="space-y-2 text-sm"></div>
-            <div class="font-medium mt-4 mb-2">Дневник</div>
-            <div id="diary" class="space-y-2 text-sm"></div>
+
           </div>
+
         </div>
       </div>
 
@@ -478,6 +492,16 @@ $('btn-theme').onclick = () => {
   });
   window.addEventListener('resize', () => { const w = parseFloat(pane.style.getPropertyValue('--chat-w')); if (w) set(w); });
 })();
+
+// ── подвкладки памяти ──
+function showMemPane(name) {
+  try { localStorage.setItem('memPane', name); } catch (e) {}
+  document.querySelectorAll('[data-mtab]').forEach(t => t.classList.toggle('tab-active', t.dataset.mtab === name));
+  document.querySelectorAll('[data-mpane]').forEach(p => p.classList.toggle('hidden', p.dataset.mpane !== name));
+}
+document.querySelectorAll('[data-mtab]').forEach(t => t.onclick = () => showMemPane(t.dataset.mtab));
+let savedPane = 'user'; try { savedPane = localStorage.getItem('memPane') || 'user'; } catch (e) {}
+showMemPane(['user', 'plan', 'eps', 'facts'].includes(savedPane) ? savedPane : 'user');
 
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
@@ -653,7 +677,7 @@ function areaTitle(group, base) {
 function layerCounts() {
   const set = (id, text) => { const el = $(id); if (el) el.innerHTML = text; };
   const n = MEMSTAT.notes || [], by = k => n.filter(m => m.kind === k).length;
-  set('mem-n-notes', `${n.length} <span class="opacity-60 text-xs">(о тебе ${by('user')}, о ней ${by('self')}, целей ${by('plan')})</span>`);
+  set('mem-n-notes', `${n.length} <span class="opacity-60 text-xs">(о тебе ${by('user')}, целей ${by('plan')})</span>`);
   set('mem-n-rel', MEMSTAT.relations === undefined ? '-' : String(MEMSTAT.relations));
   const g = MEMSTAT.graph;
   set('mem-n-facts', !g ? '-' : g.enabled === false ? 'выключено' : `${g.active ?? 0} действуют` + (g.outdated ? `, ${g.outdated} устарели` : '') + (g.queue ? `<br><span class="opacity-60 text-xs">в очереди ${g.queue}</span>` : ''));
@@ -771,9 +795,25 @@ $('chat').addEventListener('scroll', () => {
   const c = $('chat'); stick = c.scrollHeight - c.scrollTop - c.clientHeight < 40;
 });
 let chatMsgs = [];
-function renderChat(dialogue, waiting) {
+// кто запустил инструмент: быстрый контур (планировщик на локальной модели), медленный (Claude-помощник), вызов со стороны
+const TOOL_WHO = {fast: 'быстрый контур · Gemma', claude: 'медленный контур · Claude', external: 'вызов извне'};
+const TOOL_MARK = {running: '…', done: '✓', failed: '✗'};
+function toolRow(e) {
+  const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  const cls = e.state === 'failed' ? 'text-error' : e.state === 'running' ? 'text-warning' : 'text-success';
+  return `<div class="text-xs opacity-80 px-2 flex flex-wrap gap-x-2" title="${esc(e.result || '')}">
+    <span class="${cls}">${TOOL_MARK[e.state] || ''}</span><span class="badge badge-ghost badge-sm">${esc(TOOL_WHO[e.executor] || e.executor)}</span>
+    <code>${esc(e.tool)}</code>${e.summary ? `<span class="opacity-70 break-all">${esc(e.summary)}</span>` : ''}
+    ${e.state === 'failed' && e.result ? `<span class="text-error">${esc(e.result)}</span>` : ''}<time class="opacity-50">${t}</time></div>`;
+}
+function renderChat(dialogue, waiting, tools) {
   chatMsgs = dialogue;
-  const html = dialogue.map((m, i) => {
+  const from = dialogue.length ? dialogue[0].ts : 0;         // запуски старше видимого диалога не показываем
+  const rows = dialogue.map((m, i) => ({ts: m.ts, m, i}))
+    .concat((tools || []).filter(e => e.ts >= from).map(e => ({ts: e.ts, e}))).sort((a, b) => a.ts - b.ts);
+  const html = rows.map(r => {
+    if (r.e) return toolRow(r.e);
+    const m = r.m, i = r.i;
     const mine = m.role === 'user';
     const t = new Date(m.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
     return `<div class="chat ${mine ? 'chat-end' : 'chat-start'}">
@@ -965,18 +1005,16 @@ function renderActivity(list) {
 
 function renderMemory(core) {
   MEMSTAT.notes = core.memories || []; MEMSTAT.relations = (core.relations || []).length; layerCounts();
-  const KIND_TITLE = {user: ['О тебе', 'badge-neutral'], self: ['О ней самой', 'badge-secondary'], plan: ['Цели', 'badge-warning'], episode: ['События', 'badge-ghost']};
-  const groups = ['user', 'self', 'plan', 'episode'].map(k => {
+  for (const k of ['user', 'plan']) {
     const items = (core.memories || []).filter(m => m.kind === k);
-    if (!items.length) return '';
-    return `<div><div class="mb-1"><span class="badge ${KIND_TITLE[k][1]} badge-sm">${KIND_TITLE[k][0]}</span></div><ul class="space-y-1">` +
-      items.map(m => `<li class="flex items-start justify-between gap-2"><span class="bubble-text">${esc(m.text)}${m.due ? ` <span class="text-xs opacity-60">(до ${new Date(m.due * 1000).toLocaleDateString()})</span>` : ''}</span>
-        <button class="btn btn-ghost btn-xs" data-forget-id="${esc(m.id)}" title="Забыть">✕</button></li>`).join('') + '</ul></div>';
-  }).join('');
-  $('facts').innerHTML = groups || '<li class="opacity-60 text-sm">Пока ничего. Расскажи о себе в чате или попроси «запомни, что…».</li>';
-  $('facts').querySelectorAll('[data-forget-id]').forEach(b => b.onclick = async () => {
-    await post('/api/memory/forget', {id: b.dataset.forgetId}); poll();
-  });
+    $('mt-n-' + k).textContent = items.length || '';
+    $('mem-' + k).innerHTML = items.length ? items.map(m => `<li class="flex items-start justify-between gap-2"><span class="bubble-text">${esc(m.text)}${m.due ? ` <span class="text-xs opacity-60">(до ${new Date(m.due * 1000).toLocaleDateString()})</span>` : ''}</span>
+        <button class="btn btn-ghost btn-xs" data-forget-id="${esc(m.id)}" title="Забыть">✕</button></li>`).join('')
+      : '<li class="opacity-60 text-sm">Пока пусто. Расскажи об этом в чате или попроси «запомни, что…».</li>';
+    $('mem-' + k).querySelectorAll('[data-forget-id]').forEach(b => b.onclick = async () => {
+      await post('/api/memory/forget', {id: b.dataset.forgetId}); poll();
+    });
+  }
   const BADGE = {pawn: ['игра', 'badge-success'], person: ['Telegram', 'badge-info'], player: ['ты', 'badge-neutral']};
   $('relations').innerHTML = core.relations.length ? core.relations.map(r => {
     const pct = Math.round((r.affinity + 100) / 2), b = BADGE[r.kind] || BADGE.pawn;
@@ -1745,7 +1783,7 @@ async function poll() {
     $('badge-auto').classList.toggle('hidden', !(st.settings && st.settings.auto_accept));
     $('badge-quiet').classList.toggle('hidden', !(st.settings && (st.settings.dnd || st.settings.quiet_until * 1000 > Date.now())));
     const last = core.dialogue[core.dialogue.length - 1];
-    renderChat(core.dialogue, last && last.role === 'user' && Date.now() / 1000 - last.ts < 90);
+    renderChat(core.dialogue, last && last.role === 'user' && Date.now() / 1000 - last.ts < 90, core.tools);
     renderActivity(core.activity); renderScreen(core.screen); renderMemory(core); renderGame(st);
     $('approval').classList.toggle('hidden', !core.approval.pending);
     $('approval-text').textContent = core.approval.text;

@@ -31,15 +31,17 @@ class MemoryCapture:
             if not tag.group(2):
                 return
             speaker, text = tag.group(2), text[tag.end():]
+            owner = speaker.lower() == (self._h._owner_name() or "").lower()
         else:
             speaker = self._h._owner_name() or "Пользователь"
-        self._h._memory_writer.enqueue_for_graph(speaker, text)
+            owner = True
+        self._h._memory_writer.enqueue_for_graph(speaker, text, owner=owner)
 
     def store_memories(self, data) -> list[str]:
         """Сохранить воспоминания из ответа модели ({"memories": [...]}); вернуть тексты новых."""
         added: list[str] = []
         for m in (data or {}).get("memories") or []:
-            if not isinstance(m, dict) or m.get("kind") not in ("user", "self", "plan", "episode"):
+            if not isinstance(m, dict) or m.get("kind") not in ("user", "self", "plan"):   # события жизни ведут эпизоды (episodes.db)
                 continue
             text = str(m.get("text") or "").strip()
             if len(text) < 6:
@@ -62,7 +64,7 @@ class MemoryCapture:
                   "user (факт о нём: пиши от третьего лица, «Любимый цвет пользователя - зелёный»), "
                   "self (о тебе самой, чего он хочет от тебя: пиши от первого лица, «Я называю пользователя "
                   "Аней и реже язвлю»), plan (планы и дела: дедлайны, встречи, экзамены, задачи; due_days - "
-                  "через сколько дней, если срок можно понять, иначе null), episode (событие). importance 1-5. "
+                  "через сколько дней, если срок можно понять, иначе null). importance 1-5. "
                   'Ответь ТОЛЬКО JSON: {"memories": [{"kind": "...", "text": "...", "importance": 4, "due_days": null}]}. '
                   f"Сегодня {time.strftime('%A, %d.%m')}.")
         try:
@@ -73,7 +75,7 @@ class MemoryCapture:
             data = None
         stored = h._store_memories(data)
         if not stored:   # модель не помогла: сохраняем как есть, чтобы не потерять просьбу
-            kind = hint_kind if hint_kind in ("user", "self", "plan", "episode") else "user"
+            kind = hint_kind if hint_kind in ("user", "self", "plan") else "user"
             if h._memory_writer.add_fact(text.strip(), kind=kind, importance=4):
                 stored = [text.strip()]
         return stored
@@ -81,14 +83,15 @@ class MemoryCapture:
     async def learn(self, text: str):
         """Фоном после ответа: что запомнить надолго из этого сообщения и не просил ли он не отвлекать."""
         h = self._h
-        system = ("Из сообщения пользователя выдели то, что стоит запомнить надолго. Верни JSON: "
+        system = ("Из сообщения пользователя выдели то, что ты САМА считаешь важным запомнить надолго. Верни JSON: "
                   '{"memories": [{"kind": "user|self|plan", "text": "...", "importance": 3, "due_days": null}], '
                   '"quiet_minutes": 0}. kind=user: устойчивые факты о нём (имя, привычки, предпочтения). '
                   "kind=self: чего он хочет от ТЕБЯ (как с ним говорить, что делать чаще или реже). "
                   "kind=plan: его планы и дела: дедлайны, встречи, экзамены, задачи (due_days: через сколько дней, если названо, иначе null). "
                   "Записи о пользователе пиши от третьего лица, о тебе самой от первого. "
-                  "Мелочи и сиюминутное (настроение, усталость, просьбы что-то сделать прямо сейчас в игре или на "
-                  "компьютере) не запоминай: обычно memories пустой. "
+                  "Мелочи и сиюминутное (настроение, усталость, что он делает сейчас, текущий ход игры, просьбы что-то сделать "
+                  "прямо сейчас в игре или на компьютере, пересказ разговора) не запоминай: почти всегда memories пустой. "
+                  "importance 4-5 только для действительно важного. "
                   "quiet_minutes: если он сказал, что сейчас будет смотреть, работать или заниматься, "
                   "на сколько минут его не отвлекать (например 60-120), иначе 0.")
         try:
@@ -115,15 +118,16 @@ class MemoryCapture:
         try:
             transcript = "\n".join(f"{'Пользователь' if m['role'] == 'user' else 'Ты'}: {m['text']}"
                                    for m in dlg[-24:])
-            known = "; ".join(i["text"] for i in h._memory_reader.relevant(transcript[-300:], k=6))
-            system = ("Ты осмысляешь недавнюю беседу ассистентки с пользователем. Выдели 0-3 воспоминания, "
-                      "которые стоит сохранить надолго. kind: user (устойчивый факт о пользователе), "
-                      "self (о тебе самой: что ты пообещала, какое мнение у тебя сложилось, о чём вы шутили, "
-                      "пожелания к тебе), plan (планы и дела пользователя: дедлайны, встречи, экзамены, задачи; due_days если срок назван), episode (заметное "
-                      "событие или итог беседы одной фразой). importance 1-5. Не повторяй уже известное. "
+            known = "; ".join(i["text"] for i in await h._memory_reader.recall(transcript[-300:], k=6))
+            system = ("Ты осмысляешь недавнюю беседу ассистентки с пользователем. Выдели 0-2 воспоминания, "
+                      "которые ты САМА считаешь важными для долгой памяти. kind: user (устойчивый факт о пользователе), "
+                      "self (о тебе самой: что ты пообещала, чего он от тебя просит), plan (реальные планы и дела "
+                      "пользователя: дедлайны, встречи, экзамены; due_days если срок назван). importance 1-5, "
+                      "4-5 только для важного. Не повторяй уже известное. "
                       "Записи о пользователе пиши от третьего лица, о себе от первого. "
-                      "Мелочи не нужны (в том числе разовые просьбы сделать что-то прямо сейчас в игре или на компьютере), "
-                      "чаще всего ответ пуст. Ответь ТОЛЬКО JSON: "
+                      "Не записывай: пересказ и тон разговора, колкости, настроение, текущий ход игры и временные задачи, "
+                      "разовые просьбы (события жизни запоминает отдельный журнал эпизодов). "
+                      "Чаще всего ответ пуст. Ответь ТОЛЬКО JSON: "
                       '{"memories": [{"kind": "...", "text": "...", "importance": 3, "due_days": null}]}')
             data = fast_brain._json_of(await h._llm.ask(
                 system, f"Уже известно: {known or 'ничего'}\n\nБеседа:\n{transcript}",

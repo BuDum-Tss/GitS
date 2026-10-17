@@ -77,7 +77,7 @@ class Rig:
             self.companion.attention = self.att
         self.graph_queries: list[str] = []
         self.companion.graph = SimpleNamespace(
-            enqueue=lambda *a: None, status_text=lambda: "граф",
+            enqueue=lambda *a, **k: None, status_text=lambda: "граф",
             context_block=self._graph_block)
         orig_stop = self.speech.stop
 

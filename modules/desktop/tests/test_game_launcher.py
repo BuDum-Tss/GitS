@@ -58,4 +58,17 @@ def test_game_is_started_outside_the_bot_process_tree(monkeypatch, tmp_path):
     monkeypatch.setattr(gl, "mod_ready", lambda: True)
     monkeypatch.setattr(gl.time, "sleep", lambda s: None)
     gl.launch(wait_seconds=10)
-    assert calls[0][:3] == ["cmd.exe", "/c", "start"] and calls[0][-1] == str(exe)     # через start: игра не потомок бота
+    assert calls[0][:3] == ["cmd.exe", "/c", "start"] and str(exe) in calls[0]     # через start: игра не потомок бота
+
+
+def test_game_is_started_windowed_so_it_is_not_minimized_on_focus_loss(monkeypatch, tmp_path):
+    exe = tmp_path / "RimWorldWin64.exe"
+    exe.write_bytes(b"")
+    calls = []
+    monkeypatch.setattr(gl, "is_running", lambda: False)
+    monkeypatch.setattr(gl, "find_exe", lambda: str(exe))
+    monkeypatch.setattr(gl.subprocess, "Popen", lambda args, **k: calls.append(args))
+    monkeypatch.setattr(gl, "mod_ready", lambda: True)
+    monkeypatch.setattr(gl.time, "sleep", lambda s: None)
+    gl.launch(wait_seconds=10)
+    assert "-popupwindow" in calls[0] and calls[0][calls[0].index(str(exe)) + 1] == "-popupwindow"

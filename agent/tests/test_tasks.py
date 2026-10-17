@@ -395,13 +395,11 @@ async def test_plan_nudger_mirrors_plans_as_tasks_and_sets_reminder():
     svc = service(clock=clock)
     svc.reminders = TaskReminders(svc.repo, clock=clock)
     timer = ImpulseTimer(svc.reminders, lambda e: None, clock=clock)
-    mem = SimpleNamespace(plans_to_nudge=lambda: [{"id": "p1", "text": "курс", "ts": NOW}])
-    nudger = PlanNudger(mem, timer.add, due_of=lambda p: NOW + 7200, clock=clock, tasks=svc)
-    assert await nudger.sync() == 1
-    plan = (await svc.list_tasks("*", kinds=(T.KIND_PLAN,)))[0]
-    assert plan.due == NOW + 7200 and plan.origin == T.USER and plan.meta["plan_id"] == "p1"
+    plan = await svc.upsert_plan("p1", "курс", NOW + 7200)
+    nudger = PlanNudger(svc, timer.add, clock=clock)
+    assert await nudger.sync() == 1 and await nudger.sync() == 0       # второй просмотр ничего нового: план отмечен
     rec = svc.reminders.pending()[0]
-    assert rec["due"] == NOW + 7200 - 1800 and rec["untrusted"] and rec["source"]["plan_id"] == "p1"
+    assert rec["due"] == NOW + 7200 - 1800 and rec["untrusted"] and rec["source"]["plan_id"] == plan.id
 
 
 # ── инструменты ──────────────────────────────────────────────────────────────

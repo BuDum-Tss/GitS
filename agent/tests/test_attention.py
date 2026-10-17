@@ -1053,7 +1053,7 @@ async def test_tg14_sender_is_registered_noted_and_memorized_even_when_the_event
                          memorable=True, sender=MASHA, reply_channel={"module": "telegram", "target": "bot:5"})
     assert d["decision"] == "D0"                                           # озвучивать нечего, а запомнить нужно
     assert rel.calls == [("ensure", "tg:5", "Маша", "telegram"), ("note", "tg:5", FACT)]
-    assert graph.items == [("Маша", FACT)] and mem.facts == [(FACT, "episode", 3)]
+    assert graph.items == [("Маша", FACT)] and mem.facts == []      # сырое событие в долгую память не пишется (его запомнит эпизод)
 
 
 async def test_tg14_memory_is_written_once_when_the_event_is_also_spoken_about(rig):
@@ -1061,7 +1061,7 @@ async def test_tg14_memory_is_written_once_when_the_event_is_also_spoken_about(r
     await rig.submit("telegram", kind="telegram.bot_message", text=FACT, urgency_hint=3, addressed_to_me=True,
                      memorable=True, sender=MASHA)
     assert rig.att.last_decision["decision"] in ("D2", "D3", "D4")
-    assert len(graph.items) == 1 and len(mem.facts) == 1                   # _act второй раз в граф не кладёт
+    assert len(graph.items) == 1 and mem.facts == []                     # _act второй раз в граф не кладёт
 
 
 async def test_tg14_not_memorable_event_only_registers_the_person(rig):
@@ -1095,7 +1095,7 @@ async def test_tg14_duplicate_within_a_minute_is_not_registered_twice(rig):
     for _ in range(2):
         await rig.submit("telegram", kind="telegram.bot_message", text=FACT, urgency_hint=2, addressed_to_me=True,
                          memorable=True, sender=MASHA, dedupe_key="tg:bot:5:10")
-    assert [c[0] for c in rel.calls] == ["ensure", "note"] and len(graph.items) == 1 and len(mem.facts) == 1
+    assert [c[0] for c in rel.calls] == ["ensure", "note"] and len(graph.items) == 1 and mem.facts == []
 
 
 async def test_tg14_stranger_weighs_08_only_for_the_first_message(rig):

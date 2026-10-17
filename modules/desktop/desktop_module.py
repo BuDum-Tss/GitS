@@ -443,7 +443,16 @@ class DesktopModule:
         try:
             await c.job_update(job_id, title=f"Задача на компьютере: {task[:60]}", state="running",
                                text="Claude взялся за задачу.")
-            answer = await assistant_agent.run_task(task, context, lambda q, d: self._ask(q, d, job_id), self._usage)
+            calls = 0
+
+            async def on_tool(name: str, summary: str) -> None:
+                # стадия «tool:<Имя>:<номер>» уходит сразу и не считается новой задачей внимания (ядро: JobTracker)
+                nonlocal calls
+                calls += 1
+                await c.job_update(job_id, stage=f"tool:{name}:{calls}", text=summary or None)
+
+            answer = await assistant_agent.run_task(task, context, lambda q, d: self._ask(q, d, job_id), self._usage,
+                                                    on_tool)
             if answer is None:
                 await c.job_update(job_id, state="failed", text="Агент-помощник не смог выполнить задачу.",
                                    error={"code": "internal", "message": "сбой агента-помощника"})

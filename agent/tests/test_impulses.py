@@ -388,7 +388,6 @@ def test_event_of_item_keeps_origin_and_data(tmp_path):
 
 
 async def test_remind_self_tool_sets_a_reminder(tmp_path):
-    from memory_store import MemoryStore  # noqa: F401
     from user_memory import UserMemory
     added = []
 

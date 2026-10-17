@@ -41,7 +41,7 @@ class FakeBackend:
     async def healthy(self):
         return (True, "работает") if self.ok else (False, "база не отвечает")
 
-    async def add_fact(self, fact, when, group=None):
+    async def add_fact(self, fact, when, group=None, **kw):
         self.added.append(fact)
 
     async def search(self, query, limit, group=None):
@@ -128,23 +128,15 @@ def test_context_block_and_forget(mem):
     assert asyncio.run(g.forget("2")) is True and g.backend.deleted == "2"
 
 
-def test_migration_runs_once(mem):
-    class Store:
-        def __init__(self):
-            self.m = {}
-
-        def meta(self, k, d=None):
-            return self.m.get(k, d)
-
-        def set_meta(self, k, v):
-            self.m[k] = v
-
-        def kind(self, kind):
-            return [{"text": "Любит чай и сериал Hacks", "ts": 1.0}, {"text": "Живёт в Казани", "ts": 2.0}]
-
-    g, store = make(mem), Store()
-    assert g.migrate_from_store(store, "Аня") == 2 and g.pending() == 2
-    assert g.migrate_from_store(store, "Аня") == 0 and g.pending() == 2
+def test_minor_facts_are_not_stored_and_owner_needs_importance_four(mem):
+    minor = Fact("Аня", "ЛЮБИТ", "чай", "Аня любит чай", 2)
+    owner_mid = Fact("Аня", "УВЛЕКАЕТСЯ", "йога", "Аня увлекается йогой", 3)
+    other_mid = Fact("Вася", "УВЛЕКАЕТСЯ", "шахматы", "Вася увлекается шахматами", 3)
+    key = Fact("Аня", "ЖИВЁТ_В", "Казань", "Аня живёт в Казани", 5)
+    g = make(mem, extractor=FakeExtractor([minor, owner_mid, other_mid, key]))
+    g.enqueue("Аня", "я переехала в Казань и теперь занимаюсь йогой", owner=True)
+    assert asyncio.run(g.step()) is True
+    assert [f.fact for f in g.backend.added] == ["Вася увлекается шахматами", "Аня живёт в Казани"]
 
 
 # ── колонисты из игры ──

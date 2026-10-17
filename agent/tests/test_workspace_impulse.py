@@ -113,7 +113,7 @@ def tool(layer, name):
 
 def layer_tools(layer):
     from environments import builtin
-    return builtin._workspace_tools(layer.workspaces)
+    return builtin._workspace_tools(layer.workspaces, layer.modules)
 
 
 # ── WS-4: среды из манифестов ────────────────────────────────────────────────
@@ -166,6 +166,20 @@ async def test_switch_refuses_sleep_and_unknown_workspaces(world):
     for ws in ("sleep", "minecraft"):
         with pytest.raises(ToolError):
             await switch.call({"workspace": ws})
+    assert world.workspaces.current == ASSISTANT
+
+
+async def test_switch_to_a_declared_but_unconnected_module_explains_why(world):
+    world.modules.declare("rimworld", title="RimWorld")
+    switch = tool(world, "workspace.switch")
+    assert "rimworld" in switch.params["workspace"]["enum"]                      # планировщик не упирается в «одно из [assistant]»
+    with pytest.raises(ToolError) as e:
+        await switch.call({"workspace": "rimworld"})
+    assert "RimWorld" in str(e.value) and "не подключился" in str(e.value)
+    world.modules.is_enabled = lambda mid, cfg=None: False
+    with pytest.raises(ToolError) as e:
+        await switch.call({"workspace": "rimworld"})
+    assert "выключен" in str(e.value) and "Модули" in str(e.value)
     assert world.workspaces.current == ASSISTANT
 
 

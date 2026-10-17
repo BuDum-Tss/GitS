@@ -37,8 +37,10 @@ def approval_view(pending: bool, text, info: dict | None) -> dict:
             **{k: v for k, v in (info or {}).items() if k in ("kind", "options", "source", "queued")}}
 
 
-def core_payload(*, dialogue: list, activity: list, screen, memories: list, relations: list, approval: dict) -> dict:
-    return {"dialogue": dialogue[-40:], "activity": activity[-5:], "screen": screen,
+def core_payload(*, dialogue: list, activity: list, screen, memories: list, relations: list, approval: dict,
+                 tools: list | None = None) -> dict:
+    """tools: запуски инструментов (кто, что, итог) для показа в чате между репликами."""
+    return {"dialogue": dialogue[-40:], "tools": tools or [], "activity": activity[-5:], "screen": screen,
             "memories": sorted(memories, key=lambda i: -i["ts"])[:150], "relations": relations, "approval": approval}
 
 

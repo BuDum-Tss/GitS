@@ -98,9 +98,11 @@ class _Mem:
     def __init__(self):
         self.queries = []
 
-    def context_block(self, dialogue=6, query=""):
-        self.queries.append(query)
+    def context_block(self, dialogue=6):
         return "ПАМЯТЬ " + "я" * 600
+
+    def profile_block(self):
+        return "ПРОФИЛЬ"
 
     def graph_status(self):
         return None
@@ -136,12 +138,13 @@ def test_context_builder_default_is_unchanged_and_modes_budget_work():
     h = _Host()
     b = ContextBuilder(h)
     default = b.build(query="x")
-    assert "ГРАФ" in default and "СЕБЯ" in default and h._memory_reader.queries[-1] == "x"
-    b.build(query="x", needs_memory="no")
-    assert h._memory_reader.queries[-1] == ""
+    assert "ГРАФ" in default and "СЕБЯ" in default and "ПРОФИЛЬ" in default
+    assert "ПРОФИЛЬ" not in b.build(query="[говорит Вася] привет")           # чужому голосу профиль владельца не показываем
+    skipped = b.build(query="x", needs_memory="no")
+    assert "ГРАФ" not in skipped and "ПРОФИЛЬ" in skipped            # профиль владельца остаётся и без темы
     pulled = b.build(query="x", mode="pull")
     assert "ГРАФ" not in pulled and "СЕБЯ" not in pulled
-    h._settings.cfg = {"hearing": False, "context": {"mode": "push", "budget_tokens": {"reply": {"memory": 50}}}}
+    h._settings.cfg = {"hearing": False, "context": {"mode": "push", "budget_tokens": {"reply": {"dialogue": 50}}}}
     try:
         trimmed = b.build(query="x")
         assert len(trimmed) < len(default) and "…" in trimmed and "ГРАФ" in trimmed

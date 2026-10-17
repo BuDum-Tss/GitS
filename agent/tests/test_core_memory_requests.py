@@ -14,6 +14,9 @@ class FakeMemory:
     def search(self, query, k=6):
         return [i for i in self.items if query.lower() in i["text"].lower()][:k]
 
+    async def recall(self, query, k=6):
+        return [dict(i, kind="fact") for i in self.search(query, k)]
+
     def add_fact(self, text, kind="user", importance=3, due_days=None):
         if any(i["text"] == text for i in self.items):
             return False
@@ -27,7 +30,7 @@ async def test_remember_then_recall_and_duplicate():
     assert await req.handle(None, "core.memory.remember", {"text": " любит чай "}) == {"stored": True}
     assert await req.handle(None, "core.memory.remember", {"text": "любит чай"}) == {"stored": False}
     got = await req.handle(None, "core.memory.recall", {"query": "чай", "limit": 3})
-    assert got == {"facts": [{"text": "любит чай", "kind": "user", "importance": 3}]}
+    assert got == {"facts": [{"text": "любит чай", "kind": "fact", "importance": 4}]}
     assert (await req.handle(None, "core.memory.recall", {"query": "кофе"}))["facts"] == []
 
 

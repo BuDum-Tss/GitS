@@ -528,7 +528,7 @@ window.ARCH_DATA = {
      "t": "MemoryWriter",
      "tag": "A",
      "new": false,
-     "do": "сразу: диалог и журнал; в паузе: факты (Gemma + эмбеддинги); раз в 6 реплик: осмысление; во сне: факты эпизодов в граф со ссылкой на эпизод (ТЗ 27)",
+     "do": "сразу: диалог и журнал; важное (оценка 4-5) в профиль владельца, планы в задачи; в паузе: факты с оценкой важности (Gemma + эмбеддинги); раз в 6 реплик: осмысление; во сне: факты эпизодов в граф со ссылкой на эпизод (ТЗ 27)",
      "out": "MemoryRecord",
      "now": "app/memory_capture.py: _learn, _consolidate, remember_text + graph_memory.step"
     },
@@ -537,9 +537,9 @@ window.ARCH_DATA = {
      "t": "MemoryReader",
      "tag": "A",
      "new": false,
-     "do": "граф + воспоминания о себе + записи; гибридный поиск (search/) подключён: recall() ищет в записях, эпизодах и дневнике (ТЗ 27)",
+     "do": "профиль владельца (если говорит он) + факты графа по теме; гибридный поиск (search/) подключён: recall() ищет в фактах, эпизодах и дневнике (ТЗ 27)",
      "out": "MemoryHit[]",
-     "now": "graph.search, self_memories, MemoryStore.relevant (два поиска); search/: HybridIndex (FTS5 + векторы + свежесть), HybridSearch, переписывание запроса, Embedder"
+     "now": "graph.profile_block (профиль владельца, если говорит он), graph.search, self_memories; search/: HybridIndex (FTS5 + векторы + свежесть), HybridSearch, переписывание запроса, Embedder"
     },
     {
      "id": "epi",
@@ -579,12 +579,12 @@ window.ARCH_DATA = {
     },
     {
      "id": "stores",
-     "t": "Диалог, записи, люди",
+     "t": "Диалог, задачи, люди",
      "tag": "I",
      "new": false,
-     "do": "JSON: диалог, MemoryStore (планы, напоминания), отношения",
+     "do": "JSON: диалог и активность; планы и напоминания это задачи (tasks.db); отношения",
      "out": "репозитории",
-     "now": "user_memory.py, memory_store.py, relationships.py"
+     "now": "user_memory.py, adapters/task_store.py, relationships.py"
     },
     {
      "id": "graph",

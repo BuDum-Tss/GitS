@@ -139,12 +139,12 @@ class CoreRequests:
     # ── core.memory.* ───────────────────────────────────────────────────────
 
     async def _memory_recall(self, conn: ModuleConnection, body: Any) -> dict:
-        """Поиск по личной памяти (MemoryReader.search): только реально совпавшие записи."""
+        """Поиск по памяти (MemoryReader.recall): только реально совпавшие факты и эпизоды."""
         reader = self.memory_reader
         if reader is None:
             raise ModuleError("unavailable", "память ядра не подключена")
-        items = await asyncio.to_thread(reader.search, body["query"], body.get("limit") or 6)
-        return {"facts": [{"text": str(i.get("text", "")), "kind": i.get("kind", "user"),
+        items = await reader.recall(body["query"], body.get("limit") or 6)
+        return {"facts": [{"text": str(i.get("text", "")), "kind": i.get("kind", "fact"),
                            "importance": int(i.get("importance", 3))} for i in items]}
 
     async def _memory_remember(self, conn: ModuleConnection, body: Any) -> dict:
@@ -152,7 +152,7 @@ class CoreRequests:
         writer = self.memory_writer
         if writer is None:
             raise ModuleError("unavailable", "память ядра не подключена")
-        stored = await asyncio.to_thread(writer.add_fact, body["text"].strip(), "user", 3)
+        stored = await asyncio.to_thread(writer.add_fact, body["text"].strip(), "user", 4)
         return {"stored": bool(stored)}
 
     # ── прочее ──────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 """PlanNudger (ТЗ 30, хвост): напоминания о планах пользователя идут импульсами, а не опросом «стоит ли заговорить».
 
-Раз в час (и при старте) без обращения к модели забирает из памяти планы, о которых пора напомнить (`plans_to_nudge`: срок в
-ближайшие сутки, за последние 12 часов не напоминали), и превращает каждый в напоминание ядра себе (`ImpulseTimer.add`) за
+Планы это задачи `plan` в `tasks.db` (ТЗ 32). Раз в час (и при старте) без обращения к модели забирает те, о которых пора напомнить
+(срок в ближайшие сутки, за последние 12 часов не напоминали), и превращает каждый в напоминание ядра себе (`ImpulseTimer.add`) за
 `lead_s` до срока. Дальше всё как у остальных импульсов: срок -> событие `self.reminder` -> размышление решает, сказать ли.
 Текст напоминания это факт, не реплика; текст плана пришёл от пользователя или из чужих сообщений, поэтому стимул считается
 недоверенным (действия `do` по нему не исполняются, сказать можно).
@@ -15,31 +15,35 @@ logger = logging.getLogger("impulses")
 
 LEAD_S = 30 * 60.0          # напомнить за полчаса до срока
 SWEEP_S = 3600.0            # как часто просматривать планы (без модели)
+LOOKAHEAD_S = 24 * 3600.0   # планы со сроком дальше суток пока не трогаем
+REPEAT_S = 12 * 3600.0      # не напоминать о том же плане чаще
 
 
 class PlanNudger:
-    def __init__(self, memory: Any, add: Callable[..., Awaitable[dict]], *, due_of: Callable[[dict], float | None],
-                 clock: Callable[[], float] = time.time, lead_s: float = LEAD_S, every_s: float = SWEEP_S, tasks: Any = None):
-        """memory - MemoryReader (plans_to_nudge), add - `ImpulseTimer.add`, due_of - срок плана (эпоха) или None,
-        tasks - `TaskService` (ТЗ 32): план становится задачей `plan` со сроком, напоминание берёт срок оттуда."""
-        self.memory, self.add, self.due_of, self.clock, self.tasks = memory, add, due_of, clock, tasks
+    def __init__(self, tasks: Any, add: Callable[..., Awaitable[dict]], *, clock: Callable[[], float] = time.time,
+                 lead_s: float = LEAD_S, every_s: float = SWEEP_S):
+        """tasks - `TaskService` (планы `plan` со сроком), add - `ImpulseTimer.add`."""
+        self.tasks, self.add, self.clock = tasks, add, clock
         self.lead_s, self.every_s = lead_s, every_s
         self._task: asyncio.Task | None = None
 
     async def sync(self) -> int:
         """Поставить напоминания по планам, которым пора. Возвращает их число."""
-        plans = await asyncio.to_thread(self.memory.plans_to_nudge)
+        if self.tasks is None:
+            return 0
         now = self.clock()
-        for plan in plans:
-            due = self.due_of(plan) or now
-            if self.tasks is not None and plan.get("id"):
-                try:
-                    due = (await self.tasks.upsert_plan(str(plan["id"]), plan["text"], due)).due or due
-                except Exception as e:                       # задачи не должны ломать напоминание
-                    logger.warning(f"План как задача: {e}")
-            await self.add(max(now, due - self.lead_s), f"У пользователя скоро запланировано: {plan['text']}",
-                           source={"kind": "plan", "plan_id": plan.get("id")}, untrusted=True)
-        return len(plans)
+        count = 0
+        for plan in await self.tasks.due_for_nudge(LOOKAHEAD_S):
+            if now - float(plan.meta.get("nudged") or 0) < REPEAT_S:
+                continue
+            await self.add(max(now, (plan.due or now) - self.lead_s), f"У пользователя скоро запланировано: {plan.goal}",
+                           source={"kind": "plan", "plan_id": plan.id}, untrusted=True)
+            try:
+                await self.tasks.mark_nudged(plan.id)
+            except Exception as e:
+                logger.warning(f"Отметка напоминания о плане: {e}")
+            count += 1
+        return count
 
     async def start(self) -> None:
         if self._task is None:

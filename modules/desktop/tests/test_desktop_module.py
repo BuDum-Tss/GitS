@@ -146,7 +146,7 @@ async def test_screen_is_not_analysed_when_window_is_sensitive(core):
 async def test_claude_task_is_a_job_asks_once_and_reports_done(core, monkeypatch):
     seen, usage = [], []
 
-    async def fake_run(task, context, ask, usage_cb):
+    async def fake_run(task, context, ask, usage_cb, on_tool=None):
         seen.append((task, context))
         assert await ask("Хочу выполнить команду: ls.", None) is True
         await usage_cb(42, None)
@@ -177,8 +177,32 @@ async def test_claude_task_is_a_job_asks_once_and_reports_done(core, monkeypatch
         await close(client, task)
 
 
+async def test_claude_task_reports_each_inner_tool_as_a_stage(core, monkeypatch):
+    async def fake_run(task, context, ask, usage_cb, on_tool=None):
+        await on_tool("Bash", "ls -la")
+        await on_tool("Bash", "pwd")
+        return "готово"
+
+    monkeypatch.setattr(appmod.assistant_agent, "run_task", fake_run)
+    mod, _scene, client, task = await connect(core)
+    try:
+        value = await core.call_tool("claude_task", {"task": "x"})
+        first = await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b.get("stage") == "tool:Bash:1")
+        assert first.body["text"] == "ls -la"
+        await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b.get("stage") == "tool:Bash:2")
+    finally:
+        await close(client, task)
+
+
+def test_tool_summary_picks_command_path_or_query():
+    assert appmod.assistant_agent.tool_summary("Bash", {"command": "ls   -la"}) == "ls -la"
+    assert appmod.assistant_agent.tool_summary("Read", {"file_path": "a.py"}) == "a.py"
+    assert appmod.assistant_agent.tool_summary("WebSearch", {"query": "погода"}) == "погода"
+    assert appmod.assistant_agent.tool_summary("Task", None) == ""
+
+
 async def test_claude_task_without_answer_fails_with_error(core, monkeypatch):
-    async def fake_run(task, context, ask, usage_cb):
+    async def fake_run(task, context, ask, usage_cb, on_tool=None):
         return None
 
     monkeypatch.setattr(appmod.assistant_agent, "run_task", fake_run)
@@ -194,7 +218,7 @@ async def test_claude_task_without_answer_fails_with_error(core, monkeypatch):
 async def test_cancel_job_stops_the_run(core, monkeypatch):
     started = asyncio.Event()
 
-    async def forever(task, context, ask, usage_cb):
+    async def forever(task, context, ask, usage_cb, on_tool=None):
         started.set()
         await asyncio.Event().wait()
 
@@ -340,7 +364,7 @@ async def test_panel_declared_and_shows_window_and_permissions(core):
 async def test_panel_lists_claude_tasks_with_stop_buttons(core, monkeypatch):
     started = asyncio.Event()
 
-    async def forever(task, context, ask, usage_cb):
+    async def forever(task, context, ask, usage_cb, on_tool=None):
         started.set()
         await asyncio.Event().wait()
 
@@ -366,7 +390,7 @@ async def test_panel_lists_claude_tasks_with_stop_buttons(core, monkeypatch):
 
 
 async def test_panel_cancel_all_stops_every_task(core, monkeypatch):
-    async def forever(task, context, ask, usage_cb):
+    async def forever(task, context, ask, usage_cb, on_tool=None):
         await asyncio.Event().wait()
 
     monkeypatch.setattr(appmod.assistant_agent, "run_task", forever)

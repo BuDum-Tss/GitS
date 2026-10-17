@@ -24,8 +24,8 @@ import character
 import character_memory
 import events_log
 import graph_scope
-import memory_store
 import settings
+import stems as stemlib
 from envcompat import env
 from fact_store import FactStore, iso
 from search.embedder import LmStudioEmbedder
@@ -42,12 +42,16 @@ MIN_CHARS = 12                    # короче реплику на факты 
 MAX_QUEUE = 300
 CONTEXT_FACTS = 3                 # фактов графа в контексте ответа (ТЗ 04, KB-13)
 MAX_ATTEMPTS = 3
+MIN_IMPORTANCE_PROFILE = 4        # факт о владельце и о самом персонаже идёт в память, только если она сама сочла его важным (4-5)
+MIN_IMPORTANCE_OTHER = 3          # факты о других людях и мире мягче: связи и события жизни (3-5), мелочь (1-2) не пишется
+PROFILE_FACTS = 8                 # фактов профиля владельца в контексте ответа (всегда, если говорит он)
 
 # ── извлечение фактов ──────────────────────────────────────────────────────────
 
 _SCHEMA = {"type": "object", "properties": {"facts": {"type": "array", "items": {"type": "object", "properties": {
     "subject": {"type": "string"}, "relation": {"type": "string"}, "object": {"type": "string"},
-    "fact": {"type": "string"}}, "required": ["subject", "relation", "object", "fact"]}}}, "required": ["facts"]}
+    "fact": {"type": "string"}, "importance": {"type": "integer"}},
+    "required": ["subject", "relation", "object", "fact", "importance"]}}}, "required": ["facts"]}
 
 _SYSTEM = (
     "Ты извлекаешь долговременные факты о людях из реплики. Подписанный говорящий — это человек, о котором идёт речь, "
@@ -61,7 +65,10 @@ _SYSTEM = (
     "Если реплика говорит, что что-то изменилось (переехала, "
     "сменила работу), в fact так и напиши («Аня переехала в Казань и теперь живёт в Казани»). Если фактов нет, "
     "верни пустой список. Не записывай то, что верно только ближайшие минуты, то, что пересчитывается за секунду, и "
-    "оценки человека, которые ему было бы неприятно прочитать: если факт стоит записи, запиши факт без оценки.")
+    "оценки человека, которые ему было бы неприятно прочитать: если факт стоит записи, запиши факт без оценки. "
+    "importance (1-5) это важность факта для долгой памяти: 5 - имя, семья, здоровье, главные цели, события жизни; 4 - "
+    "работа, учёба, место жительства, близкие, устойчивые предпочтения; 3 - увлечения и знакомые; 1-2 - мелочь, "
+    "настроение, сиюминутное. Лучше пропустить факт, чем записать мелочь.")
 
 
 @dataclass
@@ -70,6 +77,7 @@ class Fact:
     relation: str
     object: str
     fact: str
+    importance: int = 3
 
 
 def _clean(s: str) -> str:
@@ -91,6 +99,10 @@ def parse_facts(raw: str) -> list[Fact]:
             continue
         if f.subject and f.relation and f.object and f.fact and max(map(len, (f.subject, f.object))) <= 60 \
                 and len(f.fact) <= 220 and f.subject.lower() != f.object.lower():
+            try:
+                f.importance = max(1, min(5, int(it.get("importance", 3))))
+            except (TypeError, ValueError):
+                f.importance = 3
             out.append(f)
     return out[:8]
 
@@ -156,14 +168,32 @@ class SqliteBackend:
         return (True, "работает") if ok else (False, "в LM Studio нет моделей для памяти (Gemma и EmbeddingGemma)")
 
     async def add_fact(self, f: Fact, when: datetime, group: str = character.DEFAULT_ID, *, canon: bool = False,
-                       source: str = "extract") -> str:
+                       source: str = "extract", profile: str | None = None) -> str:
         """Записать факт в группу; возвращает uuid связи (нужен, чтобы пометить воспоминание персонажа)."""
         now = time.time()
         uuid, new = await asyncio.to_thread(self.store.add, f.subject, f.relation, f.object, f.fact, when.timestamp(), group,
-                                            now=now, canon=canon, source=source)
+                                            now=now, canon=canon, source=source, importance=f.importance, profile=profile)
         if new:
             await self.search_service.add(group, uuid, f.fact, ts=when.timestamp())
         return uuid
+
+    def remember_sync(self, f: Fact, when: float, group: str, *, profile: str | None, source: str) -> bool:
+        """Запись без модели и без ожидания: строка в таблицу и в индекс по словам (вектор не нужен: профиль читается
+        напрямую, а не поиском по смыслу). True, если факт новый."""
+        uuid, new = self.store.add(f.subject, f.relation, f.object, f.fact, when, group, now=time.time(),
+                                   source=source, importance=f.importance, profile=profile)
+        if new:
+            self.search_service.index.upsert(group, uuid, f.fact, ts=when)
+        return new
+
+    def profile_facts(self, group: str, profile: str, limit: int) -> list[dict]:
+        return self.store.profile_facts(group, profile, limit)
+
+    def forget_words(self, group: str, keys: list[str], need: int) -> int:
+        ids = self.store.forget_by_words(group, keys, need)
+        for uuid in ids:
+            self.search_service.index.delete(group, uuid)
+        return len(ids)
 
     async def upsert_fact(self, f: Fact, when: datetime, group: str = character.DEFAULT_ID):
         """Записать факт БЕЗ участия модели (данные игры достоверны): прежний факт того же отношения у субъекта
@@ -332,13 +362,14 @@ class GraphMemory:
         except OSError:
             pass
 
-    def enqueue(self, speaker: str, text: str, ts: float | None = None, source: str | None = None):
+    def enqueue(self, speaker: str, text: str, ts: float | None = None, source: str | None = None, owner: bool = False):
         """Положить реплику в очередь на разбор. Короткое и пустое не берём. `source` - id эпизода (ТЗ 27): факт знает, откуда он."""
         text = text.strip()
         if len(text) < MIN_CHARS:
             return
         self._queue.append({"speaker": speaker or "Пользователь", "text": text[:1500], "ts": ts or time.time(), "tries": 0,
-                            "character": self._character, **({"source": str(source)[:60]} if source else {})})
+                            "character": self._character, **({"source": str(source)[:60]} if source else {}),
+                            **({"owner": True} if owner else {})})
         self._queue = self._queue[-MAX_QUEUE:]
         self._save()
         self._wake.set()
@@ -384,7 +415,10 @@ class GraphMemory:
                 if f.subject.lower() in names:            # CHR-18: реплика собеседника не пишет в «я» персонажа
                     await self._about_character(f, group)
                     continue
-                await self.backend.add_fact(f, when, fact_group)
+                about_owner = bool(item.get("owner")) and f.subject.lower() == str(item["speaker"]).lower()
+                if f.importance < (MIN_IMPORTANCE_PROFILE if about_owner else MIN_IMPORTANCE_OTHER):
+                    continue                                   # мелочь в память не идёт
+                await self.backend.add_fact(f, when, fact_group, **({"profile": "owner"} if about_owner else {}))
                 written.append(f)
             facts = written
             self._queue.pop(0)
@@ -489,16 +523,52 @@ class GraphMemory:
         except OSError:
             pass
 
-    def migrate_from_store(self, store, owner: str):
-        """Один раз перенести в очередь факты о пользователе из старой памяти (memory_store): дальше их разберёт Gemma."""
-        if store.meta("graph_migrated"):
+    # ── профили: владелец и она сама (запись и чтение без модели) ──────────────────────────────
+
+    def remember(self, text: str, importance: int = 4, subject: str = "") -> bool:
+        """Запомнить факт в профиль владельца (от третьего лица; сюда же его пожелания к ней и договорённости).
+        Записывается сразу, без очереди и модели. Мелочь (важность ниже порога профиля) не пишется. True, если запись новая."""
+        text = re.sub(r"\s+", " ", str(text)).strip()[:300]
+        if len(text) < 6 or importance < MIN_IMPORTANCE_PROFILE:
+            return False
+        if text.lower() in {f["text"].lower() for f in self.profile_facts("owner", 200)}:
+            return False                                   # то же самое уже записано (имя владельца могло смениться)
+        f = Fact((subject or "Пользователь").strip() or "Пользователь", "ЗАМЕТКА", text[:60], text, int(importance))
+        try:
+            return self.backend.remember_sync(f, time.time(), self.group(), profile="owner", source="remember")
+        except Exception as e:
+            logger.warning(f"Граф, запись профиля: {e}")
+            return False
+
+    def profile_facts(self, profile: str = "owner", limit: int = 20) -> list[dict]:
+        """Факты профиля владельца без поиска и моделей: [{uuid, text, importance, ts}]."""
+        try:
+            return self.backend.profile_facts(self.group(), profile, limit)
+        except Exception as e:
+            logger.warning(f"Граф, профиль: {e}")
+            return []
+
+    def profile_block(self) -> str:
+        """Блок контекста: главное о владельце. Всегда в ответе владельцу, вне темы разговора."""
+        owner = self.profile_facts("owner", PROFILE_FACTS)
+        if not owner:
+            return ""
+        return "Главное, что ты помнишь о пользователе (включая его пожелания к тебе):\n" + "\n".join(f"  - {f['text']}" for f in owner)
+
+    def forget_matching(self, text: str, strict: bool = False) -> int:
+        """Забыть факты (кроме канона), где есть значимые слова фразы: «забудь что я люблю чай» находит «Любит чай»."""
+        if strict:
+            keys, need = [text.lower().strip()], 1
+        else:
+            keys = [w[:3] if len(w) > 3 else w for w in stemlib.words(text)]
+            if not keys:
+                return 0
+            need = max(1, -(-len(keys) * 6 // 10))
+        try:
+            return self.backend.forget_words(self.group(), keys, need)
+        except Exception as e:
+            logger.warning(f"Граф, забывание: {e}")
             return 0
-        n = 0
-        for item in store.kind("user"):
-            self.enqueue(owner or "Пользователь", f"{item['text']}", item.get("ts"))
-            n += 1
-        store.set_meta("graph_migrated", True)
-        return n
 
     # чтение
     async def search(self, query: str, limit: int = 6, include_old: bool = False) -> list[dict]:
@@ -555,8 +625,8 @@ class GraphMemory:
             if not cands:
                 return []
             scores = await self.backend.scores(query, [c["fact"] for c in cands])
-            q_stems = memory_store.stems(query)       # общие слова с репликой поднимают оценку: «прошлая жизнь» ↔ «была человеком»
-            scores = [s + character_memory.WORD_BONUS * min(2, len(q_stems & memory_store.stems(c["fact"])))
+            q_stems = stemlib.stems(query)       # общие слова с репликой поднимают оценку: «прошлая жизнь» ↔ «была человеком»
+            scores = [s + character_memory.WORD_BONUS * min(2, len(q_stems & stemlib.stems(c["fact"])))
                       for s, c in zip(scores, cands, strict=False)]
             self._self_replies += 1
             picked, nudged = character_memory.pick(cands, scores, n=n, min_score=character_memory.SELF_MIN_SCORE,

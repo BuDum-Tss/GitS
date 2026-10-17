@@ -88,7 +88,8 @@ class Companion:
         self.job_wait = None                     # async (module_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
         if memory_reader is None or memory_writer is None:
             self._mem = UserMemory(memory_dir)                 # личная память на диске (адаптеры по умолчанию)
-            default_memory = UserMemoryAdapter(lambda: self._mem, lambda: self.graph, lambda: getattr(self, "episodes", None))
+            default_memory = UserMemoryAdapter(lambda: self._mem, lambda: self.graph, lambda: getattr(self, "episodes", None),
+                                               lambda: getattr(self, "tasks", None), lambda: self._owner_name())
         else:
             self._mem = None                                   # память передана контрактами: диска не трогаем
             default_memory = None
@@ -232,6 +233,7 @@ class Companion:
     def rebind_memory(self, memory_dir) -> None:
         """Переключение персонажа (ТЗ 05, CHR-7): личная память этого персонажа, та же беседа и тон."""
         self._memory_writer.rebind(memory_dir)
+        self._dir = Path(memory_dir)                 # задачи (tasks.db) открываются в папке нового персонажа
 
     def is_speaking(self) -> bool:
         return self.speech.is_speaking()
@@ -392,7 +394,7 @@ class Companion:
     def _repeats_recent(self, text: str) -> bool:
         """Не повторять недавние темы: сильное пересечение по словам с её последними репликами (очередь речи спрашивает это
         у каждого кандидата)."""
-        from memory_store import stems
+        from stems import stems
         new = stems(text)
         if len(new) < 3:
             return False
