@@ -152,7 +152,7 @@ class CoreRequests:
         writer = self.memory_writer
         if writer is None:
             raise ModuleError("unavailable", "память ядра не подключена")
-        stored = await asyncio.to_thread(writer.add_fact, body["text"].strip(), "user", 3)
+        stored = await asyncio.to_thread(writer.add_fact, body["text"].strip(), "user", 4)
         return {"stored": bool(stored)}
 
     # ── прочее ──────────────────────────────────────────────────────────────
