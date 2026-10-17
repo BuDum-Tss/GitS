@@ -17,7 +17,6 @@ from app.plan_nudge import PlanNudger
 from app.reflection import ReflectionService
 from app.thought_memory import ThoughtConsolidator
 from domain.event import KIND_AFTER_CONVERSATION
-from memory_store import effective_due
 
 logger = logging.getLogger("impulses")
 
@@ -46,7 +45,7 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
         settings=settings_source or companion._settings.load, clock=clock, speak=attention.reflect_speech, plan=plan,
         remind=timer.add)
     attention.attach_reflection(service)
-    plans = PlanNudger(companion.memory_reader, timer.add, due_of=effective_due, clock=clock, tasks=tasks)   # планы пользователя -> напоминания себе
+    plans = PlanNudger(tasks, timer.add, clock=clock)   # планы пользователя -> напоминания себе
 
     def conversation_ended(text: str) -> None:
         """IMP-10: разговор затих -> событие `self.after_conversation`; диспетчер отдаёт его в размышление (настроение, вывод)."""

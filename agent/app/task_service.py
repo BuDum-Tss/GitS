@@ -251,6 +251,11 @@ class TaskService:
                 return t
         return await self.create(text, workspace=ASSISTANT, origin=dom.USER, due=due, kind=dom.KIND_PLAN, meta={"plan_id": plan_id})
 
+    async def mark_nudged(self, task_id: str) -> None:
+        """Отметить, что о задаче уже напомнили (повторно не напоминать, пока не пройдёт срок отметки)."""
+        t = await self._need(task_id)
+        await self._save(replace(t, meta={**t.meta, "nudged": self.clock()}, updated=self.clock()))
+
     async def snapshot(self, workspace: str | None = None) -> dict:
         """Для дашборда и инструмента: активная задача среды, открытые задачи с прогрессом."""
         ws = workspace or self.current_workspace()

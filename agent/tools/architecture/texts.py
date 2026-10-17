@@ -30,7 +30,7 @@ MAP = [
     ("core_service.py", "Composition root; обработчики в <code>app/handlers/</code>"),
     ("module_hub.py + module_outbound.py", "ModuleHub: входящие, исходящие в <code>ModuleHub.outbound</code>, без импорта домена"),
     ("dashboard/", "HTTP-адаптер: роутеры <code>routes_*.py</code> и презентеры <code>presenters.py</code>"),
-    ("graph_memory.py, memory_store.py, user_memory.py", "MemoryWriter/MemoryReader + репозитории"),
+    ("graph_memory.py, user_memory.py, adapters/memory.py", "MemoryWriter/MemoryReader + репозитории"),
     ("speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
     ("events_log.py, settings.py, character.py", "контракты EventLog, SettingsProvider, CharacterRepo"),
     ("нет", "ReminderStore, ImpulseTimer, ReflectionService, журнал мыслей (ТЗ 30)"),

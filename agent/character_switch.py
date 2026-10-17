@@ -13,6 +13,7 @@ from pathlib import Path
 
 import character
 import events_log
+import memory_migration
 import prompts
 from attention_rules import FILE_NAME as RULES_FILE
 
@@ -57,6 +58,11 @@ class CharacterSwitch:
                 self.affect.switch(mdir, Params.from_card(new.emotions))
             if self.graph is not None:
                 self.graph.set_character(new.id)
+                try:                                  # у этого персонажа ещё может лежать старая memories.json
+                    await memory_migration.migrate(mdir, self.graph, getattr(self.companion, "tasks", None),
+                                                   self.companion._owner_name())
+                except Exception as e:
+                    log.warning("перенос старой памяти персонажа: %s", e)
             if self.hub is not None:
                 await self.hub.broadcast("character", new.card())
             events_log.log("character", f"персонаж: {old.name} -> {new.name}", character=new.id, dropped=dropped)

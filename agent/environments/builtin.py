@@ -11,6 +11,7 @@ import time
 
 import events_log
 import settings
+from stems import stems
 from app.task_service import TaskError
 from domain import tasks as task_dom
 from .base import Environment, Tool, ToolError
@@ -108,7 +109,7 @@ def register(registry, companion, memory, profiles=None):
             _analysis_running["on"] = True
             try:
                 res = await analysis.analyze(question, hours, extra)
-                saved = sum(bool(memory.add_fact(c, kind="self", importance=4)) for c in res["conclusions"])
+                saved = sum(bool(companion.memory_writer.add_fact(c, kind="self", importance=4)) for c in res["conclusions"])
                 events_log.log("audit", f"анализ готов: {question[:80]} (выводов в память: {saved})",
                                report=res["report_path"], fixes=res["fixes"], conclusions=res["conclusions"])
                 parts = [res["summary"] or "разбор готов", f"Подробный отчёт лежит здесь: {res['report_path']}"]
@@ -128,7 +129,16 @@ def register(registry, companion, memory, profiles=None):
                 "результат она проговорит сама, когда будет готов")
 
     async def forget(a):
-        n = memory.forget_matching(a["text"])
+        n = companion.memory_writer.forget_matching(a["text"])
+        try:                                                        # планы это задачи: совпавшие открытые закрываются как отменённые
+            svc = _tasks()
+            want = stems(a["text"])
+            for t in await svc.list_tasks("*", kinds=(task_dom.KIND_PLAN,)):
+                if want and len(want & stems(t.goal)) * 10 >= len(want) * 6:
+                    await svc.close(t.id, status=task_dom.CANCELLED, note="забыто по просьбе")
+                    n += 1
+        except Exception:
+            pass
         if not n:
             raise ToolError("ничего такого в памяти не нашлось")
         return f"стёрто записей из памяти: {n}"
@@ -205,7 +215,7 @@ def register(registry, companion, memory, profiles=None):
         return f"задача {t.id} закрыта ({t.status}): {t.goal}"
 
     async def recall(a):
-        parts = [i["text"] for i in memory.store.search(a["query"])]
+        parts = [f["text"] for f in getattr(memory, "facts", list)() if stems(a["query"]) & stems(f["text"])]    # профиль владельца по теме
         graph = getattr(companion, "graph", None)
         if graph is not None:
             parts += [f["fact"] for f in await graph.search(a["query"], limit=6)]     # память-граф: факты о людях и жизни
@@ -271,9 +281,9 @@ def register(registry, companion, memory, profiles=None):
                   keywords=("забудь", "забыть", "стереть", "память")),
             _tool("assistant", "remember", "Запомнить что-то надолго по просьбе («запомни, что…»). "
                   "kind: user - факт о пользователе, self - о ней самой или пожелание к её поведению, "
-                  "plan - план или дело пользователя (due_days - через сколько дней), episode - событие.",
+                  "plan - план или дело пользователя (due_days - через сколько дней; станет задачей).",
                   {"text": {"type": "string", "description": "что запомнить, одной фразой"},
-                   "kind": {"type": "string", "enum": ["user", "self", "plan", "episode"], "required": False,
+                   "kind": {"type": "string", "enum": ["user", "self", "plan"], "required": False,
                             "description": "вид записи, по умолчанию user"},
                    "due_days": {"type": "integer", "required": False, "description": "срок плана в днях"}},
                   remember, keywords=("запомни", "запиши", "помни", "запомнить", "важно")),

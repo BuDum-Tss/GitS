@@ -25,11 +25,14 @@ CREATE TABLE IF NOT EXISTS facts (
     subject TEXT NOT NULL, relation TEXT NOT NULL, object TEXT NOT NULL, fact TEXT NOT NULL,
     subj_key TEXT NOT NULL, obj_key TEXT NOT NULL,
     valid_at REAL, invalid_at REAL, created_at REAL NOT NULL,
-    canon INTEGER NOT NULL DEFAULT 0, source TEXT, mem_id TEXT, mtype TEXT, about TEXT, weight REAL NOT NULL DEFAULT 0);
+    canon INTEGER NOT NULL DEFAULT 0, source TEXT, mem_id TEXT, mtype TEXT, about TEXT, weight REAL NOT NULL DEFAULT 0,
+    importance INTEGER NOT NULL DEFAULT 3, profile TEXT);
 CREATE INDEX IF NOT EXISTS facts_subject ON facts (group_id, subj_key, relation);
 CREATE INDEX IF NOT EXISTS facts_mem ON facts (group_id, mem_id);
 CREATE INDEX IF NOT EXISTS facts_object ON facts (obj_key);
 """
+PROFILES = ("owner", "self")         # профиль владельца и профиль персонажа о себе: главное, что всегда в контексте
+_NEW_COLUMNS = (("importance", "INTEGER NOT NULL DEFAULT 3"), ("profile", "TEXT"))   # столбцы, добавленные к старым базам
 _COLS = ("uuid", "group_id", "subject", "relation", "object", "fact", "valid_at", "invalid_at", "canon", "source", "mem_id",
          "mtype", "about", "weight")
 
@@ -55,26 +58,36 @@ class FactStore:
             except sqlite3.DatabaseError:
                 pass
             self._db.executescript(_SCHEMA)
+            have = {r["name"] for r in self._db.execute("PRAGMA table_info(facts)").fetchall()}
+            for col, decl in _NEW_COLUMNS:
+                if col not in have:
+                    self._db.execute(f"ALTER TABLE facts ADD COLUMN {col} {decl}")
+            self._db.execute("CREATE INDEX IF NOT EXISTS facts_profile ON facts (group_id, profile)")
             self._db.commit()
 
     # ── запись ─────────────────────────────────────────────────────────────────
 
     def add(self, subject: str, relation: str, obj: str, fact: str, when: float, group: str, *, now: float,
-            canon: bool = False, source: str = "extract") -> tuple[str, bool]:
+            canon: bool = False, source: str = "extract", importance: int = 3,
+            profile: str | None = None) -> tuple[str, bool]:
         """Записать факт. (uuid, новый ли): повтор действующей связи не дублируется, однозначное отношение закрывает старое."""
         sk, ok = subject.lower(), obj.lower()
         with self._lock:
             same = self._db.execute("SELECT uuid FROM facts WHERE group_id=? AND subj_key=? AND relation=? AND obj_key=? "
                                     "AND invalid_at IS NULL", (group, sk, relation, ok)).fetchone()
             if same:
+                self._db.execute("UPDATE facts SET importance=MAX(importance, ?), profile=COALESCE(profile, ?) WHERE uuid=?",
+                                 (importance, profile, same["uuid"]))
+                self._db.commit()
                 return same["uuid"], False
             if rel_key(relation) in SINGLE_VALUED:
                 self._db.execute("UPDATE facts SET invalid_at=? WHERE group_id=? AND subj_key=? AND relation=? "
                                  "AND invalid_at IS NULL AND canon=0", (when, group, sk, relation))
             new = uuidlib.uuid4().hex
             self._db.execute("INSERT INTO facts (uuid, group_id, subject, relation, object, fact, subj_key, obj_key, valid_at, "
-                             "created_at, canon, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                             (new, group, subject, relation, obj, fact, sk, ok, when, now, int(canon), source))
+                             "created_at, canon, source, importance, profile) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             (new, group, subject, relation, obj, fact, sk, ok, when, now, int(canon), source,
+                              max(1, min(5, int(importance))), profile))
             self._db.commit()
         return new, True
 
@@ -180,12 +193,12 @@ class FactStore:
         cond, args = self._area(group)
         with self._lock:
             rows = self._db.execute("SELECT subject, relation, object, fact, uuid, valid_at, invalid_at, created_at, group_id, canon, "
-                                    f"source FROM facts WHERE {cond} ORDER BY created_at DESC LIMIT ?", (*args, limit)).fetchall()
+                                    f"source, importance, profile FROM facts WHERE {cond} ORDER BY created_at DESC LIMIT ?", (*args, limit)).fetchall()
         names = list(dict.fromkeys(n for r in rows for n in (r["subject"], r["object"])))
         edges = [{"from": r["subject"], "relation": r["relation"], "to": r["object"], "fact": r["fact"], "uuid": r["uuid"],
                   "valid_at": (iso(r["valid_at"]) or "")[:10] or None, "invalid_at": (iso(r["invalid_at"]) or "")[:10] or None,
                   "created": (iso(r["created_at"]) or "")[:16].replace("T", " ") or None, "group": r["group_id"],
-                  "canon": bool(r["canon"]), "source": r["source"]}
+                  "canon": bool(r["canon"]), "source": r["source"], "importance": r["importance"], "profile": r["profile"]}
                  for r in rows]
         return {"entities": names, "edges": edges}
 
@@ -201,6 +214,24 @@ class FactStore:
         alive = sum(r["alive"] or 0 for r in rows)
         return {"total": total, "active": alive, "outdated": total - alive, "canon": sum(r["canon"] or 0 for r in rows),
                 "areas": areas, "sources": {r[0]: r[1] for r in src}, "last_added": max((r["last"] or 0 for r in rows), default=0) or None}
+
+    def profile_facts(self, group: str, profile: str, limit: int = 20) -> list[dict]:
+        """Действующие факты профиля (`owner` или `self`), без канона персонажа: сначала важные, потом свежие."""
+        with self._lock:
+            rows = self._db.execute("SELECT uuid, fact, importance, created_at FROM facts WHERE group_id=? AND profile=? "
+                                    "AND invalid_at IS NULL AND canon=0 ORDER BY importance DESC, created_at DESC LIMIT ?",
+                                    (group, profile, limit)).fetchall()
+        return [{"uuid": r["uuid"], "text": r["fact"], "importance": r["importance"], "ts": r["created_at"]} for r in rows]
+
+    def forget_by_words(self, group: str, keys: list[str], need: int) -> list[str]:
+        """Удалить некононические факты группы, где встречается не меньше `need` ключей (строчные части слов); uuid удалённых."""
+        with self._lock:
+            rows = self._db.execute("SELECT uuid, lower(fact) f FROM facts WHERE group_id=? AND canon=0", (group,)).fetchall()
+            ids = [r["uuid"] for r in rows if sum(k in r["f"] for k in keys) >= need]
+            for i in ids:
+                self._db.execute("DELETE FROM facts WHERE uuid=?", (i,))
+            self._db.commit()
+        return ids
 
     def import_row(self, row: dict) -> bool:
         """Перенос готовой связи (из старого графа) как есть; False, если такой uuid уже есть."""

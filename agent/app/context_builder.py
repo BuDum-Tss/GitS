@@ -63,7 +63,8 @@ class ContextBuilder:
         budget = (cfg.get("budget_tokens") or {}).get(role) or {}
         blocks: list[tuple[str, str]] = []
         blocks += [
-            ("memory", h._memory_reader.context_block(dialogue=12, query="" if skip_memory else query)),
+            ("dialogue", h._memory_reader.context_block(dialogue=12)),
+            ("profile", getattr(h._memory_reader, "profile_block", lambda: "")()),          # главное о владельце и её выводы о себе: всегда, вне темы
             ("capabilities", h._capabilities())]
         if include_hearing and h._settings.load()["hearing"]:
             heard = h.recent_heard()

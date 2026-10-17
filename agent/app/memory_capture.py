@@ -31,9 +31,11 @@ class MemoryCapture:
             if not tag.group(2):
                 return
             speaker, text = tag.group(2), text[tag.end():]
+            owner = speaker.lower() == (self._h._owner_name() or "").lower()
         else:
             speaker = self._h._owner_name() or "Пользователь"
-        self._h._memory_writer.enqueue_for_graph(speaker, text)
+            owner = True
+        self._h._memory_writer.enqueue_for_graph(speaker, text, owner=owner)
 
     def store_memories(self, data) -> list[str]:
         """Сохранить воспоминания из ответа модели ({"memories": [...]}); вернуть тексты новых."""
@@ -116,7 +118,7 @@ class MemoryCapture:
         try:
             transcript = "\n".join(f"{'Пользователь' if m['role'] == 'user' else 'Ты'}: {m['text']}"
                                    for m in dlg[-24:])
-            known = "; ".join(i["text"] for i in h._memory_reader.relevant(transcript[-300:], k=6))
+            known = "; ".join(i["text"] for i in await h._memory_reader.recall(transcript[-300:], k=6))
             system = ("Ты осмысляешь недавнюю беседу ассистентки с пользователем. Выдели 0-2 воспоминания, "
                       "которые ты САМА считаешь важными для долгой памяти. kind: user (устойчивый факт о пользователе), "
                       "self (о тебе самой: что ты пообещала, чего он от тебя просит), plan (реальные планы и дела "

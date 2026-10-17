@@ -12,6 +12,7 @@ import events_log
 import fast_brain
 import speech_out
 from companion import Companion
+from graph_memory import GraphMemory
 from environments.registry import Registry
 from gits_sdk import ModuleClient
 from relationships import Relationships
@@ -68,6 +69,7 @@ class Wired:
         self.text = speech_out.TextOnlySpeech(self.presence)
         self.speech = speech_out.SpeechSelector(self.voice, self.text)
         self.companion = Companion(mem, Relationships(mem), speech=self.speech, presence=self.presence)
+        self.companion.graph = GraphMemory(mem)                 # профиль владельца живёт в графе
         self.heard_calls: list[tuple] = []
         self.voiced: list[tuple] = []
 
@@ -348,7 +350,7 @@ async def test_named_voice_creates_the_person_or_the_owner_fact(tmp_path):
         await w.wait(lambda: w.companion._rel.get("voice:person-1"))
         assert w.companion._rel.get("voice:person-1")["source"] == "voice"
         await mod.client.event("voice.named", "назначено имя", data={"voice_id": "person-2", "name": "Аня", "is_owner": True})
-        await w.wait(lambda: any("Имя: Аня" in f["text"] for f in w.companion._mem.facts()))
+        await w.wait(lambda: any("Имя: Аня" in f["text"] for f in w.companion.memory_reader.facts()))
         await w.layer.attention.settle()
         events_log.flush()
         assert [e for e in events_log.tail(50, {"module_event"}) if e["data"].get("event_kind") == "voice.named"]   # не тихий вид

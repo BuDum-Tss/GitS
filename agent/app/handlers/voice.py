@@ -38,9 +38,9 @@ def make_voice_handlers(companion, attention, speech) -> dict:
         if not name or not voice_id:
             return
         if data.get("is_owner"):
-            mem = getattr(companion, "_mem", None)
-            if mem is not None:
-                await asyncio.to_thread(mem.add_fact, f"Имя: {name}", kind="user", importance=5)
+            writer = getattr(companion, "memory_writer", None)
+            if writer is not None:
+                await asyncio.to_thread(writer.add_fact, f"Имя: {name}", kind="user", importance=5)
         else:
             rel = getattr(companion, "_rel", None)
             if rel is not None:

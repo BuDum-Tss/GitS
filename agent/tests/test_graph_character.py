@@ -26,7 +26,7 @@ class FakeGraph:
     async def healthy(self):
         return True, "работает"
 
-    async def add_fact(self, f: Fact, when, group="glados") -> str:
+    async def add_fact(self, f: Fact, when, group="glados", **kw) -> str:
         uuid = f"u{len(self.edges) + 1}"
         self.edges.append({"uuid": uuid, "group": group, "subject": f.subject, "relation": f.relation, "object": f.object,
                            "fact": f.fact, "canon": False, "source": "extract", "mem_id": None, "mtype": None,

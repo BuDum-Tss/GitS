@@ -118,7 +118,7 @@ async def test_stranger_message_is_not_answered_but_recorded_and_remembered(tmp_
         assert "Казань" in s.rel.people["tg:555"]["notes"][0]
         assert s.core.companion.graph.items[0][0] == "Маша" and "Казань" in s.core.companion.mem_text() \
             if hasattr(s.core.companion, "mem_text") else True
-        assert s.core.companion._mem.facts and s.core.companion._mem.facts[0][1] == "episode"
+        assert not s.core.companion._mem.facts                                  # сырой текст чужого сообщения в долгую память не пишется
 
 
 async def test_question_to_the_owner_is_delivered_to_the_owners_bot_chat(tmp_path, monkeypatch):

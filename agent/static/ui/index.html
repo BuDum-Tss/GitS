@@ -253,14 +253,14 @@
         <div class="card-body gap-4">
           <details id="mem-howto" class="rounded-box border border-base-300 p-3" open>
             <summary class="cursor-pointer font-medium">Как устроена память</summary>
-            <p class="text-sm opacity-80 mt-2">Память это не один склад, а шесть слоёв. У каждого свой способ записи и своё применение: так в ответ попадает только
-              то, что относится к теме, а не вся история. Всё хранится локально, в папке памяти персонажа; наружу ничего не уходит.</p>
+            <p class="text-sm opacity-80 mt-2">Память состоит из пяти частей: профиль владельца, её профиль о себе, цели и планы, эпизоды из жизни и важные факты. В память идёт только то,
+              что она сама сочла важным; мелочь и сиюминутное не записываются. Всё хранится локально, в папке памяти персонажа; наружу ничего не уходит.</p>
             <div class="grid gap-2 mt-2 md:grid-cols-2">
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
-                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Заметки и цели</span><span id="mem-n-notes" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> «Запомни, что…», цели (долгие намерения, не дела на сегодня) и напоминания (файл <code>memory.json</code>)</div>
-                  <div><span class="opacity-60">Как попадает:</span> Ты просишь словами в чате или она сама назначает себе напоминание</div>
-                  <div><span class="opacity-60">Как используется:</span> Подмешиваются в ответ, когда подходят к теме; напоминания всплывают к сроку. «Забудь про…» или ✕ убирает. Ближайшие планы и дела живут не здесь, а в краткосрочной памяти рядом с задачами</div>
+                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Профили и цели</span><span id="mem-n-notes" class="text-xs text-right">-</span></div>
+                  <div><span class="opacity-60">Что там:</span> Главное о тебе, её собственные выводы о себе (вместе с каноном персонажа) и цели с планами (задачи, файл <code>tasks.db</code>)</div>
+                  <div><span class="opacity-60">Как попадает:</span> Ты просишь «запомни, что…» или она сама решает, что это важно (4-5 из 5); план со сроком становится задачей</div>
+                  <div><span class="opacity-60">Как используется:</span> Профиль всегда в контексте ответа, вне темы разговора; планы всплывают к сроку. «Забудь про…» или ✕ убирает</div>
                 </div>
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
                   <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Отношения</span><span id="mem-n-rel" class="text-xs text-right">-</span></div>
@@ -270,8 +270,8 @@
                 </div>
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
                   <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Факты</span><span id="mem-n-facts" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> Устойчивые факты о людях и жизни («Аня живёт в Казани»), воспоминания самого персонажа (канон) и данные игры (файл <code>graph.db</code>)</div>
-                  <div><span class="opacity-60">Как попадает:</span> В паузах разговора локальная модель выписывает факты из реплик; каждая реплика сначала встаёт в очередь</div>
+                  <div><span class="opacity-60">Что там:</span> Важные факты о людях и жизни («Аня живёт в Казани»), воспоминания персонажа (канон) и данные игры (файл <code>graph.db</code>; профили лежат там же)</div>
+                  <div><span class="opacity-60">Как попадает:</span> В паузах разговора локальная модель выписывает факты из реплик и сама оценивает важность; мелочь отбрасывается</div>
                   <div><span class="opacity-60">Как используется:</span> Перед ответом ищется до 3 фактов по теме (слова и смысл); новый факт закрывает старый («переехала» закрывает «живёт в Москве»)</div>
                 </div>
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
@@ -981,8 +981,8 @@ function renderActivity(list) {
 
 function renderMemory(core) {
   MEMSTAT.notes = core.memories || []; MEMSTAT.relations = (core.relations || []).length; layerCounts();
-  const KIND_TITLE = {user: ['О тебе', 'badge-neutral'], self: ['О ней самой', 'badge-secondary'], plan: ['Цели', 'badge-warning'], episode: ['События', 'badge-ghost']};
-  const groups = ['user', 'self', 'plan', 'episode'].map(k => {
+  const KIND_TITLE = {user: ['Главное о тебе', 'badge-neutral'], self: ['Её выводы о себе', 'badge-secondary'], plan: ['Цели и планы', 'badge-warning']};
+  const groups = ['user', 'self', 'plan'].map(k => {
     const items = (core.memories || []).filter(m => m.kind === k);
     if (!items.length) return '';
     return `<div><div class="mb-1"><span class="badge ${KIND_TITLE[k][1]} badge-sm">${KIND_TITLE[k][0]}</span></div><ul class="space-y-1">` +

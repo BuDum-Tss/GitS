@@ -549,15 +549,12 @@ async def test_recall_finds_and_expands_episode(tmp_path):
 
 
 async def test_memory_reader_recall_keeps_default_behaviour_without_episodes():
-    class Store:
-        def search(self, q, k=6):
-            return [{"text": "факт про чай"}]
+    async def search(q, limit=6):
+        return [{"fact": "факт про чай", "uuid": "u1"}]
 
-    mem = SimpleNamespace(store=Store())
-    ad = UserMemoryAdapter(lambda: mem, lambda: None)
+    ad = UserMemoryAdapter(lambda: None, lambda: SimpleNamespace(search=search))
     assert isinstance(ad, contracts.MemoryReader)
-    assert await ad.recall("чай") == [{"text": "факт про чай", "kind": "fact", "id": ""}]
-    assert ad.search("чай") == [{"text": "факт про чай"}]                          # sync-поиск не изменился
+    assert await ad.recall("чай") == [{"text": "факт про чай", "kind": "fact", "id": "u1", "importance": 4}]
 
 
 async def test_memory_reader_recall_adds_episodes_when_connected():
@@ -565,9 +562,8 @@ async def test_memory_reader_recall_adds_episodes_when_connected():
         async def find(self, q, k=5):
             return [{"id": "e1-3", "kind": "episode", "text": "поход", "when": "x", "score": 1}]
 
-    mem = SimpleNamespace(store=SimpleNamespace(search=lambda q, k=6: []))
-    ad = UserMemoryAdapter(lambda: mem, lambda: None, lambda: SimpleNamespace(recall=Rec()))
-    assert await ad.recall("поход") == [{"text": "поход", "kind": "episode", "id": "e1-3"}]
+    ad = UserMemoryAdapter(lambda: None, lambda: None, lambda: SimpleNamespace(recall=Rec()))
+    assert await ad.recall("поход") == [{"text": "поход", "kind": "episode", "id": "e1-3", "importance": 3}]
 
 
 async def test_recall_tool_uses_episodes(monkeypatch):
@@ -589,7 +585,7 @@ async def test_recall_tool_uses_episodes(monkeypatch):
             self.envs[env.id] = env
 
     comp = SimpleNamespace(episodes=SimpleNamespace(recall=Rec()), graph=None)
-    mem = SimpleNamespace(store=SimpleNamespace(search=lambda q: []))
+    mem = SimpleNamespace(facts=lambda: [])
     reg = Registry()
     builtin.register(reg, comp, mem)
     tools = {t.name: t for t in reg.envs["assistant"].tools}

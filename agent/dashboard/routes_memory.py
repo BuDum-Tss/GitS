@@ -5,19 +5,35 @@ import approvals
 import reply_trace
 import tool_trace
 from aiohttp import web
-from memory_store import MemoryStore
-from user_memory import UserMemory
+from domain import tasks as task_dom
 
 from . import presenters
 from .context import ctx, raw_json_body
-from .routes_system import char_dir, read_json
+from .routes_system import read_json
+
+
+async def memories_view() -> list[dict]:
+    """Что она помнит важного: профиль владельца (`user`), её выводы о себе (`self`) и цели-планы (`plan`, задачи)."""
+    items: list[dict] = []
+    if ctx.graph is not None:
+        for kind, profile in (("user", "owner"), ("self", "self")):
+            items += [{"id": f["uuid"], "kind": kind, "text": f["text"], "ts": f["ts"], "importance": f["importance"]}
+                      for f in ctx.graph.profile_facts(profile, 100)]
+    tasks = ctx.tasks() if ctx.tasks is not None else None
+    if tasks is not None:
+        try:
+            items += [{"id": t.id, "kind": "plan", "text": t.goal, "ts": t.created, "due": t.due}
+                      for t in await tasks.list_tasks("*", kinds=(task_dom.KIND_PLAN,))]
+        except Exception:
+            pass
+    return items
 
 
 async def handle_api_core(request: web.Request) -> web.Response:
     """Всё, что показывает UI помимо игры: разговор, зрение, память, вопрос о разрешении."""
     return web.json_response(presenters.core_payload(
         dialogue=read_json("dialogue.json", []), activity=read_json("activity.json", []),
-        screen=presenters.screen_state(ctx.modules), memories=MemoryStore(str(char_dir())).all(),
+        screen=presenters.screen_state(ctx.modules), memories=await memories_view(),
         relations=presenters.relations_view(read_json("relationships.json", {})), tools=tool_trace.recent(40),
         approval=presenters.approval_view(approvals.has_pending(), approvals.pending_text(), approvals.pending_info())))
 
@@ -36,11 +52,19 @@ async def handle_api_forget(request: web.Request) -> web.Response:
     if err:
         return err
     if body.get("id"):
-        return web.json_response({"removed": int(MemoryStore(str(char_dir())).delete(str(body["id"])))})
+        mem_id = str(body["id"])
+        tasks = ctx.tasks() if ctx.tasks is not None else None
+        if mem_id.startswith("t-") and tasks is not None:                 # цель-план это задача: закрывается как отменённая
+            try:
+                await tasks.close(mem_id, status=task_dom.CANCELLED, note="забыто в дашборде")
+                return web.json_response({"removed": 1})
+            except Exception:
+                return web.json_response({"removed": 0})
+        return web.json_response({"removed": int(ctx.graph is not None and await ctx.graph.forget(mem_id))})
     text = str(body.get("text", "")).strip()
     if not text:
         return web.json_response({"error": "empty"}, status=400)
-    return web.json_response({"removed": UserMemory(str(char_dir())).forget(text)})
+    return web.json_response({"removed": ctx.graph.forget_matching(text, strict=True) if ctx.graph is not None else 0})
 
 
 async def handle_api_graph(request: web.Request) -> web.Response:
