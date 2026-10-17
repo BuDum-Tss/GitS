@@ -47,6 +47,7 @@ namespace AgentBridge
         public static void Tick()
         {
             if (!Ready) { _init = false; return; }
+            EnsureFullViewport();
             float now = Time.realtimeSinceStartup;
             var cam = Find.CameraDriver;
             if (UserCamera.Check(CamPos(), cam.RootSize)) { _followId = null; _holdUntil = now; _hard = false; }   // пользователь сам двигает кадр: режиссёр отступает
@@ -71,6 +72,26 @@ namespace AgentBridge
             _size = Mathf.SmoothDamp(_size, _targetSize, ref _velSize, _smooth * 1.3f, 30f, Time.unscaledDeltaTime);
             Find.CameraDriver.SetRootPosAndSize(_pos, Mathf.Clamp(_size, SizeMin, SizeMax));
             UserCamera.Remember(CamPos(), Find.CameraDriver.RootSize);
+        }
+
+        private static float _viewportLoggedAt = -100f;
+
+        /// Мир рисуется на весь кадр. Если область камеры (rect) оказалась меньше окна (при масштабировании Windows и запуске
+        /// окном без рамки бывает половина высоты), игровой центр кадра приходится на край видимого и камера «уезжает вниз»:
+        /// колонисты оказываются за границей рисунка. Возвращаем полный кадр и пишем в журнал игры, что было.
+        private static void EnsureFullViewport()
+        {
+            var cam = Find.Camera;
+            if (cam == null) return;
+            var r = cam.rect;
+            if (r.x == 0f && r.y == 0f && r.width == 1f && r.height == 1f) return;
+            float now = Time.realtimeSinceStartup;
+            if (now - _viewportLoggedAt > 30f)
+            {
+                _viewportLoggedAt = now;
+                Log.Warning($"[AgentBridge] область камеры не на весь кадр: rect={r}, pixelRect={cam.pixelRect}, экран {Screen.width}x{Screen.height}; возвращаю полный кадр");
+            }
+            cam.rect = new Rect(0f, 0f, 1f, 1f);
         }
 
         private static Vector3 CamPos()
