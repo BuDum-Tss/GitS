@@ -20,7 +20,7 @@ from pathlib import Path
 
 from claude_agent_sdk import (
     ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
-    PermissionResultAllow, PermissionResultDeny,
+    PermissionResultAllow, PermissionResultDeny, ToolUseBlock,
 )
 
 from gits_sdk import safety
@@ -87,9 +87,18 @@ def _describe(tool: str, inp: dict) -> str:
     return f"Хочу использовать инструмент {tool}."
 
 
-async def run_task(task: str, context: str, ask, usage) -> str | None:
+def tool_summary(tool: str, inp: dict) -> str:
+    """Коротко, что делает вызов инструмента Claude (для чата): команда, файл, адрес или запрос."""
+    inp = inp or {}
+    detail = (inp.get("command") or inp.get("file_path") or inp.get("path") or inp.get("url") or inp.get("query")
+              or inp.get("pattern") or "")
+    return " ".join(str(detail).split())[:160]
+
+
+async def run_task(task: str, context: str, ask, usage, on_tool=None) -> str | None:
     """Выполнить просьбу. ask(вопрос, опасность) -> bool - разрешение пользователя; usage(tokens, limit_text) - учёт расхода
-    (async, сбой не должен ломать задачу). Возвращает итог, "" если сказать нечего, None при сбое."""
+    (async, сбой не должен ломать задачу); on_tool(имя, кратко) - вызван при каждом запуске инструмента Claude
+    (async, сбой не ломает задачу). Возвращает итог, "" если сказать нечего, None при сбое."""
 
     async def can_use_tool(tool_name, tool_input, _ctx):
         danger = safety.danger_of(tool_name, tool_input, _PROJECT_ROOT)
@@ -122,6 +131,11 @@ async def run_task(task: str, context: str, ask, usage) -> str | None:
             async for msg in client.receive_response():
                 if isinstance(msg, AssistantMessage):
                     for block in msg.content:
+                        if on_tool is not None and isinstance(block, ToolUseBlock):
+                            try:
+                                await on_tool(block.name, tool_summary(block.name, block.input))
+                            except Exception as e:
+                                logger.debug(f"on_tool: {e}")
                         text = getattr(block, "text", None)
                         if text:
                             texts.append(text)
