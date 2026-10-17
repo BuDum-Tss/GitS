@@ -193,7 +193,7 @@ class FactStore:
         cond, args = self._area(group)
         with self._lock:
             rows = self._db.execute("SELECT subject, relation, object, fact, uuid, valid_at, invalid_at, created_at, group_id, canon, "
-                                    f"source, importance, profile FROM facts WHERE {cond} ORDER BY created_at DESC LIMIT ?", (*args, limit)).fetchall()
+                                    f"source, importance, profile FROM facts WHERE {cond} AND profile IS NULL ORDER BY created_at DESC LIMIT ?", (*args, limit)).fetchall()
         names = list(dict.fromkeys(n for r in rows for n in (r["subject"], r["object"])))
         edges = [{"from": r["subject"], "relation": r["relation"], "to": r["object"], "fact": r["fact"], "uuid": r["uuid"],
                   "valid_at": (iso(r["valid_at"]) or "")[:10] or None, "invalid_at": (iso(r["invalid_at"]) or "")[:10] or None,
