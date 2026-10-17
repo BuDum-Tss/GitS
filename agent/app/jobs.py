@@ -1,9 +1,14 @@
 """Ход задач модулей (ТЗ 29, ARC-4; ТЗ 03, ATT-12): состояние задачи -> событие внимания."""
 import secrets
 
+import tool_trace
+
 from .attention_core import TEXT_MAX, AttentionContext, Item
 from .dispatcher import Dispatcher
 from .items import ItemStore
+
+
+TOOL_STAGE = "tool:"      # стадия задачи «идёт вызов инструмента»: `tool:<Имя>:<номер>`, номер делает каждую стадию новой
 
 
 class JobTracker:
@@ -34,6 +39,10 @@ class JobTracker:
         шина уже вызывает submit_question с защитой от повторов по question_id (MOD-20) и сама отправляет job.answer."""
         ctx = self.ctx
         key, state, stage = (module_id, str(job.get("job_id"))), job.get("state"), job.get("stage")
+        if state == "running" and str(stage or "").startswith(TOOL_STAGE):
+            # внутренний вызов Claude-помощника (`tool:<Имя>:<номер>`): в чат, не в внимание
+            tool_trace.note("claude", str(stage).split(":")[1], str(job.get("text") or ""))
+            return
         before = self.states.get(key)
         self.states[key] = (state, stage)
         if len(self.states) > 500:                          # старые задачи забываем: словарь не растёт без конца

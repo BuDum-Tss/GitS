@@ -771,9 +771,25 @@ $('chat').addEventListener('scroll', () => {
   const c = $('chat'); stick = c.scrollHeight - c.scrollTop - c.clientHeight < 40;
 });
 let chatMsgs = [];
-function renderChat(dialogue, waiting) {
+// кто запустил инструмент: быстрый контур (планировщик на локальной модели), медленный (Claude-помощник), вызов со стороны
+const TOOL_WHO = {fast: 'быстрый контур · Gemma', claude: 'медленный контур · Claude', external: 'вызов извне'};
+const TOOL_MARK = {running: '…', done: '✓', failed: '✗'};
+function toolRow(e) {
+  const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  const cls = e.state === 'failed' ? 'text-error' : e.state === 'running' ? 'text-warning' : 'text-success';
+  return `<div class="text-xs opacity-80 px-2 flex flex-wrap gap-x-2" title="${esc(e.result || '')}">
+    <span class="${cls}">${TOOL_MARK[e.state] || ''}</span><span class="badge badge-ghost badge-sm">${esc(TOOL_WHO[e.executor] || e.executor)}</span>
+    <code>${esc(e.tool)}</code>${e.summary ? `<span class="opacity-70 break-all">${esc(e.summary)}</span>` : ''}
+    ${e.state === 'failed' && e.result ? `<span class="text-error">${esc(e.result)}</span>` : ''}<time class="opacity-50">${t}</time></div>`;
+}
+function renderChat(dialogue, waiting, tools) {
   chatMsgs = dialogue;
-  const html = dialogue.map((m, i) => {
+  const from = dialogue.length ? dialogue[0].ts : 0;         // запуски старше видимого диалога не показываем
+  const rows = dialogue.map((m, i) => ({ts: m.ts, m, i}))
+    .concat((tools || []).filter(e => e.ts >= from).map(e => ({ts: e.ts, e}))).sort((a, b) => a.ts - b.ts);
+  const html = rows.map(r => {
+    if (r.e) return toolRow(r.e);
+    const m = r.m, i = r.i;
     const mine = m.role === 'user';
     const t = new Date(m.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
     return `<div class="chat ${mine ? 'chat-end' : 'chat-start'}">
@@ -1745,7 +1761,7 @@ async function poll() {
     $('badge-auto').classList.toggle('hidden', !(st.settings && st.settings.auto_accept));
     $('badge-quiet').classList.toggle('hidden', !(st.settings && (st.settings.dnd || st.settings.quiet_until * 1000 > Date.now())));
     const last = core.dialogue[core.dialogue.length - 1];
-    renderChat(core.dialogue, last && last.role === 'user' && Date.now() / 1000 - last.ts < 90);
+    renderChat(core.dialogue, last && last.role === 'user' && Date.now() / 1000 - last.ts < 90, core.tools);
     renderActivity(core.activity); renderScreen(core.screen); renderMemory(core); renderGame(st);
     $('approval').classList.toggle('hidden', !core.approval.pending);
     $('approval-text').textContent = core.approval.text;

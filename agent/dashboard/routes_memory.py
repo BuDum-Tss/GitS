@@ -3,6 +3,7 @@ from datetime import datetime
 
 import approvals
 import reply_trace
+import tool_trace
 from aiohttp import web
 from memory_store import MemoryStore
 from user_memory import UserMemory
@@ -17,7 +18,7 @@ async def handle_api_core(request: web.Request) -> web.Response:
     return web.json_response(presenters.core_payload(
         dialogue=read_json("dialogue.json", []), activity=read_json("activity.json", []),
         screen=presenters.screen_state(ctx.modules), memories=MemoryStore(str(char_dir())).all(),
-        relations=presenters.relations_view(read_json("relationships.json", {})),
+        relations=presenters.relations_view(read_json("relationships.json", {})), tools=tool_trace.recent(40),
         approval=presenters.approval_view(approvals.has_pending(), approvals.pending_text(), approvals.pending_info())))
 
 
