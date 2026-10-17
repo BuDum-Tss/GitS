@@ -44,6 +44,23 @@ class ContextBuilder:
             lines.append("- " + note)
         return "\n".join(lines)
 
+    @staticmethod
+    def _without_lines_of(text: str, other: str) -> str:
+        """Строки блока `text`, которых нет в блоке `other` (воспоминания о себе не повторяются фактами графа)."""
+        have = {ln.strip(" -") for ln in (other or "").splitlines()}
+        lines = (text or "").splitlines()
+        if len(lines) < 2:
+            return text or ""
+        rest = [ln for ln in lines[1:] if ln.strip(" -") not in have]
+        return "\n".join([lines[0], *rest]) if rest else ""
+
+    def environment_note(self) -> str:
+        """Где она сейчас, если не в среде assistant: среда, цель и сводка её модуля (только текущей среды; остальное по запросу)."""
+        try:
+            return self._h.environment_note() or ""
+        except Exception:
+            return ""
+
     def owner_allowed(self) -> bool:
         """Можно ли класть сведения о пользователе: только в среде `assistant` (ответ на реплику передаёт `owner=True`)."""
         try:
@@ -95,10 +112,13 @@ class ContextBuilder:
                 blocks.append(("heard", "Что недавно было слышно из колонок (краткая сводка автоматической расшифровки, "
                                "возможны ошибки; это может быть фильм, видео, музыка, не слова "
                                "пользователя): " + heard))
+        env = self.environment_note()
+        if env:
+            blocks.append(("environment", env))
         if h._self_block and not skip_memory:
             blocks.append(("self", h._self_block))
         if h._graph_block and not skip_memory:
-            blocks.append(("graph", h._graph_block))
+            blocks.append(("graph", self._without_lines_of(h._graph_block, h._self_block)))
         if self.mood_of is not None:
             try:
                 mood = self.mood_of()

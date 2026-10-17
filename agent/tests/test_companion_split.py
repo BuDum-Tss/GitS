@@ -101,3 +101,15 @@ def test_owner_info_only_for_user_replies_or_assistant_workspace(tmp_path):
     assert "ПРОФИЛЬ" in c._context(query="x", owner=True)
     c.workspace_of = lambda: "assistant"
     assert "ПРОФИЛЬ" in c._context(query="x")
+
+
+def test_graph_block_does_not_repeat_self_memories_and_environment_is_shown(tmp_path):
+    c, _ = make(tmp_path)
+    c._self_block = "Твои воспоминания:\n- Я провожу эксперименты."
+    c._graph_block = "Что ты знаешь по теме:\n- Я провожу эксперименты.\n- Он любит чай."
+    c.environment_note = lambda: "Ты сейчас в среде «RimWorld». Сводка: игра: меню."
+    text = c._context(query="x")
+    assert text.count("Я провожу эксперименты") == 1 and "Он любит чай" in text
+    assert "Ты сейчас в среде «RimWorld»" in text
+    c._graph_block = "Что ты знаешь по теме:\n- Я провожу эксперименты."
+    assert "Что ты знаешь по теме" not in c._context(query="x")        # весь блок повторял воспоминания: пустой заголовок не нужен

@@ -158,6 +158,17 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     registry.focus = profiles.focus_modules
     companion.profile_hint = profiles.hint
     companion.workspace_of = lambda: workspaces.current
+
+    def environment_note() -> str:
+        ws = workspaces.current
+        if ws in ("assistant", "sleep"):
+            return ""
+        spec = workspaces.specs.get(ws)
+        rec = modules.records.get(ws)
+        summary = ((rec.state or {}).get("summary") or "").strip() if rec is not None and rec.connected else ""
+        goal = f" Цель: {workspaces.goal}." if workspaces.goal else ""
+        return f"Ты сейчас в среде «{spec.title if spec else ws}».{goal}" + (f" Сводка: {summary}." if summary else "")
+    companion.environment_note = environment_note
     companion.module_notes = modules.notes                # что умеют подключённые модули и в каком они состоянии
     companion.idle_seconds = lambda: float(desktop_state(modules).get("idle_s") or 0.0)     # простой (ТЗ 14, DESK-7)
     companion.screen_activity = lambda: desktop_state(modules).get("activity")              # активность экрана (DESK-7)
@@ -358,6 +369,19 @@ async def _run(config: dict):
 
     companion.router = Router(registry, companion.say, recent_dialogue)
     companion.router.interrupted = lambda: getattr(companion, "attention", None) is not None and companion.attention.speech.urgent_waiting()      # важное событие обрывает цепочку действий
+
+    async def enter_after_launch(tool, args, ok, result) -> None:
+        """Игру запустили по просьбе пользователя: заходим в среду её модуля (цели, камера, комментарии и ход идут только в
+        фокусе). По самоимпульсу сюда не входим: там вход решает размышление (ТЗ 32)."""
+        from app import impulse_origin
+        if not ok or tool.name != "launch_game" or impulse_origin.current() == impulse_origin.SELF:
+            return
+        ws = str(tool.id).split(".", 1)[0]
+        layer.workspaces.sync()
+        if ws in layer.workspaces.specs:
+            res = await layer.workspaces.enter(ws, "user", str(args.get("reason") or "")[:200])
+            tool_trace.note("external", "workspace.switch", f"{ws}: {'ok' if res.get('ok') else res.get('error')}")
+    companion.router.after_tool = enter_after_launch
     layer.requests.router = companion.router            # core.tool.call от модулей идёт тем же путём, что просьбы
     dashboard.set_router(companion.router)              # POST /api/menu_click идёт инструментом desktop.menu_click (DESK-14)
     dashboard.set_registry(registry)

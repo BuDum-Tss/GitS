@@ -103,3 +103,17 @@ def test_speech_queue_reports_urgent_waiting():
     assert not q.urgent_waiting()
     q.items.append(c(90, "module"))
     assert q.urgent_waiting()
+
+
+async def test_after_tool_hook_gets_tool_args_and_result():
+    seen = []
+    router = make(Script(plan(["rw.launch_game"])), [tool("rw.launch_game", "запуск", False)], [])
+
+    async def hook(t, args, ok, result):
+        seen.append((t.id, ok, result))
+    router.after_tool = hook
+    await router.handle("запусти игру", announce=False)
+    assert seen == [("rw.launch_game", True, "запуск")]
+    router.after_tool = lambda *a: (_ for _ in ()).throw(RuntimeError("сбой хука"))         # сбой хука не ломает действие
+    router._llm = Script(plan(["rw.launch_game"]))
+    assert await router.handle("запусти игру", announce=False) is not None
