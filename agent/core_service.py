@@ -296,7 +296,7 @@ def wire_affect(companion, layer, presence, speech, mem_root: Path):
                            on_change=lambda fields: presence.update(**fields))
     _fb.set_affect(affect)
     _journal.mistake_hook = affect.on_mistake
-    companion.context_builder.mood_of = affect.mood_block
+    companion.context_builder.emotion_of = affect.emotion_block
     layer.attention.ctx.threshold_offset = affect.proactivity_offset
     voice = getattr(speech, "voice", None)
     if voice is not None:

@@ -4,8 +4,9 @@
 Источники сдвига: реплика пользователя и реакции на события (`fast_brain.publish` зовёт `on_emotion`), метки ошибок
 (`journal.mistake` зовёт `on_mistake`), изменение отношений (поле `delta` реакции на реплику). Собственные реплики состояние
 не двигают (иначе эмоция подкрепляла бы сама себя): их интенсивность берётся из состояния (`reply_intensity`).
-Настроение не меняет факты, конституцию, разрешения и безопасность: наружу уходят только факт для контекста, подпись
-питомца, ограниченный сдвиг голоса и сдвиг порогов внимания.
+Долгого настроения нет: только быстрые реакции на события, они гаснут за минуты. Эмоция не меняет факты, конституцию,
+разрешения и безопасность: наружу уходят только факт для контекста, подпись питомца, ограниченный сдвиг голоса и сдвиг
+порогов внимания.
 """
 from __future__ import annotations
 
@@ -46,7 +47,7 @@ class AffectService:
         self.on_change = on_change              # снимок для presence; синхронный
         self.folder = Path(folder)
         self.state = dom.initial(self.params, clock())
-        self.history: deque = deque()           # [ts, valence, mood, arousal]
+        self.history: deque = deque()           # [ts, valence, arousal]
         self.warnings: list[str] = []
         self._saved_at = 0.0
         self.load()
@@ -68,8 +69,8 @@ class AffectService:
         self.state = dom.State.from_dict(raw.get("state") if isinstance(raw, dict) else None, self.params, now)
         self.history.clear()
         for row in (raw.get("history") if isinstance(raw, dict) else None) or []:
-            if isinstance(row, list) and len(row) == 4 and now - row[0] < HISTORY_S:
-                self.history.append(row)
+            if isinstance(row, list) and len(row) in (3, 4) and now - row[0] < HISTORY_S:
+                self.history.append([row[0], row[1], row[-1]])      # прежняя запись с настроением: берём валентность и возбуждение
         self.state = dom.decay(self.state, self.params, now)
 
     def save(self) -> None:
@@ -97,7 +98,7 @@ class AffectService:
         while self.history and now - self.history[0][0] > HISTORY_S:
             self.history.popleft()
         if force or not self.history or now - self.history[-1][0] >= SAMPLE_EVERY_S:
-            self.history.append([round(now, 1), round(self.state.valence, 3), round(self.state.mood, 3),
+            self.history.append([round(now, 1), round(self.state.valence, 3),
                                  round(self.state.arousal, 3)])
 
     def appraise(self, label: str, intensity, category: str, *, valence_push: float = 0.0, reason: str = "") -> None:
@@ -142,8 +143,8 @@ class AffectService:
 
     # ── выдача ──────────────────────────────────────────────────────────────
 
-    def mood_block(self) -> str:
-        return dom.mood_fact(self._refresh(), self.params, self.clock())
+    def emotion_block(self) -> str:
+        return dom.emotion_fact(self._refresh(), self.params, self.clock())
 
     def emotion_label(self) -> str:
         return dom.dominant(self._refresh())
@@ -156,12 +157,12 @@ class AffectService:
 
     def presence_fields(self) -> dict:
         st = self._refresh()
-        return {"valence": round(st.valence, 3), "arousal": round(st.arousal, 3), "mood": round(st.mood, 3),
-                "mood_emotion": dom.dominant(st)}
+        return {"valence": round(st.valence, 3), "arousal": round(st.arousal, 3),
+                "mood_emotion": dom.dominant(st)}      # имя ключа прежнее (читает питомец): заметная сейчас эмоция
 
     def snapshot(self, with_history: bool = False) -> dict:
         st = self._refresh()
-        out = {**self.presence_fields(), "mood_word": dom.mood_word(st), "emotions": {k: round(v, 3) for k, v in st.emotions.items()},
+        out = {**self.presence_fields(), "emotions": {k: round(v, 3) for k, v in st.emotions.items()},
                "reason": st.reason, "tone": self.tone(), "proactivity_offset": self.proactivity_offset(),
                "baseline": {"valence": self.params.baseline_valence, "arousal": self.params.baseline_arousal},
                "warnings": list(self.warnings), "ts": st.ts}
@@ -175,7 +176,7 @@ class AffectService:
             try:
                 self.on_change(self.presence_fields())
             except Exception as e:
-                log.warning("рассылка настроения: %s", e)
+                log.warning("рассылка эмоции: %s", e)
 
     # ── управление ──────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 """Эмоции персонажа: чистая логика состояния (ТЗ 26). Без ввода-вывода, настроек и часов: время приходит аргументом.
 
-Состояние: валентность (-1..1), возбуждение (0..1), быстрые эмоции (подпись -> сила 0..1, затухают за минуты) и медленное
-настроение (-1..1, затухает за часы). Параметры персонажа читаются из поля `emotions` его карточки; пустое поле даёт
+Состояние: валентность (-1..1), возбуждение (0..1) и быстрые эмоции (подпись -> сила 0..1): всё это реакции на события,
+они затухают за минуты к базовому уровню. Долгого «настроения» нет: без свежих событий она ровная. Параметры персонажа читаются из поля `emotions` его карточки; пустое поле даёт
 нейтральные значения по умолчанию. Значений конкретного персонажа здесь нет.
 """
 from __future__ import annotations
@@ -18,8 +18,7 @@ VECTORS: dict[str, tuple[float, float]] = {
 }
 NEUTRAL_LABELS = ("idle", "sitting", "resting", "question", "looking", "thinking")   # фоновые: состояние не двигают
 INTENSITY_MAX = 3
-MOOD_GAIN = 0.3                  # какая доля сдвига валентности попадает в настроение
-MOOD_LABEL_AT = 0.2              # |настроение| выше этого даёт подпись настроения
+EMOTION_NOTICED_AT = 0.15        # сила эмоции, с которой она заметна (подпись питомцу, факт в контекст)
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -37,7 +36,6 @@ class Params:
     baseline_valence: float = 0.0
     baseline_arousal: float = 0.2
     emotion_decay_min: float = 10.0        # постоянная времени быстрых эмоций, минуты
-    mood_decay_h: float = 6.0              # постоянная времени настроения, часы
     inertia: float = 0.3                   # 0..0.9: доля сдвига, которую состояние гасит
     max_shift_per_hour: float = 0.6        # максимум суммарного |сдвига валентности| за час
     sensitivity: dict = field(default_factory=dict)   # категория события -> множитель
@@ -57,7 +55,6 @@ class Params:
             baseline_valence=_num(raw.get("baseline_valence"), d.baseline_valence, -1, 1),
             baseline_arousal=_num(raw.get("baseline_arousal"), d.baseline_arousal, 0, 1),
             emotion_decay_min=_num(raw.get("emotion_decay_min"), d.emotion_decay_min, 0.1, 24 * 60),
-            mood_decay_h=_num(raw.get("mood_decay_h"), d.mood_decay_h, 0.05, 24 * 14),
             inertia=_num(raw.get("inertia"), d.inertia, 0, 0.9),
             max_shift_per_hour=_num(raw.get("max_shift_per_hour"), d.max_shift_per_hour, 0.01, 2),
             sensitivity={str(k): _num(v, 1.0, 0, 5) for k, v in sens.items()},
@@ -70,14 +67,13 @@ class Params:
 class State:
     valence: float = 0.0
     arousal: float = 0.2
-    mood: float = 0.0
     emotions: dict = field(default_factory=dict)      # подпись -> сила 0..1
     ts: float = 0.0                                   # на какой момент посчитано
     reason: str = ""                                  # причина последнего заметного сдвига
     ledger: list = field(default_factory=list)        # [[ts, |сдвиг валентности|]] за последний час
 
     def to_dict(self) -> dict:
-        return {"valence": self.valence, "arousal": self.arousal, "mood": self.mood, "emotions": dict(self.emotions),
+        return {"valence": self.valence, "arousal": self.arousal, "emotions": dict(self.emotions),
                 "ts": self.ts, "reason": self.reason, "ledger": [list(x) for x in self.ledger]}
 
     @classmethod
@@ -92,13 +88,12 @@ class State:
                 ledger.append([float(e[0]), float(e[1])])
         return cls(valence=_num(raw.get("valence"), params.baseline_valence, -1, 1),
                    arousal=_num(raw.get("arousal"), params.baseline_arousal, 0, 1),
-                   mood=_num(raw.get("mood"), params.baseline_valence, -1, 1),
                    emotions={str(k): _num(v, 0, 0, 1) for k, v in emotions.items() if k in VECTORS},
                    ts=_num(raw.get("ts"), now, 0, 1e12), reason=str(raw.get("reason") or "")[:120], ledger=ledger)
 
 
 def initial(params: Params, now: float) -> State:
-    return State(valence=params.baseline_valence, arousal=params.baseline_arousal, mood=params.baseline_valence, ts=now)
+    return State(valence=params.baseline_valence, arousal=params.baseline_arousal, ts=now)
 
 
 def decay(state: State, params: Params, now: float) -> State:
@@ -108,12 +103,11 @@ def decay(state: State, params: Params, now: float) -> State:
     if dt <= 0:
         return state
     fast = math.exp(-dt / (params.emotion_decay_min * 60.0))
-    slow = math.exp(-dt / (params.mood_decay_h * HOUR))
     b_v, b_a = params.baseline_valence, params.baseline_arousal
     emotions = {k: v * fast for k, v in state.emotions.items() if v * fast >= 0.01}
     ledger = [e for e in state.ledger if now - e[0] < HOUR]
     return State(valence=b_v + (state.valence - b_v) * fast, arousal=b_a + (state.arousal - b_a) * fast,
-                 mood=b_v + (state.mood - b_v) * slow, emotions=emotions, ts=now, reason=state.reason, ledger=ledger)
+                 emotions=emotions, ts=now, reason=state.reason, ledger=ledger)
 
 
 def budget_left(state: State, params: Params, now: float) -> float:
@@ -151,53 +145,34 @@ def appraise(state: State, params: Params, now: float, *, label: str, intensity,
     if label in VECTORS and label not in NEUTRAL_LABELS:
         emotions[label] = _clamp(max(emotions.get(label, 0.0), strength) + 0.1 * strength, 0, 1)
     ledger = state.ledger + ([[now, abs(applied)]] if applied else [])
-    mood = _clamp(state.mood + applied * MOOD_GAIN, -1, 1)
-    return State(valence=new_v, arousal=arousal, mood=mood, emotions=emotions, ts=now,
+    return State(valence=new_v, arousal=arousal, emotions=emotions, ts=now,
                  reason=(reason or label) if abs(applied) >= 0.01 else state.reason, ledger=ledger), warnings
 
 
 def dominant(state: State) -> str:
-    """Подпись для питомца из набора: сильнейшая быстрая эмоция; иначе по настроению; иначе idle."""
+    """Подпись для питомца из набора: сильнейшая быстрая эмоция; нет заметной - idle."""
     if state.emotions:
         label, power = max(state.emotions.items(), key=lambda kv: kv[1])
-        if power >= 0.15:
+        if power >= EMOTION_NOTICED_AT:
             return label
-    if state.mood <= -MOOD_LABEL_AT:
-        return "sad"
-    if state.mood >= MOOD_LABEL_AT:
-        return "happy"
     return "idle"
 
 
-def mood_word(state: State) -> str:
-    m = state.mood
-    if m <= -0.6:
-        return "очень плохое"
-    if m <= -MOOD_LABEL_AT:
-        return "плохое"
-    if m < MOOD_LABEL_AT:
-        return "ровное"
-    if m < 0.6:
-        return "хорошее"
-    return "очень хорошее"
-
-
-def mood_fact(state: State, params: Params, now: float) -> str:
-    """Факт для контекста (AFF-5): состояние и причина, без готовых реплик."""
+def emotion_fact(state: State, params: Params, now: float) -> str:
+    """Факт для контекста (AFF-5): какая эмоция сейчас заметна и почему. Нет свежей реакции - пусто (ровный фон не пересказываем)."""
     state = decay(state, params, now)
+    label = dominant(state)
+    if label == "idle":
+        return ""
     level = "высокое" if state.arousal > 0.65 else "среднее" if state.arousal > 0.3 else "низкое"
-    parts = [f"Твоё настроение сейчас {mood_word(state)}, возбуждение {level}"]
-    if state.emotions:
-        label, power = max(state.emotions.items(), key=lambda kv: kv[1])
-        if power >= 0.15:
-            parts.append(f"заметна эмоция «{label}»")
-    if state.reason and (abs(state.mood - params.baseline_valence) >= 0.05 or state.emotions):
+    parts = [f"Сейчас в тебе отзывается эмоция «{label}» (реакция на недавнее), возбуждение {level}"]
+    if state.reason:
         parts.append(f"причина: {state.reason}")
     return "; ".join(parts) + ". Это окрашивает тон, но не меняет факты, твои принципы и правила разрешений."
 
 
 def voice_tone(state: State, params: Params) -> dict:
-    """Ограниченный сдвиг голоса: скорость в % и тон в Гц. Хорошее настроение и возбуждение быстрее и выше."""
+    """Ограниченный сдвиг голоса: скорость в % и тон в Гц. Приятные реакции и возбуждение: быстрее и выше."""
     k = _clamp(state.valence - params.baseline_valence, -1, 1)
     a = _clamp(state.arousal - params.baseline_arousal, -1, 1)
     rate = _clamp((0.6 * a + 0.4 * k) * params.voice_rate_limit, -params.voice_rate_limit, params.voice_rate_limit)
@@ -206,6 +181,6 @@ def voice_tone(state: State, params: Params) -> dict:
 
 
 def proactivity_offset(state: State, params: Params) -> float:
-    """Сдвиг порогов внимания в пунктах: хорошее настроение снижает пороги (охотнее говорит), плохое повышает."""
-    k = _clamp(state.mood - params.baseline_valence, -1, 1)
+    """Сдвиг порогов внимания в пунктах: приятная реакция снижает пороги (охотнее говорит), неприятная повышает."""
+    k = _clamp(state.valence - params.baseline_valence, -1, 1)
     return round(-k * params.proactivity_limit, 2)
