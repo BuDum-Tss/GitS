@@ -44,6 +44,7 @@ CONTEXT_FACTS = 3                 # фактов графа в контекст�
 MAX_ATTEMPTS = 3
 MIN_IMPORTANCE_PROFILE = 4        # факт о владельце и о самом персонаже идёт в память, только если она сама сочла его важным (4-5)
 MIN_IMPORTANCE_OTHER = 3          # факты о других людях и мире мягче: связи и события жизни (3-5), мелочь (1-2) не пишется
+SAME_FACT_OVERLAP = 0.6              # доля общих основ слов, с которой два факта профиля считаются одним
 PROFILE_FACTS = 8                 # фактов профиля владельца в контексте ответа (всегда, если говорит он)
 
 # ── извлечение фактов ──────────────────────────────────────────────────────────
@@ -531,8 +532,12 @@ class GraphMemory:
         text = re.sub(r"\s+", " ", str(text)).strip()[:300]
         if len(text) < 6 or importance < MIN_IMPORTANCE_PROFILE:
             return False
-        if text.lower() in {f["text"].lower() for f in self.profile_facts("owner", 200)}:
-            return False                                   # то же самое уже записано (имя владельца могло смениться)
+        new_stems = stemlib.stems(text)
+        for old in self.profile_facts("owner", 200):       # то же самое уже записано (имя владельца могло смениться, слова другие)
+            old_stems = stemlib.stems(old["text"])
+            if old["text"].lower() == text.lower() or (
+                    new_stems and old_stems and len(new_stems & old_stems) / min(len(new_stems), len(old_stems)) >= SAME_FACT_OVERLAP):
+                return False
         f = Fact((subject or "Пользователь").strip() or "Пользователь", "ЗАМЕТКА", text[:60], text, int(importance))
         try:
             return self.backend.remember_sync(f, time.time(), self.group(), profile="owner", source="remember")
@@ -645,7 +650,12 @@ class GraphMemory:
             return self._character
 
     async def context_block(self, query: str) -> str:
-        facts = await self.search(query, limit=CONTEXT_FACTS)
+        """Факты по теме. Факты профиля владельца сюда не входят: владельцу они уже показаны блоком профиля (без повторов), а чужому
+        голосу (`[говорит …]`, `[незнакомый голос]`) профиль владельца не показываем вовсе."""
+        from app.memory_capture import SPEAKER_TAG
+        shown = {f["uuid"] for f in self.profile_facts("owner", 500 if SPEAKER_TAG.match(query) else PROFILE_FACTS)}
+        found = await self.search(query, limit=CONTEXT_FACTS + len(shown))
+        facts = [f for f in found if f.get("uuid") not in shown][:CONTEXT_FACTS]
         if not facts:
             return ""
         return "Что ты знаешь по теме (из памяти-графа, это проверенные факты):\n" + "\n".join(f"- {f['fact']}" for f in facts)

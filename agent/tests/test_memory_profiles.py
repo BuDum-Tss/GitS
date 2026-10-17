@@ -197,3 +197,35 @@ def test_old_memory_layers_are_gone(name):
     import importlib
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module(name)
+
+
+# ── без повторов ──────────────────────────────────────────────────────────────
+
+def test_near_duplicate_profile_fact_is_not_written_twice(tmp_path):
+    g = _graph(tmp_path)
+    assert g.remember("Пользователь любит зелёный чай по утрам", 4, subject="Аня") is True
+    assert g.remember("Аня очень любит зелёный чай по утрам", 4, subject="Аня") is False       # то же другими словами
+    assert g.remember("Пользователь учится на втором курсе университета", 4) is True
+    assert len(g.profile_facts("owner")) == 2
+
+
+async def test_topic_facts_do_not_repeat_the_profile_and_do_not_leak_it(tmp_path):
+    g = _graph(tmp_path)
+    g.remember("Пользователь любит зелёный чай по утрам", 5)
+    uuid = g.profile_facts("owner")[0]["uuid"]
+
+    async def search(query, limit=6, include_old=False):
+        return [{"uuid": uuid, "fact": "Пользователь любит зелёный чай по утрам", "score": 0.9},
+                {"uuid": "x", "fact": "Вася живёт в Казани", "score": 0.8}]
+    g.search = search
+    owner_block = await g.context_block("что мне попить?")
+    assert "Вася" in owner_block and "зелёный чай" not in owner_block                          # профиль уже показан отдельно
+    stranger_block = await g.context_block("[говорит Вася] что ему попить?")
+    assert "Вася" in stranger_block and "зелёный чай" not in stranger_block
+
+
+def test_facts_tab_snapshot_does_not_list_profile_facts(tmp_path):
+    g = _graph(tmp_path)
+    g.remember("Пользователь любит зелёный чай по утрам", 5)
+    snap = g.backend.store.snapshot(g.group(), 50)
+    assert snap["edges"] == []
