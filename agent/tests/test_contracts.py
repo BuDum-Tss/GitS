@@ -194,7 +194,7 @@ async def test_attention_registers_sender_and_memorises_on_fake_contracts(tmp_pa
     await att.settle()
 
     assert ("ensure", "tg:2", "Маша") in people.calls and ("note", "tg:2", text) in people.calls
-    assert mem.fact_items == [{"text": text, "kind": "episode", "importance": 3}]
+    assert mem.fact_items == []      # сырое событие в долгую память не пишется
     assert mem.graph_items == [("Маша", text)]
     assert any(kind == "attention" for kind, _ in log.entries)       # решение внимания записано в журнал
 

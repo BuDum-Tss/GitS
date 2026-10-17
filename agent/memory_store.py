@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 KINDS = ("user", "self", "plan", "episode")
+MIN_IMPORTANCE = 4       # в память идёт только то, что она сама сочла важным (4-5); мелочь (1-3) не записывается
 _MAX = 300
 BASE_IMPORTANCE = 5      # «базовое» о пользователе: попадает в контекст и вне темы разговора
 BASE_MAX = 3             # но не больше стольких записей
@@ -133,7 +134,7 @@ class MemoryStore:
 
     def _add(self, data: dict, kind: str, text: str, importance: int, ts: float, due) -> bool:
         text = re.sub(r"\s+", " ", str(text)).strip()[:300]
-        if not text or kind not in KINDS:
+        if not text or kind not in KINDS or importance < MIN_IMPORTANCE:
             return False
         for it in data["items"]:
             if it["kind"] == kind and _similar(it["text"], text):
