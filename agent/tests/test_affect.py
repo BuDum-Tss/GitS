@@ -9,7 +9,7 @@ from app.affect_service import AffectService
 from app.context_builder import ContextBuilder
 from domain import affect as dom
 
-P = dom.Params.from_card({"baseline_valence": 0.1, "emotion_decay_min": 10, "mood_decay_h": 2, "inertia": 0.0,
+P = dom.Params.from_card({"baseline_valence": 0.1, "emotion_decay_min": 10, "inertia": 0.0,
                           "max_shift_per_hour": 0.5})
 
 
@@ -42,9 +42,9 @@ def test_decay_returns_to_baseline_and_is_stepwise_exact():
     step = s
     for t in range(600, 7201, 600):
         step = dom.decay(step, P, t)
-    assert abs(one.valence - step.valence) < 1e-9 and abs(one.mood - step.mood) < 1e-9
+    assert abs(one.valence - step.valence) < 1e-9 and abs(one.arousal - step.arousal) < 1e-9
     far = dom.decay(s, P, 10 * 86400)
-    assert abs(far.valence - 0.1) < 1e-6 and abs(far.mood - 0.1) < 1e-6 and not far.emotions
+    assert abs(far.valence - 0.1) < 1e-6 and not far.emotions
 
 
 def test_saturation_and_hour_cap():
@@ -79,24 +79,27 @@ def test_neutral_labels_do_not_move_state():
 
 
 def test_bounds_for_tone_and_proactivity():
-    s = dom.State(valence=-1, arousal=1, mood=-1, ts=0)
+    s = dom.State(valence=-1, arousal=1, ts=0)
     t = dom.voice_tone(s, P)
     assert abs(t["rate_pct"]) <= P.voice_rate_limit and abs(t["pitch_hz"]) <= P.voice_pitch_limit
     assert abs(dom.proactivity_offset(s, P)) <= P.proactivity_limit
-    assert dom.proactivity_offset(s, P) > 0 > dom.proactivity_offset(dom.State(mood=1, ts=0), P)
+    assert dom.proactivity_offset(s, P) > 0 > dom.proactivity_offset(dom.State(valence=1, ts=0), P)
 
 
-def test_bad_events_drop_mood_then_recover(tmp_path):
+def test_bad_events_give_a_fast_emotion_that_fades_without_a_long_mood(tmp_path):
     c = Clock()
     a = svc(tmp_path, c)
-    base = a.snapshot()["mood"]
+    assert a.emotion_block() == "" and "mood" not in a.snapshot()          # ровный фон: в контекст нечего добавить
+    base = a.snapshot()["valence"]
     for _ in range(3):
         a.on_emotion("pawn_died", {"emotion": "sad", "intensity": 3})
     low = a.snapshot()
-    assert low["mood"] < base and low["mood_emotion"] == "sad" and "pawn_died" in low["reason"]
-    assert "не меняет факты" in a.mood_block()
-    c.t += 20 * 3600
-    assert abs(a.snapshot()["mood"] - P.baseline_valence) < 0.01
+    assert low["valence"] < base and low["mood_emotion"] == "sad" and "pawn_died" in low["reason"]
+    assert "не меняет факты" in a.emotion_block() and "«sad»" in a.emotion_block()
+    c.t += 3600                                                            # через час реакции нет, настроения нет
+    after = a.snapshot()
+    assert abs(after["valence"] - P.baseline_valence) < 0.01 and after["mood_emotion"] == "idle"
+    assert a.emotion_block() == ""
 
 
 def test_own_reply_does_not_move_state_and_intensity_from_state(tmp_path):
@@ -122,14 +125,17 @@ def test_persist_restore_and_sleep_decay(tmp_path):
     c = Clock()
     a = svc(tmp_path, c)
     a.on_emotion("chat", {"emotion": "angry", "intensity": 3})
-    mood = a.snapshot()["mood"]
+    valence = a.snapshot()["valence"]
     a.stop()
-    assert json.loads((tmp_path / "affect.json").read_text(encoding="utf-8"))["state"]["mood"] == mood
+    saved = json.loads((tmp_path / "affect.json").read_text(encoding="utf-8"))["state"]
+    assert abs(saved["valence"] - valence) < 0.01 and "mood" not in saved
+    c.t += 120
+    b = svc(tmp_path, c)                                                   # минуты сна: реакция ещё ослаблена, но помнится
+    assert P.baseline_valence > b.snapshot()["valence"] > valence
     c.t += 3600
-    b = svc(tmp_path, c)
-    assert P.baseline_valence > b.snapshot()["mood"] > mood
+    assert abs(svc(tmp_path, c).snapshot()["valence"] - P.baseline_valence) < 0.01      # час сна: всё прошло
     (tmp_path / "affect.json").write_text("{мусор", encoding="utf-8")
-    assert abs(svc(tmp_path, c).snapshot()["mood"] - P.baseline_valence) < 1e-9
+    assert abs(svc(tmp_path, c).snapshot()["valence"] - P.baseline_valence) < 1e-9
 
 
 def test_determinism(tmp_path):
@@ -149,12 +155,12 @@ def test_character_switch_keeps_own_states(tmp_path):
     one, two = tmp_path / "one", tmp_path / "two"
     a = AffectService(one, P, clock=c)
     a.on_emotion("chat", {"emotion": "sad", "intensity": 3})
-    mood_one = a.snapshot()["mood"]
+    val_one = a.snapshot()["valence"]
     a.switch(two, dom.Params.from_card({"baseline_valence": 0.5}))
-    assert a.snapshot()["mood"] == 0.5
+    assert a.snapshot()["valence"] == 0.5
     a.on_emotion("chat", {"emotion": "happy", "intensity": 3})
     a.switch(one, P)
-    assert abs(a.snapshot()["mood"] - mood_one) < 1e-9
+    assert abs(a.snapshot()["valence"] - val_one) < 1e-9
     assert (two / "affect.json").exists()
 
 
@@ -162,14 +168,15 @@ def test_reset(tmp_path):
     a = svc(tmp_path)
     a.on_emotion("chat", {"emotion": "angry", "intensity": 3})
     a.reset()
-    assert abs(a.snapshot()["mood"] - P.baseline_valence) < 1e-9 and not a.snapshot()["emotions"]
+    assert abs(a.snapshot()["valence"] - P.baseline_valence) < 1e-9 and not a.snapshot()["emotions"]
 
 
 def test_context_and_fast_brain_wiring(tmp_path):
     a = svc(tmp_path)
     cb = ContextBuilder(object())
-    cb.mood_of = a.mood_block
-    assert "не меняет факты" in cb.mood_of()
+    a.on_emotion("chat", {"emotion": "angry", "intensity": 3})
+    cb.emotion_of = a.emotion_block
+    assert "не меняет факты" in cb.emotion_of()
     fast_brain.set_affect(a)
     try:
         fast_brain.publish("chat", {"emotion": "angry", "intensity": 3, "delta": -5})

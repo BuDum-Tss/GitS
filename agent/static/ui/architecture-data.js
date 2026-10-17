@@ -499,9 +499,9 @@ window.ARCH_DATA = {
      "t": "Presence и эмоции",
      "tag": "A",
      "new": false,
-     "do": "говорит ли, эмоция, присутствие; настроение (валентность, возбуждение, быстрые эмоции) затухает к базовому уровню персонажа",
+     "do": "говорит ли, эмоция, присутствие; быстрые эмоции-реакции на события (валентность, возбуждение) затухают за минуты к базовому уровню персонажа, долгого настроения нет",
      "out": "PresenceState",
-     "now": "выделено (ТЗ 26): app/affect_service.py поверх domain/affect.py; PresenceTracker, fast_brain.publish; настроение в ContextBuilder, тон голоса, пороги внимания"
+     "now": "выделено (ТЗ 26): app/affect_service.py поверх domain/affect.py; PresenceTracker, fast_brain.publish; заметная эмоция в ContextBuilder, тон голоса, пороги внимания"
     },
     {
      "id": "hubout",
