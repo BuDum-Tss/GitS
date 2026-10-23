@@ -16,7 +16,6 @@ PREFETCH_TTL_S = 600.0     # найденное с опозданием годи
 class ContextBuilder:
     def __init__(self, host):
         self._h = host
-        self.emotion_of = None     # ТЗ 26: callable() -> факт о заметной эмоции; ядро ставит AffectService.emotion_block
 
     def claude_note(self) -> str:
         import claude_quota
@@ -119,13 +118,6 @@ class ContextBuilder:
             blocks.append(("self", h._self_block))
         if h._graph_block and not skip_memory:
             blocks.append(("graph", self._without_lines_of(h._graph_block, h._self_block)))
-        if self.emotion_of is not None:
-            try:
-                emotion = self.emotion_of()
-            except Exception:
-                emotion = ""
-            if emotion:
-                blocks.append(("emotion", emotion))
         rel = h._people.describe("игрок") if owner else ""
         if rel:
             blocks.append(("relation", f"Твоё {rel}."))

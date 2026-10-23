@@ -73,10 +73,12 @@ class StreamSpeech:
 
     def __init__(self):
         self.spoken: list[tuple] = []          # (uid, текст, queue)
+        self.stickers: list = []               # стикер каждого куска (None: тега не было)
         self.stopped: list = []
 
-    async def speak(self, utterance_id, text, emotion, priority, *, queue=False):
+    async def speak(self, utterance_id, text, sticker, priority, *, queue=False):
         self.spoken.append((utterance_id, text, queue))
+        self.stickers.append(sticker)
 
     async def stop(self, utterance_id=None):
         self.stopped.append(utterance_id)
@@ -123,7 +125,6 @@ class Rig:
         async def no_reaction(text, rel=None):
             return None
         monkeypatch.setattr(fast_brain, "react_chat", no_reaction)
-        monkeypatch.setattr(fast_brain, "publish", lambda *a, **k: None)
         mem = str(tmp_path / "memory")
         self.llm, self.speech = ScriptedLLM(), StreamSpeech()
         self.companion = Companion(mem, Relationships(mem), speech=self.speech, presence=speech_out.PresenceTracker(),
@@ -659,3 +660,30 @@ async def test_merge_rest_drops_held_text_when_cancelled(rig):
     gate.set()
     await task
     assert r.speech.texts == ["Первое предложение тут."]          # удержанный остаток после «замолчи» не озвучивается
+
+
+# ── теги стикеров в тексте ответа ─────────────────────────────────────────────────────────
+
+async def test_tags_cut_the_reply_into_chunks_and_each_chunk_carries_its_sticker(rig):
+    r = rig()
+    r.llm.scripts = [["Привет! [que", "stion] Как тебя ", "зовут? [happy] Рада знакомству."]]
+    await r.say("привет")
+    assert r.speech.texts == ["Привет!", "Как тебя зовут?", "Рада знакомству."]
+    assert r.speech.stickers == [None, "question", "happy"]
+    assert not any("[" in t for t in r.dialogue())                      # теги не попадают в диалог и в журнал
+    assert r.dialogue()[-1] == "Привет! Как тебя зовут? Рада знакомству."
+
+
+async def test_merge_rest_breaks_at_a_tag_and_unknown_tags_vanish(rig):
+    r = rig(fast={"merge_rest": True})
+    r.llm.scripts = [["Первое предложение тут. Второе предложение тоже. [sad] Третье грустное. [smile] Четвёртое тоже."]]
+    await r.say("расскажи")
+    assert r.speech.texts == ["Первое предложение тут.", "Второе предложение тоже.", "Третье грустное. Четвёртое тоже."]
+    assert r.speech.stickers == [None, None, "sad"]                     # незнакомый тег не режет и не звучит
+
+
+async def test_action_marker_still_works_before_a_tag(rig):
+    r = rig()
+    r.llm.scripts = [["[ДЕЙСТВИЕ] [looking] Сейчас посмотрю, что можно сделать. "]]
+    assert await r.companion._converse("включи что-нибудь пожалуйста") is True
+    assert r.speech.texts == ["Сейчас посмотрю, что можно сделать."] and r.speech.stickers == ["looking"]

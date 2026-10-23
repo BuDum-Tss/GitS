@@ -53,7 +53,6 @@ class Rig:
         async def no_reaction(text, rel=None):
             return None
         monkeypatch.setattr(fast_brain, "react_chat", no_reaction)
-        monkeypatch.setattr(fast_brain, "publish", lambda *a, **k: None)
 
         mem = str(tmp_path / "memory")
         self.speech = FakeSpeech()
@@ -175,9 +174,9 @@ async def test_speak_about_goes_through_queue_and_planner_formulates_it(mk):
 
 async def test_proactive_line_is_a_low_priority_candidate_with_its_own_expiry(mk):
     r = mk()
-    await r.companion.say("Давно молчим.", "sarcastic", source="proactive")
+    await r.companion.say("Давно молчим.", "sitting", source="proactive")
     cand = r.att.speech.items[0]
-    assert (cand.source, cand.priority, cand.emotion) == ("proactive", 30, "sarcastic")
+    assert (cand.source, cand.priority, cand.sticker) == ("proactive", 30, "sitting")
 
 
 async def test_question_announcement_is_spoken_before_the_wait_starts(mk):

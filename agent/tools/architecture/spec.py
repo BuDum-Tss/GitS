@@ -97,7 +97,7 @@ GROUPS = [
         N("queue", "SpeechQueue", "A", "приоритеты, условия «не перебиваю», интервалы, прерывание, TTL; чистую политику выбора выделить в домен позже", "Utterance", "speech_queue.py: 296 строк, асинхронный координатор (asyncio-задачи), в домен целиком не переносится"),
         N("digest", "Digest", "A", "сводка событий D1 и предложение рассказать", "SpeechCandidate", "выделен (R3): app/digest.py"),
         N("out", "SpeechOutput и каналы (контракты)", "I", "голос (speak), чат, Telegram (deliver), питомец", "доставка", "speech_out.py, conversation_io.py"),
-        N("aff", "Presence и эмоции", "A", "говорит ли, эмоция, присутствие; одна эмоция из стандартного набора: её выбирает GLiNER по обращению или событию, новая перебивает старую, держится emotion_ttl_s секунд", "PresenceState", "выделено (ТЗ 26): app/affect_service.py поверх domain/affect.py; PresenceTracker, fast_brain.publish; эмоция в ContextBuilder и в картинке питомца, пороги внимания"),
+        N("aff", "Presence и стикеры", "A", "говорит ли, стикер, присутствие; эмоций нет: стикер питомца выбирает тег в тексте ответа (`[question]` перед предложением), текст режется по тегам на куски, каждый звучит со своим стикером", "PresenceState", "domain/stickers.py (теги, разбор потока), app/reply_generator.py (куски ответа), speech_out.PresenceTracker (sticker, sticker_ts); GLiNER эмоции не распознаёт, только решения"),
         N("hubout", "ModuleHub (исходящие)", "I", "доставка команд модулям: tool.call, speak, policy.activate, job.answer", "ToolResult, события", "module_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как ModuleHub.outbound"),
     ]),
     dict(id="g_mem", col="BOTTOM", title="Память", tag="A",

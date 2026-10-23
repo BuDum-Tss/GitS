@@ -9,7 +9,7 @@ def _fresh(tmp_path, monkeypatch):
 def test_append_outcome_label_and_accuracy(tmp_path, monkeypatch):
     _fresh(tmp_path, monkeypatch)
     answers = {"kind": {"answer": "combat", "confidence": 0.72}, "danger": {"answer": "yes", "confidence": 0.6, "noul": 0.6}}
-    first = al.append("incident", "налёт 5 бандитов", answers, {"importance": 3, "emotion": "threat", "action": "draft_colonists"})
+    first = al.append("incident", "налёт 5 бандитов", answers, {"importance": 3, "action": "draft_colonists"})
     second = al.append("letter", "торговец предлагает сталь", {"kind": {"answer": "work", "confidence": 0.4}}, {"importance": 0})
     al.set_outcome(first, "призвала 3 колонистов")
     rows = al.recent(10)

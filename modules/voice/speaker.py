@@ -32,7 +32,6 @@ class Utterance:
     uid: str
     text: str
     segments: list[str]
-    emotion: str | None = None
     spoken: int = 0                              # предложений проиграно до конца
     started: bool = False                        # первое предложение уже зазвучало
     cancel_reason: str | None = None             # оборвать сейчас, причина для ended
@@ -91,14 +90,14 @@ class Speaker:
 
     # ── вход ─────────────────────────────────────────────────────────────────
 
-    async def speak(self, uid: str, text: str, emotion: str | None = None, replace: bool = False,
+    async def speak(self, uid: str, text: str, replace: bool = False,
                     trace: dict | None = None) -> None:
         whole = (text or "").strip()
         segments = [whole] if whole else []               # реплика озвучивается одним куском: без разбивки на предложения
         if not segments:
             self._ended(Utterance(uid, text or "", []), completed=False, reason="error")
             return
-        u = Utterance(uid, text, segments, emotion, trace=trace if isinstance(trace, dict) else None)
+        u = Utterance(uid, text, segments, trace=trace if isinstance(trace, dict) else None)
         if self._muted():
             # VOICE-4: звука нет, но ядро не ждёт; облачко питомца видит весь текст
             self._emit({"phase": "started", "utterance_id": uid, "seq": 0, "segment": text.strip()})

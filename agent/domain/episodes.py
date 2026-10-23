@@ -24,7 +24,7 @@ SLEEP_POLICY = {"id": "sleep", "title": "Сон", "focus": "background", "interr
 MEMORY_MODULE = "memory"            # id внутреннего модуля памяти в менеджере фокуса и в журнале внимания
 
 # Какие виды журнала попадают в эпизоды и в какой поток (разговор, экран, звук, модуль).
-CHAT_KINDS = ("user", "say", "emotion", "mistake", "approval", "memory")
+CHAT_KINDS = ("user", "say", "mistake", "approval", "memory")
 STREAM_KINDS = {"game": "game", "telegram": "telegram", "hearing": "hearing", "vision": "screen"}
 BOUNDARY_KINDS = ("boundary", "profile")        # `focus` - граница только при переключении (см. rec_of)
 PERSON_MODULES = ("telegram",)                  # у этих модулей поток = модуль + собеседник
@@ -105,8 +105,6 @@ def fallback_salience(kind: str, data: dict) -> float:
     """Яркость по виду события, если `data.salience` не записана (ТЗ 24 пишет её для разговора и решений)."""
     if kind == "mistake":
         return 0.7
-    if kind == "emotion":
-        return min(1.0, _num(data.get("intensity")) / 3.0 * 0.6)
     if kind == "approval":
         return 0.4
     if kind == "memory":
@@ -139,7 +137,7 @@ def rec_of(row: dict) -> Rec | None:
     sal = data.get("salience")
     sal = max(0.0, min(1.0, _num(sal))) if isinstance(sal, (int, float)) and not isinstance(sal, bool) \
         else fallback_salience(kind, data)
-    return Rec(rid, ts, kind, text, stream, sal, actor, data={k: v for k, v in data.items() if k in ("module", "event_kind", "emotion", "intensity", "type")})
+    return Rec(rid, ts, kind, text, stream, sal, actor, data={k: v for k, v in data.items() if k in ("module", "event_kind", "type")})
 
 
 # ── границы и нарезка ──────────────────────────────────────────────────────────────────────────────

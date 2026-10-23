@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .. import protocol as P
 
-CONTRACT_VERSION = "1.6"
+CONTRACT_VERSION = "1.7"
 PROTOCOL = P.PROTOCOL
 
 # версия контракта, в которой появился элемент (поле `since` у Message): "1.0" - исходный состав ТЗ 01
@@ -27,7 +27,11 @@ HISTORY = (
     ("1.5", "ТЗ 32: поле манифеста workspace, запросы workspace.enter / workspace.exit / workspace.resume "
             "(policy.activate, focus.release, focus.resume остаются алиасами на один релиз)"),
     ("1.6", "удалены справочник и уроки ядра: запросы core.lookup, core.experience.add, core.kb.ingest и поле манифеста knowledge"),
+    ("1.7", "эмоций в ядре нет: стикер питомца выбирает тег в тексте ответа; presence.sticker и sticker_ts вместо emotion и emotion_ts, "
+            "из speak убрано emotion, сообщение emotion и поля emotion в say, core.tts, tts.synthesize устарели (ядро их игнорирует)"),
 )
 
-# Устаревшее: (элемент, дата удаления, чем заменить). Пока пусто: ни один элемент не устарел.
-DEPRECATED: tuple[tuple[str, str, str], ...] = ()
+# Устаревшее: (элемент, дата удаления, чем заменить)
+DEPRECATED: tuple[tuple[str, str, str], ...] = (
+    ("emotion", "2027-01-01", "тег стикера в тексте ответа; сообщение игнорируется ядром"),
+)

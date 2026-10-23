@@ -94,7 +94,7 @@ async def run_stub(turns: int, memory_dir: str) -> dict:
     from conversation_io import DASHBOARD, UserInput
     from relationships import Relationships
 
-    saved = (fast_brain._ask, fast_brain.publish, fast_brain.react_chat, decide.decide, events_log._dir)
+    saved = (fast_brain._ask, fast_brain.react_chat, decide.decide, events_log._dir)
     settings.init(memory_dir)
     events_log.init(memory_dir)
 
@@ -108,7 +108,6 @@ async def run_stub(turns: int, memory_dir: str) -> dict:
         return None
 
     fast_brain._ask = ask
-    fast_brain.publish = lambda *a, **k: None         # эмоции не пишем в файл и не рассылаем
     fast_brain.react_chat = no_reaction
     decide.decide = no_classifier
     try:
@@ -141,7 +140,7 @@ async def run_stub(turns: int, memory_dir: str) -> dict:
         rows = events_log.tail(limit=10000, kinds={"trace"})
         return {"mode": "stub", "turns_chat": turns, "turns_voice": turns, **lt.summarize(rows)}
     finally:
-        fast_brain._ask, fast_brain.publish, fast_brain.react_chat, decide.decide, events_log._dir = saved
+        fast_brain._ask, fast_brain.react_chat, decide.decide, events_log._dir = saved
         events_log.flush()
 
 
@@ -187,7 +186,7 @@ async def run_compare(turns: int, memory_dir: str, sentence_ms: float = 250.0, s
     from conversation_io import DASHBOARD, UserInput
     from relationships import Relationships
 
-    saved = (fast_brain.publish, fast_brain.react_chat, decide.decide, events_log._dir)
+    saved = (fast_brain.react_chat, decide.decide, events_log._dir)
     settings.init(memory_dir)
     events_log.init(memory_dir)
 
@@ -197,7 +196,6 @@ async def run_compare(turns: int, memory_dir: str, sentence_ms: float = 250.0, s
     async def no_classifier(*args, **kwargs):
         return None
 
-    fast_brain.publish = lambda *a, **k: None
     fast_brain.react_chat = no_reaction
     decide.decide = no_classifier
     out: dict = {"sentence_ms": sentence_ms, "sentences": sentences}
@@ -224,7 +222,7 @@ async def run_compare(turns: int, memory_dir: str, sentence_ms: float = 250.0, s
             out[mode] = lt.summarize(events_log.tail(limit=10000, kinds={"trace"}))
         return out
     finally:
-        fast_brain.publish, fast_brain.react_chat, decide.decide, events_log._dir = saved
+        fast_brain.react_chat, decide.decide, events_log._dir = saved
         events_log.flush()
 
 

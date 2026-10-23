@@ -27,7 +27,7 @@ STICKER_MAP = {
     "surprised": "surprised",
 }
 
-EMOTION_TTL_SECS = 30   # сколько эмоция считается свежей
+STICKER_TTL_SECS = 30   # сколько стикер считается свежим (страховка: ядро само шлёт idle, когда реплики кончились)
 BUBBLE_HIDE_SECS = 25   # сколько облачко держится после конца речи
 SETTINGS_GRACE_S = 3.0  # сколько ждём первых настроек от ядра, прежде чем показать окно без них
 HOTKEY_MUTE = "Ctrl+Alt+M"   # глобальная глушилка голоса
@@ -44,16 +44,17 @@ def dashboard_base() -> str:
 
 
 def sticker_for(presence: dict, now: float, connected: bool = True) -> str:
-    """PET-5: эмоция из presence (ядро держит её emotion_ttl_s секунд и потом шлёт idle), страховка EMOTION_TTL_SECS; иначе idle; ядро недоступно - resting."""
+    """PET-5: стикер из presence (его ставит тег в тексте реплики, когда она зазвучала; ядро шлёт idle, когда реплики кончились),
+    страховка STICKER_TTL_SECS; иначе idle; ядро недоступно - resting."""
     if not connected:
         return "resting"
-    emotion = presence.get("emotion")
+    sticker = presence.get("sticker")
     try:
-        ts = float(presence.get("emotion_ts") or 0.0)
+        ts = float(presence.get("sticker_ts") or 0.0)
     except (TypeError, ValueError):
         ts = 0.0
-    if emotion in STICKER_MAP and now - ts < EMOTION_TTL_SECS:      # ядро само вернёт idle, когда эмоция отзвучит (emotion_ttl_s)
-        return emotion
+    if sticker in STICKER_MAP and now - ts < STICKER_TTL_SECS:
+        return sticker
     return "idle"
 
 

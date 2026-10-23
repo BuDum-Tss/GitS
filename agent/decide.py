@@ -40,28 +40,6 @@ _client: httpx.AsyncClient | None = None
 
 # ── вопросы (ATT-4): метки на английском с описаниями, вход русский ──────────────────────────────
 
-# Эмоция реплики или события: стандартный набор (он же набор стикеров питомца, совпадает с fast_brain.EMOTIONS, проверяет тест).
-# Выбирает её классификатор вместе с остальными вопросами; уверенность ниже EMOTION_MIN_CONF - эмоции нет (ответ не берётся)
-EMOTION_OPTIONS = {
-    "idle": "neutral, calm, nothing special",
-    "action": "determination, urgency, getting to work",
-    "angry": "anger, irritation, annoyance, rudeness",
-    "question": "puzzlement, curiosity, being asked something",
-    "looking": "attention, watching, noticing something",
-    "sitting": "calm waiting, patience, boredom",
-    "thinking": "thinking, pondering, weighing something",
-    "happy": "joy, delight, amusement, praise, good news",
-    "threat": "alarm about danger, attack, threat",
-    "resting": "tiredness, relaxation, sleep",
-    "sad": "sadness, disappointment, loss, bad news",
-    "scared": "fear, fright, panic",
-    "proud": "pride, satisfaction, achievement",
-    "surprised": "surprise, shock, something unexpected",
-}
-EMOTION_QUESTION = {"type": "choice", "options": EMOTION_OPTIONS,
-                    "instructions": "Which emotion does this text evoke in the assistant?"}
-EMOTION_MIN_CONF = 0.3
-
 EVENT_QUESTIONS = {
     "category": {"type": "choice", "options": {
         "danger": "attack, raid, threat to life or property happening now",
@@ -79,7 +57,6 @@ EVENT_QUESTIONS = {
     "speak": {"type": "noul", "instructions": "Should the assistant say something aloud about this?"},
     "act": {"type": "noul", "instructions": "Should the assistant take a quick action in response, not just talk?"},
     "think": {"type": "noul", "instructions": "Does this deserve thinking over later, beyond an instant reaction?"},
-    "emotion": EMOTION_QUESTION,
 }
 
 NONE_FOCUS = "none"           # метка варианта «оставить фокус как есть» в вопросе active_focus
@@ -106,7 +83,6 @@ INPUT_QUESTIONS = {
         "attention_rule": "asks to not disturb, to mute or to prioritize something for some time",
         "stop": "asks the assistant to be quiet or stop talking right now"}},
     "needs_memory": {"type": "noul", "instructions": "Does a good reply need facts about people, past events or preferences?"},
-    "emotion": EMOTION_QUESTION,
 }
 
 CATEGORY_URGENCY = {"danger": 5, "death_injury": 4, "disaster": 4, "request_to_assistant": 3, "question": 3,
@@ -215,11 +191,6 @@ def _answer(answers: dict, qid: str) -> tuple[str | None, float]:
     return (str(value) if value is not None else None), conf
 
 
-def _emotion(answers: dict) -> str | None:
-    label, conf = _answer(answers, "emotion")
-    return label if label in EMOTION_OPTIONS and label != "idle" and conf >= EMOTION_MIN_CONF else None
-
-
 @dataclass
 class EventClass:
     """Что классификатор сказал о событии; поля None, если уверенности не хватило."""
@@ -232,7 +203,6 @@ class EventClass:
     think: bool | None = None              # подумать (маршрут think)
     active_focus: str | None = None        # чей фокус нужен: «модуль/политика» или NONE_FOCUS; None - не уверен (порог FOCUS_MIN_CONF)
     focus_conf: float = 0.0
-    emotion: str | None = None             # эмоция из EMOTION_OPTIONS, не idle; None - нет или не уверен
 
     @property
     def urgency(self) -> int | None:
@@ -254,7 +224,6 @@ def parse_event(answers: dict | None, min_conf: float) -> EventClass | None:
     focus, conf = _answer(answers, "active_focus")
     if focus and conf >= max(min_conf, FOCUS_MIN_CONF):
         out.active_focus, out.focus_conf = focus, conf
-    out.emotion = _emotion(answers)
     return out
 
 
@@ -265,7 +234,6 @@ class InputClass:
     intent: str | None = None              # chat | action | about_self | approval | attention_rule | stop
     intent_conf: float = 0.0
     needs_memory: bool | None = None
-    emotion: str | None = None             # эмоция обращения из EMOTION_OPTIONS, не idle; None - нет или не уверен
 
 
 def parse_input(answers: dict | None, min_conf: float) -> InputClass | None:
@@ -279,5 +247,4 @@ def parse_input(answers: dict | None, min_conf: float) -> InputClass | None:
     mem, conf = _answer(answers, "needs_memory")
     if mem in ("yes", "no") and conf >= min_conf:
         out.needs_memory = mem == "yes"
-    out.emotion = _emotion(answers)
     return out

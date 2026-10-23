@@ -22,7 +22,7 @@
       },
       "emotion": {
         "type": "string",
-        "description": "эмоция"
+        "description": "устарело, игнорируется"
       },
       "format": {
         "type": "string",

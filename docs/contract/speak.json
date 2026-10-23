@@ -19,10 +19,6 @@
         "description": "текст",
         "minLength": 1
       },
-      "emotion": {
-        "type": "string",
-        "description": "эмоция"
-      },
       "replace": {
         "type": "boolean",
         "description": "заменить звучащую"

@@ -3,7 +3,6 @@
 import time
 
 import events_log
-import fast_brain
 import journal
 import latency_trace as lt
 import salience
@@ -118,27 +117,6 @@ def test_latency_report_reads_written_traces():
                           marks={"core_in": 0.0, "llm_done": 12.5})
     rep = lt.latency_report(3600)
     assert rep["traces"] >= 1 and "steps" in rep
-
-
-# ── эмоция (TRC-3) ────────────────────────────────────────────────────────────────
-
-def test_emotion_intensity_is_parsed_and_defaults_to_one():
-    assert fast_brain._parse('{"emotion": "happy", "action": "none", "intensity": 3}')["intensity"] == 3
-    assert fast_brain._parse('{"emotion": "happy", "action": "none"}')["intensity"] == 1
-    assert journal.clamp_intensity(9) == 3 and journal.clamp_intensity(-2) == 0
-    assert journal.clamp_intensity("слабо") == 1
-
-
-def test_publish_writes_emotion_with_intensity_and_background_flag():
-    fast_brain.publish("chat", {"emotion": "happy", "action": "none", "intensity": 2})
-    fast_brain.publish("chat", {"emotion": "idle", "action": "none"})
-    events_log.flush()
-    rows = events_log.tail(limit=10, kinds={"emotion"})
-    fg = [r for r in rows if r["text"] == "happy"][0]["data"]
-    bg = [r for r in rows if r["text"] == "idle"][0]["data"]
-    assert fg["intensity"] == 2 and fg["bg"] is False and fg["reason"] == "chat"
-    assert bg["intensity"] == 1 and bg["bg"] is True
-    assert fg["character"]
 
 
 # ── ошибки (TRC-5) ────────────────────────────────────────────────────────────────

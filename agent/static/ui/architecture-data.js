@@ -496,12 +496,12 @@ window.ARCH_DATA = {
     },
     {
      "id": "aff",
-     "t": "Presence и эмоции",
+     "t": "Presence и стикеры",
      "tag": "A",
      "new": false,
-     "do": "говорит ли, эмоция, присутствие; одна эмоция из стандартного набора: её выбирает GLiNER по обращению или событию, новая перебивает старую, держится emotion_ttl_s секунд",
+     "do": "говорит ли, стикер, присутствие; эмоций нет: стикер питомца выбирает тег в тексте ответа (`[question]` перед предложением), текст режется по тегам на куски, каждый звучит со своим стикером",
      "out": "PresenceState",
-     "now": "выделено (ТЗ 26): app/affect_service.py поверх domain/affect.py; PresenceTracker, fast_brain.publish; эмоция в ContextBuilder и в картинке питомца, пороги внимания"
+     "now": "domain/stickers.py (теги, разбор потока), app/reply_generator.py (куски ответа), speech_out.PresenceTracker (sticker, sticker_ts); GLiNER эмоции не распознаёт, только решения"
     },
     {
      "id": "hubout",

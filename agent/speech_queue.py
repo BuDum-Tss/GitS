@@ -53,7 +53,7 @@ class SpeechCandidate:
     source: str                    # "conversation" | "module:<id>" | "attention:<item id>" | "proactive" | "question" | "announce:<id>"
     mode: str                      # "verbatim" | "fact"
     text: str
-    emotion: str | None
+    sticker: str | None
     priority: int                  # 0..100
     created: float
     expires: float
@@ -117,7 +117,7 @@ class SpeechQueue:
             self._drop(worst, "overflow")
         return cand
 
-    def new(self, *, source: str, mode: str, text: str, priority: int, emotion: str | None = None, ttl: float | None = None,
+    def new(self, *, source: str, mode: str, text: str, priority: int, sticker: str | None = None, ttl: float | None = None,
             key: str | None = None, **extra) -> SpeechCandidate:
         """Собрать и положить кандидата; срок жизни по умолчанию из ATT-15."""
         now = self._clock()
@@ -125,7 +125,7 @@ class SpeechQueue:
         if ttl is None:
             fam = source.split(":", 1)[0]
             ttl = DEFAULT_TTL_S[fam] if fam in ("conversation", "proactive", "question", "announce") else DEFAULT_TTL_S[mode]
-        return self.add(SpeechCandidate(new_candidate_id(), source, mode, text, emotion, max(0, min(100, int(priority))),
+        return self.add(SpeechCandidate(new_candidate_id(), source, mode, text, sticker, max(0, min(100, int(priority))),
                                         now, now + ttl, key, **extra))
 
     def discard(self, cand: SpeechCandidate, reason: str = "cancelled") -> bool:

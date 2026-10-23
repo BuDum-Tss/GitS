@@ -44,7 +44,7 @@ def core_payload(*, dialogue: list, activity: list, screen, memories: list, rela
             "memories": sorted(memories, key=lambda i: -i["ts"])[:150], "relations": relations, "approval": approval}
 
 
-def state_payload(*, game: dict, emotion, settings_dict: dict, character: dict, presence, modules: list) -> dict:
+def state_payload(*, game: dict, settings_dict: dict, character: dict, presence, modules: list) -> dict:
     """GET /api/state: состояние модуля игры (пусто, если он не подключён) и общие поля ядра."""
     connected = bool(game.get("connected"))
     # Реплика ассистентки (PET-10): файла реплики и полей say / last_decision больше нет; питомец и другие модули получают речь толчком,
@@ -63,7 +63,6 @@ def state_payload(*, game: dict, emotion, settings_dict: dict, character: dict, 
         "tasks":            game.get("tasks", []),
         "mode":             game.get("mode"),
         "pawn_fates":       game.get("pawn_fates", {}),
-        "emotion":          emotion,
         "settings":         settings_dict,
         "character":        character,
         "presence":         presence,                                    # как тема presence (CORE-39)

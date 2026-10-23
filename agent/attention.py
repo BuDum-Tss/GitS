@@ -277,7 +277,7 @@ class Attention:
             self.digest_.add(item)
             return "suppressed: quiet mode, moved to digest"
         fact = f"Ты обдумала ({event.kind}) и решила сказать пользователю, своими словами и коротко: {intent.text}"
-        self.coordinator.speech.new(source=f"attention:{item.id}", mode="fact", text=fact, emotion=intent.emotion,
+        self.coordinator.speech.new(source=f"attention:{item.id}", mode="fact", text=fact,
                                     priority=REFLECTION_P, ttl=600.0)
         self.coordinator.kick()
         return "queued"
@@ -383,10 +383,10 @@ class Attention:
 
     # ── речь: вход для компаньона ────────────────────────────────────────────
 
-    def enqueue_say(self, text: str, emotion: str | None = None, priority: int | None = None, *,
+    def enqueue_say(self, text: str, sticker: str | None = None, priority: int | None = None, *,
                     source: str | None = None) -> SpeechCandidate:
         """Готовая реплика компаньона -> очередь (ATT-13)."""
-        return self.coordinator.enqueue_say(text, emotion, priority, source=source)
+        return self.coordinator.enqueue_say(text, sticker, priority, source=source)
 
     def enqueue_fact(self, fact: str, user_text: str = "", must: bool = False, question: bool = False) -> SpeechCandidate:
         """Факт, по которому компаньон сам сформулирует реплику (`_speak_about`) -> очередь (ATT-13)."""

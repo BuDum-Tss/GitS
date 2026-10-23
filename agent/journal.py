@@ -1,8 +1,7 @@
-"""Журнал для эпизодов, настроения и уроков (ТЗ 24, TRC-3, TRC-5, TRC-6): эмоция с интенсивностью, метки ошибок, решения.
+"""Журнал для эпизодов и уроков (ТЗ 24, TRC-5, TRC-6): метки ошибок, решения.
 
 Всё пишется через events_log.log_nowait (на цикле событий коммит SQLite не ждём). Трасса (latency_trace) подставляет
 trace_id текущего обращения, если он есть. Виды:
-  emotion   - метка, интенсивность 0..3, причина (id события или трассы), персонаж; bg=true для фоновых меток
   mistake   - тип ошибки (MISTAKE_TYPES), текст, refs (ссылки на события: их ts)
   decision  - решение диспетчера: маршрут, источник правил и версия, уверенность, эшелон, trace_id
 Поведение агента этот модуль не меняет: он только записывает.
@@ -12,10 +11,8 @@ import re
 import events_log
 import latency_trace
 
-BACKGROUND_EMOTIONS = ("idle", "thinking", "looking", "question")     # фоновые метки: пишутся, но помечаются bg
 MISTAKE_TYPES = ("correction", "denied", "tool_failed", "plan_failed", "bad_rating", "misroute", "run_lost")
 RULES_VERSIONS = {"attention": "R1-R4,D0-D4/1", "conversation": "intent+router/1", "focus": "FOC/1", "router": "plan/1"}
-INTENSITY_MAX = 3
 DECISIONS_SCAN = 1000         # сколько решений просматриваем, когда выборка идёт по trace_id (фильтр после выборки)
 
 # токены и пароли не попадают в журнал: текст ошибок может нести адрес с токеном бота или ключ в строке запроса
@@ -30,31 +27,12 @@ def _clean(text, limit: int) -> str:
     return out[:limit]
 
 
-def clamp_intensity(value) -> int:
-    """Интенсивность 0..3 из ответа модели; если её нет или она не разбирается, 1 (ТЗ 24, TRC-3)."""
-    if isinstance(value, bool):
-        return 1
-    try:
-        v = int(float(value))
-    except (TypeError, ValueError, OverflowError):      # JSON умеет «Infinity»: int(inf) не число
-        return 1
-    return max(0, min(INTENSITY_MAX, v))
-
-
 def _trace_id() -> str | None:
     t = latency_trace.current()
     return t.id if t is not None else None
 
 
-def emotion(emotion_label: str, intensity, reason: str, character: str = "", **data) -> None:
-    """Эмоция. Причина - id трассы обращения, если он есть, иначе `reason` (имя события, например «chat»)."""
-    tid = data.pop("trace_id", None) or _trace_id()
-    events_log.log_nowait("emotion", str(emotion_label), emotion=str(emotion_label), intensity=clamp_intensity(intensity),
-                          reason=str(tid or reason)[:80], character=character or None,
-                          bg=emotion_label in BACKGROUND_EMOTIONS, trace_id=tid, **data)
-
-
-mistake_hook = None       # ТЗ 26: callable(kind), ядро ставит AffectService.on_mistake
+mistake_hook = None       # callable(kind): подписчик на метки ошибок (ядро ничего не ставит)
 
 
 def mistake(kind: str, text: str, refs: list | None = None, **data) -> None:

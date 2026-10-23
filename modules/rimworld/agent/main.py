@@ -42,7 +42,6 @@ from dotenv import load_dotenv  # noqa: E402
 # Загружаем .env до импорта controller (на случай если задан ANTHROPIC_API_KEY)
 load_dotenv()
 
-import fast_brain  # noqa: E402
 import game_launcher  # noqa: E402
 import game_api  # noqa: E402
 import game_panel  # noqa: E402
@@ -97,7 +96,6 @@ async def amain(config: dict) -> int:
     reporter = StateReporter(client, recording=lambda: game_panel.recording_info(ctrl.recorder.current),
                              policy=ctrl.policy_state)
     ctrl.on_phase_change = reporter.poke
-    fast_brain.on_publish = lambda evt, res: loop.create_task(link.emotion(evt, res["emotion"]))
     ctrl.commentator = Commentator(mem_dir, link.say, link.last_user_ts, link.is_speaking, repeats=link.repeats)
     ctrl.commentator.enabled = lambda: ctrl.policies.in_focus                  # ТЗ 11e POL-11: вне фокуса молчит
 

@@ -104,10 +104,9 @@ class EpisodeCutter:
         actors = sorted({e.actor for e in c.events if e.actor})
         who = ["user"] if any(e.kind == "user" for e in c.events) else []
         module = "" if c.stream == "chat" else c.stream.split(":")[0]
-        emotions = sorted({str(e.data.get("emotion")) for e in c.events if e.kind == "emotion" and e.data.get("emotion")})
         return {"id": c.id, "t_start": c.events[0].ts, "t_end": c.events[-1].ts, "first_id": c.first_id, "last_id": c.last_id,
                 "stream": c.stream, "module": module, "participants": who + actors, "peak_id": c.peak_id,
-                "salience": round(c.salience, 3), "emotions": emotions, "status": dom.PENDING,
+                "salience": round(c.salience, 3), "emotions": [], "status": dom.PENDING,
                 "character": self.character(), "day": day_of(c.events[0].ts)}
 
     @staticmethod

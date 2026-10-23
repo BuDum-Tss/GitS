@@ -9,7 +9,7 @@
                      нет - текст (выключили модуль голоса: она отвечает текстом, включили: голос вернулся).
 Прежний путь через питомца (`LegacyPetSpeech`, файл say.json) удалён вместе с переносом питомца в модуль (ТЗ 13, PET-10).
 
-`PresenceTracker` держит состояние для темы `presence` (кто говорит, эмоция и её время, занята ли, фокус) и сообщает об
+`PresenceTracker` держит состояние для темы `presence` (кто говорит, стикер и его время, занята ли, фокус) и сообщает об
 изменениях слушателю (шина модулей рассылает тему не чаще 10 раз в секунду, CORE-5).
 """
 import asyncio
@@ -42,7 +42,7 @@ def supports_streaming(speech) -> bool:
 
 
 class SpeechOutput(Protocol):
-    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int) -> None: ...
+    async def speak(self, utterance_id: str, text: str, sticker: str | None, priority: int) -> None: ...
     async def stop(self, utterance_id: str | None = None) -> None: ...
     def is_speaking(self) -> bool: ...
     def current_segment(self) -> str: ...
@@ -54,7 +54,7 @@ class PresenceTracker:
     update(**поля) меняет только известные поля; если что-то изменилось, вызывает listener(снимок). listener - синхронная
     функция (шина модулей), она сама решает, как рассылать."""
 
-    DEFAULTS = {"speaking": False, "utterance_id": None, "segment": "", "emotion": "idle", "emotion_ts": 0.0, "busy": False,
+    DEFAULTS = {"speaking": False, "utterance_id": None, "segment": "", "sticker": "idle", "sticker_ts": 0.0, "busy": False,
                 "focus": "idle", "user_speaking": False, "last_user_ts": 0.0, "last_say": "", "last_say_ts": 0.0}
 
     def __init__(self, listener: Callable[[dict], None] | None = None):
@@ -92,12 +92,12 @@ class TextOnlySpeech:
     def supports_streaming(self) -> bool:
         return False
 
-    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int, *, queue: bool = False) -> None:
+    async def speak(self, utterance_id: str, text: str, sticker: str | None, priority: int, *, queue: bool = False) -> None:
         if self._timer is not None:
             self._timer.cancel()
         self._utterance = utterance_id
         self.presence.update(speaking=True, utterance_id=utterance_id, segment=text,
-                             **({"emotion": emotion} if emotion else {}))
+                             **({"sticker": sticker, "sticker_ts": time.time()} if sticker else {}))
         self._timer = asyncio.get_running_loop().call_later(
             len(text) * SECONDS_PER_CHAR + ESTIMATE_PAD_S, self._finished, utterance_id)
 
@@ -137,8 +137,7 @@ class VoiceModuleSpeech:
         self._clock = clock
         self.hub = None                              # ModuleHub и ModuleRegistry: ставит ядро (attach)
         self.modules = None
-        self.tone_of: Callable[[], dict] | None = None      # ТЗ 26: сдвиг голоса {rate_pct, pitch_hz}; ставит ядро
-        self._live: dict[str, dict] = {}             # utterance_id -> {sent, started, segment, stopping, emotion}
+        self._live: dict[str, dict] = {}             # utterance_id -> {sent, started, segment, stopping, sticker}
         self._audible_cbs: dict[str, list[Callable[[], None]]] = {}   # ждут начала звука реплики (синхронизация текста и звука)
 
     def attach(self, hub, modules) -> None:
@@ -166,7 +165,7 @@ class VoiceModuleSpeech:
         """Сколько реплик отправлено модулю и не закончено (звучащая и ожидающие): у модуля голоса ждать могут не более трёх."""
         return len(self._live) if self.is_speaking() else 0
 
-    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int, *, queue: bool = False) -> None:
+    async def speak(self, utterance_id: str, text: str, sticker: str | None, priority: int, *, queue: bool = False) -> None:
         """queue=True (ТЗ 25, FAST-4): предложение потокового ответа встаёт в очередь модуля голоса после звучащего, а не
         заменяет его (`replace: false` контракта speak)."""
         conn = self.connection()
@@ -175,14 +174,9 @@ class VoiceModuleSpeech:
         # replace: звучит (или готовится) реплика, которую внимание не просило остановить, - прежнее поведение speak_sequence;
         # после stop() (прерывание вниманием) реплика встаёт в очередь модуля и звучит после дослушанного предложения
         replace = not queue and any(not e["stopping"] for e in self._live.values())
-        self._live[utterance_id] = {"sent": self._clock(), "started": False, "segment": "", "stopping": False, "emotion": emotion}
+        self._live[utterance_id] = {"sent": self._clock(), "started": False, "segment": "", "stopping": False, "sticker": sticker}
         t = latency_trace.current()                  # трасса задержки реплики (ТЗ 24, TRC-1): модуль голоса допишет звук
-        body = {"utterance_id": utterance_id, "text": text, "emotion": emotion, "replace": replace}
-        if self.tone_of is not None:                 # ТЗ 26: ограниченный сдвиг голоса от настроения
-            try:
-                body["tone"] = self.tone_of()
-            except Exception:
-                pass
+        body = {"utterance_id": utterance_id, "text": text, "replace": replace}
         if t is not None:
             body["trace"] = t.wire()
             latency_trace.speak_sent(t)
@@ -255,10 +249,12 @@ class VoiceModuleSpeech:
             entry = self._live.setdefault(uid, {"sent": self._clock(), "started": False, "segment": "", "stopping": False})
             first = not entry["started"]
             entry["started"], entry["segment"] = True, str(data.get("segment") or "")
-            if first and entry.get("emotion"):
-                self.presence.update(emotion=entry["emotion"])      # стикер меняется вместе со звуком, а не раньше
+            if first and entry.get("sticker"):
+                self.presence.update(sticker=entry["sticker"], sticker_ts=time.time())      # стикер меняется вместе со звуком, а не раньше
         elif phase == "ended":
             self._live.pop(uid, None)
+            if not self._live:
+                self.presence.update(sticker="idle", sticker_ts=time.time())      # реплики кончились: стикер возвращается
         else:
             return
         self._publish()
@@ -310,16 +306,16 @@ class SpeechSelector:
         else:
             callback()
 
-    async def speak(self, utterance_id: str, text: str, emotion: str | None, priority: int, *, queue: bool = False) -> None:
+    async def speak(self, utterance_id: str, text: str, sticker: str | None, priority: int, *, queue: bool = False) -> None:
         if self.voice.available():
             try:
-                await self.voice.speak(utterance_id, text, emotion, priority, queue=queue)
+                await self.voice.speak(utterance_id, text, sticker, priority, queue=queue)
                 flow_trace.step(None, "out_voice", "speech_queue", "out_voice", "speak", size=len(text or ""))
                 return
             except Exception as e:
                 logger.warning(f"Модуль голоса не принял реплику, остаётся текст: {e}")
         flow_trace.step(None, "out_dashboard", "speech_queue", "out_dashboard", "speak", size=len(text or ""))
-        await self.text.speak(utterance_id, text, emotion, priority)
+        await self.text.speak(utterance_id, text, sticker, priority)
 
     async def stop(self, utterance_id: str | None = None) -> None:
         await self.voice.stop(utterance_id)

@@ -2,7 +2,7 @@
   "name": "emotion",
   "direction": "module->core",
   "kind": "note",
-  "status": "stable",
+  "status": "deprecated",
   "since": "1.0",
   "errors": [],
   "request": {
@@ -24,6 +24,6 @@
       "emotion"
     ],
     "title": "emotion",
-    "description": "Эмоция модуля (допустимость проверяет ядро)."
+    "description": "Устарело: эмоций в ядре нет, ядро сообщение игнорирует (реакцию выбирает тег стикера в тексте ответа)."
   }
 }

@@ -31,7 +31,7 @@ async def run_pet(tmp_path, headless: bool, run_s: float = 0.0):
             hello = core.hellos[0]
             assert hello["module_id"] == "pet" and hello["manifest"]["capabilities"] == ["presence.view"]
             assert core.rejected == [] and proc.returncode is None
-            await core.topic("presence", {"speaking": True, "segment": "Привет.", "emotion": "happy"})
+            await core.topic("presence", {"speaking": True, "segment": "Привет.", "sticker": "happy"})
             await asyncio.sleep(run_s or 0.5)
             assert proc.returncode is None
             await core.shutdown("тест")

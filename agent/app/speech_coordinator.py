@@ -41,19 +41,19 @@ class SpeechCoordinator:
 
     # ── вход для компаньона ──────────────────────────────────────────────────
 
-    def enqueue_say(self, text: str, emotion: str | None = None, priority: int | None = None, *,
+    def enqueue_say(self, text: str, sticker: str | None = None, priority: int | None = None, *,
                     source: str | None = None) -> SpeechCandidate:
         """Готовая реплика компаньона -> очередь (ATT-13). Источник по контексту: в формулировке вопроса - question,
         в обработке обращения - conversation (приоритет 95), иначе проактивная (приоритет «болтовни»)."""
         if self.ctx.approver.formulating():
-            cand = self.speech.new(source="question", mode="verbatim", text=text, emotion=emotion,
+            cand = self.speech.new(source="question", mode="verbatim", text=text, sticker=sticker,
                                    priority=priority or QUESTION_ANNOUNCE_P)
         elif current_channel.get() is not None:
             self.focus.touch_conversation()
-            cand = self.speech.new(source="conversation", mode="verbatim", text=text, emotion=emotion,
+            cand = self.speech.new(source="conversation", mode="verbatim", text=text, sticker=sticker,
                                    priority=CONVERSATION_P, channel=current_channel.get())
         else:
-            cand = self.speech.new(source=source or "proactive", mode="verbatim", text=text, emotion=emotion,
+            cand = self.speech.new(source=source or "proactive", mode="verbatim", text=text, sticker=sticker,
                                    priority=priority if priority is not None else PROACTIVE_P)
         self.bind_trace(cand)
         self.kick()
@@ -99,7 +99,7 @@ class SpeechCoordinator:
         trace_token = latency_trace.bind(getattr(cand, "trace", None))
         try:
             if cand.mode == "verbatim":
-                await companion.say(cand.text, cand.emotion, cand.priority, direct=True)
+                await companion.say(cand.text, cand.sticker, cand.priority, direct=True)
             else:
                 await self.speak_about(cand.text, cand.user_text, cand.must, cand.question, direct=True)
         finally:

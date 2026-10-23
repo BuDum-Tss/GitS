@@ -57,14 +57,14 @@ def test_legacy_pet_speech_and_say_json_are_gone():
         assert "say.json" not in path.read_text(encoding="utf-8") or path.name == "speech_out.py", path.name
 
 
-async def test_state_endpoint_has_presence_with_emotion_time_and_no_say(tmp_path):
+async def test_state_endpoint_has_presence_with_sticker_time_and_no_say(tmp_path):
     port, layer, runner = await serve(tmp_path)
     try:
         async with aiohttp.ClientSession() as http:
             async with http.get(f"http://127.0.0.1:{port}/api/state") as r:
                 state = await r.json()
         assert "say" not in state and "last_decision" not in state
-        assert state["presence"]["emotion_ts"] == 0.0 and "settings" in state
+        assert state["presence"]["sticker_ts"] == 0.0 and "settings" in state
         assert not (tmp_path / "memory" / "say.json").exists()
     finally:
         await layer.stop()
@@ -107,7 +107,7 @@ async def test_real_pet_process_started_by_the_supervisor_gets_presence_and_stop
         rec = layer.modules.get("pet")
         pid = rec.pid
         assert rec.manifest["capabilities"] == ["presence.view"] and rec.manifest["subscribe"] == ["presence", "settings", "module"]
-        companion.presence.update(emotion="angry", emotion_ts=time.time())             # presence доходит до процесса без ошибок
+        companion.presence.update(sticker="angry", sticker_ts=time.time())             # presence доходит до процесса без ошибок
         await asyncio.sleep(0.5)
         assert layer.hub.is_connected("pet") and psutil.pid_exists(pid)
         settings.update(modules={"pet": {"enabled": False}})

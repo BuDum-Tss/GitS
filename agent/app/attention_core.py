@@ -99,7 +99,7 @@ def clamp(v: float, lo: float, hi: float) -> float:
 class NullSpeech:
     """Вывод речи, которого нет (тесты без компаньона)."""
 
-    async def speak(self, utterance_id, text, emotion, priority) -> None: ...
+    async def speak(self, utterance_id, text, sticker, priority) -> None: ...
     async def stop(self, utterance_id=None) -> None: ...
     def is_speaking(self) -> bool:
         return False
@@ -149,7 +149,6 @@ class AttentionContext:
         self.on_decided: Callable[[Item, str, float, str | None], None] | None = None
         # ТЗ 18, первый эшелон: варианты подсказки политики для классификатора; None - не спрашиваем
         self.policy_options: Callable[[], dict] | None = None
-        self.on_emotion: Callable[[str, str], None] | None = None  # ТЗ 26: (эмоция, причина) от классификатора; ядро ставит публикацию
         # ТЗ 30, IMP-4: маршрут think; on_think(item) синхронный, запускает размышление в фоне; None - размышления нет
         self.on_think: Callable[[Item], None] | None = None
         self.silent_kinds: set[str] = set()      # виды, которые не пишутся в журнал module_event

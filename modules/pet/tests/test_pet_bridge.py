@@ -68,8 +68,8 @@ async def test_client_thread_feeds_the_queue_and_the_controller():
                 return cond()
             await wait(lambda: pumped(lambda: c.state.connected and c.state.settings.get("hotkey_input")))
             assert c.state.settings["pet_visible"] is True and c.state.enabled
-            await core.topic("presence", {"speaking": True, "utterance_id": "u-1", "segment": "Идёт речь.", "emotion": "happy",
-                                          "emotion_ts": time.time()})
+            await core.topic("presence", {"speaking": True, "utterance_id": "u-1", "segment": "Идёт речь.", "sticker": "happy",
+                                          "sticker_ts": time.time()})
             await wait(lambda: pumped(lambda: view.frames and view.frames[-1] == ("happy", "Идёт речь.", True)))
             await core.update_settings({"pet_pinned": True, "voice_muted": True})
             await wait(lambda: pumped(lambda: c.state.pinned and c.state.muted))

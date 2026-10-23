@@ -47,8 +47,6 @@ KINDS = {                      # ключ для кода: фраза для м�
 }
 URGENCY = {"routine": "routine", "important": "important", "emergency": "emergency"}
 TONE = {"bad": "bad news", "neutral": "neutral information", "good": "good news"}
-_EMOTION_OF = {"combat": "threat", "death": "sad", "injury": "scared", "fire": "scared", "trade": "question",
-               "social": "happy", "work": "proud", "resources": "looking", "other": "looking"}
 _BASE_IMPORTANCE = {"combat": 3, "death": 3, "injury": 2, "fire": 3, "resources": 1, "trade": 0, "social": 0, "work": 0, "other": 0}
 MIN_KIND_CONFIDENCE = 0.35      # ниже этой уверенности категорию не берём (калибровка: до 0.4 точность ~56%, от 0.6 ~92-100%)
 
@@ -67,7 +65,6 @@ def questions() -> dict:
 class Appraisal:
     importance: int = 1
     valence: str = "neutral"
-    emotion: str = "looking"
     action: str = "none"
     comment: str = "brief"
     novelty: str = "new"
@@ -83,7 +80,7 @@ class Appraisal:
     def tone(self) -> str:
         """Подсказка Gemma, как отреагировать (коротко, по-русски, без готовых реплик)."""
         length = {"silent": "можно промолчать", "brief": "одна короткая реплика", "full": "развёрнутая реакция в 2-3 предложения"}[self.comment]
-        parts = [f"важность {self.importance}/4", f"эмоция {self.emotion}", length]
+        parts = [f"важность {self.importance}/4", length]
         if self.novelty == "repeated":
             parts.append("это повтор: не повторяйся, добавь новое или промолчи")
         elif self.novelty == "related_to_recent":
@@ -184,13 +181,6 @@ def derive(answers: dict, kind: str, text: str, aff: "Affect", now: float | None
     # знак по категории (модель плохо различает «хорошо/плохо»: отвечала нейтрально на всё); тон модели только для «другого»
     ap.valence = {"combat": "negative", "death": "negative", "injury": "negative", "fire": "negative",
                   "social": "positive", "work": "positive"}.get(ek) or {"bad": "negative", "good": "positive"}.get(tone, "neutral")
-    ap.emotion = _EMOTION_OF.get(ek, "looking")
-    if ek == "combat" and arousal < 0.25 and imp < 4:
-        ap.emotion = "threat"
-    elif ek in ("combat", "fire") and (arousal > 0.6 or streak >= 2):
-        ap.emotion = "scared" if ap.valence != "positive" else "angry"
-    if ek == "work" and ap.valence == "negative":
-        ap.emotion = "idle"
     ap.action = "draft_colonists" if ek == "combat" and danger >= 0.5 else "none"      # исполнится только при реальных врагах (reflex_actions.check)
     # новизна: похожее событие в ленте или серия
     from memory_store import stems
@@ -218,7 +208,7 @@ async def appraise(kind: str, text: str, now: float | None = None) -> Appraisal 
     ap.ms = round((time.perf_counter() - t0) * 1000)
     import appraisal_log
     ap.log_id = appraisal_log.append(kind, text, answers, {
-        "importance": ap.importance, "emotion": ap.emotion, "action": ap.action, "comment": ap.comment, "novelty": ap.novelty,
+        "importance": ap.importance, "action": ap.action, "comment": ap.comment, "novelty": ap.novelty,
         "trend": ap.trend, "claude": ap.claude, "valence": ap.valence, "ms": ap.ms})
     AFFECT.update(ap, text, now)
     return ap

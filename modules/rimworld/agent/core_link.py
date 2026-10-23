@@ -1,7 +1,7 @@
 """Связь модуля RimWorld с ядром ГЛаДОС (ТЗ 11, RW-6): замена прежнего speech_link.py.
 
 Внешний интерфейс тот же, что был у SpeechLink, чтобы контроллер и комментатор не переписывать: `online`, `last_user_ts()`,
-`is_speaking()`, `repeats(text)`, `say(text, emotion)`, `emotion(event, emotion)`, `event(kind, data)`, `run()`. Разница в том,
+`is_speaking()`, `repeats(text)`, `say(text)`, `event(kind, data)`, `run()`. Разница в том,
 что вместо HTTP к :8766 работает клиент модуля (`gits_sdk.ModuleClient`, WebSocket к шине ядра):
   - реплики идут в ядро как `say` (verbatim): речь одна, очередью и разрешением говорить распоряжается менеджер внимания;
   - присутствие (говорит ли она, когда говорил пользователь, что сказала) приходит темой `presence`;
@@ -121,12 +121,12 @@ class CoreLink:
 
     # ── исходящие ──
 
-    async def say(self, text: str, emotion: str | None = None) -> None:
+    async def say(self, text: str) -> None:
         if not self.online:
             logger.info(f"[ядро недоступно, реплика не озвучена] {text[:120]}")
             return
         try:
-            await self.client.say(text, mode="verbatim", emotion=emotion, key="rimworld.comment",
+            await self.client.say(text, mode="verbatim", key="rimworld.comment",
                                   expires_in_s=SAY_EXPIRES_S)
         except Exception as e:
             logger.info(f"say не дошёл: {e}")
@@ -161,12 +161,6 @@ class CoreLink:
                                          stage=f"tool:{name}:{self._tool_calls}", text=summary or None)
         except Exception as e:
             logger.debug(f"tool_call не дошёл: {e}")
-
-    async def emotion(self, event: str, emotion: str) -> None:
-        try:
-            await self.client.emotion(emotion, cause=event)
-        except Exception as e:
-            logger.debug(f"emotion не дошла: {e}")
 
     async def event(self, kind: str, data: dict | None = None, text: str | None = None,
                     urgency: int | None = None) -> None:

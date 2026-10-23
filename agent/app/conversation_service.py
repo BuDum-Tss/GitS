@@ -111,7 +111,7 @@ class ConversationService:
         h._pending_memory += 1
         h._last_user_ts = time.time()
         h.presence.update(last_user_ts=h._last_user_ts)
-        fast_brain.publish("chat", {"emotion": "thinking", "action": "none"})   # сразу «задумалась», без вызова модели
+        h.presence.update(sticker="thinking", sticker_ts=time.time())   # сразу «задумалась», без вызова модели
 
         if h.attention is not None:
             await h.attention.on_user_input(text)          # фокус «разговор»; «замолчи» обрывает речь до любых вызовов модели
@@ -168,7 +168,7 @@ class ConversationService:
             turn.end()
         self.log_route(text, route, routed, intent, cls, decision)
         h.arm_idle_consolidation()
-        asyncio.create_task(fast_brain.react_chat(text, h._people))   # эмоция и отношение: уже после ответа
+        asyncio.create_task(fast_brain.react_chat(text, h._people))   # отношение: уже после ответа
         if h._pending_memory >= 6:
             asyncio.create_task(h._consolidate())                  # осмыслить беседу и запомнить важное
 

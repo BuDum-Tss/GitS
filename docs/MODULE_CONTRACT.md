@@ -2,7 +2,7 @@
 
 Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора модуля: `docs/MODULES.md`, протокол: `docs/tz/01-module-contract.md`, ТЗ контракта: `docs/tz/31-module-contracts.md`.
 
-Версия протокола `PROTOCOL = 1`, версия контракта `1.6`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
+Версия протокола `PROTOCOL = 1`, версия контракта `1.7`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
 ## Версии и совместимость
 
@@ -23,8 +23,9 @@
 - `1.4`: ТЗ 04: core.lookup, core.experience.add, core.kb.ingest реализованы (были planned)
 - `1.5`: ТЗ 32: поле манифеста workspace, запросы workspace.enter / workspace.exit / workspace.resume (policy.activate, focus.release, focus.resume остаются алиасами на один релиз)
 - `1.6`: удалены справочник и уроки ядра: запросы core.lookup, core.experience.add, core.kb.ingest и поле манифеста knowledge
+- `1.7`: эмоций в ядре нет: стикер питомца выбирает тег в тексте ответа; presence.sticker и sticker_ts вместо emotion и emotion_ts, из speak убрано emotion, сообщение emotion и поля emotion в say, core.tts, tts.synthesize устарели (ядро их игнорирует)
 
-Устаревшее: нет.
+Устаревшее: `emotion` до 2027-01-01, заменить на тег стикера в тексте ответа; сообщение игнорируется ядром
 
 ## Запросы модуля к ядру
 
@@ -78,7 +79,7 @@
 | Поле | Тип | Обязательно | Ограничения | Описание |
 |---|---|---|---|---|
 | `text` | string | да | до 5000 симв.; непустая | что произнести |
-| `emotion` | string | нет | - | эмоция реплики |
+| `emotion` | string | нет | - | устарело: эмоций в ядре нет, поле игнорируется |
 | `format` | string | нет | одно из `wav`, `ogg`; по умолчанию `wav` | формат файла |
 
 Ответ (`result.value`):
@@ -483,7 +484,7 @@
 |---|---|---|---|---|
 | `text` | string | да | непустая | что сказать |
 | `mode` | string | нет | одно из `fact`, `verbatim`; по умолчанию `fact` | режим |
-| `emotion` | string | нет | - | эмоция |
+| `emotion` | string | нет | - | устарело: эмоций в ядре нет, поле игнорируется |
 | `key` | string | нет | - | ключ замены |
 | `announce` | boolean | нет | - | объявление о долгом запуске |
 | `urgency_hint` | integer | нет | от 0; до 5 | подсказка срочности |
@@ -499,9 +500,9 @@
 
 ### `emotion`
 
-Эмоция модуля (допустимость проверяет ядро).
+Устарело: эмоций в ядре нет, ядро сообщение игнорирует (реакцию выбирает тег стикера в тексте ответа).
 
-направление: module->core, вид: note, статус: **stable**, с версии 1.0.
+направление: module->core, вид: note, статус: **deprecated**, с версии 1.0.
 
 Тело:
 
@@ -799,7 +800,7 @@
 | Поле | Тип | Обязательно | Ограничения | Описание |
 |---|---|---|---|---|
 | `text` | string | да | до 5000 симв.; непустая | текст |
-| `emotion` | string | нет | - | эмоция |
+| `emotion` | string | нет | - | устарело, игнорируется |
 | `format` | string | нет | одно из `wav`, `ogg`; по умолчанию `wav` | формат |
 
 Ответ (`result.value`):
@@ -1172,7 +1173,6 @@
 |---|---|---|---|---|
 | `utterance_id` | string | да | непустая | id реплики |
 | `text` | string | да | непустая | текст |
-| `emotion` | string | нет | - | эмоция |
 | `replace` | boolean | нет | - | заменить звучащую |
 | `trace` | object | нет | - | трасса задержки |
 
@@ -1182,7 +1182,6 @@
 {
   "utterance_id": "u1",
   "text": "привет",
-  "emotion": null,
   "replace": false
 }
 ```
@@ -1235,7 +1234,7 @@
 
 ### `presence`
 
-Присутствие: говорит ли она, эмоция, занятость, фокус (не чаще 10 раз в секунду).
+Присутствие: говорит ли она, стикер, занятость, фокус (не чаще 10 раз в секунду).
 
 направление: core->module, вид: topic, статус: **stable**, с версии 1.0.
 
@@ -1246,8 +1245,8 @@
 | `speaking` | boolean | да | - | говорит ли |
 | `utterance_id` | string | нет | - | id звучащей реплики |
 | `segment` | string | нет | - | звучащий фрагмент |
-| `emotion` | string | да | - | эмоция |
-| `emotion_ts` | number | нет | - | когда сменилась эмоция |
+| `sticker` | string | нет | - | стикер (тег реакции звучащей реплики или idle) |
+| `sticker_ts` | number | нет | - | когда сменился стикер |
 | `busy` | boolean | нет | - | занята ли |
 | `focus` | string | нет | - | что в фокусе |
 | `user_speaking` | boolean | нет | - | говорит ли человек |
@@ -1262,8 +1261,8 @@
   "speaking": false,
   "utterance_id": null,
   "segment": "",
-  "emotion": "idle",
-  "emotion_ts": 0.0,
+  "sticker": "idle",
+  "sticker_ts": 0.0,
   "busy": false,
   "focus": "idle",
   "user_speaking": false,

@@ -56,7 +56,7 @@ async def test_self_initiated_say_goes_to_speech_and_dialogue(tmp_path):
     await c.say("Сама заговорила", "happy", priority=40)
     assert speech.spoken[0][1:] == ("Сама заговорила", "happy", 40)
     assert c._mem.recent_dialogue(1)[0]["text"] == "Сама заговорила"       # чат дашборда
-    assert c.presence.state["last_say"] == "Сама заговорила" and c.presence.state["emotion"] == "happy"
+    assert c.presence.state["last_say"] == "Сама заговорила" and c.presence.state["sticker"] == "happy"
 
 
 async def test_module_channel_reply_is_delivered_not_spoken(tmp_path):

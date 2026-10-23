@@ -122,8 +122,6 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     speech = getattr(companion, "speech", None)
     if hasattr(speech, "attach"):
         speech.attach(hub, modules)                      # VOICE-15: речь идёт модулю voice, пока он подключён
-    emotion_listener = fast_brain.add_listener(          # PET-9: каждая эмоция уходит в presence (стикер питомца)
-        lambda emotion, ts: presence.update(emotion=emotion, emotion_ts=ts))
     attention.silent_kinds |= VOICE_SILENT_KINDS
     attention.kind_handlers.update(make_voice_handlers(companion, attention, speech))
     attention.kind_hooks["voice.heard"] = make_heard_hook(companion)
@@ -216,7 +214,6 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         await sup.start()
 
     async def stop():
-        fast_brain.remove_listener(emotion_listener)
         for task in layer.tasks:
             task.cancel()
         await focus_mgr.stop()
@@ -285,19 +282,6 @@ def _module_title(modules, module_id: str) -> str:
     return rec.title if rec is not None and rec.title else module_id
 
 
-def wire_affect(companion, layer, presence, speech, mem_root: Path):
-    """Эмоция персонажа (ТЗ 26): её выбирает классификатор, она идёт в контекст реплики и в картинку питомца."""
-    import fast_brain as _fb
-    from app.affect_service import AffectService
-    affect = AffectService(lambda: settings.load().get("emotion_ttl_s"),
-                           on_change=lambda fields: presence.update(**fields))
-    _fb.set_affect(affect)
-    companion.context_builder.emotion_of = affect.emotion_block
-    layer.attention.ctx.on_emotion = lambda label, reason: _fb.publish(reason, {"emotion": label, "action": "none",
-                                                                                  "source": "decider"})
-    return affect
-
-
 async def _run(config: dict):
     # httpx пишет в журнал полный URL запроса (в запросах к API бывают токены): журнал не должен его хранить
     for noisy in ("httpx", "httpcore", "aiohttp.access"):
@@ -305,7 +289,6 @@ async def _run(config: dict):
     mem_dir = config["memory_dir"]
     settings.init(mem_dir)
     character.init()                    # ТЗ 05: персонаж из настроек (его папка, имя, память)
-    fast_brain.init(mem_dir)
     char_dir = character.memory_dir(character.active().id, Path(mem_dir))   # личная память активного персонажа (CHR-10)
     rel = Relationships(char_dir)
     presence = speech_out.PresenceTracker()
@@ -318,14 +301,12 @@ async def _run(config: dict):
     registry = Registry()
     registry.embedder = tool_search.ToolEmbeddings(Path(mem_dir) / "tool_embeddings.json")     # отбор инструментов по смыслу
     layer = wire_modules(companion, registry)
-    affect = wire_affect(companion, layer, presence, speech, Path(mem_dir))      # ТЗ 26: состояние эмоций
     companion.game_order = layer.game_order              # RW-11: приказ игроку-агенту (инструмент order модуля игры)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     dashboard.set_attention(layer.attention)
     dashboard.set_focus(layer.focus)                     # ТЗ 18: вкладка «Состояние», блок «Фокус»
     dashboard.set_workspace(layer.workspaces)            # ТЗ 32: карточка «Сейчас», среда агента
     dashboard.set_presence(presence)
-    dashboard.set_affect(affect)
     loop = asyncio.get_running_loop()
     await dashboard.start_dashboard(
         memory_dir=mem_dir, chat_callback=lambda m: loop.create_task(layer.io.from_dashboard(m)))

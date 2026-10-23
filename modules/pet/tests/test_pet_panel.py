@@ -16,7 +16,7 @@ BUTTONS = {"type": "buttons", "items": [{"label": "Показать", "action": 
 
 def test_panel_blocks_show_window_sticker_position_and_link():
     blocks = panel_blocks({"pet_visible": True, "pet_pinned": False, "pet_x": 10, "pet_y": 20},
-                          {"emotion": "angry", "emotion_ts": NOW - 5}, NOW, True, True)
+                          {"sticker": "angry", "sticker_ts": NOW - 5}, NOW, True, True)
     assert [b["type"] for b in blocks] == ["stats", "text", "buttons"]
     items = {i["label"]: i["value"] for i in blocks[0]["items"]}
     assert items == {"Окно": "показано", "Стикер": "angry", "Закреплён": "нет", "Позиция": "10, 20"}
@@ -25,7 +25,7 @@ def test_panel_blocks_show_window_sticker_position_and_link():
 
 def test_panel_blocks_when_hidden_disconnected_disabled_and_default_position():
     blocks = panel_blocks({"pet_visible": False, "pet_pinned": True, "pet_x": True, "pet_y": 5},
-                          {"emotion": "happy", "emotion_ts": NOW}, NOW, False, False)
+                          {"sticker": "happy", "sticker_ts": NOW}, NOW, False, False)
     items = {i["label"]: i["value"] for i in blocks[0]["items"]}
     assert items["Окно"] == "скрыто" and items["Закреплён"] == "да" and items["Позиция"] == "угол по умолчанию"
     assert items["Стикер"] == "resting"                                 # ядро недоступно

@@ -35,7 +35,7 @@ class Announcer:
         self.store.register(item)
         await self.announce(item)
 
-    async def announce(self, item: Item, *, mode: str = "fact", emotion: str | None = None, ttl: float | None = None) -> None:
+    async def announce(self, item: Item, *, mode: str = "fact", ttl: float | None = None) -> None:
         """Формула важности, правила и пауза между репликами не применяются. Пользователь просил не отвлекать - объявление
         звучит коротко; пользователь отошёл - уходит в сводку (и в журнал). Одинаковые объявления одного источника в
         пределах 20 с склеиваются: остаётся одно, в факте счётчик."""
@@ -62,7 +62,7 @@ class Announcer:
         else:
             route = "short" if short else "speech"
             fact = self.fact(item, short) if mode == "fact" else item.text
-            entry["cand"] = self.speech.speech.new(source=f"announce:{item.id}", mode=mode, text=fact, emotion=emotion,
+            entry["cand"] = self.speech.speech.new(source=f"announce:{item.id}", mode=mode, text=fact,
                                                    priority=ANNOUNCE_P, ttl=ttl, must=True, item_id=item.id)
             self.speech.kick()
         self.decisions.write(item, att, score={"w_user": 0.3 if quiet else 1.0, "priority": float(ANNOUNCE_P), "away": away},

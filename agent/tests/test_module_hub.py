@@ -406,10 +406,7 @@ async def test_job_answer_is_held_while_module_is_offline_and_sent_on_resend(tmp
 
 # ── события, речь, состояние ────────────────────────────────────────────────────
 
-async def test_events_speech_emotion_state_reach_core(tmp_path, monkeypatch):
-    import fast_brain
-    published = []
-    monkeypatch.setattr(fast_brain, "publish", lambda name, res: published.append((name, res)))
+async def test_events_speech_state_reach_core_and_emotion_is_ignored(tmp_path):
     async with running_core(tmp_path) as core:
         raw = RawModule(core, manifest("tg", state=True))
         try:
@@ -418,11 +415,9 @@ async def test_events_speech_emotion_state_reach_core(tmp_path, monkeypatch):
             await raw.send("event", {"kind": "other.ping", "text": "чужой вид"})          # вид другого модуля
             await raw.send("event", {"kind": "tg.bad", "text": ""})                        # неверное тело
             await raw.send("say", {"text": "Борис уснул.", "mode": "fact"})
-            await raw.send("emotion", {"emotion": "happy", "cause": "тест"})
-            await raw.send("emotion", {"emotion": "нет-такой", "cause": "тест"})
+            await raw.send("emotion", {"emotion": "happy", "cause": "тест"})                # устарело: ядро игнорирует
             await raw.send("state", {"summary": "всё хорошо", "data": {"game_running": True}})
             await core.wait_for(lambda: core.modules.get("tg").state)
-            await core.wait_for(lambda: published)
             await asyncio.sleep(0.1)
         finally:
             await raw.close()
@@ -430,7 +425,6 @@ async def test_events_speech_emotion_state_reach_core(tmp_path, monkeypatch):
         logged = events_log.tail(50, {"module_event"})
         assert [e["data"]["event_kind"] for e in logged] == ["tg.ping"]                       # журнал событий модулей
         assert core.companion.about == [("Борис уснул.", False, False)]                 # fact -> очередь речи -> _speak_about
-        assert published == [("module:tg", {"emotion": "happy", "action": "none", "source": "tg"})]
         assert core.modules.get("tg").state["summary"] == "всё хорошо"
 
 
@@ -638,11 +632,11 @@ async def test_core_tts_is_forwarded_to_the_voice_module(tmp_path):
             voice.handlers["tts.synthesize"] = synthesize
             await voice.hello()
             try:
-                r = await client.request("core.tts", {"text": "Привет", "emotion": "happy", "format": "ogg"})
+                r = await client.request("core.tts", {"text": "Привет", "format": "ogg"})
                 assert r == {"path": str(tmp_path / "tts_1.ogg"), "duration_ms": 1234}
-                assert asked == [{"text": "Привет", "emotion": "happy", "format": "ogg"}]
+                assert asked == [{"text": "Привет", "format": "ogg"}]
                 await client.request("core.tts", {"text": "Ещё"})
-                assert asked[-1] == {"text": "Ещё", "emotion": None, "format": "wav"}
+                assert asked[-1] == {"text": "Ещё", "format": "wav"}
                 voice.handlers["tts.synthesize"] = lambda body: {"path": 5}
                 with pytest.raises(ToolError) as e:
                     await client.request("core.tts", {"text": "Плохо"})

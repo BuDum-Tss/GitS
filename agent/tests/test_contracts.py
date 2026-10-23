@@ -147,7 +147,6 @@ async def test_companion_converses_on_fake_contracts_and_leaves_no_files(tmp_pat
     async def no_reaction(text, rel=None):
         return None
     monkeypatch.setattr(fast_brain, "react_chat", no_reaction)       # эмоция после ответа: модели нет
-    monkeypatch.setattr(fast_brain, "publish", lambda *a, **k: None)
 
     llm, log, mem = FakeLLM("Привет, я здесь."), FakeLog(), FakeMemory()
     mdir = tmp_path / "companion-memory"          # папка памяти компаньона (conftest заводит свою tmp_path/memory)

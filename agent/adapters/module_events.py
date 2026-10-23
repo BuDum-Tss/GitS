@@ -2,7 +2,6 @@
 присутствие. Единственное место, где шина модулей встречается с `attention` и `fast_brain`."""
 from typing import Any
 
-import fast_brain
 from gits_sdk import protocol as P
 
 
@@ -22,15 +21,6 @@ class AttentionEventSink:
 
     async def submit_speech(self, module_id: str, say: dict) -> None:
         await self.attention.submit_speech(module_id, say)
-
-    def on_emotion(self, module_id: str, emotion: Any) -> bool:
-        """False: эмоции нет в списке быстрой модели (шина пишет предупреждение)."""
-        if emotion not in fast_brain.EMOTIONS:
-            return False
-        fast_brain.publish(f"module:{module_id}", {"emotion": emotion, "action": "none", "source": module_id})
-        if self.presence is not None:
-            self.presence.update(emotion=emotion)
-        return True
 
     async def on_job_update(self, module_id: str, job: dict) -> None:
         await self.attention.on_job_update(module_id, job)
