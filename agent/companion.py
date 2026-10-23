@@ -27,7 +27,6 @@ import time
 from pathlib import Path
 
 import claude_quota
-import fast_brain
 import flow_trace
 import character
 import prompts
@@ -155,16 +154,16 @@ class Companion:
                 self.attention.speech.discard(cand, "cancelled")
                 raise
 
-    async def say(self, text: str, emotion: str | None = None, priority: int | None = None, *, direct: bool = False,
+    async def say(self, text: str, sticker: str | None = None, priority: int | None = None, *, direct: bool = False,
                   source: str | None = None):
         """Сказать реплику: через очередь речи внимания (ATT-13) или сразу (direct=True: так зовёт сам планировщик)."""
         if self._queued(direct):
-            await self._wait_spoken(self.attention.enqueue_say(text, emotion, priority, source=source))
+            await self._wait_spoken(self.attention.enqueue_say(text, sticker, priority, source=source))
             return
-        await self._say_now(text, emotion, priority)
+        await self._say_now(text, sticker, priority)
 
-    async def _say_now(self, text: str, emotion: str | None = None, priority: int | None = None):
-        """Журнал, вывод речи (питомец), эмоция. В канале модуля вместо речи идёт deliver."""
+    async def _say_now(self, text: str, sticker: str | None = None, priority: int | None = None):
+        """Журнал, вывод речи (питомец), стикер. В канале модуля вместо речи идёт deliver."""
         from speech_text import clean_speech
         text = clean_speech(text)   # без разметки, ремарок в скобках и оборванного хвоста: это произносится вслух
         if not text:
@@ -173,17 +172,17 @@ class Companion:
         channel = current_channel.get()
         if channel is not None and channel.kind == "module":
             # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
-            self._record_say(text, emotion, channel)
+            self._record_say(text, channel)
             if self.io is not None:
                 await self.io.deliver(channel, text)
-            self._publish_emotion(emotion)
+            self._publish_sticker(sticker)
         else:
             utterance = new_utterance_id()
             self.last_utterance_id = utterance
             # синхронизатор речи и действий: текст в чате, запись в диалог и жест появляются, когда реплика зазвучала,
             # а не когда она только отправлена на синтез (синтез занимает секунды); без голоса сразу
-            await self.speech.speak(utterance, text, emotion, priority or 50)      # реплика попадает среди звучащих до ожидания
-            self._when_audible(utterance, lambda: (self._record_say(text, emotion, channel), self._publish_emotion(emotion)))
+            await self.speech.speak(utterance, text, sticker, priority or 50)      # реплика попадает среди звучащих до ожидания
+            self._when_audible(utterance, lambda: (self._record_say(text, channel), self._publish_sticker(sticker)))
         logger.info(f"[{character.active().name}] {text}")
 
     def _when_audible(self, utterance: str, action) -> None:
@@ -194,36 +193,35 @@ class Companion:
         else:
             hook(utterance, action)
 
-    def _publish_emotion(self, emotion: str | None) -> None:
-        if emotion:
-            self.presence.update(emotion=emotion)
-            fast_brain.publish("say", {"emotion": emotion, "action": "none"})
+    def _publish_sticker(self, sticker: str | None) -> None:
+        if sticker:
+            self.presence.update(sticker=sticker, sticker_ts=time.time())
 
-    def _record_say(self, text: str, emotion: str | None, channel) -> None:
+    def _record_say(self, text: str, channel) -> None:
         """Реплика сказана: диалог, журнал (в фоне, без ожидания диска: ТЗ 25 FAST-7), последняя реплика, присутствие."""
         reply_trace.attach(text)                                         # запрос к модели, по которому родилась фраза (дашборд)
         self._memory_writer.add_dialogue(character.active().id, text)   # роль реплики персонажа: его id (данные диалога)
-        self._log.log_nowait("say", text, emotion=emotion, **({"channel": channel.label()} if channel else {}))
+        self._log.log_nowait("say", text, **({"channel": channel.label()} if channel else {}))
         self._last_say = time.time()
         self._last_say_text = text
         self.presence.update(last_say=text, last_say_ts=self._last_say)
 
-    async def say_part(self, text: str, *, first: bool) -> str | None:
+    async def say_part(self, text: str, *, first: bool, sticker: str | None = None) -> str | None:
         """Предложение потокового ответа (ТЗ 25, FAST-4): прямо в вывод речи, мимо ожидания очереди речи внимания. Первое
         заменяет звучащее, остальные встают в очередь вывода после него. Журнал и диалог пишет `commit_reply` по итогу.
         Возвращает id реплики."""
         note_speech()
         utterance = new_utterance_id()
         self.last_utterance_id = utterance
-        await self.speech.speak(utterance, text, None, 50, **({} if first else {"queue": True}))
+        await self.speech.speak(utterance, text, sticker, 50, **({} if first else {"queue": True}))
         return utterance
 
-    def commit_reply(self, text: str, emotion: str | None = None) -> None:
+    def commit_reply(self, text: str) -> None:
         """Потоковый ответ закончен (или оборван): в память и журнал уходит то, что она успела сказать."""
         text = text.strip()
         if not text:
             return
-        self._record_say(text, emotion, current_channel.get())
+        self._record_say(text, current_channel.get())
         logger.info(f"[{character.active().name}] {text}")
 
     def cancel_reply(self, reason: str = "stop") -> bool:

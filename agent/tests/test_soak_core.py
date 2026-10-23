@@ -39,10 +39,10 @@ async def test_short_soak_runs_core_without_modules_and_closes_cleanly(tmp_path)
 async def test_soak_does_not_leave_patches_behind(tmp_path):
     import fast_brain
     import os
-    before = (fast_brain.publish, fast_brain.react_chat, decide.decide)
+    before = (fast_brain.react_chat, decide.decide)
     env = dict(os.environ)
     await soak_core.run_soak(0.05, 1.0, memory_dir=str(tmp_path / "soak2"))
-    assert (fast_brain.publish, fast_brain.react_chat, decide.decide) == before
+    assert (fast_brain.react_chat, decide.decide) == before
     assert dict(os.environ) == env                      # GITS_NO_MODULES и прочие переменные прогона возвращены
 
 

@@ -539,10 +539,10 @@ async def test_reply_note_when_event_can_be_answered(tmp_path):
 # ── речь модулей ──────────────────────────────────────────────────────────────────────────────────
 
 async def test_module_speech_goes_through_the_same_scoring(rig):
-    await rig.att.submit_speech("rimworld", {"text": "Борис уснул.", "mode": "verbatim", "emotion": "angry", "key": "c"})
+    await rig.att.submit_speech("rimworld", {"text": "Борис уснул.", "mode": "verbatim", "key": "c"})
     cand = rig.candidates()[0]
-    assert (cand.source, cand.mode, cand.text, cand.emotion, cand.priority, cand.key) == \
-        ("module:rimworld", "verbatim", "Борис уснул.", "angry", 40, "module:rimworld:c")
+    assert (cand.source, cand.mode, cand.text, cand.sticker, cand.priority, cand.key) == \
+        ("module:rimworld", "verbatim", "Борис уснул.", None, 40, "module:rimworld:c")
     assert cand.expires - rig.clock.t == 20                           # готовая реплика модуля живёт 20 с
     await rig.att.submit_speech("rimworld", {"text": "Налёт", "mode": "fact", "urgency_hint": 5, "expires_in_s": 15})
     hot = rig.candidates()[1]
@@ -953,7 +953,7 @@ async def test_classify_input_threshold_and_switch(tmp_path):
     rig.cfg["attention"]["classifier"] = True
     rig.decider.answers = None
     assert await rig.att.classify_input("Открой браузер") is None     # сервис недоступен
-    assert rig.decider.calls[0][1] == ["intent", "needs_memory", "emotion"]
+    assert rig.decider.calls[0][1] == ["intent", "needs_memory"]
 
 
 async def test_enqueue_say_by_context(rig):
@@ -968,7 +968,7 @@ async def test_enqueue_say_by_context(rig):
         fact = rig.att.enqueue_fact("итог", "просьба", must=True)
     finally:
         current_channel.reset(token)
-    assert (cand.source, cand.priority, cand.channel, cand.emotion) == ("conversation", 95, VOICE, "happy")
+    assert (cand.source, cand.priority, cand.channel, cand.sticker) == ("conversation", 95, VOICE, "happy")
     assert (fact.source, fact.mode, fact.must, fact.user_text, fact.expires - rig.clock.t) == ("conversation", "fact", True, "просьба", 120)
     token = approvals.announcing.set(True)
     try:

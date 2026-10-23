@@ -98,7 +98,7 @@ class Dispatcher:
         elif decision != "D0":
             key = say.get("key")
             self.speech.speech.new(source=f"module:{module_id}", mode=mode, text=text[:TEXT_MAX] if mode == "fact" else text,
-                                   emotion=say.get("emotion"), priority=int(round(item.priority)), ttl=ttl,
+                                   priority=int(round(item.priority)), ttl=ttl,
                                    key=f"module:{module_id}:{key}" if key else None, item_id=item.id)
             if decision == "D4":
                 self.react(item, text[:80], f"module:{module_id}")

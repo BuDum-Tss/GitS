@@ -1,14 +1,11 @@
-"""Быстрый «рефлекторный» мозг: локальная LLM (LM Studio) → эмоция + команда.
+"""Быстрый «рефлекторный» мозг: локальная LLM (LM Studio) → простая команда игре.
 
 Реплику НЕ генерирует — комментарий по-прежнему пишет Claude (run_turn).
-Задача здесь одна: за секунду-две решить, какую эмоцию показать и нужна ли
-простая команда игре. Результат пишется в memory/emotion.json, откуда его
-берёт dashboard (/api/state → "emotion") и читает desktop_pet.
+Задача здесь одна: за секунду-две решить, нужна ли простая команда игре.
 
 Простые команды (draft_colonists / undraft) исполняет reflex_actions — с
 проверкой по реальному состоянию игры. Отношения к колонистам и игроку
-(relationships.py) подмешиваются в подсказку, поэтому смерть любимого и
-нелюбимого колониста вызывает разную эмоцию.
+(relationships.py) подмешиваются в описание события.
 Если LM Studio недоступна или ответ не разобрать — работает таблица правил.
 """
 import asyncio
@@ -18,7 +15,6 @@ import logging
 from envcompat import env
 import re
 import time
-from pathlib import Path
 
 import httpx
 
@@ -33,43 +29,22 @@ TIMEOUT  = 8.0
 WARMUP_TIMEOUT = 90.0   # холодный старт: LM Studio грузит модель ~20 с
 _lock: asyncio.Lock | None = None
 
-EMOTIONS = ["idle", "action", "angry", "question", "looking",
-            "sitting", "thinking", "happy", "threat", "resting",
-            "sad", "scared", "proud", "surprised"]
 ACTIONS  = ["none", "draft_colonists", "undraft"]
 
 _SYSTEM = (
     "Ты — рефлекторный слой ГЛаДОС (колония в RimWorld). Получив событие, выбери "
-    "эмоцию стикера и простую команду. draft_colonists — только если колонии "
+    "простую команду. draft_colonists — только если колонии "
     "угрожают враги (рейд); undraft — когда опасность миновала; в остальных "
-    "случаях none. Учитывай отношения, если они указаны: смерть того, к кому "
-    "есть привязанность, — sad, смерть нелюбимого — idle или angry. Ответь "
-    'ТОЛЬКО JSON без пояснений: {"emotion": <одно из ' + json.dumps(EMOTIONS) + '>, '
-    '"action": <одно из ' + json.dumps(ACTIONS) + '>}'
+    "случаях none. Ответь ТОЛЬКО JSON без пояснений: "
+    '{"action": <одно из ' + json.dumps(ACTIONS) + '>}'
 )
 
 _CHAT_SYSTEM = (
     "Ты — рефлекторный слой ГЛаДОС. Игрок написал сообщение. Оцени, как оно "
     "меняет её отношение к игроку (delta от -10 грубость, до +10 тепло и "
-    "уважение; 0 — нейтрально) и выбери эмоцию стикера. Ответь ТОЛЬКО JSON: "
-    '{"delta": <целое от -10 до 10>, "emotion": <одно из ' + json.dumps(EMOTIONS) + '>}'
+    "уважение; 0 — нейтрально). Ответь ТОЛЬКО JSON: "
+    '{"delta": <целое от -10 до 10>}'
 )
-
-# Запасные правила, если локальная модель недоступна
-_FALLBACK = {
-    "colony_died":  ("sad", "none"),
-    "pawn_died":    ("sad", "none"),
-    "fire_started": ("scared", "none"),
-    "game_loaded":  ("looking", "none"),
-}
-
-_EMOTION_FILE: Path | None = None
-
-
-def init(memory_dir: str):
-    global _EMOTION_FILE
-    _EMOTION_FILE = Path(memory_dir) / "emotion.json"
-
 
 _TAGS = re.compile(r"<[^>]+>|\(\*[^)]*\)|\(/[^)]*\)")
 
@@ -135,11 +110,9 @@ def _json_of(txt: str) -> dict | None:
 
 def _parse(txt: str) -> dict | None:
     j = _json_of(txt)
-    if not j or j.get("emotion") not in EMOTIONS:
+    if not j or j.get("action") not in ACTIONS:
         return None
-    if j.get("action") not in ACTIONS:
-        j["action"] = "none"
-    return {"emotion": j["emotion"], "action": j["action"]}
+    return {"action": j["action"]}
 
 
 class Preempted(Exception):
@@ -222,14 +195,14 @@ async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
 
 
 async def classify(evt: dict, rel=None, timeout: float = TIMEOUT) -> dict:
-    """Вернуть {"emotion", "action", "source", "ms"}. Никогда не бросает исключений."""
+    """Вернуть {"action", "source", "ms"}. Никогда не бросает исключений."""
     t0 = time.perf_counter()
     result, source = None, "rules"
     try:      # быстрая модель решений (decider): оценка с контекстом, 0.2-0.5 с; нет сервиса -> Gemma -> правила
         import appraisal
         ap = await appraisal.appraise(evt.get("type", "?"), describe(evt, rel))
         if ap:
-            result, source = {"emotion": ap.emotion, "action": ap.action, "importance": ap.importance, "comment": ap.comment}, "decider"
+            result, source = {"action": ap.action, "importance": ap.importance, "comment": ap.comment}, "decider"
     except Exception as e:
         logger.warning(f"Оценка события не удалась: {e}")
     if result is None:
@@ -240,41 +213,18 @@ async def classify(evt: dict, rel=None, timeout: float = TIMEOUT) -> dict:
         except Exception as e:
             logger.warning(f"Локальная LLM недоступна: {e}")
     if result is None:
-        emo, act = _FALLBACK.get(evt.get("type"), ("looking", "none"))
+        act = "none"
         if evt.get("type") == "letter" and evt.get("priority") == "critical":
-            emo, act = "threat", "draft_colonists"   # исполнится только при реальных врагах
-        result = {"emotion": emo, "action": act}
+            act = "draft_colonists"   # исполнится только при реальных врагах
+        result = {"action": act}
     result["source"] = source
     result["ms"] = round((time.perf_counter() - t0) * 1000)
     return result
 
 
-on_publish = None     # (событие, результат) -> None: агент игры отправляет эмоцию ассистенту (питомец живёт там)
-
-
-def publish(evt_name: str, res: dict):
-    """Записать эмоцию для дашборда/питомца."""
-    if on_publish is not None:
-        try:
-            on_publish(evt_name, res)
-        except Exception as e:
-            logger.debug(f"on_publish: {e}")
-    if _EMOTION_FILE is None:
-        return
-    try:
-        _EMOTION_FILE.write_text(json.dumps({
-            "emotion": res["emotion"], "action": res.get("action", "none"),
-            "event": evt_name, "ts": time.time(),
-            "source": res.get("source"), "ms": res.get("ms"),
-        }, ensure_ascii=False), encoding="utf-8")
-    except Exception as e:
-        logger.warning(f"Не удалось записать emotion.json: {e}")
-
-
 async def react(evt: dict, state: dict | None = None, rel=None) -> dict:
-    """Реакция на событие игры: эмоция + (если нужно и можно) команда игре."""
+    """Реакция на событие игры: (если нужно и можно) команда игре."""
     res = await classify(evt, rel)
-    publish(evt.get("type", "?"), res)
     outcome = ""
     if res["action"] != "none" and state is not None:
         outcome = " | команда: " + await reflex_actions.execute(res["action"], state)
@@ -286,33 +236,28 @@ async def react(evt: dict, state: dict | None = None, rel=None) -> dict:
             appraisal_log.set_outcome(last.log_id, outcome.removeprefix(" | команда: ") or "без команды")
     except Exception as e:
         logger.debug(f"журнал оценок: {e}")
-    logger.info(f"[fast] {evt.get('type')} → {res['emotion']} / {res['action']} "
+    logger.info(f"[fast] {evt.get('type')} → {res['action']} "
                 f"({res['source']}, {res['ms']} мс){outcome}")
-    events_log.log("reflex", describe(evt, rel), emotion=res["emotion"], action=res["action"],
+    events_log.log("reflex", describe(evt, rel), action=res["action"],
                    source=res["source"], ms=res["ms"], result=outcome.removeprefix(" | команда: "))
     return res
 
 
 async def react_chat(text: str, rel=None) -> dict | None:
-    """Реакция на сообщение игрока: эмоция и сдвиг отношения к игроку."""
+    """Реакция на сообщение игрока: сдвиг отношения к игроку."""
     t0 = time.perf_counter()
     try:
         j = _json_of(await _ask(_CHAT_SYSTEM, text[:300], TIMEOUT, background=True))
-        emo = j.get("emotion") if j else None
         delta = max(-10, min(10, int(j.get("delta", 0)))) if j else 0
     except Exception as e:
         logger.warning(f"Не удалось оценить сообщение игрока: {e}")
         return None
-    if emo not in EMOTIONS:
-        emo = "looking"
-    res = {"emotion": emo, "action": "none", "source": "llm",
-           "ms": round((time.perf_counter() - t0) * 1000)}
-    publish("chat", res)
-    events_log.log("reflex", "оценка тона сообщения пользователя", emotion=emo, delta=delta, ms=res["ms"])
+    res = {"action": "none", "source": "llm", "ms": round((time.perf_counter() - t0) * 1000)}
+    events_log.log("reflex", "оценка тона сообщения пользователя", delta=delta, ms=res["ms"])
     if rel is not None and delta:
         from relationships import PLAYER
         rel.adjust(PLAYER, delta, f"написал: {text[:60]}")
-    logger.info(f"[fast] чат → {emo}, отношение к игроку {delta:+d} ({res['ms']} мс)")
+    logger.info(f"[fast] чат → отношение к игроку {delta:+d} ({res['ms']} мс)")
     return res
 
 

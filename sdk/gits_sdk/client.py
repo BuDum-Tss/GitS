@@ -680,7 +680,7 @@ class ModuleClient:
         return await self._notify("say", body)
 
     async def emotion(self, emotion: str, cause: str) -> bool:
-        """Эмоция (из списка `fast_brain.EMOTIONS` ядра; допустимость проверяет ядро). Выключенный модуль молчит."""
+        """Устарело (контракт 1.7): эмоций в ядре нет, ядро сообщение игнорирует. Оставлено для совместимости со старыми модулями."""
         if not self.enabled:
             log.debug("модуль выключен: эмоция отброшена")
             return False

@@ -176,7 +176,7 @@ class Soak:
             os.environ["GITS_NO_MODULES"] = "1"
         settings.init(self.memory_dir)
         events_log.init(self.memory_dir)
-        self._saved = (fast_brain.publish, fast_brain.react_chat, decide.decide)
+        self._saved = (fast_brain.react_chat, decide.decide)
 
         async def no_reaction(text, rel=None):
             return None
@@ -184,7 +184,6 @@ class Soak:
         async def no_classifier(*args, **kwargs):
             return None
 
-        fast_brain.publish = lambda *a, **k: None
         fast_brain.react_chat = no_reaction
         decide.decide = no_classifier
 
@@ -227,7 +226,7 @@ class Soak:
             await self.runner.cleanup()
         finally:
             self.shutdown_s = round(time.perf_counter() - t0, 2)
-            fast_brain.publish, fast_brain.react_chat, decide.decide = self._saved
+            fast_brain.react_chat, decide.decide = self._saved
             for k, v in self._saved_env.items():
                 if v is None:
                     os.environ.pop(k, None)

@@ -9,7 +9,6 @@ from aiohttp import web
 
 import core_service
 import events_log
-import fast_brain
 import speech_out
 from companion import Companion
 from graph_memory import GraphMemory
@@ -121,15 +120,15 @@ async def test_speak_goes_to_the_module_and_speaking_follows_its_events(tmp_path
         await w.speech.speak("u-00000001", "Первое предложение. Второе предложение.", "angry", 50)
         await w.wait(lambda: mod.spoken)
         assert mod.spoken == [{"utterance_id": "u-00000001", "text": "Первое предложение. Второе предложение.",
-                               "emotion": "angry", "replace": False}]
+                               "replace": False}]
         assert w.speech.is_speaking() and not w.presence.state["speaking"]          # ждём начала звука
-        assert w.presence.state["emotion"] != "angry"                               # стикер меняется вместе со звуком
+        assert w.presence.state["sticker"] != "angry"                               # стикер меняется вместе со звуком
         shown = []
         w.speech.when_audible("u-00000001", lambda: shown.append("text"))           # синхронизатор: ждёт начала звука
         assert shown == []
         await mod.speech("started", "u-00000001", seq=0, segment="Первое предложение.")
         await w.wait(lambda: w.presence.state["speaking"])
-        assert shown == ["text"] and w.presence.state["emotion"] == "angry"
+        assert shown == ["text"] and w.presence.state["sticker"] == "angry"
         assert (w.presence.state["utterance_id"], w.presence.state["segment"]) == ("u-00000001", "Первое предложение.")
         assert w.speech.current_segment() == "Первое предложение."
         await mod.speech("segment", "u-00000001", seq=1, segment="Второе предложение.")
@@ -233,7 +232,7 @@ async def test_without_a_voice_module_speech_is_text_only(tmp_path):
         await w.speech.speak("u-00000001", "Весь текст реплики целиком. Две фразы.", "happy", 50)
         assert not w.speech.is_speaking() and w.speech.current_segment() == ""    # очереди речи ждать нечего
         st = w.presence.state
-        assert st["speaking"] and st["segment"] == "Весь текст реплики целиком. Две фразы." and st["emotion"] == "happy"
+        assert st["speaking"] and st["segment"] == "Весь текст реплики целиком. Две фразы." and st["sticker"] == "happy"
         await w.speech.stop("u-00000001")
         assert not w.presence.state["speaking"] and w.presence.state["segment"] == ""
 
@@ -319,7 +318,7 @@ async def test_presence_is_broadcast_to_subscribers_on_voice_events(tmp_path):
             await w.speech.speak("u-00000001", "Фраза.", None, 50)
             await mod.speech("started", "u-00000001", seq=0, segment="Фраза.")
             await w.wait(lambda: any(p["speaking"] and p["segment"] == "Фраза." for p in seen))
-            assert {"emotion_ts", "last_user_ts", "last_say", "speaking"} <= set(seen[-1])       # поля для rimworld и питомца
+            assert {"sticker_ts", "last_user_ts", "last_say", "speaking"} <= set(seen[-1])       # поля для rimworld и питомца
         finally:
             await pet.stop()
             await asyncio.wait_for(task, 5)
@@ -369,27 +368,29 @@ async def test_bad_voice_event_data_does_not_break_the_core(tmp_path):
         await w.stop_module(mod)
 
 
-# ── эмоции в presence (PET-9) ──────────────────────────────────────────────────────────────────
+# ── стикер в presence (PET-9) ──────────────────────────────────────────────────────────────────
 
-async def test_every_published_emotion_reaches_presence_with_its_time(tmp_path, monkeypatch):
+async def test_sticker_follows_the_sound_and_returns_to_idle_when_the_utterances_end(tmp_path):
     async with Wired(tmp_path) as w:
-        monkeypatch.setattr(fast_brain, "_EMOTION_FILE", None)
-        before = time.time()
-        fast_brain.publish("chat", {"emotion": "thinking", "action": "none"})
-        st = w.presence.state
-        assert st["emotion"] == "thinking" and st["emotion_ts"] >= before
-        first = st["emotion_ts"]
-        await asyncio.sleep(0.01)
-        fast_brain.publish("say", {"emotion": "thinking", "action": "none"})      # та же эмоция, новое время: питомцу нужно знать
-        assert w.presence.state["emotion_ts"] > first
-    fast_brain.publish("x", {"emotion": "angry", "action": "none"})              # слой остановлен: подписка снята
-    assert w.presence.state["emotion"] == "thinking"
+        mod = await w.module()
+        await w.speech.speak("u-00000001", "Привет.", "happy", 50)
+        await w.speech.speak("u-00000002", "Как тебя зовут?", "question", 50, queue=True)
+        await w.wait(lambda: len(mod.spoken) == 2)
+        assert w.presence.state["sticker"] == "idle"
+        await mod.speech("started", "u-00000001", seq=0, segment="Привет.")
+        await w.wait(lambda: w.presence.state["sticker"] == "happy")
+        await mod.speech("ended", "u-00000001", completed=True)
+        await mod.speech("started", "u-00000002", seq=0, segment="Как тебя зовут?")
+        await w.wait(lambda: w.presence.state["sticker"] == "question")        # у каждого куска свой стикер
+        await mod.speech("ended", "u-00000002", completed=True)
+        await w.wait(lambda: w.presence.state["sticker"] == "idle")
+        await w.stop_module(mod)
 
 
-def test_presence_has_the_emotion_time_field():
-    assert speech_out.PresenceTracker.DEFAULTS["emotion_ts"] == 0.0
+def test_presence_has_the_sticker_time_field():
+    assert speech_out.PresenceTracker.DEFAULTS["sticker_ts"] == 0.0 and "emotion" not in speech_out.PresenceTracker.DEFAULTS
     p = speech_out.PresenceTracker()
-    assert p.update(emotion="sad", emotion_ts=5.0) and p.state["emotion_ts"] == 5.0
+    assert p.update(sticker="sad", sticker_ts=5.0) and p.state["sticker_ts"] == 5.0
 
 
 async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tmp_path, monkeypatch):

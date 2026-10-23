@@ -37,10 +37,9 @@ class Intent:
     kind: str                       # say | do | remind | remember | none
     text: str = ""
     in_s: float = 0.0               # для remind: через сколько секунд
-    emotion: str | None = None
 
     def as_dict(self) -> dict:
-        return {"kind": self.kind, "text": self.text, "in_s": self.in_s, "emotion": self.emotion}
+        return {"kind": self.kind, "text": self.text, "in_s": self.in_s}
 
 
 def parse_step(raw: str) -> dict | None:
@@ -66,7 +65,7 @@ def parse_intents(items: Any) -> list[Intent]:
             in_s = max(0.0, float(it.get("in_s") or 0.0))
         except (TypeError, ValueError):
             in_s = 0.0
-        out.append(Intent(it["kind"], str(it.get("text") or "").strip()[:TEXT_MAX], in_s, it.get("emotion")))
+        out.append(Intent(it["kind"], str(it.get("text") or "").strip()[:TEXT_MAX], in_s))
     return [i for i in out if i.kind == "none" or i.text]
 
 

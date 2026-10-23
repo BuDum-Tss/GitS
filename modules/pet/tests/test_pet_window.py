@@ -93,7 +93,7 @@ def test_controller_drives_the_real_window_through_the_queue(window):
     window.state = lambda: c.state
     q.put(("connected", True))
     q.put(("settings", {"pet_visible": False}))                  # скрытое остаётся скрытым
-    q.put(("presence", {"speaking": True, "segment": "Привет.", "emotion": "happy", "emotion_ts": 1e12}))
+    q.put(("presence", {"speaking": True, "segment": "Привет.", "sticker": "happy", "sticker_ts": 1e12}))
     assert c.pump() == 3
     window.root.update()
     assert window.root.state() == "withdrawn"

@@ -4,7 +4,8 @@
 Стриминг (ТЗ 25, FAST-4, FAST-5): если вывод речи умеет голос и модель отдаёт поток (`ask_stream`), ответ идёт так: токены ->
 `SentenceSplitter` -> `StreamDeclutter` (держит последнее предложение до прихода следующего) -> `Companion.say_part` (прямо в
 вывод речи мимо условий ожидания очереди; следующие предложения встают в очередь модуля голоса, а не заменяют звучащее) ->
-TTS. Маркер [ДЕЙСТВИЕ] разбирается до первого предложения. `cancel()` («замолчи», перебивание, экстренное слово) обрывает
+TTS. Маркер [ДЕЙСТВИЕ] разбирается до первого предложения. Теги стикеров `[question]` (`domain/stickers.py`) режут ответ на
+куски: каждый кусок звучит отдельной репликой со своим стикером. `cancel()` («замолчи», перебивание, экстренное слово) обрывает
 запрос к модели, остаток предложений и ещё не начатое предложение в синтезе. Нет потока или канала голоса: прежний путь целиком.
 """
 import asyncio
@@ -17,6 +18,7 @@ import prompts
 import reply_trace
 import speech_out
 from conversation_io import current_channel
+from domain.stickers import Tagged, TagStream, first_sticker, plain as strip_tags
 from speech_text import SentenceSplitter, clean_speech
 
 logger = logging.getLogger("companion")
@@ -192,7 +194,7 @@ class ReplyGenerator:
         retrieval: поиск в памяти, запущенный раньше (ТЗ 25, FAST-6); already_done: что рефлекс уже сделал (FAST-1).
         Возвращает True, если модель пометила сообщение как просьбу действовать."""
         h = self._h
-        system = (prompts.companion_persona() + " " + h.profile_hint() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
+        system = (prompts.companion_persona() + " " + h.profile_hint() + " " + prompts.reaction_tags() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
                   "опубликовать, посмотреть), начни ответ с маркера [ДЕЙСТВИЕ] и коротко скажи, что сейчас "
                   "посмотришь, что можешь, БЕЗ выдуманного результата. Иначе просто ответь.")
         if use_memory:
@@ -239,14 +241,16 @@ class ReplyGenerator:
             escalate = True    # без локальной модели пусть отвечает Claude
         if reply:
             latency_trace.mark("first_sentence_ready")
-            await h.say(h._declutter(reply))
+            sticker, reply = first_sticker(reply), strip_tags(reply)       # ответ целиком: один стикер на реплику
+            await h.say(h._declutter(reply), sticker)
         return action_request, escalate
 
     async def _converse_stream(self, system: str, user: str) -> tuple[bool, bool]:
         """Потоковый путь (FAST-4, FAST-5). Эскалация к Claude, только если модель не дала ни одного предложения из-за сбоя."""
         h = self._h
         session = self._session = StreamSession()
-        splitter, decl = SentenceSplitter(), StreamDeclutter(self)
+        splitter, decl, tags = SentenceSplitter(), StreamDeclutter(self), TagStream()
+        current: list[str | None] = [None]                 # стикер, под которым идёт текст сейчас
         head, head_done, action_request, failed = "", False, False, False
         first_token = False
         gen = h._llm.ask_stream(system, user, timeout=60, max_tokens=self._reply_tokens(), temperature=0.7)
@@ -254,20 +258,36 @@ class ReplyGenerator:
         nxt: asyncio.Future | None = None
 
         merge_rest = bool(self._cfg().get("merge_rest", True))   # первое предложение сразу, остальное одним куском: один шов
-        held: list[str] = []
+        held: list[Tagged] = []
+
+        def tagged(sentences: list[str]) -> list[Tagged]:
+            return [Tagged(s, current[0]) for s in sentences]
+
+        def pieces(delta: str) -> list[Tagged]:
+            """Токены -> предложения с тегами: тег закрывает предыдущий кусок и задаёт стикер следующего."""
+            out: list[Tagged] = []
+            for piece in tags.feed(delta):
+                if piece.tag:
+                    out += tagged(splitter.flush())
+                    current[0] = piece.tag
+                else:
+                    out += tagged(splitter.feed(piece.text))
+            return out
 
         async def deliver(sentences: list[str]) -> None:
             for sent in sentences:
                 if session.cancelled:
                     return
                 if merge_rest and session.sentences:
+                    if held and held[-1].sticker != getattr(sent, "sticker", None):
+                        await flush_held()            # новый тег: прежний кусок уходит в речь сразу, а не в конце ответа
                     held.append(sent)                 # первое уже ушло в синтез: остальные ждут конца генерации
                     continue
                 await self._emit(session, sent)
 
         async def flush_held() -> None:
             if held and not session.cancelled:
-                text = " ".join(held)
+                text = Tagged(" ".join(held), held[0].sticker)
                 held.clear()
                 await self._emit(session, text)
 
@@ -296,7 +316,7 @@ class ReplyGenerator:
                     else:
                         delta = head
                     head, head_done = "", True
-                for sent in splitter.feed(delta):
+                for sent in pieces(delta):
                     await deliver(decl.push(sent))
                     if session.cancelled:
                         break
@@ -304,9 +324,9 @@ class ReplyGenerator:
                     break
             if not session.cancelled:
                 if head and not head_done:                     # поток кончился на обрывке, похожем на маркер
-                    for sent in splitter.feed(head):
+                    for sent in pieces(head):
                         await deliver(decl.push(sent))
-                for sent in splitter.flush():
+                for sent in tagged(splitter.flush()):
                     await deliver(decl.push(sent))
                 await deliver(decl.finish())
                 await flush_held()
@@ -339,6 +359,7 @@ class ReplyGenerator:
         """Одно готовое предложение: в вывод речи (первое заменяет звучащее, следующие встают в очередь модуля голоса)."""
         h = self._h
         text = clean_speech(sentence)
+        sticker = getattr(sentence, "sticker", None)
         if not text or session.cancelled:
             return
         if not session.sentences:
@@ -350,7 +371,7 @@ class ReplyGenerator:
             waited += 0.05
         if session.cancelled:
             return
-        utterance = await h.say_part(text, first=not session.sentences)
+        utterance = await h.say_part(text, first=not session.sentences, sticker=sticker)
         if utterance:
             session.utterances.append(utterance)
             session.sentences.append(text)

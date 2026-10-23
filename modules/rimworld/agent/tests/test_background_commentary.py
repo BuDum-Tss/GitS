@@ -12,7 +12,7 @@ class FakeLink:
         self.tools: list[tuple] = []
         self.module_settings: dict = {}
 
-    async def say(self, text, emotion=None):
+    async def say(self, text):
         self.said.append(text)
 
     async def say_fact(self, fact):

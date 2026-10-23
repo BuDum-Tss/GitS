@@ -113,7 +113,7 @@ class CoreRequests:
         voice = self._voice_connection()
         if voice is None:
             raise ModuleError("unavailable", "модуль голоса не подключён или выключен")
-        value = await voice.request("tts.synthesize", {"text": body["text"], "emotion": body.get("emotion"),
+        value = await voice.request("tts.synthesize", {"text": body["text"],
                                                        "format": body.get("format", "wav")}, timeout=TTS_TIMEOUT_S)
         if contract.validate_response("tts.synthesize", value):
             raise ModuleError("internal", "модуль голоса вернул неверный ответ на tts.synthesize")

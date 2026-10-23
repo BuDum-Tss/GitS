@@ -27,13 +27,6 @@ def read_json(name: str, default):
         return default
 
 
-def _load_emotion() -> dict | None:
-    """Свежая эмоция от быстрого слоя (fast_brain) или None."""
-    try:
-        return json.loads((ctx.memory_dir / "emotion.json").read_text(encoding="utf-8"))
-    except Exception:
-        return None
-
 
 def char_dir() -> Path:
     """Папка личной памяти активного персонажа (ТЗ 05, CHR-10): память дашборда показывает её."""
@@ -56,7 +49,7 @@ async def handle_root(request: web.Request) -> web.Response:
 async def handle_api_state(request: web.Request) -> web.Response:
     game = (ctx.modules.state_data("rimworld") if ctx.modules is not None else None) or {}    # state модуля игры; {} если он не подключён
     return web.json_response(presenters.state_payload(
-        game=game, emotion=_load_emotion(), settings_dict=ctx.settings.load(), character=_character_state(),
+        game=game, settings_dict=ctx.settings.load(), character=_character_state(),
         presence=ctx.presence.snapshot() if ctx.presence is not None else None,
         modules=ctx.modules.snapshot() if ctx.modules is not None else []))
 

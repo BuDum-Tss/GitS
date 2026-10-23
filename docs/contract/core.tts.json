@@ -22,7 +22,7 @@
       },
       "emotion": {
         "type": "string",
-        "description": "эмоция реплики"
+        "description": "устарело: эмоций в ядре нет, поле игнорируется"
       },
       "format": {
         "type": "string",

@@ -24,13 +24,6 @@ async def handle_api_thoughts(request: web.Request) -> web.Response:
     return web.json_response({"thoughts": thoughts, "reminders": reminders})
 
 
-async def handle_api_affect(request: web.Request) -> web.Response:
-    """Эмоция сейчас (ТЗ 26, AFF-7): подпись, причина и сколько секунд она держится."""
-    if ctx.affect is None:
-        return web.json_response({"available": False})
-    return web.json_response({"available": True, **ctx.affect.snapshot()})
-
-
 async def handle_api_focus(request: web.Request) -> web.Response:
     """Фокус (ТЗ 18, FOC-9): кто в фокусе, очередь, checkpoint, журнал переходов, политики модулей."""
     if ctx.focus is None:
@@ -155,7 +148,6 @@ ROUTES = [
     ("GET", "/api/workspace", handle_api_workspace),
     ("POST", "/api/workspace/enter", handle_api_workspace_enter),
     ("POST", "/api/workspace/exit", handle_api_workspace_exit),
-    ("GET", "/api/affect", handle_api_affect),
     ("GET", "/api/thoughts", handle_api_thoughts),
     ("POST", "/api/focus/pin", handle_api_focus_pin),
     ("POST", "/api/focus/dnd", handle_api_focus_dnd),

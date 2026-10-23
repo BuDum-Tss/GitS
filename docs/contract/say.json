@@ -25,7 +25,7 @@
       },
       "emotion": {
         "type": "string",
-        "description": "эмоция"
+        "description": "устарело: эмоций в ядре нет, поле игнорируется"
       },
       "key": {
         "type": "string",

@@ -40,7 +40,6 @@ class DashboardContext:
     focus: Any = None              # FocusManager
     workspace: Any = None          # WorkspaceManager (ТЗ 32)
     impulses: Any = None           # импульсы и размышление (ТЗ 30)
-    affect: Any = None             # AffectService (ТЗ 26)
     chat_callback: Callable[[str], Any] | None = None
     chat_log: list = field(default_factory=list)                  # локальная история сообщений для окна чата
     bg_tasks: set = field(default_factory=set)

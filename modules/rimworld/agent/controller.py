@@ -196,7 +196,6 @@ def _trim_commentary(text: str) -> str:
 class Controller:
     def __init__(self, config: dict):
         self._memory = Memory(config.get("memory_dir", "./memory"))
-        fast_brain.init(config.get("memory_dir", "./memory"))
         events_log.init(config.get("memory_dir", "./memory"))
         self._rel = Relationships(config.get("memory_dir", "./memory"))
         self._chat_buffer: deque = deque(maxlen=50)

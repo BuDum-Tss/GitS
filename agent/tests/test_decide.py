@@ -19,7 +19,8 @@ def test_questions_match_the_protocol_and_urgency_table():
     assert cats == set(CATEGORY_URGENCY)                                 # у каждой категории есть срочность
     assert CATEGORY_URGENCY["danger"] == 5 and CATEGORY_URGENCY["spam"] == 0
     assert EVENT_QUESTIONS["category"]["type"] == "choice" and EVENT_QUESTIONS["react"]["type"] == "noul"
-    assert {"react", "speak", "act", "think", "emotion"} <= set(EVENT_QUESTIONS)         # decide это роутер
+    assert {"react", "speak", "act", "think"} <= set(EVENT_QUESTIONS)         # decide это роутер
+    assert "emotion" not in EVENT_QUESTIONS and "emotion" not in INPUT_QUESTIONS             # эмоций нет, только решения
     assert not {"addressed", "needs_reply", "focus_needed", "policy"} & set(EVENT_QUESTIONS)
     assert set(INPUT_QUESTIONS["intent"]["options"]) == {"chat", "action", "about_self", "approval", "attention_rule", "stop"}
     for q in (*EVENT_QUESTIONS.values(), *INPUT_QUESTIONS.values()):

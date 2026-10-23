@@ -25,34 +25,6 @@ def _mistakes(kind=None):
     return [r for r in rows if kind is None or (r.get("data") or {}).get("type") == kind]
 
 
-# ── интенсивность ───────────────────────────────────────────────────────────────
-
-@pytest.mark.parametrize("value", [float("inf"), "Infinity", "-Infinity", float("nan"), "много", None])
-def test_unusable_intensity_falls_back_to_one(value):
-    assert journal.clamp_intensity(value) == 1
-
-
-def test_intensity_is_clamped_to_range():
-    assert journal.clamp_intensity("2.9") == 2
-    assert journal.clamp_intensity(9) == 3
-    assert journal.clamp_intensity(-4) == 0
-
-
-def test_emotion_reason_is_trace_id_when_traced_else_the_given_reason():
-    events_log.flush()
-    journal.emotion("looking", 1, reason="chat")
-    t = lt.start("chat")
-    token = lt.bind(t)
-    try:
-        journal.emotion("joy", 2, reason="chat")
-    finally:
-        lt.unbind(token)
-    events_log.flush()
-    rows = events_log.tail(limit=20, kinds={"emotion"})
-    reasons = [(r["data"]["emotion"], r["data"]["reason"]) for r in rows]
-    assert ("looking", "chat") in reasons and ("joy", t.id) in reasons
-
-
 # ── секреты в журнале ───────────────────────────────────────────────────────────
 
 def test_tokens_and_keys_are_not_written_to_the_journal():

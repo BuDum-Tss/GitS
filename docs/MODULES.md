@@ -109,7 +109,7 @@ asyncio.run(main())
 |---|---|
 | `await client.event(kind, text, **поля)` | событие для менеджера внимания: `data`, `urgency_hint` 0-5, `addressed_to_me`, `sender`, `reply_channel`, `dedupe_key`, `expires_in_s`, `memorable`, `announce` (объявление о долгом запуске: звучит всегда) |
 | `await client.say(text, mode="fact")` | просьба сказать; `mode="verbatim"`, если `text` уже готовая реплика в её характере |
-| `await client.emotion(emotion, cause)` | эмоция |
+| `await client.emotion(emotion, cause)` | устарело (контракт 1.7): ядро игнорирует; стикер выбирает тег в тексте ответа |
 | `await client.state(summary, data)` | сводка для дашборда и выбора профиля (до 300 символов) |
 | `await client.ask(question, kind="approval", options=None, timeout_s=300)` | вопрос пользователю; возвращает ответ (`True/False`, строку, текст) |
 | `await client.request("core.tts", {...}, timeout=60)` | любой запрос к ядру; `ToolError(code=...)` при ошибке, `asyncio.TimeoutError` без ответа |
@@ -122,7 +122,7 @@ asyncio.run(main())
 Обработчики: `@client.tool`, `@client.check`, `@client.on_topic`, `@client.on_job_answer`, `@client.on_job_cancel`,
 `@client.on_request("speak")` (прочие сообщения ядра), `@client.on_reconnect`, `@client.on_shutdown`.
 
-Выключенный модуль (`client.enabled == False`) остаётся подключённым, но события, речь и эмоции SDK отбрасывает сам.
+Выключенный модуль (`client.enabled == False`) остаётся подключённым, но события, речь SDK отбрасывает сам.
 
 ## Пространство модуля в дашборде (ТЗ 15)
 
@@ -284,7 +284,7 @@ async with FakeCore() as core:
 
 Модули GitS лежат в `modules/<id>/` (образец: `modules/telegram/`): `main.py`, `manifest.py`, свои файлы, `tests/`. Супервизор запускает их с `cwd` модуля и передаёт `MEMORY_DIR` (абсолютный путь папки памяти ядра); пакет `gits-sdk` берётся из `PYTHONPATH` (`GitS/sdk`) или из окружения, если он установлен. В `command` и `args` кроме `{PYTHON}` доступен `{PYTHONW}` (pythonw.exe рядом с интерпретатором ядра, для модулей с окном).
 
-- **`voice`** (ТЗ 12): capabilities `voice.output` и `voice.input`; принимает от ядра `speak` (`utterance_id`, `text`, `emotion`, `replace`) и `speak.stop` (`utterance_id` или `null`, `at: now | segment_end`), отвечает на `tts.synthesize` (`text`, `emotion`, `format: wav | ogg` → `path`, `duration_ms`; файлы в `%TEMP%\glados_voice\`), шлёт события `voice.speech` (`phase: started | segment | ended`, `utterance_id`, `seq`, `segment`, `completed`, `spoken_upto`, `reason`), `voice.utterance`, `voice.user_speaking`, `voice.heard`, `voice.named`. Настройки: `barge_in`, `echo_tail_ms`. `GITS_VOICE_FAKE=1` — без звука.
+- **`voice`** (ТЗ 12): capabilities `voice.output` и `voice.input`; принимает от ядра `speak` (`utterance_id`, `text`, `replace`) и `speak.stop` (`utterance_id` или `null`, `at: now | segment_end`), отвечает на `tts.synthesize` (`text`, `emotion`, `format: wav | ogg` → `path`, `duration_ms`; файлы в `%TEMP%\glados_voice\`), шлёт события `voice.speech` (`phase: started | segment | ended`, `utterance_id`, `seq`, `segment`, `completed`, `spoken_upto`, `reason`), `voice.utterance`, `voice.user_speaking`, `voice.heard`, `voice.named`. Настройки: `barge_in`, `echo_tail_ms`. `GITS_VOICE_FAKE=1` — без звука.
   Распознавание речи (`stt_client.py`, `local_stt.py`): основной путь — WhisperX (`WHISPERX_URL`, с диаризацией и голосовыми
   отпечатками). При старте и раз в 60 с проверяется `/health`; если сервер не отвечает (в том числе при ошибке соединения во время
   фразы), распознаём локально faster-whisper на процессоре (модель `GITS_STT_MODEL`, по умолчанию small, int8, потоков не больше

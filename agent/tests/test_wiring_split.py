@@ -47,17 +47,13 @@ def test_adapter_and_core_requests_satisfy_contracts():
 
 class FakeSink:
     def __init__(self):
-        self.events, self.speech, self.jobs, self.emotions = [], [], [], []
+        self.events, self.speech, self.jobs = [], [], []
 
     async def submit(self, module_id, event):
         self.events.append((module_id, event))
 
     async def submit_speech(self, module_id, say):
         self.speech.append((module_id, say))
-
-    def on_emotion(self, module_id, emotion):
-        self.emotions.append((module_id, emotion))
-        return emotion == "joy"
 
     async def on_job_update(self, module_id, job):
         self.jobs.append((module_id, job))
@@ -78,11 +74,9 @@ async def test_hub_passes_module_messages_to_the_sink():
     hub, conn = _hub(sink)
     await hub._on_note(conn, Envelope("event", {"kind": "echo.ping", "text": "привет"}))
     await hub._on_note(conn, Envelope("say", {"text": "скажи", "mode": "fact"}))
-    await hub._on_note(conn, Envelope("emotion", {"emotion": "joy"}))
-    await hub._on_note(conn, Envelope("emotion", {"emotion": "нет такой"}))
+    await hub._on_note(conn, Envelope("emotion", {"emotion": "joy"}))        # устарело: игнорируется
     assert sink.events and sink.events[0][0] == "echo" and sink.events[0][1]["kind"] == "echo.ping"
     assert sink.speech and sink.speech[0][0] == "echo"
-    assert [e for _, e in sink.emotions] == ["joy", "нет такой"]
 
 
 async def test_hub_without_sink_drops_events_quietly():
@@ -118,7 +112,7 @@ PUBLIC_ROUTES = {
     ("POST", "/api/modules/{id}/enabled"), ("POST", "/api/modules/{id}/restart"), ("POST", "/api/modules/{id}/settings"),
     ("GET", "/api/modules/{id}/panel"), ("POST", "/api/modules/{id}/panel/action"),
     ("POST", "/api/modules/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"),
-    ("POST", "/api/attention/rules/clear"), ("GET", "/api/focus"), ("GET", "/api/workspace"), ("POST", "/api/workspace/enter"), ("POST", "/api/workspace/exit"), ("GET", "/api/affect"), ("POST", "/api/affect/reset"),
+    ("POST", "/api/attention/rules/clear"), ("GET", "/api/focus"), ("GET", "/api/workspace"), ("POST", "/api/workspace/enter"), ("POST", "/api/workspace/exit"),
     ("GET", "/api/thoughts"), ("GET", "/api/episodes"), ("GET", "/api/episodes/{id}"), ("GET", "/api/diary"), ("GET", "/api/sleep"),
     ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("POST", "/api/focus/pin"), ("POST", "/api/focus/dnd"), ("POST", "/api/focus/allow_once"),
     ("POST", "/api/notify"), ("GET", "/api/jobs"), ("POST", "/api/jobs/{module}/{job_id}/cancel"),
@@ -148,7 +142,7 @@ def test_presenters_are_pure():
     assert presenters.jobs_view([{"module": "a", "job_id": "j", "extra": 1}])[0]["title"] is None
     assert presenters.check_setting_value({"type": "integer", "min": 1}, 0)[1] == "значение меньше 1"
     assert presenters.check_setting_value({"type": "boolean"}, True) == (True, None)
-    payload = presenters.state_payload(game={}, emotion=None, settings_dict={}, character={}, presence=None, modules=[])
+    payload = presenters.state_payload(game={}, settings_dict={}, character={}, presence=None, modules=[])
     assert payload["connected"] is False and payload["modules"] == []
     assert presenters.graph_view({"edges": [{"invalid_at": None}, {"invalid_at": 1}]}, status="ok", pending=0)["outdated"] == [
         {"invalid_at": 1}]

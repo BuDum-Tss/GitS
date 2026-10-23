@@ -21,7 +21,6 @@
   attention — решение менеджера внимания по событию (ТЗ 03)
   error     — сбой
   trace     — трасса задержки реплики: метки этапов (ТЗ 24, latency_trace)
-  emotion   — эмоция с интенсивностью 0..3 и причиной (ТЗ 24, journal)
   mistake   — метка ошибки: поправка, отказ, провал инструмента или плана, промах маршрута (ТЗ 24)
   decision  — решение диспетчера с trace_id: маршрут, уверенность, эшелон, версия правил (ТЗ 24)
   boundary  — структурная граница для нарезки эпизодов: смена задачи, забега, собеседника (ТЗ 27, EPI-2)
@@ -42,7 +41,7 @@ from pathlib import Path
 
 KINDS = ("user", "say", "proactive", "reflex", "vision", "hearing", "game", "telegram", "plan", "memory", "audit",
          "approval", "setting", "module", "module_event", "profile", "attention", "focus", "error", "memory_conflict",
-         "trace", "emotion", "mistake", "decision", "boundary")
+         "trace", "mistake", "decision", "boundary")
 KEEP_DAYS = 45
 KEEP_ROWS = 300_000
 _PRUNE_EVERY = 500            # раз в столько записей проверяем, не пора ли чистить

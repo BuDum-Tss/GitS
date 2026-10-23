@@ -10,9 +10,9 @@ from core_link import CoreLink
 async def test_say_goes_to_core_as_verbatim_with_key_and_expiry(tmp_path):
     async with Rig(tmp_path) as rig:
         assert rig.link.online
-        await rig.link.say("Борис снова уснул. Прекрасно.", "angry")
+        await rig.link.say("Борис снова уснул. Прекрасно.")
         body = (await rig.core.wait_message("say")).body
-        assert body == {"text": "Борис снова уснул. Прекрасно.", "mode": "verbatim", "emotion": "angry",
+        assert body == {"text": "Борис снова уснул. Прекрасно.", "mode": "verbatim",
                         "key": "rimworld.comment", "expires_in_s": 20}
 
 
@@ -24,12 +24,6 @@ async def test_announce_is_a_fact_with_urgency_three_and_reports_offline(tmp_pat
         await rig.core.set_enabled(False)
         await rig.core.wait_for(lambda: not rig.link.online)
         assert await rig.link.announce("x") is False                   # ядро недоступно: вызывающий пробует HTTP
-
-
-async def test_emotion_carries_the_cause(tmp_path):
-    async with Rig(tmp_path) as rig:
-        await rig.link.emotion("pawn_died", "sad")
-        assert (await rig.core.wait_message("emotion")).body == {"emotion": "sad", "cause": "pawn_died"}
 
 
 async def test_presence_topic_feeds_speaking_user_ts_and_repeats(tmp_path):
@@ -120,7 +114,7 @@ async def test_failed_post_is_only_logged(tmp_path, monkeypatch):
 
 
 def test_core_link_has_the_speechlink_interface():
-    for name in ("online", "last_user_ts", "is_speaking", "repeats", "say", "emotion", "event", "run"):
+    for name in ("online", "last_user_ts", "is_speaking", "repeats", "say", "event", "run"):
         assert hasattr(CoreLink, name), name
 
 

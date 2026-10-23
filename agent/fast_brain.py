@@ -1,30 +1,19 @@
-"""Быстрый «рефлекторный» мозг: локальная LLM (LM Studio) → эмоция + команда.
+"""Локальная модель (LM Studio): один вызов `_ask`, потоковый `_ask_stream`, оценка тона сообщения игрока.
 
-Реплику НЕ генерирует — комментарий по-прежнему пишет Claude (run_turn).
-Задача здесь одна: за секунду-две решить, какую эмоцию показать и нужна ли
-простая команда игре. Результат пишется в memory/emotion.json, откуда его
-берёт dashboard (/api/state → "emotion") и читает модуль pet (через presence: emotion и emotion_ts, PET-9).
-
-Простые команды (draft_colonists / undraft) исполняет reflex_actions — с
-проверкой по реальному состоянию игры. Отношения к колонистам и игроку
-(relationships.py) подмешиваются в подсказку, поэтому смерть любимого и
-нелюбимого колониста вызывает разную эмоцию.
-Если LM Studio недоступна или ответ не разобрать — работает таблица правил.
+Модель одна, вызовы идут по очереди, срочные (ответ пользователю, план) вытесняют фоновые (запоминание, зрение, оценка
+тона). Реплику здесь не пишут и эмоцию не выбирают: теги стикеров ставит сама модель в тексте ответа (`domain/stickers.py`),
+а решения принимает классификатор (`decide.py`).
 """
 import asyncio
 import json
 import logging
 import re
 import time
-from pathlib import Path
 
 import httpx
 
-import character
 import events_log
 import flow_trace
-import journal
-import reflex_actions
 import salience  # ТЗ 24, TRC-4: изменение отношений меняет яркость события
 from envcompat import env
 
@@ -36,83 +25,16 @@ TIMEOUT  = 8.0
 WARMUP_TIMEOUT = 90.0   # холодный старт: LM Studio грузит модель ~20 с
 _lock: asyncio.Lock | None = None
 
-EMOTIONS = ["idle", "action", "angry", "question", "looking",
-            "sitting", "thinking", "happy", "threat", "resting",
-            "sad", "scared", "proud", "surprised"]
-ACTIONS  = ["none", "draft_colonists", "undraft"]
-
-_SYSTEM = (
-    "Ты — рефлекторный слой {name} (колония в RimWorld). Получив событие, выбери "
-    "эмоцию стикера и простую команду. draft_colonists — только если колонии "
-    "угрожают враги (рейд); undraft — когда опасность миновала; в остальных "
-    "случаях none. Учитывай отношения, если они указаны: смерть того, к кому "
-    "есть привязанность, — sad, смерть нелюбимого — idle или angry. Ответь "
-    'ТОЛЬКО JSON без пояснений: {"emotion": <одно из ' + json.dumps(EMOTIONS) + '>, '
-    '"action": <одно из ' + json.dumps(ACTIONS) + '>, '
-    '"intensity": <целое от 0 до 3: насколько сильна эмоция, 0 почти нет, 3 очень сильна>}'
-)
-
 _CHAT_SYSTEM = (
     "Ты — рефлекторный слой {name}. Игрок написал сообщение. Оцени, как оно "
     "меняет её отношение к игроку (delta от -10 грубость, до +10 тепло и "
-    "уважение; 0 — нейтрально). Эмоцию выбирает классификатор, не ты. Ответь ТОЛЬКО JSON: "
+    "уважение; 0 — нейтрально). Ответь ТОЛЬКО JSON: "
     '{"delta": <целое от -10 до 10>}'
 )
 
-# Запасные правила, если локальная модель недоступна
-_FALLBACK = {
-    "colony_died":  ("sad", "none"),
-    "pawn_died":    ("sad", "none"),
-    "fire_started": ("scared", "none"),
-    "game_loaded":  ("looking", "none"),
-}
-
-_EMOTION_FILE: Path | None = None
-
-
-def init(memory_dir: str):
-    global _EMOTION_FILE
-    _EMOTION_FILE = Path(memory_dir) / "emotion.json"
-
-
-_TAGS = re.compile(r"<[^>]+>|\(\*[^)]*\)|\(/[^)]*\)")
-
-
-def clean_tags(value) -> str:
-    """Текст письма игры: мод отдаёт TaggedString как словарь {'RawText': ...} и с разметкой <color>, (*Name)."""
-    if isinstance(value, dict):
-        value = value.get("RawText") or ""
-    text = str(value)
-    m = re.match(r"^\{'RawText': '(.*?)', 'Length'", text)
-    if m:
-        text = m.group(1)
-    return " ".join(_TAGS.sub("", text).split())
-
-
-def describe(evt: dict, rel=None) -> str:
-    """Короткое текстовое описание события для модели (с отношением, если есть)."""
-    d = evt.get("data", {}) or {}
-    t = evt.get("type", "?")
-    if t == "pawn_died":
-        name = d.get("name", "?")
-        extra = rel.describe(name) if rel else ""
-        return (f"Колонист {name} умер: {d.get('cause', 'неизвестно')}."
-                + (f" ({extra})" if extra else ""))
-    if t == "colony_died":
-        return "Вся колония погибла."
-    if t == "fire_started":
-        return "Начался пожар на базе."
-    if t == "game_loaded":
-        return f"Загружена колония {d.get('colony', '?')}."
-    if t == "letter":
-        text = clean_tags(d.get("text") or "")[:200]
-        return f"Письмо: {clean_tags(d.get('label', '?'))}. {text}".strip()
-    return f"Событие {t}."
-
-
 def _json_of(txt: str) -> dict | None:
     """Достать JSON из ответа модели. Небольшие модели иногда пишут текстовое
-    поле без кавычек ("text": Привет, мир, "emotion": ...), поэтому при сбое
+    поле без кавычек ("text": Привет, мир, "x": ...), поэтому при сбое
     строгого разбора значения чинятся: что не JSON, то считается строкой."""
     a, b = txt.find("{"), txt.rfind("}")
     body = txt[a:b + 1]
@@ -135,15 +57,6 @@ def _json_of(txt: str) -> dict | None:
         except ValueError:
             out[m.group(1)] = raw.strip('"').strip()
     return out
-
-
-def _parse(txt: str) -> dict | None:
-    j = _json_of(txt)
-    if not j or j.get("emotion") not in EMOTIONS:
-        return None
-    if j.get("action") not in ACTIONS:
-        j["action"] = "none"
-    return {"emotion": j["emotion"], "action": j["action"], "intensity": journal.clamp_intensity(j.get("intensity"))}
 
 
 class Preempted(Exception):
@@ -271,87 +184,8 @@ async def _ask_stream(system: str, user: str, timeout: float, max_tokens: int = 
         _fg_waiting -= 1
 
 
-async def classify(evt: dict, rel=None, timeout: float = TIMEOUT) -> dict:
-    """Вернуть {"emotion", "action", "source", "ms"}. Никогда не бросает исключений."""
-    t0 = time.perf_counter()
-    result, source = None, "rules"
-    try:
-        result = _parse(await _ask(character.fill(_SYSTEM), describe(evt, rel), timeout))
-        if result:
-            source = "llm"
-    except Exception as e:
-        logger.warning(f"Локальная LLM недоступна: {e}")
-    if result is None:
-        emo, act = _FALLBACK.get(evt.get("type"), ("looking", "none"))
-        if evt.get("type") == "letter" and evt.get("priority") == "critical":
-            emo, act = "threat", "draft_colonists"   # исполнится только при реальных врагах
-        result = {"emotion": emo, "action": act, "intensity": 1}
-    result["source"] = source
-    result["ms"] = round((time.perf_counter() - t0) * 1000)
-    return result
-
-
-_listeners: list = []
-_affect = None          # AffectService (ТЗ 26): текущая эмоция (контекст реплики); None - состояния эмоций нет
-
-
-def set_affect(service) -> None:
-    global _affect
-    _affect = service
-
-
-def add_listener(callback):
-    """Подписка на эмоции (PET-9): callback(emotion, ts) вызывается при каждой публикации. Ядро кладёт их в presence, а
-    шина модулей рассылает тему presence (питомец показывает стикер). Возвращает callback (для remove_listener)."""
-    _listeners.append(callback)
-    return callback
-
-
-def remove_listener(callback) -> None:
-    if callback in _listeners:
-        _listeners.remove(callback)
-
-
-def publish(evt_name: str, res: dict):
-    """Записать эмоцию для дашборда и сообщить подписчикам (presence для модулей) и в журнал (ТЗ 24, TRC-3)."""
-    ts = time.time()
-    intensity = res.get("intensity", 1)
-    if _affect is not None:                     # новая эмоция перебивает старую и держится emotion_ttl_s секунд (ТЗ 26)
-        _affect.set(res["emotion"], evt_name)
-    journal.emotion(res["emotion"], intensity, reason=evt_name, character=character.active().id)
-    for callback in list(_listeners):
-        try:
-            callback(res["emotion"], ts)
-        except Exception as e:
-            logger.warning(f"Подписчик эмоций: {e}")
-    if _EMOTION_FILE is None:
-        return
-    try:
-        _EMOTION_FILE.write_text(json.dumps({
-            "emotion": res["emotion"], "action": res.get("action", "none"),
-            "event": evt_name, "ts": ts,
-            "source": res.get("source"), "ms": res.get("ms"),
-        }, ensure_ascii=False), encoding="utf-8")
-    except Exception as e:
-        logger.warning(f"Не удалось записать emotion.json: {e}")
-
-
-async def react(evt: dict, state: dict | None = None, rel=None) -> dict:
-    """Реакция на событие игры: эмоция + (если нужно и можно) команда игре."""
-    res = await classify(evt, rel)
-    publish(evt.get("type", "?"), res)
-    outcome = ""
-    if res["action"] != "none" and state is not None:
-        outcome = " | команда: " + await reflex_actions.execute(res["action"], state)
-    logger.info(f"[fast] {evt.get('type')} → {res['emotion']} / {res['action']} "
-                f"({res['source']}, {res['ms']} мс){outcome}")
-    events_log.log("reflex", describe(evt, rel), emotion=res["emotion"], action=res["action"],
-                   source=res["source"], ms=res["ms"], result=outcome.removeprefix(" | команда: "))
-    return res
-
-
 async def react_chat(text: str, rel=None) -> dict | None:
-    """Реакция на сообщение игрока: сдвиг отношения к игроку (эмоцию выбирает классификатор, см. decide.INPUT_QUESTIONS)."""
+    """Реакция на сообщение игрока: сдвиг отношения к игроку."""
     t0 = time.perf_counter()
     try:
         j = _json_of(await _ask(_CHAT_SYSTEM, text[:300], TIMEOUT, background=True))
@@ -359,8 +193,7 @@ async def react_chat(text: str, rel=None) -> dict | None:
     except Exception as e:
         logger.warning(f"Не удалось оценить сообщение игрока: {e}")
         return None
-    res = {"emotion": "idle", "action": "none", "source": "llm", "delta": delta,
-           "ms": round((time.perf_counter() - t0) * 1000)}
+    res = {"source": "llm", "delta": delta, "ms": round((time.perf_counter() - t0) * 1000)}
     sal, reasons = salience.score(salience.factors_of(delta=delta))
     events_log.log("reflex", "оценка тона сообщения пользователя", delta=delta, ms=res["ms"],
                    salience=sal, reasons=reasons)
@@ -372,7 +205,10 @@ async def react_chat(text: str, rel=None) -> dict | None:
 
 
 async def warmup():
-    """Загрузить модель в LM Studio заранее, чтобы первое событие не ждало ~20 с."""
-    res = await classify({"type": "game_loaded", "data": {"colony": "прогрев"}},
-                         timeout=WARMUP_TIMEOUT)
-    logger.info(f"[fast] прогрев: {res['source']}, {res['ms']} мс")
+    """Загрузить модель в LM Studio заранее, чтобы первый ответ не ждал ~20 с."""
+    t0 = time.perf_counter()
+    try:
+        await _ask("Ответь одним словом.", "Привет", WARMUP_TIMEOUT, max_tokens=4)
+        logger.info(f"[fast] прогрев: {round((time.perf_counter() - t0) * 1000)} мс")
+    except Exception as e:
+        logger.warning(f"[fast] прогрев не удался: {e}")

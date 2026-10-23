@@ -43,8 +43,6 @@ class EventClassifier:
         ms = ctx.decider.last_ms
         cls = decide.parse_event(answers, att["min_conf_event"])
         self.apply(item, cls, declared)
-        if cls is not None and cls.emotion and ctx.on_emotion is not None:      # эмоция события выбрана классификатором
-            ctx.on_emotion(cls.emotion, item.kind)
         await self.dispatcher.finish(item, cfg, att, ms=ms)
 
     @staticmethod
@@ -79,8 +77,6 @@ class EventClassifier:
             return None
         answers = await ctx.decider.classify(text, decide.INPUT_QUESTIONS, timeout=decide.INPUT_TIMEOUT_S)
         cls = decide.parse_input(answers, att["min_conf_input"])
-        if cls is not None and cls.emotion and ctx.on_emotion is not None:      # эмоция обращения выбрана классификатором
-            ctx.on_emotion(cls.emotion, "chat")
         ctx.log.log_nowait("attention", text[:TEXT_LOG], input=True, intent=cls.intent if cls else None,
                            needs_memory=cls.needs_memory if cls else None, classifier_ms=ctx.decider.last_ms,
                            available=answers is not None)

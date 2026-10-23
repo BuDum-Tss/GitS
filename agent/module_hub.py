@@ -475,9 +475,7 @@ class ModuleHub:
             if self.sink is not None:
                 await self.sink.submit_speech(mid, body)
         elif t == "emotion":
-            emotion = body.get("emotion")
-            if self.sink is not None and not self.sink.on_emotion(mid, emotion):
-                logger.warning(f"Модуль {mid}: неизвестная эмоция {emotion!r}")
+            logger.debug(f"Модуль {mid}: сообщение emotion устарело и игнорируется (эмоций в ядре нет)")
 
     # ── задачи ──────────────────────────────────────────────────────────────────
 

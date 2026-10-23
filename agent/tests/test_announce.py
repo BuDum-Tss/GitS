@@ -183,10 +183,10 @@ async def test_say_with_announce_flag_is_an_announcement_even_with_low_urgency(r
 
 
 async def test_verbatim_say_announcement_is_spoken_as_is(rig):
-    await rig.att.submit_speech("rimworld", {"text": "Запускаю игру.", "mode": "verbatim", "emotion": "calm",
+    await rig.att.submit_speech("rimworld", {"text": "Запускаю игру.", "mode": "verbatim",
                                             "announce": True})
     await rig.play()
-    assert rig.companion.said == [("Запускаю игру.", "calm")]
+    assert rig.companion.said == [("Запускаю игру.", None)]
 
 
 async def test_event_with_announce_flag_and_any_kind(rig):

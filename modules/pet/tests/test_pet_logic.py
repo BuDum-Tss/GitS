@@ -6,24 +6,24 @@ from pet_logic import PetController, PetState, sticker_for
 
 
 def pres(**kw):
-    return {"speaking": False, "utterance_id": None, "segment": "", "emotion": "idle", "emotion_ts": 0.0, **kw}
+    return {"speaking": False, "utterance_id": None, "segment": "", "sticker": "idle", "sticker_ts": 0.0, **kw}
 
 
 # ── стикер (PET-5) ───────────────────────────────────────────────────────────
 
-def test_sticker_is_the_fresh_emotion_else_idle():
-    assert sticker_for(pres(emotion="angry", emotion_ts=1000.0), now=1010.0) == "angry"
-    assert sticker_for(pres(emotion="angry", emotion_ts=1000.0), now=1000.0 + pl.EMOTION_TTL_SECS + 1) == "idle"
-    assert sticker_for(pres(emotion="angry", emotion_ts=1000.0), now=1000.0 + pl.EMOTION_TTL_SECS - 1) == "angry"
-    assert sticker_for(pres(emotion="нет-такой", emotion_ts=1000.0), now=1001.0) == "idle"
+def test_sticker_is_the_fresh_sticker_else_idle():
+    assert sticker_for(pres(sticker="angry", sticker_ts=1000.0), now=1010.0) == "angry"
+    assert sticker_for(pres(sticker="angry", sticker_ts=1000.0), now=1000.0 + pl.STICKER_TTL_SECS + 1) == "idle"
+    assert sticker_for(pres(sticker="angry", sticker_ts=1000.0), now=1000.0 + pl.STICKER_TTL_SECS - 1) == "angry"
+    assert sticker_for(pres(sticker="нет-такой", sticker_ts=1000.0), now=1001.0) == "idle"
     assert sticker_for({}, now=5.0) == "idle"
-    assert sticker_for(pres(emotion="happy", emotion_ts="плохо"), now=1.7e9) == "idle"        # испорченное время не роняет
+    assert sticker_for(pres(sticker="happy", sticker_ts="плохо"), now=1.7e9) == "idle"        # испорченное время не роняет
 
 
 def test_sticker_is_resting_when_the_core_is_unreachable():
-    assert sticker_for(pres(emotion="angry", emotion_ts=1000.0), now=1001.0, connected=False) == "resting"
+    assert sticker_for(pres(sticker="angry", sticker_ts=1000.0), now=1001.0, connected=False) == "resting"
     s = PetState()
-    s.apply("presence", pres(emotion="sad", emotion_ts=100.0), 101.0)
+    s.apply("presence", pres(sticker="sad", sticker_ts=100.0), 101.0)
     assert s.sticker(101.0) == "resting"                       # клиент не подключён
     s.apply("connected", True, 101.0)
     assert s.sticker(101.0) == "sad"
@@ -61,10 +61,10 @@ def test_bubble_holds_the_last_segment_after_speech_then_hides():
 def test_bubble_is_hidden_before_any_speech_and_survives_other_presence_changes():
     s = PetState()
     assert s.bubble(1.0) == ("", False)
-    s.apply("presence", pres(emotion="happy", emotion_ts=1.0), 1.0)
+    s.apply("presence", pres(sticker="happy", sticker_ts=1.0), 1.0)
     assert s.bubble(1.0) == ("", False)
     s.apply("presence", pres(speaking=True, segment="Фраза."), 2.0)
-    s.apply("presence", pres(speaking=False, segment="", emotion="angry", emotion_ts=3.0), 4.0)
+    s.apply("presence", pres(speaking=False, segment="", sticker="angry", sticker_ts=3.0), 4.0)
     s.apply("presence", pres(speaking=False, segment="", busy=True), 20.0)       # не конец речи: удержание не продлевается
     assert s.bubble(4.0 + pl.BUBBLE_HIDE_SECS - 1) == ("Фраза.", True)
     assert s.bubble(4.0 + pl.BUBBLE_HIDE_SECS + 1) == ("", False)
@@ -124,12 +124,12 @@ def test_controller_turns_queue_messages_into_window_calls():
     c, q, view = make_controller(t, on_settings=seen_settings.append)
     q.put(("connected", True))
     q.put(("settings", {"pet_visible": True, "pet_x": 10}))
-    q.put(("presence", pres(emotion="angry", emotion_ts=100.0, speaking=True, segment="Говорю.")))
+    q.put(("presence", pres(sticker="angry", sticker_ts=100.0, speaking=True, segment="Говорю.")))
     assert c.pump() == 3
     assert view.visible == [True] and view.frames == [("angry", "Говорю.", True)]
     assert seen_settings == [{"pet_visible": True, "pet_x": 10}]
     assert c.pump() == 0 and len(view.frames) == 1                   # ничего не изменилось: не перерисовываем
-    t[0] += pl.EMOTION_TTL_SECS + 1                                    # эмоция протухла сама, без новых сообщений
+    t[0] += pl.STICKER_TTL_SECS + 1                                    # эмоция протухла сама, без новых сообщений
     c.pump()
     assert view.frames[-1] == ("idle", "Говорю.", True)
     q.put(("presence", pres(speaking=False, segment="")))
@@ -164,7 +164,7 @@ def test_window_waits_for_settings_but_shows_resting_when_core_never_answers():
 def test_core_loss_turns_the_sticker_into_resting_and_back():
     t = [10.0]
     c, q, view = make_controller(t)
-    for m in [("connected", True), ("settings", {}), ("presence", pres(emotion="happy", emotion_ts=10.0))]:
+    for m in [("connected", True), ("settings", {}), ("presence", pres(sticker="happy", sticker_ts=10.0))]:
         q.put(m)
     c.pump()
     t[0] += 3.5

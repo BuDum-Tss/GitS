@@ -116,7 +116,7 @@ class EventPipeline:
         item, mode, ttl = self.normalizer.make_speech_item(module_id, say, text, ctx.clock())
         if say.get("announce") is True:
             self.store.register(item)
-            await self.announcer.announce(item, mode=mode, emotion=say.get("emotion"), ttl=ttl)      # AN-2
+            await self.announcer.announce(item, mode=mode, ttl=ttl)      # AN-2
             return
         cfg = ctx.settings()
         att = ctx.att(cfg)

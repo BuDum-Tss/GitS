@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from .. import protocol as P
-from .spec import C2M, M2C, NOTE, REQUEST, TOPIC, Field, Message
+from .spec import C2M, DEPRECATED, M2C, NOTE, REQUEST, TOPIC, Field, Message
 
 F = Field
 
@@ -50,7 +50,7 @@ _ask = Message(
 _tts = Message(
     "core.tts", M2C, REQUEST, "Синтез речи её голосом: ядро передаёт запрос модулю голоса (`tts.synthesize`) и его ответ.",
     request=(F("text", "string", True, "что произнести", nonempty=True, max=TTS_TEXT_MAX),
-             F("emotion", "string", False, "эмоция реплики"),
+             F("emotion", "string", False, "устарело: эмоций в ядре нет, поле игнорируется"),
              F("format", "string", False, "формат файла", enum=("wav", "ogg"), default="wav")),
     response=(F("path", "string", True, "путь к звуковому файлу"),
               F("duration_ms", "integer", True, "длительность, мс", min=0)),
@@ -221,7 +221,7 @@ _event = Message(
 _say = Message(
     "say", M2C, NOTE, "Просьба сказать: режим fact (передать факт, формулирует модель) или verbatim (дословно).",
     request=(F("text", "string", True, "что сказать", nonempty=True), F("mode", "string", False, "режим", enum=P.SAY_MODES, default="fact"),
-             F("emotion", "string", False, "эмоция"), F("key", "string", False, "ключ замены"),
+             F("emotion", "string", False, "устарело: эмоций в ядре нет, поле игнорируется"), F("key", "string", False, "ключ замены"),
              F("announce", "boolean", False, "объявление о долгом запуске"),
              F("urgency_hint", "integer", False, "подсказка срочности", min=P.URGENCY_MIN, max=P.URGENCY_MAX),
              F("expires_in_s", "number", False, "срок жизни, секунд")),
@@ -231,9 +231,10 @@ _say = Message(
 )
 
 _emotion = Message(
-    "emotion", M2C, NOTE, "Эмоция модуля (допустимость проверяет ядро).",
+    "emotion", M2C, NOTE, "Устарело: эмоций в ядре нет, ядро сообщение игнорирует (реакцию выбирает тег стикера в тексте ответа).",
     request=(F("emotion", "string", True, "эмоция", nonempty=True), F("cause", "string", False, "причина")),
     valid=({"emotion": "joy", "cause": "победа"},), invalid=({}, {"emotion": 3}),
+    status=DEPRECATED, deprecated_on="2027-01-01",
 )
 
 _state = Message(
@@ -322,7 +323,7 @@ _c_deliver = Message(
 )
 _c_tts = Message(
     "tts.synthesize", C2M, REQUEST, "Синтез речи у модуля голоса (`capabilities: voice.output`), ответ на `core.tts`.",
-    request=(F("text", "string", True, "текст", nonempty=True, max=TTS_TEXT_MAX), F("emotion", "string", False, "эмоция"),
+    request=(F("text", "string", True, "текст", nonempty=True, max=TTS_TEXT_MAX), F("emotion", "string", False, "устарело, игнорируется"),
              F("format", "string", False, "формат", enum=("wav", "ogg"), default="wav")),
     response=(F("path", "string", True, "путь к файлу"), F("duration_ms", "integer", True, "длительность, мс", min=0)),
     errors=("bad_request", "unavailable", "timeout", "internal"),
@@ -423,9 +424,9 @@ _c_ws_resume = Message(
 _speak = Message(
     "speak", C2M, NOTE, "Произнести реплику (`capabilities: voice.output`).",
     request=(F("utterance_id", "string", True, "id реплики", nonempty=True), F("text", "string", True, "текст", nonempty=True),
-             F("emotion", "string", False, "эмоция"), F("replace", "boolean", False, "заменить звучащую"),
+             F("replace", "boolean", False, "заменить звучащую"),
              F("trace", "object", False, "трасса задержки")),
-    valid=({"utterance_id": "u1", "text": "привет", "emotion": None, "replace": False},), invalid=({}, {"utterance_id": "u1"}),
+    valid=({"utterance_id": "u1", "text": "привет", "replace": False},), invalid=({}, {"utterance_id": "u1"}),
 )
 _speak_stop = Message(
     "speak.stop", C2M, NOTE, "Замолчать: сразу или после предложения.",
@@ -459,17 +460,17 @@ _reject = Message(
 # ── темы ──────────────────────────────────────────────────────────────────────
 
 _t_presence = Message(
-    "presence", C2M, TOPIC, "Присутствие: говорит ли она, эмоция, занятость, фокус (не чаще 10 раз в секунду).",
+    "presence", C2M, TOPIC, "Присутствие: говорит ли она, стикер, занятость, фокус (не чаще 10 раз в секунду).",
     request=(F("speaking", "boolean", True, "говорит ли"), F("utterance_id", "string", False, "id звучащей реплики"),
-             F("segment", "string", False, "звучащий фрагмент"), F("emotion", "string", True, "эмоция"),
-             F("emotion_ts", "number", False, "когда сменилась эмоция"), F("busy", "boolean", False, "занята ли"),
+             F("segment", "string", False, "звучащий фрагмент"), F("sticker", "string", False, "стикер (тег реакции звучащей реплики или idle)"),
+             F("sticker_ts", "number", False, "когда сменился стикер"), F("busy", "boolean", False, "занята ли"),
              F("focus", "string", False, "что в фокусе"), F("user_speaking", "boolean", False, "говорит ли человек"),
              F("last_user_ts", "number", False, "когда человек писал или говорил"), F("last_say", "string", False, "последняя реплика"),
              F("last_say_ts", "number", False, "когда она сказала"))
     ,
-    valid=({"speaking": False, "utterance_id": None, "segment": "", "emotion": "idle", "emotion_ts": 0.0, "busy": False,
+    valid=({"speaking": False, "utterance_id": None, "segment": "", "sticker": "idle", "sticker_ts": 0.0, "busy": False,
             "focus": "idle", "user_speaking": False, "last_user_ts": 0.0, "last_say": "", "last_say_ts": 0.0},),
-    invalid=({}, {"speaking": "да", "emotion": "idle"}, "не объект"),
+    invalid=({}, {"speaking": "да", "sticker": "idle"}, "не объект"),
 )
 _t_settings = Message(
     "settings", C2M, TOPIC, "Настройки: общие из `shared_settings` и собственные из `settings_schema` модуля.",

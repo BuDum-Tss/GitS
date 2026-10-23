@@ -21,13 +21,13 @@
         "type": "string",
         "description": "звучащий фрагмент"
       },
-      "emotion": {
+      "sticker": {
         "type": "string",
-        "description": "эмоция"
+        "description": "стикер (тег реакции звучащей реплики или idle)"
       },
-      "emotion_ts": {
+      "sticker_ts": {
         "type": "number",
-        "description": "когда сменилась эмоция"
+        "description": "когда сменился стикер"
       },
       "busy": {
         "type": "boolean",
@@ -56,10 +56,9 @@
     },
     "additionalProperties": true,
     "required": [
-      "speaking",
-      "emotion"
+      "speaking"
     ],
     "title": "presence",
-    "description": "Присутствие: говорит ли она, эмоция, занятость, фокус (не чаще 10 раз в секунду)."
+    "description": "Присутствие: говорит ли она, стикер, занятость, фокус (не чаще 10 раз в секунду)."
   }
 }

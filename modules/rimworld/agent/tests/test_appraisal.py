@@ -18,14 +18,14 @@ def _fresh(monkeypatch):
 
 def test_combat_emergency_drafts_and_goes_full():
     a = ap.derive(_answers(), "incident", "налёт 5 бандитов", ap.Affect(), now=1000.0)
-    assert a.importance == 4 and a.action == "draft_colonists" and a.comment == "full" and a.emotion == "threat"
+    assert a.importance == 4 and a.action == "draft_colonists" and a.comment == "full"
     assert a.claude == "urgent" and a.valence == "negative"
 
 
 def test_routine_construction_is_quiet_after_a_repeat():
     aff = ap.Affect()
     first = ap.derive(_answers("work", 0.05, "routine", "good"), "letter", "стены достроены, запас дерева вырос", aff, now=1000.0)
-    assert first.importance == 0 and first.action == "none" and first.emotion == "proud" and first.comment == "brief"
+    assert first.importance == 0 and first.action == "none" and first.comment == "brief"
     aff.update(first, "стены достроены, запас дерева вырос", now=1000.0)
     again = ap.derive(_answers("work", 0.05, "routine", "good"), "letter", "стены достроены, запас дерева вырос", aff, now=1010.0)
     assert again.novelty == "repeated" and again.comment == "silent"          # повтор рутины: промолчать
@@ -33,12 +33,12 @@ def test_routine_construction_is_quiet_after_a_repeat():
 
 def test_death_is_never_routine_and_streak_escalates():
     a = ap.derive(_answers("death", 0.1, "routine", "bad"), "pawn_died", "погиб Sean", ap.Affect(), now=1000.0)
-    assert a.importance >= 3 and a.comment in ("brief", "full") and a.emotion == "sad"
+    assert a.importance >= 3 and a.comment in ("brief", "full")
     aff = ap.Affect()
     for i in range(3):
         aff.update(ap.derive(_answers(), "incident", f"налёт {i}", aff, now=1000.0 + i), f"налёт {i}", now=1000.0 + i)
     streak = ap.derive(_answers(), "incident", "налёт 4", aff, now=1004.0)
-    assert streak.novelty == "repeated" and streak.trend == "escalating" and streak.emotion in ("scared", "angry")
+    assert streak.novelty == "repeated" and streak.trend == "escalating"
 
 
 def test_valence_comes_from_kind_and_routine_never_escalates():
@@ -54,12 +54,12 @@ def test_low_confidence_kind_is_ignored():
     a = _answers("combat", 0.2, "routine", "bad")
     a["kind"]["confidence"] = 0.2
     d = ap.derive(a, "x", "что-то непонятное", ap.Affect(), now=1000.0)
-    assert d.action == "none" and d.importance == 0 and d.emotion == "looking"        # категория отброшена, рефлекса нет
+    assert d.action == "none" and d.importance == 0        # категория отброшена, рефлекса нет
 
 
 def test_garbage_answers_fall_back_to_calm_defaults():
     a = ap.derive({"kind": {"answer": "nonsense"}, "danger": None}, "x", "что-то", ap.Affect(), now=1000.0)
-    assert a.importance == 0 and a.action == "none" and a.emotion == "looking"
+    assert a.importance == 0 and a.action == "none"
 
 
 def test_affect_accumulates_and_decays():
