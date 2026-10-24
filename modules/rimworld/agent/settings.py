@@ -16,6 +16,7 @@ DEFAULTS = {
     "voice_muted": False,       # глушилка: не озвучивать реплики (текст остаётся)
     "vision": True,             # смотреть на экран (локально)
     "game_model": "haiku",      # модель игровых ходов и планирования: haiku (быстро, дёшево) / sonnet (думает глубже, дороже)
+    "commentator_model": "claude",   # модель реплик комментатора: claude (по умолчанию, запасная Gemma) / local (только Gemma)
     "profile": "auto",          # режим поведения: auto (по активному окну) / game / work / stream / general
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (нужен docker compose up whisperx)
