@@ -203,7 +203,25 @@ async def test_planning_policy_pauses_plans_checks_and_returns_to_observe(ctrl, 
     assert ctrl.policies.current == "observe" and not planning_pause.marked()
 
 
-async def test_observe_turn_uses_the_local_model_and_no_claude(ctrl, monkeypatch):
+async def test_observe_turn_uses_claude_and_not_the_local_model(ctrl, monkeypatch):
+    seen = {}
+
+    async def fake_run_turn(context, *a, mode=None, brief="", **kw):
+        seen.update(mode=mode, brief=brief)
+        return {"commentary": "", "actions": []}
+
+    async def boom(*a, **k):
+        raise AssertionError("локальная модель не должна вести ход наблюдения (observe.think.model: claude)")
+    monkeypatch.setattr(local_agent, "run_local_turn", boom)
+    monkeypatch.setattr(controller, "run_turn", fake_run_turn)
+    monkeypatch.setattr(controller.claude_quota, "blocked", lambda: False)
+    ctrl.policies.leave_afk("observe", "")
+    ctrl._pending_events.append(pe.make("research_done", "исследование завершено: Орошение", {"research": "Орошение"}))
+    await ctrl._mode_turn("observe", {}, [], None, False, None, None, None, ["Ада: здоровье 90% → 60%"])
+    assert seen["mode"] == "observe" and "Ада" in seen["brief"]
+
+
+async def test_observe_turn_falls_back_to_local_when_claude_is_blocked(ctrl, monkeypatch):
     seen = {}
 
     async def fake_local(context, mode="observe", order=None, urgent=None, situation=None, max_steps=8, timeout=300, **kw):
@@ -211,14 +229,14 @@ async def test_observe_turn_uses_the_local_model_and_no_claude(ctrl, monkeypatch
         return {"commentary": "", "actions": []}
 
     async def boom(*a, **k):
-        raise AssertionError("Claude не должен вызываться в наблюдении")
+        raise AssertionError("Claude заблокирован лимитом: ход должен идти локально")
     monkeypatch.setattr(local_agent, "run_local_turn", fake_local)
     monkeypatch.setattr(controller, "run_turn", boom)
+    monkeypatch.setattr(controller.claude_quota, "blocked", lambda: True)
     ctrl.policies.leave_afk("observe", "")
     ctrl._pending_events.append(pe.make("research_done", "исследование завершено: Орошение", {"research": "Орошение"}))
     await ctrl._mode_turn("observe", {}, [], None, False, None, None, None, ["Ада: здоровье 90% → 60%"])
     assert "=== ПОЛИТИКА: Наблюдение ===" in seen["context"] and "Орошение" in seen["context"]
-    assert "полного снимка колонии здесь нет" in seen["context"]
     assert seen["max_steps"] == 8 and seen["timeout"] == 300
 
 

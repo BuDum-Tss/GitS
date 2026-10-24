@@ -18,7 +18,7 @@ switch_to: [plan]
 min_dwell_s: 0
 loop: passive
 think:
-  model: local
+  model: claude
   max_steps: 8
   timeout_s: 300
 modes: [observe, people, economy, health, build, explore, show, combat]

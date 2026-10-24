@@ -71,7 +71,7 @@ def test_policy_urgency_and_resources_are_declared_per_policy():
     reg = policies.get()
     assert reg.policy("afk").urgency == 0.0 and reg.policy("afk").resources == {}
     assert reg.policy("combat").urgency == 1.0 and reg.policy("combat").resources == {"gpu": 1, "tokens": 1}
-    assert reg.policy("observe").resources == {"gpu": 1}            # локальная модель - видеокарта
+    assert reg.policy("observe").resources == {"tokens": 1}         # ходы ведёт Claude (haiku), не локальная модель
     assert reg.policy("plan").resources == {"tokens": 1}            # Claude - токены
     for p in reg.policies.values():
         assert 0 <= p.urgency <= 1
@@ -85,7 +85,7 @@ def test_status_in_each_policy_pure():
     assert afk == {"active_policy": "afk", "active_goal": "Цель", "urgency": 0.0, "interruptible": True,
                    "estimated_remaining_s": None, "blocked": None, "resources": {}}
     observe = focus_status.build(reg.policy("observe"), goal="", tasks=[], buildings=[])
-    assert observe["interruptible"] is True and observe["urgency"] == 0.1 and observe["resources"] == {"gpu": 1}
+    assert observe["interruptible"] is True and observe["urgency"] == 0.1 and observe["resources"] == {"tokens": 1}
     plan = focus_status.build(reg.policy("plan"), goal="", tasks=[], buildings=[])
     assert plan["urgency"] == 0.4 and plan["resources"] == {"tokens": 1}
 
