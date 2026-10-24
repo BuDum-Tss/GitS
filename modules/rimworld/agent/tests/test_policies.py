@@ -62,7 +62,7 @@ def test_broken_policy_file_fails_loudly(tmp_path):
     ("  to: observe\nswitch_to: [observe]", "  to: nowhere\nswitch_to: [observe]", "exit.to"),
     ("loop: iterative", "loop: forever", "loop"),
     ("priority: 4", "priority: 2", "приоритеты"),
-    ("  model: mixed", "  model: gpt", "think.model"),
+    ("  model: claude", "  model: gpt", "think.model"),
 ])
 def test_schema_errors_are_named(tmp_path, old, new, msg):
     d = copy_policies(tmp_path)

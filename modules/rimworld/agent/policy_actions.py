@@ -77,15 +77,11 @@ class FightBudget:
 
 # ── выбор модели хода ─────────────────────────────────────────────────────────────────────────
 
-def use_local_model(model: str, turn_index: int, claude_every: int = 3, claude_blocked: bool = False) -> bool:
-    """True, если ход ведёт локальная модель. mixed: Claude на первом ходе боя и затем каждый claude_every-й."""
-    if claude_blocked or model == "local":
-        return True
-    if model == "claude":
-        return False
-    if model == "mixed":
-        return turn_index % max(1, claude_every) != 0
-    return True
+def use_local_model(model: str, turn_index: int = 0, claude_every: int = 3, claude_blocked: bool = False) -> bool:
+    """True, если ход ведёт локальная модель: только когда политика прямо просит `local`. Игрой управляет Claude: лимит Claude
+    (`claude_blocked`) не переводит ход на Gemma, ход просто пропускается; Gemma только комментирует. `mixed` и `none` теперь
+    тоже Claude (параметры `turn_index`, `claude_every` оставлены для совместимости)."""
+    return model == "local"
 
 
 # ── manual: застрявшие задачи и принуждение ───────────────────────────────────────────────────

@@ -1451,9 +1451,7 @@ class Controller:
             try:
                 st_goals = await asyncio.to_thread(_get_state)
                 if _state_ready(st_goals) and claude_quota.blocked():
-                    import local_planner      # Claude спит: стартовый план хотя бы локальной моделью, чтобы цели не были пустыми
-                    if await local_planner.seed(st_goals):
-                        self._planning_wake.set()
+                    pass                      # Claude спит (лимит): планируем позже, Gemma игрой не управляет
                 elif _state_ready(st_goals):
                     logger.info("GLaDOS пересматривает стратегические цели…")
                     async with self._background_lock:
