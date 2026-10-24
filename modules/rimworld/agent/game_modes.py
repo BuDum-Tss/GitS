@@ -19,6 +19,7 @@ CORE = (
     "get_colony_state", "get_pawn_details", "get_items", "find_nearest", "pause_game", "resume_game", "open_game_tab", "note_decision",
     "search_knowledge", "remember_knowledge", "switch_mode",
     "get_colonists", "get_resources", "switch_policy",       # ТЗ 11e (POL-2, POL-5): запросы мира и просьба о политике
+    "unforbid_item",        # запрещённое сырьё и еда мешают любой работе (стройке, лечению, бою): разрешить можно из любого режима
 )
 
 
@@ -58,7 +59,8 @@ MODES: dict[str, GameMode] = {m.id: m for m in (
         ("look_at", "describe_thing_def", "search_thing_defs", "estimate_build", "find_buildable_spot", "fit_room", "plan_room", "build_room", "clear_plans",
          "room_info", "check_enclosure", "place_building", "place_wall_line", "cancel_construction", "deconstruct", "designate_smooth",
          "set_home_area", "get_buildings", "unlock_for"),
-        "Ты строишь. Закрыто исследованием (ЗАКРЫТО ИССЛЕДОВАНИЕМ): unlock_for с queue=true и waiting_task. Порядок: 1) что нужно (describe_thing_def: стоимость, работа, материалы; estimate_build: хватит ли ресурсов и часов); "
+        "Ты строишь. Материалы или еда запрещены (forbidden в get_colony_state или get_items): разреши их сама, unforbid_item на нужных "
+        "стопках (через интерфейс игры этого не делай), и только потом строй. Закрыто исследованием (ЗАКРЫТО ИССЛЕДОВАНИЕМ): unlock_for с queue=true и waiting_task. Порядок: 1) что нужно (describe_thing_def: стоимость, работа, материалы; estimate_build: хватит ли ресурсов и часов); "
         "2) место (fit_room; руины это готовые стены, их смотрит режим разведки); 3) проверка плана (plan_room: контур замкнут, всё "
         "строится, цена); 4) постройка (build_room, place_building). Стены вокруг существующего, не сквозь него. Одна комната за раз. "
         "Закончила: switch_mode(observe)."
@@ -66,7 +68,7 @@ MODES: dict[str, GameMode] = {m.id: m for m in (
     GameMode(
         "economy", "Хозяйство и ресурсы",
         "Производство и запасы: заказы на верстаках, склады, огороды, охота, приручение, запреты, добыча.",
-        ("add_bill", "list_recipes", "cancel_bill", "create_stockpile", "create_grow_zone", "delete_zone", "forbid_item", "unforbid_item",
+        ("add_bill", "list_recipes", "cancel_bill", "create_stockpile", "create_grow_zone", "delete_zone", "forbid_item",
          "order_tame", "order_slaughter", "designate_chop", "designate_mine", "force_work", "clear_work_queue"),
         "Ты ведёшь хозяйство: что производить (add_bill, list_recipes), где склад и огород, что запрещено лишнего (unforbid_item), "
         "что добывать (designate_chop, designate_mine). Еды меньше 10 дней: огород, охота, готовка."
@@ -76,7 +78,7 @@ MODES: dict[str, GameMode] = {m.id: m for m in (
         "Враги на карте, пожар, угроза: мобилизация, управление пешками, огонь, пауза.",
         ("draft_pawns", "undraft_pawns", "move_pawn", "attack_target", "cancel_job", "equip_item", "wear_apparel", "rescue_pawn", "capture_pawn", "get_threats"),
         "Бой. Быстро, не больше 8-10 вызовов: 1) get_colony_state (кто где, кто ранен, где враги); 2) вооружи безоружных (equip_item, "
-        "оружие смотри через get_items, при нужде unforbid_item в режиме хозяйства); 3) draft_pawns способных бойцов, attack_target "
+        "оружие смотри через get_items, при нужде unforbid_item); 3) draft_pawns способных бойцов, attack_target "
         "на ближайшего врага; 4) раненых вытащи (rescue_pawn); pause_game нужна, чтобы успеть отдать приказы. Опасность миновала: "
         "undraft_pawns, лечение в режиме health, потом switch_mode(observe)."
     ),
