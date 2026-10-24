@@ -70,7 +70,7 @@ def test_manifest_transitions_are_what_the_core_may_request():
 def test_policy_urgency_and_resources_are_declared_per_policy():
     reg = policies.get()
     assert reg.policy("afk").urgency == 0.0 and reg.policy("afk").resources == {}
-    assert reg.policy("combat").urgency == 1.0 and reg.policy("combat").resources == {"gpu": 1, "tokens": 1}
+    assert reg.policy("combat").urgency == 1.0 and reg.policy("combat").resources == {"tokens": 1}
     assert reg.policy("observe").resources == {"tokens": 1}         # ходы ведёт Claude (haiku), не локальная модель
     assert reg.policy("plan").resources == {"tokens": 1}            # Claude - токены
     for p in reg.policies.values():

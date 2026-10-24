@@ -221,23 +221,21 @@ async def test_observe_turn_uses_claude_and_not_the_local_model(ctrl, monkeypatc
     assert seen["mode"] == "observe" and "Ада" in seen["brief"]
 
 
-async def test_observe_turn_falls_back_to_local_when_claude_is_blocked(ctrl, monkeypatch):
+async def test_observe_turn_does_not_fall_back_to_local_when_claude_is_blocked(ctrl, monkeypatch):
     seen = {}
 
-    async def fake_local(context, mode="observe", order=None, urgent=None, situation=None, max_steps=8, timeout=300, **kw):
-        seen.update(context=context, max_steps=max_steps, timeout=timeout)
-        return {"commentary": "", "actions": []}
+    async def fake_run_turn(context, *a, mode=None, brief="", **kw):
+        seen["claude_called"] = True
+        return {"commentary": "", "actions": [], "quota": True}
 
     async def boom(*a, **k):
-        raise AssertionError("Claude заблокирован лимитом: ход должен идти локально")
-    monkeypatch.setattr(local_agent, "run_local_turn", fake_local)
-    monkeypatch.setattr(controller, "run_turn", boom)
+        raise AssertionError("Gemma не управляет игрой: при лимите Claude ход не уходит в локальную модель")
+    monkeypatch.setattr(local_agent, "run_local_turn", boom)
+    monkeypatch.setattr(controller, "run_turn", fake_run_turn)
     monkeypatch.setattr(controller.claude_quota, "blocked", lambda: True)
     ctrl.policies.leave_afk("observe", "")
-    ctrl._pending_events.append(pe.make("research_done", "исследование завершено: Орошение", {"research": "Орошение"}))
     await ctrl._mode_turn("observe", {}, [], None, False, None, None, None, ["Ада: здоровье 90% → 60%"])
-    assert "=== ПОЛИТИКА: Наблюдение ===" in seen["context"] and "Орошение" in seen["context"]
-    assert seen["max_steps"] == 8 and seen["timeout"] == 300
+    assert seen["claude_called"] is True
 
 
 async def test_watch_rule_fires_on_research_and_switches_to_planning(ctrl):

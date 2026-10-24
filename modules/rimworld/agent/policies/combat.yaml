@@ -18,8 +18,7 @@ switch_to: [observe]
 min_dwell_s: 0
 loop: iterative
 think:
-  model: mixed
-  claude_every: 3
+  model: claude
   max_steps: 10
   timeout_s: 150
 modes: [combat, health, observe]

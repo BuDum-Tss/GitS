@@ -46,14 +46,12 @@ def test_fight_budget_limits_per_fight_and_per_minute():
     assert b.allow()[0] and b.turns == 0
 
 
-def test_mixed_model_thinks_with_claude_on_first_and_every_nth_turn():
-    assert pa.use_local_model("mixed", 0, claude_every=3) is False
-    assert pa.use_local_model("mixed", 1, claude_every=3) is True
-    assert pa.use_local_model("mixed", 3, claude_every=3) is False
-    assert pa.use_local_model("claude", 1) is False
+def test_only_an_explicit_local_policy_uses_the_local_model():
+    """Игрой управляет Claude: Gemma ведёт ход только по прямой просьбе политики (`local`), лимит Claude её не включает."""
     assert pa.use_local_model("local", 0) is True
-    assert pa.use_local_model("claude", 0, claude_blocked=True) is True     # лимит Claude: только локально
-    assert pa.use_local_model("none", 0) is True
+    for model in ("claude", "mixed", "none"):
+        assert pa.use_local_model(model, 0) is False and pa.use_local_model(model, 1, claude_every=3) is False
+    assert pa.use_local_model("claude", 0, claude_blocked=True) is False       # лимит Claude: ход пропускается, не уходит в Gemma
 
 
 def test_stalled_tasks_counted_in_game_hours_and_done_ones_forgotten():
