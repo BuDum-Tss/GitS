@@ -139,6 +139,26 @@ class Commentator:
             return False
         return not (now - self._last_user_ts() < CHAT_QUIET or self._is_speaking())
 
+    @staticmethod
+    def _default_ask():
+        """Модель реплик: Claude (настройка commentator_model, по умолчанию) или локальная Gemma. Claude недоступен
+        (лимит, сбой): запасной ответ даёт Gemma, комментатор не замолкает."""
+        import fast_brain
+
+        async def local(system, user):
+            return await fast_brain._ask(system, user, timeout=60, max_tokens=220, temperature=0.9, background=True)
+        if settings.load().get("commentator_model", "claude") != "claude":
+            return local
+
+        async def claude_first(system, user):
+            import claude_say
+            try:
+                return await claude_say.ask(system, user, timeout=60)
+            except Exception as e:
+                logger.info(f"Комментатор: Claude не ответил ({e}), отвечает локальная модель")
+                return await local(system, user)
+        return claude_first
+
     async def step(self) -> str | None:
         """Решить, говорить ли сейчас, и сказать. Возвращает реплику или None."""
         now = time.time()
@@ -172,10 +192,7 @@ class Commentator:
             return None
         ask = self._ask
         if ask is None:
-            import fast_brain
-
-            async def ask(system, user):
-                return await fast_brain._ask(system, user, timeout=60, max_tokens=220, temperature=0.9, background=True)
+            ask = self._default_ask()
         try:
             text = (await ask(self._system(stream), self._build_prompt(topic, events))).strip()
         except Exception as e:

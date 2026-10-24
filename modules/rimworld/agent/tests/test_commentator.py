@@ -129,3 +129,42 @@ def test_letters_are_cleaned_and_get_their_own_reaction(mem):
     r.c.feed(line, True)
     r.c.feed("ресурсы WoodLog: 100 → 90", False)
     assert run(r) and "свадьба" in r.asked[0][1] and "WoodLog" not in r.asked[0][1]
+
+
+def _stub_models(monkeypatch, claude):
+    import claude_say
+    import fast_brain
+    calls = []
+
+    async def fake_claude(system, user, timeout=60.0, contour="commentator"):
+        calls.append("claude")
+        return await claude()
+
+    async def fake_local(system, user, timeout=60, **kw):
+        calls.append("local")
+        return "Ответ Gemma."
+    monkeypatch.setattr(claude_say, "ask", fake_claude)
+    monkeypatch.setattr(fast_brain, "_ask", fake_local)
+    return calls
+
+
+def test_default_model_is_claude(mem, monkeypatch):
+    async def claude():
+        return "Ответ Claude."
+    calls = _stub_models(monkeypatch, claude)
+    assert asyncio.run(Commentator._default_ask()("sys", "user")) == "Ответ Claude." and calls == ["claude"]
+
+
+def test_falls_back_to_local_model_when_claude_fails(mem, monkeypatch):
+    async def claude():
+        raise RuntimeError("лимит Claude исчерпан")
+    calls = _stub_models(monkeypatch, claude)
+    assert asyncio.run(Commentator._default_ask()("sys", "user")) == "Ответ Gemma." and calls == ["claude", "local"]
+
+
+def test_local_setting_skips_claude(mem, monkeypatch):
+    async def claude():
+        return "Ответ Claude."
+    calls = _stub_models(monkeypatch, claude)
+    settings.update(commentator_model="local")
+    assert asyncio.run(Commentator._default_ask()("sys", "user")) == "Ответ Gemma." and calls == ["local"]
