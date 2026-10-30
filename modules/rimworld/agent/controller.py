@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 import httpx
+import camera_gate
 import claude_quota
 import glados_agent
 from collections import deque
@@ -155,8 +156,11 @@ def _get_events() -> list[dict]:
         return []
 
 
-def _camera_command(cmd: dict) -> str | None:
-    """Команда камеры в мод. Возвращает ответ мода (для camera_state) или None при сбое."""
+def _camera_command(cmd: dict, *, force: bool = False) -> str | None:
+    """Команда камеры в мод. Возвращает ответ мода (для camera_state) или None при сбое. Камера у игрока (переключатель
+    `camera_agent` выключен): команда не уходит, `force` нужен только самому переключателю."""
+    if not force and camera_gate.blocks(cmd.get("type", "")):
+        return None
     try:
         r = httpx.post(f"{_BASE}/command", json=cmd, timeout=4).json()
         return r.get("result") if r.get("status") == "ok" else None
@@ -742,8 +746,21 @@ class Controller:
                 return
         await self._navigate_to_game(MENU_GOAL)
 
+    async def _sync_camera_switch(self) -> None:
+        """Переключатель «камерой управляет агент»: настройка модуля -> файл для всех процессов и режим автокамеры мода."""
+        want = bool(self._module_setting("camera_agent", True))
+        if getattr(self, "_camera_switch", None) == want:
+            return
+        first = getattr(self, "_camera_switch", None) is None
+        self._camera_switch = want
+        await asyncio.to_thread(camera_gate.set_agent_camera, want)
+        if not first or not want:
+            logger.info("Камера: " + ("управляет агент" if want else "у игрока, агент её не двигает"))
+            await asyncio.to_thread(_camera_command, {"type": "set_auto_camera", "enabled": want}, force=True)
+
     async def _camera(self, cmds: list[dict]):
         """Отправить команды камеры в мод (не блокируя тик). Сбой камеры не должен влиять на игру."""
+        await self._sync_camera_switch()
         for cmd in cmds:
             await asyncio.to_thread(_camera_command, cmd)
 
@@ -829,6 +846,7 @@ class Controller:
         if self.link is not None:
             await self._check_goals()
 
+        await self._sync_camera_switch()                 # переключатель камеры действует и без команд режиссёра
         events = await asyncio.to_thread(_get_events)
         filming = self.director is not None and bool(settings.load().get("record_runs"))
         if filming:
