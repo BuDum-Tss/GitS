@@ -20,8 +20,12 @@ namespace AgentBridge
         private static float _lastSize;
         private static float _until;                             // realtime: до этого агент камеру не двигает
 
-        /// Агент не двигает камеру, пока пользователь её перехватил.
-        public static bool Overridden => Enabled && Time.realtimeSinceStartup < _until;
+        /// Главный переключатель (кнопка у края экрана в игре, команда set_agent_camera): true - камерой управляет агент,
+        /// false - камера у игрока, агент её не двигает вообще. Включён при каждом запуске игры.
+        public static bool AgentHasCamera = true;
+
+        /// Агент не двигает камеру: игрок забрал её переключателем или недавно сам её сдвинул.
+        public static bool Overridden => !AgentHasCamera || (Enabled && Time.realtimeSinceStartup < _until);
 
         /// Начало кадра: true, если камеру явно сдвинул пользователь. Тогда отметка перехвата ставится на OverrideSeconds.
         public static bool Check(Vector3 pos, float size)

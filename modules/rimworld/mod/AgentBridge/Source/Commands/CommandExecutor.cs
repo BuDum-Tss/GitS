@@ -70,6 +70,13 @@ namespace AgentBridge
             }
         }
 
+        /// Команды, которые двигают камеру (чтение камеры и сам переключатель не в счёт).
+        private static bool MovesCamera(string type)
+        {
+            if (type == "camera_view" || type == "camera_state") return false;
+            return type.StartsWith("camera_") || type == "set_auto_camera";
+        }
+
         /// Пауза после действия, чтобы зритель успел его увидеть (только для действий в мире).
         private static float DwellAfter(string json, bool compact)
         {
@@ -90,6 +97,8 @@ namespace AgentBridge
             var cmd = JObject.Parse(json);
             var type = cmd["type"]?.Value<string>()
                 ?? throw new ArgumentException("Missing 'type' field");
+            if (!UserCamera.AgentHasCamera && MovesCamera(type))
+                return "{\"skipped\":\"камера у игрока: переключатель камеры в игре выключен, агент её не двигает\"}";
 
             Log.Message($"[AgentBridge] Executing: {type}");
             CheckTabGate(type);
@@ -138,6 +147,7 @@ namespace AgentBridge
                 case "open_tab":           return OpenTab(cmd);
                 case "select":             return SelectTarget(cmd);
                 case "set_auto_camera":    AutoCamera = cmd["enabled"]?.Value<bool>() ?? true; break;
+                case "set_agent_camera":   UserCamera.AgentHasCamera = cmd["enabled"]?.Value<bool>() ?? true; break;
                 case "set_user_camera_override":
                     UserCamera.Enabled = cmd["enabled"]?.Value<bool>() ?? true;
                     UserCamera.OverrideSeconds = Mathf.Clamp(cmd["seconds"]?.Value<float>() ?? UserCamera.DefaultOverrideSeconds, 1f, 30f);

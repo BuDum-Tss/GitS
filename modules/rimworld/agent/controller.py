@@ -23,7 +23,6 @@ import time
 from pathlib import Path
 
 import httpx
-import camera_gate
 import claude_quota
 import glados_agent
 from collections import deque
@@ -156,11 +155,8 @@ def _get_events() -> list[dict]:
         return []
 
 
-def _camera_command(cmd: dict, *, force: bool = False) -> str | None:
-    """Команда камеры в мод. Возвращает ответ мода (для camera_state) или None при сбое. Камера у игрока (переключатель
-    `camera_agent` выключен): команда не уходит, `force` нужен только самому переключателю."""
-    if not force and camera_gate.blocks(cmd.get("type", "")):
-        return None
+def _camera_command(cmd: dict) -> str | None:
+    """Команда камеры в мод. Возвращает ответ мода (для camera_state) или None при сбое."""
     try:
         r = httpx.post(f"{_BASE}/command", json=cmd, timeout=4).json()
         return r.get("result") if r.get("status") == "ok" else None
@@ -747,20 +743,22 @@ class Controller:
         await self._navigate_to_game(MENU_GOAL)
 
     async def _sync_camera_switch(self) -> None:
-        """Переключатель «камерой управляет агент»: настройка модуля -> файл для всех процессов и режим автокамеры мода."""
+        """Переключатель «камерой управляет агент». Главный выключатель живёт в моде (кнопка «CAM» у края экрана игры, команда
+        `set_agent_camera`; при каждом запуске игры он включён). Модуль только передаёт моду настройку `camera_agent`, когда её
+        изменили в дашборде или когда игра запустилась с выключенной настройкой. Кнопку в игре настройка не перебивает."""
         want = bool(self._module_setting("camera_agent", True))
-        if getattr(self, "_camera_switch", None) == want:
+        game_up = bool(self._game_up)
+        if getattr(self, "_camera_pushed", None) == (want, game_up):
             return
-        first = getattr(self, "_camera_switch", None) is None
-        self._camera_switch = want
-        await asyncio.to_thread(camera_gate.set_agent_camera, want)
-        if not first or not want:
-            logger.info("Камера: " + ("управляет агент" if want else "у игрока, агент её не двигает"))
-            await asyncio.to_thread(_camera_command, {"type": "set_auto_camera", "enabled": want}, force=True)
+        was = getattr(self, "_camera_pushed", None)
+        self._camera_pushed = (want, game_up)
+        if not game_up or (was is None and want):
+            return                                       # игры нет, или первый опрос с включённой настройкой (в моде и так включено)
+        logger.info("Камера: " + ("управляет агент" if want else "у игрока, агент её не двигает"))
+        await asyncio.to_thread(_camera_command, {"type": "set_agent_camera", "enabled": want})
 
     async def _camera(self, cmds: list[dict]):
         """Отправить команды камеры в мод (не блокируя тик). Сбой камеры не должен влиять на игру."""
-        await self._sync_camera_switch()
         for cmd in cmds:
             await asyncio.to_thread(_camera_command, cmd)
 
@@ -846,7 +844,7 @@ class Controller:
         if self.link is not None:
             await self._check_goals()
 
-        await self._sync_camera_switch()                 # переключатель камеры действует и без команд режиссёра
+        await self._sync_camera_switch()
         events = await asyncio.to_thread(_get_events)
         filming = self.director is not None and bool(settings.load().get("record_runs"))
         if filming:

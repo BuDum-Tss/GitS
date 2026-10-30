@@ -7,7 +7,6 @@ from pathlib import Path
 
 import httpx
 import functools
-import camera_gate
 from mcp.server.fastmcp import FastMCP, Image
 
 # Ленивый импорт game_ui — не ломает MCP инициализацию если окна нет
@@ -85,8 +84,6 @@ def _post(command: dict) -> str:
     (мод ждёт исполнения на главном потоке перед ответом) — если команда
     провалилась (например, невозможный рецепт на этом верстаке), это видно
     здесь, а не притворяется успехом."""
-    if camera_gate.blocks(command.get("type", "")):
-        return camera_gate.REFUSAL                      # камера у игрока (переключатель выключен)
     try:
         r = httpx.post(f"{_BASE}/command", json=command, timeout=25)
         r.raise_for_status()
@@ -104,8 +101,6 @@ def _post(command: dict) -> str:
 def _query(command: dict) -> str:
     """Как _post, но для команд-запросов (find_buildable_spot и т.п.) —
     возвращает JSON-payload результата как есть, а не 'OK: type'."""
-    if camera_gate.blocks(command.get("type", "")):
-        return camera_gate.REFUSAL                      # камера у игрока (переключатель выключен)
     try:
         r = httpx.post(f"{_BASE}/command", json=command, timeout=25)
         r.raise_for_status()
@@ -525,10 +520,7 @@ _CAPS: dict = {"ts": 0.0, "cmds": None}
 
 
 def _need_mod(cmd: str) -> str | None:
-    """None, если мод в игре знает команду; иначе понятная ошибка (старый мод тихо игнорировал бы её). Камера у игрока
-    (переключатель выключен): отказ раньше любых обращений к игре."""
-    if camera_gate.blocks(cmd):
-        return camera_gate.REFUSAL
+    """None, если мод в игре знает команду; иначе понятная ошибка (старый мод тихо игнорировал бы её)."""
     now = time.time()
     if _CAPS["cmds"] is None or now - _CAPS["ts"] > 30:
         raw = _query({"type": "capabilities"})

@@ -313,6 +313,7 @@ namespace AgentBridge
                 center = new { x = c.x, z = c.z },
                 view = new { x1 = r.minX, z1 = r.minZ, x2 = r.maxX, z2 = r.maxZ },
                 size = d.RootSize,
+                agent_camera = UserCamera.AgentHasCamera,
                 open_tab = Find.MainTabsRoot.OpenTab?.defName,
             });
         }
