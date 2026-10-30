@@ -125,7 +125,7 @@ class Attention:
     speech = _Via("coordinator", "speech")             # SpeechQueue
     _items = _Via("store", "items")
     _by_key = _Via("store", "by_key")
-    _digest = _Via("digest_", "buffers")
+    _digest = _Via("digest_", "entries")
     _focus = _Via("focus_", "stack")
     _reaction_focus = _Via("focus_", "reaction_focus")
     _job_states = _Via("jobs", "states")

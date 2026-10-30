@@ -70,3 +70,25 @@ async def test_nothing_without_attached_reflection(tmp_path):
     await fill(rig, 3)
     await wake(rig)
     assert rig.att.digest_counts() == {"echo": 3}
+
+
+async def test_batch_takes_the_most_weighty_entries_and_leaves_the_rest(rig):
+    for i in range(14):
+        await rig.submit("echo", kind=f"echo.k{i}", urgency_hint=2, addressed_to_me=False, text=f"Событие {i}")
+    await wake(rig)
+    text = rig.spy.events[0].text
+    assert text.count("\n- ")== 10                                        # в пачке десять записей
+    assert sum(rig.att.digest_counts().values()) == 4                          # остальные ждут следующей
+
+
+async def test_current_environment_makes_its_module_events_weigh_more(rig):
+    await rig.submit("game", kind="game.letter", urgency_hint=1, addressed_to_me=False, text="Письмо в игре")
+    await rig.submit("other", kind="other.note", urgency_hint=1, addressed_to_me=False, text="Заметка")
+    d = rig.att.digest_
+    plain = d.weights()
+    assert plain[0] == plain[1]                                                 # в обычной среде они равны
+    d.env_of = lambda: "game"
+    boosted = d.weights()
+    assert boosted[0] > boosted[1] and boosted[0] == plain[0] * 2 and boosted[1] == plain[1] / 2
+    d.env_of = lambda: "sleep"
+    assert d.weights() == plain                                                 # у сна своего модуля нет

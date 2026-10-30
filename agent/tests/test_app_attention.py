@@ -42,7 +42,7 @@ def test_oldest_ids_only_over_limit():
 
 def test_facade_aliases_component_state(tmp_path):
     att = Rig(tmp_path).att
-    assert att._items is att.store.items and att._digest is att.digest_.buffers and att._focus is att.focus_.stack
+    assert att._items is att.store.items and att._digest is att.digest_.entries and att._focus is att.focus_.stack
     assert att.speech is att.coordinator.speech and att.rules is att.ctx.rules
     att.hub = object()
     assert att.ctx.hub is att.hub                                   # поля, которые ставит ядро, живут в общем контексте

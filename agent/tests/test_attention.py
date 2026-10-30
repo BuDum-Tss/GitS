@@ -227,8 +227,8 @@ async def test_dedupe_does_not_merge_after_the_event_was_spoken_or_across_module
 async def test_dedupe_updates_digest_entry(rig):
     await rig.submit("echo", urgency_hint=1, addressed_to_me=False, text="А", dedupe_key="k")
     await rig.submit("echo", urgency_hint=1, addressed_to_me=False, text="Б", dedupe_key="k")
-    entry = rig.att._digest["echo"][0]
-    assert len(rig.att._digest["echo"]) == 1 and entry["text"] == "Б" and entry["count"] == 2
+    entry = rig.att._digest[0]
+    assert len(rig.att._digest) == 1 and entry["text"] == "Б" and entry["count"] == 2
 
 
 # ── классификатор ATT-4a, ATT-8, ATT-32 ───────────────────────────────────────────────────────────
@@ -550,23 +550,29 @@ async def test_broken_rules_file_does_not_break_core(tmp_path):
 
 # ── сводка ATT-26, ATT-27 ─────────────────────────────────────────────────────────────────────────
 
-async def test_digest_buffer_keeps_fifty_per_module_and_take_clears(rig):
-    for i in range(55):
-        await rig.submit("echo", urgency_hint=1, addressed_to_me=False, text=f"событие {i}")
-    assert rig.att.digest_counts() == {"echo": 50}
+async def test_digest_is_one_queue_for_all_modules_and_take_by_module_clears_only_that_module(rig):
+    for i in range(3):
+        await rig.submit("echo", kind=f"echo.k{i}", urgency_hint=1, addressed_to_me=False, text=f"событие {i}")
     await rig.submit("other", urgency_hint=1, addressed_to_me=False, text="чужое")
+    assert rig.att.digest_counts() == {"echo": 3, "other": 1}
     text = rig.att.take_digest("echo")
-    lines = text.splitlines()
-    assert "- echo: событие 54" in lines and "- echo: событие 4" not in lines and "- echo: событие 5" in lines
-    assert "чужое" not in text                                        # вытеснены самые старые: остались события 5…54
+    assert "событие 2" in text and "чужое" not in text
     assert rig.att.digest_counts() == {"other": 1}
     assert "чужое" in rig.att.take_digest() and "пусто" in rig.att.take_digest()
+
+
+async def test_a_flood_of_routine_does_not_push_out_a_rare_event(rig):
+    await rig.submit("other", kind="other.rare", urgency_hint=2, addressed_to_me=False, text="редкое")
+    for i in range(150):
+        await rig.submit("echo", kind="echo.tick", urgency_hint=1, addressed_to_me=False, text=f"тик {i}")
+    assert len(rig.att._digest) == 100                                 # очередь одна на все модули и ограничена
+    assert "редкое" in rig.att.take_digest("other")                    # самое старое, но редкое: не вытеснено
 
 
 async def test_digest_sorted_by_priority(rig):
     await rig.submit("echo", urgency_hint=1, addressed_to_me=False, text="мелочь")
     await rig.submit("echo", kind="echo.b", urgency_hint=1, addressed_to_me=False, text="важнее", expires_in_s=0.001)
-    rig.att._digest["echo"][1]["priority"] = 33
+    rig.att._digest[1]["priority"] = 33
     assert rig.att.take_digest().index("важнее") < rig.att.take_digest("echo").find("мелочь") + 1000
 
 

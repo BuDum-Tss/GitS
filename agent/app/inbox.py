@@ -10,6 +10,7 @@ from .attention_core import AttentionContext, Item
 
 NOTABLE_URGENCY = 2        # события этой срочности и выше сами по себе стоят пачки
 MANY_ITEMS = 8             # столько мелочи тоже стоит пачки
+BATCH_MAX = 10             # в пачку идут самые весомые записи очереди, остальное ждёт следующей
 BATCH_KIND = "inbox.batch"
 
 
@@ -19,7 +20,7 @@ class Inbox:
         self.last_wake = 0.0
 
     def _entries(self) -> list[dict]:
-        return [e for buf in self.digest.buffers.values() for e in buf]
+        return self.digest.entries
 
     def ready(self, now: float) -> bool:
         ctx = self.ctx
@@ -43,7 +44,7 @@ class Inbox:
         if not self.ready(now):
             return False
         self.last_wake = now
-        text = self.digest.take()
+        text = self.digest.take(limit=BATCH_MAX)
         item = Item(id="inbox-" + str(int(now * 1000)), module="inbox", kind=BATCH_KIND, text=text, data={}, sender=None,
                     reply_channel=None, addressed_to_me=False, urgency=2, needs_reply=False, memorable=False, created=now,
                     expires=None, dedupe_key=None, urgency_hint=2, updated=now)
