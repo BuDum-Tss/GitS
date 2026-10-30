@@ -158,3 +158,10 @@ async def test_espeech_wait_does_not_wait_for_a_service_that_is_not_running(monk
     monkeypatch.setattr(tts_engine.asyncio, "sleep", no_sleep)
     monkeypatch.setattr(tts_engine, "time", types.SimpleNamespace(monotonic=lambda: next(clock)))
     assert await tts_engine._espeech_wait(90.0) is False
+
+
+def test_edge_pitch_is_clamped_to_what_the_service_accepts():
+    assert tts_engine._shifted("-25Hz", 0.0) == "-20Hz"                 # -25Hz: сервис отвечает таймаутом
+    assert tts_engine._shifted("-18Hz", -5.0) == "-20Hz"
+    assert tts_engine._shifted("+18Hz", 5.0) == "+20Hz"
+    assert tts_engine._shifted("-12%", -5.0) == "-17%"                  # проценты (скорость) не ограничиваются

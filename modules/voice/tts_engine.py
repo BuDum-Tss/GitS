@@ -71,10 +71,15 @@ def set_tone(tone) -> None:
     _tone["pitch_hz"], _tone["rate_pct"] = num("pitch_hz", 40), num("rate_pct", 25)
 
 
+EDGE_PITCH_LIMIT_HZ = 20     # сервис edge-tts отвечает таймаутом на сдвиг тона ниже -20Hz (проверено живым запуском, 2026-10)
+
+
 def _shifted(base: str, delta: float) -> str:
-    """'-25Hz' + 3 -> '-22Hz'; '-12%' + 2 -> '-10%'."""
+    """'-25Hz' + 3 -> '-20Hz' (тон в Гц ограничен допустимым для edge-tts); '-12%' + 2 -> '-10%'."""
     unit = "%" if base.endswith("%") else "Hz"
     value = int(round(float(base.rstrip("%Hz")) + delta))
+    if unit == "Hz":
+        value = max(-EDGE_PITCH_LIMIT_HZ, min(EDGE_PITCH_LIMIT_HZ, value))
     return f"{value:+d}{unit}"
 
 MAX_CHARS = 600

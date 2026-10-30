@@ -405,14 +405,15 @@ class Controller:
 
     def _focus_watch(self, state: dict) -> None:
         """Каждый опрос. Режим auto без менеджера фокуса в ядре: модуль берёт фокус сам, когда игра запущена. Игра закрыта
-        (несколько опросов подряд без ответа): свой фокус снимает и уходит в afk. Фокус от ядра здесь не трогаем."""
+        (несколько опросов подряд без ответа): фокус снимается и модуль уходит в afk, в том числе когда среду дало ядро: иначе
+        после вылета игры ядро считало бы, что она всё ещё играет (по возврату в фоновую политику оно само выйдет из среды)."""
         if not state:
             self._game_gone_ticks += 1
             if self._game_gone_ticks < focus_mode.GAME_GONE_TICKS:
                 return
             self._game_up = False
             self._held_off = False                       # игру закрыли: отпущенный фокус снова доступен после запуска
-            if self.policies.in_focus and self._focus_source in ("auto", "button"):
+            if self.policies.in_focus and self._focus_source in ("auto", "button", "core"):
                 self._focus_source = "none"
                 self._game_seen_running = False          # игру закрыли сами: сторож её не поднимает вне фокуса (POL-12)
                 self.policies.enter_afk("игра закрыта: фокус модуля снят, модуль ждёт игру", source="auto")

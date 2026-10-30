@@ -330,11 +330,17 @@ async def _run(config: dict):
         """Игру запустили по просьбе пользователя: заходим в среду её модуля (цели, камера, комментарии и ход идут только в
         фокусе). По самоимпульсу сюда не входим: там вход решает размышление (ТЗ 32)."""
         from app import impulse_origin
-        if not ok or tool.name != "launch_game" or impulse_origin.current() == impulse_origin.SELF:
+        if not ok or impulse_origin.current() == impulse_origin.SELF:
             return
-        ws = str(tool.id).split(".", 1)[0]
         layer.workspaces.sync()
-        if ws in layer.workspaces.specs:
+        ws = None
+        if tool.name == "launch_game":
+            ws = str(tool.id).split(".", 1)[0]
+        elif tool.id == "desktop.launch_app":           # «запусти римворлд» планировщик чаще понимает как запуск приложения
+            wanted = str(args.get("name") or "").lower()
+            ws = next((sid for sid, spec in layer.workspaces.specs.items()
+                       if spec.kind == "module" and wanted and (sid.lower() in wanted or spec.title.lower() in wanted)), None)
+        if ws is not None and ws in layer.workspaces.specs:
             res = await layer.workspaces.enter(ws, "user", str(args.get("reason") or "")[:200])
             tool_trace.note("external", "workspace.switch", f"{ws}: {'ok' if res.get('ok') else res.get('error')}")
     companion.router.after_tool = enter_after_launch
