@@ -30,7 +30,7 @@ class Dispatcher:
         item.priority = scoring.priority(urgency)
         decision = force or self.decide(urgency, cfg, att)
         item.decision = decision
-        flow_trace.step(None, "attention", "rules", "attention", "decision", size=len(item.text or ""), label=decision)
+        flow_trace.step(None, "attention", "bus", "attention", "decision", size=len(item.text or ""), label=decision)
         think = self.think_route(item, decision)
         if not (think and item.origin == "self"):          # импульс самого агента не озвучивается и не уходит в сводку: он идёт в размышление
             self.act(item, decision)
