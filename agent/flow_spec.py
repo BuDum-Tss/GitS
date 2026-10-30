@@ -19,7 +19,6 @@ NODES = [
     ("bus", "Шина событий", "attention"),
     ("gliner", "Классификатор GLiNER", "attention"),
     ("attention", "Внимание D0-D4", "attention"),
-    ("focus", "Фокус", "attention"),
     ("speech_queue", "Очередь речи", "output"),
     ("planner", "Выбор инструментов", "thinking"),
     ("gemma", "Gemma (речь, план)", "thinking"),
@@ -36,7 +35,7 @@ NODES = [
 ]
 
 EDGES = [
-    ("bus", "gliner"), ("gliner", "attention"), ("attention", "focus"), ("attention", "working_memory"),
+    ("bus", "gliner"), ("gliner", "attention"), ("attention", "working_memory"),
     ("attention", "planner"), ("attention", "speech_queue"), ("planner", "gemma"), ("planner", "claude"),
     ("planner", "tools"), ("planner", "graph_memory"), ("gemma", "speech_queue"), ("gemma", "working_memory"),
     ("gemma", "graph_memory"), ("working_memory", "graph_memory"), ("graph_memory", "kb"), ("graph_memory", "experience"),
