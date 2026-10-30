@@ -16,6 +16,8 @@ STEP_COMMANDS = {
     "assign": ("ui_assign", ("pawn_id", "kind", "value")),
     "area": ("ui_area", ("pawn_id", "area")),
     "animal": ("ui_animal", ("animal_id", "master", "follow_drafted", "follow_fieldwork", "train", "value")),
+    "policy": ("ui_policy", ("kind", "action", "name", "new_name", "item", "drug", "allow_addiction", "allow_joy", "scheduled", "mood_below", "joy_below")),
+    "bed": ("ui_bed", ("action", "bed_id", "pawn_id")),
     "letter": ("ui_letter", ("index", "action", "choice")),
     "quest": ("ui_quest", ("id", "action", "pawn_id")),
 }

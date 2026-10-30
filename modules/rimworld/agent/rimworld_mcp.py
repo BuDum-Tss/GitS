@@ -1229,7 +1229,7 @@ def ui_state() -> str:
 def ui_steps(steps: list) -> str:
     """Шаги интерфейса так, как их делает игрок, одной последовательностью (до 12). Шаг: {"do": ...}. Строительство: open_tab
     (tab=Architect), category (id), designator (id, stuff, rot), place (x, z) или drag (x1,z1,x2,z2, shape=line|rect), cancel.
-    Назначения: open_tab (tab=Assign), assign (pawn_id, kind=food|drugs|apparel|medical, value). Уведомления: letter (index из state.letters, action=read|choose|dismiss, choice=текст кнопки). Задания: open_tab (tab=Quests), quest (id, action=accept|dismiss, pawn_id). Остальное по вкладкам: select,
+    Назначения: open_tab (tab=Assign), assign (pawn_id, kind=food|drugs|apparel|medical, value). Политики: policy (kind=food|drugs|apparel, action=show|create|rename|delete|allow|deny|set_drug, name, item, drug...). Кровати: bed (action=assign|unassign, bed_id из state.beds, pawn_id). Области и питомцы: area (pawn_id, area), animal (animal_id, master, follow_drafted, follow_fieldwork, train). Уведомления: letter (index из state.letters, action=read|choose|dismiss, choice=текст кнопки). Задания: open_tab (tab=Quests), quest (id, action=accept|dismiss, pawn_id). Остальное по вкладкам: select,
     draft, undraft, move, attack, set_work_priority, research, order_tame, set_zone_home... (do равно типу команды). Идёт
     по порядку, останавливается на первой ошибке игры и возвращает её причину и текущее состояние."""
     import ui_steps as _ui

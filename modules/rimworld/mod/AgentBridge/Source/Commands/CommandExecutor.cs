@@ -27,7 +27,7 @@ namespace AgentBridge
             "clear_work_queue", "add_bill", "cancel_bill", "order_tame", "order_slaughter", "open_tab",
             "set_work_priority", "set_manual_priorities", "set_schedule", "set_schedule_range", "set_medical_care", "research",
             "look_at", "forbid", "unforbid",   // осмотр клетки и запрет предмета: камера тоже едет туда
-            "ui_category", "ui_designator", "ui_place", "ui_drag", "ui_assign", "ui_area", "ui_animal", "ui_letter", "ui_quest",   // шаги «Архитектора»: курсор едет к месту, шаг виден
+            "ui_category", "ui_designator", "ui_place", "ui_drag", "ui_assign", "ui_policy", "ui_bed", "ui_area", "ui_animal", "ui_letter", "ui_quest",   // шаги «Архитектора»: курсор едет к месту, шаг виден
         };
 
         public static void ProcessQueue()
@@ -153,6 +153,8 @@ namespace AgentBridge
                 case "ui_drag":            return UiDrag(cmd);
                 case "ui_cancel":          return UiCancel();
                 case "ui_assign":          return UiAssign(cmd);
+                case "ui_policy":          return UiPolicy(cmd);
+                case "ui_bed":             return UiBed(cmd);
                 case "ui_area":            return UiArea(cmd);
                 case "ui_animal":          return UiAnimal(cmd);
                 case "ui_letter":          return UiLetter(cmd);

@@ -46,3 +46,12 @@ def test_areas_and_animals_are_steps():
     assert error is None
     assert commands == [{"type": "ui_area", "pawn_id": "Human1", "area": "Домашняя область"},
                         {"type": "ui_animal", "animal_id": "Husky1", "master": "Human1", "follow_drafted": True}]
+
+
+def test_policies_and_beds_are_steps():
+    commands, error = ui_steps.plan([
+        {"do": "policy", "kind": "food", "action": "deny", "name": "Простая", "item": "Мясо", "лишнее": 1},
+        {"do": "bed", "action": "assign", "bed_id": "Bed1", "pawn_id": "Human1"}])
+    assert error is None
+    assert commands == [{"type": "ui_policy", "kind": "food", "action": "deny", "name": "Простая", "item": "Мясо"},
+                        {"type": "ui_bed", "action": "assign", "bed_id": "Bed1", "pawn_id": "Human1"}]

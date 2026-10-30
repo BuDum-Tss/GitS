@@ -39,7 +39,7 @@ namespace AgentBridge
             ["set_work_priority"] = "Work", ["set_manual_priorities"] = "Work",
             ["set_schedule"] = "Schedule", ["set_schedule_range"] = "Schedule",
             ["set_medical_care"] = "Assign", ["research"] = "Research",
-            ["ui_assign"] = "Assign", ["ui_animal"] = "Animals", ["ui_area"] = "Schedule",
+            ["ui_assign"] = "Assign", ["ui_policy"] = "Assign", ["ui_bed"] = "Assign", ["ui_animal"] = "Animals", ["ui_area"] = "Schedule",
         };
         private static readonly Dictionary<string, string> TabTool = new Dictionary<string, string>
         {

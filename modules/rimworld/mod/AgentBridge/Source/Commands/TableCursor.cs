@@ -76,10 +76,12 @@ namespace AgentBridge
                     return TableGeometry.OnScreen(TableGeometry.CellCenter(origin, colWidths, rowHeights, header, scrollY, row, col));
                 }
                 case "ui_assign":
+                case "ui_policy":
+                case "ui_bed":
                 case "ui_area":
                 case "ui_animal":
                 {
-                    string[] names = type == "ui_assign" ? AssignColumnNames(cmd["kind"]?.Value<string>())
+                    string[] names = type == "ui_assign" || type == "ui_policy" ? AssignColumnNames(cmd["kind"]?.Value<string>())
                         : type == "ui_area" ? new[] { "AllowedArea", "Area" } : AnimalColumnNames(cmd);
                     int col = table != null ? ColumnIndexWhere(table, c => names.Any(n => WorkerNameContains(c, n) || c.defName.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0)) : -1;
                     if (col < 0) col = 1;
