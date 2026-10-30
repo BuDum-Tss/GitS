@@ -11,7 +11,6 @@ ORIGIN_SELF = "self"
 SELF_MODULE = "self"                 # id источника внутренних событий в конвейере внимания
 KIND_REMINDER = "self.reminder"
 KIND_THOUGHT = "self.thought"
-KIND_IDLE = "self.idle"                                   # свободное время: осмыслить недавние события (запись в память, без речи)
 KIND_AFTER_CONVERSATION = "self.after_conversation"      # разговор затих: пора подвести итог (ТЗ 30, IMP-10)
 
 

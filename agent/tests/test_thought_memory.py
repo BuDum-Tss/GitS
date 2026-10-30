@@ -1,14 +1,12 @@
-"""Мысли как краткосрочная память (перенос по важности) и размышление в свободное время."""
+"""Мысли как краткосрочная память: оценка важности, журнал и перенос в долговременную память (ReflectionService.consolidate)."""
 import json
 
-from test_impulses import Clock, Writer, ev, js, service, ScriptedLLM
+from test_impulses import Clock, ev, js, service, ScriptedLLM
 
 from adapters.impulse_store import JsonThoughts
-from app.idle_reflection import IdleReflector, digest
-from app.thought_memory import ThoughtConsolidator
 from contracts import ThoughtJournal
 from domain import thoughts as dom
-from domain.event import KIND_IDLE
+from domain.event import KIND_AFTER_CONVERSATION
 
 
 def t(id, ts, importance, stage="short", text="мысль", intents=()):
@@ -73,7 +71,7 @@ async def test_explicit_remember_goes_straight_to_long_term_memory():
 
 async def test_silent_reflection_cannot_speak():
     svc, got = service(ScriptedLLM(js(intents=[{"kind": "say", "text": "привет"}, {"kind": "remember", "text": "факт"}])))
-    th = await svc.reflect(ev(KIND_IDLE, "self", data={"silent": True, "untrusted": True}))
+    th = await svc.reflect(ev(KIND_AFTER_CONVERSATION, "self", data={"silent": True, "untrusted": True}))
     assert got.spoken == [] and th["results"] == ["suppressed: silent reflection", "remembered"]
 
 
@@ -86,69 +84,24 @@ def test_json_journal_updates_a_thought_and_matches_the_contract(tmp_path):
     assert j.update("a", stage="long") and j.recent()[0]["stage"] == "long" and not j.update("zzz", stage="x")
 
 
-async def test_consolidator_moves_important_thoughts_to_memory_once(tmp_path):
+async def test_consolidate_moves_important_thoughts_to_memory_once():
     clock = Clock()
-    j = JsonThoughts(lambda: tmp_path / "t.json")
-    w = Writer()
+    svc, _ = service(ScriptedLLM(), clock=clock)
     for th in (t("imp", clock() - 700, 5, text="важный вывод"), t("minor", clock() - 700, 1), t("fresh", clock(), 5)):
-        j.append(th)
-    c = ThoughtConsolidator(journal=j, writer=w, clock=clock)
-    assert await c.consolidate() == {"promoted": 1, "dropped": 1}
-    assert w.facts == [("важный вывод", "episode")]
-    assert await c.consolidate() == {"promoted": 0, "dropped": 0}
-    assert {x["id"]: x["stage"] for x in j.recent()} == {"imp": "long", "minor": "dropped", "fresh": "short"}
+        svc.journal.append(th)
+    assert await svc.consolidate() == {"promoted": 1, "dropped": 1}
+    assert svc.writer.facts == [("важный вывод", "episode")]
+    assert await svc.consolidate() == {"promoted": 0, "dropped": 0}
+    assert {x["id"]: x["stage"] for x in svc.journal.recent()} == {"imp": "long", "minor": "dropped", "fresh": "short"}
 
 
-# ── размышление в свободное время ─────────────────────────────────────────────
-
-class FakeReflection:
-    def __init__(self):
-        self.events = []
-
-    async def reflect(self, event):
-        self.events.append(event)
-        return {}
-
-
-class FakeConsolidator:
-    def __init__(self):
-        self.runs = 0
-
-    async def consolidate(self):
-        self.runs += 1
-        return {}
-
-
-def idle(free=True, events=None, **cfg):
+async def test_reflection_consolidates_by_itself_but_not_more_often_than_the_gap():
     clock = Clock()
-    clock.t += 10_000
-    refl, cons = FakeReflection(), FakeConsolidator()
-    evs = [{"kind": "user", "text": f"реплика {n}"} for n in range(5)] if events is None else events
-    r = IdleReflector(reflection=refl, consolidator=cons, is_free=lambda: free, events_since=lambda since, limit: evs[:limit],
-                      settings=lambda: {"reflection": {"idle": cfg}}, clock=clock)
-    r.last = clock() - 5000
-    return r, refl, cons, clock
-
-
-def test_digest_is_one_line_per_event_and_trimmed():
-    out = digest([{"kind": "user", "text": "привет  \n мир"}, {"kind": "say", "text": ""}, {"kind": "game", "text": "я" * 400}], 300)
-    assert len(out) <= 300 and "[game]" in out and "[say]" not in out
-
-
-async def test_idle_reflection_runs_when_free_and_is_silent_and_untrusted():
-    r, refl, cons, clock = idle()
-    assert await r.tick() == "reflected" and cons.runs == 1
-    e = refl.events[0]
-    assert e.kind == KIND_IDLE and e.is_self and e.data["silent"] and not e.trusted and "реплика 0" in e.text
-    assert await r.tick() == "too soon" and len(refl.events) == 1               # метка сдвинулась: не чаще min_gap_s
-    clock.t += 2000
-    assert await r.tick() == "reflected"
-
-
-async def test_idle_reflection_waits_for_free_focus_and_enough_events():
-    r, refl, _, _ = idle(free=False)
-    assert await r.tick() == "busy" and refl.events == []
-    r, refl, _, _ = idle(events=[{"kind": "user", "text": "одна"}])
-    assert await r.tick() == "nothing to think about" and refl.events == []
-    r, refl, cons, _ = idle(enabled=False)
-    assert await r.tick() == "off" and cons.runs == 0
+    answer = json.dumps({"thought": "вывод", "importance": 5, "intents": [{"kind": "none"}]}, ensure_ascii=False)
+    svc, _ = service(ScriptedLLM(answer, answer, answer), clock=clock)
+    svc.journal.append(t("old", clock() - 700, 5, text="давний вывод"))
+    await svc.reflect(ev())
+    assert svc.writer.facts == []                                              # с прошлого переноса прошло меньше паузы
+    clock.t += 601
+    await svc.reflect(ev())
+    assert ("давний вывод", "episode") in svc.writer.facts

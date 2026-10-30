@@ -164,6 +164,13 @@ class Journal:
     def recent(self, n=50):
         return self.items[-n:]
 
+    def update(self, thought_id, **fields):
+        for t in self.items:
+            if t["id"] == thought_id:
+                t.update(fields)
+                return True
+        return False
+
 
 def js(thought="м", recall="", intents=()):
     return json.dumps({"thought": thought, "recall": recall, "intents": list(intents)}, ensure_ascii=False)

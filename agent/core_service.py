@@ -367,14 +367,6 @@ async def _run(config: dict):
     layer.requests.episodes = episodes                    # core.memory.episodes
     await impulses.plans.start()                         # планы пользователя -> напоминания себе (без опроса модели, ТЗ 30)
 
-    def free_to_reflect() -> bool:
-        """Размышление в простое: разговора и вопросов нет, слот фокуса пуст, она не спит, «не отвлекать» выключено, пользователь
-        молчит не меньше пяти минут."""
-        since_user = _time.time() - float(getattr(companion, "_last_user_ts", 0.0) or 0.0)
-        return (layer.attention.top_focus().kind not in ("conversation", "question") and layer.link.holder is None
-                and episodes.scheduler.state != "sleeping" and not settings.quiet_active() and since_user >= 300)
-    impulse_service.attach_idle(impulses, companion, is_free=free_to_reflect).start()      # осмысление событий в свободное время
-
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
     layer.attention.kind_handlers["rimworld.colonists"] = make_colonists_handler(rel, graph)
     logger.info("Ядро запущено: зрение, компаньон, быстрый слой, шина модулей. Игра и модули подключатся, когда появятся.")

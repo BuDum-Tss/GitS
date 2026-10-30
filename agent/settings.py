@@ -35,9 +35,7 @@ DEFAULTS = {
     "claude_token_budget": 3000000,   # ёмкость «батарейки»: токенов Claude за окно лимита (5 часов), см. claude_battery.py
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
     # размышление (ТЗ 30, IMP-7): шагов и токенов на мысль, размышлений в час, глубина цепочки напоминаний
-    "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3,
-                   # размышление в свободное время: проверка раз в check_s, не чаще раза в min_gap_s, нужно не меньше min_events событий
-                   "idle": {"enabled": True, "check_s": 120, "min_gap_s": 1800, "max_events": 40, "min_events": 3, "text_chars": 1800}},
+    "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3},
     # эпизоды и режим сна (ТЗ 27): сон при простое, расписании или «догоняющий»; нарезка `cut`; в контекст ответа эпизоды идут,
     # если context=True (по умолчанию выключено); raw_keep_days > 0 удаляет сырые события уже записанных эпизодов
     "episodes": {"enabled": True, "idle_min": 15, "min_gap_min": 20, "schedule_hours": [3], "catchup_after_h": 12,
