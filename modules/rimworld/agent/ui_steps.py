@@ -14,6 +14,8 @@ STEP_COMMANDS = {
     "drag": ("ui_drag", ("x1", "z1", "x2", "z2", "shape")),
     "cancel": ("ui_cancel", ()),
     "assign": ("ui_assign", ("pawn_id", "kind", "value")),
+    "area": ("ui_area", ("pawn_id", "area")),
+    "animal": ("ui_animal", ("animal_id", "master", "follow_drafted", "follow_fieldwork", "train", "value")),
     "letter": ("ui_letter", ("index", "action", "choice")),
     "quest": ("ui_quest", ("id", "action", "pawn_id")),
 }

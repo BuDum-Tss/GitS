@@ -43,7 +43,7 @@ namespace AgentBridge
             if (name == "Architect") state["architect"] = Section(ArchitectState);
             else if (name == "Work") state["work"] = Section(WorkState);
             else if (name == "Research") state["research"] = Section(ResearchState);
-            else if (name == "Animals") state["animals"] = Section(AnimalsState);
+            else if (name == "Animals") state["animals"] = Section(PetsState);
             else if (name == "Restrict" || name == "Schedule") state["areas"] = Section(AreasState);
             else if (name == "Assign") state["assign"] = Section(AssignState);
             else if (name == "Quests") state["quests"] = Section(QuestsState);

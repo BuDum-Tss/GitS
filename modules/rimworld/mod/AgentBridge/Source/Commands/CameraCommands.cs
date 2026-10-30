@@ -39,16 +39,18 @@ namespace AgentBridge
             ["set_work_priority"] = "Work", ["set_manual_priorities"] = "Work",
             ["set_schedule"] = "Schedule", ["set_schedule_range"] = "Schedule",
             ["set_medical_care"] = "Assign", ["research"] = "Research",
+            ["ui_assign"] = "Assign", ["ui_animal"] = "Animals", ["ui_area"] = "Schedule",
         };
         private static readonly Dictionary<string, string> TabTool = new Dictionary<string, string>
         {
-            ["Work"] = "work", ["Schedule"] = "schedule", ["Assign"] = "assign", ["Research"] = "research",
+            ["Work"] = "work", ["Schedule"] = "schedule", ["Assign"] = "assign", ["Research"] = "research", ["Animals"] = "animals",
         };
 
         /// Запрет: окно-зависимая команда без открытого окна. Подсказывает правильную последовательность.
-        private static void CheckTabGate(string type)
+        private static void CheckTabGate(string type, JObject cmd = null)
         {
             if (!StrictUi || !InGame || !RequiredTab.TryGetValue(type, out var need)) return;
+            if (type == "ui_area" && cmd != null && GetPawnById(cmd["pawn_id"]?.Value<string>() ?? "")?.RaceProps.Animal == true) need = "Animals";
             var open = Find.MainTabsRoot.OpenTab;
             if (open != null && open.defName == need)
             {
