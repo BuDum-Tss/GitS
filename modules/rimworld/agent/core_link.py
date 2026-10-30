@@ -88,6 +88,10 @@ class CoreLink:
                 return True
         return False
 
+    def recent_said(self, n: int = 5) -> list[str]:
+        """Её последние реплики вслух (по теме `presence`): игровой ход их видит и выполняет обещанное, а не противоречит."""
+        return list(self._recent)[-n:]
+
     async def _on_presence(self, data: dict) -> None:
         self._presence = dict(data)
         said = str(data.get("last_say") or "").strip()

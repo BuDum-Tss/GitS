@@ -122,6 +122,7 @@ class AttentionContext:
         self.io = io
         self.clock = clock
         self.decider = decider
+        self.env_of = lambda: None                      # текущая среда агента (WorkspaceManager.current, ставит ядро)
         self.settings_provider = settings_provider
         self.settings = settings_source
         self.log = log

@@ -9,6 +9,16 @@ SAY_URGENCY = 4          # с этой срочности событие гов�
 MAX_PRIORITY = 100.0
 
 
+NOISE_KINDS = ("desktop.activity", "desktop.app_changed")    # что делает пользователь на компьютере: вкладки, окна, описание экрана
+NO_MODULE_ENVS = ("assistant", "sleep")
+
+
+def is_assistant_noise(env: str | None, module: str, kind: str) -> bool:
+    """Пока она в среде модуля (играет), какую вкладку открыл пользователь и какое окно сменилось, ей не важно: это дело ассистента,
+    а не игры. События модуля `desktop` вида активности и смены окна в такой среде выбрасываются (срочность 0)."""
+    return bool(env) and env not in NO_MODULE_ENVS and module == "desktop" and kind in NOISE_KINDS
+
+
 def priority(urgency: float) -> float:
     """Приоритет 0..100 для очереди речи и сортировки сводки: срочность × 20."""
     return max(0.0, min(MAX_PRIORITY, float(urgency) * 20.0))

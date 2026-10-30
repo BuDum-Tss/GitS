@@ -192,7 +192,7 @@ class ReplyGenerator:
         retrieval: поиск в памяти, запущенный раньше (ТЗ 25, FAST-6); already_done: что рефлекс уже сделал (FAST-1).
         Просьбу действовать здесь не ищем: её отдают планировщику раньше (глаголы-просьбы и намерение классификатора)."""
         h = self._h
-        system = (prompts.companion_persona() + " " + h.profile_hint() + " " + prompts.reaction_tags())
+        system = (prompts.companion_persona() + " " + h.profile_hint() + " " + prompts.reaction_tags() + " " + prompts.action_rule())
         if use_memory:
             deadline = self._cfg().get("memory_deadline_ms", 300)
             await h.context_builder.use_retrieval(retrieval, text, deadline / 1000 if deadline else None)
@@ -355,6 +355,15 @@ class ReplyGenerator:
             if session.cancelled:                             # отмена пришла, пока предложение уходило: остановить и его
                 await h.speech.stop(utterance)
 
+    def _is_repeat(self, text: str) -> bool:
+        """Новая реплика по факту почти повторяет одну из её последних шести реплик."""
+        from domain import repeat
+        try:
+            own = [d["text"] for d in self._h._memory_reader.recent_dialogue(12) if d.get("role") != "user"][-6:]
+        except Exception:
+            return False
+        return repeat.is_repeat(text, own)
+
     async def speak_about(self, fact: str, user_text: str, must: bool, question: bool, direct: bool):
         """Нет заготовленных фраз: ей сообщают факт, а говорить ли и что — решает сама.
         must=True для итога прямой просьбы пользователя: промолчать нельзя, он должен
@@ -378,10 +387,12 @@ class ReplyGenerator:
             rule = ("Сама реши, нужно ли что-то сказать: можно промолчать. Не пересказывай факт "
                     "дословно и не выдумывай деталей. Ответь ТОЛЬКО JSON: "
                     '{"say": <true или false>, "text": "<реплика>"}')
-        system = prompts.companion_persona() + " Ниже факт о том, что только что произошло. " + rule
+        system = (prompts.companion_persona() + " Ниже факт о том, что только что произошло. " + prompts.action_rule() + " " + rule
+                  + (" Свои недавние реплики ты видишь в контексте: не повторяй их ни дословно, ни по смыслу, скажи иначе или промолчи."
+                     if not must and not question else ""))
         if not user_text:
             h._graph_block = h._self_block = ""          # факт о событии: память прошлой реплики (блоки остались от неё) тут не нужна
-        user = (f"{h._context(query=user_text or fact, owner=True if user_text else False)}\n\nФакт: {fact}"
+        user = (f"{h._context(query=user_text or fact, owner=True if user_text else False, role='fact')}\n\nФакт: {fact}"
                 + (f"\nПользователь сказал: {user_text}" if user_text else ""))
         try:
             data = fast_brain._json_of(await h._llm.ask(system, user, timeout=60,
@@ -390,5 +401,8 @@ class ReplyGenerator:
             logger.warning(f"Не удалось решить, что сказать: {e}")
             return
         if data and data.get("say") and data.get("text"):
+            if not must and not question and self._is_repeat(str(data["text"])):
+                logger.info("Реплика почти повторяет недавнюю: промолчала")
+                return
             reply_trace.begin("fact", system, user, max_tokens=160, temperature=0.7, must=must, question=question)
             await h.say(str(data["text"]), direct=True)

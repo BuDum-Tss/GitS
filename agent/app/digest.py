@@ -25,7 +25,7 @@ class Digest:
     def __init__(self, ctx: AttentionContext):
         self.ctx = ctx
         self.entries: list[dict] = []
-        self.env_of: Callable[[], str | None] = lambda: None     # текущая среда агента (ставит ядро)
+        self.env_of: Callable[[], str | None] = lambda: ctx.env_of()     # текущая среда агента (общая с контекстом внимания)
         self.history: deque[dict] = deque(maxlen=HISTORY_MAX)     # судьбы событий, новые в конце
         self.batches: deque[dict] = deque(maxlen=BATCHES_MAX)     # {"ts", "via", "ids"}: что и когда ушло модели
 

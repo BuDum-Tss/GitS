@@ -50,6 +50,12 @@ namespace AgentBridge
             EnsureFullViewport();
             float now = Time.realtimeSinceStartup;
             var cam = Find.CameraDriver;
+            if (!UserCamera.AgentHasCamera)                // камера у игрока: режиссёр не ведёт кадр и не держит цель
+            {
+                _followId = null; _holdUntil = 0f; _hard = false;
+                UserCamera.Remember(CamPos(), cam.RootSize);
+                return;
+            }
             if (UserCamera.Check(CamPos(), cam.RootSize)) { _followId = null; _holdUntil = now; _hard = false; }   // пользователь сам двигает кадр: режиссёр отступает
             if (_followId == null && now > _holdUntil)     // никто не ведёт: кадр у пользователя, цель следует за ним
             {

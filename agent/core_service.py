@@ -107,7 +107,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         on_change=on_workspace_change,
         log=lambda kind, **data: _log_workspace(kind, data))
     holder["workspaces"] = workspaces
-    attention.digest_.env_of = lambda: workspaces.current        # входящая очередь: записи модуля текущей среды весят больше
+    attention.ctx.env_of = lambda: workspaces.current            # среда: вес записей очереди, подавление ассистентского шума в игре
     presence.listener = hub.broadcast_presence
     speech = getattr(companion, "speech", None)
     if hasattr(speech, "attach"):

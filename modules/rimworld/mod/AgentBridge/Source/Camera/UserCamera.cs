@@ -1,3 +1,4 @@
+using RimWorld;
 using UnityEngine;
 using Verse;
 
@@ -27,10 +28,35 @@ namespace AgentBridge
         /// Агент не двигает камеру: игрок забрал её переключателем или недавно сам её сдвинул.
         public static bool Overridden => !AgentHasCamera || (Enabled && Time.realtimeSinceStartup < _until);
 
+        /// Пользователь прямо сейчас управляет камерой: колесо мыши, клавиши перемещения и масштаба или курсор у края экрана
+        /// (игра сама двигает камеру). Сдвиг за кадр при медленной прокрутке и шаге колеса меньше порогов `MoveEpsilon` и
+        /// `SizeEpsilon`, поэтому по одному сдвигу его не заметить, и агент каждый кадр тянул камеру обратно (колесо «не работало»,
+        /// движение шло рывками).
+        public static bool UserInput()
+        {
+            try
+            {
+                if (Mathf.Abs(Input.mouseScrollDelta.y) > 0.01f) return true;
+                if (KeyBindingDefOf.MapDolly_Left.IsDown || KeyBindingDefOf.MapDolly_Right.IsDown ||
+                    KeyBindingDefOf.MapDolly_Up.IsDown || KeyBindingDefOf.MapDolly_Down.IsDown ||
+                    KeyBindingDefOf.MapZoom_In.IsDown || KeyBindingDefOf.MapZoom_Out.IsDown) return true;
+                if (Prefs.EdgeScreenScroll && Application.isFocused)
+                {
+                    var m = Input.mousePosition;
+                    const float edge = 2f;
+                    if (m.x <= edge || m.y <= edge || m.x >= Screen.width - edge || m.y >= Screen.height - edge) return true;
+                }
+            }
+            catch (System.Exception) { }
+            return false;
+        }
+
         /// Начало кадра: true, если камеру явно сдвинул пользователь. Тогда отметка перехвата ставится на OverrideSeconds.
         public static bool Check(Vector3 pos, float size)
         {
-            if (!Enabled || !_have) return false;
+            if (!Enabled) return false;
+            if (UserInput()) { _until = Time.realtimeSinceStartup + OverrideSeconds; return true; }
+            if (!_have) return false;
             bool moved = (pos - _lastPos).magnitude > MoveEpsilon || Mathf.Abs(size - _lastSize) > SizeEpsilon;
             if (moved) _until = Time.realtimeSinceStartup + OverrideSeconds;
             return moved;

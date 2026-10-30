@@ -284,8 +284,17 @@ class Controller:
         import colony_intel
         st = getattr(self, "_last_state", None) or {}
         intel = colony_intel.age_block(st) + colony_intel.survey_block(st, colony_intel.load_survey(st.get("save_id", "")))
-        return (intel + self._ambition_block() + self._tasks_block() + action_journal.block() + knowledge.block(situation)
-                + self._memory.build_context_block(situation) + self._rel.summary())
+        return (intel + self._ambition_block() + self._tasks_block() + self._said_block() + action_journal.block()
+                + knowledge.block(situation) + self._memory.build_context_block(situation) + self._rel.summary())
+
+    def _said_block(self) -> str:
+        """Что она сказала вслух (её голос озвучивает ходы): если там обещано действие, ход его выполняет; чего она не говорила,
+        в игре не обязательно."""
+        said = self.link.recent_said(5) if self.link is not None else []
+        if not said:
+            return ""
+        return ("=== ЧТО ТЫ СКАЗАЛА ВСЛУХ (твой голос; обещанное ходом выполни, а о том, чего не делаешь, голос не заявляет) ===\n"
+                + "\n".join(f"- {s[:200]}" for s in said) + "\n\n")
 
     @staticmethod
     def _tasks_block() -> str:

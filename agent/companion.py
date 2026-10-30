@@ -296,8 +296,8 @@ class Companion:
     def _capabilities(self) -> str:
         return self.context_builder.capabilities()
 
-    def _context(self, include_hearing: bool = True, query: str = "", owner: bool | None = None) -> str:
-        return self.context_builder.build(include_hearing, query, owner=owner)
+    def _context(self, include_hearing: bool = True, query: str = "", owner: bool | None = None, role: str = "reply") -> str:
+        return self.context_builder.build(include_hearing, query, role=role, owner=owner)
 
     def _declutter(self, reply: str) -> str:
         return self.reply_generator.declutter(reply)

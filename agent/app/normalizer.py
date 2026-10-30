@@ -15,11 +15,14 @@ class Normalizer:
         self.ctx = ctx
 
     @staticmethod
-    def assign_urgency(item: Item, declared: int | None) -> None:
+    def assign_urgency(item: Item, declared: int | None, env: str | None = None) -> None:
         """Срочность события 0..5 без классификатора: подсказка модуля, иначе срочность из его манифеста, иначе 1. Обращение к ней
         (`addressed_to_me`) поднимает срочность до «сказать сразу» и означает, что ответа ждут."""
         from domain import scoring
         if item.urgency is not None:
+            return
+        if scoring.is_assistant_noise(env, item.module, item.kind):
+            item.urgency = 0                              # она играет: чужие окна и вкладки не отвлекают
             return
         hint = item.urgency_hint if item.urgency_hint is not None else (declared if isinstance(declared, int) else None)
         item.urgency = hint if hint is not None else 1
