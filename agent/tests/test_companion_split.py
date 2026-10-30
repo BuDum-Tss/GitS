@@ -63,15 +63,8 @@ def test_context_builder_joins_blocks(tmp_path):
 
 async def test_reply_generator_converse_says_declutted_reply(tmp_path):
     c, llm = make(tmp_path, "Готово. Хочешь, чтобы я ещё что-нибудь сделала?")
-    flagged = await c._converse("привет")
-    assert flagged is False
+    await c._converse("привет")
     assert c.speech.spoken == ["Готово."]
-
-
-async def test_reply_generator_marks_action_request(tmp_path):
-    c, _ = make(tmp_path, "[ДЕЙСТВИЕ] Сейчас посмотрю.")
-    assert await c._converse("включи свет") is True
-    assert c.speech.spoken == ["Сейчас посмотрю."]
 
 
 async def test_memory_capture_remember_text_stores_parsed_fact(tmp_path):

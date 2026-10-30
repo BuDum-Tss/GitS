@@ -61,10 +61,10 @@ def of_decision(decision: str | None, *, think: bool = False, act: bool = False)
     return out
 
 
-def of_input(*, intent: str | None, looks_action: bool, flagged: bool = False, order_taken: bool = False,
+def of_input(*, intent: str | None, looks_action: bool, order_taken: bool = False,
              hard: "HardMatch | None" = None, has_router: bool = True) -> RouteDecision:
     """Маршруты обращения владельца. Жёсткое правило даёт `reflex` (+`chat`, если нужно ответить); поручение - `task`;
-    остальное - `chat`. `flagged`: модель во время болтовни заподозрила просьбу (chat, затем task)."""
+    остальное - `chat`."""
     d = RouteDecision(echelon="hard" if hard else ("gliner" if intent else "rules"))
     if hard is not None:
         d.rule, d.reason = hard.kind, hard.detail
@@ -74,14 +74,9 @@ def of_input(*, intent: str | None, looks_action: bool, flagged: bool = False, o
             return d                                         # ответ принадлежит вопросу: разговор не нужен
     if order_taken:
         return d.add(TASK)
-    if intent == "about_self":
-        return d.add(CHAT)
     if has_router and (looks_action or intent in ("action", "attention_rule")):
         return d.add(TASK)
-    d.add(CHAT)
-    if flagged and has_router:
-        d.add(TASK)
-    return d
+    return d.add(CHAT)
 
 
 # ── жёсткие правила ──────────────────────────────────────────────────────────

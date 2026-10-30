@@ -16,7 +16,7 @@ def ans(value, conf):
 
 def test_questions_match_the_protocol():
     assert "emotion" not in INPUT_QUESTIONS                                                  # эмоций нет, только решения
-    assert set(INPUT_QUESTIONS["intent"]["options"]) == {"chat", "action", "about_self", "approval", "attention_rule", "stop"}
+    assert set(INPUT_QUESTIONS["intent"]["options"]) == {"chat", "action", "approval", "attention_rule", "stop"}
     for q in INPUT_QUESTIONS.values():
         assert q["type"] in ("choice", "noul")                           # только категориальные вопросы, порядковых нет
         assert q["type"] != "choice" or all(isinstance(v, str) and v for v in q["options"].values())   # метка с описанием

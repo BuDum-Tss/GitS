@@ -200,14 +200,6 @@ async def test_question_announcement_is_spoken_before_the_wait_starts(mk):
 
 # ── классификатор обращений ATT-28 ────────────────────────────────────────────────────────────────
 
-async def test_about_self_intent_answers_with_the_capability_list(mk):
-    r = mk(decider_answers=intent("about_self", 0.53))
-    await r.say("Что ты умеешь делать?")                              # в тексте есть «сдела»: без классификатора ушло бы в планировщик
-    assert r.companion.router.handled == []
-    system, user = r.llm_calls[0]
-    assert "Дом: умеет включать свет." in user and "возможностях" in user
-
-
 async def test_action_intent_goes_to_router_even_without_verbs(mk):
     r = mk(decider_answers=intent("action", 0.8))
     await r.say("Погода на завтра в Казани")

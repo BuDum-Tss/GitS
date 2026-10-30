@@ -269,8 +269,8 @@ class Companion:
     def _log_route(self, text: str, route: str, routed: bool, intent, cls) -> None:
         self.conversation.log_route(text, route, routed, intent, cls)
 
-    async def _act(self, text: str, after_chat: bool = False):
-        await self.conversation.act(text, after_chat)
+    async def _act(self, text: str):
+        await self.conversation.act(text)
 
     async def _answer_approval(self, text: str) -> bool:
         """Реплика как ответ на открытый вопрос (да/нет, вариант, свободный текст): см. approvals.try_answer."""
@@ -311,9 +311,8 @@ class Companion:
     async def _refresh_graph(self, query: str):
         await self.context_builder.refresh_graph(query)
 
-    async def _converse(self, text: str, about_self: bool = False, use_memory: bool = True, retrieval=None,
-                        already_done=()) -> bool:
-        return await self.reply_generator.converse(text, about_self, use_memory, retrieval, already_done)
+    async def _converse(self, text: str, use_memory: bool = True, retrieval=None, already_done=()) -> None:
+        await self.reply_generator.converse(text, use_memory, retrieval, already_done)
 
     def _store_memories(self, data) -> list[str]:
         return self.memory_capture.store_memories(data)

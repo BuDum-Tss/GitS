@@ -42,7 +42,6 @@ INPUT_QUESTIONS = {
     "intent": {"type": "choice", "options": {
         "chat": "small talk, opinion, sharing, joking; no task",
         "action": "asks to do something on the computer, in a game, in a messenger, or to find information",
-        "about_self": "asks what the assistant can do, how she works, what she remembers",
         "approval": "answers yes or no to a question the assistant asked",
         "attention_rule": "asks to not disturb, to mute or to prioritize something for some time",
         "stop": "asks the assistant to be quiet or stop talking right now"}},
@@ -155,7 +154,7 @@ def _answer(answers: dict, qid: str) -> tuple[str | None, float]:
 class InputClass:
     """Что классификатор сказал об обращении пользователя (ATT-28)."""
 
-    intent: str | None = None              # chat | action | about_self | approval | attention_rule | stop
+    intent: str | None = None              # chat | action | approval | attention_rule | stop
     intent_conf: float = 0.0
     needs_memory: bool | None = None
 

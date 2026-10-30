@@ -4,7 +4,7 @@
 Стриминг (ТЗ 25, FAST-4, FAST-5): если вывод речи умеет голос и модель отдаёт поток (`ask_stream`), ответ идёт так: токены ->
 `SentenceSplitter` -> `StreamDeclutter` (держит последнее предложение до прихода следующего) -> `Companion.say_part` (прямо в
 вывод речи мимо условий ожидания очереди; следующие предложения встают в очередь модуля голоса, а не заменяют звучащее) ->
-TTS. Маркер [ДЕЙСТВИЕ] разбирается до первого предложения. Теги стикеров `[question]` (`domain/stickers.py`) режут ответ на
+TTS. Теги стикеров `[question]` (`domain/stickers.py`) режут ответ на
 куски: каждый кусок звучит отдельной репликой со своим стикером. `cancel()` («замолчи», перебивание, экстренное слово) обрывает
 запрос к модели, остаток предложений и ещё не начатое предложение в синтезе. Нет потока или канала голоса: прежний путь целиком.
 """
@@ -24,7 +24,6 @@ from speech_text import SentenceSplitter, clean_speech
 logger = logging.getLogger("companion")
 
 
-ACTION_MARKER = "[ДЕЙСТВИЕ]"
 BACKPRESSURE_LIVE = 3          # сколько предложений может быть у модуля голоса в работе, прежде чем ждём (его очередь: звучащее + три)
 
 
@@ -187,16 +186,13 @@ class ReplyGenerator:
 
     # ── ответ ──────────────────────────────────────────────────────────────────
 
-    async def converse(self, text: str, about_self: bool = False, use_memory: bool = True, retrieval=None,
-                       already_done=()) -> bool:
+    async def converse(self, text: str, use_memory: bool = True, retrieval=None, already_done=()) -> None:
         """Обычный ответ обычным текстом, без JSON: так он приходит вдвое быстрее (локальная
         модель генерирует ~10-15 токенов в секунду, лишние поля стоят секунд).
         retrieval: поиск в памяти, запущенный раньше (ТЗ 25, FAST-6); already_done: что рефлекс уже сделал (FAST-1).
-        Возвращает True, если модель пометила сообщение как просьбу действовать."""
+        Просьбу действовать здесь не ищем: её отдают планировщику раньше (глаголы-просьбы и намерение классификатора)."""
         h = self._h
-        system = (prompts.companion_persona() + " " + h.profile_hint() + " " + prompts.reaction_tags() + " Если пользователь просит что-то СДЕЛАТЬ (включить, выключить, найти, написать, "
-                  "опубликовать, посмотреть), начни ответ с маркера [ДЕЙСТВИЕ] и коротко скажи, что сейчас "
-                  "посмотришь, что можешь, БЕЗ выдуманного результата. Иначе просто ответь.")
+        system = (prompts.companion_persona() + " " + h.profile_hint() + " " + prompts.reaction_tags())
         if use_memory:
             deadline = self._cfg().get("memory_deadline_ms", 300)
             await h.context_builder.use_retrieval(retrieval, text, deadline / 1000 if deadline else None)
@@ -209,32 +205,26 @@ class ReplyGenerator:
         user = f"{h._context(query=text)}\n\nПользователь говорит: {text}"
         if already_done:
             user += "\n\nУже сделано без тебя (не повторяй и не обещай заново): " + "; ".join(already_done) + "."
-        if about_self and h.router is not None:
-            user += ("\n\nПользователь спрашивает о твоих возможностях. Отвечай строго по этому перечню, ничего не выдумывая:\n"
-                     + h.router.registry.describe())
         stream = self._stream_ok()
         reply_trace.begin("converse", system, user, max_tokens=self._reply_tokens(), temperature=0.7, stream=stream)
         if stream:
-            action_request, escalate = await self._converse_stream(system, user)
+            escalate = await self._converse_stream(system, user)
         else:
-            action_request, escalate = await self._converse_whole(system, user)
+            escalate = await self._converse_whole(system, user)
         if escalate:
             await h._escalate(text)
         if len(text) >= 15:
             asyncio.create_task(h._learn(text))   # фоном, уже после ответа
-        return action_request
 
-    async def _converse_whole(self, system: str, user: str) -> tuple[bool, bool]:
-        """Прежний путь: весь ответ целиком, потом реплика. (просьба действовать, нужна эскалация к Claude)."""
+    async def _converse_whole(self, system: str, user: str) -> bool:
+        """Прежний путь: весь ответ целиком, потом реплика. Возвращает, нужна ли эскалация к Claude."""
         h = self._h
-        reply, escalate, action_request = "", False, False   # escalate: только если локальная модель недоступна
+        reply, escalate = "", False   # escalate: только если локальная модель недоступна
         try:
             reply = (await h._llm.ask(system, user, timeout=60, max_tokens=self._reply_tokens(), temperature=0.7)).strip()
             # без потоковой передачи первый токен приходит вместе с концом ответа
             latency_trace.mark("llm_first_token")
             latency_trace.mark("llm_done")
-            if reply.startswith(ACTION_MARKER):
-                action_request, reply = True, reply[len(ACTION_MARKER):].strip()
         except Exception as e:
             logger.warning(f"Локальная модель не ответила: {e}")
             reply_trace.drop()
@@ -243,15 +233,15 @@ class ReplyGenerator:
             latency_trace.mark("first_sentence_ready")
             sticker, reply = first_sticker(reply), strip_tags(reply)       # ответ целиком: один стикер на реплику
             await h.say(h._declutter(reply), sticker)
-        return action_request, escalate
+        return escalate
 
-    async def _converse_stream(self, system: str, user: str) -> tuple[bool, bool]:
+    async def _converse_stream(self, system: str, user: str) -> bool:
         """Потоковый путь (FAST-4, FAST-5). Эскалация к Claude, только если модель не дала ни одного предложения из-за сбоя."""
         h = self._h
         session = self._session = StreamSession()
         splitter, decl, tags = SentenceSplitter(), StreamDeclutter(self), TagStream()
         current: list[str | None] = [None]                 # стикер, под которым идёт текст сейчас
-        head, head_done, action_request, failed = "", False, False, False
+        failed = False
         first_token = False
         gen = h._llm.ask_stream(system, user, timeout=60, max_tokens=self._reply_tokens(), temperature=0.7)
         stopper = asyncio.ensure_future(session.event.wait())
@@ -306,16 +296,6 @@ class ReplyGenerator:
                 if not first_token:
                     first_token = True
                     latency_trace.mark("llm_first_token")
-                if not head_done:                              # маркер [ДЕЙСТВИЕ] разбирается до первого предложения
-                    head += delta
-                    probe = head.lstrip()
-                    if probe.startswith(ACTION_MARKER):
-                        action_request, delta = True, probe[len(ACTION_MARKER):]
-                    elif ACTION_MARKER.startswith(probe):
-                        continue                              # пока не ясно, маркер это или начало слова
-                    else:
-                        delta = head
-                    head, head_done = "", True
                 for sent in pieces(delta):
                     await deliver(decl.push(sent))
                     if session.cancelled:
@@ -323,9 +303,6 @@ class ReplyGenerator:
                 if session.cancelled:
                     break
             if not session.cancelled:
-                if head and not head_done:                     # поток кончился на обрывке, похожем на маркер
-                    for sent in pieces(head):
-                        await deliver(decl.push(sent))
                 for sent in tagged(splitter.flush()):
                     await deliver(decl.push(sent))
                 await deliver(decl.finish())
@@ -353,7 +330,7 @@ class ReplyGenerator:
             reply_trace.drop()
         if session.sentences:
             h.commit_reply(" ".join(session.sentences))      # в память и журнал уходит то, что она успела сказать
-        return action_request, failed and not session.sentences and not session.cancelled
+        return failed and not session.sentences and not session.cancelled
 
     async def _emit(self, session: StreamSession, sentence: str) -> None:
         """Одно готовое предложение: в вывод речи (первое заменяет звучащее, следующие встают в очередь модуля голоса)."""

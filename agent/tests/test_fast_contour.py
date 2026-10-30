@@ -291,18 +291,11 @@ async def test_stream_declutter_drops_trailing_offer(rig):
     assert r.speech.texts == ["Вот ответ на твой вопрос.", "Ещё одна мысль тут."]
 
 
-async def test_action_marker_is_parsed_before_first_sentence(rig):
+async def test_unknown_bracket_word_is_not_spoken_but_the_rest_is(rig):
     r = rig()
-    r.llm.scripts = [["[ДЕЙСТ", "ВИЕ] Сейчас посмотрю, что могу. "]]
-    flagged = await r.companion._converse("включи что-нибудь пожалуйста")
-    assert flagged is True and r.speech.texts == ["Сейчас посмотрю, что могу."]
-
-
-async def test_text_that_only_looks_like_marker_is_kept(rig):
-    r = rig()
-    r.llm.scripts = [["[ДЕЙ", "ствуй так, как считаешь нужным. "]]
-    assert await r.companion._converse("что мне делать с этим") is False
-    assert "считаешь нужным" in r.speech.texts[0]
+    r.llm.scripts = [["[ДЕЙСТВИЕ] [looking] Сейчас посмотрю, что можно сделать. "]]
+    await r.companion._converse("включи что-нибудь пожалуйста")
+    assert r.speech.texts == ["Сейчас посмотрю, что можно сделать."] and r.speech.stickers == ["looking"]
 
 
 # ── FAST-5: отмена ─────────────────────────────────────────────────────────────────
@@ -681,9 +674,3 @@ async def test_merge_rest_breaks_at_a_tag_and_unknown_tags_vanish(rig):
     assert r.speech.texts == ["Первое предложение тут.", "Второе предложение тоже.", "Третье грустное. Четвёртое тоже."]
     assert r.speech.stickers == [None, None, "sad"]                     # незнакомый тег не режет и не звучит
 
-
-async def test_action_marker_still_works_before_a_tag(rig):
-    r = rig()
-    r.llm.scripts = [["[ДЕЙСТВИЕ] [looking] Сейчас посмотрю, что можно сделать. "]]
-    assert await r.companion._converse("включи что-нибудь пожалуйста") is True
-    assert r.speech.texts == ["Сейчас посмотрю, что можно сделать."] and r.speech.stickers == ["looking"]

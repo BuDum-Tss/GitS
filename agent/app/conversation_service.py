@@ -145,25 +145,17 @@ class ConversationService:
         route, routed = "chat", False          # routed: вызывался ли планировщик (ТЗ 24, TRC-6)
         done = decision.already_done
         await asyncio.wait({writes}, timeout=WRITE_WAIT_S)   # обычно запись уже готова и контекст видит реплику; медленный диск ответ не держит
-        turn = h.instant.begin(text, task=decision.has(routes.TASK) and intent != "about_self")
+        turn = h.instant.begin(text, task=decision.has(routes.TASK))
         try:
             async with h._busy:
-                if intent == "about_self":
-                    route = "about_self"
-                    latency_trace.mark("route")
-                    await h._converse(text, about_self=True, use_memory=use_memory, retrieval=retrieval, already_done=done)
-                elif decision.has(routes.TASK):
+                if decision.has(routes.TASK):
                     route, routed = "task", True
                     self._cancel(retrieval)
                     latency_trace.mark("route")
                     await h._act(text)          # просьба: планировщик, ответ после плана
                 else:
                     latency_trace.mark("route")
-                    flagged = await h._converse(text, use_memory=use_memory, retrieval=retrieval, already_done=done)   # болтовня
-                    if flagged and h.router is not None:
-                        route, routed = "task", True
-                        decision.add(routes.TASK)
-                        await h._act(text, after_chat=True)   # модель заподозрила просьбу, которую не распознали глаголы
+                    await h._converse(text, use_memory=use_memory, retrieval=retrieval, already_done=done)   # болтовня
         finally:
             turn.end()
         self.log_route(text, route, routed, intent, cls, decision)
@@ -239,17 +231,15 @@ class ConversationService:
         elif intent == "action" and not routed and h.router is not None:
             journal.mistake("misroute", text[:200], refs=[h._last_say], source="classifier", intent=intent)
 
-    async def act(self, text: str, after_chat: bool = False):
+    async def act(self, text: str):
         """Просьба действовать: маршрутизатор решает «могу или нет», выполняет, а итог говорится вслух."""
         h = self._h
         turn = current_turn.get()
         # «принято» мгновенного уровня уже сказано: объявление плана (say_first) было бы вторым подтверждением (ТЗ 25, FAST-3)
-        announce = (lambda: not after_chat and not (turn is not None and turn.acked))
+        announce = (lambda: not (turn is not None and turn.acked))
         outcome = await h.router.handle(text, announce=announce)
-        if after_chat and h.router.last_kind == "cannot":
-            return   # на ответ-болтовню уже сказано всё, что можно; не повторяем «не могу» вторым сообщением
         if outcome:
             # итог действия или честное «не могу»: пользователь должен узнать результат
             await h._speak_about(outcome, text, must=True)
-        elif outcome is None and not after_chat:
+        elif outcome is None:
             await h._converse(text)    # планировщик решил, что это всё-таки разговор
