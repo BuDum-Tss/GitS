@@ -153,6 +153,7 @@ namespace AgentBridge
                 case "ui_drag":            return UiDrag(cmd);
                 case "ui_cancel":          return UiCancel();
                 case "ui_assign":          return UiAssign(cmd);
+                case "dev_test_setup":     return DevTestSetup();
                 case "ui_policy":          return UiPolicy(cmd);
                 case "ui_bed":             return UiBed(cmd);
                 case "ui_area":            return UiArea(cmd);
