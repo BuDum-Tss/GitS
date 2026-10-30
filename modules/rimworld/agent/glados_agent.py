@@ -24,6 +24,7 @@ import prompts
 import usage_report
 from claude_agent_sdk import (
     query,
+    ClaudeSDKClient,
     ClaudeAgentOptions,
     AssistantMessage,
     UserMessage,
@@ -110,6 +111,14 @@ get_goals, get_tasks, set_task (отметить свою заметку вып�
 язвишь. Если что-то меняет твоё мнение о ком-то (подвиг, глупость, смерть
 друга), зафиксируй через set_opinion(subject, delta, reason) — subject это
 имя колониста или "игрок", delta от -30 до +30.
+
+НАСТРОЙКА КОЛОНИИ (один раз на новую колонию, до стройки; проверь get_work_table и get_schedule_table, что ещё не сделано):
+1) режим «Колонисты: работы и режим дня»: set_manual_priorities(true), потом приоритеты работ ЦИФРАМИ 1-4 по навыкам каждого
+(лучший повар готовит с 1, лучший строитель строит, врач лечит, остальным 3-4), у каждой пешки; 2) режим дня каждому
+(set_schedule_plan: сон ночью, работа днём, немного отдыха); 3) режим «Интерфейс как у игрока»: ui_state, потом ui_steps:
+политика питания, лекарств и одежды колонистам (вкладка «Назначения»), питомцы и области, исследование. Игра отвечает за каждый
+шаг: заявляй «настроено» только по её ответу. Строить в режиме «Интерфейс» тоже лучше шагами (вкладка, категория, постройка,
+клетка): так зритель видит, что ты делаешь.
 
 СТРОЙКА С ПРОВЕРКОЙ (разметка): перед тем как ставить, посмотри look_at(x, z, radius) и find_buildable_spot, что там
 уже есть. Не ставь то же самое на то же место (деревянную стену на деревянную стену): чертёж или готовая постройка
@@ -328,6 +337,9 @@ find_buildable_spot) или переключись на другую задач�
 - НЕ повторяй то, что говорила в предыдущие разы (в контексте ниже —
   Recent decisions). Если сказать нечего нового — верни ПУСТУЮ СТРОКУ.
   Пустой комментарий — нормальный и частый результат, не проблема.
+- ЧЕСТНОСТЬ: говори вслух только о том, что игра подтвердила ответами инструментов в этом ходу или что видно в
+  состоянии. Что только собираешься сделать, называй планом («сейчас займусь...»), а не сделанным. Ты сама и играешь,
+  и говоришь: отдельной «озвучки» нет, поэтому финальная реплика хода твоя и должна быть правдой.
 - Никогда не начинай с "Отчёт", "Тик", цифр тика
 - Говори от первого лица, коротко и остро, как одна язвительная реплика
 - НИКОГДА не упоминай внутреннюю механику: "контур", "планировщик", "задач
@@ -757,6 +769,94 @@ def _notify_tool(name: str, inp) -> None:
         logger.debug(f"tool hook: {e}")
 
 
+# ── Один агент на игру ────────────────────────────────────────────────────────
+# Ход, планирование, проверка плана, долгие цели и рефлексия идут в ОДНОЙ постоянной сессии Claude: он помнит, что делал и
+# что говорил, сам планирует и сам говорит вслух (отдельной озвучки и отдельных контуров с чистым контекстом нет). Роли
+# отличаются заголовком сообщения; системная подсказка у сессии одна и содержит все роли. Самоулучшение и проход по меню
+# остаются отдельными запросами: им нужны другие права и они редкие.
+SESSION_CONTOURS = ("turn", "planning", "plan_check", "goals", "reflection")
+SESSION_MAX_QUERIES = 80          # после стольких сообщений сессия начинается заново (контекст не растёт вечно)
+
+_ROLE_TITLES = {
+    "turn": "ХОД (игровой ход: действуй и в конце коротко скажи вслух)",
+    "planning": "ПЛАНИРОВАНИЕ (раскладка целей на задачи)",
+    "plan_check": "ПРОВЕРКА ПЛАНА",
+    "goals": "ДОЛГИЕ ЦЕЛИ",
+    "reflection": "РЕФЛЕКСИЯ",
+}
+
+
+def unified_system_prompt() -> str:
+    """Системная подсказка единого агента: ход плюс разделы остальных ролей (без повторного описания персонажа)."""
+    def body(text: str) -> str:
+        return text[len(PERSONA):] if text.startswith(PERSONA) else text
+    parts = [SYSTEM_PROMPT,
+             "ТЫ ОДИН АГЕНТ: и играешь, и планируешь, и говоришь вслух. В каждом сообщении указан РЕЖИМ в первой строке. "
+             "Твоя реплика вслух это текст в конце ответа (одна-две фразы); в режимах планирования, проверки, целей и рефлексии "
+             "говори только если есть что сказать, иначе верни пустую строку. Помни, что делала раньше и что говорила.",
+             "=== РЕЖИМ: ПЛАНИРОВАНИЕ ===" + body(PLANNING_SYSTEM_PROMPT),
+             "=== РЕЖИМ: ПРОВЕРКА ПЛАНА ===" + body(PLAN_CHECK_SYSTEM_PROMPT),
+             "=== РЕЖИМ: ДОЛГИЕ ЦЕЛИ ===" + body(LONG_TERM_PLANNING_SYSTEM_PROMPT),
+             "=== РЕЖИМ: РЕФЛЕКСИЯ ===" + body(REFLECTION_SYSTEM_PROMPT)]
+    return "\n\n".join(parts)
+
+
+class _Session:
+    """Постоянный клиент Claude: создаётся при первом сообщении, живёт, пока не сбой или не набралось сообщений."""
+
+    def __init__(self):
+        self.client: ClaudeSDKClient | None = None
+        self.lock: asyncio.Lock | None = None
+        self.queries = 0
+
+    def _options(self) -> ClaudeAgentOptions:
+        kwargs: dict = dict(
+            system_prompt=unified_system_prompt(), model=_game_model(),
+            mcp_servers={"rimworld": {"command": sys.executable, "args": [_MCP_SCRIPT]}},     # без GITS_MODE: все инструменты
+            allowed_tools=["mcp__rimworld"], tools=[], permission_mode="acceptEdits",
+            setting_sources=[], strict_mcp_config=True, env={"ENABLE_CLAUDEAI_MCP_SERVERS": "false"})
+        if _CLI_PATH:
+            kwargs["cli_path"] = _CLI_PATH
+        return ClaudeAgentOptions(**kwargs)
+
+    async def ensure(self) -> ClaudeSDKClient:
+        if self.client is not None and self.queries >= SESSION_MAX_QUERIES:
+            logger.info(f"Сессия агента: {self.queries} сообщений, начинаю заново")
+            await self.reset()
+        if self.client is None:
+            self.client = ClaudeSDKClient(self._options())
+            await self.client.connect()
+            self.queries = 0
+        return self.client
+
+    async def reset(self) -> None:
+        client, self.client = self.client, None
+        if client is not None:
+            try:
+                await client.disconnect()
+            except Exception as e:                                    # сбой закрытия не мешает начать заново
+                logger.debug(f"disconnect: {e}")
+
+    async def messages(self, prompt: str):
+        """Сообщения ответа на одно обращение; обращения идут по очереди (сессия одна)."""
+        if self.lock is None:
+            self.lock = asyncio.Lock()
+        async with self.lock:
+            client = await self.ensure()
+            await client.query(prompt)
+            async for message in client.receive_response():
+                yield message
+            self.queries += 1
+
+
+_session = _Session()
+
+
+async def reset_session() -> None:
+    """Сбросить единую сессию (новая колония, сбой, таймаут): следующее обращение начнёт её заново."""
+    await _session.reset()
+
+
 TURN_TIMEOUT = 300   # секунд на один ход любого контура: зависший ход не должен вечно держать игру
 
 
@@ -775,6 +875,9 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
     а Read/Write/Edit/Bash остаются доступны по умолчанию (tools=None даёт
     полный набор встроенных инструментов). Единственный контур, которому
     действительно нужен полный доступ — самоулучшение (restrict=False)."""
+    in_session = contour in SESSION_CONTOURS and restrict
+    if in_session:
+        prompt = f"=== РЕЖИМ: {_ROLE_TITLES.get(contour, contour.upper())} ===\n" + prompt
     agent_kwargs: dict = dict(
         system_prompt=system_prompt,
         model=_game_model(),
@@ -790,6 +893,11 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
     )
     if restrict:
         agent_kwargs["tools"] = allowed_tools
+        # Игровой ход видит только свои инструменты. Без этого в запрос попадают плагины и коннекторы пользователя (сотни
+        # описаний инструментов) и ход падает с «Prompt is too long» при разговоре в пару тысяч токенов.
+        agent_kwargs["setting_sources"] = []
+        agent_kwargs["strict_mcp_config"] = True
+        agent_kwargs["env"] = {"ENABLE_CLAUDEAI_MCP_SERVERS": "false"}
     if cwd:
         agent_kwargs["cwd"] = cwd
     if _CLI_PATH:
@@ -811,7 +919,8 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
 
     async def _consume():
         nonlocal commentary, success
-        async for message in query(prompt=prompt, options=options):
+        stream = _session.messages(prompt) if in_session else query(prompt=prompt, options=options)
+        async for message in stream:
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if hasattr(block, "text") and block.text:
@@ -843,9 +952,13 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
         await asyncio.wait_for(_consume(), timeout)
     except asyncio.TimeoutError:
         outcome["timed_out"] = True
+        if in_session:
+            await _session.reset()          # оборванный ответ оставляет сессию в середине обращения: начинаем заново
         logger.error(f"Ход не уложился в {timeout:.0f}с и прерван (сделано вызовов: {len(actions)}, "
                      f"последний: {actions[-1] if actions else 'нет'})")
     except Exception as e:
+        if in_session:
+            await _session.reset()
         if claude_quota.note(str(e)):
             logger.warning("Лимит Claude исчерпан, ход пропущен")
         else:

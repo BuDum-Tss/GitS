@@ -17,6 +17,8 @@ import events_log
 DEFAULTS = {
     "voice_muted": False,       # глушилка: не озвучивать реплики (текст остаётся)
     "vision": True,             # смотреть на экран (локально)
+    "fast_llm": "claude",       # быстрая модель (реплики, разбор намерений, зрение, размышление): claude (по подписке) или local (LM Studio, Gemma)
+    "fast_claude_model": "haiku",   # какой Claude отвечает вместо локальной модели: haiku (быстро) / sonnet (думает глубже)
     "game_model": "haiku",      # модель игровых ходов и планирования: haiku (быстро, дёшево) / sonnet (думает глубже, дороже)
     "profile": "auto",          # профиль: auto (сама выбирает) или id профиля из agent/profiles/ (ТЗ 02)
     "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); переключает ядро (core.set_character), не правьте вручную

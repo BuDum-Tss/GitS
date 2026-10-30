@@ -230,7 +230,7 @@ window.ARCH_DATA = {
      "t": "ReplyGenerator",
      "tag": "A",
      "new": false,
-     "do": "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля",
+     "do": "LanguageModel(fast) → быстрая модель (Claude, настройка fast_llm; запасная локальная Gemma): ответ; страховки стиля",
      "out": "ReplyCandidate",
      "now": "app/reply_generator.py: ТЗ 25: поток токенов → предложения (speech_text.SentenceSplitter) → StreamDeclutter (держит последнее предложение) → прямо в вывод речи, отмена обрывает запрос и очередь; без голоса прежний путь целиком"
     },
@@ -297,7 +297,7 @@ window.ARCH_DATA = {
      "t": "Planner",
      "tag": "A",
      "new": false,
-     "do": "LanguageModel → LM Studio (Gemma): план шагов или «не могу»",
+     "do": "LanguageModel → быстрая модель (Claude или локальная Gemma): план шагов или «не могу»",
      "out": "Plan",
      "now": "router._plan"
     },
@@ -566,7 +566,7 @@ window.ARCH_DATA = {
      "t": "LM Studio :1234",
      "tag": "X",
      "new": false,
-     "do": "Gemma (речь, план, факты) и EmbeddingGemma",
+     "do": "запасная локальная Gemma (fast_llm=local) и EmbeddingGemma; по умолчанию быструю модель заменяет Claude (claude_llm.py)",
      "out": "",
      "now": ""
     },

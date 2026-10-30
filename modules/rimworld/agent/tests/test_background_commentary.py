@@ -27,17 +27,15 @@ RESULT = {"contour": "planning", "actions": ["a"], "notes": ["Нужны гря�
                     {"name": "set_task", "summary": "стена", "result": "ERROR: нет места", "error": True}]}
 
 
-async def test_background_result_goes_to_core_as_facts_not_as_claude_text(ctrl):  # noqa: F811
+async def test_background_commentary_is_spoken_by_claude_itself(ctrl):  # noqa: F811
+    """Один агент: реплику пишет тот же Claude, что планирует; отдельной озвучки фактами нет."""
     ctrl.link = FakeLink()
-    ctrl._speak_background(RESULT)
-    ctrl._speak_background({"commentary": "Лимит", "quota": True, **RESULT})
-    ctrl._speak_background({"contour": "planning", "actions": [], "trace": [], "notes": []})
+    ctrl._speak_background({**RESULT, "commentary": "Грядки у реки: еды на неделю нет."})
+    ctrl._speak_background({"commentary": "Лимит", "quota": True, **RESULT})        # лимит Claude: тишина
+    ctrl._speak_background({"contour": "planning", "actions": [], "trace": [], "notes": [], "commentary": ""})
     await __import__("asyncio").sleep(0)
-    assert len(ctrl.link.facts) == 1
-    fact = ctrl.link.facts[0]
-    assert "раскладка целей" in fact and "set_task (поставить грядки у реки): итог: OK" in fact
-    assert "ОШИБКА: ERROR: нет места" in fact and "Нужны грядки" in fact
-    assert ctrl.link.said == []                      # Claude вслух не говорит
+    assert ctrl.link.said == ["Грядки у реки: еды на неделю нет."]
+    assert ctrl.link.facts == []
 
 
 async def test_tool_hook_reaches_the_link(ctrl):  # noqa: F811

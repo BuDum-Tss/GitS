@@ -60,7 +60,7 @@ GROUPS = [
          summary="Ведёт беседу: собирает контекст из памяти, пишет ответ быстрой моделью.", out="ReplyCandidate", nodes=[
         N("conv", "ConversationService", "A", "обращение владельца: проверки → ветка (болтовня / просьба / «что умеешь») → ответ", "Reply или Task", "app/conversation_service.py (фасад Companion); ТЗ 25: жёсткие правила → параллельно классификатор, приказ в игру, поиск в памяти (дедлайн 300 мс), запись реплики в потоке → маршруты"),
         N("ctx", "ContextBuilder", "A", "собирает контекст: характер, память, диалог, состояние; бюджет токенов на роль", "Context", "app/context_builder.py: склейка 6 источников; бюджет токенов на роль и блок и режимы push (needs_memory) / pull (recall) в настройке context, по умолчанию прежнее поведение"),
-        N("reply", "ReplyGenerator", "A", "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля", "ReplyCandidate", "app/reply_generator.py: ТЗ 25: поток токенов → предложения (speech_text.SentenceSplitter) → StreamDeclutter (держит последнее предложение) → прямо в вывод речи, отмена обрывает запрос и очередь; без голоса прежний путь целиком"),
+        N("reply", "ReplyGenerator", "A", "LanguageModel(fast) → быстрая модель (Claude, настройка fast_llm; запасная локальная Gemma): ответ; страховки стиля", "ReplyCandidate", "app/reply_generator.py: ТЗ 25: поток токенов → предложения (speech_text.SentenceSplitter) → StreamDeclutter (держит последнее предложение) → прямо в вывод речи, отмена обрывает запрос и очередь; без голоса прежний путь целиком"),
         N("instant", "InstantLevel", "A", "мгновенный уровень: на поручении через 300 мс факт «принято», при затянутом ответе факт-филлер; реплику формулирует модель", "Utterance", "есть (ТЗ 25): app/instant.py"),
     ]),
     dict(id="g_think", col="D", title="Размышление", tag="A",
@@ -71,7 +71,7 @@ GROUPS = [
     dict(id="g_act", col="E", title="Дела", tag="A",
          summary="Строит план из доступных инструментов, спрашивает разрешение на опасное, выполняет в модулях, ведёт долгие задачи.", out="ToolResult", nodes=[
         N("reg", "ToolRegistry", "A", "инструменты ядра и модулей, видимость по профилю, отбор по смыслу", "Tool[]", "environments/registry.py, tool_search.py"),
-        N("plan", "Planner", "A", "LanguageModel → LM Studio (Gemma): план шагов или «не могу»", "Plan", "router._plan"),
+        N("plan", "Planner", "A", "LanguageModel → быстрая модель (Claude или локальная Gemma): план шагов или «не могу»", "Plan", "router._plan"),
         N("risk", "RiskPolicy + Approver", "D", "риск auto / ask / public / danger; вопрос пользователю, ответ да/нет", "Approval", "router._step + approvals.py: 301 строка"),
         N("exec", "Executor (ToolInvoker)", "A", "вызов инструмента в ядре или модуле, коды ошибок, итог-факт", "ToolResult", "router._step и _run_step"),
         N("jobs", "JobTracker", "A", "долгие задачи: прогресс, вопросы, итог; Claude-помощник (Agent SDK)", "JobState", "выделен (R3) для внимания: app/jobs.py (JobTracker); module_registry и desktop.assistant_agent как раньше"),
@@ -108,7 +108,7 @@ GROUPS = [
     ]),
     dict(id="g_ext", col="BOTTOM2", title="Внешний слой и сборка", tag="X",
          summary="Модели и службы: LM Studio, GLiNER, ESpeech, Fish Speech, WhisperX, Claude. Сборка: core_service.", out="", nodes=[
-        N("lms", "LM Studio :1234", "X", "Gemma (речь, план, факты) и EmbeddingGemma", "", ""),
+        N("lms", "LM Studio :1234", "X", "запасная локальная Gemma (fast_llm=local) и EmbeddingGemma; по умолчанию быструю модель заменяет Claude (claude_llm.py)", "", ""),
         N("gli", "GLiNER decider :8768", "X", "классификатор событий и обращений", "", ""),
         N("fish", "ESpeech :8771 / Fish Speech / edge-tts", "X", "синтез речи (F5-TTS, русский)", "", ""),
         N("wx", "WhisperX / Whisper", "X", "распознавание речи", "", ""),

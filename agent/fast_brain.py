@@ -63,6 +63,15 @@ class Preempted(Exception):
     """Фоновый вызов вытеснен срочным (ответ пользователю важнее анализа экрана и т.п.)."""
 
 
+def _use_claude() -> bool:
+    """Быстрая модель на Claude (настройка fast_llm, по умолчанию claude) или локальная (LM Studio)."""
+    try:
+        import settings
+        return settings.load().get("fast_llm", "claude") != "local"
+    except Exception:
+        return False
+
+
 _bg_calls: set = set()   # идущие фоновые HTTP-вызовы: срочный запрос отменяет их
 _fg_waiting = 0          # сколько срочных запросов сейчас ждёт или идёт
 
@@ -84,6 +93,12 @@ async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
     вытесняет других: иначе фраза «принято» ждала бы план, который она и должна опередить."""
     global _lock, _fg_waiting
     _t_llm = time.perf_counter()
+    if _use_claude():
+        import claude_llm
+        out = await claude_llm.ask(system, user, max(timeout, 30.0), image_b64=image_b64)
+        flow_trace.step(None, "gemma", "planner", "gemma", "llm", ms=(time.perf_counter() - _t_llm) * 1000, size=len(system) + len(str(user)),
+                        label="claude")
+        return out
     if _lock is None:
         _lock = asyncio.Lock()
     content = user
@@ -157,6 +172,11 @@ async def _ask_stream(system: str, user: str, timeout: float, max_tokens: int = 
     background: вытесняет фоновые и держит блокировку, пока идёт поток. Закрытие генератора (`aclose`) обрывает запрос.
     Ошибка LM Studio или сети - исключение до первого куска или посреди потока."""
     global _lock, _fg_waiting
+    if _use_claude():
+        import claude_llm
+        async for piece in claude_llm.ask_stream(system, user, max(timeout, 30.0)):
+            yield piece
+        return
     if _lock is None:
         _lock = asyncio.Lock()
     body = {
@@ -205,7 +225,9 @@ async def react_chat(text: str, rel=None) -> dict | None:
 
 
 async def warmup():
-    """Загрузить модель в LM Studio заранее, чтобы первый ответ не ждал ~20 с."""
+    """Загрузить модель в LM Studio заранее, чтобы первый ответ не ждал ~20 с (для Claude прогрев не нужен)."""
+    if _use_claude():
+        return
     t0 = time.perf_counter()
     try:
         await _ask("Ответь одним словом.", "Привет", WARMUP_TIMEOUT, max_tokens=4)

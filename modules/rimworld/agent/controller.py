@@ -193,6 +193,16 @@ def _trim_commentary(text: str) -> str:
     return cut[:last_stop + 1] if last_stop > MAX_COMMENTARY_CHARS // 2 else cut.rstrip() + "…"
 
 
+_READ_ONLY_PREFIXES = ("get_", "look_at", "survey_", "analyze_", "search_", "describe_", "estimate_", "find_", "list_", "switch_mode",
+                       "open_game_tab", "game_screenshot", "camera_", "web_search", "remember_", "note_decision", "set_goal",
+                       "request_planning", "select_target", "ui_state")
+
+
+def _is_read_only_call(name: str) -> bool:
+    """Вызов, который ничего не меняет в колонии (чтение, поиск, камера, заметки): рассказывать о нём нечего."""
+    return name.startswith(_READ_ONLY_PREFIXES)
+
+
 class Controller:
     def __init__(self, config: dict):
         self._memory = Memory(config.get("memory_dir", "./memory"))
@@ -1178,14 +1188,17 @@ class Controller:
         return commentary
 
     def _speak_background(self, result: dict) -> None:
-        """Итог фонового прохода (планирование, цели): ГЛаДОС получает факты хода, реплику формирует она. Лимит Claude: тишина."""
+        """Итог фонового прохода (планирование, цели): реплика от самого Claude (он и думает, и говорит). Лимит Claude: тишина."""
         if result.get("quota"):
             return
-        self._speak_facts(result)
+        self._speak_commentary((result.get("commentary") or "").strip())      # реплику пишет тот же Claude, что планирует
 
     def _turn_fact(self, result: dict) -> str:
         """Факты хода для её голоса: вызовы с результатами и заметки Claude. Пусто, если ничего не происходило."""
         trace, notes = result.get("trace") or [], result.get("notes") or []
+        # чтение и навигация по меню ничего не меняют в колонии: по ним не о чем рассказывать (иначе она, не имея фактов,
+        # просит показать экран). Остаются действия, заметки и ошибки.
+        trace = [t for t in trace if not _is_read_only_call(t.get("name", ""))]
         if not trace and not notes:
             return ""
         names = {"turn": "ход в игре", "planning": "раскладка целей на задачи", "plan_check": "проверка плана",
@@ -1193,7 +1206,8 @@ class Controller:
         lines = [f"Ты только что сама играла в RimWorld ({names.get(result.get('contour'), 'ход')}). Ниже что ты сделала; "
                  "прокомментируй это вслух своими словами, коротко, по смыслу, от первого лица, как рассказ о колонии, стройке "
                  "и колонистах. Не обращайся к игроку или зрителям на «ты», не называй его подопытным, не задавай вопросов и "
-                 "не говори, что он делает или смотрит; без названий инструментов и координат."]
+                 "не говори, что он делает или смотрит; без названий инструментов и координат. Не проси скриншот и не говори, "
+                 "что не видишь экран: говори только о том, что в списке."]
         for t in trace[:14]:
             mark = "ОШИБКА" if t.get("error") or str(t.get("result", "")).startswith("ERROR") else "итог"
             lines.append(f"- {t['name']}" + (f" ({t['summary']})" if t.get("summary") else "")
@@ -1235,10 +1249,7 @@ class Controller:
         elif not actions:
             events_log.log("game", "ход без единого действия")
 
-        if result.get("trace") or result.get("notes"):
-            self._speak_facts(result)           # Claude молчит: факты хода уходят ей
-        else:
-            commentary = self._speak_commentary(commentary)       # локальный ход: реплика уже её
+        commentary = self._speak_commentary(commentary)           # реплику пишет тот же Claude, что играет: он знает, что сделал
         if actions:
             logger.info(f"[ACTIONS] {actions}")
 
