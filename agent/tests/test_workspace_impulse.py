@@ -1,5 +1,5 @@
-"""Среды модулей и вход по импульсу (ТЗ 32, этап B: WS-4, WS-5, WS-6, WS-12). Настоящее ядро (шина, внимание, менеджер сред и
-фокуса) и модули-заглушки на клиенте SDK; игры, моделей и Claude нет.
+"""Среды модулей и вход по импульсу (ТЗ 32, этап B: WS-4, WS-5, WS-12). Настоящее ядро (шина, внимание, менеджер сред и
+связь с модулем) и модули-заглушки на клиенте SDK; игры, моделей и Claude нет.
 
 Что проверяется: запуск игры не меняет среду, а лишь сигнал; вход по сообщению пользователя и по самоимпульсу (инструмент
 `workspace.switch`); возврат в assistant по `done`, `blocked` и отключению; критический сигнал во время монтажа (и отказ в
@@ -7,16 +7,14 @@
 import asyncio
 
 import pytest
-from focus_rigs import GAME_POLICIES, MONTAGE_POLICIES
+from workspace_rigs import GAME_POLICIES, MONTAGE_POLICIES
 from test_dashboard_endpoints import serve
 
 from app import impulse_origin
 from app import workspace_manager as wm
 from domain.workspace import ASSISTANT, Reason
-from focus import FocusManager
 from environments.base import ToolError
 from gits_sdk import ModuleClient
-from module_hub import ModuleError
 
 
 def manifest(module_id: str, policies: dict, workspace: bool = True, emits: tuple = ()) -> dict:
@@ -128,12 +126,11 @@ async def test_workspaces_come_from_manifests_not_from_a_fixed_list(world):
 
 # ── WS-5: вход только по импульсу ────────────────────────────────────────────
 
-async def test_game_start_is_a_signal_and_does_not_change_the_workspace(world):
+async def test_game_start_does_not_change_the_workspace(world):
     game = await world.add("rimworld", GAME_POLICIES, "afk", emits=(("rimworld.game_started", 1),))
     await game.client.state("игра запущена", {"game_running": True, "status": {"active_policy": "afk", "interruptible": True}})
     await game.client.event("rimworld.game_started", "Игра RimWorld запущена.", urgency_hint=1)
-    await wait(lambda: world.workspaces.signals["notify"] + world.workspaces.signals["digest"] >= 1 or world.workspaces.recent_signals)
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(0.4)
     assert world.workspaces.current == ASSISTANT and game.calls == []
     assert world.profiles.current_id != "rimworld"
 
@@ -145,7 +142,7 @@ async def test_user_message_enters_the_module_workspace_and_the_profile_follows(
     assert (world.workspaces.current, world.workspaces.reason) == ("rimworld", Reason.USER)
     assert game.calls == ["workspace.enter"]
     assert world.profiles.current_id == "rimworld"                               # тон и инструменты следуют за средой
-    assert world.focus.slot.module == "rimworld"
+    assert world.link.holder["module"] == "rimworld"
     status = await tool(world, "workspace.status").call({})
     assert "Rimworld" in status
 
@@ -213,79 +210,18 @@ async def test_module_disconnect_returns_to_assistant(world):
     assert world.workspaces.reason == Reason.DISCONNECT
 
 
-# ── WS-6: сигналы вместо претензий на слот ───────────────────────────────────
+# ── события чужих сред среду не переключают ──────────────────────────────────
 
-async def test_foreign_events_are_signals_and_do_not_move_the_workspace(world):
+async def test_foreign_events_do_not_move_the_workspace_even_when_critical(world):
     mont = await world.add("montage", MONTAGE_POLICIES, "idle")
-    game = await world.add("rimworld", GAME_POLICIES, "afk", emits=(("rimworld.letter", 2),))
+    game = await world.add("rimworld", GAME_POLICIES, "afk", emits=(("rimworld.letter", 2), ("rimworld.raid", 5)))
     await enter_montage(world, mont)
-    for _ in range(3):
-        await game.client.event("rimworld.letter", "Письмо: торговцы прибыли", urgency_hint=4)
-    await wait(lambda: len(world.workspaces.recent_signals) >= 1)
-    await asyncio.sleep(0.3)
-    assert world.workspaces.current == "montage" and game.calls == []
-    assert world.focus.slot.module == "montage"                                   # слот не достаётся претенденту по порогам
-    assert mont.calls == ["workspace.enter"]
-
-
-async def test_critical_signal_during_montage_switches_by_rules(world):
-    mont = await world.add("montage", MONTAGE_POLICIES, "idle")
-    game = await world.add("rimworld", GAME_POLICIES, "afk", emits=(("rimworld.raid", 5),))
-    await enter_montage(world, mont, goal="ролик")
+    await game.client.event("rimworld.letter", "Письмо: торговцы прибыли", urgency_hint=4)
     await game.client.event("rimworld.raid", "Набег: трое рейдеров у ворот", urgency_hint=5)
-    await wait(lambda: world.workspaces.current == "rimworld")
-    assert world.workspaces.reason == Reason.CRITICAL
-    assert mont.calls[-1] == "workspace.exit" and game.calls == ["workspace.enter"]
-    assert world.workspaces.signals["switch"] == 1
-
-
-async def test_critical_signal_is_refused_at_an_unsafe_point(world):
-    mont = await world.add("montage", MONTAGE_POLICIES, "idle")
-    game = await world.add("rimworld", GAME_POLICIES, "afk", emits=(("rimworld.raid", 5),))
-    await enter_montage(world, mont)
-    mont.interruptible = False                                                    # идёт сборка: выходить нельзя
-    await mont.report()
-    await game.client.event("rimworld.raid", "Набег", urgency_hint=5)
-    await wait(lambda: world.workspaces.signals["refused"] == 1)
+    await asyncio.sleep(0.4)
     assert world.workspaces.current == "montage" and game.calls == []
-
-
-# ── совместимость FocusManager: новые имена с откатом на прежние ─────────────
-
-class OldModule:
-    """Соединение с модулем, который знает только прежние имена запросов."""
-
-    def __init__(self):
-        self.names = []
-
-    async def request(self, name, body, timeout=0):
-        self.names.append(name)
-        if name.startswith("workspace."):
-            raise ModuleError("unknown", "модуль не обрабатывает запрос")
-        return {"ok": True, "policy": body.get("policy"), "checkpoint": {}}
-
-
-@pytest.mark.parametrize("new_names, expected", [(True, ["workspace.enter", "policy.activate", "workspace.exit", "focus.release"]),
-                                                 (False, ["policy.activate", "focus.release"])])
-async def test_focus_manager_falls_back_to_the_old_request_names(new_names, expected):
-    mod = OldModule()
-    focus = FocusManager(connection_of=lambda m: mod, status_of=lambda m: None,
-                         policies_of=lambda m: GAME_POLICIES, workspace_names=new_names, auto_switch=False)
-    assert (await focus.request("rimworld"))["ok"]
-    assert (await focus.release_holder())["ok"]
-    assert mod.names == expected
-
-
-async def test_focus_manager_without_auto_switch_ignores_events():
-    focus = FocusManager(connection_of=lambda m: OldModule(), status_of=lambda m: None, policies_of=lambda m: GAME_POLICIES,
-                         auto_switch=False)
-
-    class Item:
-        module, kind, text, urgency, data, expires, dedupe_key = "rimworld", "rimworld.raid", "набег", 5, {}, None, None
-
-    focus.on_decided(Item(), "D4", 90.0)
-    await focus.tick()
-    assert focus.slot is None and not focus.events
+    assert world.link.holder["module"] == "montage"
+    assert mont.calls == ["workspace.enter"]
 
 
 async def test_reflection_do_intent_runs_the_planner_as_a_self_impulse(tmp_path):

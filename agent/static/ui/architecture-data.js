@@ -351,7 +351,7 @@ window.ARCH_DATA = {
   {
    "id": "g_foc",
    "row": 3,
-   "title": "Фокус",
+   "title": "Среды",
    "tag": "A",
    "new": false,
    "summary": "Решает, кому отдать главную роль (например, игре в бою), и когда её вернуть.",
@@ -359,48 +359,21 @@ window.ARCH_DATA = {
    "nodes": [
     {
      "id": "fmgr",
-     "t": "FocusManager (фасад)",
+     "t": "ModuleLink",
      "tag": "A",
      "new": false,
-     "do": "протокол входа, выхода и checkpoint по просьбе менеджера сред, команды пользователя, журнал; слот больше не выбирает среду (auto_switch выключен), прежние публичные методы",
-     "out": "FocusDecision",
-     "now": "focus.py: фасад над четырьмя частями (ТЗ 29, ARC-6); запросы модулю workspace.enter / exit / resume, прежние policy.activate / focus.release / focus.resume как откат (ТЗ 32)"
-    },
-    {
-     "id": "fpol",
-     "t": "FocusPolicy",
-     "tag": "D",
-     "new": false,
-     "do": "чистые правила: приоритет, запас, критичное, старение, конфликты",
-     "out": "FocusDecision",
-     "now": "domain/focus_policy.py: gate, ambiguity, дребезг, эшелон"
-    },
-    {
-     "id": "fque",
-     "t": "FocusQueue",
-     "tag": "A",
-     "new": false,
-     "do": "состояния событий, склейка, старение, сроки",
-     "out": "QueuedEvent",
-     "now": "focus_queue.py"
-    },
-    {
-     "id": "fstore",
-     "t": "CheckpointStore",
-     "tag": "A",
-     "new": false,
-     "do": "checkpoint задач и файл focus.json",
-     "out": "checkpoint",
-     "now": "focus_store.py"
+     "do": "вход, выход и возобновление среды модуля по протоколу workspace.enter / exit / resume (прежние policy.activate / focus.release / focus.resume как откат); один слот, checkpoint в памяти; очереди событий, закрепления и второго эшелона решений нет",
+     "out": "Workspace",
+     "now": "app/module_link.py (вместо менеджера фокуса ТЗ 18)"
     },
     {
      "id": "wsm",
      "t": "WorkspaceManager",
      "tag": "A",
      "new": false,
-     "do": "в какой среде агент сейчас: assistant, sleep и среды модулей из их манифестов (rimworld, montage); причина, цель, история. В среду модуля входят только по импульсу (сообщение, самоимпульс), события чужих сред это сигналы, критическое (срочность 5) переключает по правилам без LLM",
+     "do": "в какой среде агент сейчас: assistant, sleep и среды модулей из их манифестов (rimworld, montage); причина, цель, история. В среду модуля входят только по импульсу (сообщение, самоимпульс); события чужих сред среду не переключают, они идут в очередь речи и сводку",
      "out": "Workspace",
-     "now": "app/workspace_manager.py (ТЗ 32): поверх FocusManager, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"
+     "now": "app/workspace_manager.py (ТЗ 32): поверх ModuleLink, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"
     },
     {
      "id": "wsdom",
@@ -446,15 +419,6 @@ window.ARCH_DATA = {
      "do": "SQLite tasks.db в папке памяти персонажа: дерево задач, напоминания и планы как задачи",
      "out": "Task",
      "now": "adapters/task_store.py (ТЗ 32), контракт TaskRepository"
-    },
-    {
-     "id": "fdisp",
-     "t": "FocusDispatch (контракт)",
-     "tag": "A",
-     "new": false,
-     "do": "Gemma только для неоднозначного; ответ строго проверяется",
-     "out": "Op",
-     "now": "focus_dispatch.py: класс FocusDispatch и validate"
     }
    ]
   },
@@ -819,12 +783,6 @@ window.ARCH_DATA = {
   ],
   [
    "disp",
-   "wsm",
-   "flow",
-   "событие модуля: сигнал или критическое"
-  ],
-  [
-   "disp",
    "reflect",
    "flow",
    "route think"
@@ -1061,7 +1019,7 @@ window.ARCH_DATA = {
    "wsm",
    "fmgr",
    "use",
-   "вход, выход, checkpoint"
+   "вход, выход, возобновление"
   ],
   [
    "hub",
@@ -1074,30 +1032,6 @@ window.ARCH_DATA = {
    "wsm",
    "ctl",
    "workspace.switch"
-  ],
-  [
-   "fmgr",
-   "fpol",
-   "use",
-   "правила"
-  ],
-  [
-   "fmgr",
-   "fdisp",
-   "use",
-   "неоднозначно"
-  ],
-  [
-   "fmgr",
-   "fque",
-   "use",
-   "события"
-  ],
-  [
-   "fmgr",
-   "fstore",
-   "use",
-   "checkpoint"
   ],
   [
    "fmgr",

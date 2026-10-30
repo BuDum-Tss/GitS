@@ -116,25 +116,10 @@
                 <option value="rimworld">RimWorld</option>
               </select>
               <button id="now-assistant-btn" class="btn btn-sm btn-outline" title="Вручную вернуть обычный режим ассистента">вернуться в ассистента</button>
-              <button id="now-pin-btn" class="btn btn-sm btn-outline" title="Закрепить фокус за модулем, который его держит: другие модули его не переключат, кроме критических событий">закрепить</button>
-              <button id="now-dnd-btn" class="btn btn-sm btn-outline" title="Не беспокоить: сообщения копятся и не переключают фокус">не беспокоить</button>
               <span id="modes-msg" class="text-xs opacity-60"></span>
             </div>
             <div id="modes-when" class="text-xs opacity-70 mt-1"></div>
           </div>
-          <details id="focus-box">
-            <summary class="cursor-pointer text-sm opacity-80">Подробнее о фокусе: очередь событий и решения</summary>
-            <div class="flex flex-wrap items-center gap-3 mt-2">
-              <div class="font-medium">Фокус</div>
-              <span id="focus-holder" class="badge badge-ghost badge-sm" title="Модуль, который держит фокус сейчас (слот фокуса один)"></span>
-              <button id="focus-pin-btn" class="btn btn-xs btn-outline ml-auto" title="Закрепить фокус за модулем, который его держит: другие модули его не переключат, кроме критических событий">закрепить</button>
-              <button id="focus-dnd-btn" class="btn btn-xs btn-outline" title="Не беспокоить: сообщения копятся и не переключают фокус">не беспокоить</button>
-            </div>
-            <div class="text-xs opacity-70 mt-2" id="focus-meta"></div>
-            <ul id="focus-queue" class="space-y-1 text-sm mt-1"></ul>
-            <div class="text-xs opacity-60 mt-2">Последние решения фокуса</div>
-            <ul id="focus-journal" class="space-y-1 text-xs"></ul>
-          </details>
           <div id="flow-box" class="mt-3">
             <div class="flex flex-wrap items-center gap-3">
               <div class="font-medium">Поток данных</div>
@@ -496,7 +481,7 @@ showMemPane(['user', 'plan', 'eps', 'facts'].includes(savedPane) ? savedPane : '
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('tab-active', t === tab));
   ['status', 'memory', 'thoughts', 'modules', 'events', 'arch', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
-  if (tab.dataset.tab === 'status') { loadModes().catch(() => {}); loadFocus().catch(() => {}); }
+  if (tab.dataset.tab === 'status') { loadModes().catch(() => {}); loadWorkspace().catch(() => {}); }
   if (tab.dataset.tab === 'modules') { loadModules().catch(() => {}); }
   if (tab.dataset.tab === 'thoughts') { loadThoughts().catch(() => {}); }
   if (tab.dataset.tab === 'memory') { loadFacts().catch(() => {}); }
@@ -592,28 +577,23 @@ function stateLine(g) {
   return g.current === 'sleep' ? 'Токены кончились, жду, пока освободится окно лимита' : '';
 }
 const agoText = ts => { const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60)); return m < 1 ? 'только что' : m < 90 ? `${m} мин назад` : `${Math.round(m / 60)} ч назад`; };
-// карточка «Сейчас»: режим (профиль), держатель фокуса, цель, закрепление, очередь, последнее переключение
+// карточка «Сейчас»: режим (профиль), среда агента, цель, последняя смена среды
 function renderNow() {
-  const g = MD.data, f = FOC.last;
+  const g = MD.data;
   if (!g) return;
   const cur = g.nodes.find(n => n.id === g.current) || {};
   const sleeping = !!(g.battery && g.battery.sleeping);
   $('modes-current').textContent = cur.label || g.current || '';
   $('now-source').textContent = sleeping ? 'нет заряда Claude' : (g.override && g.override === g.current ? 'выбрано вручную' : 'выбирает сама');
   $('modes-state').textContent = stateLine(g) || cur.title || '';
-  const h = f && f.holder;
-  $('now-goal').textContent = h
-    ? `Фокус у модуля ${h.module}, политика ${h.policy}${h.goal ? ': ' + h.goal : ''}${h.since ? ` (с ${new Date(h.since * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})})` : ''}`
-    : 'Фокус свободен: она с вами, в разговоре и наблюдении.';
-  const queued = f ? (f.queue || []).length : 0;
-  $('now-meta').textContent = f ? [f.pin && `закреплён за ${f.pin}`, f.dnd && f.dnd.all && 'не беспокоить для всего агента',
-    queued ? `в очереди фокуса: ${queued}` : 'очередь фокуса пуста'].filter(Boolean).join('. ') : '';
-  const last = f && (f.switches || []).slice(-1)[0];
-  $('now-last').textContent = last ? `Последнее переключение: ${last.type}${last.module ? ' ' + last.module : ''}${last.reason ? ' (' + last.reason + ')' : ''}, ${agoText(last.ts)}` : '';
+  const w = WS.last;
+  $('now-goal').textContent = w && w.current !== 'assistant'
+    ? `Среда «${w.title}»${w.goal ? ': ' + w.goal : ''}${w.since ? ` (с ${new Date(w.since * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})})` : ''}`
+    : 'Она с вами, в разговоре и наблюдении.';
+  $('now-meta').textContent = '';
+  const last = w && (w.history || []).slice(-1)[0];
+  $('now-last').textContent = last ? `Последняя смена среды: ${last.from} → ${last.to} (${last.reason}), ${agoText(last.ts)}` : '';
   $('now-assistant-btn').disabled = g.current === 'assistant' && !g.override && !sleeping;
-  $('now-pin-btn').textContent = f && f.pin ? 'снять закрепление' : 'закрепить';
-  $('now-pin-btn').disabled = !(f && (f.pin || f.holder));
-  $('now-dnd-btn').textContent = f && f.dnd && f.dnd.all ? 'выключить «не беспокоить»' : 'не беспокоить';
 }
 async function loadModes() {
   const g = await (await fetch('/api/modes')).json();
@@ -638,7 +618,7 @@ async function loadModes() {
       $('modes-msg').textContent = r.ok ? '' : (await r.json()).error;
       loadModes().catch(() => {});
     };
-    $('modes-refresh').onclick = async e => { e.target.disabled = true; try { await loadModes(); await loadFocus(); } finally { e.target.disabled = false; } };
+    $('modes-refresh').onclick = async e => { e.target.disabled = true; try { await loadModes(); await loadWorkspace(); } finally { e.target.disabled = false; } };
     $('modes-select').onchange = e => setMode(e.target.value);
     $('now-assistant-btn').onclick = () => setMode('assistant');
     $('modes-streamer').onchange = e => fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({streamer: e.target.checked})});
@@ -1187,45 +1167,14 @@ $('att-rules').addEventListener('click', async e => {
 });
 setInterval(() => loadAttention().catch(() => {}), 3000);
 loadAttention().catch(() => {});
-// ТЗ 18, FOC-9: блок «Фокус» во вкладке «Состояние»
-const FOC = {sig: '', last: null};
-// ТЗ 18: какой эшелон решил (правила, GLiNER или Gemma) и уверенность классификатора
-const ECHELON_NAME = {rules: 'правила', gliner: 'GLiNER', gemma: 'Gemma'};
-const echelonBadge = (e, conf) => e ? `<span class="badge badge-sm badge-ghost" title="Эшелон решения">${esc(ECHELON_NAME[e] || e)}${conf != null ? ' ' + Number(conf).toFixed(2) : ''}</span>` : '';
-async function loadFocus() {
+// среда агента для карточки «Сейчас»
+const WS = {last: null};
+async function loadWorkspace() {
   if ($('tab-status').classList.contains('hidden')) return;
-  const f = await fetch('/api/focus').then(r => r.json());
-  FOC.last = f;
-  $('focus-holder').textContent = f.holder ? `${f.holder.module}: ${f.holder.policy}${f.holder.echelon ? ' · решил ' + (ECHELON_NAME[f.holder.echelon] || f.holder.echelon) : ''}` : 'свободен (фокус у разговора)';
-  const dndMods = (f.dnd && f.dnd.modules) || [];
-  const profMods = (f.dnd && f.dnd.profile) || [];
-  $('focus-meta').textContent = [f.pin && `закреплён за ${f.pin}`, f.dnd && f.dnd.all && 'не беспокоить для всего агента',
-    dndMods.length && `не беспокоить: ${dndMods.join(', ')}`, profMods.length && `профиль не переключает фокус: ${profMods.join(', ')}`,
-    (f.once || []).length && `разовое исключение: ${f.once.join(', ')}`]
-    .filter(Boolean).join('. ');
-  $('focus-pin-btn').textContent = f.pin ? 'снять закрепление' : 'закрепить';
-  $('focus-dnd-btn').textContent = f.dnd && f.dnd.all ? 'выключить «не беспокоить»' : 'не беспокоить';
-  const q = (f.queue || []).map(e => `<li class="border border-base-300 rounded px-2 py-1"><span class="badge badge-sm badge-outline">${esc(e.status)}</span> ${echelonBadge(e.echelon, e.confidence)} ${esc(e.module)}: <span class="text-xs">${esc(e.text)}</span> <span class="opacity-60 text-xs">· ${esc(e.reason || '')}</span></li>`).join('')
-    || '<li class="opacity-60 text-xs">Очередь событий пуста.</li>';
-  const j = (f.journal || []).slice(-8).reverse().map(r => `<li class="opacity-80">${esc(r.type)}${r.echelon ? ' [' + esc(ECHELON_NAME[r.echelon] || r.echelon) + ']' : ''}: ${esc(r.reason || r.module || '')}</li>`).join('')
-    || '<li class="opacity-60">Решений пока нет.</li>';
+  WS.last = await fetch('/api/workspace').then(r => r.json());
   renderNow();
-  const sig = q + j + $('focus-meta').textContent;
-  if (FOC.sig !== sig) { FOC.sig = sig; $('focus-queue').innerHTML = q; $('focus-journal').innerHTML = j; }
 }
-const focusPin = async () => {
-  const f = FOC.last || {};
-  await post('/api/focus/pin', {module: f.pin ? null : (f.holder ? f.holder.module : null)});
-  FOC.sig = ''; loadFocus().catch(() => {});
-};
-const focusDnd = async () => {
-  const f = FOC.last || {};
-  await post('/api/focus/dnd', {module: 'all', on: !(f.dnd && f.dnd.all)});
-  FOC.sig = ''; loadFocus().catch(() => {});
-};
-$('focus-pin-btn').onclick = $('now-pin-btn').onclick = focusPin;
-$('focus-dnd-btn').onclick = $('now-dnd-btn').onclick = focusDnd;
-setInterval(() => loadFocus().catch(() => {}), 3000);
+setInterval(() => loadWorkspace().catch(() => {}), 3000);
 // ТЗ 17: схема потока данных (Cytoscape) и трасса хода с задержками по шагам
 const FLOW = {cy: null, topo: null, hidden: new Set(), paused: false, turn: null, sig: '', es: null, steps: []};
 function flowStyle(c) {
@@ -1353,7 +1302,7 @@ async function loadLatency() {
 }
 setInterval(() => loadLatency().catch(() => {}), 10000);
 loadLatency().catch(() => {});
-loadFocus().catch(() => {});
+loadWorkspace().catch(() => {});
 
 // ── мысли (ТЗ 30, IMP-6): GET /api/thoughts ──
 const INTENT_NAME = {say: 'сказать', do: 'сделать', remind: 'напомнить себе', remember: 'запомнить', none: 'ничего'};

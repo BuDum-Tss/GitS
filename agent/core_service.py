@@ -30,7 +30,6 @@ import graph_scope
 import impulse_service
 import memory_migration
 import task_wiring
-import focus_dispatch
 import profile_manager
 import settings
 import speech_out
@@ -38,7 +37,7 @@ import supervisor as supervisor_mod
 import tool_search
 from app.workspace_manager import WorkspaceManager
 from attention import Attention
-from focus import STATE_FILE, FocusManager
+from app.module_link import ModuleLink
 from character_switch import CharacterSwitch
 from companion import Companion
 from conversation_io import ConversationIO
@@ -82,42 +81,32 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     hub.attention = attention                            # только для диагностики и тестов: шина работает через sink (ARC-7)
     io.hub = hub
     attention.hub, attention.modules = hub, modules
-    # менеджер фокуса (ТЗ 18): решения внимания попадают в его очередь; модули без policies в манифесте в фокусе не участвуют
-    # два эшелона (ТЗ 18): GLiNER (внимание) даёт подсказки, Gemma (LM Studio) только для неоднозначных случаев
-    second_echelon = focus_dispatch.enabled()
-    focus_mgr = FocusManager(
-        connection_of=hub.connection, status_of=lambda mid: _module_status(modules, mid),
-        policies_of=lambda mid: _module_policies(modules, mid),
-        busy_of=lambda: attention.top_focus().kind in ("conversation", "question"),
-        state_path=settings.memory_dir() / STATE_FILE, title_of=lambda mid: _module_title(modules, mid),
-        llm=focus_dispatch.make_llm() if second_echelon else None,
-        recheck=focus_dispatch.make_recheck() if second_echelon else None,
-        # одно состояние «не беспокоить» для всего агента: настройки ядра dnd / quiet_until (дашборд, голос, фокус)
-        dnd_all_of=settings.quiet_active, set_dnd_all=lambda on: settings.update(dnd=on, quiet_until=0.0),
-        profile_quiet_of=lambda: holder["profiles"].current().focus_quiet if "profiles" in holder else (),
-        modules_of=lambda: [mid for mid in modules.records if hub.is_connected(mid)],
-        auto_switch=False, workspace_names=True)      # ТЗ 32: слот не выбирает среду, имена запросов workspace.*
-    # среды агента (ТЗ 32): фокус как текущая среда; среду модуля объявляет его манифест и включает только импульс (сообщение
-    # пользователя, самоимпульс) или критический сигнал; обмен с модулем (вход, выход, checkpoint) делает менеджер фокуса
+    # среды агента: среду модуля объявляет его манифест и включает только импульс (сообщение пользователя, самоимпульс);
+    # обмен с модулем (вход, выход, возобновление) делает ModuleLink
+    link = ModuleLink(connection_of=hub.connection, policies_of=lambda mid: _module_policies(modules, mid))
+
     async def enter_module(ws: str, goal: str) -> dict:
         if not goal:                                     # вход без новой цели: вернуть приостановленную задачу, если она есть
-            res = await focus_mgr.resume_module(ws)
+            res = await link.resume(ws)
             if res.get("ok"):
                 return res
-        return await focus_mgr.request(ws, goal=goal, source="workspace")
+        return await link.activate(ws, goal)
+
+    def on_workspace_change(rec: dict) -> None:
+        if link.holder is not None and rec.get("to") != link.holder["module"]:
+            link.forget(link.holder["module"])             # среда модуля кончилась: слот свободен
+        holder["profiles"].poke()                          # профиль среды (тон, инструменты) следует за средой
 
     workspaces = WorkspaceManager(
         activate=enter_module,
-        release=lambda ws, reason, force: focus_mgr.release_holder(reason=reason, force=force),
+        release=lambda ws, reason, force: link.release(reason=reason, force=force),
         interruptible=lambda ws: bool((_module_status(modules, ws) or {}).get("interruptible", True)),
         connected=hub.is_connected, status_of=lambda ws: _module_status(modules, ws),
-        is_background=focus_mgr.is_background,
+        is_background=link.is_background,
         modules_of=lambda: [(rec.id, rec.manifest, rec.title) for rec in modules.records.values() if rec.manifest],
-        on_change=lambda rec: holder["profiles"].poke(),           # профиль среды (тон, инструменты) следует за средой
+        on_change=on_workspace_change,
         log=lambda kind, **data: _log_workspace(kind, data))
     holder["workspaces"] = workspaces
-    attention.on_decided = workspaces.on_event          # ТЗ 32, WS-6: события чужих сред это сигналы, а не претенденты на слот
-    attention.policy_options = focus_mgr.policy_options         # подсказка политики для GLiNER (первый эшелон)
     presence.listener = hub.broadcast_presence
     speech = getattr(companion, "speech", None)
     if hasattr(speech, "attach"):
@@ -197,18 +186,17 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                                     announce=announce_launch,
                                     only_core=lambda: bool(settings.load().get("only_core")))
     modules.supervisor = sup
-    builtin.register_core_tools(registry, modules, attention, focus_mgr,
+    builtin.register_core_tools(registry, modules, attention,
                                 switch=lambda cid: layer.character_switch.tool(cid),   # ТЗ 05, CHR-7
                                 workspaces=workspaces)                                  # ТЗ 32: workspace.switch, workspace.status
 
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, profiles=profiles,
-                            supervisor=sup, presence=presence, game_order=game_order, tasks=[], focus=focus_mgr,
+                            supervisor=sup, presence=presence, game_order=game_order, tasks=[], link=link,
                             workspaces=workspaces)
 
     async def start():
         await hub.start()                                # токен в файл и фоновая сверка настроек
         await attention.start()                          # планировщик речи, сроки фокуса, чистка правил
-        await focus_mgr.start()                          # очередь и переходы фокуса (ТЗ 18), состояние с диска
         layer.tasks.append(asyncio.get_running_loop().create_task(profiles.run()))
         layer.tasks.append(asyncio.get_running_loop().create_task(workspaces.run()))
         await sup.start()
@@ -216,7 +204,6 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     async def stop():
         for task in layer.tasks:
             task.cancel()
-        await focus_mgr.stop()
         await attention.stop()
         await sup.stop_all()                             # CORE-17: shutdown всем, через 10 с убить оставшихся
         await hub.stop()
@@ -277,11 +264,6 @@ def _module_policies(modules, module_id: str) -> dict | None:
     return {"default_policy": manifest.get("default_policy"), "policies": manifest.get("policies") or []}
 
 
-def _module_title(modules, module_id: str) -> str:
-    rec = modules.get(module_id)
-    return rec.title if rec is not None and rec.title else module_id
-
-
 async def _run(config: dict):
     # httpx пишет в журнал полный URL запроса (в запросах к API бывают токены): журнал не должен его хранить
     for noisy in ("httpx", "httpcore", "aiohttp.access"):
@@ -304,7 +286,6 @@ async def _run(config: dict):
     companion.game_order = layer.game_order              # RW-11: приказ игроку-агенту (инструмент order модуля игры)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     dashboard.set_attention(layer.attention)
-    dashboard.set_focus(layer.focus)                     # ТЗ 18: вкладка «Состояние», блок «Фокус»
     dashboard.set_workspace(layer.workspaces)            # ТЗ 32: карточка «Сейчас», среда агента
     dashboard.set_presence(presence)
     loop = asyncio.get_running_loop()
@@ -363,14 +344,20 @@ async def _run(config: dict):
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
     companion.tasks = task_wiring.build(companion, layer.workspaces)    # ТЗ 32, WS-8: общие задачи, напоминания себе и планы
     await _migrate_memory(companion, graph, Path(companion._dir))      # старая memories.json -> граф и задачи (один раз)
-    layer.workspaces.on_change = companion.tasks.on_workspace_change    # checkpoint при уходе из среды, возобновление при входе
+    link_change = layer.workspaces.on_change                            # слот модуля и профиль среды
+    task_change = companion.tasks.on_workspace_change                   # checkpoint задач при уходе из среды, возобновление при входе
+
+    def on_change(rec):
+        link_change(rec)
+        task_change(rec)
+    layer.workspaces.on_change = on_change
     impulses = impulse_service.build(companion, layer.attention, router=lambda: companion.router,
                                      tasks=companion.tasks)             # ТЗ 30: импульсы и размышление
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     dashboard.set_impulses(impulses)
     episodes = episode_service.build(companion, layer.attention,       # ТЗ 27: эпизоды и сон (простой, расписание, догоняющий)
                                      busy=lambda: layer.attention.top_focus().kind in ("conversation", "question")
-                                     or layer.focus.slot is not None)
+                                     or layer.link.holder is not None)
     await episodes.start()
     episodes.scheduler.on_state = layer.workspaces.on_sleep_state      # ТЗ 32: сон это среда sleep
     episode_routes.set_service(episodes)
@@ -384,7 +371,7 @@ async def _run(config: dict):
         """Размышление в простое: разговора и вопросов нет, слот фокуса пуст, она не спит, «не отвлекать» выключено, пользователь
         молчит не меньше пяти минут."""
         since_user = _time.time() - float(getattr(companion, "_last_user_ts", 0.0) or 0.0)
-        return (layer.attention.top_focus().kind not in ("conversation", "question") and layer.focus.slot is None
+        return (layer.attention.top_focus().kind not in ("conversation", "question") and layer.link.holder is None
                 and episodes.scheduler.state != "sleeping" and not settings.quiet_active() and since_user >= 300)
     impulse_service.attach_idle(impulses, companion, is_free=free_to_reflect).start()      # осмысление событий в свободное время
 

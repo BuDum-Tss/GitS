@@ -112,10 +112,9 @@ PUBLIC_ROUTES = {
     ("POST", "/api/modules/{id}/enabled"), ("POST", "/api/modules/{id}/restart"), ("POST", "/api/modules/{id}/settings"),
     ("GET", "/api/modules/{id}/panel"), ("POST", "/api/modules/{id}/panel/action"),
     ("POST", "/api/modules/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"),
-    ("POST", "/api/attention/rules/clear"), ("GET", "/api/focus"), ("GET", "/api/workspace"), ("POST", "/api/workspace/enter"), ("POST", "/api/workspace/exit"),
+    ("POST", "/api/attention/rules/clear"), ("GET", "/api/workspace"), ("POST", "/api/workspace/enter"), ("POST", "/api/workspace/exit"),
     ("GET", "/api/thoughts"), ("GET", "/api/episodes"), ("GET", "/api/episodes/{id}"), ("GET", "/api/diary"), ("GET", "/api/sleep"),
-    ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("POST", "/api/focus/pin"), ("POST", "/api/focus/dnd"), ("POST", "/api/focus/allow_once"),
-    ("POST", "/api/notify"), ("GET", "/api/jobs"), ("POST", "/api/jobs/{module}/{job_id}/cancel"),
+    ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("POST", "/api/notify"), ("GET", "/api/jobs"), ("POST", "/api/jobs/{module}/{job_id}/cancel"),
     ("POST", "/api/jobs/{module}/{job_id}/answer"), ("GET", "/api/reply_context"),
 }
 

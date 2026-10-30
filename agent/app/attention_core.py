@@ -1,7 +1,7 @@
 """Общее для компонентов внимания (ТЗ 29, ARC-4): константы, данные события и общий контекст.
 
 `AttentionContext` держит то, что делят все компоненты и что ядро подставляет после создания (`hub`, `modules`, `profiles`,
-`on_decided`, `policy_options`, `kind_handlers`...). Компоненты читают поля контекста при каждом вызове, поэтому подмена
+`kind_handlers`...). Компоненты читают поля контекста при каждом вызове, поэтому подмена
 после создания (в ядре и в тестах) работает.
 """
 import asyncio
@@ -145,10 +145,6 @@ class AttentionContext:
         self.kind_handlers: dict[str, Callable] = {}
         # то же для событий, которым нужно побочное действие, но которые дальше идут обычным путём внимания
         self.kind_hooks: dict[str, Callable] = {}
-        # менеджер фокуса (ТЗ 18): on_decided(item, decision, priority, rule), синхронный; None - фокуса нет
-        self.on_decided: Callable[[Item, str, float, str | None], None] | None = None
-        # ТЗ 18, первый эшелон: варианты подсказки политики для классификатора; None - не спрашиваем
-        self.policy_options: Callable[[], dict] | None = None
         # ТЗ 30, IMP-4: маршрут think; on_think(item) синхронный, запускает размышление в фоне; None - размышления нет
         self.on_think: Callable[[Item], None] | None = None
         self.silent_kinds: set[str] = set()      # виды, которые не пишутся в журнал module_event

@@ -41,11 +41,6 @@ class Dispatcher:
                              routes=routes.of_decision(decision, think=think, act=act), **({"route": "think"} if think else {}))
         if think:
             self.ctx.on_think(item)
-        if self.ctx.on_decided is not None:                    # ТЗ 18: менеджер фокуса получает решение (не ждёт)
-            try:
-                self.ctx.on_decided(item, decision, item.priority, rule)
-            except Exception:
-                logger.exception("Хук менеджера фокуса упал (решение внимания уже применено)")
 
     def think_route(self, item: Item, decision: str) -> bool:
         """ТЗ 30, IMP-4: направить ли событие в размышление (правило в domain/rules.py). Без размышления маршрута нет."""

@@ -111,8 +111,6 @@ class Attention:
     kind_handlers = _Via("ctx", "kind_handlers")      # kind -> async (Item) -> None: служебные события (ТЗ 11, RW-9)
     kind_hooks = _Via("ctx", "kind_hooks")            # то же с побочным действием (ТЗ 12, VOICE-14)
     on_think = _Via("ctx", "on_think")                # ТЗ 30: маршрут think (item) -> размышление в фоне
-    on_decided = _Via("ctx", "on_decided")            # ТЗ 18: решение (item, decision, priority, rule) -> менеджер фокуса
-    policy_options = _Via("ctx", "policy_options")    # ТЗ 18, первый эшелон: варианты подсказки политики
     silent_kinds = _Via("ctx", "silent_kinds")        # виды, которые не пишутся в журнал module_event
     last_decision = _Via("ctx", "last_decision")      # для отладки и дашборда
     decisions = _Via("ctx", "decisions")

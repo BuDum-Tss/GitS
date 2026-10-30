@@ -203,7 +203,6 @@ class Soak:
         dashboard._MEMORY_DIR = Path(self.memory_dir)
         dashboard.set_modules(self.layer.modules, self.layer.hub, self.layer.supervisor)
         dashboard.set_attention(self.layer.attention)
-        dashboard.set_focus(self.layer.focus)
         dashboard.set_presence(presence)
         dashboard.set_registry(registry)
         dashboard.set_modes(self.layer.profiles)

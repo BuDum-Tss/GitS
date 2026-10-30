@@ -364,42 +364,6 @@ class _ModuleIds(list):
         return repr(self._ids())
 
 
-def _focus_tool(focus, modules) -> Tool:
-    """ТЗ 18, FOC-6: команды фокуса в чате и голосом - закрепить, снять закрепление, «не беспокоить», разовое исключение.
-    Это просьба самого пользователя, поэтому риск auto; фокус модулям по-прежнему передают только правила менеджера."""
-    async def control(a):
-        action, module = a["action"], a.get("module")
-        if action in ("pin", "allow_once") and not module:
-            raise ToolError("назови модуль, для которого это нужно", code="bad_request")
-        if action == "pin":
-            res = await focus.pin(module)
-            if not res.get("ok"):
-                raise ToolError("фокус не закреплён", code="internal")
-            return f"фокус закреплён за модулем «{module}»"
-        if action == "unpin":
-            await focus.pin(None)
-            return "закрепление фокуса снято"
-        if action in ("dnd_on", "dnd_off"):
-            target = module or "all"
-            await focus.set_dnd(target, action == "dnd_on")
-            where = "для всего агента" if target == "all" else f"для модуля «{target}»"
-            return f"«не беспокоить» {where}: {'включено' if action == 'dnd_on' else 'выключено'}"
-        await focus.allow_once(module)
-        return f"разовое исключение из режима «не беспокоить» для модуля «{module}»"
-
-    return Tool(id="focus.control", env="core", name="control",
-                description="Фокус агента по просьбе пользователя: закрепить фокус за модулем («держи фокус на игре»), снять "
-                            "закрепление, включить или выключить «не беспокоить» (для всего агента или для модуля), разрешить "
-                            "одно сообщение модуля сквозь «не беспокоить».",
-                params={"action": {"type": "string", "enum": ["pin", "unpin", "dnd_on", "dnd_off", "allow_once"],
-                                   "description": "что сделать"},
-                        "module": {"type": "string", "required": False, "enum": _ModuleIds(modules),
-                                   "description": "id модуля; для dnd без него - для всего агента"}},
-                risk="auto",
-                keywords=("закрепи", "держи фокус", "фокус", "не беспокоить", "не отвлекай", "разреши один раз"),
-                call=control, informative=True, availability="always")
-
-
 class _WorkspaceIds(list):
     """Допустимые значения параметра «среда»: среды, которые знает менеджер сред на момент вызова (модульные приходят и уходят)."""
 
@@ -476,12 +440,10 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
 
     async def status(a):
         snap = workspaces.snapshot()
-        sig = snap["signals"]
         line = f"Сейчас в среде «{snap['title']}» (причина: {snap['reason']})" + (f", цель: {snap['goal']}" if snap["goal"] else "") + "."
         others = ", ".join(f"«{x['title']}»" + ("" if x["connected"] else " (не подключена)")
                            for x in snap["available"] if x["id"] != snap["current"] and x["id"] != "sleep")
-        return line + (f" Другие среды: {others}." if others else "") + (
-            f" Сигналов из чужих сред: {sig['notify']} уведомлений, {sig['digest']} в сводке." if sig["notify"] or sig["digest"] else "")
+        return line + (f" Другие среды: {others}." if others else "")
 
     ids = _WorkspaceIds(workspaces, modules)
     return [
@@ -501,10 +463,9 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
     ]
 
 
-def register_core_tools(registry, modules, attention=None, focus=None, switch=None, workspaces=None):
+def register_core_tools(registry, modules, attention=None, switch=None, workspaces=None):
     """Инструменты ядра про задачи модулей (окружение core, всегда видны, ТЗ 02 раздел 11) и про внимание (ТЗ 03, ATT-24).
-    modules - ModuleRegistry: jobs_all() и async cancel_job(module, job_id); attention - менеджер внимания (attention.py);
-    focus - менеджер фокуса (focus.py, ТЗ 18): закрепить фокус, «не беспокоить», разовое исключение голосом."""
+    modules - ModuleRegistry: jobs_all() и async cancel_job(module, job_id); attention - менеджер внимания (attention.py)."""
 
     async def jobs(a):
         rows = modules.jobs_all()
@@ -584,13 +545,12 @@ def register_core_tools(registry, modules, attention=None, focus=None, switch=No
                        digest, informative=True, keywords=("пропустила", "накопилось", "сводка", "что было", "пока не отвлекала")),
     ]
 
-    focus_tools = [] if focus is None else [_focus_tool(focus, modules)]     # ТЗ 18: независимо от внимания
-    focus_tools += [] if workspaces is None else _workspace_tools(workspaces, modules)     # ТЗ 32: среды агента
+    workspace_tools = [] if workspaces is None else _workspace_tools(workspaces, modules)     # ТЗ 32: среды агента
     registry.add(Environment(
         id="core", title="Ядро: задачи модулей и внимание",
         description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "
                     "«не отвлекай / выдели» и сводка накопившегося. Общие настройки Telegram для модулей.",
-        tools=attention_tools + focus_tools + [
+        tools=attention_tools + workspace_tools + [
             _tool("core", "jobs", "Перечень задач всех модулей: модуль, название, состояние, стадия, прогресс. "
                   "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",
                   {}, jobs, informative=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),

@@ -4,10 +4,8 @@
 модулем (освобождение, активация, checkpoint) делает менеджер фокуса ТЗ 18, его вызовы передаются сюда функциями
 `activate(module, goal)` и `release(module, reason, force)`, поэтому менеджер проверяется тестами без модулей.
 
-Среды модулей объявляет манифест (поле `workspace`, `register_manifest`). События чужих сред не борются за слот: в текущей среде
-это сигналы (`on_event`, `domain.workspace.route_signal`); критический сигнал (срочность 5) входит в среду его модуля по
-правилам без LLM, и текущая среда вправе отказать в небезопасной точке. Конец задачи, блокировка и отключение модуля возвращают
-в `assistant` (`check`).
+Среды модулей объявляет манифест (поле `workspace`, `register_manifest`). События чужих сред среду не переключают: они идут
+в обычную очередь речи и сводку. Конец задачи, блокировка и отключение модуля возвращают в `assistant` (`check`).
 
 Среда модуля включается только по импульсу (`user`, `self`) или по критическому сигналу; запуск игры, окно и состояние модуля её не
 включают. `sleep` включает планировщик сна (`on_sleep_state`): если агент в среде модуля, сон идёт фоном и среду не меняет
@@ -25,8 +23,6 @@ logger = logging.getLogger("workspace")
 
 HISTORY_MAX = 300
 GRACE_S = 5.0                  # после входа статусу модуля не верим: он может отстать (как в менеджере фокуса)
-CRITICAL_BACKOFF_S = 30.0      # критический вход не удался: повтор к тому же модулю не раньше чем через столько
-SIGNALS_KEEP = 20
 
 Activate = Callable[[str, str], Awaitable[dict]]
 Release = Callable[[str, str, bool], Awaitable[dict]]
@@ -57,10 +53,6 @@ class WorkspaceManager:
         self.since = now()
         self.history: deque[dict] = deque(maxlen=HISTORY_MAX)
         self._lock = None            # создаётся лениво в цикле событий
-        self.signals = {"notify": 0, "digest": 0, "switch": 0, "refused": 0}
-        self.recent_signals: deque[dict] = deque(maxlen=SIGNALS_KEEP)
-        self._critical_block: dict[str, float] = {}
-        self._tasks: set[asyncio.Task] = set()
 
     # ── среды ─────────────────────────────────────────────────────────────────
 
@@ -190,57 +182,6 @@ class WorkspaceManager:
                 logger.warning(f"Проверка среды: {e}")
             await asyncio.sleep(interval)
 
-    # ── сигналы: события чужих сред (WS-6) ────────────────────────────────────
-
-    def on_event(self, item: Any, decision: str = "", priority: float = 0.0, rule: str | None = None) -> None:
-        """Хук `Attention.on_decided`: событие модуля. Синхронный и быстрый; вход по критическому сигналу идёт фоновой задачей."""
-        if decision == "D0" or rule in ("R1", "R2", "R3"):          # выброшено или разговор с пользователем / mute
-            return
-        module = getattr(item, "module", None)
-        if not module:
-            return
-        route = self.route(module, getattr(item, "kind", "") or "", getattr(item, "urgency", None))
-        self._count(route, module, getattr(item, "kind", "") or "")
-        if route == dom.SIGNAL_SWITCH:
-            try:
-                task = asyncio.get_running_loop().create_task(
-                    self._switch_critical(module, (getattr(item, "text", "") or "")[:200]))
-            except RuntimeError:
-                return
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
-
-    def route(self, module: str, kind: str, urgency: int | None) -> str:
-        self.sync()
-        return dom.route_signal(self.spec(), self.specs.get(module), kind, module, urgency)
-
-    def _count(self, route: str, module: str, kind: str) -> None:
-        if route in self.signals:
-            self.signals[route] += 1
-        if route != dom.SIGNAL_OWN:
-            self.recent_signals.append({"ts": self._now(), "module": module, "kind": kind, "route": route})
-
-    async def handle_signal(self, module: str, kind: str, text: str = "", urgency: int | None = None) -> dict:
-        """То же, что on_event, но с ожиданием результата (тесты, прямые вызовы): {"route", "entered", "error"}."""
-        route = self.route(module, kind, urgency)
-        self._count(route, module, kind)
-        if route != dom.SIGNAL_SWITCH:
-            return {"route": route, "entered": False}
-        res = await self._switch_critical(module, text[:200])
-        return {"route": route, "entered": bool(res.get("ok")), "error": res.get("error", "")}
-
-    async def _switch_critical(self, module: str, goal: str) -> dict:
-        now = self._now()
-        if now < self._critical_block.get(module, 0.0):
-            return {"ok": False, "error": "недавний критический вход не удался: повтор позже"}
-        res = await self.enter(module, dom.Reason.CRITICAL, goal)
-        if not res.get("ok"):
-            self.signals["refused"] += 1
-            self._critical_block[module] = now + CRITICAL_BACKOFF_S
-            if self._log is not None:
-                self._log("critical_refused", to=module, reason=dom.Reason.CRITICAL, note=str(res.get("error", ""))[:160])
-        return res
-
     # ── чтение ────────────────────────────────────────────────────────────────
 
     def snapshot(self) -> dict[str, Any]:
@@ -253,5 +194,4 @@ class WorkspaceManager:
                            "connected": s.kind == dom.KIND_BUILTIN or bool(self._connected(s.id))}
                           for s in self.specs.values()],
             "history": list(self.history)[-20:],
-            "signals": {**self.signals, "recent": list(self.recent_signals)},
         }

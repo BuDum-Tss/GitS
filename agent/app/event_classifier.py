@@ -36,7 +36,7 @@ class EventClassifier:
     async def classify_and_finish(self, item: Item, cfg: dict, att: dict, declared: int | None) -> None:
         ctx = self.ctx
         try:
-            questions = decide.event_questions(ctx.policy_options() if ctx.policy_options else None)
+            questions = decide.event_questions()
             answers = await ctx.decider.classify(item.text, questions, timeout=decide.EVENT_TIMEOUT_S)
         finally:
             self.pending -= 1
@@ -58,9 +58,6 @@ class EventClassifier:
             item.urgency = hint if hint is not None else 1
         if cls is not None:
             extra = {}
-            if cls.active_focus is not None:              # ТЗ 18: подсказка менеджеру фокуса (первый эшелон), в прежнем формате
-                extra.update(focus_needed=cls.active_focus != decide.NONE_FOCUS, focus_conf=round(cls.focus_conf, 3),
-                             policy_hint=cls.active_focus, policy_conf=round(cls.focus_conf, 3))
             flags = {f"route_{name}": getattr(cls, name) for name in ("react", "speak", "act", "think")
                      if getattr(cls, name) is not None}
             extra.update(flags)                           # решение роутера: реагировать ли и как (Dispatcher.finish)
