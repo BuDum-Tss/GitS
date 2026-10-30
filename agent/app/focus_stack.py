@@ -80,8 +80,6 @@ class FocusStack:
                                         "Можно вернуться к теме или промолчать.")
             self.speech.kick()
         self.publish()
-        if top.kind == "idle" and gone.kind in ("conversation", "reaction"):
-            self.digest.maybe_offer()
 
     def tick(self, now: float) -> None:
         """Сроки (ATT-20): conversation снимается через 60 с без обращений и ответов, зависшая reaction - через 15 минут."""

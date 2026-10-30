@@ -1,44 +1,41 @@
-"""Решение и действие по событию (ТЗ 29, ARC-4; ТЗ 03, ATT-10): приоритет, D0-D4, сводка, очередь речи, хук фокуса."""
+"""Решение и действие по событию (ТЗ 29, ARC-4; ТЗ 03, ATT-10): приоритет, D0-D4, входящая очередь, очередь речи."""
 import logging
 
 import flow_trace
 import routes
-from domain import rules
+from domain import rules, scoring
 
 from .attention_core import TEXT_MAX, AttentionContext, Item
 from .decision_log import DecisionLog
 from .digest import Digest
 from .focus_stack import FocusStack
 from .items import event_fact
-from .scorer import Scorer
 from .speech_coordinator import SpeechCoordinator
 
 logger = logging.getLogger("attention")
 
 
 class Dispatcher:
-    def __init__(self, ctx: AttentionContext, scorer: Scorer, digest: Digest, speech: SpeechCoordinator,
+    def __init__(self, ctx: AttentionContext, digest: Digest, speech: SpeechCoordinator,
                  focus: FocusStack, decisions: DecisionLog):
-        self.ctx, self.scorer, self.digest, self.speech, self.focus, self.decisions = (
-            ctx, scorer, digest, speech, focus, decisions)
+        self.ctx, self.digest, self.speech, self.focus, self.decisions = ctx, digest, speech, focus, decisions
+
+    def decide(self, urgency: int, cfg: dict, att: dict) -> str:
+        return scoring.decide(urgency, self.ctx.quiet(cfg), self.ctx.idle() > att["away_after_s"])
 
     async def finish(self, item: Item, cfg: dict, att: dict, *, rule: str | None = None, force: str | None = None,
-                     ms: float | None = None, rule_id: str | None = None) -> None:
-        """Приоритет, решение и действие по событию."""
-        score = self.scorer.score(item, cfg, att)
-        item.priority = score["priority"]
-        decision = force or self.scorer.decide(item.priority, att, score["away"])
-        want_think, act = False, bool(item.data.get("route_act")) and not force
-        if not force:                                      # решение роутера (decide): реагировать ли, говорить ли, подумать ли
-            decision, want_think = rules.route_flags(decision, item.urgency, react=item.data.get("route_react"),
-                                                     speak=item.data.get("route_speak"), think=item.data.get("route_think"))
+                     rule_id: str | None = None) -> None:
+        """Приоритет, решение и действие по событию. Срочность уже назначена (подсказка модуля или обращение к ней)."""
+        urgency = int(item.urgency if item.urgency is not None else 1)
+        item.priority = scoring.priority(urgency)
+        decision = force or self.decide(urgency, cfg, att)
         item.decision = decision
-        flow_trace.step(None, "attention", "gliner", "attention", "decision", ms=ms, size=len(item.text or ""), label=decision)
-        think = self.think_route(item, decision) or (want_think and self.ctx.on_think is not None and item.origin != "self")
+        flow_trace.step(None, "attention", "rules", "attention", "decision", size=len(item.text or ""), label=decision)
+        think = self.think_route(item, decision)
         if not (think and item.origin == "self"):          # импульс самого агента не озвучивается и не уходит в сводку: он идёт в размышление
             self.act(item, decision)
-        self.decisions.write(item, att, score=score, rule=rule, ms=ms, rule_id=rule_id,
-                             routes=routes.of_decision(decision, think=think, act=act), **({"route": "think"} if think else {}))
+        self.decisions.write(item, att, score={"priority": item.priority}, rule=rule, rule_id=rule_id,
+                             routes=routes.of_decision(decision, think=think), **({"route": "think"} if think else {}))
         if think:
             self.ctx.on_think(item)
 
@@ -84,9 +81,9 @@ class Dispatcher:
             self.digest.add(item)
             self.decisions.write(item, att, rule="R3")
             return
-        score = self.scorer.score(item, cfg, att)
-        item.priority = score["priority"]
-        decision = self.scorer.decide(item.priority, att, score["away"])
+        urgency = int(item.urgency if item.urgency is not None else 1)
+        item.priority = scoring.priority(urgency)
+        decision = self.decide(urgency, cfg, att)
         item.decision = decision
         if decision == "D1":
             self.digest.add(item)
@@ -98,4 +95,4 @@ class Dispatcher:
             if decision == "D4":
                 self.react(item, text[:80], f"module:{module_id}")
             self.speech.kick()
-        self.decisions.write(item, att, score=score)
+        self.decisions.write(item, att, score={"priority": item.priority})

@@ -1,8 +1,9 @@
 """Временные правила внимания (ТЗ 03, раздел 9): «пока играю, из телеги только мама», «час не трогай меня с чатами».
 
 Правило сужает событие по модулю, шаблону вида (`fnmatch`) и подстроке имени отправителя; все заданные поля должны совпасть.
-Эффекты: mute (совпавшие события уходят в сводку), boost (вес 2.0), only (совпавшие 1.5, несовпавшие события того же модуля
-или всех модулей, если модуль не задан, 0.2), normal (отменить прежние правила для того же совпадения). Правила живут в
+Эффекты: mute (совпавшие события уходят в сводку), boost (совпавшие говорятся сразу), only (совпавшие говорятся сразу,
+несовпавшие события того же модуля или всех модулей, если модуль не задан, копятся во входящей очереди), normal (отменить
+прежние правила для того же совпадения). Правила живут в
 `memory/attention_rules.json` и переживают перезапуск; просроченные удаляются при загрузке и раз в минуту.
 """
 import fnmatch
@@ -18,7 +19,6 @@ from typing import Callable
 logger = logging.getLogger("attention.rules")
 
 EFFECTS = ("mute", "boost", "only", "normal")
-W_BOOST, W_ONLY_MATCH, W_ONLY_OTHER = 2.0, 1.5, 0.2
 FILE_NAME = "attention_rules.json"
 
 
@@ -154,16 +154,16 @@ class RuleStore:
                 return r
         return None
 
-    def weight(self, module: str, kind: str, sender_name: str | None) -> float:
-        """w_rule: произведение весов действующих правил (mute здесь не участвует: R3 решает раньше)."""
-        w = 1.0
+    def stance(self, module: str, kind: str, sender_name: str | None) -> str | None:
+        """Как правила меняют событие (mute решает раньше, R3): "say" - сказать сразу (boost, или only и событие совпало), "wait" -
+        подождать во входящей очереди (only, событие не совпало), None - правила его не трогают. Выделение сильнее приглушения."""
+        stance = None
         for r in self.active():
-            if r.effect == "boost":
+            if r.effect == "boost" and r.matches(module, kind, sender_name):
+                return "say"
+            if r.effect == "only":
                 if r.matches(module, kind, sender_name):
-                    w *= W_BOOST
-            elif r.effect == "only":
-                if r.matches(module, kind, sender_name):
-                    w *= W_ONLY_MATCH
-                elif r.module is None or r.module == module:
-                    w *= W_ONLY_OTHER
-        return w
+                    return "say"
+                if r.module is None or r.module == module:
+                    stance = "wait"
+        return stance

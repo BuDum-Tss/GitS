@@ -16,23 +16,17 @@ logger = logging.getLogger("attention")
 
 TEXT_LOG = 200                       # сколько символов текста уходит в журнал (ATT-29)
 TEXT_MAX = 1000
-CLASSIFIER_QUEUE_MAX = 20            # ATT-32
 TICK_S = 0.5
 RULES_PURGE_S = 60.0
 DIGEST_MAX = 50                      # ATT-26
-DIGEST_SPEECH_MAX = 5                # ATT-27
-DIGEST_MIN_ITEMS, DIGEST_MIN_PRIORITY, DIGEST_QUIET_S = 3, 25, 600.0
 CONVERSATION_FOCUS_P, CONVERSATION_IDLE_S, RETURN_WINDOW_S, RETURN_P = 90, 60.0, 300.0, 40
 FOCUS_DEPTH = 3                      # ATT-21
 REACTION_MAX_AGE_S = 900.0
-SPEECH_DEFAULT_URGENCY = 2           # речь модуля без urgency_hint
+SPEECH_DEFAULT_URGENCY = 4           # речь модуля без urgency_hint: модуль просит сказать, значит говорится
 PROACTIVE_P = 30                     # проактивная реплика - «болтовня»: звучит, когда больше нечего сказать
 CONVERSATION_P = 95                  # ATT-13
 QUESTION_ANNOUNCE_P = 80             # формулировка вопроса разрешения (approvals.request), сказанная вне submit_question
 ANNOUNCE_DEFAULT_URGENCY = 3
-DEFAULT_HALF_LIFE = {"rimworld.*": 60, "telegram.*": 900, "desktop.*": 120, "*.job": 600, "*": 300}
-DEFAULT_THRESHOLDS = (15, 35, 60, 85)
-REPLY_CATEGORIES = ("question", "request_to_assistant")      # категории, в которых ответа ждут сами по себе
 
 
 @dataclass
@@ -174,15 +168,11 @@ class AttentionContext:
         raw = raw if isinstance(raw, dict) else {}
         d = settings.DEFAULTS["attention"]
         out = {**d, **raw}
-        th = out.get("thresholds")
-        if not (isinstance(th, (list, tuple)) and len(th) == 4 and all(isinstance(x, (int, float)) for x in th)
-                and list(th) == sorted(th)):
-            out["thresholds"] = list(DEFAULT_THRESHOLDS)
-        for key in ("interrupt_margin", "away_after_s", "min_conf_event", "min_conf_input"):
+        for key in ("interrupt_margin", "away_after_s", "min_conf_input"):
             if not isinstance(out.get(key), (int, float)) or isinstance(out.get(key), bool):
                 out[key] = d[key]
-        if not isinstance(out.get("half_life"), dict) or not out["half_life"]:
-            out["half_life"] = dict(DEFAULT_HALF_LIFE)
+        if not isinstance(out.get("inbox"), dict):
+            out["inbox"] = dict(d["inbox"])
         out["classifier"] = bool(out.get("classifier", True))
         return out
 

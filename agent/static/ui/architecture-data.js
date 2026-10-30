@@ -157,7 +157,7 @@ window.ARCH_DATA = {
    "title": "Решение",
    "tag": "A",
    "new": false,
-   "summary": "Правила до моделей, быстрая классификация, оценка важности и выбор маршрута: сказать, ответить, сделать, сменить фокус, подумать, отложить.",
+   "summary": "Жёсткие правила до моделей и простое решение по срочности, которую объявил модуль: сказать сразу или отложить во входящую очередь. Оценки важности и классификатора событий нет.",
    "out": "Decision + routes",
    "nodes": [
     {
@@ -171,30 +171,21 @@ window.ARCH_DATA = {
     },
     {
      "id": "cls",
-     "t": "Classifier (контракт)",
+     "t": "InputClassifier (контракт)",
      "tag": "A",
      "new": false,
-     "do": "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с",
-     "out": "Classification",
-     "now": "decide.py + services/decider; в Attention его зовёт app/event_classifier.py (R3); сбои сервиса пишутся в трассу потока отдельным видом error (причина down, timeout, error)"
-    },
-    {
-     "id": "score",
-     "t": "PriorityScorer",
-     "tag": "D",
-     "new": false,
-     "do": "срочность × 20 × веса (профиль, отправитель, правила, пользователь) × свежесть",
-     "out": "priority 0..100",
-     "now": "выделен (R3): app/scorer.py поверх domain/scoring.py"
+     "do": "намерение обращения владельца (chat, action, stop...) до маршрутизатора; события модулей не классифицирует; реализация: служба GLiNER :8768, тайм-аут 2,5 с",
+     "out": "InputClass",
+     "now": "decide.py + services/decider; в Attention его зовёт app/input_classifier.py; без сервиса обращение идёт по правилам"
     },
     {
      "id": "disp",
      "t": "Dispatcher",
      "tag": "A",
      "new": false,
-     "do": "решение D0–D4 и routes[]: say, chat, task, focus, think, digest, ignore; пишет решение в журнал",
+     "do": "решение по срочности модуля: 0 выбросить (D0); ниже 4 во входящую очередь (D1); 4 сказать (D3); 5 сказать и поставить реакцию (D4). «Не отвлекать» и «пользователь отошёл» уводят в очередь; обращение к ней поднимает до 4",
      "out": "Decision",
-     "now": "выделен (R3): app/dispatcher.py (finish, act) и app/decision_log.py; ТЗ 25: routes[] (reflex, chat, task, ignore, think) по таблице D0-D4 в routes.py пишется в журнал решений"
+     "now": "app/dispatcher.py (finish, act), domain/scoring.py (decide: чистая функция), app/decision_log.py; Normalizer.assign_urgency ставит срочность по подсказке модуля; правила boost/only меняют её (RuleStore.stance)"
     },
     {
      "id": "routes",
@@ -442,12 +433,12 @@ window.ARCH_DATA = {
     },
     {
      "id": "digest",
-     "t": "Digest",
+     "t": "Inbox + Digest",
      "tag": "A",
      "new": false,
-     "do": "сводка событий D1 и предложение рассказать",
-     "out": "SpeechCandidate",
-     "now": "выделен (R3): app/digest.py"
+     "do": "входящая очередь: события срочности ниже 4 копятся по модулям; когда есть что-то заметное (2+) или много мелочи, модель не занята, нет разговора, «не отвлекать» выключено и прошла минута, накопившееся уходит размышлению одним событием inbox.batch",
+     "out": "inbox.batch",
+     "now": "app/inbox.py (Inbox.tick из цикла внимания), app/digest.py; настройка attention.inbox.min_interval_s; промпт inbox в prompt.yaml; пачка недоверенная: только сказать или запомнить"
     },
     {
      "id": "out",
@@ -747,21 +738,15 @@ window.ARCH_DATA = {
   ],
   [
    "rules",
-   "cls",
-   "flow",
-   "не решено правилами"
-  ],
-  [
-   "cls",
-   "score",
-   "flow",
-   "Classification"
-  ],
-  [
-   "score",
    "disp",
    "flow",
-   "priority"
+   "срочность из подсказки модуля"
+  ],
+  [
+   "conv",
+   "cls",
+   "use",
+   "намерение обращения"
   ],
   [
    "rules",
@@ -783,21 +768,15 @@ window.ARCH_DATA = {
   ],
   [
    "disp",
-   "reflect",
-   "flow",
-   "route think"
-  ],
-  [
-   "disp",
    "queue",
    "flow",
-   "route say: факт"
+   "срочность 4+: сказать факт"
   ],
   [
    "disp",
    "digest",
    "flow",
-   "D1"
+   "ниже 4: во входящую очередь"
   ],
   [
    "conv",
@@ -1059,9 +1038,9 @@ window.ARCH_DATA = {
   ],
   [
    "digest",
-   "queue",
+   "reflect",
    "flow",
-   null
+   "пачка событий, когда она свободна"
   ],
   [
    "conv",

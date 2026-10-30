@@ -53,6 +53,6 @@ def test_prompt_lists_every_tag_and_the_example():
 
 
 def test_classifier_decides_but_no_longer_recognizes_emotions():
-    assert "emotion" not in decide.EVENT_QUESTIONS and "emotion" not in decide.INPUT_QUESTIONS
+    assert "emotion" not in decide.INPUT_QUESTIONS
     assert not hasattr(decide, "EMOTION_OPTIONS")
     assert not hasattr(decide.parse_input({"intent": {"answer": "chat", "confidence": 0.9}}, 0.5), "emotion")

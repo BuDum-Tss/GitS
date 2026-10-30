@@ -12,7 +12,6 @@ import events_log
 import settings
 from attention import Attention, Question
 from conversation_io import Channel
-from decide import EVENT_QUESTIONS
 from environments.base import ToolError
 
 
@@ -127,149 +126,15 @@ def score_of(rig, kind="rimworld.raid", urgency=3, sender=None, addressed=None, 
     return rig.att._score(item, rig.cfg, rig.att._att(rig.cfg))
 
 
-def test_base_formula_is_urgency_times_twenty(rig):
-    s = score_of(rig)
-    assert s["priority"] == 60 and (s["w_profile"], s["w_sender"], s["w_rule"], s["w_user"], s["freshness"]) == (1, 1, 1, 1, 1)
-    assert score_of(rig, urgency=0)["priority"] == 0 and score_of(rig, urgency=5)["priority"] == 100
-
-
-def test_priority_is_clamped_to_100(rig):
-    rig.att.profiles = FakeProfiles({"rimworld.*": 3.0})
-    assert score_of(rig, urgency=5)["priority"] == 100
-
-
-def test_profile_weight_takes_the_longest_matching_pattern(tmp_path):
-    rig = Rig(tmp_path, weights={"*": 0.5, "rimworld.*": 1.5, "rimworld.raid": 2.0, "telegram.group": 0.4})
-    assert score_of(rig, "rimworld.raid")["w_profile"] == 2.0
-    assert score_of(rig, "rimworld.letter")["w_profile"] == 1.5
-    assert score_of(rig, "telegram.group")["w_profile"] == 0.4
-    assert score_of(rig, "desktop.window")["w_profile"] == 0.5
-    assert score_of(Rig(tmp_path), "rimworld.raid")["w_profile"] == 1.0           # профиль без весов
-
-
-def test_sender_weight(tmp_path):
-    rig = Rig(tmp_path, people={"tg:1": {"affinity": 60.0}, "tg:2": {"affinity": 59.9}, "Вася": {"affinity": -10}})
-    w = lambda sender: score_of(rig, "telegram.dm", sender=sender)["w_sender"]       # noqa: E731
-    assert w({"id": "tg:0", "is_owner": True}) == 1.5
-    assert w({"id": "tg:1", "name": "Маша"}) == 1.3                  # близость 0.6 и выше
-    assert w({"id": "tg:2"}) == 1.0                                  # известный человек
-    assert w({"id": "tg:9", "name": "Вася"}) == 1.0                  # известен по имени
-    assert w({"id": "tg:9", "name": "Незнакомец"}) == 0.8
-    assert w(None) == 1.0
-
-
-def test_rule_weight_boost_only_and_unmatched_events(rig):
-    rig.att.rules.add(module="telegram", kind=None, sender="мама", effect="only", minutes=30)
-    rig.att.rules.add(module=None, kind="desktop.*", sender=None, effect="boost", minutes=30)
-    w = lambda kind, name=None: score_of(rig, kind, sender={"id": "x", "name": name} if name else None)["w_rule"]   # noqa: E731
-    assert w("telegram.dm", "Мама") == 1.5
-    assert w("telegram.dm", "Аня") == 0.2 and w("telegram.group") == 0.2
-    assert w("rimworld.raid") == 1.0                                  # only с модулем не трогает другие модули
-    assert w("desktop.window") == 2.0
-    rig.att.rules.add(module=None, kind=None, sender="мама", effect="only", minutes=30)
-    assert w("rimworld.raid") == 0.2                                  # only без модуля: несовпавшие события всех модулей
-
-
-def test_user_weight_dnd_quiet_and_urgent_exception(rig):
-    rig.cfg["dnd"] = True
-    assert score_of(rig)["w_user"] == 0.3
-    assert score_of(rig, urgency=5, addressed=True)["w_user"] == 1.0   # срочное обращение к ней звучит
-    assert score_of(rig, urgency=5, addressed=False)["w_user"] == 0.3
-    assert score_of(rig, urgency=4, addressed=True)["w_user"] == 0.3
-    rig.cfg["dnd"], rig.cfg["quiet_until"] = False, rig.clock.t + 60
-    assert score_of(rig)["w_user"] == 0.3
-    rig.clock.t += 61
-    assert score_of(rig)["w_user"] == 1.0                              # таймер «не отвлекать» истёк
-
-
-def test_away_user_keeps_weight_but_marks_state(rig):
-    rig.idle = 601
-    s = score_of(rig)
-    assert s["w_user"] == 1.0 and s["away"] is True
-    rig.idle = 600
-    assert score_of(rig)["away"] is False
-
-
-def test_freshness_halves_every_half_life_by_kind(rig):
-    assert score_of(rig, "rimworld.raid", age=60)["freshness"] == pytest.approx(0.5)       # rimworld.*: 60 с
-    assert score_of(rig, "telegram.dm", age=900)["freshness"] == pytest.approx(0.5)        # telegram.*: 900 с
-    assert score_of(rig, "desktop.window", age=240)["freshness"] == pytest.approx(0.25)    # desktop.*: 120 с
-    assert score_of(rig, "montage.job", age=600)["freshness"] == pytest.approx(0.5)        # *.job: 600 с
-    assert score_of(rig, "echo.ping", age=300)["freshness"] == pytest.approx(0.5)          # *: 300 с
-    assert score_of(rig, "rimworld.raid", age=60)["priority"] == pytest.approx(30)
-
-
-def test_half_life_is_configurable(rig):
-    rig.cfg["attention"]["half_life"] = {"*": 10}
-    assert score_of(rig, "telegram.dm", age=10)["freshness"] == pytest.approx(0.5)
-
-
 def test_broken_attention_settings_fall_back_to_defaults(rig):
-    rig.cfg["attention"] = {"thresholds": [90, 10], "half_life": "ошибка", "interrupt_margin": "много"}
+    rig.cfg["attention"] = {"inbox": "ошибка", "interrupt_margin": "много"}
     a = rig.att._att(rig.cfg)
-    assert a["thresholds"] == [15, 35, 60, 85] and a["interrupt_margin"] == 15 and a["half_life"]["*"] == 300
+    assert a["inbox"] == {"min_interval_s": 60} and a["interrupt_margin"] == 15
 
 
 # ── решения ATT-10 на границах порогов ────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("p, d", [(0, "D0"), (14.99, "D0"), (15, "D1"), (34.99, "D1"), (35, "D2"), (59.99, "D2"),
-                                  (60, "D3"), (84.99, "D3"), (85, "D4"), (100, "D4")])
-def test_decision_thresholds(rig, p, d):
-    assert rig.att._decide(p, rig.att._att(rig.cfg), away=False) == d
-
-
-def test_thresholds_come_from_settings(rig):
-    rig.cfg["attention"]["thresholds"] = [10, 20, 30, 40]
-    assert rig.att._decide(25, rig.att._att(rig.cfg), False) == "D2" and rig.att._decide(40, rig.att._att(rig.cfg), False) == "D4"
-
-
-def test_d4_by_margin_over_a_non_idle_focus(rig):
-    att, a = rig.att, rig.att._att(rig.cfg)
-    assert att._decide(70, a, False) == "D3"                          # фокус idle: D3 не превращается в D4
-    att._push_focus("question", "q", "q", 45, True)
-    assert att._decide(59.9, a, False) == "D2"                        # меньше 60 в D4 не попадает вообще
-    assert att._decide(60, a, False) == "D3"                          # 60 > 45 + 15 неверно: граница включена в запас
-    assert att._decide(60.1, a, False) == "D4"                        # p >= 60 и p > priority фокуса + 15
-    att._push_focus("conversation", "разговор", "user", 90, True)
-    assert att._decide(84, a, False) == "D3"                          # 90 + 15 недостижимо, а 85 ещё нет
-    assert att._decide(85, a, False) == "D4"
-    rig.cfg["attention"]["interrupt_margin"] = 30                     # запас из настроек
-    att._focus.pop()
-    assert att._decide(70, rig.att._att(rig.cfg), False) == "D3" and att._decide(75.1, rig.att._att(rig.cfg), False) == "D4"
-
-
-def test_d2_to_d4_become_d1_when_user_is_away(rig):
-    a = rig.att._att(rig.cfg)
-    assert [rig.att._decide(p, a, away=True) for p in (10, 20, 40, 70, 95)] == ["D0", "D1", "D1", "D1", "D1"]
-
-
 # ── путь события: echo.ping с urgency_hint 1, 3, 5 (приёмка 2) ─────────────────────────────────────
-
-async def test_echo_ping_hints_1_3_5_give_d1_d3_d4_and_dnd_lowers(rig):
-    rig.modules.declare("echo", emits=[("echo.ping", 1)])
-    for hint, decision in ((1, "D1"), (3, "D3"), (5, "D4")):
-        d = await rig.submit("echo", urgency_hint=hint, addressed_to_me=False, text=f"Пинг {hint}")
-        assert d["decision"] == decision, hint
-    # возраст чуть больше нуля (как в живой работе) держит тройку под границей 60: D2
-    item = rig.att._make_item("echo", {"kind": "echo.ping", "text": "т", "urgency_hint": 3}, rig.clock.t - 1)
-    item.urgency = 3
-    s = rig.att._score(item, rig.cfg, rig.att._att(rig.cfg))
-    assert 59 < s["priority"] < 60 and rig.att._decide(s["priority"], rig.att._att(rig.cfg), False) == "D2"
-    # «не отвлекать»: тройка и пятёрка падают; пятёрка с обращением к ней звучит
-    rig.cfg["dnd"] = True
-    assert (await rig.submit("echo", urgency_hint=3, addressed_to_me=False, text="а"))["decision"] == "D1"
-    assert (await rig.submit("echo", urgency_hint=5, addressed_to_me=False, text="б"))["decision"] == "D1"
-    assert (await rig.submit("echo", urgency_hint=5, addressed_to_me=True, text="в"))["decision"] == "D4"
-
-
-async def test_decision_is_logged_with_every_multiplier(rig):
-    await rig.submit("echo", urgency_hint=3, addressed_to_me=False, text="Т" * 300)
-    rec = evt_log()[-1]
-    assert len(rec["text"]) <= 200
-    d = rec["data"]
-    assert (d["module"], d["event_kind"], d["urgency"], d["priority"], d["decision"]) == ("echo", "echo.ping", 3, 60.0, "D3")
-    assert {"w_profile", "w_sender", "w_rule", "w_user", "freshness", "classifier_ms", "item"} <= set(d)
-
 
 # ── правила до классификатора R1…R4 ───────────────────────────────────────────────────────────────
 
@@ -333,39 +198,29 @@ async def test_r3_mute_rule_sends_to_digest_without_classifier(tmp_path):
     assert d["rule"] is None and d["decision"] == "D4"
 
 
-async def test_r4_critical_declared_event_skips_classifier(tmp_path):
-    rig = Rig(tmp_path, StubDecider({"category": ans("spam")}))
-    rig.modules.declare("rimworld", emits=[("rimworld.raid", 5), ("rimworld.letter", 2)])
-    d = await rig.submit("rimworld", kind="rimworld.raid", text="Налёт!", urgency_hint=5)
-    assert d["rule"] == "R4" and d["urgency"] == 5 and d["decision"] == "D4" and rig.decider.calls == []
-    # подсказка 5, но модуль не объявлял такую срочность: обычный путь (с классификатором, он судит spam)
-    d = await rig.submit("rimworld", kind="rimworld.letter", text="Письмо", urgency_hint=5)
-    assert d["rule"] is None and rig.decider.calls and d["urgency"] == 0
-
-
 # ── склейка повторов ATT-6 ────────────────────────────────────────────────────────────────────────
 
 async def test_dedupe_key_merges_repeats_within_a_minute(rig):
-    await rig.submit("echo", urgency_hint=3, addressed_to_me=False, text="Пинг 1", dedupe_key="k")
+    await rig.submit("echo", urgency_hint=4, addressed_to_me=False, text="Пинг 1", dedupe_key="k")
     cand = rig.candidates()[0]
     assert "Пинг 1" in cand.text
     rig.clock.t += 30
-    assert await rig.submit("echo", urgency_hint=3, addressed_to_me=False, text="Пинг 2", dedupe_key="k") is not None
+    assert await rig.submit("echo", urgency_hint=4, addressed_to_me=False, text="Пинг 2", dedupe_key="k") is not None
     assert len(rig.candidates()) == 1
     item = next(iter(rig.att._items.values()))
     assert item.count == 2 and item.text == "Пинг 2"                 # счётчик и новый текст
     assert "Пинг 2" in cand.text and "повторилось 2 раз" in cand.text
     rig.clock.t += 61                                                 # прошла минута без повторов: новое событие
-    await rig.submit("echo", urgency_hint=3, addressed_to_me=False, text="Пинг 3", dedupe_key="k")
+    await rig.submit("echo", urgency_hint=4, addressed_to_me=False, text="Пинг 3", dedupe_key="k")
     assert len(rig.att._items) == 2
 
 
 async def test_dedupe_does_not_merge_after_the_event_was_spoken_or_across_modules(rig):
-    await rig.submit("echo", urgency_hint=3, addressed_to_me=False, text="Раз", dedupe_key="k")
+    await rig.submit("echo", urgency_hint=4, addressed_to_me=False, text="Раз", dedupe_key="k")
     await rig.play()
-    await rig.submit("echo", urgency_hint=3, addressed_to_me=False, text="Два", dedupe_key="k")
+    await rig.submit("echo", urgency_hint=4, addressed_to_me=False, text="Два", dedupe_key="k")
     assert len(rig.att._items) == 2                                   # первое уже озвучено
-    await rig.submit("other", urgency_hint=3, addressed_to_me=False, text="Три", dedupe_key="k")
+    await rig.submit("other", urgency_hint=4, addressed_to_me=False, text="Три", dedupe_key="k")
     assert len(rig.att._items) == 3
 
 
@@ -388,51 +243,6 @@ async def test_classifier_not_called_when_module_gives_hint_and_address(tmp_path
     assert rig.decider.calls == []
 
 
-async def test_classifier_called_for_people_texts_and_missing_hints(tmp_path):
-    rig = Rig(tmp_path, StubDecider(danger_answers))
-    await rig.submit("tg", urgency_hint=3, addressed_to_me=True, sender={"id": "tg:5", "name": "Маша"}, text="Привет")
-    await rig.submit("desktop", urgency_hint=2, text="Окно сменилось")         # addressed_to_me не задан
-    await rig.submit("desktop", addressed_to_me=False, text="Окно сменилось 2")      # нет подсказки срочности
-    assert len(rig.decider.calls) == 3
-    assert rig.decider.calls[0][1] == list(EVENT_QUESTIONS)
-
-
-async def test_urgency_is_max_of_hint_and_category(tmp_path):
-    rig = Rig(tmp_path, StubDecider({"category": ans("news", 0.9)}))          # новость: 1
-    assert (await rig.submit("tg", sender={"id": "a"}, urgency_hint=3, text="т"))["urgency"] == 3
-    rig.decider.answers = {"category": ans("danger", 0.5)}                   # опасность: 5
-    assert (await rig.submit("tg", sender={"id": "a"}, urgency_hint=1, text="т2"))["urgency"] == 5
-    rig.decider.answers = {"category": ans("routine", 0.9)}                  # рутина: 0, подсказка важнее
-    assert (await rig.submit("tg", sender={"id": "a"}, urgency_hint=2, text="т3"))["urgency"] == 2
-    rig.decider.answers = {"category": ans("question", 0.9)}                 # без подсказки берётся категория
-    assert (await rig.submit("tg", sender={"id": "a"}, text="т4"))["urgency"] == 3
-
-
-async def test_spam_gives_zero_regardless_of_hint(tmp_path):
-    rig = Rig(tmp_path, StubDecider({"category": ans("spam", 0.9)}))
-    d = await rig.submit("tg", sender={"id": "a"}, urgency_hint=4, text="Скидка 70%")
-    assert d["urgency"] == 0 and d["decision"] == "D0" and rig.candidates() == []
-
-
-async def test_low_confidence_answer_is_ignored(tmp_path):
-    rig = Rig(tmp_path, StubDecider({"category": ans("danger", 0.34), "addressed": ans("assistant", 0.1)}))
-    d = await rig.submit("tg", sender={"id": "a"}, urgency_hint=2, text="Что-то")
-    assert d["urgency"] == 2                                          # подсказка модуля, а не категория
-    rig.cfg["attention"]["min_conf_event"] = 0.3                      # порог в настройках
-    d = await rig.submit("tg", sender={"id": "a"}, urgency_hint=2, text="Что-то ещё")
-    assert d["urgency"] == 5
-
-
-async def test_classifier_sets_needs_reply_by_category_and_keeps_module_address(tmp_path):
-    rig = Rig(tmp_path, StubDecider({"category": ans("question", 0.9)}))
-    await rig.submit("tg", kind="tg.dm", sender={"id": "tg:8", "name": "Маша"}, reply_channel=CHAT, urgency_hint=3, text="Ответь мне")
-    item = next(iter(rig.att._items.values()))
-    assert item.needs_reply is True and item.addressed_to_me is None           # адресата классификатор не определяет
-    rig.att._items.clear()
-    await rig.submit("tg", kind="tg.dm", sender={"id": "tg:8", "name": "Маша"}, addressed_to_me=False, urgency_hint=3, text="Ответь мне 2")
-    assert next(iter(rig.att._items.values())).addressed_to_me is False       # значение модуля остаётся как есть
-
-
 async def test_unavailable_classifier_falls_back_to_hints_and_default_one(tmp_path):
     rig = Rig(tmp_path, StubDecider(None))                            # сервис не отвечает
     assert (await rig.submit("tg", sender={"id": "a"}, urgency_hint=4, text="т"))["urgency"] == 4
@@ -450,33 +260,6 @@ async def test_classifier_switch_in_settings(tmp_path):
     assert rig.decider.calls == [] and d["urgency"] == 2
 
 
-async def test_long_classifier_queue_skips_classifier_for_new_events(tmp_path):
-    rig = Rig(tmp_path, StubDecider(danger_answers))
-    rig.decider.gate = asyncio.Event()                                # классификатор «думает»
-    for i in range(20):
-        await rig.att.submit("tg", {"kind": "tg.dm", "text": f"т{i}", "sender": {"id": "a"}, "urgency_hint": 2})
-    await asyncio.sleep(0)
-    assert rig.att._cls_pending == 20 and len(rig.decider.calls) == 20
-    await rig.att.submit("tg", {"kind": "tg.dm", "text": "двадцать первый", "sender": {"id": "a"}})
-    await rig.att.submit("tg", {"kind": "tg.dm", "text": "двадцать второй", "sender": {"id": "a"}, "urgency_hint": 3})
-    assert len(rig.decider.calls) == 20                               # новые без классификатора
-    last = [d for d in rig.att.decisions][-2:]
-    assert [d["urgency"] for d in last] == [1, 3]                     # без подсказки 1, с подсказкой она
-    rig.decider.gate.set()
-    await rig.att.settle()
-    assert rig.att._cls_pending == 0
-
-
-async def test_classification_does_not_block_the_event_queue(tmp_path):
-    rig = Rig(tmp_path, StubDecider(danger_answers))
-    rig.decider.gate = asyncio.Event()
-    await asyncio.wait_for(rig.att.submit("tg", {"kind": "tg.dm", "text": "т", "sender": {"id": "a"}}), 1)   # submit вернулся
-    assert rig.att.last_decision is None                              # решения ещё нет: ждём ответа
-    rig.decider.gate.set()
-    await rig.att.settle()
-    assert rig.att.last_decision["urgency"] == 5
-
-
 # ── что делает решение ────────────────────────────────────────────────────────────────────────────
 
 async def test_d1_goes_to_digest_and_memorable_to_graph(rig):
@@ -489,13 +272,29 @@ async def test_d1_goes_to_digest_and_memorable_to_graph(rig):
     assert len(graph.items) == 1                                      # D0: даже memorable не попадает в граф
 
 
-async def test_d2_d3_make_fact_candidate_with_priority_and_expiry(rig):
-    await rig.submit("echo", urgency_hint=2, addressed_to_me=False, text="Пинг", expires_in_s=100, dedupe_key="k")
+async def test_urgency_4_and_5_make_fact_candidate_with_priority_and_expiry(rig):
+    await rig.submit("echo", urgency_hint=4, addressed_to_me=False, text="Пинг", expires_in_s=100, dedupe_key="k")
     cand = rig.candidates()[0]
-    assert (cand.mode, cand.priority, cand.expires - rig.clock.t, cand.source.startswith("attention:")) == ("fact", 40, 100, True)
+    assert (cand.mode, cand.priority, cand.expires - rig.clock.t, cand.source.startswith("attention:")) == ("fact", 80, 100, True)
     assert "Событие модуля «echo» (echo.ping): Пинг" in cand.text and cand.key == "attention:echo:k"
-    await rig.submit("echo", kind="echo.other", urgency_hint=3, addressed_to_me=False, text="Другое")
-    assert rig.candidates()[1].priority == 60 and rig.candidates()[1].expires - rig.clock.t == 600   # срок по умолчанию
+    await rig.submit("echo", kind="echo.other", urgency_hint=5, addressed_to_me=False, text="Другое")
+    assert rig.candidates()[1].priority == 100 and rig.candidates()[1].expires - rig.clock.t == 600   # срок по умолчанию
+
+
+async def test_urgency_below_4_waits_in_the_inbox_instead_of_speech(rig):
+    for u in (1, 2, 3):
+        d = await rig.submit("echo", kind=f"echo.u{u}", urgency_hint=u, addressed_to_me=False, text=f"Пинг {u}")
+        assert d["decision"] == "D1"
+    assert rig.candidates() == [] and rig.att.digest_counts() == {"echo": 3}
+    d = await rig.submit("echo", kind="echo.zero", urgency_hint=0, addressed_to_me=False, text="Пустяк")
+    assert d["decision"] == "D0" and rig.att.digest_counts() == {"echo": 3}
+
+
+async def test_address_to_her_is_spoken_and_waits_for_an_answer(rig):
+    d = await rig.submit("tg", kind="tg.dm", urgency_hint=1, addressed_to_me=True, text="Привет", sender={"id": "tg:5", "name": "Маша"})
+    assert d["decision"] == "D3" and d["urgency"] == 4
+    item = next(iter(rig.att._items.values()))
+    assert item.needs_reply and rig.candidates()
 
 
 async def test_d4_pushes_reaction_focus_and_pops_it_after_speech(rig):
@@ -522,27 +321,26 @@ async def test_reaction_focus_pops_when_candidate_expires_and_event_goes_to_dige
 
 
 async def test_reply_note_when_event_can_be_answered(tmp_path):
-    rig = Rig(tmp_path, StubDecider({"category": ans("question", 0.9), "needs_reply": ans("no", 0.5)}))
+    rig = Rig(tmp_path)
     rig.modules.declare("tg", title="Телеграм")
     await rig.submit("tg", kind="tg.dm", text="Ты скоро?", sender={"id": "tg:5", "name": "Маша"}, reply_channel=CHAT,
-                     urgency_hint=3, addressed_to_me=False)
+                     urgency_hint=3, addressed_to_me=True)
     fact = rig.candidates()[0].text
     assert "ответить через модуль «Телеграм»" in fact and "только если пользователь попросит" in fact
     await rig.submit("tg", kind="tg.dm", text="Ты скоро 2?", sender={"id": "tg:5", "name": "Маша"}, urgency_hint=3,
-                     addressed_to_me=False)                           # канала ответа нет
+                     addressed_to_me=True)                            # канала ответа нет
     assert "ответить" not in rig.candidates()[1].text
-    rig.decider.answers = {"category": ans("routine", 0.9), "needs_reply": ans("yes", 0.9)}
     await rig.submit("tg", kind="tg.news", text="Новость", sender={"id": "tg:5"}, reply_channel=CHAT, urgency_hint=0)
     assert rig.att.last_decision["decision"] == "D0" and len(rig.candidates()) == 2        # D0: озвучивать нечего
 
 
 # ── речь модулей ──────────────────────────────────────────────────────────────────────────────────
 
-async def test_module_speech_goes_through_the_same_scoring(rig):
+async def test_module_speech_is_spoken_by_default(rig):
     await rig.att.submit_speech("rimworld", {"text": "Борис уснул.", "mode": "verbatim", "key": "c"})
     cand = rig.candidates()[0]
     assert (cand.source, cand.mode, cand.text, cand.sticker, cand.priority, cand.key) == \
-        ("module:rimworld", "verbatim", "Борис уснул.", None, 40, "module:rimworld:c")
+        ("module:rimworld", "verbatim", "Борис уснул.", None, 80, "module:rimworld:c")
     assert cand.expires - rig.clock.t == 20                           # готовая реплика модуля живёт 20 с
     await rig.att.submit_speech("rimworld", {"text": "Налёт", "mode": "fact", "urgency_hint": 5, "expires_in_s": 15})
     hot = rig.candidates()[1]
@@ -551,10 +349,10 @@ async def test_module_speech_goes_through_the_same_scoring(rig):
     assert len(rig.candidates()) == 2
 
 
-async def test_module_speech_is_muted_dropped_in_dnd_and_weighted_by_profile(tmp_path):
-    rig = Rig(tmp_path, weights={"rimworld.*": 1.5})
+async def test_module_speech_is_muted_and_dropped_in_dnd(tmp_path):
+    rig = Rig(tmp_path)
     await rig.att.submit_speech("rimworld", {"text": "а", "mode": "verbatim"})
-    assert rig.candidates()[0].priority == 60                         # 40 * 1.5
+    assert rig.candidates()[0].priority == 80
     rig.cfg["dnd"] = True
     await rig.att.submit_speech("rimworld", {"text": "б", "mode": "verbatim"})
     assert len(rig.candidates()) == 1 and rig.att.digest_counts() == {"rimworld": 1}      # 18: в сводку
@@ -576,7 +374,7 @@ async def test_job_updates_done_failed_stage_and_waiting_user(rig):
     assert len(rig.att.decisions) == 1                                # вопрос задачи задаёт шина
     await rig.att.on_job_update("montage", {**base, "state": "done", "stage": "z", "text": "Готово: 48 секунд."})
     d = rig.att.last_decision
-    assert d["urgency"] == 3 and d["decision"] == "D3" and d["event_kind"] == "montage.job"
+    assert d["urgency"] == 4 and d["decision"] == "D3" and d["event_kind"] == "montage.job"
     fact = rig.candidates()[-1].text
     assert "Рендер" in fact and "выполнена" in fact and "48 секунд" in fact
     await rig.att.on_job_update("montage", {**base, "state": "done", "stage": "z"})
@@ -586,11 +384,10 @@ async def test_job_updates_done_failed_stage_and_waiting_user(rig):
     assert rig.candidates()[-1].priority == 80
 
 
-async def test_job_update_respects_mute_rule_and_job_half_life(rig):
+async def test_job_update_respects_mute_rule(rig):
     await rig.att.set_rule(kind="montage.*", effect="mute", minutes=5)
     await rig.att.on_job_update("montage", {"job_id": "j-1", "title": "Т", "state": "done"})
     assert rig.att.last_decision["rule"] == "R3" and rig.candidates() == []
-    assert rig.att._half_life("montage.job", rig.att._att(rig.cfg)) == 600
 
 
 # ── стек фокуса ATT-20…ATT-23 ─────────────────────────────────────────────────────────────────────
@@ -690,9 +487,9 @@ async def test_set_rule_requires_a_selector(rig):
 async def test_each_rule_effect_and_expiry(rig):
     text = await rig.att.set_rule(module="tg", kind="tg.dm", effect="boost", minutes=15)
     assert "Правило создано" in text and "boost" in text and "15 мин" in text
-    assert rig.att.rules.weight("tg", "tg.dm", None) == 2.0
+    assert rig.att.rules.stance("tg", "tg.dm", None) == "say"
     rig.clock.t += 15 * 60 + 1
-    assert rig.att.rules.weight("tg", "tg.dm", None) == 1.0 and rig.att.rules.active() == []
+    assert rig.att.rules.stance("tg", "tg.dm", None) is None and rig.att.rules.active() == []
     assert rig.att.rules_text() == "Временных правил внимания сейчас нет."
 
 
@@ -776,43 +573,6 @@ async def test_digest_sorted_by_priority(rig):
 async def fill_digest(rig, n=4, urgency=1, module="echo"):
     for i in range(n):
         await rig.submit(module, urgency_hint=urgency, addressed_to_me=False, text=f"факт {i}", kind=f"{module}.k{i}")
-
-
-async def test_digest_offered_when_focus_returns_to_idle_with_enough_important_entries(rig):
-    await fill_digest(rig, 4, urgency=1)                              # priority 20 < 25: в предложение не идут
-    await rig.att.on_user_input("привет")
-    rig.clock.t += 61
-    rig.att._focus_tick(rig.clock.t)
-    assert [c for c in rig.candidates() if c.source == "attention:digest"] == []
-    # три записи с priority 25 и выше
-    rig.cfg["attention"]["thresholds"] = [15, 50, 60, 85]
-    rig.att._digest.clear()
-    for i in range(4):
-        await rig.submit("echo", urgency_hint=2, addressed_to_me=False, text=f"факт {i}", kind=f"echo.k{i}")     # 40: D1
-    assert rig.att.digest_counts() == {"echo": 4}
-    await rig.att.on_user_input("привет 2")
-    rig.clock.t += 61
-    rig.att._focus_tick(rig.clock.t)
-    offers = [c for c in rig.candidates() if c.source == "attention:digest"]
-    assert len(offers) == 1 and offers[0].priority == 40 and offers[0].text.startswith("Накопилось:")
-    assert offers[0].mode == "fact" and offers[0].text.count("факт") == 4
-
-
-async def test_digest_offer_has_at_most_five_facts_and_only_once(rig):
-    rig.cfg["attention"]["thresholds"] = [15, 50, 60, 85]
-    for i in range(8):
-        await rig.submit("echo", urgency_hint=2, addressed_to_me=False, text=f"факт {i}", kind=f"echo.k{i}")
-    rig.att._digest["echo"][7]["priority"] = 49
-    await rig.att.on_user_input("привет")
-    rig.clock.t += 61
-    rig.att._focus_tick(rig.clock.t)
-    offer = [c for c in rig.candidates() if c.source == "attention:digest"][0]
-    assert offer.text.count("факт") == 5
-    await rig.att.on_user_input("снова")                             # снова разговор и тишина, но уже предлагали
-    rig.clock.t += 61
-    rig.att._focus_tick(rig.clock.t)
-    assert len([c for c in rig.candidates() if c.source == "attention:digest"]) == 1
-    assert rig.att.digest_counts() == {"echo": 8}                     # записи остались до attention.digest
 
 
 async def test_digest_not_offered_after_recent_own_remark(rig):
@@ -987,11 +747,11 @@ async def test_user_speaking_flag_goes_to_presence(rig):
 
 async def test_snapshot_for_dashboard(rig):
     await rig.att.set_rule(module="tg", effect="mute", minutes=30)
-    await rig.submit("echo", urgency_hint=2, addressed_to_me=False, text="Пинг")
+    await rig.submit("echo", urgency_hint=4, addressed_to_me=False, text="Пинг")
     snap = rig.att.snapshot()
     assert snap["rules"][0]["module"] == "tg" and snap["rules"][0]["minutes_left"] == 30
-    assert snap["queue"][0]["priority"] == 40 and snap["focus"][0]["kind"] == "idle" and snap["settings"]["classifier"]
-    assert snap["decisions"][-1]["decision"] == "D2"
+    assert snap["queue"][0]["priority"] == 80 and snap["focus"][0]["kind"] == "idle" and snap["settings"]["classifier"]
+    assert snap["decisions"][-1]["decision"] == "D3"
 
 
 async def test_event_path_without_classifier_is_fast(rig):
@@ -1097,36 +857,8 @@ async def test_tg14_duplicate_within_a_minute_is_not_registered_twice(rig):
     assert [c[0] for c in rel.calls] == ["ensure", "note"] and len(graph.items) == 1 and mem.facts == []
 
 
-async def test_tg14_stranger_weighs_08_only_for_the_first_message(rig):
-    tg14_rig(rig)
-    await rig.submit("telegram", kind="telegram.dm", text="т", urgency_hint=2, addressed_to_me=False, sender=MASHA)
-    assert rig.att.last_decision["w_sender"] == 0.8                          # профиль заведён этим событием: ещё «неизвестный»
-    await rig.submit("telegram", kind="telegram.dm", text="т2", urgency_hint=2, addressed_to_me=False, sender=MASHA)
-    assert rig.att.last_decision["w_sender"] == 1.0                          # теперь известный человек
-
-
 async def test_tg14_storage_failure_does_not_stop_the_event(rig):
     tg14_rig(rig, RecRel(fail=True))
     d = await rig.submit("telegram", kind="telegram.dm", text="т", urgency_hint=2, addressed_to_me=False, sender=MASHA)
     assert d["decision"] in ("D1", "D2", "D3", "D4")
 
-
-async def test_router_flags_silence_ordinary_events_but_never_critical_ones(tmp_path):
-    """decide это роутер: уверенное «не говорить» уводит обычное событие в сводку, критичное (срочность 4-5) не гасит."""
-    base = await Rig(tmp_path / "a", StubDecider({"category": ans("question")})).submit("tg", sender={"id": "a"}, text="Что с проектом?")
-    assert base["decision"] in ("D2", "D3", "D4")
-    quiet = await Rig(tmp_path / "b", StubDecider({"category": ans("question"), "speak": ans("no")})).submit(
-        "tg", sender={"id": "a"}, text="Что с проектом?")
-    assert quiet["decision"] == "D1" and quiet["routes"] == ["ignore"]
-    skipped = await Rig(tmp_path / "c", StubDecider({"category": ans("question"), "react": ans("no")})).submit(
-        "tg", sender={"id": "a"}, text="Что с проектом?")
-    assert skipped["decision"] == "D1"
-    loud = await Rig(tmp_path / "d", StubDecider({"category": ans("danger"), "react": ans("no"), "speak": ans("no")})).submit(
-        "tg", sender={"id": "a"}, text="Рейд!")
-    assert loud["decision"] != "D1" and loud["decision"] != "D0"
-
-
-async def test_router_act_flag_adds_the_reflex_route(tmp_path):
-    d = await Rig(tmp_path, StubDecider({"category": ans("question"), "act": ans("yes")})).submit(
-        "tg", sender={"id": "a"}, text="Что с проектом?")
-    assert "reflex" in d["routes"]

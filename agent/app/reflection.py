@@ -24,6 +24,8 @@ from domain import thoughts as thought_dom
 from domain.event import KIND_AFTER_CONVERSATION, KIND_IDLE, Event
 from domain.rules import EPISODE_KINDS
 
+from .inbox import BATCH_KIND
+
 logger = logging.getLogger("reflection")
 
 INTENT_KINDS = ("say", "do", "remind", "remember", "none")
@@ -141,6 +143,8 @@ class ReflectionService:
         base = self.context(event.text) if self.context else ""
         if event.kind == KIND_AFTER_CONVERSATION or event.kind.endswith(EPISODE_KINDS):
             system = f"{system}\n{p.get('after', '')}".strip()           # IMP-10: итог разговора или эпизода: настроение и вывод
+        elif event.kind == BATCH_KIND:
+            system = f"{system}\n{p.get('inbox', '')}".strip()           # пачка из входящей очереди: решить, что стоит слов
         elif event.kind == KIND_IDLE:
             system = f"{system}\n{p.get('idle', '')}".strip()            # размышление в простое: осмыслить события, ничего не говорить
         notes: list[str] = []

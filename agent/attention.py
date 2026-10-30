@@ -40,8 +40,6 @@ from app.attention_core import (  # noqa: F401  (прежние имена мо�
     ANNOUNCE_DEFAULT_URGENCY,
     CONVERSATION_FOCUS_P,
     CONVERSATION_P,
-    DEFAULT_HALF_LIFE,
-    DEFAULT_THRESHOLDS,
     FOCUS_DEPTH,
     PROACTIVE_P,
     QUESTION_ANNOUNCE_P,
@@ -61,14 +59,14 @@ from app.attention_core import (  # noqa: F401  (прежние имена мо�
 from app.decision_log import DecisionLog
 from app.digest import Digest
 from app.dispatcher import Dispatcher
-from app.event_classifier import EventClassifier
+from app.inbox import Inbox
+from app.input_classifier import InputClassifier
 from app.focus_stack import FocusStack
 from app.items import ItemStore, event_fact, event_of
 from app.jobs import JobTracker
 from app.normalizer import Normalizer
 from app.process_event import EventPipeline, HardRules
 from app.questions import QuestionService
-from app.scorer import Scorer
 from app.speech_coordinator import SpeechCoordinator
 from attention_rules import FILE_NAME as RULES_FILE
 from attention_rules import RuleStore
@@ -130,7 +128,6 @@ class Attention:
     _digest = _Via("digest_", "buffers")
     _focus = _Via("focus_", "stack")
     _reaction_focus = _Via("focus_", "reaction_focus")
-    _cls_pending = _Via("classifier", "pending")
     _job_states = _Via("jobs", "states")
     _announces = _Via("announcer", "recent")
     _question_channel = _Via("questions", "channel")   # куда доставлен вопрос (ответ принимается правилом R2)
@@ -166,14 +163,14 @@ class Attention:
         self.store.speech = self.digest_.speech = self.focus_.speech = self.coordinator
         self.store.digest = self.focus_.digest = self.digest_
         self.decision_log = DecisionLog(ctx)
-        self.scorer = Scorer(ctx, self.focus_)
-        self.dispatcher = Dispatcher(ctx, self.scorer, self.digest_, self.coordinator, self.focus_, self.decision_log)
-        self.classifier = EventClassifier(ctx, self.dispatcher)
+        self.dispatcher = Dispatcher(ctx, self.digest_, self.coordinator, self.focus_, self.decision_log)
+        self.classifier = InputClassifier(ctx)
+        self.inbox = Inbox(ctx, self.digest_, self.focus_, self.coordinator)
         self.questions = QuestionService(ctx, self.coordinator, self.focus_)
         self.announcer = Announcer(ctx, self.store, self.digest_, self.coordinator, self.decision_log)
         self.normalizer = Normalizer(ctx)
         self.hard_rules = HardRules(ctx, self.dispatcher, self.decision_log, self.questions)
-        self.pipeline = EventPipeline(ctx, self.normalizer, self.store, self.hard_rules, self.classifier, self.dispatcher,
+        self.pipeline = EventPipeline(ctx, self.normalizer, self.store, self.hard_rules, self.dispatcher,
                                       self.announcer, self.decision_log)
         self.jobs = JobTracker(ctx, self.store, self.dispatcher)
 
@@ -222,6 +219,7 @@ class Attention:
             self._last_purge = now
             if self.rules.purge():
                 await asyncio.to_thread(self.rules.save)
+        self.inbox.tick(now)
         await self.coordinator.pump()
 
     def _att(self, cfg: dict | None = None) -> dict:
@@ -415,18 +413,6 @@ class Attention:
 
     def _note_sender(self, item: Item, *, skip_memory: bool) -> None:
         self.normalizer.note_sender(item, skip_memory=skip_memory)
-
-    def _apply_classification(self, item: Item, cls: decide.EventClass | None, declared: int | None) -> None:
-        self.classifier.apply(item, cls, declared)
-
-    def _score(self, item: Item, cfg: dict, att: dict) -> dict:
-        return self.scorer.score(item, cfg, att)
-
-    def _decide(self, priority: float, att: dict, away: bool) -> str:
-        return self.scorer.decide(priority, att, away)
-
-    def _half_life(self, kind: str, att: dict) -> float:
-        return self.scorer.half_life(kind, att)
 
     def _fact(self, item: Item) -> str:
         return event_fact(self.ctx, item)

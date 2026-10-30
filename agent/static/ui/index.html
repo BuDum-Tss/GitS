@@ -156,11 +156,8 @@
               <label class="flex items-center gap-1 text-sm ml-auto" title="Классификатор (сервис decider) подсказывает важность событий и намерение обращений; выключен: только подсказки модулей"><span>Классификатор</span><input id="att-classifier" type="checkbox" class="toggle toggle-sm"></label>
             </div>
             <div class="flex flex-wrap items-center gap-2 mt-2 text-xs">
-              <span class="opacity-70" title="Приоритет события 0-100: ниже 1-го порога выбрасывается, до 2-го уходит в сводку, до 3-го говорит при случае, до 4-го скоро, выше прерывает">Пороги решений</span>
-              <input id="att-th-0" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
-              <input id="att-th-1" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
-              <input id="att-th-2" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
-              <input id="att-th-3" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
+              <span class="opacity-70" title="Как часто накопившиеся события (входящая очередь) отдаются ей на обдумывание, в секундах">пачка событий не чаще, с</span>
+              <input id="att-inbox" type="number" min="10" max="3600" class="input input-bordered input-xs w-16">
               <span class="opacity-70" title="На сколько приоритет нового события должен превышать приоритет текущего фокуса, чтобы прервать">запас прерывания</span>
               <input id="att-margin" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
               <span id="att-msg" class="text-error"></span>
@@ -1143,7 +1140,7 @@ async function loadAttention() {
   $('att-digest').textContent = digest ? `В сводке накопилось: ${digest}. Спроси «что я пропустила?».` : 'Сводка пуста.';
   if (!typing) {
     $('att-classifier').checked = !!s.classifier;
-    (s.thresholds || []).forEach((v, i) => { $('att-th-' + i).value = v; });
+    $('att-inbox').value = (s.inbox || {}).min_interval_s ?? '';
     $('att-margin').value = s.interrupt_margin ?? '';
   }
   const html = (a.rules || []).map(r => `<li class="flex items-center justify-between gap-2 border border-base-300 rounded px-2 py-1">
@@ -1154,12 +1151,7 @@ async function loadAttention() {
   if (ATT.sig !== html) { ATT.sig = html; $('att-rules').innerHTML = html; }
 }
 $('att-classifier').onchange = e => post('/api/settings', {attention: {classifier: e.target.checked}});
-const attThresholds = () => {
-  const th = [0, 1, 2, 3].map(i => parseFloat($('att-th-' + i).value));
-  if (th.some(x => Number.isNaN(x)) || th.some((x, i) => i && x < th[i - 1])) { $('att-msg').textContent = 'Пороги: четыре числа по возрастанию'; return; }
-  $('att-msg').textContent = ''; post('/api/settings', {attention: {thresholds: th}});
-};
-[0, 1, 2, 3].forEach(i => { $('att-th-' + i).onchange = attThresholds; });
+$('att-inbox').onchange = e => { const v = parseFloat(e.target.value); if (!Number.isNaN(v) && v >= 10) post('/api/settings', {attention: {inbox: {min_interval_s: v}}}); };
 $('att-margin').onchange = e => { const v = parseFloat(e.target.value); if (!Number.isNaN(v) && v >= 0) post('/api/settings', {attention: {interrupt_margin: v}}); };
 $('att-rules').addEventListener('click', async e => {
   const el = e.target.closest('[data-att-clear]'); if (!el) return;

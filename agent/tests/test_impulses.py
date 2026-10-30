@@ -112,8 +112,7 @@ async def test_timer_waits_for_nearest_deadline_and_rearms_on_add(tmp_path):
 # ── правила маршрута think (domain) ───────────────────────────────────────────
 
 def route(**kw):
-    base = dict(origin="external", kind="echo.ping", decision="D1", urgency=1, priority=30.0, memorable=False,
-                needs_reply=False, spoken=False)
+    base = dict(origin="external", kind="echo.ping")
     base.update(kw)
     return rules.think_route(**base)
 
@@ -121,13 +120,10 @@ def route(**kw):
 def test_think_route_rules():
     assert route(origin="self", kind="self.reminder", decision="D0")           # напоминание себе всегда думается
     assert not route(origin="self", kind="self.thought")                        # мысль не рождает мысль
-    assert route(kind="x.episode.summary", decision="D3", urgency=3)            # итог эпизода
-    assert route(decision="D2", priority=40)                                    # значимое без срочности
-    assert route(decision="D1", priority=10, memorable=True)
-    assert route(decision="D1", priority=5, needs_reply=True)                   # вопрос без ответа
-    assert not route(decision="D1", priority=5)                                 # мелочь
-    assert not route(decision="D3", priority=70, urgency=3)                     # решено говорить: не размышление
-    assert not route(decision="D2", urgency=5, priority=90)
+    assert route(origin="self", kind="self.after_conversation")                 # итог разговора
+    assert route(kind="x.episode.summary")                                      # итог эпизода
+    assert not route(kind="echo.ping")                                          # обычное событие копится во входящей очереди
+    assert not route(kind="echo.ping", memorable=True, priority=90)
 
 
 # ── ReflectionService ─────────────────────────────────────────────────────────
@@ -319,12 +315,12 @@ async def test_external_event_is_not_thought_about_without_attached_reflection(t
     assert rig.att.last_decision.get("route") is None
 
 
-async def test_significant_low_urgency_event_is_also_thought_about(tmp_path):
+async def test_ordinary_event_is_not_thought_about_one_by_one(tmp_path):
     rig = Rig(tmp_path)
     spy = Spy()
     rig.att.attach_reflection(spy)
     await rig.submit("echo", urgency_hint=1, addressed_to_me=False, memorable=True)
-    assert [e.origin for e in spy.events] == ["external"]
+    assert spy.events == [] and rig.att.digest_counts() == {"echo": 1}         # оно ждёт во входящей очереди
 
 
 async def test_reflection_speech_is_queued_as_fact_when_not_quiet(tmp_path):

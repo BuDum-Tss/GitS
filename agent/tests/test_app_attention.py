@@ -1,7 +1,7 @@
 """Компоненты менеджера внимания (ТЗ 29, ARC-4, шаг R3): `agent/app/*` и `domain/dedupe.py` по отдельности, плюс проверка,
 что фасад `Attention` и компоненты делят одно состояние. Классификатор подменён заглушкой, часы фиктивные, без сети."""
 import pytest
-from test_attention import Rig, StubDecider, ans
+from test_attention import Rig
 
 from app.attention_core import Item
 from attention import Attention, Question
@@ -94,7 +94,7 @@ async def test_focus_stack_depth_and_expiry(tmp_path):
 
 def test_job_tracker_describes_states(tmp_path):
     jobs = Rig(tmp_path).att.jobs
-    assert jobs.describe("m", {"title": "Т"}, "done", None) == (3, "Задача «Т» (модуль m) выполнена.")
+    assert jobs.describe("m", {"title": "Т"}, "done", None) == (4, "Задача «Т» (модуль m) выполнена.")
     urgency, text = jobs.describe("m", {"title": "Т", "error": {"message": "упала"}}, "failed", None)
     assert urgency == 4 and "упала" in text
     assert jobs.describe("m", {"title": "Т"}, "running", "s1") == (1, "Задача «Т» (модуль m): состояние running, стадия s1.")
@@ -116,26 +116,24 @@ def test_normalizer_item_and_owner_address(tmp_path):
     assert item.urgency_hint == 2 and item.expires == 1030.0 and norm.is_owner_address(item)
     assert not norm.is_owner_address(norm.make_item("tg", {"kind": "tg.msg", "text": "x"}, 1000.0))
     item, mode, ttl = norm.make_speech_item("echo", {"mode": "verbatim", "expires_in_s": 5}, "готово", 1000.0)
-    assert (mode, ttl, item.kind, item.urgency) == ("verbatim", 5.0, "echo.say", 2)
+    assert (mode, ttl, item.kind, item.urgency) == ("verbatim", 5.0, "echo.say", 4)
 
 
-def test_classifier_apply_spam_and_hint(tmp_path):
-    from decide import EventClass
-    apply = Rig(tmp_path).att.classifier.apply
+def test_assign_urgency_takes_hint_then_manifest_and_address_raises_to_say(tmp_path):
+    assign = Rig(tmp_path).att.normalizer.assign_urgency
     item = _item(urgency=None, urgency_hint=3)
-    apply(item, EventClass(category="spam", category_conf=0.9), None)
-    assert item.urgency == 0 and item.data["category"] == "spam"
+    assign(item, 5)
+    assert item.urgency == 3 and not item.needs_reply                 # подсказка события важнее манифеста
     item = _item(urgency=None)
-    apply(item, None, 4)
-    assert item.urgency == 4 and not item.needs_reply
-
-
-async def test_pipeline_classifies_in_background_and_counts_pending(tmp_path):
-    rig = Rig(tmp_path, decider=StubDecider(None))
-    await rig.att.submit("echo", {"kind": "echo.ping", "text": "Привет", "sender": {"id": "7", "name": "Вася"}})
-    await rig.att.settle()
-    assert rig.att.classifier.pending == 0 and rig.att.last_decision["module"] == "echo"
-    assert ans("x")["answer"] == "x"
+    assign(item, 2)
+    assert item.urgency == 2
+    item = _item(urgency=None)
+    assign(item, None)
+    assert item.urgency == 1                                          # ничего не объявлено: единица
+    item = _item(urgency=None, urgency_hint=1)
+    item.addressed_to_me = True
+    assign(item, None)
+    assert item.urgency == 4 and item.needs_reply                     # обращение к ней: сказать и ждать ответа
 
 
 async def test_questions_service_uses_shared_focus(tmp_path):
