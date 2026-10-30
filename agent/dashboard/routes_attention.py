@@ -53,6 +53,14 @@ async def handle_api_workspace_exit(request: web.Request) -> web.Response:
     return web.json_response(res, status=200 if res.get("ok") else 409)
 
 
+async def handle_api_buffer(request: web.Request) -> web.Response:
+    """Буфер событий для вкладки «Состояние»: очередь с весами, история исходов (в очереди, в контексте, сказано, выброшено,
+    вытеснено), последние пачки и причина, по которой следующая пачка пока не ушла."""
+    if ctx.attention is None:
+        return web.json_response({"queue": [], "history": [], "batches": [], "inbox": {}, "now": 0})
+    return web.json_response(ctx.attention.buffer_view())
+
+
 async def handle_api_attention(request: web.Request) -> web.Response:
     """Правила, очередь речи, стек фокуса, сводка, последние решения и настройки внимания."""
     if ctx.attention is None:
@@ -97,6 +105,7 @@ async def handle_api_notify(request: web.Request) -> web.Response:
 
 ROUTES = [
     ("GET", "/api/attention", handle_api_attention),
+    ("GET", "/api/buffer", handle_api_buffer),
     ("POST", "/api/attention/rules/clear", handle_api_attention_clear),
     ("GET", "/api/workspace", handle_api_workspace),
     ("POST", "/api/workspace/enter", handle_api_workspace_enter),

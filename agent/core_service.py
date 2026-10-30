@@ -157,6 +157,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         goal = f" Цель: {workspaces.goal}." if workspaces.goal else ""
         return f"Ты сейчас в среде «{spec.title if spec else ws}».{goal}" + (f" Сводка: {summary}." if summary else "")
     companion.environment_note = environment_note
+    companion.events_block = attention.context_events        # ждущие события очереди видны в контексте ответа
     companion.module_notes = modules.notes                # что умеют подключённые модули и в каком они состоянии
     companion.idle_seconds = lambda: float(desktop_state(modules).get("idle_s") or 0.0)     # простой (ТЗ 14, DESK-7)
     companion.screen_activity = lambda: desktop_state(modules).get("activity")              # активность экрана (DESK-7)

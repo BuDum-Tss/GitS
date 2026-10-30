@@ -33,8 +33,8 @@ class ContextBuilder:
         lines += ["- " + self._short(note) for note in h.module_notes()]
         lines.append("- Помощник Claude (Клод): сложные задачи на компьютере (программы, файлы, код, команды, интернет, анализ); "
                      "разрешение на изменения он спрашивает сам.")
-        lines.append("- Состояние модулей и их недавние события в контекст не входят: узнавай инструментами "
-                     "core.modules_status и core.module_events.")
+        lines.append("- Состояние модулей в контекст не входит: узнавай инструментом core.modules_status; ждущие события "
+                     "идут отдельным блоком ниже, полный журнал событий модулей это core.module_events.")
         status = h._memory_reader.graph_status()
         if status is not None:
             lines.append("- " + status)
@@ -57,6 +57,17 @@ class ContextBuilder:
         """Где она сейчас, если не в среде assistant: среда, цель и сводка её модуля (только текущей среды; остальное по запросу)."""
         try:
             return self._h.environment_note() or ""
+        except Exception:
+            return ""
+
+    def events_block(self) -> str:
+        """Ждущие события входящей очереди (самые весомые): так видно, на что она может отреагировать, и это же видно в кнопке
+        «Контекст» у реплики. Источник ставит ядро (`Companion.events_block`); без него блока нет."""
+        provider = getattr(self._h, "events_block", None)
+        if provider is None:
+            return ""
+        try:
+            return provider() or ""
         except Exception:
             return ""
 
@@ -114,6 +125,9 @@ class ContextBuilder:
         env = self.environment_note()
         if env:
             blocks.append(("environment", env))
+        events = self.events_block()
+        if events:
+            blocks.append(("events", events))
         if h._self_block and not skip_memory:
             blocks.append(("self", h._self_block))
         if h._graph_block and not skip_memory:

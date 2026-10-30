@@ -51,6 +51,7 @@ class Dispatcher:
         """Что происходит по решению (ATT-10)."""
         ctx = self.ctx
         if decision == "D0":
+            self.digest.note(item, "dropped")
             return
         if item.memorable and not item.memory_done:
             ctx.writer.enqueue_for_graph(ctx.sender_name(item.sender) or item.module, item.text)
@@ -61,6 +62,7 @@ class Dispatcher:
         ttl = (item.expires - ctx.clock()) if item.expires is not None else 600.0
         if ttl <= 0:
             return
+        self.digest.note(item, "said")
         self.speech.speech.new(source=f"attention:{item.id}", mode="fact", text=event_fact(ctx, item),
                                priority=int(round(item.priority)), ttl=ttl, key=key, item_id=item.id)
         if decision == "D4":

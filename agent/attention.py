@@ -326,6 +326,20 @@ class Attention:
                 "focus": [{"id": f.id, "kind": f.kind, "topic": f.topic, "priority": f.priority} for f in self._focus],
                 "digest": self.digest_counts(), "decisions": list(self.decisions)[-20:], "settings": self._att()}
 
+    def buffer_view(self) -> dict:
+        """Вкладка «Состояние», буфер событий: очередь с весами, история исходов, последние пачки и когда уйдёт следующая."""
+        now = self._clock()
+        view = self.digest_.view(now)
+        blocker = self.inbox.blocker(now)
+        view["inbox"] = {"blocker": blocker, "ready": not blocker, "min_interval_s": self._att().get("inbox", {}).get("min_interval_s", 60),
+                         "last_batch_ago_s": round(now - self.inbox.last_wake, 1) if self.inbox.last_wake else None}
+        view["now"] = now
+        return view
+
+    def context_events(self, limit: int = 6) -> str:
+        """Самые весомые ждущие события для контекста ответа (не забирает их из очереди)."""
+        return self.digest_.peek(limit)
+
     # ── обращения пользователя ───────────────────────────────────────────────
 
     @staticmethod

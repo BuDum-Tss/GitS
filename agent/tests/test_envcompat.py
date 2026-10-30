@@ -69,8 +69,8 @@ def test_no_old_names_left_in_code():
     hits = []
     for folder in CODE_DIRS:
         for path in (ROOT / folder).rglob("*.py"):
-            if "__pycache__" in path.parts or path in allowed or path.name == "envcompat.py":
-                continue
+            if "__pycache__" in path.parts or ".venv" in path.parts or path in allowed or path.name == "envcompat.py":
+                continue                                  # .venv: чужой код установленных пакетов (у служб своё окружение внутри репозитория)
             if pattern.search(path.read_text(encoding="utf-8")):
                 hits.append(str(path.relative_to(ROOT)))
     assert hits == [], f"старые имена переменных в коде: {hits}"

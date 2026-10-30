@@ -22,29 +22,40 @@ class Inbox:
     def _entries(self) -> list[dict]:
         return self.digest.entries
 
-    def ready(self, now: float) -> bool:
+    def blocker(self, now: float) -> str:
+        """Почему пачка сейчас не уходит модели (пустая строка: можно). Для вкладки «Состояние»."""
         ctx = self.ctx
         cfg = ctx.settings()
         inbox = ctx.att(cfg).get("inbox") or {}
-        if ctx.on_think is None or now - self.last_wake < float(inbox.get("min_interval_s", 60.0)):
-            return False
+        if ctx.on_think is None:
+            return "размышление не подключено"
         entries = self._entries()
         if not entries:
-            return False
+            return "очередь пуста"
         if not (len(entries) >= MANY_ITEMS or any(e["priority"] >= NOTABLE_URGENCY * 20 for e in entries)):
-            return False
-        if self.focus.top().kind in ("conversation", "question") or ctx.quiet(cfg):
-            return False
-        if ctx.idle() > ctx.att(cfg)["away_after_s"] or self.speech.speech.busy():
-            return False
-        return True
+            return "ничего заметного: мелочь копится"
+        wait = float(inbox.get("min_interval_s", 60.0)) - (now - self.last_wake)
+        if wait > 0:
+            return f"пауза между пачками, ещё {int(wait) + 1} с"
+        if self.focus.top().kind in ("conversation", "question"):
+            return "идёт разговор или вопрос"
+        if ctx.quiet(cfg):
+            return "«не отвлекать»"
+        if ctx.idle() > ctx.att(cfg)["away_after_s"]:
+            return "пользователь отошёл"
+        if self.speech.speech.busy():
+            return "звучит речь"
+        return ""
+
+    def ready(self, now: float) -> bool:
+        return not self.blocker(now)
 
     def tick(self, now: float) -> bool:
         """Если пора, отдать накопившееся размышлению. True, если пачка ушла."""
         if not self.ready(now):
             return False
         self.last_wake = now
-        text = self.digest.take(limit=BATCH_MAX)
+        text = self.digest.take(limit=BATCH_MAX, via="batch")
         item = Item(id="inbox-" + str(int(now * 1000)), module="inbox", kind=BATCH_KIND, text=text, data={}, sender=None,
                     reply_channel=None, addressed_to_me=False, urgency=2, needs_reply=False, memorable=False, created=now,
                     expires=None, dedupe_key=None, urgency_hint=2, updated=now)
