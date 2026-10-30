@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ассистент</title>
-<!-- UI-кит: Tailwind (play CDN) + daisyUI 4. Сборки нет, всё подгружается по CDN. -->
+<!-- UI-кит: Tailwind (собран локально в vendor/tailwind.css, `agent/tools/build_ui_css.ps1`) + daisyUI 4 (CDN). Пока Tailwind брался с CDN, при его недоступности пропадала вся раскладка. -->
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css">
-<script src="https://cdn.tailwindcss.com"></script>
+<link href="/static/ui/vendor/tailwind.css" rel="stylesheet" type="text/css">
 <style>
   html, body { height: 100%; }
   .scroll-y { overflow-y: auto; }
