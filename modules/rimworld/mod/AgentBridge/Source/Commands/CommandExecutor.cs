@@ -27,6 +27,7 @@ namespace AgentBridge
             "clear_work_queue", "add_bill", "cancel_bill", "order_tame", "order_slaughter", "open_tab",
             "set_work_priority", "set_manual_priorities", "set_schedule", "set_schedule_range", "set_medical_care", "research",
             "look_at", "forbid", "unforbid",   // осмотр клетки и запрет предмета: камера тоже едет туда
+            "ui_category", "ui_designator", "ui_place", "ui_drag",   // шаги «Архитектора»: курсор едет к месту, шаг виден
         };
 
         public static void ProcessQueue()
@@ -145,6 +146,15 @@ namespace AgentBridge
                 case "camera_jump":        return CameraJump(cmd);
                 case "camera_follow":      return CameraFollow(cmd);
                 case "open_tab":           return OpenTab(cmd);
+                case "ui_state":           return UiState();
+                case "ui_category":        return UiCategory(cmd);
+                case "ui_designator":      return UiDesignator(cmd);
+                case "ui_place":           return UiPlace(cmd);
+                case "ui_drag":            return UiDrag(cmd);
+                case "ui_cancel":          return UiCancel();
+                case "ui_assign":          return UiAssign(cmd);
+                case "ui_letter":          return UiLetter(cmd);
+                case "ui_quest":           return UiQuest(cmd);
                 case "select":             return SelectTarget(cmd);
                 case "set_auto_camera":    AutoCamera = cmd["enabled"]?.Value<bool>() ?? true; break;
                 case "set_agent_camera":   UserCamera.AgentHasCamera = cmd["enabled"]?.Value<bool>() ?? true; break;

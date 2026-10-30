@@ -1,3 +1,4 @@
+using System.Linq;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -32,19 +33,40 @@ namespace AgentBridge
         /// (игра сама двигает камеру). Сдвиг за кадр при медленной прокрутке и шаге колеса меньше порогов `MoveEpsilon` и
         /// `SizeEpsilon`, поэтому по одному сдвигу его не заметить, и агент каждый кадр тянул камеру обратно (колесо «не работало»,
         /// движение шло рывками).
+        // Колесо мыши читаем рефлексией: загрузчик модов RimWorld не находит сборку UnityEngine.InputLegacyModule при прямой
+        // ссылке (FileNotFoundException при первом вызове), а в процессе игры она загружена.
+        private static System.Reflection.PropertyInfo _scrollProp;
+        private static bool _scrollTried;
+
+        private static float ScrollDelta()
+        {
+            if (!_scrollTried)
+            {
+                _scrollTried = true;
+                try
+                {
+                    var asm = System.AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "UnityEngine.InputLegacyModule");
+                    _scrollProp = asm?.GetType("UnityEngine.Input")?.GetProperty("mouseScrollDelta");
+                }
+                catch (System.Exception) { }
+            }
+            try { return _scrollProp == null ? 0f : ((Vector2)_scrollProp.GetValue(null, null)).y; }
+            catch (System.Exception) { return 0f; }
+        }
+
         public static bool UserInput()
         {
             try
             {
-                if (Mathf.Abs(Input.mouseScrollDelta.y) > 0.01f) return true;
+                if (Mathf.Abs(ScrollDelta()) > 0.01f) return true;
                 if (KeyBindingDefOf.MapDolly_Left.IsDown || KeyBindingDefOf.MapDolly_Right.IsDown ||
                     KeyBindingDefOf.MapDolly_Up.IsDown || KeyBindingDefOf.MapDolly_Down.IsDown ||
                     KeyBindingDefOf.MapZoom_In.IsDown || KeyBindingDefOf.MapZoom_Out.IsDown) return true;
                 if (Prefs.EdgeScreenScroll && Application.isFocused)
                 {
-                    var m = Input.mousePosition;
+                    var m = UI.MousePositionOnUIInverted;          // y сверху, как в экране игры
                     const float edge = 2f;
-                    if (m.x <= edge || m.y <= edge || m.x >= Screen.width - edge || m.y >= Screen.height - edge) return true;
+                    if (m.x <= edge || m.y <= edge || m.x >= UI.screenWidth - edge || m.y >= UI.screenHeight - edge) return true;
                 }
             }
             catch (System.Exception) { }

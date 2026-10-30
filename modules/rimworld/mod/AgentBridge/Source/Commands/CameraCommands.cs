@@ -28,7 +28,7 @@ namespace AgentBridge
 
         private static readonly Dictionary<string, string> TabAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["work"] = "Work", ["restrict"] = "Restrict", ["schedule"] = "Restrict", ["assign"] = "Assign", ["medical"] = "Assign",
+            ["work"] = "Work", ["restrict"] = "Schedule", ["schedule"] = "Schedule", ["assign"] = "Assign", ["medical"] = "Assign",
             ["animals"] = "Animals", ["wildlife"] = "Wildlife", ["history"] = "History", ["architect"] = "Architect",
             ["research"] = "Research", ["inspect"] = "Inspect", ["menu"] = "Menu", ["quests"] = "Quests", ["factions"] = "Factions",
         };
@@ -37,12 +37,12 @@ namespace AgentBridge
         private static readonly Dictionary<string, string> RequiredTab = new Dictionary<string, string>
         {
             ["set_work_priority"] = "Work", ["set_manual_priorities"] = "Work",
-            ["set_schedule"] = "Restrict", ["set_schedule_range"] = "Restrict",
+            ["set_schedule"] = "Schedule", ["set_schedule_range"] = "Schedule",
             ["set_medical_care"] = "Assign", ["research"] = "Research",
         };
         private static readonly Dictionary<string, string> TabTool = new Dictionary<string, string>
         {
-            ["Work"] = "work", ["Restrict"] = "schedule", ["Assign"] = "assign", ["Research"] = "research",
+            ["Work"] = "work", ["Schedule"] = "schedule", ["Assign"] = "assign", ["Research"] = "research",
         };
 
         /// Запрет: окно-зависимая команда без открытого окна. Подсказывает правильную последовательность.
@@ -157,6 +157,8 @@ namespace AgentBridge
         {
             var defName = TabAliases.TryGetValue(name, out var mapped) ? mapped : name;
             var def = DefDatabase<MainButtonDef>.GetNamedSilentFail(defName)
+                ?? DefDatabase<MainButtonDef>.AllDefsListForReading.FirstOrDefault(d => d.defName.IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0
+                    || d.defName.IndexOf(defName, StringComparison.OrdinalIgnoreCase) >= 0)
                 ?? throw new Exception($"нет вкладки «{name}». Есть: {string.Join(", ", TabAliases.Keys)}");
             Find.MainTabsRoot.SetCurrentTab(def, false);
             if (auto) { _openedTab = def; _closeTabAt = Time.realtimeSinceStartup + seconds; }

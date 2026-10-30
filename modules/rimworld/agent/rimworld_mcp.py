@@ -1215,6 +1215,40 @@ def camera_move(dx: int, dz: int) -> str:
 
 
 @mcp.tool()
+def ui_state() -> str:
+    """Состояние интерфейса игры текстом: какая вкладка открыта и что на ней (Архитектор: категории и постройки; Работа:
+    приоритеты; Исследования; Животные; Области; Назначения: питание, лекарства, одежда), выбранный инструмент, выделение,
+    колонисты (призыв, задание, оружие, здоровье) и враги. Смотри перед шагами: действуй только тем, что есть на экране."""
+    missing = _need_mod("ui_state")
+    if missing:
+        return missing
+    return _query({"type": "ui_state"})
+
+
+@mcp.tool()
+def ui_steps(steps: list) -> str:
+    """Шаги интерфейса так, как их делает игрок, одной последовательностью (до 12). Шаг: {"do": ...}. Строительство: open_tab
+    (tab=Architect), category (id), designator (id, stuff, rot), place (x, z) или drag (x1,z1,x2,z2, shape=line|rect), cancel.
+    Назначения: open_tab (tab=Assign), assign (pawn_id, kind=food|drugs|apparel|medical, value). Уведомления: letter (index из state.letters, action=read|choose|dismiss, choice=текст кнопки). Задания: open_tab (tab=Quests), quest (id, action=accept|dismiss, pawn_id). Остальное по вкладкам: select,
+    draft, undraft, move, attack, set_work_priority, research, order_tame, set_zone_home... (do равно типу команды). Идёт
+    по порядку, останавливается на первой ошибке игры и возвращает её причину и текущее состояние."""
+    import ui_steps as _ui
+    commands, error = _ui.plan(steps)
+    if error:
+        return "ERROR: " + error
+    done = []
+    for i, cmd in enumerate(commands, 1):
+        missing = _need_mod(cmd["type"])
+        if missing:
+            return missing
+        result = _query(cmd)
+        if str(result).startswith(("ERROR", "WARNING")):
+            return json.dumps({"done": done, "failed_step": i, "error": result}, ensure_ascii=False)
+        done.append(cmd["type"])
+    return json.dumps({"done": done, "state": json.loads(_query({"type": "ui_state"}))}, ensure_ascii=False)
+
+
+@mcp.tool()
 def camera_view() -> str:
     """Где сейчас камера: центр, видимые границы (x1,z1,x2,z2), масштаб и какое окно открыто. Смотри, прежде чем двигать."""
     missing = _need_mod("camera_view")

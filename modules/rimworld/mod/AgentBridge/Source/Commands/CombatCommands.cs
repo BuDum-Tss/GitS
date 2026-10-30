@@ -24,7 +24,7 @@ namespace AgentBridge
             "order_tame", "order_slaughter", "forbid", "unforbid", "research", "pause", "resume",
             "set_time_speed", "get_items", "set_manual_priorities", "force_work", "clear_work_queue", "capabilities",
             "plan_room", "build_room", "clear_plans", "room_info",
-            "check_enclosure", "camera_jump", "camera_follow", "open_tab", "select", "set_auto_camera", "set_agent_camera", "set_user_camera_override", "set_strict_ui", "camera_zoom", "camera_move", "camera_view", "survey_map", "analyze_area", "estimate_build", "describe_def", "fit_room", "get_work_table",
+            "check_enclosure", "camera_jump", "camera_follow", "open_tab", "select", "set_auto_camera", "set_agent_camera", "ui_state", "ui_assign", "ui_category", "ui_designator", "ui_place", "ui_drag", "ui_cancel", "set_user_camera_override", "set_strict_ui", "camera_zoom", "camera_move", "camera_view", "survey_map", "analyze_area", "estimate_build", "describe_def", "fit_room", "get_work_table",
             "camera_mode", "camera_goto", "camera_track", "camera_release", "camera_state",
         };
 
