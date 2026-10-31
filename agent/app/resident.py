@@ -6,7 +6,7 @@
 журнал). Его текст между вызовами и в конце идёт в речь по мере появления. Жёсткие правила без моделей («замолчи», ответ на
 вопрос о разрешении, экстренные слова), очередь внимания, очередь речи и модули остаются за ядром.
 
-Сессия начинается заново при сбое, отмене и после `MAX_QUERIES` обращений. Включается настройкой `resident_agent`.
+Сессия начинается заново при сбое, отмене и после `MAX_QUERIES` обращений. Работает всегда: другого пути обращения и событий нет.
 """
 import asyncio
 import logging
@@ -17,6 +17,7 @@ from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKCli
 import claude_quota
 import prompts
 from claude_cli import _CLI_PATH
+from domain.stickers import first_sticker, plain as strip_tags
 
 logger = logging.getLogger("resident")
 
@@ -59,11 +60,7 @@ class ResidentAgent:
         self._queries = 0
         self._busy = False
 
-    # ── включение ──────────────────────────────────────────────────
-
-    def enabled(self) -> bool:
-        import settings
-        return bool(settings.load().get("resident_agent", True)) and self._h.router is not None and not claude_quota.blocked()
+    # ── состояние ──────────────────────────────────────────────────
 
     @property
     def busy(self) -> bool:
@@ -203,7 +200,7 @@ class ResidentAgent:
                         spoken.append(text)
                         if source == "event" and self._quiet():
                             continue                       # «не отвлекать»: событие не повод говорить
-                        await h.say(h._declutter(text))
+                        await h.say(h._declutter(strip_tags(text)), first_sticker(text))   # тег реакции -> стикер питомца
                     elif hasattr(block, "name"):
                         logger.info(f"[агент] {str(block.name).replace('mcp__core__', '')}")
             elif isinstance(message, ResultMessage):

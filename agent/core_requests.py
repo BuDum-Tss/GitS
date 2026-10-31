@@ -191,20 +191,18 @@ class CoreRequests:
     # ── ТЗ 31: локальная модель, журнал, путь к Claude ─────────────────────────
 
     async def _llm_ask(self, conn: ModuleConnection, body: dict) -> dict:
-        """Один вызов локальной модели ядра (`fast_brain._ask`). Срочное вытесняет фоновое (`background`)."""
+        """Один вызов быстрой модели ядра (Claude без инструментов, `fast_brain._ask`)."""
         import fast_brain
         try:
             text = await fast_brain._ask(
                 body["system"], body["user"], timeout=float(body.get("timeout_s", 60)),
                 max_tokens=int(body.get("max_tokens", 40)), image_b64=body.get("image_b64"),
                 temperature=float(body.get("temperature", 0.3)), background=bool(body.get("background", False)))
-        except fast_brain.Preempted as e:
-            raise ModuleError("unavailable", "локальная модель занята срочными вызовами") from e
         except asyncio.TimeoutError as e:
-            raise ModuleError("timeout", "локальная модель не ответила вовремя") from e
+            raise ModuleError("timeout", "модель не ответила вовремя") from e
         except Exception as e:
             logger.warning(f"core.llm.ask от {conn.module_id}: {type(e).__name__}: {e}")
-            raise ModuleError("unavailable", "локальная модель недоступна") from e
+            raise ModuleError("unavailable", "модель недоступна") from e
         out: dict = {"text": text}
         if body.get("json"):
             data = fast_brain._json_of(text)

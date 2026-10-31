@@ -212,9 +212,9 @@ window.ARCH_DATA = {
      "t": "ConversationService",
      "tag": "A",
      "new": false,
-     "do": "обращение владельца: проверки → ветка (болтовня / просьба / «что умеешь») → ответ",
-     "out": "Reply или Task",
-     "now": "app/conversation_service.py (фасад Companion); ТЗ 25: жёсткие правила → параллельно классификатор, приказ в игру, поиск в памяти (дедлайн 300 мс), запись реплики в потоке → маршруты"
+     "do": "обращение владельца: жёсткие правила → запись реплики → ответ на вопрос о разрешении или передача единому агенту",
+     "out": "Обращение агенту",
+     "now": "app/conversation_service.py (фасад Companion); жёсткие правила до моделей, запись реплики в потоке (не задерживает ответ), затем ResidentAgent.handle_user"
     },
     {
      "id": "ctx",
@@ -230,27 +230,18 @@ window.ARCH_DATA = {
      "t": "ReplyGenerator",
      "tag": "A",
      "new": false,
-     "do": "LanguageModel(fast) → быстрая модель (Claude, настройка fast_llm; запасная локальная Gemma): ответ; страховки стиля",
+     "do": "реплика по факту для очереди речи (объявление, итог, вопрос модуля): LanguageModel(fast) → быстрая модель (Claude без инструментов); страховки стиля declutter",
      "out": "ReplyCandidate",
-     "now": "app/reply_generator.py: ТЗ 25: поток токенов → предложения (speech_text.SentenceSplitter) → StreamDeclutter (держит последнее предложение) → прямо в вывод речи, отмена обрывает запрос и очередь; без голоса прежний путь целиком"
+     "now": "app/reply_generator.py: speak_about (факт → реплика), declutter; разговор с владельцем ведёт ResidentAgent"
     },
     {
      "id": "resident",
      "t": "ResidentAgent",
      "tag": "A",
      "new": false,
-     "do": "один агент на всё (настройка resident_agent): сообщение владельца и события идут в одну постоянную сессию Claude; инструменты find_tools и call_tool поверх реестра и маршрутизатора (разрешения те же); текст агента звучит по мере появления; без классификатора, планировщика, мгновенного уровня и быстрой модели",
+     "do": "единый агент: сообщение владельца, событие, тревога и самоимпульс идут в одну постоянную сессию Claude; инструменты find_tools и call_tool поверх реестра и маршрутизатора (разрешения те же); текст агента звучит по мере появления",
      "out": "Reply и ToolResult",
-     "now": "app/resident.py: ClaudeSDKClient, сброс после сбоя и 60 обращений; запасной прежний путь при resident_agent=false"
-    },
-    {
-     "id": "instant",
-     "t": "InstantLevel",
-     "tag": "A",
-     "new": false,
-     "do": "мгновенный уровень: на поручении через 300 мс факт «принято», при затянутом ответе факт-филлер; реплику формулирует модель",
-     "out": "Utterance",
-     "now": "есть (ТЗ 25): app/instant.py"
+     "now": "app/resident.py: ClaudeSDKClient, сброс после сбоя и 60 обращений; тревога обрывает ход (preempt)"
     }
    ]
   },
@@ -302,22 +293,13 @@ window.ARCH_DATA = {
      "now": "environments/registry.py, tool_search.py"
     },
     {
-     "id": "plan",
-     "t": "Planner",
-     "tag": "A",
-     "new": false,
-     "do": "LanguageModel → быстрая модель (Claude или локальная Gemma): план шагов или «не могу»",
-     "out": "Plan",
-     "now": "router._plan"
-    },
-    {
      "id": "risk",
      "t": "RiskPolicy + Approver",
      "tag": "D",
      "new": false,
      "do": "риск auto / ask / public / danger; вопрос пользователю, ответ да/нет",
      "out": "Approval",
-     "now": "router._step + approvals.py: 301 строка"
+     "now": "router._step_inner + approvals.py"
     },
     {
      "id": "exec",
@@ -326,7 +308,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "вызов инструмента в ядре или модуле, коды ошибок, итог-факт",
      "out": "ToolResult",
-     "now": "router._step и _run_step"
+     "now": "router.run_tool_ex и _step: проверка параметров, риск, вопрос о разрешении, вызов"
     },
     {
      "id": "jobs",
@@ -575,7 +557,7 @@ window.ARCH_DATA = {
      "t": "LM Studio :1234",
      "tag": "X",
      "new": false,
-     "do": "запасная локальная Gemma (fast_llm=local) и EmbeddingGemma; по умолчанию быструю модель заменяет Claude (claude_llm.py)",
+     "do": "EmbeddingGemma (поиск) и разбор фактов графа (Gemma); ответов и планов в нём больше нет",
      "out": "",
      "now": ""
     },
@@ -611,7 +593,7 @@ window.ARCH_DATA = {
      "t": "Claude Agent SDK",
      "tag": "X",
      "new": false,
-     "do": "долгие и сложные задачи",
+     "do": "единый агент, быстрая модель без инструментов (claude_llm.py) и долгие задачи",
      "out": "",
      "now": ""
     },
@@ -631,14 +613,14 @@ window.ARCH_DATA = {
      "new": false,
      "do": "только собирает объекты и подставляет контракты; бизнес-логики быть не должно",
      "out": "",
-     "now": "core_service.py: только сборка; обработчики voice, colonists, run_lost, game_order в app/handlers/"
+     "now": "core_service.py: только сборка; обработчики voice, colonists, run_lost в app/handlers/"
     },
     {
      "id": "hnd",
      "t": "Обработчики модулей",
      "tag": "A",
      "new": false,
-     "do": "события voice.*, rimworld.colonists и run_ended, desktop.activity, приказ в игру (game_order)",
+     "do": "события voice.*, rimworld.colonists и run_ended, desktop.activity, события игры как данные",
      "out": "",
      "now": "app/handlers/: voice.py, game.py, desktop.py"
     }
@@ -756,18 +738,6 @@ window.ARCH_DATA = {
   ],
   [
    "disp",
-   "conv",
-   "flow",
-   "route chat"
-  ],
-  [
-   "disp",
-   "plan",
-   "flow",
-   "route task"
-  ],
-  [
-   "disp",
    "queue",
    "flow",
    "срочность 4+: сказать факт"
@@ -803,12 +773,6 @@ window.ARCH_DATA = {
    "ReplyCandidate"
   ],
   [
-   "conv",
-   "plan",
-   "flow",
-   "просьба"
-  ],
-  [
    "rules",
    "routes",
    "use",
@@ -822,21 +786,9 @@ window.ARCH_DATA = {
   ],
   [
    "conv",
-   "instant",
-   "use",
-   "task / долго"
-  ],
-  [
-   "instant",
-   "out",
-   "flow",
-   "факт: принято, филлер"
-  ],
-  [
-   "conv",
    "resident",
    "flow",
-   "обращение (resident_agent)"
+   "обращение"
   ],
   [
    "resident",
@@ -860,13 +812,13 @@ window.ARCH_DATA = {
    "reflect",
    "resident",
    "flow",
-   "событие и самоимпульс (resident_agent)"
+   "событие и самоимпульс"
   ],
   [
-   "reply",
-   "out",
+   "disp",
+   "resident",
    "flow",
-   "предложения потоком"
+   "срочность 4+: тревога"
   ],
   [
    "reflect",
@@ -888,12 +840,6 @@ window.ARCH_DATA = {
   ],
   [
    "reflect",
-   "plan",
-   "flow",
-   "хочет сделать"
-  ],
-  [
-   "reflect",
    "reminders",
    "w",
    "напомнить себе"
@@ -911,16 +857,10 @@ window.ARCH_DATA = {
    "перенос в память или забывание"
   ],
   [
-   "reg",
-   "plan",
-   "use",
-   "Tool[]"
-  ],
-  [
-   "plan",
+   "resident",
    "risk",
    "flow",
-   "Plan"
+   "вызов инструмента"
   ],
   [
    "risk",
@@ -972,7 +912,7 @@ window.ARCH_DATA = {
   ],
   [
    "tplan",
-   "lms",
+   "cl",
    "use",
    "разбить на шаги"
   ],
@@ -1019,7 +959,7 @@ window.ARCH_DATA = {
    "манифесты сред, статус модулей"
   ],
   [
-   "plan",
+   "resident",
    "wsm",
    "ctl",
    "workspace.switch"
@@ -1116,7 +1056,7 @@ window.ARCH_DATA = {
   ],
   [
    "sleep",
-   "lms",
+   "cl",
    "ext",
    "резюме, дневник (короткие запросы)"
   ],

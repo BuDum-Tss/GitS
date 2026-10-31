@@ -224,21 +224,22 @@ async def test_foreign_events_do_not_move_the_workspace_even_when_critical(world
     assert mont.calls == ["workspace.enter"]
 
 
-async def test_reflection_do_intent_runs_the_planner_as_a_self_impulse(tmp_path):
-    """Intent `do` размышления (ТЗ 30) отдаёт текст планировщику; всё, что тот вызовет, идёт с признаком самоимпульса."""
+async def test_reflection_do_intent_hands_the_task_to_the_agent_as_a_self_impulse(tmp_path):
+    """Intent `do` размышления (ТЗ 30) отдаёт текст единому агенту; всё, что тот вызовет, идёт с признаком самоимпульса."""
     from types import SimpleNamespace
 
     import impulse_service
     seen = []
 
-    class FakeRouter:
-        async def handle(self, text, announce=True):
-            seen.append((text, impulse_origin.current()))
+    class FakeResident:
+        async def handle_event(self, kind, text, origin="", urgent=False):
+            seen.append((kind, text, origin, impulse_origin.current()))
 
-    companion = SimpleNamespace(_dir=str(tmp_path), _llm=None, memory_reader=None, memory_writer=None,
+    companion = SimpleNamespace(_dir=str(tmp_path), _llm=None, memory_reader=None, memory_writer=None, resident=FakeResident(),
                                 _settings=SimpleNamespace(load=lambda: {}), _context=lambda *a, **k: "")
-    attention = SimpleNamespace(submit_self=None, reflect_speech=None, attach_reflection=lambda service: None)
-    impulses = impulse_service.build(companion, attention, router=lambda: FakeRouter())
+    attention = SimpleNamespace(submit_self=None, reflect_speech=None, attach_reflection=lambda service: None,
+                                ctx=SimpleNamespace(on_think=None, on_alert=None, spawn=lambda c: None))
+    impulses = impulse_service.build(companion, attention)
     await impulses.reflection.plan("зайди в колонию")
-    assert seen == [("зайди в колонию", impulse_origin.SELF)]
+    assert seen == [("self.action", "зайди в колонию", "self", impulse_origin.SELF)]
     assert impulse_origin.current() == impulse_origin.USER                       # вне блока признак снят

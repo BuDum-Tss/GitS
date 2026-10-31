@@ -16,13 +16,3 @@ def test_not_stop(text):
 
 def test_stop_is_matched_on_whole_short_phrase_only():
     assert not rules.looks_like_stop("x" * 50 + " стоп")          # длиннее 40 символов: это не короткая просьба
-
-
-@pytest.mark.parametrize("text", ["Найди рецепт борща", "Включи свет", "напиши маме", "поручи Клоду"])
-def test_action_verbs(text):
-    assert rules.looks_like_action(text)
-
-
-@pytest.mark.parametrize("text", ["что ты думаешь", "сыграем?", "привет"])
-def test_chat_is_not_action(text):
-    assert not rules.looks_like_action(text)

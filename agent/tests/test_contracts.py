@@ -11,12 +11,11 @@ import character
 import contracts
 import decide
 import events_log
-import fast_brain
 import settings
 from adapters.approver import ApprovalsModule
 from adapters.classifier_gliner import GlinerClassifier
 from adapters.event_log_sqlite import SqliteEventLog
-from adapters.llm_lmstudio import LMStudioLLM
+from adapters.llm_claude import ClaudeLLM
 from adapters.memory import UserMemoryAdapter
 from adapters.people import RelationshipsAdapter
 from adapters.settings_provider import SettingsModule
@@ -29,7 +28,7 @@ from router import Router
 # ── адаптеры удовлетворяют контрактам ──────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("obj, contract", [
-    (LMStudioLLM(), contracts.LanguageModel),
+    (ClaudeLLM(), contracts.LanguageModel),
     (GlinerClassifier(), contracts.Classifier),
     (SqliteEventLog(), contracts.EventLog),
     (SettingsModule(), contracts.SettingsProvider),
@@ -39,7 +38,7 @@ from router import Router
     (UserMemoryAdapter(lambda: None, lambda: None), contracts.MemoryWriter),
     (GraphMemory.__new__(GraphMemory), contracts.FactGraph),     # методы класса без запуска backend
     (decide.Decider(), contracts.Classifier),
-    (Router(None, None, lambda: ""), contracts.ToolInvoker),
+    (Router(None, None), contracts.ToolInvoker),
     (time.time, contracts.Clock),
 ])
 def test_adapters_satisfy_their_contracts(obj, contract):
@@ -144,10 +143,6 @@ class FakeMemory:
 
 async def test_companion_converses_on_fake_contracts_and_leaves_no_files(tmp_path, monkeypatch):
     """Реплика идёт через заглушку модели, журнал и память в списках; на диск ничего не пишется."""
-    async def no_reaction(text, rel=None):
-        return None
-    monkeypatch.setattr(fast_brain, "react_chat", no_reaction)       # эмоция после ответа: модели нет
-
     llm, log, mem = FakeLLM("Привет, я здесь."), FakeLog(), FakeMemory()
     mdir = tmp_path / "companion-memory"          # папка памяти компаньона (conftest заводит свою tmp_path/memory)
     companion = Companion(str(mdir), rel=None, llm=llm, memory_reader=mem, memory_writer=mem,
@@ -156,9 +151,15 @@ async def test_companion_converses_on_fake_contracts_and_leaves_no_files(tmp_pat
                               quiet_active=lambda cfg=None: False),
                           approver=SimpleNamespace(has_pending=lambda: False,
                                                    try_answer=lambda text: False))
+    class Agent:                                                     # единый агент без Claude: отвечает через say
+        busy = False
+
+        async def handle_user(self, text, use_memory=True):
+            await companion.say("Привет, я здесь.")
+    companion.resident = Agent()
     await companion.on_user_message("Привет")
 
-    assert len(llm.calls) == 1                                       # одна реплика модели, ответ ушёл в вывод речи
+    assert llm.calls == []                                           # ответ ушёл в вывод речи, быстрая модель не звалась
     assert companion.presence.snapshot()["last_say"] == "Привет, я здесь."
     assert ("user", "Привет") in log.entries and ("say", "Привет, я здесь.") in log.entries
     assert [d["role"] for d in mem.dialogue][-2:] == ["user", character.active().id]
@@ -198,29 +199,3 @@ async def test_attention_registers_sender_and_memorises_on_fake_contracts(tmp_pa
     assert any(kind == "attention" for kind, _ in log.entries)       # решение внимания записано в журнал
 
 
-async def test_router_plans_on_fake_llm_and_logs_on_fake_log():
-    """Просьба без подходящего инструмента: планировщик (заглушка модели) отвечает «не могу», журнал пишет в список."""
-    class FakeTool:
-        id = "home.light"
-        name = "light"
-        risk = "auto"
-
-        def signature(self):
-            return "home.light(on: bool) - включить свет"
-
-    class FakeRegistry:
-        async def search_async(self, text):
-            return [FakeTool()]
-
-        def describe(self):
-            return "- home.light: включить свет"
-
-    llm = FakeLLM('{"kind": "action", "feasible": false, "reason": "нет такого инструмента", "steps": []}')
-    log = FakeLog()
-    router = Router(FakeRegistry(), lambda text: None, lambda: "", llm=llm, event_log=log,
-                    settings_provider=SettingsModule(), approver=ApprovalsModule())
-    outcome = await router.handle("включи телевизор")
-
-    assert len(llm.calls) == 1 and router.last_kind == "cannot"
-    assert outcome and "нет такого инструмента" in outcome
-    assert log.entries == [("plan", "не могу: включи телевизор")]

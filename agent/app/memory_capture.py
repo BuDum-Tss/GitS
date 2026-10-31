@@ -1,6 +1,5 @@
-"""MemoryCapture: что запомнить из разговора (ТЗ 29, ARC-5): явное «запомни», фоновый разбор реплики (`learn`),
-осмысление беседы (`consolidate`), очередь реплик в граф, режим «не отвлекать» по словам пользователя.
-Счётчики (`_pending_memory`, `_consolidating`) живут на фасаде `Companion`."""
+"""MemoryCapture: что запомнить из разговора (ТЗ 29, ARC-5): явное «запомни» (`remember_text`) и очередь реплик в граф.
+Остальное запоминает единый агент сам инструментом памяти, а во сне и в паузе работают эпизоды и размышление."""
 import logging
 import re
 import time
@@ -79,70 +78,6 @@ class MemoryCapture:
             if h._memory_writer.add_fact(text.strip(), kind=kind, importance=4):
                 stored = [text.strip()]
         return stored
-
-    async def learn(self, text: str):
-        """Фоном после ответа: что запомнить надолго из этого сообщения и не просил ли он не отвлекать."""
-        h = self._h
-        if h.resident.enabled():
-            return                       # один агент: запоминает он сам инструментом памяти, отдельной модели для этого нет
-        system = ("Из сообщения пользователя выдели то, что ты САМА считаешь важным запомнить надолго. Верни JSON: "
-                  '{"memories": [{"kind": "user|self|plan", "text": "...", "importance": 3, "due_days": null}], '
-                  '"quiet_minutes": 0}. kind=user: устойчивые факты о нём (имя, привычки, предпочтения). '
-                  "kind=self: чего он хочет от ТЕБЯ (как с ним говорить, что делать чаще или реже). "
-                  "kind=plan: его планы и дела: дедлайны, встречи, экзамены, задачи (due_days: через сколько дней, если названо, иначе null). "
-                  "Записи о пользователе пиши от третьего лица, о тебе самой от первого. "
-                  "Мелочи и сиюминутное (настроение, усталость, что он делает сейчас, текущий ход игры, просьбы что-то сделать "
-                  "прямо сейчас в игре или на компьютере, пересказ разговора) не запоминай: почти всегда memories пустой. "
-                  "importance 4-5 только для действительно важного. "
-                  "quiet_minutes: если он сказал, что сейчас будет смотреть, работать или заниматься, "
-                  "на сколько минут его не отвлекать (например 60-120), иначе 0.")
-        try:
-            data = fast_brain._json_of(await h._llm.ask(system, text[:400], timeout=60,
-                                                        max_tokens=200, temperature=0.1, background=True))
-        except Exception as e:
-            logger.warning(f"Не удалось разобрать сообщение для памяти: {e}")
-            return
-        if not data:
-            return
-        h._store_memories(data)
-        h._set_quiet(data.get("quiet_minutes"))
-
-    async def consolidate(self):
-        """Фоном: осмыслить недавнюю беседу и сохранить важное (эпизоды, о себе, планы, факты)."""
-        h = self._h
-        if h._consolidating or h.resident.enabled():
-            return                       # один агент: осмысляет и запоминает сам, отдельного прохода моделью нет
-        since = h._memory_reader.meta("consolidated_ts", 0)
-        dlg = [m for m in h._memory_reader.recent_dialogue(40) if m["ts"] > since]
-        if sum(1 for m in dlg if m["role"] == "user") < 2:
-            return
-        h._consolidating = True
-        try:
-            transcript = "\n".join(f"{'Пользователь' if m['role'] == 'user' else 'Ты'}: {m['text']}"
-                                   for m in dlg[-24:])
-            known = "; ".join(i["text"] for i in await h._memory_reader.recall(transcript[-300:], k=6))
-            system = ("Ты осмысляешь недавнюю беседу ассистентки с пользователем. Выдели 0-2 воспоминания, "
-                      "которые ты САМА считаешь важными для долгой памяти. kind: user (устойчивый факт о пользователе), "
-                      "self (о тебе самой: что ты пообещала, чего он от тебя просит), plan (реальные планы и дела "
-                      "пользователя: дедлайны, встречи, экзамены; due_days если срок назван). importance 1-5, "
-                      "4-5 только для важного. Не повторяй уже известное. "
-                      "Записи о пользователе пиши от третьего лица, о себе от первого. "
-                      "Не записывай: пересказ и тон разговора, колкости, настроение, текущий ход игры и временные задачи, "
-                      "разовые просьбы (события жизни запоминает отдельный журнал эпизодов). "
-                      "Чаще всего ответ пуст. Ответь ТОЛЬКО JSON: "
-                      '{"memories": [{"kind": "...", "text": "...", "importance": 3, "due_days": null}]}')
-            data = fast_brain._json_of(await h._llm.ask(
-                system, f"Уже известно: {known or 'ничего'}\n\nБеседа:\n{transcript}",
-                timeout=90, max_tokens=320, temperature=0.2, background=True))
-            n = len(h._store_memories(data))
-            h._memory_writer.set_meta("consolidated_ts", time.time())
-            h._pending_memory = 0
-            if n:
-                h._log.log("memory", f"осмыслила беседу и запомнила: {n}")
-        except Exception as e:
-            logger.warning(f"Не удалось осмыслить беседу: {e}")
-        finally:
-            h._consolidating = False
 
     def set_quiet(self, minutes):
         """Пользователь сказал, что занят: сама она не заговаривает это время."""

@@ -1067,25 +1067,9 @@ class Controller:
     def _turn_running(self) -> bool:
         return self._turn_task is not None and not self._turn_task.done()
 
-    def _local_context(self, state: dict, changes) -> str:
-        """Короткий контекст для локальной модели (Gemma): возраст колонии, цель, задачи, факты, что изменилось."""
-        import colony_intel
-        parts = [colony_intel.age_block(state), self._turn_brief(changes), self._ambition_block(), self._tasks_block()]
-        return chr(10).join(p for p in parts if p)
-
     async def _mode_turn(self, mode, state, chat_signals, hours_passed, just_loaded, urgent, order, situation, changes):
-        """Ход в режиме (ТЗ 11e): модель задаёт политика (`think`): локальная (Gemma), Claude или смешанно (в бою Claude
-        на первом ходе и каждый claude_every-й). Без лимита Claude, если политика не требует его. Подсказка без полного
-        снимка мира: события, важное, цель, шаг и список инструментов-запросов."""
-        think = self.policies.policy.think
-        turn_index = self._fight.turns - 1 if self.policies.current == "combat" else 0
-        local = pa.use_local_model(think.get("model", "local"), max(0, turn_index), int(think.get("claude_every", 3)),
-                                   claude_blocked=claude_quota.blocked())
-        if local:
-            import local_agent
-            return await local_agent.run_local_turn(self._local_context(state, changes), mode, order, urgent, situation,
-                                                    max_steps=int(think.get("max_steps", 8)),
-                                                    timeout=float(think.get("timeout_s", 300)))
+        """Ход в режиме (ТЗ 11e): ходы ведёт Claude в постоянной сессии игры. Подсказка без полного снимка мира: события,
+        важное, цель, шаг и список инструментов-запросов."""
         return await run_turn(self._context(), chat_signals, hours_passed, just_loaded, urgent=urgent, order=order,
                               situation=situation, changes=None, mode=mode, brief=self._turn_brief(changes))
 

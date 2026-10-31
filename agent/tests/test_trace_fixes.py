@@ -96,10 +96,3 @@ def test_notify_without_event_loop_does_not_leave_a_coroutine_unawaited():
         hub.notify("presence", {})
         gc.collect()
     assert not [w for w in caught if "never awaited" in str(w.message)]
-
-
-def test_action_intent_without_router_is_not_a_misroute(mk):
-    rig = mk()
-    rig.companion.router = None
-    rig.companion._log_route("включи свет", "chat", False, "action", None)
-    assert _mistakes("misroute") == []

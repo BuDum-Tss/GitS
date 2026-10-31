@@ -20,27 +20,26 @@ from conversation_io import DASHBOARD, VOICE, Channel, UserInput, current_channe
 from relationships import Relationships
 
 
-class Registry:
-    def describe(self):
-        return "- Дом: умеет включать свет."
+class StubResident:
+    """Единый агент без Claude: отвечает заранее заданной репликой так же, как настоящий, через `Companion.say`."""
+    busy = False
 
+    def __init__(self, rig):
+        self._rig = rig
 
-class StubRouter:
-    def __init__(self, verbs=("найд", "включ")):
-        self.verbs, self.handled, self.last_kind = verbs, [], "chat"
-        self.registry = Registry()
+    async def handle_user(self, text, use_memory=True):
+        self._rig.agent_calls.append(text)
+        self._rig.order.append("llm")
+        await self._rig.companion.say(self._rig.reply)
 
-    def looks_like_action(self, text):
-        return any(v in text.lower() for v in self.verbs)
-
-    async def handle(self, text, announce=True):
-        self.handled.append(text)
-        return ""                                       # простое действие выполнено, сказать нечего
+    async def cancel(self):
+        return None
 
 
 class Rig:
     def __init__(self, tmp_path, monkeypatch, *, attention=True, decider_answers=None):
         self.llm_calls: list[tuple[str, str]] = []
+        self.agent_calls: list[str] = []
         self.order: list[str] = []
         self.reply = "Ответ из модели."
 
@@ -50,15 +49,11 @@ class Rig:
             return self.reply
         monkeypatch.setattr(fast_brain, "_ask", ask)
 
-        async def no_reaction(text, rel=None):
-            return None
-        monkeypatch.setattr(fast_brain, "react_chat", no_reaction)
-
         mem = str(tmp_path / "memory")
         self.speech = FakeSpeech()
         presence = speech_out.PresenceTracker()
         self.companion = Companion(mem, Relationships(mem), speech=self.speech, presence=presence)
-        self.companion.router = StubRouter()
+        self.companion.resident = StubResident(self)
         self.io = FakeIO()
         self.delivered: list[tuple[Channel, str]] = []
 
@@ -130,7 +125,7 @@ async def test_busy_and_focus_come_from_the_focus_stack_with_attention(mk):
     assert p["busy"] is True and p["focus"] == "conversation: Привет"
 
 
-async def test_stop_phrase_cuts_speech_before_any_model_call(mk):
+async def test_stop_phrase_cuts_speech_before_the_agent(mk):
     r = mk()
     r.speech.speaking = True
     r.att.speech.new(source="attention:a1", mode="fact", text="ждёт", priority=60)
@@ -198,59 +193,6 @@ async def test_question_announcement_is_spoken_before_the_wait_starts(mk):
     assert await approvals.try_answer("да") and await asked is True
 
 
-# ── классификатор обращений ATT-28 ────────────────────────────────────────────────────────────────
-
-async def test_action_intent_goes_to_router_even_without_verbs(mk):
-    r = mk(decider_answers=intent("action", 0.8))
-    await r.say("Погода на завтра в Казани")
-    assert r.companion.router.handled == ["Погода на завтра в Казани"]
-
-
-async def test_attention_rule_intent_goes_to_router(mk):
-    r = mk(decider_answers=intent("attention_rule", 0.7))
-    await r.say("Час не трогай меня сообщениями из телеграма")
-    assert r.companion.router.handled == ["Час не трогай меня сообщениями из телеграма"]
-
-
-async def test_chat_intent_without_verbs_skips_the_router(mk):
-    r = mk(decider_answers=intent("chat", 0.9))
-    await r.say("Расскажи анекдот")
-    assert r.companion.router.handled == [] and len(r.llm_calls) == 1
-
-
-async def test_chat_intent_with_action_verb_still_goes_to_router(mk):
-    r = mk(decider_answers=intent("chat", 0.9))
-    await r.say("Найди рецепт борща")                                  # looks_like_action сильнее
-    assert r.companion.router.handled == ["Найди рецепт борща"]
-
-
-async def test_low_confidence_intent_is_ignored(mk):
-    r = mk(decider_answers=intent("action", 0.48))
-    await r.say("Погода на завтра")
-    assert r.companion.router.handled == []
-
-
-async def test_unavailable_classifier_keeps_the_old_behaviour(mk):
-    r = mk(decider_answers=None)
-    await r.say("Найди рецепт борща")
-    await r.say("Привет")
-    assert r.companion.router.handled == ["Найди рецепт борща"]
-    assert len(r.llm_calls) == 1 and r.graph_queries == ["Привет"]    # память, как раньше, искалась
-
-
-async def test_needs_memory_no_does_not_skip_graph_search_until_classifier_is_tuned(mk):
-    # needs_memory смещён в «нет» (замеры ТЗ 03): память по нему не отключается
-    r = mk(decider_answers=intent("chat", 0.9, memory="no"))
-    await r.say("Что я говорил вчера про отпуск?")
-    assert r.graph_queries == ["Что я говорил вчера про отпуск?"]
-
-
-async def test_stop_intent_skips_graph_search(mk):
-    r = mk(decider_answers=intent("stop", 0.9, memory="no"))
-    await r.say("Замолчи")
-    assert r.graph_queries == []
-
-
 async def test_approval_answer_still_wins_over_everything(mk):
     r = mk(decider_answers=intent("approval", 0.9))
     asked = asyncio.create_task(approvals.ask("approval", "Можно?", timeout_s=30))
@@ -259,19 +201,4 @@ async def test_approval_answer_still_wins_over_everything(mk):
             break
         await asyncio.sleep(0)
     await r.say("Да")
-    assert await asked == (True, "user") and r.llm_calls == [] and r.companion.router.handled == []
-
-
-async def test_game_order_still_precedes_routing(mk):
-    r = mk(decider_answers=intent("action", 0.9))
-    taken = []
-
-    async def order(text):
-        taken.append(text)
-        return True
-    r.companion.game_order = order
-    await r.say("Построй стену")
-    assert taken == ["Построй стену"] and r.companion.router.handled == []
-    await asyncio.sleep(0)                                            # «принимаю» ставится фоновой задачей
-    cand = r.att.speech.items[0]
-    assert cand.mode == "fact" and cand.must and "срочное указание" in cand.text    # ответ «принято» тоже идёт через очередь
+    assert await asked == (True, "user") and r.agent_calls == []

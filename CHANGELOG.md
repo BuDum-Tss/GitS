@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Removed
+- Чистка прежнего быстрого контура: единый агент (`app/resident.py`) теперь единственный путь обращений, событий и самоимпульсов. Убраны: настройка `resident_agent` (и её поле в форме), настройка `fast_llm` и локальная Gemma/LM Studio в быстром слое (`fast_brain` всегда идёт в Claude через `claude_llm`, нет `react_chat`, прогрева, очереди вызовов, `Preempted`); мгновенный уровень (`app/instant.py`); потоковый ответ, `quick_fact`, `StreamDeclutter` и `converse` в `ReplyGenerator` (остались `speak_about` и `declutter`); ветка классификатора, приказа в игру (`game_order`, `make_game_order`), `_converse`, `_act`, `_escalate`, `_learn`, `_consolidate` в `ConversationService` и `Companion`; ReAct-планировщик `Router.handle` с `PLANNER`, `_plan`, `_replan` (в `Router` остались `run_tool_ex` и шаги исполнения, конструктор `Router(registry, say)`); проверка поправки моделью в фоне (остался шаблон); `tools/measure_e2e.py`. В модуле RimWorld убраны `local_agent.py`, `local_planner.py`, `policy_actions.use_local_model` и локальная ветка `Controller._mode_turn`. Классификатор `decider` (сервис GLiNER), его клиент и `InputClassifier` оставлены: ими пользуется выбор области графа памяти. Тесты прежнего пути удалены или переписаны на заглушку единого агента (`tests/test_hard_rules.py` собрал живые тесты из `test_fast_contour.py`); в `conftest.py` сессия Claude единого агента подменена пустой.
+
+### Changed
+- `adapters/llm_lmstudio.py` (`LMStudioLLM`) переименован в `adapters/llm_claude.py` (`ClaudeLLM`). Стенд `tools/soak_core.py` использует свои заглушки (речь, модель, единый агент) вместо `measure_e2e`. Схема архитектуры пересобрана: убраны узлы «InstantLevel» и «Planner», тревога идёт из диспетчера в единого агента, узел «LM Studio» описывает только эмбеддинги и разбор фактов графа.
+
+### Fixed
+- Единый агент: тег реакции в начале текста (`[question] ...`) теперь превращается в стикер питомца (`first_sticker`) и не попадает в речь; раньше `clean_speech` его просто срезал и стикер терялся.
+- `ReplyGenerator.declutter` больше не срезает первое предложение-обещание («Сейчас запущу…») по значению `Router.last_kind`: оно выставлялось только прежним планировщиком, у единого агента всегда срабатывало бы зря.
+
 ### Added
 - Прерывание по важным событиям. Событие модуля со срочностью 4-5 (в игре: налёт, смерть, пожар), если оно не от пользователя и не от неё самой, диспетчер отдаёт единому агенту хуком `AttentionContext.on_alert`: `ResidentAgent.preempt` обрывает идущее обращение (`interrupt`) и разбирает событие первым, вне режима «не отвлекать» (его уже отсёк диспетчер); в очередь речи такое событие не кладётся. Игровой ход, оборванный срочным делом, сбрасывает единую сессию (`CancelledError` в `glados_agent._run_agent`), чтобы следующий запрос не читал хвост прерванного ответа. Схему архитектуры менять не нужно: новой связи между компонентами нет, это хук внутри внимания и резидентного агента.
 

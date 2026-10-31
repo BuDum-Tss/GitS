@@ -1,4 +1,4 @@
-"""Быстрая модель на Claude: выбор по настройке `fast_llm`, ответ целиком и потоком, лимит подписки. Сети и Claude нет: `query` подменён."""
+"""Быстрая модель на Claude: выбор всегда (настройки `fast_llm` больше нет), ответ целиком и потоком, лимит подписки. Сети и Claude нет: `query` подменён."""
 import asyncio
 
 import pytest
@@ -46,15 +46,11 @@ def test_stream_yields_text_deltas(monkeypatch):
     assert asyncio.run(collect()) == ["Раз. ", "Два."]       # итоговое сообщение не дублирует уже отданный текст
 
 
-def test_fast_brain_follows_the_setting(monkeypatch):
-    import settings
+def test_fast_brain_goes_to_claude(monkeypatch):
     calls = []
 
     async def fake_ask(system, user, timeout, image_b64=None, contour="fast"):
         calls.append(user)
         return "ответ"
     monkeypatch.setattr(claude_llm, "ask", fake_ask)
-    monkeypatch.setattr(settings, "load", lambda: {"fast_llm": "claude"})
     assert asyncio.run(fast_brain._ask("s", "вопрос", 1)) == "ответ" and calls == ["вопрос"]
-    monkeypatch.setattr(settings, "load", lambda: {"fast_llm": "local"})
-    assert fast_brain._use_claude() is False

@@ -119,6 +119,54 @@ class StubGraph:
         return []
 
 
+class _Speech:
+    """Речь без модуля голоса: говорит мгновенно."""
+
+    def __init__(self):
+        self.speaking = False
+
+    async def speak(self, utterance_id, text, emotion, priority, *, queue=False):
+        return None
+
+    async def stop(self, utterance_id=None):
+        self.speaking = False
+
+    def is_speaking(self):
+        return self.speaking
+
+    def current_segment(self):
+        return ""
+
+
+class _SimLLM:
+    """Быстрая модель с условной скоростью: ответ через 40 мс."""
+
+    async def ask(self, system, user, *, timeout, max_tokens=40, temperature=0.3, background=False, image_b64=None, parallel=False):
+        await asyncio.sleep(0.04)
+        return "Первое предложение ответа идёт сюда. Второе предложение чуть длиннее первого."
+
+
+class _Agent:
+    """Единый агент без Claude: на обращение и событие отвечает репликой через `Companion.say`."""
+    busy = False
+
+    def __init__(self, companion):
+        self._c = companion
+
+    async def handle_user(self, text, use_memory=True):
+        await asyncio.sleep(0.04)
+        await self._c.say("Ответ агента на заглушке.")
+
+    async def handle_event(self, kind, text, origin="", urgent=False):
+        await asyncio.sleep(0.01)
+
+    async def preempt(self, kind, text, origin=""):
+        await asyncio.sleep(0.01)
+
+    async def cancel(self):
+        return None
+
+
 def _rss_mb() -> float:
     import psutil
     return psutil.Process().memory_info().rss / 1048576
@@ -149,12 +197,9 @@ class Soak:
     async def build(self):
         import decide
         import events_log
-        import fast_brain
         import settings
         import speech_out
         from aiohttp import web
-        from tools import measure_e2e as m
-
         import core_service
         import dashboard
         from companion import Companion
@@ -175,24 +220,19 @@ class Soak:
         else:
             os.environ["GITS_NO_MODULES"] = "1"
         settings.init(self.memory_dir)
-        settings.update(resident_agent=False, fast_llm="local")    # стенд меряет прежний быстрый контур на заглушках, без Claude
         events_log.init(self.memory_dir)
-        self._saved = (fast_brain.react_chat, decide.decide)
-
-        async def no_reaction(text, rel=None):
-            return None
+        self._saved = decide.decide
 
         async def no_classifier(*args, **kwargs):
             return None
 
-        fast_brain.react_chat = no_reaction
         decide.decide = no_classifier
 
         self.port = free_port()
         presence = speech_out.PresenceTracker()
-        self.companion = Companion(self.memory_dir, Relationships(self.memory_dir), speech=m._Speech(), presence=presence,
-                                   llm=m._SimLLM(20.0, 2))
-        self.companion.router = m._Router()
+        self.companion = Companion(self.memory_dir, Relationships(self.memory_dir), speech=_Speech(), presence=presence,
+                                   llm=_SimLLM())
+        self.companion.resident = _Agent(self.companion)
         self.graph = StubGraph()
         self.companion.graph = self.graph
         registry = Registry()
@@ -219,14 +259,13 @@ class Soak:
     async def close(self):
         import decide
         import events_log
-        import fast_brain
         t0 = time.perf_counter()
         try:
             await asyncio.wait_for(self.layer.stop(), 30)
             await self.runner.cleanup()
         finally:
             self.shutdown_s = round(time.perf_counter() - t0, 2)
-            fast_brain.react_chat, decide.decide = self._saved
+            decide.decide = self._saved
             for k, v in self._saved_env.items():
                 if v is None:
                     os.environ.pop(k, None)

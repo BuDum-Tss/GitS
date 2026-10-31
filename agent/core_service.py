@@ -23,7 +23,6 @@ import claude_battery
 import dashboard
 import events_log
 import tool_trace
-import fast_brain
 import episode_routes
 import episode_service
 import graph_scope
@@ -47,7 +46,7 @@ from environments import builtin
 from environments.registry import Registry
 from adapters.module_events import AttentionEventSink
 from app.handlers.desktop import desktop_state, make_activity_hook
-from app.handlers.game import make_colonists_handler, make_game_order, make_run_lost_hook
+from app.handlers.game import make_colonists_handler, make_run_lost_hook
 from app.handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
 from module_hub import ModuleHub
 from module_registry import ModuleRegistry
@@ -128,8 +127,6 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
             return await conn.request("graph.get", {}, timeout=SUBGRAPH_TIMEOUT_S)
         return None
 
-    game_order = make_game_order(modules, hub, lambda: profiles)
-
     def foreground():
         return desktop_state(modules).get("foreground_app")
 
@@ -193,7 +190,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                                 workspaces=workspaces)                                  # ТЗ 32: workspace.switch, workspace.status
 
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, profiles=profiles,
-                            supervisor=sup, presence=presence, game_order=game_order, tasks=[], link=link,
+                            supervisor=sup, presence=presence, tasks=[], link=link,
                             workspaces=workspaces)
 
     async def start():
@@ -285,7 +282,6 @@ async def _run(config: dict):
     registry = Registry()
     registry.embedder = tool_search.ToolEmbeddings(Path(mem_dir) / "tool_embeddings.json")     # отбор инструментов по смыслу
     layer = wire_modules(companion, registry)
-    companion.game_order = layer.game_order              # RW-11: приказ игроку-агенту (инструмент order модуля игры)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     dashboard.set_attention(layer.attention)
     dashboard.set_workspace(layer.workspaces)            # ТЗ 32: карточка «Сейчас», среда агента
@@ -294,7 +290,6 @@ async def _run(config: dict):
     await dashboard.start_dashboard(
         memory_dir=mem_dir, chat_callback=lambda m: loop.create_task(layer.io.from_dashboard(m)))
     await layer.start()                  # токен модулей в файл, сверка настроек, профили, процессы модулей
-    asyncio.create_task(fast_brain.warmup())
 
     # Окружения: встроенные плагины сразу, манифесты (MCP, вебхуки, RimWorld) подгружаются в фоне
     memory = companion.memory_reader                     # одна память на компаньона, инструменты и разговор
@@ -319,13 +314,7 @@ async def _run(config: dict):
         pass
     builtin.register(registry, companion, memory, profiles=layer.profiles)
 
-    def recent_dialogue() -> str:
-        lines = [f"{'Пользователь' if m['role'] == 'user' else 'Ассистентка'}: {m['text']}"
-                 for m in memory.recent_dialogue(4)]
-        return "Последние реплики:\n" + "\n".join(lines) if lines else ""
-
-    companion.router = Router(registry, companion.say, recent_dialogue)
-    companion.router.interrupted = lambda: getattr(companion, "attention", None) is not None and companion.attention.speech.urgent_waiting()      # важное событие обрывает цепочку действий
+    companion.router = Router(registry, companion.say)
 
     async def enter_after_launch(tool, args, ok, result) -> None:
         """Игру запустили по просьбе пользователя: заходим в среду её модуля (цели, камера, комментарии и ход идут только в
@@ -359,8 +348,7 @@ async def _run(config: dict):
         link_change(rec)
         task_change(rec)
     layer.workspaces.on_change = on_change
-    impulses = impulse_service.build(companion, layer.attention, router=lambda: companion.router,
-                                     tasks=companion.tasks)             # ТЗ 30: импульсы и размышление
+    impulses = impulse_service.build(companion, layer.attention, tasks=companion.tasks)             # ТЗ 30: импульсы и размышление
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     dashboard.set_impulses(impulses)
     episodes = episode_service.build(companion, layer.attention,       # ТЗ 27: эпизоды и сон (простой, расписание, догоняющий)

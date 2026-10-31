@@ -843,8 +843,6 @@ const SETTINGS_CATALOG = [
      options: HOTKEYS.map(h => [h, h])}]},
   {title: 'Восприятие', items: [
     {key: 'vision', type: 'toggle', label: 'Зрение', hint: 'Смотреть на активное окно. Всё обрабатывается локально, окна с паролями и банками пропускаются.'},
-    {key: 'resident_agent', type: 'toggle', label: 'Один агент на всё', hint: 'Разговор, события и действия идут в одну сессию Claude: без классификатора, планировщика и быстрой модели. Выключено: прежний путь.'},
-    {key: 'fast_llm', type: 'select', label: 'Быстрая модель (реплики, разбор, зрение)', options: [['claude', 'Claude: по подписке'], ['local', 'Локальная (LM Studio, Gemma)']]},
     {key: 'fast_claude_model', type: 'select', label: 'Какой Claude отвечает быстро', options: [['haiku', 'Haiku: быстро'], ['sonnet', 'Sonnet: думает глубже, дороже по лимиту']]},
     {key: 'game_model', type: 'select', label: 'Модель игрока (ходы и планирование)', options: [['haiku', 'Haiku: быстро и дёшево'], ['sonnet', 'Sonnet: думает глубже, дороже по лимиту']]},
     {key: 'streamer', type: 'toggle', label: 'Режим стримера', hint: 'В игре она вслух ведёт стрим: что видит, о чём думает, планы, цель игры. Без него комментирует только заметные события.'},

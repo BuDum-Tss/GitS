@@ -23,8 +23,8 @@ REMINDERS_FILE = "reminders.json"
 THOUGHTS_FILE = "thoughts.json"
 
 
-def build(companion, attention, *, router=lambda: None, settings_source=None, clock=None, tasks=None) -> SimpleNamespace:
-    """companion - Companion (память, модель, контекст), attention - Attention, router() -> Router или None (планировщик),
+def build(companion, attention, *, settings_source=None, clock=None, tasks=None) -> SimpleNamespace:
+    """companion - Companion (память, модель, контекст, единый агент), attention - Attention,
     tasks - TaskService (ТЗ 32): напоминания себе и планы пользователя живут в общих задачах; без него прежний `reminders.json`."""
     import time
     clock = clock or time.time
@@ -34,9 +34,8 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
     timer = ImpulseTimer(reminders, attention.submit_self, clock=clock)
 
     async def plan(text: str):
-        r = router()
-        with impulse_origin.as_self():          # ТЗ 32: то, что планировщик сделает по этому намерению, это действие по самоимпульсу
-            return await r.handle(text, announce=False) if r is not None else None
+        with impulse_origin.as_self():          # ТЗ 32: то, что агент сделает по этому намерению, это действие по самоимпульсу
+            return await companion.resident.handle_event("self.action", text, "self")
 
     service = ReflectionService(
         llm=companion._llm, memory=companion.memory_reader, writer=companion.memory_writer, journal=journal,
@@ -44,25 +43,19 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
         settings=settings_source or companion._settings.load, clock=clock, speak=attention.reflect_speech, plan=plan,
         remind=timer.add)
     attention.attach_reflection(service)
-    if hasattr(companion, "resident"):
-        reflect_old = attention.ctx.on_think
 
-        def think(item):
-            """Один агент: событие и самоимпульс обдумывает резидентный агент, а прежнее размышление остаётся запасным."""
-            if not companion.resident.enabled():
-                return reflect_old(item)
-            e = event_of(item)
-            return attention.ctx.spawn(companion.resident.handle_event(e.kind, e.text, e.origin))
-        attention.ctx.on_think = think
+    def think(item):
+        """Один агент: событие и самоимпульс обдумывает единый агент."""
+        e = event_of(item)
+        return attention.ctx.spawn(companion.resident.handle_event(e.kind, e.text, e.origin))
+    attention.ctx.on_think = think
 
-        def alert(item) -> bool:
-            """Важное событие модуля (игра: враги, смерть, пожар) прерывает работу агента и разбирается им первым."""
-            if not companion.resident.enabled():
-                return False
-            e = event_of(item)
-            attention.ctx.spawn(companion.resident.preempt(e.kind, e.text, e.origin))
-            return True
-        attention.ctx.on_alert = alert
+    def alert(item) -> bool:
+        """Важное событие модуля (игра: враги, смерть, пожар) прерывает работу агента и разбирается им первым."""
+        e = event_of(item)
+        attention.ctx.spawn(companion.resident.preempt(e.kind, e.text, e.origin))
+        return True
+    attention.ctx.on_alert = alert
     plans = PlanNudger(tasks, timer.add, clock=clock)   # планы пользователя -> напоминания себе
 
     def conversation_ended(text: str) -> None:

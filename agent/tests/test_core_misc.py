@@ -59,7 +59,7 @@ async def test_set_profile_tool_is_rebuilt_on_profiles(tmp_path):
     assert "автоматически" in await tool.call({"mode": "auto"})
     with pytest.raises(ToolError):
         await tool.call({"mode": "minecraft"})                  # ещё не написан
-    ok, _name, info = await Router(reg, FakeCompanion().say, lambda: "")._run_step(
+    ok, _name, info, _code = await Router(reg, FakeCompanion().say)._step(
         {"tool": "assistant.set_profile", "args": {"mode": "game"}}, {"assistant.set_profile": tool})
     assert not ok and "одним из" in info                        # enum из файлов профилей, прежних значений в нём нет
 

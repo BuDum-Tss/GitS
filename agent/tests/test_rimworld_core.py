@@ -60,16 +60,9 @@ class Wired:
         self.rig = ConversationRig(tmp_path, monkeypatch, attention=False)
         self.companion = self.rig.companion
         self.port = free_port()
-        self.converse: list[str] = []
-
-        async def converse(text, **kw):
-            self.converse.append(text)
-            return False
-        self.companion._converse = converse
         self.registry = Registry()
         self.layer = core_service.wire_modules(self.companion, self.registry, port=self.port, specs=[],
                                                battery=lambda: {"level": 1.0, "sleeping": False})
-        self.companion.game_order = self.layer.game_order
         self.url = f"ws://127.0.0.1:{self.port}/module/ws"
 
     async def __aenter__(self):
@@ -95,71 +88,6 @@ class Wired:
             while not predicate():
                 await asyncio.sleep(0.01)
         await asyncio.wait_for(waiter(), timeout)
-
-
-# ── RW-11, RW-21: приказ модулю игры из on_user_message ─────────────────────────────────────────
-
-async def test_order_goes_to_game_module_in_focus_and_skips_conversation(tmp_path, monkeypatch):
-    async with Wired(tmp_path, monkeypatch) as w:
-        client = w.client()
-        async with running_client(client, _core_of(w)):
-            await client.state("игра: колония «Дом»", {"game_running": True})            # ТЗ 32, WS-5: игра профиль не включает
-            await asyncio.sleep(0.2)
-            assert w.layer.profiles.current_id != "rimworld" and w.layer.workspaces.current == "assistant"
-            settings.update(profile="rimworld")                                           # приказ идёт модулю фокуса профиля
-            w.layer.profiles.evaluate()
-            await w.companion.on_user_message("построй стену у входа")
-            assert client.orders == ["построй стену у входа"]
-            assert w.converse == []                                                       # приказ принят игрой: разговор не нужен
-            await w.companion.on_user_message("как тебе погода?")
-            assert client.orders == ["построй стену у входа", "как тебе погода?"]
-            assert w.converse == ["как тебе погода?"]                                     # игра отказала: обычный разговор
-
-
-async def test_order_is_not_sent_when_game_module_is_not_in_focus(tmp_path, monkeypatch):
-    async with Wired(tmp_path, monkeypatch) as w:
-        client = w.client()
-        async with running_client(client, _core_of(w)):
-            await client.state("игра: нет", {"game_running": False})
-            await asyncio.sleep(0.2)
-            assert w.layer.profiles.current_id != "rimworld"
-            await w.companion.on_user_message("построй стену")
-            assert client.orders == [] and w.converse == ["построй стену"]
-
-
-async def test_order_skips_disabled_modules_modules_without_game_capability_or_order_tool(tmp_path, monkeypatch):
-    async with Wired(tmp_path, monkeypatch) as w:
-        plain = w.client(manifest=game_manifest(capabilities=[]))
-        async with running_client(plain, _core_of(w)):
-            settings.update(profile="rimworld")
-            w.layer.profiles.evaluate()
-            assert await w.layer.game_order("построй стену") is False                     # нет capabilities game
-            assert plain.orders == []
-    async with Wired(tmp_path / "b", monkeypatch) as w:
-        client = w.client()
-        async with running_client(client, _core_of(w)):
-            settings.update(profile="rimworld")
-            w.layer.profiles.evaluate()
-            assert await w.layer.game_order("построй стену") is True
-            settings.update(modules={"rimworld": {"enabled": False}})
-            w.layer.modules.invalidate()
-            assert await w.layer.game_order("построй ещё") is False                       # модуль выключен: вызовов не передаём
-            assert client.orders == ["построй стену"]
-    async with Wired(tmp_path / "c", monkeypatch) as w:
-        no_order = ModuleClient(game_manifest(tools=[]), url=w.url, token=w.layer.hub.token)
-        async with running_client(no_order, _core_of(w)):
-            settings.update(profile="rimworld")
-            w.layer.profiles.evaluate()
-            assert await w.layer.game_order("построй стену") is False                     # нет инструмента order
-
-
-async def test_order_without_connected_module_is_false(tmp_path, monkeypatch):
-    async with Wired(tmp_path, monkeypatch) as w:
-        settings.update(profile="rimworld")
-        w.layer.profiles.evaluate()
-        assert await w.layer.game_order("построй стену") is False
-        await w.companion.on_user_message("построй стену")
-        assert w.converse == ["построй стену"]
 
 
 # ── RW-19, CORE-22: подграф профиля через graph.get ─────────────────────────────────────────────

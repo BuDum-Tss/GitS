@@ -1,142 +1,37 @@
-"""Маршрутизатор просьб: сначала «есть ли у меня такая возможность», потом план или честное «не могу».
+"""Исполнитель инструментов: проверка параметров, вопрос о разрешении, вызов, журнал и трасса.
 
-Любое сообщение пользователя проходит один путь:
-  1. из реестра берутся подходящие инструменты всех окружений (RimWorld, система ПК,
-     соцсети, внешние MCP и вебхуки…);
-  2. локальная модель-планировщик видит ТОЛЬКО этот перечень и решает: это разговор
-     (kind=chat) или просьба действовать (kind=action); если действие, то выполнимо ли оно
-     перечисленными инструментами (feasible) и какие вызовы по порядку (steps);
-  3. шаги проверяются по схемам инструментов и выполняются с учётом риска
-     (auto - сразу, ask - после разрешения, public - по флагу telegram_confirm);
-  4. итог возвращается фактом, а сказать пользователю его ассистентка решает уже сама.
-
-handle() возвращает None, если это обычный разговор; пустую строку, если простое действие
-выполнено и сказать больше нечего; иначе текст-факт о результате.
+Планирование и разговор делает единый агент (`app/resident.py`): он ищет инструменты через `find_tools` и вызывает их через
+`call_tool`, а тот приходит сюда, в `run_tool_ex`. Здесь нет модели: проверка по схеме, риск (`domain/risk.py`), вопрос о
+разрешении (`approvals.py`), тайм-аут инструмента, ошибки с кодами MOD-9.
 """
 import asyncio
-import json
 import logging
 import time
 
 from adapters.approver import ApprovalsModule
 from adapters.event_log_sqlite import SqliteEventLog
-from adapters.llm_lmstudio import LMStudioLLM
 from adapters.settings_provider import SettingsModule
 import flow_trace
 import journal
 import tool_trace
 from domain import risk as risk_policy
-from domain import rules
 from environments.base import ToolError, validate_args
 
 logger = logging.getLogger("router")
 
-MAX_STEPS = 4
-MAX_ROUNDS = 3             # ReAct: сколько раз подряд она может посмотреть на результаты и спланировать дальше
-
 RESULT_CHARS = 600
-
-PLANNER = (
-    "Ты — планировщик действий ассистентки на компьютере пользователя. Ниже ПОЛНЫЙ перечень "
-    "инструментов, которые у неё есть прямо сейчас. Других возможностей нет.\n\n"
-    "ИНСТРУМЕНТЫ:\n{tools}\n\n"
-    "Реши по последнему сообщению пользователя:\n"
-    "1. kind=\"action\", если он просит что-то СДЕЛАТЬ или узнать то, для чего нужен инструмент "
-    "(включить, выключить, написать, посмотреть, найти, опубликовать, запомнить, забыть). "
-    "kind=\"chat\", если он просто разговаривает, делится, шутит, спрашивает мнение или спрашивает "
-    "о её возможностях. Если сомневаешься, выбирай \"chat\". Рассказ пользователя о СВОИХ действиях "
-    "(«я запустила игру», «я включил музыку», «я проверила почту») и приглашения вроде «сыграем?» — это "
-    "всегда \"chat\": просьбы к ней тут нет.\n"
-    "2. Для action: feasible=true, только если это можно сделать ПЕРЕЧИСЛЕННЫМИ инструментами. "
-    "Иначе feasible=false, а в reason коротко: чего не хватает.\n"
-    "3. reason заполняй ТОЛЬКО при feasible=false (коротко), иначе пустая строка. steps: вызовы по порядку, не больше %d. В args только параметры из описания, значения "
-    "берёшь из просьбы; ничего не выдумывай и не придумывай несуществующих инструментов.\n\n"
-    "ПРЕДПОЧТЕНИЕ: сначала выбирай узкие инструменты (их выполняет локальная модель и экран, это быстро и бесплатно); "
-    "claude_task только если узких инструментов для просьбы нет.\n"
-    "claude_task (если он есть в списке) это универсальный помощник на Claude Code для ЛЮБЫХ задач на компьютере: "
-    "установка программ и библиотек, файлы, код, команды, интернет, анализ. Он сам спросит разрешение на каждое "
-    "изменение. Если просьба про компьютер, программы, файлы или код, а узкого инструмента нет, выбирай kind=action "
-    "и claude_task с task, в котором просьба своими словами пользователя; feasible=false только если не подходит "
-    "и claude_task. Незнакомое слово может быть названием программы или библиотеки (например «телетон» это "
-    "Telethon, библиотека Python): не отвечай, что такого нет. Если пользователь просит поручить что-то Клоду, "
-    "Claude или помощнику, задачу возьми из его предыдущих реплик.\n\n"
-    "Ответ строго JSON без пояснений:\n"
-    '{"kind": "chat" или "action", "feasible": true или false, "reason": "...", "observe": true или false, '
-    '"say_first": "...", "steps": [{"tool": "id инструмента", "args": {}}]}\n'
-    "say_first: очень короткая фраза (до 6 слов) от первого лица (по-русски, женский род), которую "
-    "ты скажешь, пока выполняешь, например «Сейчас посмотрю» или «Хорошо, выключаю». Для kind=chat и "
-    "feasible=false оставь пустую строку. Для action say_first обязательна: коротко и по делу скажи, что именно сейчас сделаешь.\n"
-    "observe=true, если дальнейшие шаги зависят от результата этих (например, узнать статус и по нему решить, "
-    "запускать ли игру); тогда после выполнения ты увидишь результаты и спланируешь остаток. Иначе false."
-) % MAX_STEPS
 
 
 class Router:
-    def __init__(self, registry, say, dialogue_provider, *, llm=None, event_log=None, settings_provider=None,
-                 approver=None):
-        """llm - LanguageModel (планировщик), event_log - EventLog, settings_provider - SettingsProvider,
-        approver - Approver (вопрос о разрешении). Без них подставляются адаптеры к текущим модулям ядра (ТЗ 29, ARC-3)."""
+    def __init__(self, registry, say, *, event_log=None, settings_provider=None, approver=None):
+        """event_log - EventLog, settings_provider - SettingsProvider, approver - Approver (вопрос о разрешении). Без них
+        подставляются адаптеры к текущим модулям ядра (ТЗ 29, ARC-3)."""
         self.registry = registry
         self._say = say                          # как озвучить вопрос о разрешении
-        self._dialogue = dialogue_provider       # () -> короткий текст последних реплик
-        self.last_kind = "chat"                  # итог последнего handle: chat / cannot / done
         self.after_tool = None                   # async (tool, args, ok, result) -> None: что делать после инструмента (ставит ядро)
-        self.interrupted = lambda: False         # () -> важное событие ждёт реплики: цикл действий обрывается (ставит ядро)
-        self._llm = llm if llm is not None else LMStudioLLM()
         self._log = event_log if event_log is not None else SqliteEventLog()
         self._settings = settings_provider if settings_provider is not None else SettingsModule()
         self._approver = approver if approver is not None else ApprovalsModule()
-
-    @staticmethod
-    def looks_like_action(text: str) -> bool:
-        """Быстрая проверка без модели: похоже ли сообщение на просьбу что-то сделать (правило в domain/rules.py)."""
-        return rules.looks_like_action(text)
-
-    # ── планирование ─────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _parse(raw: str) -> dict | None:
-        a, b = raw.find("{"), raw.rfind("}")
-        try:
-            plan = json.loads(raw[a:b + 1])
-        except ValueError:
-            return None
-        if not isinstance(plan, dict) or plan.get("kind") not in ("chat", "action"):
-            return None
-        plan["steps"] = [s for s in (plan.get("steps") or []) if isinstance(s, dict)][:MAX_STEPS]
-        return plan
-
-    async def _plan(self, text: str, tools) -> dict | None:
-        system = PLANNER.replace("{tools}", "\n".join("- " + t.signature() for t in tools))
-        user = f"{self._dialogue()}\n\nПоследнее сообщение пользователя: {text}"
-        for attempt in range(2):
-            try:
-                raw = await self._llm.ask(system + ("" if attempt == 0 else
-                                          "\nПредыдущий ответ не был валидным JSON. Ответь ТОЛЬКО валидным JSON."),
-                                          user, timeout=90, max_tokens=420, temperature=0.1)
-            except Exception as e:
-                logger.warning(f"Планировщик недоступен: {e}")
-                return None
-            plan = self._parse(raw)
-            if plan:
-                return plan
-        return None
-
-    # ── исполнение ────────────────────────────────────────────────────────────
-
-    async def _replan(self, text: str, tools, done: list) -> dict | None:
-        """Следующий круг ReAct: планировщик видит результаты уже выполненных шагов и даёт оставшиеся (пусто - всё сделано)."""
-        system = PLANNER.replace("{tools}", "\n".join("- " + t.signature() for t in tools))
-        seen = "\n".join(f"- {'сделано' if ok else 'НЕ получилось'}: {name} → {info}" for ok, name, info in done)
-        user = (f"{self._dialogue()}\n\nПоследнее сообщение пользователя: {text}\n\nУже выполнено, результаты:\n{seen}\n\n"
-                "Если для просьбы нужны ещё шаги с учётом этих результатов, верни kind=\"action\", feasible=true и ТОЛЬКО оставшиеся "
-                "steps (в say_first коротко скажи, что делаешь дальше; observe=true, если и после них надо смотреть результат). "
-                "Если всё уже сделано или идти дальше нельзя, верни steps=[].")
-        try:
-            return self._parse(await self._llm.ask(system, user, timeout=90, max_tokens=420, temperature=0.1))
-        except Exception as e:
-            logger.warning(f"Планировщик, следующий круг: {e}")
-            return None
 
     async def _step(self, step: dict, candidates: dict, executor: str = "fast") -> tuple[bool, str, str, str | None]:
         """(успех, название, результат/причина, код ошибки по MOD-9 или None); шаг пишется в трассу потока (ТЗ 17)
@@ -195,11 +90,6 @@ class Router:
             return False, tool.name, f"сбой: {e}", "internal"
         return True, tool.name, str(result)[:RESULT_CHARS], None
 
-    async def _run_step(self, step: dict, candidates: dict) -> tuple[bool, str, str]:
-        """(успех, название, результат/причина)."""
-        ok, name, info, _code = await self._step(step, candidates)
-        return ok, name, info
-
     # ── главный вход ───────────────────────────────────────────────────────────
 
     async def run_tool_ex(self, tool_id: str, args: dict) -> tuple[bool, str, str | None]:
@@ -220,82 +110,3 @@ class Router:
         Для других агентов (игра) через дашборд. Возвращает (успех, результат или причина)."""
         ok, result, _code = await self.run_tool_ex(tool_id, args)
         return ok, result
-
-    async def handle(self, text: str, announce: bool = True) -> str | None:
-        tools = await self.registry.search_async(text)
-        if not tools:
-            return None
-        plan = await self._plan(text, tools)
-        if plan is None:
-            self._log.log("plan", "планировщик не дал разбираемого ответа, это обычный разговор")
-            journal.mistake("plan_failed", text[:200], reason="unparsed")       # ТЗ 24, TRC-5
-            return None
-        if plan["kind"] == "chat":
-            self.last_kind = "chat"
-            return None
-
-        if plan.get("feasible") and not plan["steps"]:
-            self.last_kind = "chat"      # «выполнимо», но делать нечего: это просто разговор
-            return None
-        if not plan.get("feasible"):
-            self.last_kind = "cannot"
-            reason = str(plan.get("reason") or "подходящего инструмента нет")[:200]
-            self._log.log("plan", f"не могу: {text}", feasible=False, reason=reason)
-            return (f"Пользователь просит: «{text}». Среди твоих инструментов подходящего нет "
-                    f"(причина: {reason}). Вот что у тебя есть:\n{self.registry.describe()}\n"
-                    "Честно скажи, что этого не можешь. Если предлагаешь альтернативу, называй ТОЛЬКО то, что есть "
-                    "в списке выше; ничего другого не обещай (напоминаний, заказов и т.п. нет, если их нет в списке).")
-
-        self.last_kind = "done"
-        say_first = str(plan.get("say_first") or "").strip()
-        announced = bool(say_first) and bool(announce() if callable(announce) else announce)   # callable: решает в момент объявления (ТЗ 25, FAST-3)
-        if announced:
-            await self._say(say_first)   # пока ищет и делает, пользователь видит, что она занята
-        candidates = {t.id: t for t in tools}
-        # модель часто пишет имя без окружения («claude_task» вместо «desktop.claude_task»): приводим к id
-        by_name: dict = {}
-        for t in tools:
-            by_name.setdefault(t.name, []).append(t.id)
-        for st in plan["steps"]:
-            name = str(st.get("tool", ""))
-            if name not in candidates and len(by_name.get(name.split(".")[-1], [])) == 1:
-                st["tool"] = by_name[name.split(".")[-1]][0]
-        done, steps_log = [], []
-        informative = any(candidates[str(st.get("tool"))].informative for st in plan["steps"] if str(st.get("tool")) in candidates)
-        rounds, cut = 1, False
-        while True:
-            for step in plan["steps"]:
-                if self.interrupted():
-                    cut = True
-                    break
-                ok, name, info = await self._run_step(step, candidates)
-                done.append((ok, name, info))
-                steps_log.append({"tool": name, "ok": ok, "result": info[:120]})
-                if not ok:
-                    break   # дальше по плану идти нельзя
-            if cut or not done[-1:] or not done[-1][0] or not plan.get("observe") or rounds >= MAX_ROUNDS:
-                break
-            nxt = await self._replan(text, tools, done)      # ReAct: смотрим на результаты и решаем, что дальше
-            if nxt is None or not nxt["steps"]:
-                break
-            plan, rounds = nxt, rounds + 1
-            for st in plan["steps"]:
-                name = str(st.get("tool", ""))
-                if name not in candidates and len(by_name.get(name.split(".")[-1], [])) == 1:
-                    st["tool"] = by_name[name.split(".")[-1]][0]
-            informative = informative or any(candidates[str(st.get("tool"))].informative for st in plan["steps"] if str(st.get("tool")) in candidates)
-            narration = str(plan.get("say_first") or "").strip()
-            if narration:
-                await self._say(narration)                   # что сделает дальше, пока идёт
-        if cut:
-            self._log.log("plan", f"прервано важным событием: {text}", feasible=True, steps=steps_log)
-            return ""                                        # важное скажет очередь речи
-        self._log.log("plan", f"выполнено: {text}", feasible=True, steps=steps_log)
-        if done and not any(ok for ok, _, _ in done):
-            journal.mistake("plan_failed", text[:200], reason="no step ok")      # ни один шаг плана не прошёл
-        # простое действие прошло, и она уже сказала «сейчас сделаю»: итог молчаливый
-        if announced and rounds == 1 and all(ok for ok, _, _ in done) and not informative:
-            return ""
-        lines = [f"- {'сделано' if ok else 'НЕ получилось'}: {name} → {info}" for ok, name, info in done]
-        return (f"Пользователь просил: «{text}». Ты действовала по плану:\n" + "\n".join(lines) +
-                "\nСообщи пользователю итог своими словами, строго по этим результатам.")

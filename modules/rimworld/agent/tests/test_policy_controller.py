@@ -17,7 +17,6 @@ import policy_events as pe
 import policy_manager
 import policy_actions as pa
 import watch_rules
-import local_agent
 import statediff
 
 TICK = 2500
@@ -210,9 +209,6 @@ async def test_observe_turn_uses_claude_and_not_the_local_model(ctrl, monkeypatc
         seen.update(mode=mode, brief=brief)
         return {"commentary": "", "actions": []}
 
-    async def boom(*a, **k):
-        raise AssertionError("локальная модель не должна вести ход наблюдения (observe.think.model: claude)")
-    monkeypatch.setattr(local_agent, "run_local_turn", boom)
     monkeypatch.setattr(controller, "run_turn", fake_run_turn)
     monkeypatch.setattr(controller.claude_quota, "blocked", lambda: False)
     ctrl.policies.leave_afk("observe", "")
@@ -228,9 +224,6 @@ async def test_observe_turn_does_not_fall_back_to_local_when_claude_is_blocked(c
         seen["claude_called"] = True
         return {"commentary": "", "actions": [], "quota": True}
 
-    async def boom(*a, **k):
-        raise AssertionError("Gemma не управляет игрой: при лимите Claude ход не уходит в локальную модель")
-    monkeypatch.setattr(local_agent, "run_local_turn", boom)
     monkeypatch.setattr(controller, "run_turn", fake_run_turn)
     monkeypatch.setattr(controller.claude_quota, "blocked", lambda: True)
     ctrl.policies.leave_afk("observe", "")

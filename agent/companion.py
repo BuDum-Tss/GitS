@@ -33,14 +33,13 @@ import prompts
 import reply_trace
 from adapters.approver import ApprovalsModule
 from adapters.event_log_sqlite import SqliteEventLog
-from adapters.llm_lmstudio import LMStudioLLM
+from adapters.llm_claude import ClaudeLLM
 from adapters.memory import UserMemoryAdapter
 from adapters.people import RelationshipsAdapter
 from adapters.settings_provider import SettingsModule
 from app.context_builder import ContextBuilder
 from app.conversation_service import ConversationService, _sender_ctx  # noqa: F401  (_sender_ctx: прежнее имя)
 from app.memory_capture import MemoryCapture
-from app.instant import InstantLevel, note_speech
 from app.reply_generator import ReplyGenerator
 from app.resident import ResidentAgent
 from conversation_io import UserInput, current_channel
@@ -74,7 +73,7 @@ class Companion:
         self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
         self._rel = rel
         self._people = people if people is not None else RelationshipsAdapter(lambda: self._rel)
-        self._llm = llm if llm is not None else LMStudioLLM()
+        self._llm = llm if llm is not None else ClaudeLLM()
         self._log = event_log if event_log is not None else SqliteEventLog()
         self._settings = settings_provider if settings_provider is not None else SettingsModule()
         self._approver = approver if approver is not None else ApprovalsModule()
@@ -84,7 +83,6 @@ class Companion:
         self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
         self._self_block = ""     # воспоминания персонажа о себе к последней реплике (ТЗ 05, CHR-19)
         self._heard: collections.deque = collections.deque(maxlen=20)   # (время, сводка) услышанного в колонках (voice.heard)
-        self.game_order = None  # async (text) -> bool: приказ в игру, ставит контроллер
         self.idle_seconds = lambda: 0.0          # секунды простоя ввода (ставит ядро из state модуля desktop; без модуля 0: за компьютером)
         self.screen_activity = lambda: None      # текущая активность экрана {app, category, summary, ...} (ставит ядро, ТЗ 14 DESK-7)
         self.job_wait = None                     # async (module_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
@@ -103,7 +101,6 @@ class Companion:
         self._busy = asyncio.Lock()      # один разговор за раз
         self._pending_memory = 0         # сообщений с последнего осмысления беседы
         self._last_user_ts = 0.0
-        self._consolidating = False
         self._last_say_text = ""          # последняя реплика персонажа (для поправки «нет, не так», ТЗ 24 TRC-5)
         self._bg_tasks: set = set()       # фоновые проверки поправок (ТЗ 24)
         self._prefetch = None             # поиск в памяти, закончившийся после дедлайна: ждёт следующей реплики (ТЗ 25, FAST-6)
@@ -112,8 +109,7 @@ class Companion:
         self.reply_generator = ReplyGenerator(self)
         self.memory_capture = MemoryCapture(self)
         self.conversation = ConversationService(self)
-        self.resident = ResidentAgent(self)  # один агент на всё (настройка resident_agent): разговор и события без быстрой модели
-        self.instant = InstantLevel(self)    # мгновенный уровень: подтверждение и филлер (ТЗ 25, FAST-3)
+        self.resident = ResidentAgent(self)  # один агент на всё: разговор, события и самоимпульсы в одной сессии Claude
 
     @property
     def people(self):
@@ -170,7 +166,6 @@ class Companion:
         text = clean_speech(text)   # без разметки, ремарок в скобках и оборванного хвоста: это произносится вслух
         if not text:
             return
-        note_speech()
         channel = current_channel.get()
         if channel is not None and channel.kind == "module":
             # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
@@ -208,32 +203,15 @@ class Companion:
         self._last_say_text = text
         self.presence.update(last_say=text, last_say_ts=self._last_say)
 
-    async def say_part(self, text: str, *, first: bool, sticker: str | None = None) -> str | None:
-        """Предложение потокового ответа (ТЗ 25, FAST-4): прямо в вывод речи, мимо ожидания очереди речи внимания. Первое
-        заменяет звучащее, остальные встают в очередь вывода после него. Журнал и диалог пишет `commit_reply` по итогу.
-        Возвращает id реплики."""
-        note_speech()
-        utterance = new_utterance_id()
-        self.last_utterance_id = utterance
-        await self.speech.speak(utterance, text, sticker, 50, **({} if first else {"queue": True}))
-        return utterance
-
-    def commit_reply(self, text: str) -> None:
-        """Потоковый ответ закончен (или оборван): в память и журнал уходит то, что она успела сказать."""
-        text = text.strip()
-        if not text:
-            return
-        self._record_say(text, current_channel.get())
-        logger.info(f"[{character.active().name}] {text}")
-
     def cancel_reply(self, reason: str = "stop") -> bool:
-        """Оборвать идущий потоковый ответ (ТЗ 25, FAST-5): «замолчи», перебивание, экстренное слово."""
-        if self.resident.busy:
-            try:
-                asyncio.get_running_loop().create_task(self.resident.cancel())
-            except RuntimeError:
-                pass
-        return self.reply_generator.cancel(reason)
+        """Оборвать идущий ход единого агента: «замолчи», перебивание, экстренное слово. True, если было что обрывать."""
+        if not self.resident.busy:
+            return False
+        try:
+            asyncio.get_running_loop().create_task(self.resident.cancel())
+        except RuntimeError:
+            return False
+        return True
 
     # ── входящее сообщение ─────────────────────────────────────────────────────
 
@@ -272,12 +250,6 @@ class Companion:
 
     async def _confirm_correction(self, text: str, ref: float, prev: str) -> None:
         await self.conversation.confirm_correction(text, ref, prev)
-
-    def _log_route(self, text: str, route: str, routed: bool, intent, cls) -> None:
-        self.conversation.log_route(text, route, routed, intent, cls)
-
-    async def _act(self, text: str):
-        await self.conversation.act(text)
 
     async def _answer_approval(self, text: str) -> bool:
         """Реплика как ответ на открытый вопрос (да/нет, вариант, свободный текст): см. approvals.try_answer."""
@@ -318,20 +290,11 @@ class Companion:
     async def _refresh_graph(self, query: str):
         await self.context_builder.refresh_graph(query)
 
-    async def _converse(self, text: str, use_memory: bool = True, retrieval=None, already_done=()) -> None:
-        await self.reply_generator.converse(text, use_memory, retrieval, already_done)
-
     def _store_memories(self, data) -> list[str]:
         return self.memory_capture.store_memories(data)
 
     async def remember_text(self, text: str, hint_kind: str | None = None) -> list[str]:
         return await self.memory_capture.remember_text(text, hint_kind)
-
-    async def _learn(self, text: str):
-        await self.memory_capture.learn(text)
-
-    async def _consolidate(self):
-        await self.memory_capture.consolidate()
 
     def _set_quiet(self, minutes):
         self.memory_capture.set_quiet(minutes)
@@ -358,16 +321,6 @@ class Companion:
             return str(job.get("text") or "")
         return None
 
-    async def _escalate(self, task: str):
-        """Запасной путь, когда локальная модель недоступна."""
-        result = await self.run_claude(task)
-        if result:
-            await self.say(result)
-        elif result is None:
-            await self._speak_about(f"Не удалось выполнить просьбу «{task}»: сбой агента-помощника.", task)
-        else:
-            await self._speak_about(f"Просьба «{task}» выполнена, добавить нечего.", task)
-
     def arm_idle_consolidation(self) -> None:
         """После реплики пользователя: если беседа замолкнет, осмыслить её через IDLE_CONSOLIDATE_S (один отложенный вызов)."""
         if self._idle_handle is not None:
@@ -379,9 +332,9 @@ class Companion:
 
     def _idle_consolidate(self) -> None:
         self._idle_handle = None
-        if self._pending_memory >= 2 and not self._consolidating:
+        if self._pending_memory >= 2:
+            self._pending_memory = 0
             self._notify_conversation_end()
-            asyncio.get_running_loop().create_task(self._consolidate())
 
     def _notify_conversation_end(self) -> None:
         """IMP-10: разговор затих. Хуку идут факты (последние реплики), он решает, отдавать ли их на размышление."""

@@ -46,7 +46,7 @@ def test_facade_keeps_components_and_public_interface(tmp_path):
     for name in ("on_voice", "on_user_message", "on_input", "say", "remember_text", "speak_about",
                  "run_claude", "note_heard", "recent_heard", "rebind_memory", "is_speaking"):
         assert callable(getattr(c, name))
-    for name in ("_mem", "_rel", "graph", "router", "attention", "presence", "speech", "io", "game_order"):
+    for name in ("_mem", "_rel", "graph", "router", "attention", "presence", "speech", "io"):
         assert hasattr(c, name)
 
 
@@ -61,10 +61,10 @@ def test_context_builder_joins_blocks(tmp_path):
     assert c._context(query="x") == text
 
 
-async def test_reply_generator_converse_says_declutted_reply(tmp_path):
-    c, llm = make(tmp_path, "Готово. Хочешь, чтобы я ещё что-нибудь сделала?")
-    await c._converse("привет")
-    assert c.speech.spoken == ["Готово."]
+def test_reply_generator_declutter_drops_trailing_offer(tmp_path):
+    c, _ = make(tmp_path)
+    assert c._declutter("Готово. Хочешь, чтобы я ещё что-нибудь сделала?") == "Готово."
+    assert c._declutter("Одно предложение, и всё.") == "Одно предложение, и всё."
 
 
 async def test_memory_capture_remember_text_stores_parsed_fact(tmp_path):

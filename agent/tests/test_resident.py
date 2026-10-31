@@ -1,7 +1,6 @@
 """Единый агент: сообщение пользователя идёт в одну сессию, а не в классификатор, планировщик и быструю модель."""
 import asyncio
 
-import settings
 from app import resident
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
@@ -52,11 +51,13 @@ class FakeRegistry:
 class FakeHost:
     def __init__(self):
         self.said: list[str] = []
+        self.stickers: list = []
         self.router = type("R", (), {"registry": FakeRegistry()})()
         self.context_builder = FakeContext()
 
     async def say(self, text, *a, **k):
         self.said.append(text)
+        self.stickers.append(a[0] if a else k.get("sticker"))
 
     def _declutter(self, text):
         return text
@@ -83,15 +84,6 @@ def test_user_message_goes_to_one_session_and_is_spoken_as_it_comes(monkeypatch)
     assert "Пользователь говорит: запусти игру" in FakeClient.instances[0].prompts[0]
     asyncio.run(agent.handle_event("inbox.batch", "что-то случилось"))
     assert len(FakeClient.instances) == 1 and len(FakeClient.instances[0].prompts) == 2    # события в той же сессии
-
-
-def test_enabled_follows_setting_and_router(monkeypatch):
-    agent, host = _agent(monkeypatch)
-    assert agent.enabled() is False                                         # в тестах по умолчанию выключен
-    settings.update(resident_agent=True)
-    assert agent.enabled() is True
-    host.router = None
-    assert agent.enabled() is False
 
 
 def test_session_restarts_after_limit(monkeypatch):
@@ -146,3 +138,15 @@ def test_dispatcher_hands_important_module_event_to_agent():
     assert d.alerted(type("I", (), {"origin": "external", "needs_reply": True})()) is False     # обращение к ней идёт через разговор
     d.ctx = type("C", (), {"on_alert": None})()
     assert d.alerted(item) is False                                                             # без единого агента путь прежний
+
+
+def test_reaction_tag_becomes_sticker_and_is_not_spoken(monkeypatch):
+    class TaggedClient(FakeClient):
+        async def receive_response(self):
+            yield AssistantMessage(content=[TextBlock(text="[question] Как тебя зовут?")], model="haiku")
+            yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False, num_turns=1,
+                                session_id="s", total_cost_usd=0.0, usage={}, result="")
+    agent, host = _agent(monkeypatch)
+    monkeypatch.setattr(resident, "ClaudeSDKClient", TaggedClient)
+    asyncio.run(agent.handle_user("привет"))
+    assert host.said == ["Как тебя зовут?"] and host.stickers == ["question"]
