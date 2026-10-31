@@ -54,6 +54,15 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
             e = event_of(item)
             return attention.ctx.spawn(companion.resident.handle_event(e.kind, e.text, e.origin))
         attention.ctx.on_think = think
+
+        def alert(item) -> bool:
+            """Важное событие модуля (игра: враги, смерть, пожар) прерывает работу агента и разбирается им первым."""
+            if not companion.resident.enabled():
+                return False
+            e = event_of(item)
+            attention.ctx.spawn(companion.resident.preempt(e.kind, e.text, e.origin))
+            return True
+        attention.ctx.on_alert = alert
     plans = PlanNudger(tasks, timer.add, clock=clock)   # планы пользователя -> напоминания себе
 
     def conversation_ended(text: str) -> None:

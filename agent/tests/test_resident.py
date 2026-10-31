@@ -100,3 +100,49 @@ def test_session_restarts_after_limit(monkeypatch):
     asyncio.run(agent.handle_user("раз"))
     asyncio.run(agent.handle_user("два"))
     assert len(FakeClient.instances) == 2
+
+
+def test_important_event_interrupts_current_work_and_is_handled_first(monkeypatch):
+    agent, host = _agent(monkeypatch)
+    release = asyncio.Event()
+
+    class SlowClient(FakeClient):
+        async def interrupt(self):
+            release.set()
+
+        async def receive_response(self):
+            if len(self.prompts) == 1:                      # первое обращение долгое, пока его не оборвут
+                await release.wait()
+                yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False, num_turns=1,
+                                    session_id="s", total_cost_usd=0.0, usage={}, result="")
+                return
+            async for m in super().receive_response():
+                yield m
+
+    monkeypatch.setattr(resident, "ClaudeSDKClient", SlowClient)
+    monkeypatch.setattr(agent, "_quiet", lambda: True)      # «не отвлекать»: тревога всё равно говорит
+
+    async def go():
+        long = asyncio.create_task(agent.handle_user("настрой всё"))
+        await asyncio.sleep(0.1)
+        assert agent.busy
+        await asyncio.wait_for(agent.preempt("rimworld.raid", "Налёт: 6 врагов"), 5)
+        await long
+    asyncio.run(go())
+    prompts = FakeClient.instances[0].prompts
+    assert len(prompts) == 2 and "СРОЧНОЕ событие (rimworld.raid)" in prompts[1] and "Налёт" in prompts[1]
+    assert host.said == ["Сейчас запущу игру.", "Запустила."]
+
+
+def test_dispatcher_hands_important_module_event_to_agent():
+    from app.dispatcher import Dispatcher
+    got = []
+    ctx = type("C", (), {"on_alert": lambda self, item: got.append(item) or True})()
+    d = Dispatcher.__new__(Dispatcher)
+    d.ctx = ctx
+    item = type("I", (), {"origin": "external", "needs_reply": False})()
+    assert d.alerted(item) is True and got == [item]
+    assert d.alerted(type("I", (), {"origin": "self", "needs_reply": False})()) is False        # свой импульс не тревога
+    assert d.alerted(type("I", (), {"origin": "external", "needs_reply": True})()) is False     # обращение к ней идёт через разговор
+    d.ctx = type("C", (), {"on_alert": None})()
+    assert d.alerted(item) is False                                                             # без единого агента путь прежний

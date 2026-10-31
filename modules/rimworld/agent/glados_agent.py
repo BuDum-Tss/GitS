@@ -977,6 +977,10 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
             await _session.reset()          # оборванный ответ оставляет сессию в середине обращения: начинаем заново
         logger.error(f"Ход не уложился в {timeout:.0f}с и прерван (сделано вызовов: {len(actions)}, "
                      f"последний: {actions[-1] if actions else 'нет'})")
+    except asyncio.CancelledError:
+        if in_session:                      # ход прерван срочным делом (тревога, приказ): сессия осталась посреди ответа
+            await asyncio.shield(_session.reset())
+        raise
     except Exception as e:
         if in_session:
             await _session.reset()

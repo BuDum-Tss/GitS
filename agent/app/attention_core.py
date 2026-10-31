@@ -142,6 +142,9 @@ class AttentionContext:
         self.kind_hooks: dict[str, Callable] = {}
         # ТЗ 30, IMP-4: маршрут think; on_think(item) синхронный, запускает размышление в фоне; None - размышления нет
         self.on_think: Callable[[Item], None] | None = None
+        # важное событие (решение D3/D4, пришло не от пользователя): on_alert(item) -> True, если его берёт единый агент и обрывает
+        # свою текущую работу; озвучивает его тогда сам агент, в очередь речи оно не кладётся. None - обычный путь.
+        self.on_alert: Callable[[Item], bool] | None = None
         self.silent_kinds: set[str] = set()      # виды, которые не пишутся в журнал module_event
         self.last_decision: dict | None = None   # для отладки и дашборда
         self.decisions: deque = deque(maxlen=100)

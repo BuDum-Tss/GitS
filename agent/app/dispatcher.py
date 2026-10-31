@@ -62,12 +62,26 @@ class Dispatcher:
         ttl = (item.expires - ctx.clock()) if item.expires is not None else 600.0
         if ttl <= 0:
             return
+        if self.alerted(item):
+            self.digest.note(item, "said")
+            return
         self.digest.note(item, "said")
         self.speech.speech.new(source=f"attention:{item.id}", mode="fact", text=event_fact(ctx, item),
                                priority=int(round(item.priority)), ttl=ttl, key=key, item_id=item.id)
         if decision == "D4":
             self.react(item, item.text[:80], f"attention:{item.id}")
         self.speech.kick()
+
+    def alerted(self, item: Item) -> bool:
+        """Важное событие модуля (D3/D4) берёт единый агент: он прерывает текущую работу и разбирает его первым."""
+        hook = self.ctx.on_alert
+        if hook is None or item.origin != "external" or item.needs_reply:
+            return False
+        try:
+            return bool(hook(item))
+        except Exception as e:                                  # сбой агента не должен глотать тревогу: пойдёт обычным путём
+            logger.warning(f"Тревога агенту: {e}")
+            return False
 
     def react(self, item: Item, topic: str, source: str) -> None:
         """D4: поверх стека встаёт фокус reaction, он снимется, когда реплику скажут или отбросят."""
