@@ -47,6 +47,15 @@ namespace AgentBridge
         };
 
         /// Запрет: окно-зависимая команда без открытого окна. Подсказывает правильную последовательность.
+        /// Нужное окно закрыто: правка в нём невозможна, и курсору нечего показывать (иначе он кликает по воздуху).
+        private static bool TabMissing(string type, JObject cmd)
+        {
+            if (!StrictUi || !InGame || !RequiredTab.TryGetValue(type, out var need)) return false;
+            if (type == "ui_area" && cmd != null && GetPawnById(cmd["pawn_id"]?.Value<string>() ?? "")?.RaceProps.Animal == true) need = "Animals";
+            var open = Find.MainTabsRoot.OpenTab;
+            return open == null || open.defName != need;
+        }
+
         private static void CheckTabGate(string type, JObject cmd = null)
         {
             if (!StrictUi || !InGame || !RequiredTab.TryGetValue(type, out var need)) return;
@@ -226,7 +235,7 @@ namespace AgentBridge
             var now = Time.realtimeSinceStartup;
             var map = Find.CurrentMap;
 
-            if (RequiredTab.ContainsKey(type)) return AimAtTable(type, cmd);   // правка в открытом окне: курсор едет к ячейке (TableCursor.cs)
+            if (RequiredTab.ContainsKey(type)) return TabMissing(type, cmd) ? 0f : AimAtTable(type, cmd);   // правка в открытом окне: курсор едет к ячейке (TableCursor.cs)
 
             if (type == "open_tab")
             {

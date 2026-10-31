@@ -31,7 +31,7 @@ KEYWORDS = ["игра", "колония", "колонист", "римворлд"
 TOOL_TIMEOUT_S = 60
 ORDER_TIMEOUT_S = 15
 DESCRIPTION_MAX = 300
-PARAM_DESCRIPTION_MAX = 160
+PARAM_DESCRIPTION_MAX = 420
 RESULT_MAX = 2000               # как у прежнего MCP-источника ядра: длиннее ответ инструмента обрезался
 
 SHARED_SETTINGS = ["streamer", "dnd", "quiet_until", "game_model", "claude_usage", "voice_muted", "telegram_after_run",
@@ -84,7 +84,7 @@ EMITS = [{"kind": kind, "description": _EMIT_TEXT[kind], "default_urgency": urge
          for kind, urgency in EVENTS.values()]
 
 
-def schema_to_params(schema: dict) -> dict:
+def schema_to_params(schema: dict, doc: str = "") -> dict:
     """JSON-схема параметров MCP -> упрощённые `params` контракта (ТЗ 01, 6.1). Для необязательных параметров с `anyOf`
     (`int | None`) берётся первый тип, кроме null."""
     required = set((schema or {}).get("required", []))
@@ -95,7 +95,15 @@ def schema_to_params(schema: dict) -> dict:
                      "required": name in required}
         if p.get("enum"):
             out[name]["enum"] = p["enum"]
+        if out[name]["type"] in ("array", "object") and not out[name]["description"]:
+            out[name]["description"] = doc_tail(doc)         # формат вложенного значения в схеме не виден: берём пример из docstring
     return out
+
+
+def doc_tail(doc: str) -> str:
+    """Docstring без первой строки (там лежит пример формата сложных параметров), сжатый в одну строку."""
+    lines = [x.strip() for x in (doc or "").strip().splitlines()]
+    return " ".join(x for x in lines[1:] if x)[:PARAM_DESCRIPTION_MAX]
 
 
 def _param_type(p: dict) -> str:
@@ -130,7 +138,7 @@ async def mcp_tool_specs(mcp=None) -> list[dict]:
         if _excluded(t.name):
             continue
         tools.append({"name": t.name, "description": first_line(t.description, t.name),
-                      "params": schema_to_params(t.inputSchema), "risk": "auto", "availability": "profile",
+                      "params": schema_to_params(t.inputSchema, t.description), "risk": "auto", "availability": "profile",
                       "timeout_s": TOOL_TIMEOUT_S, "keywords": list(KEYWORDS)})
     return tools
 

@@ -52,7 +52,9 @@ def test_all_roles_share_one_session(monkeypatch):
         "=== РЕЖИМ: ХОД (игровой ход: действуй и в конце коротко скажи вслух) ===",
         "=== РЕЖИМ: ПЛАНИРОВАНИЕ (раскладка целей на задачи) ===", "=== РЕЖИМ: ДОЛГИЕ ЦЕЛИ ==="]
     assert r1["commentary"] == "Готово." and r2["success"] and r3["contour"] == "goals"
-    assert "РЕЖИМ: ПЛАНИРОВАНИЕ" in FakeClient.instances[0].options.system_prompt      # роли в одной системной подсказке
+    sp = FakeClient.instances[0].options.system_prompt
+    sp = open(sp["path"], encoding="utf-8").read() if isinstance(sp, dict) else sp      # длинная подсказка уходит файлом
+    assert "РЕЖИМ: ПЛАНИРОВАНИЕ" in sp      # роли в одной системной подсказке
 
 
 def test_session_restarts_after_limit_and_failure(monkeypatch):

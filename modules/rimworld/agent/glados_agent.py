@@ -777,6 +777,19 @@ def _notify_tool(name: str, inp) -> None:
         logger.debug(f"tool hook: {e}")
 
 
+PROMPT_INLINE_MAX = 12000       # длиннее: подсказка уходит файлом (командная строка Windows не длиннее ~32 тыс. знаков)
+
+
+def prompt_arg(text: str, name: str = "system"):
+    """Системная подсказка для SDK: короткая строкой, длинная файлом (иначе `WinError 206`, и SDK пишет «Claude Code not found»)."""
+    if len(text) <= PROMPT_INLINE_MAX:
+        return text
+    path = Path(os.getenv("MEMORY_DIR") or Path(__file__).parent / "memory") / f"prompt_{name}.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return {"type": "file", "path": str(path)}
+
+
 # ── Один агент на игру ────────────────────────────────────────────────────────
 # Ход, планирование, проверка плана, долгие цели и рефлексия идут в ОДНОЙ постоянной сессии Claude: он помнит, что делал и
 # что говорил, сам планирует и сам говорит вслух (отдельной озвучки и отдельных контуров с чистым контекстом нет). Роли
@@ -819,7 +832,7 @@ class _Session:
 
     def _options(self) -> ClaudeAgentOptions:
         kwargs: dict = dict(
-            system_prompt=unified_system_prompt(), model=_game_model(),
+            system_prompt=prompt_arg(unified_system_prompt(), "session"), model=_game_model(),
             mcp_servers={"rimworld": {"command": sys.executable, "args": [_MCP_SCRIPT]}},     # без GITS_MODE: все инструменты
             allowed_tools=["mcp__rimworld"], tools=[], permission_mode="acceptEdits",
             setting_sources=[], strict_mcp_config=True, env={"ENABLE_CLAUDEAI_MCP_SERVERS": "false"})
@@ -887,7 +900,7 @@ async def _run_agent(system_prompt: str, prompt: str, allowed_tools: list[str],
     if in_session:
         prompt = f"=== РЕЖИМ: {_ROLE_TITLES.get(contour, contour.upper())} ===\n" + prompt
     agent_kwargs: dict = dict(
-        system_prompt=system_prompt,
+        system_prompt=prompt_arg(system_prompt, contour),
         model=_game_model(),
         mcp_servers={
             "rimworld": {

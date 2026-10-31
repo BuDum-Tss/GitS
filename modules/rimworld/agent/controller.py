@@ -51,6 +51,8 @@ import policy_manager
 import watch_rules
 from glados_agent import run_plan_check
 import experiments
+import knowledge
+import real_threats
 
 logger = logging.getLogger("controller")
 MEM_DIR = Path(__file__).parent / "memory"      # файлы модуля рядом с кодом (как memory/tasks.json в _tasks_block)
@@ -142,7 +144,7 @@ def _get_state() -> dict:
     if not _game_port_open():
         return {}
     try:
-        return httpx.get(f"{_BASE}/state", timeout=5).json()
+        return real_threats.filter_threats(httpx.get(f"{_BASE}/state", timeout=5).json())
     except Exception:
         return {}
 
@@ -1421,6 +1423,7 @@ class Controller:
         colony_name = state.get("colony", {}).get("name", "Unknown Colony")
         save_id     = state.get("save_id", "")
         run         = self._memory.get_current_run()
+        knowledge.set_save(save_id)
 
         if run and save_id and run.get("save_id") != save_id:
             logger.info(f"Обнаружена другая колония/сейв (было: {run.get('colony_name')}, "

@@ -318,7 +318,7 @@ namespace AgentBridge
         private static List<ThreatDto> SerializeThreats(Map map)
         {
             return map.mapPawns.AllPawnsSpawned
-                .Where(p => !p.Dead && p.HostileTo(Faction.OfPlayer))
+                .Where(p => !p.Dead && p.HostileTo(Faction.OfPlayer) && !p.Position.Fogged(map))   // за туманом игрок врага не видит
                 .Select(p => new ThreatDto
                 {
                     Id           = p.ThingID,

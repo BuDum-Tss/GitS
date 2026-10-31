@@ -1,5 +1,8 @@
 """MCP-сервер для RimWorld Agent Bridge (localhost:8765)."""
 import json
+import re
+import knowledge
+import real_threats
 
 from envcompat import env
 import time
@@ -134,7 +137,9 @@ _LEAN_PAWN_FIELDS = ("id", "name", "mood_pct", "health_pct", "current_job",
 def _load_state() -> dict | None:
     raw = _get("/state")
     try:
-        return json.loads(raw)
+        state = real_threats.filter_threats(json.loads(raw))
+        knowledge.set_save(state.get("save_id", ""))
+        return state
     except Exception:
         return None
 
@@ -472,13 +477,33 @@ def get_schedule_table() -> str:
     return json.dumps({"types": list(_SCHEDULE_TYPES), "pawns": pawns}, ensure_ascii=False)
 
 
+_RANGE_TEXT = re.compile(r"(\d{1,2})\s*[-–:]\s*(\d{1,2})\s+([A-Za-z]+)")
+
+
+def _coerce_ranges(ranges) -> list[dict]:
+    """Промежутки приходят и строкой JSON, и строками «22-5 Sleep»: приводим к списку {from, to, type}."""
+    if isinstance(ranges, str):
+        try:
+            ranges = json.loads(ranges)
+        except ValueError:
+            ranges = [x for x in re.split(r"[;,\n]+", ranges) if x.strip()]
+    out = []
+    for r in ranges or []:
+        if isinstance(r, str):
+            m = _RANGE_TEXT.search(r)
+            r = {"from": m.group(1), "to": m.group(2), "type": m.group(3).capitalize()} if m else {}
+        out.append(r)
+    return out
+
+
 @mcp.tool()
-def set_schedule_plan(pawn_id: str, ranges: list[dict]) -> str:
+def set_schedule_plan(pawn_id: str, ranges: list[dict | str] | str) -> str:
     """ТОЧНАЯ НАСТРОЙКА режима дня одного колониста (или всех: pawn_id="all") сразу целым планом:
     ranges = [{"from": 22, "to": 5, "type": "Sleep"}, {"from": 6, "to": 8, "type": "Anything"}, {"from": 9, "to": 17, "type": "Work"},
               {"from": 18, "to": 21, "type": "Joy"}] (часы включительно, можно через полночь, type: Work/Joy/Sleep/Anything/Meditate).
     Часы, не вошедшие в план, не меняются. Правки идут по одному часу, ячейки меняются в открытом окне на глазах, в конце результат
     сверяется с игрой. Только при открытом окне «Режим дня»: open_game_tab("schedule") -> это -> open_game_tab("close")."""
+    ranges = _coerce_ranges(ranges)
     if not ranges:
         return "ERROR: ranges пуст"
     plan = []
