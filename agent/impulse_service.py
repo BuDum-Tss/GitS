@@ -12,6 +12,7 @@ import prompts
 from adapters.impulse_store import JsonReminders, JsonThoughts
 from app import impulse_origin
 from app.impulse_timer import ImpulseTimer
+from app.items import event_of
 from app.plan_nudge import PlanNudger
 from app.reflection import ReflectionService
 from domain.event import KIND_AFTER_CONVERSATION
@@ -43,6 +44,16 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
         settings=settings_source or companion._settings.load, clock=clock, speak=attention.reflect_speech, plan=plan,
         remind=timer.add)
     attention.attach_reflection(service)
+    if hasattr(companion, "resident"):
+        reflect_old = attention.ctx.on_think
+
+        def think(item):
+            """Один агент: событие и самоимпульс обдумывает резидентный агент, а прежнее размышление остаётся запасным."""
+            if not companion.resident.enabled():
+                return reflect_old(item)
+            e = event_of(item)
+            return attention.ctx.spawn(companion.resident.handle_event(e.kind, e.text, e.origin))
+        attention.ctx.on_think = think
     plans = PlanNudger(tasks, timer.add, clock=clock)   # планы пользователя -> напоминания себе
 
     def conversation_ended(text: str) -> None:

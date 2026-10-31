@@ -20,6 +20,7 @@ def _isolated_core(tmp_path, monkeypatch):
     for name in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHANNEL", "TELEGRAM_API_ID", "TELEGRAM_API_HASH"):
         monkeypatch.delenv(name, raising=False)
     settings.init(str(mem))
+    settings.update(resident_agent=False, fast_llm="local")      # тесты без Claude и сети: прежний путь с заглушками; свои тесты включают нужное
     character._active = None            # персонаж процесса (ТЗ 05): каждый тест начинает с glados
     prompts.reload()
     approvals.reset()

@@ -235,6 +235,15 @@ window.ARCH_DATA = {
      "now": "app/reply_generator.py: ТЗ 25: поток токенов → предложения (speech_text.SentenceSplitter) → StreamDeclutter (держит последнее предложение) → прямо в вывод речи, отмена обрывает запрос и очередь; без голоса прежний путь целиком"
     },
     {
+     "id": "resident",
+     "t": "ResidentAgent",
+     "tag": "A",
+     "new": false,
+     "do": "один агент на всё (настройка resident_agent): сообщение владельца и события идут в одну постоянную сессию Claude; инструменты find_tools и call_tool поверх реестра и маршрутизатора (разрешения те же); текст агента звучит по мере появления; без классификатора, планировщика, мгновенного уровня и быстрой модели",
+     "out": "Reply и ToolResult",
+     "now": "app/resident.py: ClaudeSDKClient, сброс после сбоя и 60 обращений; запасной прежний путь при resident_agent=false"
+    },
+    {
      "id": "instant",
      "t": "InstantLevel",
      "tag": "A",
@@ -822,6 +831,36 @@ window.ARCH_DATA = {
    "out",
    "flow",
    "факт: принято, филлер"
+  ],
+  [
+   "conv",
+   "resident",
+   "flow",
+   "обращение (resident_agent)"
+  ],
+  [
+   "resident",
+   "reg",
+   "use",
+   "find_tools"
+  ],
+  [
+   "resident",
+   "exec",
+   "flow",
+   "call_tool"
+  ],
+  [
+   "resident",
+   "out",
+   "flow",
+   "текст по мере появления"
+  ],
+  [
+   "reflect",
+   "resident",
+   "flow",
+   "событие и самоимпульс (resident_agent)"
   ],
   [
    "reply",

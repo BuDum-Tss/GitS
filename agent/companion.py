@@ -42,6 +42,7 @@ from app.conversation_service import ConversationService, _sender_ctx  # noqa: F
 from app.memory_capture import MemoryCapture
 from app.instant import InstantLevel, note_speech
 from app.reply_generator import ReplyGenerator
+from app.resident import ResidentAgent
 from conversation_io import UserInput, current_channel
 from speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
 from user_memory import UserMemory
@@ -111,6 +112,7 @@ class Companion:
         self.reply_generator = ReplyGenerator(self)
         self.memory_capture = MemoryCapture(self)
         self.conversation = ConversationService(self)
+        self.resident = ResidentAgent(self)  # один агент на всё (настройка resident_agent): разговор и события без быстрой модели
         self.instant = InstantLevel(self)    # мгновенный уровень: подтверждение и филлер (ТЗ 25, FAST-3)
 
     @property
@@ -226,6 +228,11 @@ class Companion:
 
     def cancel_reply(self, reason: str = "stop") -> bool:
         """Оборвать идущий потоковый ответ (ТЗ 25, FAST-5): «замолчи», перебивание, экстренное слово."""
+        if self.resident.busy:
+            try:
+                asyncio.get_running_loop().create_task(self.resident.cancel())
+            except RuntimeError:
+                pass
         return self.reply_generator.cancel(reason)
 
     # ── входящее сообщение ─────────────────────────────────────────────────────

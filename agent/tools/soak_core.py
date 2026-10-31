@@ -175,6 +175,7 @@ class Soak:
         else:
             os.environ["GITS_NO_MODULES"] = "1"
         settings.init(self.memory_dir)
+        settings.update(resident_agent=False, fast_llm="local")    # стенд меряет прежний быстрый контур на заглушках, без Claude
         events_log.init(self.memory_dir)
         self._saved = (fast_brain.react_chat, decide.decide)
 

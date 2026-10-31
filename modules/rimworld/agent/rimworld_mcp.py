@@ -298,6 +298,49 @@ def get_work_table() -> str:
 
 
 @mcp.tool()
+def experiment_start(title: str, hypothesis: str) -> str:
+    """Начать эксперимент для ролика: название и гипотеза («что проверяю и что ожидаю»). Идущий прежде закрывается как прерванный.
+    Сначала experiment_list: не начинай новый, пока не закончен активный."""
+    import experiments
+    try:
+        exp = experiments.start(title, hypothesis)
+    except ValueError as e:
+        return f"ERROR: {e}"
+    return f"OK: эксперимент #{exp['id']} «{exp['title']}» начат"
+
+
+@mcp.tool()
+def experiment_log(text: str, kind: str = "step", importance: int = 2) -> str:
+    """Запись в тетрадь активного эксперимента. kind: step (что сделала и что увидела), moment (момент для ролика: смешное,
+    опасное, переломное; станет меткой записи), narration (закадровая реплика для ролика, 1-2 фразы от первого лица).
+    importance 1-3. Только то, что игра подтвердила."""
+    import experiments
+    try:
+        experiments.log(text, kind, importance)
+    except ValueError as e:
+        return f"ERROR: {e}"
+    return "OK"
+
+
+@mcp.tool()
+def experiment_finish(result: str, conclusion: str) -> str:
+    """Закончить активный эксперимент: result (что получилось, по фактам) и conclusion (вывод и что проверить дальше)."""
+    import experiments
+    try:
+        exp = experiments.finish(result, conclusion)
+    except ValueError as e:
+        return f"ERROR: {e}"
+    return f"OK: эксперимент #{exp['id']} закрыт"
+
+
+@mcp.tool()
+def experiment_list() -> str:
+    """Активный эксперимент (с последними записями) и итоги прошлых. Смотри перед тем, как начать или продолжить."""
+    import experiments
+    return experiments.summary()
+
+
+@mcp.tool()
 def set_work_priorities(pawn_id: str, priorities: dict) -> str:
     """ТОЧНАЯ НАСТРОЙКА работ одного колониста сразу: priorities = {"Cooking": 1, "Construction": 2, "Hauling": 3, "Research": 0, ...}
     (1 высший, 2 высокий, 3 нормальный, 4 низкий, 0 выкл). Правки идут по одной, цифры меняются в открытом окне на глазах.

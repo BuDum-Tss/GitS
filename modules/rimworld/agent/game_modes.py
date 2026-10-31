@@ -18,6 +18,7 @@ from pathlib import Path
 CORE = (
     "get_colony_state", "get_pawn_details", "get_items", "find_nearest", "pause_game", "resume_game", "open_game_tab", "note_decision",
     "search_knowledge", "remember_knowledge", "switch_mode",
+    "experiment_start", "experiment_log", "experiment_finish", "experiment_list",      # тетрадь экспериментов для роликов
     "get_colonists", "get_resources", "switch_policy",       # ТЗ 11e (POL-2, POL-5): запросы мира и просьба о политике
     "unforbid_item",        # запрещённое сырьё и еда мешают любой работе (стройке, лечению, бою): разрешить можно из любого режима
 )

@@ -50,6 +50,7 @@ import policy_events
 import policy_manager
 import watch_rules
 from glados_agent import run_plan_check
+import experiments
 
 logger = logging.getLogger("controller")
 MEM_DIR = Path(__file__).parent / "memory"      # файлы модуля рядом с кодом (как memory/tasks.json в _tasks_block)
@@ -1097,10 +1098,12 @@ class Controller:
         agent_mode.set_mode("tactic" if fighting else "act",
                             "приказ игрока" if order else (self._turn_reason or "ход"))
         try:
-            if urgent:   # как живой игрок: тревога, пауза, приказы, снять паузу
+            if urgent or self._pause_while_thinking():   # тревога или «думаю на паузе»: игра стоит, пока она решает
                 st = await asyncio.to_thread(_get_state)
                 if st and not st.get("paused"):
                     paused_by_us = await asyncio.to_thread(_game_command, {"type": "pause"})
+                    if paused_by_us:
+                        planning_pause.mark()      # наша пауза: сторож простоя её не снимает, в конце хода снимаем сами
             changes = None
             st_now = await asyncio.to_thread(_get_state)
             self._last_state = st_now
@@ -1143,6 +1146,7 @@ class Controller:
                 agent_mode.set_mode("observe", "")
             if paused_by_us:
                 await asyncio.to_thread(_game_command, {"type": "resume"})
+                planning_pause.clear()
             if planning_pause.marked():     # паузу под планирование она поставила и не сняла: игра не должна остаться стоять
                 await asyncio.to_thread(_game_command, {"type": "resume"})
                 planning_pause.clear()
@@ -1184,8 +1188,44 @@ class Controller:
         if commentary:
             logger.info(f"[GLaDOS] {commentary}")
             self._last_commentary = commentary
-            self._say(commentary)
+            if self._narration_is_script():
+                self._write_narration(commentary)            # ролик: текст идёт в тетрадь, озвучка потом по сценарию
+            else:
+                self._say(commentary)
         return commentary
+
+    def _pause_while_thinking(self) -> bool:
+        """Игру можно остановить: пока агент думает над ходом, время стоит (настройка модуля pause_while_thinking, по умолчанию
+        да). Задержка модели тогда не стоит игрового времени, а ролик получается связным."""
+        return bool((self.link.module_settings if self.link is not None else {}).get("pause_while_thinking", True))
+
+    def _narration_is_script(self) -> bool:
+        """Закадровый текст (по умолчанию, пока идёт запись ролика) или живая речь (настройка модуля narration)."""
+        mode = (self.link.module_settings.get("narration") if self.link is not None else None) or "script"
+        return mode == "script" and self.recorder is not None and bool(settings.load().get("record_runs"))
+
+    def _write_narration(self, text: str) -> None:
+        """Реплика хода как закадровая запись активного эксперимента; нет эксперимента: только метка записи."""
+        try:
+            experiments.log(text, kind="narration", importance=2)
+        except ValueError:
+            if self.recorder is not None:
+                self.recorder.mark("реплика: " + text[:80], 1)
+        self._flush_moments()
+
+    def _flush_moments(self) -> None:
+        """Моменты и реплики из тетради становятся метками записи (сцены ролика), каждая один раз."""
+        if self.recorder is None:
+            return
+        try:
+            pending = experiments.unmarked_moments()
+            for e in pending:
+                label = e["text"] if e["kind"] == "moment" else "реплика: " + e["text"][:80]
+                self.recorder.mark(label, e["importance"] if e["kind"] == "moment" else 1)
+            if pending:
+                experiments.mark_done(pending)
+        except Exception as ex:                                  # тетрадь не должна ломать ход
+            logger.debug(f"тетрадь: {ex}")
 
     def _speak_background(self, result: dict) -> None:
         """Итог фонового прохода (планирование, цели): реплика от самого Claude (он и думает, и говорит). Лимит Claude: тишина."""
@@ -1249,6 +1289,7 @@ class Controller:
         elif not actions:
             events_log.log("game", "ход без единого действия")
 
+        self._flush_moments()                                     # моменты из тетради эксперимента -> метки записи ролика
         commentary = self._speak_commentary(commentary)           # реплику пишет тот же Claude, что играет: он знает, что сделал
         if actions:
             logger.info(f"[ACTIONS] {actions}")

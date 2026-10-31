@@ -121,6 +121,13 @@ class ConversationService:
             self.log_decision(text, routes.of_input(intent=None, looks_action=False, hard=hard or routes.HardMatch(
                 "approval", "pending_question", "владелец ответил на открытый вопрос о разрешении")), None)
             return
+        if h.resident.enabled():
+            # один агент на всё: без классификатора, планировщика, мгновенного уровня и быстрой модели (настройка resident_agent)
+            async with h._busy:
+                await h.resident.handle_user(text, use_memory=hard is None)
+            self.log_route(text, "resident", False, None, None)
+            h.arm_idle_consolidation()
+            return
         # классификатор, приказ в игру и поиск в памяти идут вместе (FAST-6); поиск ограничен дедлайном при ответе
         likely_task = h.router is not None and h.router.looks_like_action(text)
         retrieval = None if (likely_task or hard is not None) else h.context_builder.start_retrieval(text)   # поручению память не нужна
@@ -200,6 +207,8 @@ class ConversationService:
             task.add_done_callback(h._bg_tasks.discard)
 
     async def confirm_correction(self, text: str, ref: float, prev: str) -> None:
+        if self._h.resident.enabled():
+            return                       # один агент сам слышит поправку: отдельной проверки моделью нет
         system = ("Пользователь ответил на твою прошлую реплику. Определи, поправляет ли он тебя: говорит ли, что ты "
                   'ошиблась или сказала неверно. Ответь ТОЛЬКО JSON: {"correction": <true или false>}')
         try:

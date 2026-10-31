@@ -83,6 +83,8 @@ class MemoryCapture:
     async def learn(self, text: str):
         """Фоном после ответа: что запомнить надолго из этого сообщения и не просил ли он не отвлекать."""
         h = self._h
+        if h.resident.enabled():
+            return                       # один агент: запоминает он сам инструментом памяти, отдельной модели для этого нет
         system = ("Из сообщения пользователя выдели то, что ты САМА считаешь важным запомнить надолго. Верни JSON: "
                   '{"memories": [{"kind": "user|self|plan", "text": "...", "importance": 3, "due_days": null}], '
                   '"quiet_minutes": 0}. kind=user: устойчивые факты о нём (имя, привычки, предпочтения). '
@@ -108,8 +110,8 @@ class MemoryCapture:
     async def consolidate(self):
         """Фоном: осмыслить недавнюю беседу и сохранить важное (эпизоды, о себе, планы, факты)."""
         h = self._h
-        if h._consolidating:
-            return
+        if h._consolidating or h.resident.enabled():
+            return                       # один агент: осмысляет и запоминает сам, отдельного прохода моделью нет
         since = h._memory_reader.meta("consolidated_ts", 0)
         dlg = [m for m in h._memory_reader.recent_dialogue(40) if m["ts"] > since]
         if sum(1 for m in dlg if m["role"] == "user") < 2:

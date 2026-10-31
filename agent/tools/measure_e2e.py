@@ -96,6 +96,7 @@ async def run_stub(turns: int, memory_dir: str) -> dict:
 
     saved = (fast_brain._ask, fast_brain.react_chat, decide.decide, events_log._dir)
     settings.init(memory_dir)
+    settings.update(resident_agent=False, fast_llm="local")    # стенд меряет прежний быстрый контур на заглушках, без Claude
     events_log.init(memory_dir)
 
     async def ask(system, user, timeout=30, max_tokens=40, image_b64=None, temperature=0.3, background=False):
@@ -188,6 +189,7 @@ async def run_compare(turns: int, memory_dir: str, sentence_ms: float = 250.0, s
 
     saved = (fast_brain.react_chat, decide.decide, events_log._dir)
     settings.init(memory_dir)
+    settings.update(resident_agent=False, fast_llm="local")    # стенд меряет прежний быстрый контур на заглушках, без Claude
     events_log.init(memory_dir)
 
     async def no_reaction(text, rel=None):
