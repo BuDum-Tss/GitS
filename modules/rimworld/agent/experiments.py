@@ -80,6 +80,17 @@ def log(text: str, kind: str = "step", importance: int = 2, game_time: str = "",
     return entry
 
 
+def abandon_active(reason: str, now: float | None = None, memory_dir: str | None = None) -> dict | None:
+    """Идущий эксперимент закрывается как «прерван» (начался другой забег): данные прошлой колонии не должны задавать цели новой."""
+    data = load(memory_dir)
+    cur = active(data)
+    if cur is None:
+        return None
+    cur.update(status="aborted", finished=time.time() if now is None else now, conclusion=cur.get("conclusion") or reason)
+    save(data, memory_dir)
+    return cur
+
+
 def finish(result: str, conclusion: str, now: float | None = None, memory_dir: str | None = None) -> dict:
     data = load(memory_dir)
     exp = active(data)

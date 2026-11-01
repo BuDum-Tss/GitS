@@ -48,3 +48,12 @@ def test_entries_are_capped(tmp_path):
     for i in range(experiments.MAX_ENTRIES + 5):
         experiments.log(f"шаг {i}", now=float(i), memory_dir=d)
     assert len(experiments.active(experiments.load(d))["entries"]) == experiments.MAX_ENTRIES
+
+
+def test_abandon_active_closes_the_running_experiment(tmp_path):
+    d = str(tmp_path)
+    assert experiments.abandon_active("новый забег", memory_dir=d) is None
+    experiments.start("Стены", "защищают", memory_dir=d)
+    closed = experiments.abandon_active("новый забег", memory_dir=d)
+    assert closed["status"] == "aborted" and closed["conclusion"] == "новый забег"
+    assert experiments.active(experiments.load(d)) is None

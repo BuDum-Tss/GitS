@@ -1786,7 +1786,11 @@ def get_resources(min_amount: int = 1) -> str:
         return "ERROR: состояние игры недоступно"
     res = _colony(data).get("resources") or {}
     top = sorted(((k, v) for k, v in res.items() if (v or 0) >= min_amount), key=lambda kv: -float(kv[1] or 0))[:30]
-    return _brief({"food_days": _colony(data).get("food_days"), "resources": dict(top)})
+    out = {"food_days": _colony(data).get("food_days"), "resources": dict(top)}
+    if not top:
+        out["note"] = ("пусто не значит, что ничего нет: игра считает ресурсами только то, что лежит в зоне склада и не запрещено; "
+                       "предметы на карте смотри в colony_items, зону склада ставит architect_zone_stockpile")
+    return _brief(out)
 
 
 @mcp.tool()

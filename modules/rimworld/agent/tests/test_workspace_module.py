@@ -134,3 +134,11 @@ async def test_open_returns_the_actions_of_the_node_with_their_parameters(tmp_pa
         ids = {a["id"]: a["params"] for a in reply["actions"]}
         assert "rimworld.architect_zone_stockpile" in ids and "rimworld.architect_zone_grow_zone" in ids
         assert all(isinstance(p, dict) for p in ids.values())              # имена параметров с типами, чтобы вызвать без поиска
+
+
+def test_empty_resources_explain_why_they_may_be_empty(monkeypatch):
+    monkeypatch.setattr(rimworld_mcp, "_load_state", lambda: {"colony": {"resources": {}, "food_days": 10.8}})
+    text = rimworld_mcp.get_resources()
+    assert "colony_items" in text and "склад" in text
+    monkeypatch.setattr(rimworld_mcp, "_load_state", lambda: {"colony": {"resources": {"WoodLog": 57}, "food_days": 9}})
+    assert "note" not in rimworld_mcp.get_resources()

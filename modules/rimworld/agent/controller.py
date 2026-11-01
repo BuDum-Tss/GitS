@@ -765,6 +765,12 @@ class Controller:
         if not run:
             run = self._memory.start_run(colony_name, save_id)
             logger.info(f"Начат эксперимент: {colony_name} (save_id={save_id})")
+            try:
+                import experiments
+                if experiments.abandon_active("начат новый забег"):
+                    logger.info("Идущий эксперимент прошлого забега закрыт как прерванный.")
+            except Exception as e:                       # заметки прошлого не должны мешать началу забега
+                logger.warning(f"Не удалось закрыть прежний эксперимент: {e}")
             if self.recorder is not None:
                 self.recorder.start(run["id"], colony_name)
         else:
