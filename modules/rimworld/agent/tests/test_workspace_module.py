@@ -108,8 +108,10 @@ async def test_open_rejects_unknown_nodes_and_pawn_nodes_without_a_pawn(tmp_path
             await rig.core.call_tool("open", {"path": "нет/такого"})
         assert e.value.code == "bad_request" and "architect" in e.value.message
         with pytest.raises(ToolError) as e:
-            await rig.core.call_tool("open", {"path": "pawn/orders"})
+            await rig.core.call_tool("open", {"path": "pawn"})
         assert 'id' in e.value.message and rig.node_state.path == "root"
+        await rig.core.call_tool("open", {"path": "pawn/orders"})           # приказы берут id колонистов сами: бой не ждёт выделения
+        assert rig.node_state.path == "pawn/orders"
 
 
 def test_every_old_function_behind_a_tool_exists_in_the_mcp_server():

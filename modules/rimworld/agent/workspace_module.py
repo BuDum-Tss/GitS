@@ -169,7 +169,7 @@ def make_nav_handlers(state: NodeState, module=None) -> dict[str, Callable]:
             raise ToolError(f"узла «{path}» нет. Есть: {', '.join(sorted(n.path for n in wt.NODES))}", code="bad_request")
         node = next(n for n in wt.NODES if n.path == path)
         m = mcp()
-        if path.startswith("pawn") and not target and not state.path.startswith("pawn"):
+        if path == "pawn" and not target and not state.path.startswith("pawn"):      # действия подузлов (приказы, снаряжение, лечение) берут id колонистов сами: выделение не обязательно
             raise ToolError("колонист не выбран: open(\"pawn\", id=<id колониста>)", code="bad_request")
         if target and path.startswith("pawn"):
             reply = await _run(m, "select_target", pawn_id=str(target))
