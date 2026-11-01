@@ -635,7 +635,8 @@ def get_items(category: str = "weapon", x: int | None = None, z: int | None = No
               only_unforbidden: bool = False, max_results: int = 20) -> str:
     """Предметы на карте с ThingID (чтобы вооружить и одеть колонистов).
 
-    category: weapon (всё оружие) / ranged / melee / apparel / medicine / food.
+    category: weapon (всё оружие) / ranged / melee / apparel / medicine / food / material (брёвна, камень, сталь, ткань) /
+    forbidden (всё запрещённое: такое колонисты не трогают, см. unforbid_item).
     x, z: от этой точки ближайшие (по умолчанию центр карты). only_unforbidden: только разрешённые.
     В ответе: id, def, label, count, позиция, forbidden, quality, ranged/range, armor_sharp/armor_blunt (броня).
     """
@@ -913,7 +914,8 @@ def forbid_item(thing_id: str) -> str:
 
 @mcp.tool()
 def unforbid_item(thing_id: str) -> str:
-    """Разрешить предмет."""
+    """Разрешить предмет: колонисты начнут им пользоваться (брёвна и камень для стройки, еду, оружие). thing_id: один id или
+    несколько через запятую (ids берутся из get_items, category=forbidden или material)."""
     return _post({"type": "unforbid", "thing_id": thing_id})
 
 

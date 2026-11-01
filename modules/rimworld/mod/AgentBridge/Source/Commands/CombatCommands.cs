@@ -51,11 +51,15 @@ namespace AgentBridge
                 "apparel"  => d => d.IsApparel,
                 "medicine" => d => d.IsMedicine,
                 "food"     => d => d.IsNutritionGivingIngestible && !d.IsCorpse,
-                _ => throw new Exception($"category должна быть weapon/ranged/melee/apparel/medicine/food, а не '{category}'"),
+                // стройматериалы и сырьё (брёвна, камень, сталь, ткань): их запрет мешает стройке, а оружия и еды в них нет
+                "material" => d => d.IsStuff || (d.thingCategories != null && d.thingCategories.Contains(ThingCategoryDefOf.ResourcesRaw)),
+                "forbidden" => d => true,        // любой предмет; вместе с only_unforbidden=false виден запрет в поле forbidden
+                _ => throw new Exception($"category должна быть weapon/ranged/melee/apparel/medicine/food/material/forbidden, а не '{category}'"),
             };
 
             var found = map.listerThings.AllThings
                 .Where(t => t.def.category == ThingCategory.Item && t.Spawned && match(t.def))
+                .Where(t => category != "forbidden" || t.IsForbidden(Faction.OfPlayer))      // "forbidden": только запрещённое
                 .Where(t => !onlyFree || !t.IsForbidden(Faction.OfPlayer))
                 .OrderBy(t => t.Position.DistanceTo(center))
                 .Take(max)
