@@ -588,6 +588,7 @@ class Controller:
                 if important:
                     events_log.log("game", "изменение: " + line)
                     self._recent_changes.append(line)
+                    self._send_change(line)
         self._prev_snap = snap
         self._rel.sync_colonists((state.get("colony") or {}).get("pawns") or [])
         if self.link is not None and time.time() - self._graph_sent >= 60:
@@ -653,6 +654,16 @@ class Controller:
     _COVERED_LETTERS = ("ThreatBig", "ThreatSmall", "Death")
     _LETTER_URGENCY = {"critical": 4, "high": 3}
 
+    def _send_change(self, line: str) -> None:
+        """Важная строка разницы состояний -> событие для ядра: исследование, кончается еда, упал колонист, враг на карте."""
+        link = self.link
+        ev = policy_events.from_statediff(line, True)
+        if link is None or ev is None:
+            return
+        kind = {"raid": "enemy_seen"}.get(ev.kind, ev.kind)
+        if kind in ("enemy_seen", "pawn_downed", "research_done", "resource_out"):
+            asyncio.create_task(link.event(kind, dict(ev.fields), text=line[:1].upper() + line[1:]))
+
     async def _send_game_event(self, evt: dict):
         """Событие игры -> событие модуля для ядра (RW-9): набег, гибель колониста, пожар, письмо. Ядро решает, важно ли оно
         сейчас; комментатор говорит по этим же событиям сам. Текст это факт, а не реплика."""
@@ -668,6 +679,12 @@ class Controller:
                                text=event_text.describe(evt))
         elif kind == "fire_started":
             event = link.event("fire", {"x": d.get("x"), "z": d.get("z")}, text=event_text.describe(evt))
+        elif kind == "pawn_downed":
+            event = link.event("pawn_downed", {"name": d.get("name")}, text=f"Колонист {d.get('name') or '?'} упал и лежит.")
+        elif kind in ("enemy_downed", "enemy_killed"):
+            label = d.get("label") or d.get("name") or d.get("def") or "враг"
+            event = link.event("enemy_down", {"label": str(label), "killed": kind == "enemy_killed"},
+                               text=f"Враг {'убит' if kind == 'enemy_killed' else 'повержен'}: {label}.")
         elif kind == "letter" and d.get("letter_def") not in self._COVERED_LETTERS:
             event = link.event("letter", {"label": d.get("label"), "letter_def": d.get("letter_def")},
                                text=event_text.describe(evt), urgency=self._LETTER_URGENCY.get(evt.get("priority"), 2))

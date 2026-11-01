@@ -40,11 +40,17 @@ EVENTS = {
     "letter": ("rimworld.letter", 2),
     "goal": ("rimworld.goal", 3),
     "run_video": ("rimworld.run_video", 2),
+    "pawn_downed": ("rimworld.pawn_downed", 4),     # колонист упал и лежит (мод, разница состояний)
+    "enemy_seen": ("rimworld.enemy_seen", 3),       # на карте появился враг
+    "enemy_down": ("rimworld.enemy_down", 2),       # враг убит или повержен
+    "research_done": ("rimworld.research_done", 2),
+    "resource_out": ("rimworld.resource_out", 3),   # кончается еда
     "game_started": ("rimworld.game_started", 1),   # игра запущена: сигнал для ядра, среду он не включает (ТЗ 32, WS-5)
 }
 # сколько секунд событие остаётся актуальным (после этого ядро его не озвучивает)
 EXPIRES_S = {"rimworld.raid": 180, "rimworld.fire": 180, "rimworld.death": 300, "rimworld.letter": 300,
-             "rimworld.goal": 600, "rimworld.run_ended": 1800, "rimworld.run_video": 3600, "rimworld.game_started": 300}
+             "rimworld.pawn_downed": 300, "rimworld.enemy_seen": 180, "rimworld.enemy_down": 120, "rimworld.research_done": 600,
+             "rimworld.resource_out": 600, "rimworld.goal": 600, "rimworld.run_ended": 1800, "rimworld.run_video": 3600, "rimworld.game_started": 300}
 
 
 class CoreLink:

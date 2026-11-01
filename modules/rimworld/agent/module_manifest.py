@@ -78,6 +78,11 @@ _EMIT_TEXT = {
     "rimworld.letter": "Игровое письмо (событие в колонии, торговцы, гости, ссоры)",
     "rimworld.goal": "Цель игры достигнута или заброшена",
     "rimworld.run_video": "Видео забега готово (пути к записи, сценарию и клипам в data)",
+    "rimworld.pawn_downed": "Колонист упал и лежит (ранен или без сознания)",
+    "rimworld.enemy_seen": "На карте появился враг",
+    "rimworld.enemy_down": "Враг убит или повержен",
+    "rimworld.research_done": "Исследование завершено",
+    "rimworld.resource_out": "Кончается запас (еда)",
     "rimworld.game_started": "Игра запущена (сигнал; в среду RimWorld агент входит только по своему импульсу или просьбе)",
 }
 # контракт 1.8: темы события (по ним узел сдвигает срочность), срочность вне фокуса, какие запросы смотреть после события
@@ -88,6 +93,11 @@ _EMIT_EXTRA = {
     "rimworld.letter": {"topics": ["social"], "urgency_unfocused": 1},
     "rimworld.goal": {"urgency_unfocused": 1},
     "rimworld.run_ended": {"follow_up": ["colony_overview"]},
+    "rimworld.pawn_downed": {"topics": ["health", "threat"], "follow_up": ["colony_colonists"]},
+    "rimworld.enemy_seen": {"topics": ["threat"], "follow_up": ["colony_threats"]},
+    "rimworld.enemy_down": {"topics": ["threat"], "urgency_unfocused": 1},
+    "rimworld.research_done": {"topics": ["economy"], "urgency_unfocused": 1},
+    "rimworld.resource_out": {"topics": ["economy"], "follow_up": ["colony_resources"]},
 }
 EMITS = [{"kind": kind, "description": _EMIT_TEXT[kind], "default_urgency": urgency, **_EMIT_EXTRA.get(kind, {})}
          for kind, urgency in EVENTS.values()]
