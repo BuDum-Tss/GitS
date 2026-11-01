@@ -224,3 +224,62 @@ def test_manifest_workspace_accepts_autonomous_fields_and_rejects_bad_ones():
     assert P.validate_manifest({**base, "workspace": {"id": "game", "title": "G", "autonomous": True, "work_interval_s": 90}}) == []
     bad = P.validate_manifest({**base, "workspace": {"id": "game", "title": "G", "autonomous": "да", "work_interval_s": 5}})
     assert any("autonomous" in p for p in bad) and any("work_interval_s" in p for p in bad)
+
+
+# ── цель автономной среды ─────────────────────────────────────────────────────
+
+async def _sqlite_tasks(tmp_path):
+    from adapters.task_store import TaskStore
+    from app.task_service import TaskService
+
+    class Planner:
+        async def plan(self, goal, ctx):
+            return [{"text": "осмотреть колонию"}, {"text": "настроить работы"}]
+    store = TaskStore(str(tmp_path / "tasks.db"))
+    return TaskService(store, planner=Planner(), workspace_of=lambda: "game")
+
+
+def test_work_loop_sets_the_default_goal_once_and_puts_the_next_step_into_the_event(tmp_path):
+    manifest = {"workspace": {"id": "game", "title": "Игра", "autonomous": True, "work_interval_s": 100,
+                              "default_goal": "Развивать колонию"}}
+    env, now, sent, agent = ["game"], [1000.0], [], _Agent()
+
+    async def scenario():
+        svc = await _sqlite_tasks(tmp_path)
+        loop = _loop(env, manifest, agent, now, sent)
+        loop._tasks = svc
+        assert await loop.tick() is False                         # вход в среду: интервал ещё не прошёл
+        now[0] = 1200.0
+        assert await loop.tick() is True
+        first = sent[-1]["text"]
+        assert "Активная задача: «Развивать колонию»" in first and "Следующий шаг: осмотреть колонию" in first
+        tasks = await svc.list_tasks("game")
+        assert len(tasks) == 1 and tasks[0].origin == "self"
+        now[0] = 1400.0
+        assert await loop.tick() is True
+        assert len(await svc.list_tasks("game")) == 1            # второй цикл не создаёт вторую цель
+    asyncio.run(scenario())
+
+
+def test_work_loop_without_default_goal_reports_that_there_are_no_open_tasks(tmp_path):
+    env, now, sent, agent = ["game"], [1000.0], [], _Agent()
+
+    async def scenario():
+        loop = _loop(env, WS_MANIFEST, agent, now, sent)
+        loop._tasks = await _sqlite_tasks(tmp_path)
+        assert await loop.tick() is False
+        now[0] = 1200.0
+        assert await loop.tick() is True
+        assert "Открытых задач у среды нет" in sent[-1]["text"]
+    asyncio.run(scenario())
+
+
+def test_search_hidden_finds_actions_of_other_nodes_with_the_node_to_open():
+    reg = _registry("root")
+    reg.envs["game"].tools[1].description = "поставить стену"
+    reg.envs["game"].tools[2].description = "расписание часов"
+    found = reg.search_hidden("поставь стену")
+    assert [t.name for t in found] == ["place"] and found[0].node == "build"
+    assert reg.search_hidden("совсем другое") == []
+    visible = {t.name for t in reg.active_tools()}
+    assert "place" not in visible and "set_hours" not in visible       # скрытые остаются недоступными для вызова

@@ -29,8 +29,7 @@ def summary_of(phase: str, snapshot: dict, mode_label: str) -> str:
         game = f"колония «{snapshot.get('colony_name') or 'без имени'}»"
     else:
         game = "меню" if phase == "menu" else "нет"
-    goal = (snapshot.get("ambition") or {}).get("title") or "не поставлена"
-    return f"игра: {game}, режим агента: {mode_label}, цель: {goal}"
+    return f"игра: {game}"
 
 
 async def build_state() -> tuple[str, dict]:

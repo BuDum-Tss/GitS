@@ -129,6 +129,27 @@ async def _run(module, name: str, **kwargs) -> str:
     return str(await asyncio.to_thread(_call(module, name), **kwargs) or "")
 
 
+async def node_actions(module, path: str) -> list[dict]:
+    """Действия узла с параметрами: после `open` агенту не нужны отдельные `where` и поиск инструментов (экономит два вызова,
+    каждый ~3 с). Идентификатор для `call_tool` и схема параметров берутся из тех же функций MCP-сервера, что и манифест."""
+    from module_manifest import schema_to_params
+    try:
+        listed = {t.name: t for t in await module.mcp.list_tools()}
+    except Exception:
+        return []
+    out = []
+    for old, kind, node_path, name, node in _specs_table():
+        if node != path or kind not in ("action", "skill") or old not in listed:
+            continue
+        t = listed[old]
+        out.append({"id": f"{MODULE_ID_FOR_CALLS}.{name}", "params": {k: v.get("type", "string") + ("" if v.get("required") else "?")
+                                                                     for k, v in schema_to_params(t.inputSchema, t.description).items()}})
+    return out
+
+
+MODULE_ID_FOR_CALLS = "rimworld"
+
+
 def make_nav_handlers(state: NodeState, module=None) -> dict[str, Callable]:
     """open, back, where. `module` - rimworld_mcp (подменяется в тестах)."""
 
@@ -166,7 +187,8 @@ def make_nav_handlers(state: NodeState, module=None) -> dict[str, Callable]:
             if str(reply).startswith(("ERROR", "WARNING")):
                 raise ToolError(str(reply), code="unavailable")
         state.set(path)
-        return {"node": path, "title": node.title, "children": state.children(path)}
+        return {"node": path, "title": node.title, "children": state.children(path),
+                "actions": await node_actions(m, path)}
 
     async def back(args: dict):
         parent = state.path.rpartition("/")[0] or ROOT
@@ -192,11 +214,28 @@ def make_tool_handler(name: str, node: str, state: NodeState, module=None) -> Ca
     from module_manifest import tool_handler           # аргументы к типам функции, поток, ответ строкой
     old = OLD_BY_NAME[name]
     inner = tool_handler(old, module)
+    tab = next((n.tab for n in wt.NODES if n.path == node and n.tab in TAB_NAMES), "") if node else ""
 
     async def handler(args: dict):
         state.require(node, name)
+        if tab:
+            await _keep_tab_open(module, tab)
         return await inner(args)
     return handler
+
+
+async def _keep_tab_open(module, tab: str) -> None:
+    """Окно, открытое явно, мод закрывает само через 25 с простоя, а агент между решениями думает дольше. Перед действием узла с
+    вкладкой убеждаемся, что она открыта, и открываем заново, если нет (по `ui_state`, без переключения «туда-обратно»)."""
+    if module is None:
+        import rimworld_mcp as module
+    try:
+        raw = await _run(module, "ui_state")
+        opened = (json.loads(raw) or {}).get("open_tab")
+    except Exception:
+        opened = None
+    if opened != tab:
+        await _run(module, "open_game_tab", tab=TAB_NAMES[tab])
 
 
 # ── спецификации инструментов для манифеста ───────────────────────────────────

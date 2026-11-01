@@ -29,6 +29,7 @@ class Router:
         self.registry = registry
         self._say = say                          # как озвучить вопрос о разрешении
         self.after_tool = None                   # async (tool, args, ok, result) -> None: что делать после инструмента (ставит ядро)
+        self.auto_ok = lambda: False             # () -> агент сейчас играет в автономной среде: обычные действия без вопроса (ставит ядро)
         self._log = event_log if event_log is not None else SqliteEventLog()
         self._settings = settings_provider if settings_provider is not None else SettingsModule()
         self._approver = approver if approver is not None else ApprovalsModule()
@@ -67,11 +68,15 @@ class Router:
         public_unconfirmed = tool.risk == "public" and not tool.self_confirming
         needs_ask = risk_policy.needs_ask(danger, tool.risk, tool.self_confirming,
                                           public_unconfirmed and self._settings.load()["telegram_confirm"])
+        if needs_ask and not danger and tool.risk == "ask" and self.auto_ok():
+            needs_ask = False                    # она играет сама: владельца обычными вопросами не отвлекаем; опасное и публичное спрашивается
         if needs_ask:
             shown = ", ".join(f"{k}={str(v)[:60]}" for k, v in args.items())
-            question = f"Хочу выполнить действие «{tool.name}» ({tool.description.rstrip('.')})"
+            # факт для модели, а не готовая реплика: она сама спросит своими словами (в факт не входит описание инструмента:
+            # оно написано для агента и в речь не годится)
+            question = f"Единый агент хочет выполнить действие «{tool.name}» из набора «{tool.env}»"
             if shown:
-                question += f" с параметрами: {shown[:200]}"
+                question += f", параметры: {shown[:200]}"
             if not await self._approver.request(question + ".", self._say, danger=danger):
                 journal.mistake("denied", f"{tool.id}: пользователь не разрешил")      # ТЗ 24, TRC-5
                 return False, tool.name, "пользователь не разрешил", "denied"

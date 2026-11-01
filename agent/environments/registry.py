@@ -132,6 +132,26 @@ class Registry:
         picked += [t for t in tools if t.always and t not in picked]   # запасной путь не должен отсеиваться
         return picked
 
+    def search_hidden(self, text: str, k: int = 6) -> list[Tool]:
+        """Действия других узлов рабочего места (ТЗ 33), которые сейчас скрыты: по ним нельзя вызвать, но найти можно, чтобы агент
+        узнал, в какой узел зайти (`Tool.node`). Только совпавшие с запросом по основам слов."""
+        if self.node_of is None:
+            return []
+        shown = {t.id for t in self.active_tools()}
+        query = _stems(text)
+        found = []
+        for env in self.envs.values():
+            if not env.state()[0]:
+                continue
+            for t in env.tools:
+                if t.id in shown or not t.node:
+                    continue
+                doc = _stems(f"{t.name} {t.description} {' '.join(t.keywords)} {t.node.replace('/', ' ')}")
+                if query & doc:
+                    found.append((len(query & doc), t))
+        found.sort(key=lambda x: -x[0])
+        return [t for _, t in found[:k]]
+
     async def search_async(self, text: str, k: int = 14) -> list[Tool]:
         """Как search, но сначала по смыслу (эмбеддинги описаний); недоступны или кэш ещё не собран - по основам слов."""
         tools = self.active_tools()

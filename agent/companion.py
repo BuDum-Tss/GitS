@@ -257,6 +257,11 @@ class Companion:
 
     # ── разговор ───────────────────────────────────────────────────────────────
 
+    async def ask_permission(self, fact: str) -> None:
+        """Вопрос о разрешении: факт уходит модели, она спрашивает владельца своими словами (в очередь речи как вопрос). Готовых
+        фраз в коде нет."""
+        await self._speak_about_impl(fact, "", True, True, False)
+
     async def speak_about(self, fact: str, user_text: str = "", must: bool = False, question: bool = False,
                           direct: bool = False):
         """Публичный вход (ТЗ 29): менеджер внимания зовёт его вместо приватного имени. Старое имя `_speak_about` ниже."""

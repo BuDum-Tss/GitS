@@ -190,7 +190,7 @@ async def request(text: str, announce, danger: str | None = None) -> bool:
         text = f"{text} Внимание: {danger}." + (" Спрашиваю, даже несмотря на авто-разрешение." if auto else "")
 
     async def say(_fact: str):
-        await announce(f"{text} Разрешаешь? Скажи «да» или «нет».")
+        await announce(f"{text} Нужно разрешение владельца: спроси, разрешает ли он, ответить можно словом «да» или «нет».")
     answer, _by = await ask("approval", text, timeout_s=TIMEOUT_SECS, source="core", announce=say)
     return bool(answer)
 

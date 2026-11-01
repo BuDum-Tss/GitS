@@ -13,6 +13,7 @@
     voice.*. Питомец на экране это модуль pet (modules/pet, ТЗ 13): он показывает присутствие (тему presence).
 """
 import asyncio
+import os
 import logging
 import time as _time
 from pathlib import Path
@@ -337,7 +338,7 @@ async def _run(config: dict):
         pass
     builtin.register(registry, companion, memory, profiles=layer.profiles)
 
-    companion.router = Router(registry, companion.say)
+    companion.router = Router(registry, companion.ask_permission)     # вопрос о разрешении формулирует модель по факту
 
     async def enter_after_launch(tool, args, ok, result) -> None:
         """Игру запустили по просьбе пользователя: заходим в среду её модуля (цели, камера, комментарии и ход идут только в
@@ -375,8 +376,10 @@ async def _run(config: dict):
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     work_loop = WorkLoop(env_of=lambda: layer.workspaces.current, manifest_of=layer.modules.manifest_of, agent=companion.resident,
                          emit=layer.attention.submit_self, settings=layer.attention.ctx.settings,
-                         quiet=lambda: layer.attention.ctx.quiet(layer.attention.ctx.settings()), blocked=claude_quota.blocked)
+                         quiet=lambda: layer.attention.ctx.quiet(layer.attention.ctx.settings()), blocked=claude_quota.blocked,
+                         tasks=companion.tasks)
     work_loop.start()                                    # ТЗ 33: автономная работа агента в среде игры или мира
+    companion.router.auto_ok = lambda: work_loop.spec() is not None      # пока она играет сама, обычные действия идут без вопроса
     dashboard.set_impulses(impulses)
     episodes = episode_service.build(companion, layer.attention,       # ТЗ 27: эпизоды и сон (простой, расписание, догоняющий)
                                      busy=lambda: layer.attention.top_focus().kind in ("conversation", "question")
@@ -405,4 +408,7 @@ async def _run(config: dict):
 
 
 def run(config: dict):
+    # голос по умолчанию быстрый (edge-tts): голос персонажа (ESpeech, Fish Speech) синтезируется секунды, а при занятом сервисе речь
+    # падает на запасной голос, и голос «плавает». Выбрать другой: TTS_ENGINE=auto|espeech|fish в agent/secrets.env.
+    os.environ.setdefault("TTS_ENGINE", "edge")
     asyncio.run(_run(config))

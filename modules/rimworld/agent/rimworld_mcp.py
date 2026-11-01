@@ -345,6 +345,15 @@ def experiment_list() -> str:
     return experiments.summary()
 
 
+def _work_type_names() -> list[str]:
+    """Имена работ из таблицы «Работа» (defName): по ним проверяются приоритеты. Нет таблицы: пусто, проверка пропускается."""
+    try:
+        data = json.loads(_query({"type": "get_work_table"}))
+        return [str(w) for w in data.get("work_types") or []]
+    except Exception:
+        return []
+
+
 @mcp.tool()
 def set_work_priorities(pawn_id: str, priorities: dict) -> str:
     """ТОЧНАЯ НАСТРОЙКА работ одного колониста сразу: priorities = {"Cooking": 1, "Construction": 2, "Hauling": 3, "Research": 0, ...}
@@ -357,6 +366,10 @@ def set_work_priorities(pawn_id: str, priorities: dict) -> str:
     for work, prio in changes.items():
         if not 0 <= prio <= 4:
             return f"ERROR: приоритет {work}={prio} вне 0..4"
+    known = _work_type_names()
+    unknown = [w for w in changes if known and w not in known]
+    if unknown:                                    # мод на неизвестной работе падает с NullReferenceException без объяснений
+        return f"ERROR: нет работы {', '.join(unknown)}. Есть: {', '.join(known)}"
     for work, prio in changes.items():
         r = _post({"type": "set_work_priority", "pawn_id": pawn_id, "work_type": work, "priority": prio})
         if r.startswith("ERROR") or r.startswith("WARNING"):

@@ -182,7 +182,7 @@ async def test_question_announcement_is_spoken_before_the_wait_starts(mk):
             break
         await asyncio.sleep(0)
     cand = r.att.speech.items[0]
-    assert cand.source == "question" and "Разрешаешь?" in cand.text
+    assert cand.source == "question" and "разрешение" in cand.text and "«да» или «нет»" in cand.text
     assert approvals.is_announcing()
     await r.pump()
     for _ in range(50):

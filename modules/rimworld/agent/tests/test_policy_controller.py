@@ -91,18 +91,6 @@ def stub_turns(c, monkeypatch):
 
 
 
-async def test_focus_release_checkpoints_pauses_and_activate_restores(ctrl, monkeypatch):
-    ctrl.policies.leave_afk("observe", "")
-    monkeypatch.setattr(controller, "_get_state", lambda: state(tick=1000, paused=False))
-    rel = await ctrl.release({"reason": "фокус у монтажа"})
-    assert rel["ok"] and rel["paused"] is True and rel["policy"] == "afk"
-    assert ctrl.sent == [{"type": "pause"}] and ctrl.policies.current == "afk"
-    cp = focus_checkpoint.load()
-    assert cp["goal"] == "Выжить на берегу" and cp["paused_by_module"] is True and cp["policy"] == "observe"
-    act = await ctrl.activate({"policy": "observe", "goal": "вернулась"})
-    assert act == {"ok": True, "policy": "observe", "restored": True, "goal": "Выжить на берегу"}
-    assert ctrl.sent[-1] == {"type": "resume"} and ctrl.policies.current == "observe"
-    assert focus_checkpoint.load() is None                                          # восстановлено, checkpoint снят
 
 
 async def test_release_twice_and_core_cannot_activate_combat(ctrl):
@@ -114,3 +102,20 @@ async def test_release_twice_and_core_cannot_activate_combat(ctrl):
 def test_launch_plan_is_pure_and_default_off():
     assert pa.launch_allowed(in_focus=False, autostart=True, seen_running_in_focus=True) is False
     assert pa.launch_allowed(in_focus=True, autostart=False, seen_running_in_focus=False) is False
+
+
+async def test_run_async_starts_without_removed_agent_loops(monkeypatch):
+    """Модуль без игрового агента: `_run_async` поднимается и доходит до опроса игры (раньше падал на удалённых контурах)."""
+    import controller
+    monkeypatch.setattr(controller, "_ping", lambda: False)
+    class Probe(controller.Controller):
+        def __init__(self):                 # без настоящей папки памяти и журналов
+            self.recorder = None
+            self.reached_tick_loop = False
+
+        async def _tick_loop(self):
+            self.reached_tick_loop = True
+
+    probe = Probe()
+    await probe._run_async()
+    assert probe.reached_tick_loop

@@ -253,10 +253,6 @@ class Controller:
             logger.info("RimWorld не запущена: вне фокуса игру не запускаю, жду просьбы или фокуса.")
         if self.recorder is not None:
             self._start_watchdog()
-        asyncio.create_task(self._planning_loop())
-        asyncio.create_task(self._long_term_planning_loop())
-        asyncio.create_task(self._reflection_loop())
-        asyncio.create_task(self._self_improvement_loop())
 
         await self._tick_loop()
 
@@ -472,17 +468,10 @@ class Controller:
         return str(current.get("description")) if current else ""
 
     def _load_tasks(self) -> list[dict]:
-        import json
-        try:
-            with open(MEM_DIR / "tasks.json", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, list) else []
-        except (OSError, ValueError):
-            return []
+        return []                          # задачи ведёт единый агент ядра (assistant.tasks); файлы прежнего игрового агента не читаются
 
     def _active_ambition_title(self) -> str:
-        goal = _active_ambition()
-        return str(goal.get("title")) if goal else ""
+        return ""
 
     def _exit_quiet_s(self, policy_id: str) -> float:
         return self.policies.reg.policies[policy_id].exit_quiet_s
@@ -606,9 +595,6 @@ class Controller:
             colony_name = (state.get("colony") or {}).get("name") or "колония"
             asyncio.create_task(self.link.event("colonists", {"pawns": pawns, "colony": colony_name},
                                                 text=f"Колония «{colony_name}»: колонистов {len(pawns)}."))
-        if self.link is not None:
-            await self._check_goals()
-
         await self._sync_camera_switch()
         events = await asyncio.to_thread(_get_events)
         filming = self.director is not None and bool(settings.load().get("record_runs"))

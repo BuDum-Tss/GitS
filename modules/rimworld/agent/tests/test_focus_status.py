@@ -140,10 +140,6 @@ async def test_controller_status_sees_critical_repair_from_the_last_tick(ctrl):
     assert ctrl.policy_state()["status"]["interruptible"] is True
 
 
-async def test_controller_status_reports_research_wait(ctrl):
-    write_tasks(ctrl.tmp, [{"description": "ставить кухню", "status": "waiting_research", "waits_research": "Кухни"}])
-    ctrl.policies.leave_afk("plan", "")
-    assert ctrl.policy_state()["status"]["blocked"] == "ждём исследование: Кухни"
 
 
 async def test_state_message_carries_status_as_data_status(ctrl, monkeypatch):
@@ -177,12 +173,6 @@ async def test_state_message_carries_status_as_data_status(ctrl, monkeypatch):
 
 # ── focus.release возвращает checkpoint, focus.resume восстанавливает (FOC-4, MOD-32) ───────────
 
-async def test_release_returns_the_checkpoint_to_the_core(ctrl, monkeypatch):
-    ctrl.policies.leave_afk("observe", "")
-    monkeypatch.setattr(controller, "_get_state", lambda: state(paused=False))
-    rel = await ctrl.release({"reason": "фокус у монтажа", "checkpoint": True})
-    assert rel["ok"] is True and rel["checkpoint"]["policy"] == "observe"
-    assert rel["checkpoint"]["goal"] == "Выжить на берегу"
 
 
 async def test_resume_restores_from_the_core_checkpoint(ctrl, monkeypatch):

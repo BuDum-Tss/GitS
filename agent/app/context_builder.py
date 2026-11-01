@@ -89,7 +89,7 @@ class ContextBuilder:
         import time
 
         import tool_trace
-        who = {"claude": "Claude", "fast": "планировщик", "external": "вне планировщика"}
+        who = {"claude": "Claude-помощник", "fast": "быстрая модель", "external": "ты сама (и модули)"}
         state = {"running": "идёт", "done": "сделано", "failed": "не удалось"}
         now = time.time()
         rows: list[list] = []
@@ -101,7 +101,7 @@ class ContextBuilder:
                 rows[-1][1] += 1
             else:
                 rows.append([key, 1, e])
-        head = "Что реально делается и сделано (исполнители: Claude, планировщик; за последние 10 минут)"
+        head = "Что реально делается и сделано инструментами, в том числе тобой самой (за последние 10 минут)"
         if not rows:
             return head + ": ничего не запущено и не сделано. Не заявляй, что что-то делаешь или уже сделала."
         lines = []

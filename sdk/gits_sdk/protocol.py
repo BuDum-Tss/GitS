@@ -664,12 +664,14 @@ def _check_workspace(manifest: dict, problems: list[str]) -> None:
     for key in ("safe_points", "signals_in"):
         if key in ws and (not isinstance(ws[key], list) or not all(isinstance(x, str) and x.strip() for x in ws[key])):
             problems.append(f"workspace.{key}: список непустых строк")
+    if "default_goal" in ws and (not isinstance(ws["default_goal"], str) or not ws["default_goal"].strip() or len(ws["default_goal"]) > 300):
+        problems.append("workspace.default_goal: непустая строка не длиннее 300 символов")
     if "autonomous" in ws and not isinstance(ws["autonomous"], bool):
         problems.append("workspace.autonomous: должно быть true или false")
     if "work_interval_s" in ws and (not _is_int(ws["work_interval_s"]) or not 30 <= ws["work_interval_s"] <= 3600):
         problems.append("workspace.work_interval_s: целое 30–3600 секунд")
     extra = set(ws) - {"id", "title", "purpose", "entry", "interruptible", "safe_points", "signals_in", "done_when",
-                       "autonomous", "work_interval_s"}
+                       "autonomous", "work_interval_s", "default_goal"}
     if extra:
         problems.append(f"workspace: неизвестные поля {sorted(extra)}")
 

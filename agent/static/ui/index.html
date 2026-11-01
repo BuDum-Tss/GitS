@@ -763,7 +763,7 @@ $('chat').addEventListener('scroll', () => {
 });
 let chatMsgs = [];
 // кто запустил инструмент: быстрый контур (планировщик на локальной модели), медленный (Claude-помощник), вызов со стороны
-const TOOL_WHO = {fast: 'быстрый контур · Gemma', claude: 'медленный контур · Claude', external: 'вызов извне'};
+const TOOL_WHO = {fast: 'быстрый контур · Claude', claude: 'Claude-помощник', external: 'единый агент и модули'};
 const TOOL_MARK = {running: '…', done: '✓', failed: '✗'};
 function toolRow(e) {
   const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});

@@ -21,7 +21,7 @@ NODES = [
     ("attention", "Внимание (срочность)", "attention"),
     ("speech_queue", "Очередь речи", "output"),
     ("planner", "Выбор инструментов", "thinking"),
-    ("gemma", "Gemma (речь, план)", "thinking"),
+    ("gemma", "Claude (быстрая модель)", "thinking"),                  # id узла прежний, модель теперь Claude (claude_llm)
     ("claude", "Claude (долгие задачи)", "thinking"),
     ("tools", "Инструменты", "tools"),
     ("working_memory", "Рабочая память", "wm"),

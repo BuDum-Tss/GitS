@@ -1,7 +1,7 @@
 """Память-граф: факты о людях и мире в SQLite (`graph.db`), всё локально, без Docker.
 
 Схема (замена Graphiti и FalkorDB, см. docs/MEMORY_GRAPH.md):
-  1. ИЗВЛЕЧЕНИЕ наше: одна простая задача для локальной Gemma («выпиши устойчивые факты») со строгой схемой ответа.
+  1. ИЗВЛЕЧЕНИЕ наше: одна простая задача для Claude без инструментов («выпиши устойчивые факты») со строгой схемой ответа.
   2. ХРАНЕНИЕ `fact_store.FactStore`: таблица связей «субъект - отношение - объект» с интервалами действия; точный повтор не
      дублируется, однозначное отношение (живёт_в, работает) закрывает прежний факт датой (переехала в Казань - «живёт в Москве» закрыт).
   3. ПОИСК общий `search.HybridIndex` (слова FTS5 + векторы EmbeddingGemma из LM Studio) в том же файле; устаревшее по умолчанию
@@ -35,7 +35,6 @@ from search.service import HybridSearch
 logger = logging.getLogger("graph_memory")
 
 LM_URL = env("GITS_LM_URL", "http://127.0.0.1:1234/v1")
-LLM_MODEL = env("GITS_GRAPH_LLM", "google/gemma-4-e4b")
 EMB_MODEL = env("GITS_GRAPH_EMBEDDER", "text-embedding-google_embeddinggemma-300m-qat")
 MIN_SCORE = 0.5                   # косинус «запрос ↔ факт»: ниже считаем несвязанным (релевантное ~0.75, мусор ~0.3)
 MIN_CHARS = 12                    # короче реплику на факты не разбираем
@@ -108,22 +107,21 @@ def parse_facts(raw: str) -> list[Fact]:
 
 
 class FactExtractor:
-    def __init__(self, post=None):
-        self._post = post or self._http_post
+    """Извлечение фактов: один короткий вызов Claude без инструментов (`fast_brain._ask`), ответ JSON по схеме `_SCHEMA`."""
+
+    def __init__(self, ask=None):
+        self._ask = ask or self._claude
 
     @staticmethod
-    async def _http_post(payload: dict) -> str:
-        import httpx
-        async with httpx.AsyncClient(timeout=300) as c:
-            r = await c.post(f"{LM_URL}/chat/completions", json=payload)
-            r.raise_for_status()
-            return r.json()["choices"][0]["message"]["content"]
+    async def _claude(system: str, user: str) -> str:
+        import fast_brain
+        return await fast_brain._ask(system, user, timeout=60, max_tokens=700, temperature=0.1, background=True)
 
     async def extract(self, speaker: str, text: str) -> list[Fact]:
-        payload = {"model": LLM_MODEL, "temperature": 0.1, "max_tokens": 700, "reasoning_effort": "none",
-                   "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": f"{speaker}: {text}"}],
-                   "response_format": {"type": "json_schema", "json_schema": {"name": "facts", "schema": _SCHEMA}}}
-        return parse_facts(await self._post(payload))
+        system = _SYSTEM + "\nОтветь ТОЛЬКО JSON без пояснений по схеме: " + json.dumps(_SCHEMA, ensure_ascii=False)
+        raw = await self._ask(system, f"{speaker}: {text}")
+        a, b = raw.find("{"), raw.rfind("}")
+        return parse_facts(raw[a:b + 1] if 0 <= a < b else raw)
 
 
 # ── хранилище: SQLite ──────────────────────────────────────────────────────────
@@ -164,8 +162,8 @@ class SqliteBackend:
                                            cfg=SearchConfig(min_cos=MIN_SCORE, min_cos_bm25=0.4))
 
     async def healthy(self) -> tuple[bool, str]:
-        ok = await asyncio.to_thread(lambda: ensure_model_loaded(EMB_MODEL) and ensure_model_loaded(LLM_MODEL))
-        return (True, "работает") if ok else (False, "в LM Studio нет моделей для памяти (Gemma и EmbeddingGemma)")
+        ok = await asyncio.to_thread(lambda: ensure_model_loaded(EMB_MODEL))
+        return (True, "работает") if ok else (False, "в LM Studio нет эмбеддера для памяти (EmbeddingGemma)")
 
     async def add_fact(self, f: Fact, when: datetime, group: str = character.DEFAULT_ID, *, canon: bool = False,
                        source: str = "extract", profile: str | None = None) -> str:

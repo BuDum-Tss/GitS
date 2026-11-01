@@ -150,3 +150,27 @@ def test_reaction_tag_becomes_sticker_and_is_not_spoken(monkeypatch):
     monkeypatch.setattr(resident, "ClaudeSDKClient", TaggedClient)
     asyncio.run(agent.handle_user("привет"))
     assert host.said == ["Как тебя зовут?"] and host.stickers == ["question"]
+
+
+def test_session_reset_after_timeout_leaves_a_note_for_the_new_session(monkeypatch):
+    class Slow(FakeClient):
+        async def receive_response(self):
+            await asyncio.sleep(5)
+            yield
+    agent, host = _agent(monkeypatch)
+    monkeypatch.setattr(resident, "ClaudeSDKClient", Slow)
+    monkeypatch.setattr(resident, "TURN_TIMEOUT_S", 0.05)
+    asyncio.run(agent.handle_user("играй"))
+    assert "оборвался по времени" in agent._note
+    monkeypatch.setattr(resident, "ClaudeSDKClient", FakeClient)
+    FakeClient.instances = []
+    asyncio.run(agent.handle_user("продолжай"))
+    assert FakeClient.instances[0].prompts[0].startswith("=== ЗАМЕТКА ===") and agent._note == ""
+
+
+def test_actions_block_names_the_agents_own_calls_as_hers():
+    import tool_trace
+    from app.context_builder import ContextBuilder
+    tool_trace.note("external", "rimworld.colony_overview")
+    block = ContextBuilder.actions_block()
+    assert "ты сама" in block and "colony_overview" in block and "вне планировщика" not in block

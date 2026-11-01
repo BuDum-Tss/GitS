@@ -23,11 +23,12 @@ NO_MODULE_ENVS = ("assistant", "sleep")
 class WorkLoop:
     def __init__(self, *, env_of: Callable[[], str | None], manifest_of: Callable[[str], dict | None], agent,
                  emit: Callable[[dict], Awaitable[None]], settings: Callable[[], dict], quiet: Callable[[], bool],
-                 blocked: Callable[[], bool] = lambda: False, clock: Callable[[], float] = time.time):
+                 blocked: Callable[[], bool] = lambda: False, clock: Callable[[], float] = time.time, tasks=None):
         """env_of() - текущая среда; manifest_of(id) - манифест модуля; agent - единый агент (`busy`, `last_end`);
         emit(тело события) - `Attention.submit_self`; settings() - настройки ядра; quiet() - «не отвлекать»; blocked() - лимит Claude."""
         self._env_of, self._manifest_of, self._agent, self._emit = env_of, manifest_of, agent, emit
         self._settings, self._quiet, self._blocked, self._clock = settings, quiet, blocked, clock
+        self._tasks = tasks                      # TaskService: цель среды (`workspace.default_goal`) и активная задача
         self._last = 0.0                         # когда в последний раз выдан тик (или вход в среду)
         self._since: dict[str, float] = {}       # когда агент вошёл в среду: тик не раньше интервала после входа
         self._task: asyncio.Task | None = None
@@ -59,9 +60,35 @@ class WorkLoop:
         title = ws.get("title") or module
         purpose = ws.get("purpose")
         text = (f"Рабочий цикл: ты в среде «{title}» и свободна. " + (f"Назначение среды: {purpose}. " if purpose else "")
-                + "Событий и просьб сейчас нет.")
+                + await self._task_facts(module, ws) + "Событий и просьб сейчас нет.")
         await self._emit({"kind": KIND_WORK_TICK, "text": text, "urgency_hint": 1, "data": {"module": module}})
         return True
+
+    async def _task_facts(self, module: str, ws: dict) -> str:
+        """Факты о задачах среды. Нет открытой задачи, а модуль объявил `default_goal`: ядро ставит её само (origin self) и
+        просит Planner разбить на шаги, чтобы у агента всегда была цель и следующий шаг."""
+        svc = self._tasks
+        if svc is None:
+            return ""
+        try:
+            task = await svc.active(module)
+            goal = str(ws.get("default_goal") or "").strip()
+            if task is None and goal:
+                from domain import tasks as dom
+                task = await svc.create(goal, workspace=module, origin=dom.SELF, plan=True)
+                task = await svc.activate(task.id)
+            if task is None:
+                return "Открытых задач у среды нет. "
+            from domain import tasks as dom
+            step = dom.next_step(task)
+            done, total = dom.progress(task)
+            line = f"Активная задача: «{task.goal}» (шагов выполнено {done} из {total}). "
+            if step is not None:
+                line += f"Следующий шаг: {step.text}. "
+            return line
+        except Exception as e:
+            logger.warning(f"Задача среды: {e}")
+            return ""
 
     async def _run(self) -> None:
         while True:

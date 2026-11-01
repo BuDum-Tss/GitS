@@ -54,6 +54,9 @@ async def test_action_outside_its_node_is_refused_with_the_node_to_open(tmp_path
         called.append({"pawn_id": pawn_id, "priorities": priorities})
         return "OK"
     monkeypatch.setattr(rimworld_mcp, "set_work_priorities", fake)
+    tabs = []
+    monkeypatch.setattr(rimworld_mcp, "ui_state", lambda: '{"open_tab": null}')                  # окно закрылось само (мод закрывает его через 25 с)
+    monkeypatch.setattr(rimworld_mcp, "open_game_tab", lambda tab: tabs.append(tab) or "OK")
     async with Rig(tmp_path) as rig:
         with pytest.raises(ToolError) as e:
             await rig.core.call_tool("work_set_priorities", {"pawn_id": "p1", "priorities": {"Cooking": 1}})
@@ -61,7 +64,7 @@ async def test_action_outside_its_node_is_refused_with_the_node_to_open(tmp_path
         assert called == []                                                 # до игры вызов не дошёл
         rig.node_state.set("work")
         assert await rig.core.call_tool("work_set_priorities", {"pawn_id": "p1", "priorities": {"Cooking": 1}}) == "OK"
-        assert called == [{"pawn_id": "p1", "priorities": {"Cooking": 1}}]
+        assert called == [{"pawn_id": "p1", "priorities": {"Cooking": 1}}] and tabs == ["work"]            # вкладку открыли заново перед действием
 
 
 async def test_queries_work_in_any_node(tmp_path, monkeypatch):
@@ -112,3 +115,22 @@ async def test_open_rejects_unknown_nodes_and_pawn_nodes_without_a_pawn(tmp_path
 def test_every_old_function_behind_a_tool_exists_in_the_mcp_server():
     missing = [old for name, old in wm.OLD_BY_NAME.items() if not callable(getattr(rimworld_mcp, old, None))]
     assert missing == []
+
+
+async def test_unknown_work_name_gets_a_clear_error_instead_of_a_mod_crash(monkeypatch):
+    posted = []
+    monkeypatch.setattr(rimworld_mcp, "_query", lambda cmd: '{"work_types": ["Cooking", "Growing", "Hauling"]}')
+    monkeypatch.setattr(rimworld_mcp, "_post", lambda cmd: posted.append(cmd) or "OK")
+    reply = rimworld_mcp.set_work_priorities("p1", {"Plant": 1})
+    assert reply.startswith("ERROR: нет работы Plant") and "Growing" in reply and posted == []
+
+
+async def test_open_returns_the_actions_of_the_node_with_their_parameters(tmp_path, monkeypatch):
+    monkeypatch.setattr(gamenet, "port_open", lambda *a, **k: True)
+    monkeypatch.setattr(rimworld_mcp, "open_game_tab", lambda tab: "OK")
+    monkeypatch.setattr(rimworld_mcp, "_query", lambda cmd: "OK")
+    async with Rig(tmp_path) as rig:
+        reply = await rig.core.call_tool("open", {"path": "architect/zone"})
+        ids = {a["id"]: a["params"] for a in reply["actions"]}
+        assert "rimworld.architect_zone_stockpile" in ids and "rimworld.architect_zone_grow_zone" in ids
+        assert all(isinstance(p, dict) for p in ids.values())              # имена параметров с типами, чтобы вызвать без поиска

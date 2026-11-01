@@ -41,7 +41,7 @@ ESPEECH_TIMEOUT   = 60.0
 ESPEECH_START_WAIT_S = 90.0    # при первой проверке ждём, пока сервис догрузит модель (пока грузится, /health отвечает 503), а не уходим в запасной голос
 ESPEECH_DOWN_GRACE_S = 20.0    # порт не открылся за это время после первой проверки: сервиса нет, идём дальше по цепочке
 ESPEECH_RECHECK_S = 30.0       # сервис грузит модель около 15 с после старта, поэтому проверяем чаще, чем Fish Speech
-ENGINE            = os.getenv("TTS_ENGINE", "auto").strip().lower()      # auto | espeech | fish | edge
+ENGINE            = os.getenv("TTS_ENGINE", "edge").strip().lower()      # edge (быстрый, по умолчанию) | auto | espeech | fish
 
 # ── edge-tts fallback ─────────────────────────────────────────────────────────
 
