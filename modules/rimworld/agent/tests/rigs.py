@@ -9,6 +9,7 @@ from gits_sdk.testing import FakeCore
 
 import game_api
 import module_manifest
+import workspace_module
 import settings
 from core_link import CoreLink
 
@@ -39,7 +40,8 @@ class Rig:
         async def order(text):
             rig.order_calls.append(text)
             return await rig._order(text) if rig._order else text.startswith("построй")
-        module_manifest.attach(self.client, self.tools, order=order, graph=game_api.graph_data)
+        self.node_state = workspace_module.NodeState()
+        module_manifest.attach(self.client, self.tools, order=order, graph=game_api.graph_data, node_state=self.node_state)
 
         @self.core.on_request("core.tool.call")
         def tool_call(body):

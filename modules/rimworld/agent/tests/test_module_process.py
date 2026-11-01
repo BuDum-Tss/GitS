@@ -47,7 +47,7 @@ async def test_main_process_connects_reports_state_and_shuts_down(tmp_path):
             manifest = hello["manifest"]
             assert hello["module_id"] == "rimworld" and manifest["capabilities"] == ["game"]
             names = {t["name"] for t in manifest["tools"]}
-            assert "order" in names and "get_colony_state" in names and "launch_game" in names and len(names) > 60
+            assert "order" in names and "colony_overview" in names and "launch_game" in names and {"open", "back", "where"} <= names and len(names) > 50
             assert not any(n.startswith("game_") for n in names) and "get_pending_events" not in names
             assert manifest["graph"] is True and manifest["state"] is True
 
@@ -60,7 +60,7 @@ async def test_main_process_connects_reports_state_and_shuts_down(tmp_path):
             assert (await core.request("graph.get", {}))["nodes"]
             from gits_sdk import ToolError
             with pytest.raises(ToolError) as e:
-                await core.call_tool("get_colony_state", {})
+                await core.call_tool("colony_overview", {})
             assert e.value.code == "unavailable"                                     # игры нет: честный отказ
             assert await core.call_tool("order", {"text": "построй стену"}) == {"accepted": False}
 

@@ -80,7 +80,16 @@ _EMIT_TEXT = {
     "rimworld.run_video": "Видео забега готово (пути к записи, сценарию и клипам в data)",
     "rimworld.game_started": "Игра запущена (сигнал; в среду RimWorld агент входит только по своему импульсу или просьбе)",
 }
-EMITS = [{"kind": kind, "description": _EMIT_TEXT[kind], "default_urgency": urgency}
+# контракт 1.8: темы события (по ним узел сдвигает срочность), срочность вне фокуса, какие запросы смотреть после события
+_EMIT_EXTRA = {
+    "rimworld.raid": {"topics": ["threat"], "follow_up": ["colony_threats"]},
+    "rimworld.death": {"topics": ["health", "social"], "follow_up": ["colony_colonists"]},
+    "rimworld.fire": {"topics": ["threat"], "follow_up": ["colony_threats"]},
+    "rimworld.letter": {"topics": ["social"], "urgency_unfocused": 1},
+    "rimworld.goal": {"urgency_unfocused": 1},
+    "rimworld.run_ended": {"follow_up": ["colony_overview"]},
+}
+EMITS = [{"kind": kind, "description": _EMIT_TEXT[kind], "default_urgency": urgency, **_EMIT_EXTRA.get(kind, {})}
          for kind, urgency in EVENTS.values()]
 
 
@@ -158,23 +167,33 @@ def launch_spec() -> dict:
             "risk": "auto", "availability": "profile", "timeout_s": 120, "keywords": list(KEYWORDS)}
 
 
-def build_manifest(tools: list[dict]) -> dict:
+def build_manifest(tools: list[dict], nodes: list[dict] | None = None) -> dict:
     from game_panel import panel_spec
     import policies
+    names = {t["name"] for t in tools}
+    emits = json.loads(json.dumps(EMITS))
+    for emit in emits:                                   # follow_up только на существующие инструменты (без них, как в тестах, пусто)
+        if "follow_up" in emit:
+            emit["follow_up"] = [n for n in emit["follow_up"] if n in names]
+            if not emit["follow_up"]:
+                del emit["follow_up"]
     return {"id": MODULE_ID, "title": "RimWorld", "description": DESCRIPTION, "version": VERSION,
             "capabilities": ["game"], "subscribe": ["presence", "settings", "profile", "module"],
             "shared_settings": list(SHARED_SETTINGS), "settings_schema": json.loads(json.dumps(SETTINGS_SCHEMA)),
-            "tools": [order_spec(), launch_spec(), *tools], "emits": json.loads(json.dumps(EMITS)), "graph": True, "state": True,
+            "tools": [order_spec(), launch_spec(), *tools], "emits": emits, "graph": True, "state": True,
             "panel": panel_spec(),                       # пространство в дашборде (TZ 15, TAB-5, TAB-9)
             # политики (ТЗ 18, FOC-1; ТЗ 11e, POL-11/13): минимум одна с focus background (афк), она по умолчанию;
             # переходы в формате ядра (из фоновой только запрашиваемые, см. policies.Registry.transitions)
             "policies": policies.get().manifest(), "default_policy": policies.get().default,
-            "workspace": dict(WORKSPACE)}
+            "workspace": dict(WORKSPACE), **({"nodes": nodes} if nodes else {})}
 
 
 async def build(mcp=None) -> dict:
-    """Готовый манифест модуля: `order` и все инструменты MCP-сервера."""
-    return build_manifest(await mcp_tool_specs(mcp))
+    """Готовый манифест модуля: `order`, `launch_game`, навигация, действия узлов и запросы по дереву рабочего места
+    (`workspace_module`), дерево узлов `nodes`."""
+    import workspace_module
+    tools = await workspace_module.tool_specs(mcp)
+    return build_manifest(tools, workspace_module.manifest_nodes({t["name"] for t in tools}))
 
 
 # ── обработчики ────────────────────────────────────────────────────────────────────────────────
@@ -227,13 +246,22 @@ def tool_handler(name: str, module=None):
     return handler
 
 
-def attach(client, tools: list[dict], order, graph, module=None, launch=None, focus=None) -> None:
+def attach(client, tools: list[dict], order, graph, module=None, launch=None, focus=None, node_state=None) -> None:
     """Зарегистрировать у клиента обработчики всех инструментов манифеста, `order`, `launch_game`, `graph.get` и запросы фокуса.
     order: async (text) -> bool (Controller.handle_order); graph: () -> dict (game_api.graph_data);
     launch: async (reason) -> str (запуск игры с объявлением, ТЗ 11e POL-12); focus: объект с async activate(body) и
     release(body) для запросов ядра policy.activate и focus.release (ТЗ 11e POL-14)."""
+    import workspace_module as wm
+    state = node_state if node_state is not None else wm.NodeState()
+    nav = wm.make_nav_handlers(state, module)
     for tool in tools:
-        client.tool(tool["name"])(tool_handler(tool["name"], module))
+        name = tool["name"]
+        if name in nav:
+            client.tool(name)(nav[name])
+        elif name in wm.OLD_BY_NAME:
+            client.tool(name)(wm.make_tool_handler(name, tool.get("node") or "", state, module))
+        else:                                           # прежний плоский манифест (тесты, совместимость)
+            client.tool(name)(tool_handler(name, module))
 
     @client.tool("order")
     async def _order(args):                                              # RW-11

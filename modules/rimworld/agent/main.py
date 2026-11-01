@@ -46,6 +46,7 @@ import game_launcher  # noqa: E402
 import game_api  # noqa: E402
 import game_panel  # noqa: E402
 import module_manifest  # noqa: E402
+import workspace_module  # noqa: E402
 import settings  # noqa: E402
 import usage_report  # noqa: E402
 from camera_director import CameraDirector  # noqa: E402
@@ -93,14 +94,16 @@ async def amain(config: dict) -> int:
     ctrl.recorder = RunRecorder(mem_dir, settings.load,
                                 max_hours=lambda: link.module_settings.get("max_record_hours", 6))
     ctrl.director = CameraDirector()
+    node_state = workspace_module.NodeState()
     reporter = StateReporter(client, recording=lambda: game_panel.recording_info(ctrl.recorder.current),
-                             policy=ctrl.policy_state)
+                             policy=ctrl.policy_state, node=lambda: node_state.path)
+    node_state.on_change = reporter.poke                 # смена узла уходит ядру сразу (ТЗ 33)
     ctrl.on_phase_change = reporter.poke
     ctrl.commentator = Commentator(mem_dir, link.say, link.last_user_ts, link.is_speaking, repeats=link.repeats)
     ctrl.commentator.enabled = lambda: ctrl.policies.in_focus                  # ТЗ 11e POL-11: вне фокуса молчит
 
     module_manifest.attach(client, tools, order=ctrl.handle_order, graph=game_api.graph_data,
-                           launch=ctrl.launch_game, focus=ctrl)                # ТЗ 11e: launch_game, policy.activate, focus.release
+                           launch=ctrl.launch_game, focus=ctrl, node_state=node_state)   # ТЗ 11e, ТЗ 33
     api = await game_api.start(mem_dir, rimworld_url=config["rimworld_api"], core=client)
     logger.info(f"Манифест: {len(manifest['tools'])} инструментов, ядро {client.url}")
 

@@ -29,8 +29,8 @@ class Node:
 
 
 NODES: tuple[Node, ...] = (
-    Node("root", "Карта и время", context=("colony/resources", "colony/threats"), watch=(("threat", 1),)),
-    Node("architect", "Архитектор", tab="Architect", context=("colony/resources", "colony/construction"),
+    Node("root", "Карта и время (глобальные элементы управления: время, навигация)", context=("colony/resources", "colony/threats"), watch=(("threat", 1),)),
+    Node("architect", "Архитектор", tab="Architect", context=("colony/resources", "colony/buildings"),
          watch=(("resources", 1), ("threat", 1), ("social", -1))),
     Node("architect/orders", "Архитектор: приказы", tab="Architect"),
     Node("architect/zone", "Архитектор: зоны", tab="Architect"),
@@ -41,7 +41,7 @@ NODES: tuple[Node, ...] = (
     Node("research", "Исследования", tab="Research", context=("research/current",)),
     Node("animals", "Животные", tab="Animals"),
     Node("inspect", "Выделенное (постройка, предмет)", tab="Inspect"),
-    Node("pawn", "Колонист", tab="Inspect", context=("pawn/health",),
+    Node("pawn", "Колонист", tab="Inspect",
          watch=(("health", 1), ("threat", 1))),
     Node("pawn/orders", "Колонист: приказы", tab="Inspect", watch=(("threat", 2),)),
     Node("pawn/gear", "Колонист: снаряжение", tab="Inspect"),
@@ -55,7 +55,7 @@ TOOLS: dict[str, tuple[str, str, str]] = {
     "open_game_tab": ("nav", "root", "open"),
     "ui_state": ("nav", "root", "where"),
     "ui_steps": ("remove", "", ""),                        # заменён действиями узлов: открыть вкладку, категорию, постройку, поставить
-    # время (всегда доступно, как кнопки внизу экрана)
+    # время и навигация: действия узла root глобальны (как кнопки внизу экрана игры), доступны из любого узла
     "pause_game": ("action", "root", "pause"),
     "resume_game": ("action", "root", "resume"),
     "set_time_speed": ("action", "root", "set_speed"),
@@ -124,17 +124,17 @@ TOOLS: dict[str, tuple[str, str, str]] = {
     "get_schedule_table": ("query", "schedule/table", "table"),
     "list_recipes": ("query", "inspect/recipes", "recipes"),
     "find_nearest": ("query", "map/find", "find"),
-    "look_at": ("query", "map/look", "look"),
+    "look_at": ("query", "map/cell", "cell"),
     "survey_map": ("query", "map/survey", "survey"),
     "analyze_area": ("query", "map/analyze", "analyze"),
-    "search_thing_defs": ("query", "architect/defs", "search_defs"),
-    "describe_thing_def": ("query", "architect/defs", "describe_def"),
+    "search_thing_defs": ("query", "architect/defs", "search"),
+    "describe_thing_def": ("query", "architect/defs", "describe"),
     "estimate_build": ("query", "architect/estimate", "estimate"),
-    "fit_room": ("query", "architect/fit", "fit_room"),
-    "check_enclosure": ("query", "architect/check", "check_enclosure"),
+    "fit_room": ("query", "architect/fit", "room"),
+    "check_enclosure": ("query", "architect/check", "enclosure"),
     "room_info": ("query", "architect/check", "room_info"),
-    "find_buildable_spot": ("query", "architect/fit", "find_spot"),
-    "unlock_for": ("query", "research/unlock", "unlock_for"),
+    "find_buildable_spot": ("query", "architect/fit", "spot"),
+    "unlock_for": ("query", "research/unlock", "unlock"),
     # не игровое: переезжает в ядро
     "get_goals": ("core", "", ""),
     "set_goal": ("core", "", ""),

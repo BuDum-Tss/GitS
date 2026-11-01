@@ -9,21 +9,22 @@ import module_manifest
 import rimworld_mcp
 
 
-async def test_manifest_is_valid_and_built_from_mcp_server():
+async def test_manifest_is_valid_and_built_from_the_workspace_tree():
     manifest = await module_manifest.build()
     assert P.validate_manifest(manifest) == []
     assert manifest["id"] == "rimworld" and manifest["capabilities"] == ["game"]
     assert manifest["graph"] is True and manifest["state"] is True
     tools = {t["name"]: t for t in manifest["tools"]}
-    mcp_names = {t.name for t in await rimworld_mcp.mcp.list_tools()}
-    expected = {n for n in mcp_names if not n.startswith("game_") and n != "get_pending_events"} | {"order", "launch_game"}
-    assert set(tools) == expected                                          # исключены game_* и get_pending_events
-    assert "game_screenshot" not in tools and "get_pending_events" not in tools
-    assert len(tools) > 60
+    assert {"open", "back", "where", "colony_overview", "work_set_priorities", "pause"} <= set(tools)
+    # обходы, дубли и мета-инструменты в рабочее место не попадают (WS-3, WS-4, WS-5)
+    for gone in ("game_screenshot", "get_pending_events", "ui_steps", "pc_read_screen", "switch_mode", "set_work_priority",
+                 "set_schedule_range", "set_goal", "web_search", "get_colony_state"):
+        assert gone not in tools, gone
+    assert len(tools) < 80
     for t in tools.values():
         assert t["risk"] == "auto" and t["availability"] == "profile"
         assert 0 < len(t["description"]) <= 300 and "keywords" in t
-    assert tools["get_colony_state"]["timeout_s"] == 60
+    assert tools["colony_overview"]["timeout_s"] == 60
     assert tools["order"]["timeout_s"] == 15 and tools["order"]["params"]["text"]["type"] == "string"
 
 
@@ -72,12 +73,13 @@ async def test_tool_call_runs_the_mcp_function_and_returns_its_string(tmp_path, 
     monkeypatch.setattr(rimworld_mcp, "get_colony_state", fake_state)
     monkeypatch.setattr(rimworld_mcp, "move_pawn", fake_move)
     async with Rig(tmp_path) as rig:
-        assert await rig.core.call_tool("rimworld.get_colony_state", {}) == "КОЛОНИЯ: 3 колониста"
+        assert await rig.core.call_tool("rimworld.colony_overview", {}) == "КОЛОНИЯ: 3 колониста"
+        rig.node_state.set("pawn/orders")                                        # действие узла делается в своём узле
         # планировщик может передать число строкой: аргументы приводятся к типам функции
-        assert await rig.core.call_tool("move_pawn", {"pawn_id": "p1", "x": "4", "z": 7, "лишнее": 1}) == "OK: move"
+        assert await rig.core.call_tool("pawn_orders_move", {"pawn_id": "p1", "x": "4", "z": 7, "лишнее": 1}) == "OK: move"
         assert seen == {"pawn_id": "p1", "x": 4, "z": 7}
         with pytest.raises(ToolError) as e:
-            await rig.core.call_tool("move_pawn", {"pawn_id": "p1", "x": "не число", "z": 7})
+            await rig.core.call_tool("pawn_orders_move", {"pawn_id": "p1", "x": "не число", "z": 7})
         assert e.value.code == "bad_request"
 
 
@@ -87,7 +89,7 @@ async def test_tool_call_is_unavailable_without_the_game(tmp_path, monkeypatch):
     monkeypatch.setattr(rimworld_mcp, "get_colony_state", lambda: called.append(1) or "x")
     async with Rig(tmp_path) as rig:
         with pytest.raises(ToolError) as e:
-            await rig.core.call_tool("get_colony_state", {})
+            await rig.core.call_tool("colony_overview", {})
         assert e.value.code == "unavailable" and "не запущена" in e.value.message
     assert called == []                                                   # к функции не обращались
 
@@ -106,7 +108,7 @@ async def test_blocking_function_does_not_stall_the_event_loop(tmp_path, monkeyp
 
     monkeypatch.setattr(rimworld_mcp, "get_colony_state", slow)
     async with Rig(tmp_path) as rig:
-        assert await rig.core.call_tool("get_colony_state", {}) == "готово"
+        assert await rig.core.call_tool("colony_overview", {}) == "готово"
     assert threads and threads[0] is not threading.main_thread()
 
 

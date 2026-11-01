@@ -53,7 +53,8 @@ Claude. Разговор, голос, питомец, Telegram и память-�
 | `agent_mode.py`, `tasks_tree.py`, `action_journal.py` | режимы агента, дерево задач, журнал её действий и решений |
 | `commentator.py` | живые реплики по ходу игры (локальная модель), режим стримера |
 | `core_link.py` | связь с ядром (замена `speech_link.py`): реплики `say`, эмоции, события `rimworld.*`, присутствие и общие настройки от ядра, пост-итог в Telegram |
-| `module_manifest.py` | манифест модуля: инструменты строятся из `rimworld_mcp.py` (`mcp.list_tools()`), `order`, `graph.get`, обработчики |
+| `module_manifest.py` | манифест модуля: `order`, `launch_game`, `graph.get`, обработчики; инструменты и узлы строит `workspace_module.py` |
+| `workspace_tree.py`, `workspace_module.py` | рабочее место (контракт 1.8, `GitS/docs/WORKSPACE_MODULES.md`): `workspace_tree.py` дерево узлов по вкладкам игры и судьба каждой функции MCP-сервера (действие узла, запрос, навык, ядро, удаление); `workspace_module.py` строит по нему инструменты манифеста (`<узел>_<действие>`, запросы `colony_resources`), навигацию `open`/`back`/`where`, хранит текущий узел (`NodeState`) и отклоняет действие вне узла; тесты `test_workspace_tree.py`, `test_workspace_module.py` |
 | `state_reporter.py` | `state` для ядра раз в 5 с: `game_running`, сводка, данные для дашборда, блок `status` (ТЗ 18, MOD-33: `active_policy`, `urgency`, `interruptible`, `blocked`) |
 | `game_panel.py` | пространство «RimWorld» в дашборде ядра (TZ 15): ссылки на оверлей OBS и пульт оценок, блоки состояния игры, колонистов, решений, оценок и записи забега (`panel.set`, чистая функция `panel_blocks`) |
 | `game_api.py`, `core_bridge.py`, `static/overlay.html` | HTTP-API (:8767): оверлей для OBS, `/api/game`, `/api/graph`, отметки оценок (пульт), мостики MCP-сервера к ядру (экран и поиск) |
@@ -66,8 +67,10 @@ Claude. Разговор, голос, питомец, Telegram и память-�
 ## Как добавить инструмент игры
 Команда мода (C#) -> функция в `rimworld_mcp.py` (проверка результата по состоянию игры) -> запись в нужный список
 инструментов (`EXECUTION_TOOLS`, `PLANNING_TOOLS`) в `glados_agent.py` -> подсказка в промпте -> тест -> `CHANGELOG.md`.
-В манифест модуля (и значит к планировщику ядра) инструмент попадает сам: `module_manifest.py` читает список из MCP-сервера
-(кроме `game_*` и `get_pending_events`); описание берётся из первой строки docstring, пиши её для просьб пользователя.
+В манифест модуля (и значит к агенту ядра) инструмент попадает только через дерево: добавь запись в `workspace_tree.TOOLS`
+(вид `action` или `query`, узел, новое имя; остальные виды в манифест не идут). Правила WS-* в `GitS/docs/WORKSPACE_MODULES.md`:
+в узле не больше 9 действий, одна дорога к действию, без мета-инструментов и обходов (тест `test_workspace_tree.py` не даст
+забыть). Описание берётся из первой строки docstring, пиши её для просьб пользователя.
 
 ## Как добавить политику или вид события
 Вид события: строка в `agent/policies/events.yaml` (`source`, `importance`, `fields`, `classify`, `describe` по-английски для классификатора) -> источник в `policy_events.py` (`from_mod`, `from_statediff` или `make` из контроллера) -> тест. Политика: файл `agent/policies/<id>.yaml` (поля как у `observe.yaml`; `id` = имя файла, уникальный `priority`, ровно одна `default`) -> `enter`/`exit`/`switch_to` -> тест в `test_policies.py` и `test_policy_manager.py`. Новая политика без кода контуров не появляется: её поведение (скорость, бой, принуждение) описано в `policy_actions.py` и контроллере; модель пишется в YAML, не в код. Правила наблюдения, которые создаёт модель, проверяются `watch_rules.validate` и не пишут код.

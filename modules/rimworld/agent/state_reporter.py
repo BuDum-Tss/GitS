@@ -43,7 +43,7 @@ async def build_state() -> tuple[str, dict]:
 
 
 class StateReporter:
-    def __init__(self, client, interval: float = POLL_S, recording=None, policy=None):
+    def __init__(self, client, interval: float = POLL_S, recording=None, policy=None, node=None):
         """recording() -> dict | None: статус записи забега для пространства в дашборде (TZ 15); None - без записи.
         policy() -> dict: политика, правила наблюдения и ручное управление (ТЗ 11e, POL-7), в state и на панели."""
         self.client = client
@@ -52,6 +52,7 @@ class StateReporter:
         self._phase: str | None = None
         self._recording = recording or (lambda: None)
         self._policy = policy or (lambda: {})
+        self._node = node or (lambda: None)             # ТЗ 33: текущий узел рабочего места
         self._panel_key: str | None = None
 
     def poke(self) -> None:
@@ -64,7 +65,11 @@ class StateReporter:
         if data["game_phase"] != self._phase:
             self._phase = data["game_phase"]
             logger.info(f"Игра: {summary}")
-        await self.client.state(summary, data)
+        node = self._node()
+        if node:
+            await self.client.state(summary, data, node=node)
+        else:
+            await self.client.state(summary, data)
         await self._send_panel(data)
 
     async def _send_panel(self, data: dict) -> None:
