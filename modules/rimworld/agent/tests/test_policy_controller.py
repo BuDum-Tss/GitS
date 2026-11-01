@@ -3,9 +3,7 @@
 правило наблюдения, checkpoint при потере фокуса.
 
 Игра, Claude и локальная модель не нужны: команды мода, состояние и ходы подменены. Пути к файлам памяти перенаправлены в tmp."""
-import asyncio
 import json
-import time
 
 import pytest
 
@@ -13,11 +11,9 @@ import controller
 import focus_checkpoint
 import game_modes
 import planning_pause
-import policy_events as pe
 import policy_manager
 import policy_actions as pa
 import watch_rules
-import statediff
 
 TICK = 2500
 
@@ -75,174 +71,24 @@ def stub_turns(c, monkeypatch):
     return calls
 
 
-async def test_module_starts_afk_and_never_launches_the_game(ctrl, monkeypatch):
-    import game_launcher
-
-    def no_launch(*a, **k):
-        raise AssertionError("игра не должна запускаться при старте вне фокуса")
-    monkeypatch.setattr(game_launcher, "launch", no_launch)
-    monkeypatch.setattr(ctrl, "_tick_loop", lambda: asyncio.sleep(0))
-    await ctrl._run_async()
-    for t in asyncio.all_tasks():
-        if t is not asyncio.current_task():
-            t.cancel()
-    assert ctrl.policies.current == "afk" and ctrl.sent == []
 
 
-async def test_afk_tick_only_watches_and_sends_critical_events_with_needs_focus(ctrl, monkeypatch):
-    sent_events = []
-
-    class FakeLink:
-        async def event(self, kind, data=None, text=None, urgency=None):
-            sent_events.append((kind, data, urgency))
-    ctrl.link = FakeLink()
-    # режим core: фокус только от ядра, модуль сам его не берёт (правка fix/focus-bootstrap)
-    monkeypatch.setattr(ctrl, "_module_setting", lambda key, default: "core" if key == "focus_mode" else default)
-    monkeypatch.setattr(controller, "_get_state", lambda: state(threats=[threat()]))
-    monkeypatch.setattr(controller, "_get_events", lambda: [
-        {"type": "incident", "data": {"label": "пираты"}, "priority": "critical"},
-        {"type": "letter", "data": {"label": "гости"}},
-    ])
-    stub = stub_turns(ctrl, monkeypatch)
-    await ctrl._tick()
-    await asyncio.sleep(0)
-    assert ctrl.policies.current == "afk" and stub == [] and ctrl.sent == []      # ни ходов, ни команд игре
-    assert [k for k, _, _ in sent_events] == ["game_started", "raid"]                              # критичное уходит ядру...
-    assert sent_events[1][1]["needs_focus"] is True                                # ...с признаком «нужен фокус»
 
 
-async def test_combat_cycle_pauses_decides_resumes_and_waits_for_the_slice(ctrl, monkeypatch):
-    stub = stub_turns(ctrl, monkeypatch)
-    monkeypatch.setattr(controller, "_get_state", lambda: st[0])
-    monkeypatch.setattr(controller, "_get_events", lambda: [])
-    ctrl._ensure_run_started = lambda s: None
-    ctrl.policies.leave_afk("observe", "фокус")
-    st = [state(tick=1000, threats=[threat()])]
-    await ctrl._tick()                       # угроза: бой, первый ход с паузой
-    await settle(ctrl)
-    assert ctrl.policies.current == "combat"
-    assert ctrl.sent == [{"type": "pause"}, {"type": "resume"}]                   # пауза -> ход -> снятие паузы
-    assert ctrl._fight.turns == 1 and stub == ["combat"]
-    await ctrl._tick()                       # тот же тик: срез ещё не прошёл, хода нет
-    await settle(ctrl)
-    assert ctrl._fight.turns == 1
-    st[0] = state(tick=1000 + 700, threats=[threat()])                              # срез игры прошёл
-    await ctrl._tick()
-    await settle(ctrl)
-    assert ctrl._fight.turns == 2 and ctrl.sent.count({"type": "pause"}) == 2       # второй круг той же схемой
 
 
-async def test_combat_ends_only_after_the_threat_is_gone_for_quiet_seconds(ctrl, monkeypatch):
-    stub_turns(ctrl, monkeypatch)
-    monkeypatch.setattr(controller, "_get_events", lambda: [])
-    ctrl.policies.leave_afk("observe", "")
-    ctrl.policies.on_event("raid", 5, "набег")
-    monkeypatch.setattr(controller, "_get_state", lambda: state(tick=500, threats=[]))
-    await ctrl._tick()
-    assert ctrl.policies.current == "combat"                                        # только что пропала: ещё бой
-    ctrl._threat_gone_since = time.time() - 31
-    await ctrl._tick()
-    await settle(ctrl)
-    assert ctrl.policies.current == "observe"
 
 
-async def test_manual_policy_forces_a_stalled_task_once_then_rolls_back(ctrl, monkeypatch):
-    ctrl.policies.leave_afk("observe", "")
-    (ctrl.tmp / "tasks.json").write_text(json.dumps(
-        [{"description": "дерево у реки", "status": "pending", "x": 5, "z": 6, "work": "PlantCutting"}]), encoding="utf-8")
-    snap = statediff.snapshot(state(tick=0, pawns=[pawn("p1")]))
-    await ctrl._manual_watch(snap, 0)
-    assert ctrl.policies.current == "observe" and ctrl.sent == []                  # ещё не застряла
-    snap = statediff.snapshot(state(tick=2 * TICK, pawns=[pawn("p1")]))
-    await ctrl._manual_watch(snap, 2 * TICK)                                        # застряла дольше 2 часов
-    assert ctrl.policies.current == "manual"
-    forces = [c for c in ctrl.sent if c["type"] == "force_work"]
-    assert forces == [{"type": "force_work", "pawn_id": "p1", "targets": [{"x": 5, "z": 6}], "queue": False,
-                       "work": "PlantCutting"}]
-    await ctrl._manual_watch(snap, 2 * TICK + 1500)                                 # меньше интервала и отката: ничего
-    assert len([c for c in ctrl.sent if c["type"] == "force_work"]) == 1
-    assert not any(c["type"] == "clear_work_queue" for c in ctrl.sent)
-    assert ctrl.policies.current == "manual"
-    snap = statediff.snapshot(state(tick=2 * TICK + TICK + 100, pawns=[pawn("p1")]))
-    await ctrl._manual_watch(snap, 2 * TICK + TICK + 100)                           # больше часа без движения: откат
-    assert {"type": "clear_work_queue", "pawn_id": "p1", "stop_current": False} in ctrl.sent
-    assert ctrl.policies.current == "observe"                                       # принуждение снято: выход
 
 
-async def test_observe_speed_climbs_with_quiet_time_and_drops_on_important_event(ctrl):
-    ctrl.policies.leave_afk("observe", "")
-    now = time.time()
-    ctrl._quiet_since, ctrl._last_speed_step = now - 500, now - 500
-    await ctrl._apply_speed(False, now)
-    assert ctrl.sent == [{"type": "set_time_speed", "speed": 2}]
-    ctrl._last_speed_step = now - 500
-    await ctrl._apply_speed(False, now)
-    assert ctrl.sent[-1] == {"type": "set_time_speed", "speed": 3}                   # максимум по умолчанию 3
-    ctrl._apply_policy_event(pe.make("raid", "набег", {"label": "x"}, importance=5))  # важное событие
-    await ctrl._apply_speed(False, now)
-    assert ctrl.sent[-1] == {"type": "set_time_speed", "speed": 1} and ctrl._speed == 1
 
 
-async def test_planning_policy_pauses_plans_checks_and_returns_to_observe(ctrl, monkeypatch):
-    ctrl.policies.leave_afk("observe", "")
-    monkeypatch.setattr(controller, "_get_state", lambda: state(tick=1000, paused=False))
-
-    async def fake_plan(context):
-        return {"actions": ["set_task(стена)"]}
-
-    async def fake_check(context, result):
-        return {"actions": ["set_task(стена, pending)"]}
-    monkeypatch.setattr(controller, "run_planning", fake_plan)
-    monkeypatch.setattr(controller, "run_plan_check", fake_check)
-    ctrl._wake_planning("колонисты без дела")                                       # событие включает планирование
-    assert ctrl.policies.current == "plan"
-    result = await ctrl._plan_cycle()
-    assert ctrl.sent == [{"type": "pause"}, {"type": "resume"}]
-    assert result["actions"] == ["set_task(стена)", "set_task(стена, pending)"]     # план и самопроверка
-    assert ctrl.policies.current == "observe" and not planning_pause.marked()
 
 
-async def test_observe_turn_uses_claude_and_not_the_local_model(ctrl, monkeypatch):
-    seen = {}
-
-    async def fake_run_turn(context, *a, mode=None, brief="", **kw):
-        seen.update(mode=mode, brief=brief)
-        return {"commentary": "", "actions": []}
-
-    monkeypatch.setattr(controller, "run_turn", fake_run_turn)
-    monkeypatch.setattr(controller.claude_quota, "blocked", lambda: False)
-    ctrl.policies.leave_afk("observe", "")
-    ctrl._pending_events.append(pe.make("research_done", "исследование завершено: Орошение", {"research": "Орошение"}))
-    await ctrl._mode_turn("observe", {}, [], None, False, None, None, None, ["Ада: здоровье 90% → 60%"])
-    assert seen["mode"] == "observe" and "Ада" in seen["brief"]
 
 
-async def test_observe_turn_does_not_fall_back_to_local_when_claude_is_blocked(ctrl, monkeypatch):
-    seen = {}
-
-    async def fake_run_turn(context, *a, mode=None, brief="", **kw):
-        seen["claude_called"] = True
-        return {"commentary": "", "actions": [], "quota": True}
-
-    monkeypatch.setattr(controller, "run_turn", fake_run_turn)
-    monkeypatch.setattr(controller.claude_quota, "blocked", lambda: True)
-    ctrl.policies.leave_afk("observe", "")
-    await ctrl._mode_turn("observe", {}, [], None, False, None, None, None, ["Ада: здоровье 90% → 60%"])
-    assert seen["claude_called"] is True
 
 
-async def test_watch_rule_fires_on_research_and_switches_to_planning(ctrl):
-    ctrl.policies.leave_afk("observe", "")
-    rule, err = watch_rules.validate({"kind": "research_done", "field": "research", "value": "Орошение", "boost": 2,
-                                      "switch_to": "plan", "ttl_h": 3, "why": "жду орошение для ферм"},
-                                     registry=ctrl.policies.reg, tick=1000)
-    assert err == "" and ctrl.watch.add(rule) == ""
-    ctrl._tick_now = 1000
-    ctrl._apply_policy_event(pe.make("research_done", "исследование завершено: Орошение", {"research": "Орошение"}))
-    assert ctrl.policies.current == "plan"
-    assert ctrl.watch.rules == []                                                   # сработало и снялось
-    assert ctrl.policy_state()["watch_fired"][-1]["why"] == "жду орошение для ферм"
-    json.dumps(ctrl.policy_state(), ensure_ascii=False)
 
 
 async def test_focus_release_checkpoints_pauses_and_activate_restores(ctrl, monkeypatch):

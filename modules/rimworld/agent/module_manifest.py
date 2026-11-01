@@ -3,8 +3,7 @@
 Инструменты строятся автоматически из MCP-сервера `rimworld_mcp.py` (RW-10): список и схемы параметров берутся публичным API
 FastMCP (`await mcp.list_tools()`), схема переводится в упрощённые `params` контракта (та же логика, что в ядре у прежнего
 `environments/sources._schema_to_params`). Обработчик инструмента вызывает функцию MCP-сервера в потоке (функции синхронные).
-Инструмент `order` (RW-11) передаёт приказ игрока контроллеру игры.
-MCP-сервер остаётся: им по-прежнему пользуются игровые контуры Claude (glados_agent.py).
+Приказов игре нет: единый агент ядра сам действует инструментами узлов (`workspace_module.py`).
 """
 import asyncio
 import fnmatch
@@ -29,7 +28,6 @@ DESCRIPTION = ("Игра-симулятор колонии RimWorld: агент 
 EXCLUDE = ("game_*", "get_pending_events")
 KEYWORDS = ["игра", "колония", "колонист", "римворлд", "rimworld"]
 TOOL_TIMEOUT_S = 60
-ORDER_TIMEOUT_S = 15
 DESCRIPTION_MAX = 300
 PARAM_DESCRIPTION_MAX = 420
 RESULT_MAX = 2000               # как у прежнего MCP-источника ядра: длиннее ответ инструмента обрезался
@@ -152,13 +150,6 @@ async def mcp_tool_specs(mcp=None) -> list[dict]:
     return tools
 
 
-def order_spec() -> dict:
-    return {"name": "order", "description": "Передать игроку-агенту RimWorld приказ по игре своими словами пользователя "
-                                            "(построить, исследовать, защитить колонию). Принимается, только если фраза про игру.",
-            "params": {"text": {"type": "string", "description": "приказ"}}, "risk": "auto", "availability": "profile",
-            "timeout_s": ORDER_TIMEOUT_S, "keywords": list(KEYWORDS)}
-
-
 def launch_spec() -> dict:
     """Инструмент «запустить игру» (ТЗ 11e, POL-12): только по явной просьбе, с объявлением. Обработчик в attach, не в MCP."""
     return {"name": "launch_game", "description": "Запустить игру RimWorld (если она не запущена). Пользователь слышит объявление "
@@ -180,7 +171,7 @@ def build_manifest(tools: list[dict], nodes: list[dict] | None = None) -> dict:
     return {"id": MODULE_ID, "title": "RimWorld", "description": DESCRIPTION, "version": VERSION,
             "capabilities": ["game"], "subscribe": ["presence", "settings", "profile", "module"],
             "shared_settings": list(SHARED_SETTINGS), "settings_schema": json.loads(json.dumps(SETTINGS_SCHEMA)),
-            "tools": [order_spec(), launch_spec(), *tools], "emits": emits, "graph": True, "state": True,
+            "tools": [launch_spec(), *tools], "emits": emits, "graph": True, "state": True,
             "panel": panel_spec(),                       # пространство в дашборде (TZ 15, TAB-5, TAB-9)
             # политики (ТЗ 18, FOC-1; ТЗ 11e, POL-11/13): минимум одна с focus background (афк), она по умолчанию;
             # переходы в формате ядра (из фоновой только запрашиваемые, см. policies.Registry.transitions)
@@ -246,9 +237,9 @@ def tool_handler(name: str, module=None):
     return handler
 
 
-def attach(client, tools: list[dict], order, graph, module=None, launch=None, focus=None, node_state=None) -> None:
-    """Зарегистрировать у клиента обработчики всех инструментов манифеста, `order`, `launch_game`, `graph.get` и запросы фокуса.
-    order: async (text) -> bool (Controller.handle_order); graph: () -> dict (game_api.graph_data);
+def attach(client, tools: list[dict], graph, module=None, launch=None, focus=None, node_state=None) -> None:
+    """Зарегистрировать у клиента обработчики всех инструментов манифеста, `launch_game`, `graph.get` и запросы фокуса.
+    graph: () -> dict (game_api.graph_data);
     launch: async (reason) -> str (запуск игры с объявлением, ТЗ 11e POL-12); focus: объект с async activate(body) и
     release(body) для запросов ядра policy.activate и focus.release (ТЗ 11e POL-14)."""
     import workspace_module as wm
@@ -262,11 +253,6 @@ def attach(client, tools: list[dict], order, graph, module=None, launch=None, fo
             client.tool(name)(wm.make_tool_handler(name, tool.get("node") or "", state, module))
         else:                                           # прежний плоский манифест (тесты, совместимость)
             client.tool(name)(tool_handler(name, module))
-
-    @client.tool("order")
-    async def _order(args):                                              # RW-11
-        text = str((args or {}).get("text") or "").strip()
-        return {"accepted": bool(text) and bool(await order(text))}
 
     @client.tool("launch_game")
     async def _launch(args):                                             # POL-12: только по просьбе, с объявлением

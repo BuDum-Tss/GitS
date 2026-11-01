@@ -146,16 +146,16 @@ TOOLS: dict[str, tuple[str, str, str]] = {
     "search_knowledge": ("core", "", ""),
     "remember_knowledge": ("core", "", ""),
     "web_search": ("core", "", ""),
-    "get_territory": ("core", "", ""),
-    "set_territory_marker": ("core", "", ""),
-    "delete_territory_marker": ("core", "", ""),
+    "get_territory": ("query", "map/territory", "territory"),             # ориентиры территории: данные колонии, остаются в модуле
+    "set_territory_marker": ("action", "map", "set_marker"),
+    "delete_territory_marker": ("action", "map", "delete_marker"),
     "set_watch_rule": ("core", "", ""),                     # ожидание события: watch ядра (раздел про подписки агента)
     "clear_watch_rule": ("core", "", ""),
     "set_opinion": ("core", "", ""),                        # отношения это память ядра, не игра
-    "experiment_start": ("core", "", ""),
-    "experiment_log": ("core", "", ""),
-    "experiment_finish": ("core", "", ""),
-    "experiment_list": ("core", "", ""),
+    "experiment_start": ("action", "root", "experiment_start"),          # тетрадь экспериментов для роликов: данные забега, остаётся в модуле
+    "experiment_log": ("action", "root", "experiment_log"),
+    "experiment_finish": ("action", "root", "experiment_finish"),
+    "experiment_list": ("query", "colony/experiments", "experiments"),
     # удаляется
     "switch_mode": ("remove", "", ""),
     "switch_policy": ("remove", "", ""),

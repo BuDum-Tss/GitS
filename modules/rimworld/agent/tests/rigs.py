@@ -18,11 +18,9 @@ SHARED = {"streamer": False, "dnd": False, "quiet_until": 0.0, "game_model": "ha
 
 
 class Rig:
-    def __init__(self, tmp_path, shared=None, module_settings=None, order=None):
+    def __init__(self, tmp_path, shared=None, module_settings=None):
         self.tmp = tmp_path
         self.core = FakeCore(settings={**SHARED, **(shared or {})}, module_settings=module_settings)
-        self.order_calls: list[str] = []
-        self._order = order
         self.tool_calls: list[dict] = []
         self.usage: list[dict] = []
         self._task: asyncio.Task | None = None
@@ -31,17 +29,14 @@ class Rig:
         settings.init(str(self.tmp))
         await self.core.start()
         manifest = await module_manifest.build()
-        self.tools = [t for t in manifest["tools"] if t["name"] != "order"]
+        self.tools = list(manifest["tools"])
         self.client = ModuleClient(manifest, url=self.core.url, token=self.core.token)
         self.client.reconnect_delays = (0.05, 0.05, 0.1)
         self.link = CoreLink(self.client)
         rig = self
 
-        async def order(text):
-            rig.order_calls.append(text)
-            return await rig._order(text) if rig._order else text.startswith("построй")
         self.node_state = workspace_module.NodeState()
-        module_manifest.attach(self.client, self.tools, order=order, graph=game_api.graph_data, node_state=self.node_state)
+        module_manifest.attach(self.client, self.tools, graph=game_api.graph_data, node_state=self.node_state)
 
         @self.core.on_request("core.tool.call")
         def tool_call(body):

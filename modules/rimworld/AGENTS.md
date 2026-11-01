@@ -7,7 +7,7 @@
 Модуль RimWorld (`rimworld-module`) для ядра GitS: мод `mod/AgentBridge`, MCP-сервер `agent/rimworld_mcp.py`, игровые ходы на
 Claude. Разговор, голос, питомец, Telegram и память-граф принадлежат ядру в репозитории `GitS`: сюда ассистентское не добавлять.
 С ТЗ 11 это процесс-модуль `rimworld` по контракту модулей (`GitS/docs/MODULES.md`, `GitS/docs/tz/01-module-contract.md`): он сам
-подключается к ядру по WebSocket (`core_link.py`), присылает манифест (инструменты MCP-сервера и `order`), состояние и события, а
+подключается к ядру по WebSocket (`core_link.py`), присылает манифест (рабочее место: узлы, действия, запросы), состояние и события, а
 ядро запускает его супервизором (`GitS/agent/modules.yaml`). По HTTP остаётся только то, что нужно OBS и пульту (`game_api.py`,
 :8767). Python 3.12+, `asyncio`; локальная модель (LM Studio) нужна комментатору и быстрому слою, Claude Code SDK для игровых
 контуров. Пакет `gits-sdk` (SDK) ставится из GitS: `pip install -e <GitS>\sdk`.
@@ -40,18 +40,16 @@ Claude. Разговор, голос, питомец, Telegram и память-�
 | Модуль | Назначение |
 |---|---|
 | `main.py` | точка входа модуля: контуры игры, API :8767, комментатор, подключение к ядру |
-| `controller.py` | игровые контуры: тик, ходы, планирование, цели, рефлексия, тревога и приказы, режимы; политики (ТЗ 11e): переходы, фокус, ручное управление, скорость |
+| `controller.py` | инфраструктура игры без агента: опрос состояния и событий мода, события ядру (`raid`, `death`, `fire`, `letter`, `goal`, `run_ended`, `colonists`), запись забега и монтаж, камера, сторож окна, запуск игры, меню по OCR, фокус (`activate` / `resume` / `release`); ходов, планирования и реплик в модуле нет, игрой управляет единый агент ядра инструментами рабочего места. Хвосты прежнего агента (`policy_*`, `game_modes`, `watch_rules`, `appraisal`, `decider`) ждут чистки |
 | `policies/` (`__init__.py`, `events.yaml`, `afk|observe|plan|combat|manual.yaml`) | политики игрового агента (ТЗ 11e): каталог событий и описания политик; реестр проверяет схему |
 | `focus_mode.py` | режим фокуса `focus_mode` (`auto` берёт фокус сам, пока нет менеджера фокуса в ядре; `core`; `manual`), чистые решения и объяснение «почему afk» |
 | `policy_manager.py`, `policy_events.py`, `policy_actions.py`, `policy_context.py` | машина состояний политик (приоритет, дребезг, просьбы), события игры по каталогу, чистые решения (скорость, бой, принуждение, запуск), подсказка хода без снимка мира |
 | `watch_rules.py`, `focus_checkpoint.py` | правила наблюдения, которые пишет модель (строгая проверка, срок по тику), checkpoint при потере фокуса |
 | `focus_status.py`, `focus_mode.py` | блок `status` для ядра (ТЗ 18: политика, срочность, прерываемость, блокировка, ресурсы; чистые функции); режим фокуса `auto`/`core`/`manual` |
 | `research_unlock.py` | разблокировка исследованиями: признак закрытого объекта (`ЗАКРЫТО ИССЛЕДОВАНИЕМ`), цепочка до нужного исследования, очередь `memory/research_queue.json`, шаги дерева задач в ожидании исследования (`waiting_research`, `blocked`) |
-| `glados_agent.py` | промпты и запуск Claude для хода, планирования, целей, рефлексии |
 | `rimworld_mcp.py`, `run_mcp.py`, `mod/AgentBridge` | MCP-сервер и мод RimWorld |
 | `statediff.py` | разница состояний игры: что изменилось и что важно |
 | `agent_mode.py`, `tasks_tree.py`, `action_journal.py` | режимы агента, дерево задач, журнал её действий и решений |
-| `commentator.py` | живые реплики по ходу игры (локальная модель), режим стримера |
 | `core_link.py` | связь с ядром (замена `speech_link.py`): реплики `say`, эмоции, события `rimworld.*`, присутствие и общие настройки от ядра, пост-итог в Telegram |
 | `module_manifest.py` | манифест модуля: `order`, `launch_game`, `graph.get`, обработчики; инструменты и узлы строит `workspace_module.py` |
 | `workspace_tree.py`, `workspace_module.py` | рабочее место (контракт 1.8, `GitS/docs/WORKSPACE_MODULES.md`): `workspace_tree.py` дерево узлов по вкладкам игры и судьба каждой функции MCP-сервера (действие узла, запрос, навык, ядро, удаление); `workspace_module.py` строит по нему инструменты манифеста (`<узел>_<действие>`, запросы `colony_resources`), навигацию `open`/`back`/`where`, хранит текущий узел (`NodeState`) и отклоняет действие вне узла; тесты `test_workspace_tree.py`, `test_workspace_module.py` |
@@ -60,13 +58,13 @@ Claude. Разговор, голос, питомец, Telegram и память-�
 | `game_api.py`, `core_bridge.py`, `static/overlay.html` | HTTP-API (:8767): оверлей для OBS, `/api/game`, `/api/graph`, отметки оценок (пульт), мостики MCP-сервера к ядру (экран и поиск) |
 | `run_recorder.py`, `audio_capture.py`, `scenario.py`, `tools/produce_run.py` | запись забега на видео (ffmpeg), звук кусками по 30 минут, сценарий, монтаж и клипы; `produce_run.py` собирает уже записанный забег заново |
 | `game_launcher.py`, `gamenet.py`, `game_ui.py`, `navigate_menu.py` | запуск игры, порт мода, UI-резерв, меню |
-| `fast_brain.py`, `reflex_actions.py`, `relationships.py`, `memory.py` | быстрый слой (эмоции, рефлексы), отношения, память забегов |
+| `event_text.py`, `reflex_actions.py`, `relationships.py`, `memory.py` | текст событий игры, рефлексы, отношения, память забегов |
 | `claude_quota.py`, `claude_budget.py`, `usage_report.py`, `prompts.py`, `settings.py`, `events_log.py` | лимит и расход Claude (расход уходит в ядро запросом `core.claude_usage`), характер, настройки (общие с ядром), протокол событий |
 | `decider.py`, `appraisal.py`, `appraisal_log.py` | клиент классификатора (:8768), оценка событий, журнал оценок; сам сервис `decider_server.py` живёт в GitS (`services/decider/`), его запускает супервизор ядра |
 
 ## Как добавить инструмент игры
 Команда мода (C#) -> функция в `rimworld_mcp.py` (проверка результата по состоянию игры) -> запись в нужный список
-инструментов (`EXECUTION_TOOLS`, `PLANNING_TOOLS`) в `glados_agent.py` -> подсказка в промпте -> тест -> `CHANGELOG.md`.
+узла в `workspace_tree.py` -> тест -> `CHANGELOG.md`.
 В манифест модуля (и значит к агенту ядра) инструмент попадает только через дерево: добавь запись в `workspace_tree.TOOLS`
 (вид `action` или `query`, узел, новое имя; остальные виды в манифест не идут). Правила WS-* в `GitS/docs/WORKSPACE_MODULES.md`:
 в узле не больше 9 действий, одна дорога к действию, без мета-инструментов и обходов (тест `test_workspace_tree.py` не даст

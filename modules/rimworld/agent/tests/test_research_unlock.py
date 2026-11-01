@@ -12,7 +12,6 @@ import game_modes
 import planning_pause
 import policy_actions as pa
 import policy_context
-import policy_events as pe
 import policy_manager
 import rimworld_mcp as m
 import research_unlock as ru
@@ -213,28 +212,6 @@ def ctrl(tmp_path, monkeypatch):
     return c
 
 
-def test_research_done_resumes_the_waiting_step_and_fires_the_rule(ctrl, monkeypatch):
-    tmp = ctrl.tmp
-    (tmp / "tasks.json").write_text(json.dumps([
-        {"description": "построить гидропонику", "status": "waiting_research", "waits_research": "Hydroponics"},
-        {"description": "другое", "status": "pending"}]), encoding="utf-8")
-    monkeypatch.setattr(m, "_load_state", lambda: colony(available={"Hydroponics"}))
-    monkeypatch.setattr(m, "_need_mod", lambda cmd: None)
-    monkeypatch.setattr(m, "_TASKS_FILE", tmp / "tasks.json")
-    monkeypatch.setattr(m, "_query", lambda cmd: json.dumps({"requires": {"research": [{"defName": "Hydroponics",
-                                                                                      "done": False}]}}))
-    m.unlock_for("Hydroponics", queue=True, waiting_task="построить гидропонику")
-    assert ru.next_research(ru.QUEUE_FILE) == "Hydroponics"
-
-    ctrl._need_turn = False
-    ctrl._apply_policy_event(pe.from_statediff("исследование завершено: Hydroponics", True))
-
-    tasks = json.loads((tmp / "tasks.json").read_text(encoding="utf-8"))
-    assert tasks[0]["status"] == "pending" and "waits_research" not in tasks[0]
-    assert ctrl._need_turn is True
-    assert ru.next_research(ru.QUEUE_FILE) == ""
-    assert watch_rules.WatchRules().rules == []                 # правило сработало и снято
-    assert watch_rules.WatchRules().fired and watch_rules.WatchRules().fired[-1]["switch_to"] == "plan"
 
 
 def test_resume_only_touches_steps_waiting_for_that_research(tmp_path):

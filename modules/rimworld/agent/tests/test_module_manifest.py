@@ -20,12 +20,12 @@ async def test_manifest_is_valid_and_built_from_the_workspace_tree():
     for gone in ("game_screenshot", "get_pending_events", "ui_steps", "pc_read_screen", "switch_mode", "set_work_priority",
                  "set_schedule_range", "set_goal", "web_search", "get_colony_state"):
         assert gone not in tools, gone
-    assert len(tools) < 80
+    assert len(tools) < 90
     for t in tools.values():
         assert t["risk"] == "auto" and t["availability"] == "profile"
         assert 0 < len(t["description"]) <= 300 and "keywords" in t
     assert tools["colony_overview"]["timeout_s"] == 60
-    assert tools["order"]["timeout_s"] == 15 and tools["order"]["params"]["text"]["type"] == "string"
+    assert "order" not in tools                                              # приказов игре нет: агент действует инструментами узлов
 
 
 async def test_shared_settings_emits_and_settings_schema():
@@ -56,7 +56,7 @@ async def test_every_tool_has_a_handler_and_core_connects(tmp_path):
     async with Rig(tmp_path) as rig:                     # run() бросил бы RuntimeError, если у инструмента нет обработчика
         hello = rig.core.hellos[0]
         assert hello["module_id"] == "rimworld"
-        assert {t["name"] for t in hello["manifest"]["tools"]} == {t["name"] for t in rig.tools} | {"order"}
+        assert {t["name"] for t in hello["manifest"]["tools"]} == {t["name"] for t in rig.tools}
 
 
 async def test_tool_call_runs_the_mcp_function_and_returns_its_string(tmp_path, monkeypatch):
@@ -110,14 +110,6 @@ async def test_blocking_function_does_not_stall_the_event_loop(tmp_path, monkeyp
     async with Rig(tmp_path) as rig:
         assert await rig.core.call_tool("colony_overview", {}) == "готово"
     assert threads and threads[0] is not threading.main_thread()
-
-
-async def test_order_calls_controller_and_returns_accepted(tmp_path):
-    async with Rig(tmp_path) as rig:
-        assert await rig.core.call_tool("rimworld.order", {"text": "построй стену"}) == {"accepted": True}
-        assert await rig.core.call_tool("order", {"text": "как дела?"}) == {"accepted": False}
-        assert await rig.core.call_tool("order", {"text": "   "}) == {"accepted": False}
-        assert rig.order_calls == ["построй стену", "как дела?"]          # пустой приказ контроллеру не доходит
 
 
 async def test_graph_get_returns_game_modes_graph(tmp_path):
