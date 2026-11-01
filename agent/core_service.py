@@ -48,6 +48,7 @@ from environments.registry import Registry
 from adapters.module_events import AttentionEventSink
 from app.handlers.desktop import desktop_state, make_activity_hook
 import claude_quota
+from domain import scoring
 from app.node_panel import NodePanel
 from app.work_loop import WorkLoop
 from app.handlers.game import make_colonists_handler, make_run_lost_hook
@@ -131,6 +132,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     holder["workspaces"] = workspaces
     attention.ctx.env_of = lambda: workspaces.current            # среда: вес записей очереди, подавление ассистентского шума в игре
     wire_workspace_nodes(companion, registry, attention, modules, workspaces)
+    modules.is_noise = lambda module, kind: scoring.is_assistant_noise(workspaces.current, module, kind)     # отчёт о событиях без экрана пользователя
     presence.listener = hub.broadcast_presence
     speech = getattr(companion, "speech", None)
     if hasattr(speech, "attach"):

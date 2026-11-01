@@ -219,13 +219,18 @@ class ModuleRegistry:
                 lines.append(f"- {rec.title or rec.id}: подключён" + (f", {summary}." if summary else "."))
         return ("Состояние модулей:\n" + "\n".join(lines)) if lines else "модулей нет"
 
+    is_noise = staticmethod(lambda module, kind: False)       # (модуль, вид) -> событие чужого занятия, пока она в среде модуля (ставит ядро)
+
     def note_event(self, module_id: str, event: dict) -> None:
         self.events.append({"ts": time.time(), "module": module_id, "kind": str(event.get("kind") or ""),
                             "text": " ".join(str(event.get("text") or "").split())[:200]})
 
     def events_report(self, module: str | None = None, limit: int = 15) -> str:
         """Недавние события модулей (инструмент `core.module_events`): свежие снизу."""
-        rows = [e for e in self.events if not module or e["module"] == module][-max(1, min(int(limit or 15), EVENTS_KEPT)):]
+        # что видит на своём экране пользователь (описания вкладок и окон) не относится к тому, чем она занята сейчас: пока она играет,
+        # такие события в отчёт не попадают (раньше она читала там нашу переписку и «вспоминала» чужие слова как свои)
+        rows = [e for e in self.events if (not module or e["module"] == module) and not self.is_noise(e["module"], e["kind"])]
+        rows = rows[-max(1, min(int(limit or 15), EVENTS_KEPT)):]
         if not rows:
             return "событий модулей нет" + (f" ({module})" if module else "")
         now = time.time()

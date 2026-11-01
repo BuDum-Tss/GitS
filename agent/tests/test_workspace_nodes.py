@@ -283,3 +283,14 @@ def test_search_hidden_finds_actions_of_other_nodes_with_the_node_to_open():
     assert reg.search_hidden("совсем другое") == []
     visible = {t.name for t in reg.active_tools()}
     assert "place" not in visible and "set_hours" not in visible       # скрытые остаются недоступными для вызова
+
+
+def test_module_events_report_hides_the_users_screen_while_she_plays():
+    import module_registry
+    reg = module_registry.ModuleRegistry(Registry(), settings_source=lambda: {})
+    reg.note_event("desktop", {"kind": "desktop.activity", "text": "claude: читает переписку про RimWorld"})
+    reg.note_event("rimworld", {"kind": "rimworld.raid", "text": "набег"})
+    assert "desktop.activity" in reg.events_report()                                  # вне игры отчёт прежний
+    reg.is_noise = lambda module, kind: module == "desktop" and kind in ("desktop.activity", "desktop.app_changed")
+    report = reg.events_report()
+    assert "rimworld.raid" in report and "desktop.activity" not in report
