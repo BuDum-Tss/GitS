@@ -19,6 +19,8 @@ def _never_launch_the_real_game(request, monkeypatch):
         monkeypatch.delenv("GITS_NO_LAUNCH", raising=False)        # настоящий запуск: тест отвечает за объявление
         return
     monkeypatch.setenv("GITS_NO_LAUNCH", "1")
+    # объявления тестов не должны попадать в живое ядро на :8766: оно приняло бы тестовый факт за настоящий («игры не было»)
+    monkeypatch.setenv("GITS_NOTIFY_URL", "http://127.0.0.1:9/api/notify")
     announced: list[str] = []
     game_launcher.announced = announced
 
