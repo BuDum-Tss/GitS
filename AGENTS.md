@@ -122,7 +122,8 @@ SDK для тяжёлых задач.
 по интерфейсу, `tools[].node`, запросы вместо снимка мира, события с `topics` и `urgency_unfocused`, `state.node`; один агент (ядра),
 без своих агентов, режимов и обходов. Поля манифеста проверяет `validate_manifest` (контракт 1.8), панель узла собирает
 `app/node_panel.py`, видимость по узлу `Registry.tool_visible`, сдвиг срочности `Normalizer.shift_urgency`. Шаблон: `sdk/template/`.
-Дерево RimWorld как данные: `modules/rimworld/agent/workspace_tree.py` (миграция модуля по нему, раздел 10 документа).
+Дерево RimWorld как данные: `modules/rimworld/agent/workspace_tree.py`. Автономная работа агента в среде модуля: `workspace.autonomous` и
+`work_interval_s` в манифесте, ядро шлёт `self.work_tick` (`app/work_loop.py`, настройка `autoplay`).
 
 ## Контракт модулей (ТЗ 31)
 Все запросы, сообщения, темы, окружение и ресурсы описаны в `sdk/gits_sdk/contract/` (единственный источник; проверки зовут SDK, `FakeCore`, `module_hub`, `core_requests`). Документ `docs/MODULE_CONTRACT.md` и схемы `docs/contract/*.json` создаёт `python sdk/tools/gen_contract_doc.py` (после правки контракта запусти его; тест сверяет). Новый запрос `core.*`: описание с примерами в `contract/messages.py`, обработчик в `core_requests.py`, метод в `ModuleClient`. `core.memory.recall` / `core.memory.remember` работают поверх `MemoryReader.search` и `MemoryWriter.add_fact` (память ставит `core_service.wire_modules`). Справочника и уроков в ядре нет (удалены, контракт 1.6). Модули не импортируют файлы `agent/` (тест в `agent/tests/test_architecture.py`): журнал `client.log` / `gits_sdk.host.log_nowait`, локальная модель `gits_sdk.host.llm_ask|llm_json` (запрос `core.llm.ask`), `gits_sdk.safety`, `gits_sdk.claude_path`, `gits_sdk.trace`. Тесты модулей `rimworld` и `montage` запускай с `PYTHONPATH=sdk` (иначе подхватится установленный SDK другого checkout).

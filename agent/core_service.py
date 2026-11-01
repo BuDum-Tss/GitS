@@ -46,7 +46,9 @@ from environments import builtin
 from environments.registry import Registry
 from adapters.module_events import AttentionEventSink
 from app.handlers.desktop import desktop_state, make_activity_hook
+import claude_quota
 from app.node_panel import NodePanel
+from app.work_loop import WorkLoop
 from app.handlers.game import make_colonists_handler, make_run_lost_hook
 from app.handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
 from module_hub import ModuleHub
@@ -371,6 +373,10 @@ async def _run(config: dict):
     layer.workspaces.on_change = on_change
     impulses = impulse_service.build(companion, layer.attention, tasks=companion.tasks)             # ТЗ 30: импульсы и размышление
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
+    work_loop = WorkLoop(env_of=lambda: layer.workspaces.current, manifest_of=layer.modules.manifest_of, agent=companion.resident,
+                         emit=layer.attention.submit_self, settings=layer.attention.ctx.settings,
+                         quiet=lambda: layer.attention.ctx.quiet(layer.attention.ctx.settings()), blocked=claude_quota.blocked)
+    work_loop.start()                                    # ТЗ 33: автономная работа агента в среде игры или мира
     dashboard.set_impulses(impulses)
     episodes = episode_service.build(companion, layer.attention,       # ТЗ 27: эпизоды и сон (простой, расписание, догоняющий)
                                      busy=lambda: layer.attention.top_focus().kind in ("conversation", "question")
@@ -392,6 +398,7 @@ async def _run(config: dict):
     finally:
         await episodes.stop()
         await impulses.timer.stop()
+        await work_loop.stop()
         if impulses.idle is not None:
             impulses.idle.stop()
         await layer.stop()

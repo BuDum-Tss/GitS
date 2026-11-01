@@ -457,5 +457,5 @@ on_error: stop
 | Манифест RimWorld по дереву: `nodes`, `tools[].node`, навигация `open`/`back`/`where`, запросы без узла, события с `topics` | есть | `modules/rimworld/agent/workspace_module.py`, `module_manifest.py`; ядро видит ~32-39 инструментов вместо 74 |
 | Игровой агент модуля убран: ходы, планирование, рефлексия, комментатор, `order`, `glados_agent.py` | есть | `modules/rimworld/agent/controller.py` остался инфраструктурой (состояние, события ядру, запись, камера, фокус) |
 | Хвосты игрового агента в модуле: политики и режимы (`policy_*`, `game_modes`), правила наблюдения, оценка событий (`appraisal`, `decider`), цели и задачи игры в MCP-сервере | план | чистка следующим проходом |
-| Автономная игра единого агента (периодический ход, пока он в среде) | план | `app/work_loop.py` в ядре, нужен в паре с этим |
+| Автономная игра единого агента: рабочий цикл `self.work_tick` раз в `workspace.work_interval_s`, пока агент в среде и свободен (`workspace.autonomous`, настройка `autoplay`) | есть | `app/work_loop.py`, `domain/rules.think_route` |
 | Шаблон модуля (`sdk/template`) с узлами | есть | `sdk/template/` |

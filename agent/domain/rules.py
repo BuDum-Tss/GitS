@@ -32,5 +32,5 @@ def think_route(*, origin: str, kind: str, **_) -> bool:
     if kind == "self.thought":
         return False
     if origin == "self":
-        return kind in ("self.reminder", "self.after_conversation")
+        return kind in ("self.reminder", "self.after_conversation", "self.work_tick")
     return kind.endswith(EPISODE_KINDS)

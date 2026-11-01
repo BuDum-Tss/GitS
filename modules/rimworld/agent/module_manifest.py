@@ -65,7 +65,8 @@ WORKSPACE = {"id": MODULE_ID, "title": "RimWorld",
              "purpose": "игра в колонию вместе с пользователем: ходы, планирование, бой, комментарии вслух",
              "entry": ["user_message", "self_impulse", "critical"], "interruptible": True,
              "safe_points": ["игра на паузе", "тихо: нет угрозы и боя"], "signals_in": ["telegram.*"],
-             "done_when": "забег закончен или игра закрыта"}
+             "done_when": "забег закончен или игра закрыта",
+             "autonomous": True, "work_interval_s": 120}      # ТЗ 33: пока агент в среде и свободен, ядро раз в 120 с шлёт рабочий цикл
 # что модуль шлёт ядру (RW-9): срочности берутся из core_link.EVENTS, чтобы не расходились
 _EMIT_TEXT = {
     "rimworld.colonists": "Обновился список колонистов (служебное: отношения и граф памяти)",

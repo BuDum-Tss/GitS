@@ -10,6 +10,7 @@
 """
 import asyncio
 import logging
+import time
 
 from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, create_sdk_mcp_server,
                               tool)
@@ -59,6 +60,7 @@ class ResidentAgent:
         self._lock: asyncio.Lock | None = None
         self._queries = 0
         self._busy = False
+        self.last_end = 0.0                 # когда закончился последний ход (рабочий цикл не торопит свободного агента)
 
     # ── состояние ──────────────────────────────────────────────────
 
@@ -197,6 +199,7 @@ class ResidentAgent:
                     logger.error(f"Резидентный агент: {e}", exc_info=True)
             finally:
                 self._busy = False
+                self.last_end = time.time()
 
     async def _run(self, prompt: str, source: str) -> None:
         h = self._h

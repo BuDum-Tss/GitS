@@ -394,6 +394,15 @@ window.ARCH_DATA = {
      "now": "app/node_panel.py (ТЗ 33), core_service.wire_workspace_nodes; правила: docs/WORKSPACE_MODULES.md"
     },
     {
+     "id": "wloop",
+     "t": "WorkLoop",
+     "tag": "A",
+     "new": false,
+     "do": "автономная работа единого агента в среде контентного модуля (workspace.autonomous): пока агент свободен, раз в work_interval_s шлёт ему самоимпульс self.work_tick (маршрут think); молчит при «не отвлекать», выключенной настройке autoplay, занятом агенте и лимите Claude",
+     "out": "self.work_tick",
+     "now": "app/work_loop.py (ТЗ 33), core_service"
+    },
+    {
      "id": "tstore",
      "t": "TaskStore",
      "tag": "I",
@@ -912,6 +921,18 @@ window.ARCH_DATA = {
    "npanel",
    "use",
    "текущая среда и узел"
+  ],
+  [
+   "wsm",
+   "wloop",
+   "use",
+   "текущая среда"
+  ],
+  [
+   "wloop",
+   "norm",
+   "flow",
+   "self.work_tick"
   ],
   [
    "npanel",
