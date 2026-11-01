@@ -28,7 +28,7 @@ DEFAULTS = {
     "auto_accept": False,       # авто-разрешать ВСЕ действия (кроме опасных, см. safety.py); включает только пользователь
     "telegram": False,          # публиковать мысли в Telegram-канал
     "telegram_after_run": False,   # писать пост-итог в канал после каждого забега (гибель колонии)
-    "record_runs": False,       # записывать каждый забег RimWorld на видео (общая настройка для модуля rimworld, ТЗ 11)
+    "record_runs": True,        # записывать каждый забег RimWorld на видео (общая настройка для модуля rimworld, ТЗ 11)
     "telegram_voice": False,       # посты в канал голосовым сообщением (текст идёт подписью)
     "telegram_confirm": False,  # спрашивать разрешение перед каждым постом (False: публикует сама)
     "graph_memory": True,        # память-граф (SQLite graph.db): факты из разговора; без моделей LM Studio тихо отключается
