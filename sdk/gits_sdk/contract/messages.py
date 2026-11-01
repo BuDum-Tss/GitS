@@ -520,8 +520,22 @@ _episodes = Message(
     response_invalid=({}, {"episodes": "нет"}),
 )
 
+_tasks = Message(
+    "core.tasks", M2C, REQUEST, "Цель и открытые задачи среды (ТЗ 32): что агент сейчас делает; модуль показывает их в своей панели или оверлее.",
+    since="1.9",
+    request=(F("workspace", "string", False, "среда (id модуля); без неё текущая среда ядра"),),
+    response=(F("workspace", "string", True, "среда"),
+              F("active", "object", False, "активная задача: id, goal, status, steps[{text, status}]"),
+              F("tasks", "array", True, "открытые задачи среды: id, goal, status, steps, progress [сделано, всего]", items="object")),
+    errors=("bad_request", "unavailable"),
+    valid=({}, {"workspace": "rimworld"}),
+    invalid=({"workspace": 5},),
+    response_valid=({"workspace": "rimworld", "tasks": []}, {"workspace": "rimworld", "active": {"id": "t-1"}, "tasks": [{"id": "t-1"}]}),
+    response_invalid=({}, {"workspace": "x", "tasks": "нет"}),
+)
+
 CORE_REQUEST_MESSAGES = (_ask, _tts, _tool_call, _recall, _remember, _persona, _privacy,
-                         _claude_usage, _web_search, _llm_ask, _events_tail, _claude_locate, _episodes)
+                         _claude_usage, _web_search, _llm_ask, _events_tail, _claude_locate, _episodes, _tasks)
 MODULE_NOTE_MESSAGES = (_hello, _event, _say, _emotion, _state, _job_update, _panel_set, _log)
 MODULE_REQUEST_MESSAGES = (_c_tool_call, _c_tool_check, _c_job_cancel, _c_job_list, _c_graph_get, _c_deliver, _c_tts,
                            _c_panel_action, _c_policy_activate, _c_focus_release, _c_focus_resume,

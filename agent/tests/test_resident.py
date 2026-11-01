@@ -73,6 +73,10 @@ def _agent(monkeypatch):
     FakeClient.instances = []
     monkeypatch.setattr(resident, "ClaudeSDKClient", FakeClient)
     monkeypatch.setattr(resident.claude_quota, "blocked", lambda: False)
+    import tempfile
+    from pathlib import Path
+    session_file = Path(tempfile.mkdtemp()) / "resident_session.json"
+    monkeypatch.setattr(resident.ResidentAgent, "_session_file", staticmethod(lambda: session_file))
     host = FakeHost()
     return resident.ResidentAgent(host), host
 
@@ -84,6 +88,24 @@ def test_user_message_goes_to_one_session_and_is_spoken_as_it_comes(monkeypatch)
     assert "Пользователь говорит: запусти игру" in FakeClient.instances[0].prompts[0]
     asyncio.run(agent.handle_event("inbox.batch", "что-то случилось"))
     assert len(FakeClient.instances) == 1 and len(FakeClient.instances[0].prompts) == 2    # события в той же сессии
+
+
+def test_session_survives_restart_of_the_core(monkeypatch):
+    agent, host = _agent(monkeypatch)
+    asyncio.run(agent.handle_user("раз"))
+    assert "resume" not in FakeClient.instances[0].options.__dict__ or not FakeClient.instances[0].options.resume
+    asyncio.run(agent.reset(forget=False))                  # остановка ядра
+    again = resident.ResidentAgent(host)                    # новый запуск ядра
+    asyncio.run(again.handle_user("два"))
+    assert FakeClient.instances[1].options.resume == "s"    # тот же разговор, а не чистый лист
+
+
+def test_failure_forgets_the_saved_session(monkeypatch):
+    agent, host = _agent(monkeypatch)
+    asyncio.run(agent.handle_user("раз"))
+    asyncio.run(agent.reset())                              # сбой или обрыв: прежняя сессия не нужна
+    asyncio.run(resident.ResidentAgent(host).handle_user("два"))
+    assert not FakeClient.instances[1].options.resume
 
 
 def test_session_restarts_after_limit(monkeypatch):

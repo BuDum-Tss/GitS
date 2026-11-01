@@ -54,6 +54,7 @@ from controller import Controller  # noqa: E402
 from core_link import CoreLink  # noqa: E402
 from gits_sdk import ModuleClient  # noqa: E402
 from run_recorder import RunRecorder  # noqa: E402
+import core_tasks  # noqa: E402
 from state_reporter import StateReporter  # noqa: E402
 
 logger = logging.getLogger("rimworld")
@@ -104,7 +105,7 @@ async def amain(config: dict) -> int:
     api = await game_api.start(mem_dir, rimworld_url=config["rimworld_api"], core=client)
     logger.info(f"Манифест: {len(manifest['tools'])} инструментов, ядро {client.url}")
 
-    work = [loop.create_task(coro) for coro in (reporter.run(),)]
+    work = [loop.create_task(coro) for coro in (reporter.run(), core_tasks.run(client))]
     game = loop.create_task(ctrl._run_async())            # игровые контуры; падение контроллера останавливает модуль
     core = loop.create_task(link.run())
     for task in (*work, game):

@@ -129,6 +129,8 @@ CORE_REQUESTS = (
     "core.llm.ask", "core.events.tail", "core.claude.locate",
     # ТЗ 27 (контракт 1.2): эпизоды памяти
     "core.memory.episodes",
+    # ТЗ 32 (контракт 1.9): цель и задачи среды
+    "core.tasks",
 )
 MODULE_TO_CORE = frozenset(MODULE_TO_CORE_NOTES) | frozenset(CORE_REQUESTS)
 

@@ -1,0 +1,51 @@
+{
+  "name": "core.tasks",
+  "direction": "module->core",
+  "kind": "request",
+  "status": "stable",
+  "since": "1.9",
+  "errors": [
+    "bad_request",
+    "unavailable"
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "workspace": {
+        "type": "string",
+        "description": "среда (id модуля); без неё текущая среда ядра"
+      }
+    },
+    "additionalProperties": true,
+    "title": "core.tasks",
+    "description": "Цель и открытые задачи среды (ТЗ 32): что агент сейчас делает; модуль показывает их в своей панели или оверлее."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "workspace": {
+        "type": "string",
+        "description": "среда"
+      },
+      "active": {
+        "type": "object",
+        "description": "активная задача: id, goal, status, steps[{text, status}]"
+      },
+      "tasks": {
+        "type": "array",
+        "description": "открытые задачи среды: id, goal, status, steps, progress [сделано, всего]",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "workspace",
+      "tasks"
+    ],
+    "title": "core.tasks (ответ)"
+  }
+}

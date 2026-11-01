@@ -365,7 +365,7 @@ async def _run(config: dict):
     dashboard.set_registry(registry)
     dashboard.set_modes(layer.profiles)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
-    companion.tasks = task_wiring.build(companion, layer.workspaces)    # ТЗ 32, WS-8: общие задачи, напоминания себе и планы
+    layer.requests.tasks = companion.tasks = task_wiring.build(companion, layer.workspaces)    # ТЗ 32, WS-8: общие задачи, напоминания себе и планы
     await _migrate_memory(companion, graph, Path(companion._dir))      # старая memories.json -> граф и задачи (один раз)
     link_change = layer.workspaces.on_change                            # слот модуля и профиль среды
     task_change = companion.tasks.on_workspace_change                   # checkpoint задач при уходе из среды, возобновление при входе

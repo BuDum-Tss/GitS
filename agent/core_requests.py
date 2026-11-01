@@ -63,6 +63,7 @@ class CoreRequests:
         self.memory_reader = memory_reader        # MemoryReader / MemoryWriter ядра (core.memory.*); None: unavailable
         self.memory_writer = memory_writer
         self.hub = None                           # ModuleHub: core.tts передаёт запрос модулю голоса
+        self.tasks = None                         # TaskService (ТЗ 32): ставит ядро; без него core.tasks недоступен
         self.episodes = None                      # EpisodeService (ТЗ 27): ставит ядро; без него core.memory.episodes недоступен
 
     async def handle(self, conn: ModuleConnection, msg_type: str, body: Any) -> Any:
@@ -71,7 +72,7 @@ class CoreRequests:
             "core.persona": self._persona, "core.claude_usage": self._claude_usage, "core.web_search": self._web_search,
             "core.privacy_terms": self._privacy_terms, "core.llm.ask": self._llm_ask,
             "core.events.tail": self._events_tail, "core.claude.locate": self._claude_locate,
-            "core.memory.episodes": self._episodes,
+            "core.memory.episodes": self._episodes, "core.tasks": self._tasks,
             "core.memory.recall": self._memory_recall, "core.memory.remember": self._memory_remember,
         }.get(msg_type)
         if contract.is_planned(msg_type):                      # MC-5: запрос описан, реализации пока нет
@@ -237,6 +238,16 @@ class CoreRequests:
             found = await svc.recall.find(str(body["query"]), k=limit)
             return {"episodes": found}
         return {"episodes": await svc.recall.listing(limit=limit)}
+
+    async def _tasks(self, conn: ModuleConnection, body: dict) -> dict:
+        """ТЗ 32: снимок задач среды (по умолчанию текущей) для панели модуля."""
+        if self.tasks is None:
+            raise ModuleError("unavailable", "общие задачи не подключены")
+        snap = await self.tasks.snapshot(body.get("workspace") or None)
+        out = {"workspace": snap["workspace"], "tasks": snap["tasks"]}
+        if snap.get("active"):
+            out["active"] = snap["active"]
+        return out
 
     async def _claude_locate(self, conn: ModuleConnection, body: Any) -> dict:
         from gits_sdk import claude_path

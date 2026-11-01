@@ -9,6 +9,7 @@
 Сессия начинается заново при сбое, отмене и после `MAX_QUERIES` обращений. Работает всегда: другого пути обращения и событий нет.
 """
 import asyncio
+import json
 import logging
 import time
 
@@ -73,6 +74,7 @@ class ResidentAgent:
         self._lock: asyncio.Lock | None = None
         self._queries = 0
         self._busy = False
+        self._pending_session: str | None = None
         self._note = ""                     # что сказать новой сессии после сброса (обрыв хода по времени)
         self.last_end = 0.0                 # когда закончился последний ход (рабочий цикл не торопит свободного агента)
 
@@ -115,7 +117,33 @@ class ResidentAgent:
         h = self._h
         return " ".join([prompts.companion_persona(), h.profile_hint(), prompts.reaction_tags(), RULES])
 
-    def _options(self) -> ClaudeAgentOptions:
+    @staticmethod
+    def _session_file():
+        import settings
+        return settings.memory_dir() / "resident_session.json"
+
+    def _saved_session(self) -> str | None:
+        """Сессия прошлого запуска: после перезапуска ядра агент продолжает тот же разговор, а не начинает с чистого листа."""
+        try:
+            data = json.loads(self._session_file().read_text(encoding="utf-8"))
+            if data.get("session_id") and int(data.get("queries", 0)) < MAX_QUERIES:
+                self._queries = int(data.get("queries", 0))
+                return str(data["session_id"])
+        except Exception:
+            pass
+        return None
+
+    def _save_session(self, session_id: str | None) -> None:
+        try:
+            path = self._session_file()
+            if session_id:
+                path.write_text(json.dumps({"session_id": session_id, "queries": self._queries}), encoding="utf-8")
+            else:
+                path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.debug(f"сохранение сессии: {e}")
+
+    def _options(self, resume: str | None = None) -> ClaudeAgentOptions:
         import settings
         model = "sonnet" if settings.load().get("fast_claude_model") == "sonnet" else "haiku"
         kwargs: dict = dict(
@@ -124,20 +152,37 @@ class ResidentAgent:
             env={"ENABLE_CLAUDEAI_MCP_SERVERS": "false"})
         if _CLI_PATH:
             kwargs["cli_path"] = _CLI_PATH
+        if resume:
+            kwargs["resume"] = resume
         return ClaudeAgentOptions(**kwargs)
 
     # ── сессия ─────────────────────────────────────────────────────
 
     async def _ensure(self) -> ClaudeSDKClient:
         if self._client is not None and self._queries >= MAX_QUERIES:
-            await self.reset()
+            await self.reset(forget=True)
         if self._client is None:
-            self._client = ClaudeSDKClient(self._options())
-            await self._client.connect()
-            self._queries = 0
+            saved = self._saved_session()
+            try:
+                self._client = ClaudeSDKClient(self._options(saved))
+                await self._client.connect()
+            except Exception as e:
+                if not saved:
+                    raise
+                logger.warning(f"Прошлую сессию агента продолжить не вышло ({e}), начинаю новую")
+                self._queries, self._client = 0, None
+                self._save_session(None)
+                self._client = ClaudeSDKClient(self._options())
+                await self._client.connect()
+            if not saved:
+                self._queries = 0
         return self._client
 
-    async def reset(self) -> None:
+    async def reset(self, forget: bool = True) -> None:
+        """Закрыть сессию. `forget`: и забыть её (сбой, обрыв, лимит обращений); без него сессию подхватит следующий запуск."""
+        if forget:
+            self._pending_session = None
+            self._save_session(None)
         client, self._client = self._client, None
         if client is not None:
             try:
@@ -210,7 +255,7 @@ class ResidentAgent:
                               "выдумка: не отказывайся от них, продолжай с последнего шага.")
                 await self.reset()
             except asyncio.CancelledError:
-                await self.reset()
+                await self.reset(forget=False)         # остановка ядра: сессию подхватит следующий запуск
                 raise
             except Exception as e:
                 await self.reset()
@@ -242,12 +287,14 @@ class ResidentAgent:
                     elif hasattr(block, "name"):
                         logger.info(f"[агент] {str(block.name).replace('mcp__core__', '')}")
             elif isinstance(message, ResultMessage):
+                self._pending_session = getattr(message, "session_id", None) or self._pending_session
                 try:
                     import usage_report
                     usage_report.push_result(message, "resident")
                 except Exception as e:
                     logger.debug(f"usage: {e}")
         self._queries += 1
+        self._save_session(self._pending_session)
 
     @staticmethod
     def _quiet() -> bool:

@@ -2,7 +2,7 @@
 
 Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора модуля: `docs/MODULES.md`, протокол: `docs/tz/01-module-contract.md`, ТЗ контракта: `docs/tz/31-module-contracts.md`.
 
-Версия протокола `PROTOCOL = 1`, версия контракта `1.8`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
+Версия протокола `PROTOCOL = 1`, версия контракта `1.9`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
 ## Версии и совместимость
 
@@ -25,6 +25,7 @@
 - `1.6`: удалены справочник и уроки ядра: запросы core.lookup, core.experience.add, core.kb.ingest и поле манифеста knowledge
 - `1.7`: эмоций в ядре нет: стикер питомца выбирает тег в тексте ответа; presence.sticker и sticker_ts вместо emotion и emotion_ts, из speak убрано emotion, сообщение emotion и поля emotion в say, core.tts, tts.synthesize устарели (ядро их игнорирует)
 - `1.8`: ТЗ 33: рабочее место. Поля манифеста nodes (дерево узлов, context узла, watch), tools[].node, у emits поля urgency_unfocused, topics, follow_up; поле node в сообщении state; поля среды workspace.autonomous и work_interval_s (рабочий цикл агента). Правила: docs/WORKSPACE_MODULES.md
+- `1.9`: ТЗ 32: core.tasks (цель и открытые задачи среды для панели или оверлея модуля)
 
 Устаревшее: `emotion` до 2027-01-01, заменить на тег стикера в тексте ответа; сообщение игнорируется ядром
 
@@ -412,6 +413,34 @@
 | Поле | Тип | Обязательно | Ограничения | Описание |
 |---|---|---|---|---|
 | `episodes` | array[object] | да | - | эпизоды: id, title, summary, when, status; по id ещё events |
+
+Пример:
+
+```json
+{}
+```
+
+### `core.tasks`
+
+Цель и открытые задачи среды (ТЗ 32): что агент сейчас делает; модуль показывает их в своей панели или оверлее.
+
+направление: module->core, вид: request, статус: **stable**, с версии 1.9.
+
+Коды ошибок: `bad_request`, `unavailable`.
+
+Тело:
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `workspace` | string | нет | - | среда (id модуля); без неё текущая среда ядра |
+
+Ответ (`result.value`):
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `workspace` | string | да | - | среда |
+| `active` | object | нет | - | активная задача: id, goal, status, steps[{text, status}] |
+| `tasks` | array[object] | да | - | открытые задачи среды: id, goal, status, steps, progress [сделано, всего] |
 
 Пример:
 

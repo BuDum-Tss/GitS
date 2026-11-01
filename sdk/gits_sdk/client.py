@@ -893,6 +893,10 @@ class ModuleClient:
             body["limit"] = limit
         return list(R.as_dict(await self._core("core.memory.recall", body)).get("facts", []))
 
+    async def tasks(self, workspace: str | None = None) -> dict:
+        """`core.tasks` (ТЗ 32): цель и открытые задачи среды (`{workspace, active, tasks}`), по умолчанию текущей."""
+        return R.as_dict(await self._core("core.tasks", {"workspace": workspace} if workspace else {}, timeout=15.0))
+
     async def memory_episodes(self, query: str | None = None, *, id: str | None = None, day: str | None = None,
                               limit: int | None = None) -> list[dict]:
         """`core.memory.episodes` (ТЗ 27): эпизоды памяти ядра по смыслу запроса, за сутки или один по id (с событиями-источниками)."""

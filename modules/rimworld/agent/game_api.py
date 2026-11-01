@@ -16,6 +16,7 @@ import httpx
 from aiohttp import web
 
 import core_bridge
+import core_tasks
 import gamenet
 import settings
 
@@ -78,15 +79,15 @@ def _load_memory() -> dict:
 
 
 def _active_goals() -> list[dict]:
-    return []          # цели и задачи игры ведёт единый агент ядра (assistant.tasks): файлы прежнего игрового агента не читаются
+    return []          # отдельных целей игры нет: цель это активная задача среды (`core_tasks`)
 
 
 def _task_tree() -> list[dict]:
-    return []
+    return core_tasks.tree()          # цели и задачи ведёт единый агент ядра, модуль берёт их запросом core.tasks
 
 
 def _ambition() -> dict | None:
-    return None
+    return core_tasks.ambition()
 
 
 def _read_json(name: str, default):

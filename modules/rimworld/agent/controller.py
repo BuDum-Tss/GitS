@@ -26,6 +26,7 @@ import httpx
 from collections import deque
 
 from memory import Memory
+import core_tasks
 import events_log
 import event_text
 import game_errors
@@ -468,10 +469,10 @@ class Controller:
         return str(current.get("description")) if current else ""
 
     def _load_tasks(self) -> list[dict]:
-        return []                          # задачи ведёт единый агент ядра (assistant.tasks); файлы прежнего игрового агента не читаются
+        return core_tasks.steps_for_focus()        # задачи ведёт единый агент ядра (core.tasks); файлы прежнего агента не читаются
 
     def _active_ambition_title(self) -> str:
-        return ""
+        return core_tasks.goal_title()
 
     def _exit_quiet_s(self, policy_id: str) -> float:
         return self.policies.reg.policies[policy_id].exit_quiet_s
