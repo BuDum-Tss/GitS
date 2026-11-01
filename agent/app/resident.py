@@ -24,6 +24,7 @@ from domain.stickers import first_sticker, plain as strip_tags
 logger = logging.getLogger("resident")
 
 MAX_QUERIES = 60            # после стольких обращений сессия начинается заново (контекст не растёт вечно)
+SPEECH_SYNC_S = 12.0        # столько инструмент ждёт, пока договорит её прежняя реплика (комментарий и действие идут в ногу)
 TURN_TIMEOUT_S = 600        # одно обращение дольше этого прерывается (игровой ход из десятка вызовов по ~3 с с паузами на синтез речи)
 FIND_LIMIT = 12             # сколько инструментов отдаёт find_tools за раз
 RESULT_CHARS = 1500
@@ -75,6 +76,7 @@ class ResidentAgent:
         self._queries = 0
         self._busy = False
         self._pending_session: str | None = None
+        self._source = ""                   # откуда идущее обращение: user, event, alert
         self._note = ""                     # что сказать новой сессии после сброса (обрыв хода по времени)
         self.last_end = 0.0                 # когда закончился последний ход (рабочий цикл не торопит свободного агента)
 
@@ -87,7 +89,7 @@ class ResidentAgent:
     # ── инструменты ядра для агента ────────────────────────────────
 
     def _server(self):
-        host = self._h
+        host, agent = self._h, self
 
         @tool("find_tools", "Найти инструменты по смыслу запроса (все окружения и модули). Возвращает id, описание и параметры. "
               "Пустой запрос: перечень окружений.", {"query": str})
@@ -107,6 +109,11 @@ class ResidentAgent:
               "делает система.", {"tool_id": str, "args": dict})
         async def call_tool(args):
             a = _schema_args(args)
+            if agent._source != "alert":                      # тревога действует сразу, остальное после того, как реплика прозвучала
+                try:
+                    await host.wait_speech(SPEECH_SYNC_S)
+                except Exception as e:
+                    logger.debug(f"ожидание речи: {e}")
             ok, result, code = await host.router.run_tool_ex(str(a.get("tool_id") or ""), _schema_args(a.get("args")))
             text = (result if ok else f"НЕ ПОЛУЧИЛОСЬ ({code}): {result}")[:RESULT_CHARS]
             return {"content": [{"type": "text", "text": text}], "is_error": not ok}
@@ -270,6 +277,7 @@ class ResidentAgent:
     async def _run(self, prompt: str, source: str) -> None:
         h = self._h
         client = await self._ensure()
+        self._source = source
         if self._note:
             prompt, self._note = f"=== ЗАМЕТКА ===\n{self._note}\n\n{prompt}", ""
         await client.query(prompt)
@@ -285,7 +293,9 @@ class ResidentAgent:
                             continue                       # «не отвлекать»: событие не повод говорить
                         await h.say(h._declutter(strip_tags(text)), first_sticker(text))   # тег реакции -> стикер питомца
                     elif hasattr(block, "name"):
-                        logger.info(f"[агент] {str(block.name).replace('mcp__core__', '')}")
+                        name = str(block.name).replace("mcp__core__", "")
+                        tool_id = str((getattr(block, "input", None) or {}).get("tool_id") or "")
+                        logger.info(f"[агент] {name} {tool_id}".rstrip())
             elif isinstance(message, ResultMessage):
                 self._pending_session = getattr(message, "session_id", None) or self._pending_session
                 try:

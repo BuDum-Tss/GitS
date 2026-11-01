@@ -90,6 +90,32 @@ def test_user_message_goes_to_one_session_and_is_spoken_as_it_comes(monkeypatch)
     assert len(FakeClient.instances) == 1 and len(FakeClient.instances[0].prompts) == 2    # события в той же сессии
 
 
+def test_wait_speech_returns_when_queue_is_empty_and_gives_up_after_limit():
+    """Инструмент ждёт, пока договорит очередь речи, но не дольше предела."""
+    import time
+    from companion import Companion
+
+    class Queue:
+        def __init__(self, items, busy):
+            self.items, self._busy = items, busy
+
+        def busy(self):
+            return self._busy
+
+    class Fake:
+        pass
+
+    async def run(queue, limit):
+        fake = Fake()
+        fake.attention = type("A", (), {"speech": queue})()
+        t = time.monotonic()
+        await Companion.wait_speech(fake, limit)
+        return time.monotonic() - t
+
+    assert asyncio.run(run(Queue([], False), 5)) < 0.2             # говорить нечего: не ждём
+    assert 0.4 < asyncio.run(run(Queue([], True), 0.5)) < 1.5      # всё ещё звучит: ждём до предела
+
+
 def test_session_survives_restart_of_the_core(monkeypatch):
     agent, host = _agent(monkeypatch)
     asyncio.run(agent.handle_user("раз"))

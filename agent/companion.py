@@ -143,6 +143,17 @@ class Companion:
         channel = current_channel.get()
         return not (channel is not None and channel.kind == "module")
 
+    async def wait_speech(self, max_s: float = 10.0) -> None:
+        """Дождаться, пока договорит всё, что она уже сказала (очередь речи пуста и звука нет), но не дольше `max_s`. Единый агент
+        зовёт перед инструментом: комментарий должен прозвучать до действия, а не после него."""
+        att = getattr(self, "attention", None)
+        queue = getattr(att, "speech", None)
+        if queue is None:
+            return
+        deadline = time.monotonic() + max_s
+        while time.monotonic() < deadline and (queue.items or queue.busy()):
+            await asyncio.sleep(0.25)
+
     async def _wait_spoken(self, cand) -> None:
         """Формулировка вопроса считается сказанной, когда она прозвучала (ATT-19); ответ раньше озвучки снимает кандидата."""
         if cand.source == "question" and cand.done is not None:
