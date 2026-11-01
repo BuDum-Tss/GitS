@@ -46,6 +46,7 @@ from environments import builtin
 from environments.registry import Registry
 from adapters.module_events import AttentionEventSink
 from app.handlers.desktop import desktop_state, make_activity_hook
+from app.node_panel import NodePanel
 from app.handlers.game import make_colonists_handler, make_run_lost_hook
 from app.handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
 from module_hub import ModuleHub
@@ -58,6 +59,25 @@ logger = logging.getLogger("core")
 
 DASHBOARD_PORT = 8766
 SUBGRAPH_TIMEOUT_S = 1.5       # CORE-22: подграф профиля от модуля для дашборда
+
+
+def wire_workspace_nodes(companion, registry, attention, modules, workspaces) -> NodePanel:
+    """ТЗ 33: рабочее место модуля. Узел, о котором сообщил модуль (`state.node`), определяет видимость инструментов узла,
+    сдвиг срочности событий по теме (`nodes[].watch`) и панель узла в контексте агента (`nodes[].context`)."""
+    registry.node_of = modules.node
+
+    def node_watch(module_id: str) -> dict:
+        node, manifest = modules.node(module_id), modules.manifest_of(module_id) or {}
+        for n in manifest.get("nodes") or []:
+            if isinstance(n, dict) and n.get("path") == node:
+                return dict(n.get("watch") or {})
+        return {}
+    attention.ctx.node_watch = node_watch
+    panel = NodePanel(env_of=lambda: workspaces.current, manifest_of=modules.manifest_of, node_of=modules.node,
+                      run_tool=lambda tool_id, args: companion.router.run_tool_ex(tool_id, args))
+    companion.node_panel = panel
+    companion.node_panel_block = panel.block
+    return panel
 
 
 def wire_modules(companion, registry, *, battery=claude_battery.status, specs=None,
@@ -107,6 +127,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         log=lambda kind, **data: _log_workspace(kind, data))
     holder["workspaces"] = workspaces
     attention.ctx.env_of = lambda: workspaces.current            # среда: вес записей очереди, подавление ассистентского шума в игре
+    wire_workspace_nodes(companion, registry, attention, modules, workspaces)
     presence.listener = hub.broadcast_presence
     speech = getattr(companion, "speech", None)
     if hasattr(speech, "attach"):

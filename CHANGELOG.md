@@ -5,6 +5,13 @@
 ## [Unreleased]
 
 ### Added
+- Рабочее место модуля (ТЗ 33, контракт 1.8, `docs/WORKSPACE_MODULES.md`). Манифест: поле `nodes` (дерево узлов с `context` и `watch`), `tools[].node`, у событий `urgency_unfocused`, `topics`, `follow_up`; в `state` поле `node` (`ModuleClient.state(..., node=)`). Проверки в `validate_manifest`, тесты `sdk/tests/test_workspace_nodes.py`. Ядро: `ModuleRegistry.node`, видимость инструментов по узлу (`Registry.tool_visible`), панель узла в контексте агента без вызова модели (`app/node_panel.py`, блок «Рабочее место» в `ContextBuilder`, обновление в `ResidentAgent` перед ходом), срочность по фокусу и теме узла (`Normalizer.shift_urgency`, критичное не ниже 4), сборка `core_service.wire_workspace_nodes`; тесты `agent/tests/test_workspace_nodes.py`. Шаблон модуля `sdk/template/` показывает узлы, раздел «Рабочее место» в `docs/MODULES.md`, правило в `AGENTS.md`, документ `docs/WORKSPACE_MODULES.md` стал нормативным (правила WS-*, SK-*, таблица готовности). Схема архитектуры пересобрана (узел `NodePanel`). Старые модули без `nodes` работают как раньше.
+- Дерево рабочего места RimWorld как данные: `modules/rimworld/agent/workspace_tree.py` (узлы по вкладкам игры, судьба всех 103 инструментов: действие, запрос, навык, ядро, удаление) и тест `tests/test_workspace_tree.py`. Поведение модуля пока прежнее, миграция по этому дереву впереди.
+
+### Added
+- `docs/WORKSPACE_MODULES.md`: черновик правил контентных модулей как рабочего места агента (дерево узлов по интерфейсу, запросы по вкладкам, объявление событий с подписками по фокусу, правила WS-1..WS-20, анализ текущего RimWorld-модуля, обзор приёмов индустрии). Код не менялся, схема архитектуры верна.
+
+### Added
 - `docs/AGENT_SCHEME.md`: упрощённая схема работы агента (диаграмма Mermaid по схеме из Minecraft, уточнённой по коду): входы, внимание, входящая очередь, единый агент, таймеры, инструменты, память, очередь речи. Подробная схема ядра в `spec.py` не менялась и остаётся верной.
 
 ### Removed

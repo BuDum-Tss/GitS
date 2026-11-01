@@ -165,11 +165,13 @@ class ModuleRegistry:
                 fut.set_result({"job_id": key[1], "state": "failed", "text": "",
                                 "error": {"code": "unavailable", "message": "модуль отключился"}})
 
-    def set_state(self, module_id: str, summary: str, data: dict) -> None:
+    def set_state(self, module_id: str, summary: str, data: dict, node: str | None = None) -> None:
         rec = self.records.get(module_id)
         if rec is None:
             return
         rec.state = {"summary": summary, "data": data, "ts": time.time()}
+        if node is not None:
+            rec.state["node"] = node
         if self.on_state is not None:
             try:
                 self.on_state()
@@ -229,6 +231,15 @@ class ModuleRegistry:
         now = time.time()
         return "Недавние события модулей:\n" + "\n".join(
             f"- {max(0, round((now - e['ts']) / 60))} мин назад, {e['module']} {e['kind']}: {e['text']}" for e in rows)
+
+    def node(self, module_id: str) -> str | None:
+        """Узел рабочего места, о котором модуль сообщил в `state.node` (ТЗ 33), или None."""
+        rec = self.records.get(module_id)
+        return (rec.state or {}).get("node") if rec is not None and rec.connected and rec.state else None
+
+    def manifest_of(self, module_id: str) -> dict | None:
+        rec = self.records.get(module_id)
+        return rec.manifest if rec is not None else None
 
     def state_data(self, module_id: str) -> dict | None:
         """state.data подключённого модуля (для профилей) или None."""
@@ -359,7 +370,7 @@ class ModuleRegistry:
         return Tool(id=spec.full_id(module_id), env=module_id, name=spec.name, description=spec.description,
                     params=params, risk=spec.risk, keywords=tuple(spec.keywords), call=call,
                     self_confirming=spec.self_confirming, informative=spec.informative, always=spec.fallback,
-                    availability=spec.availability, timeout_s=spec.timeout_s, job=spec.job,
+                    availability=spec.availability, node=spec.node, timeout_s=spec.timeout_s, job=spec.job,
                     danger_check=spec.danger_check, check=check if spec.danger_check else None)
 
     def _build_environment(self, rec: ModuleRecord, spec) -> None:

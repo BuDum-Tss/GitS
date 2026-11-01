@@ -385,6 +385,15 @@ window.ARCH_DATA = {
      "now": "app/planner.py (LlmPlanner), контракт Planner; промпт planner в prompt.yaml"
     },
     {
+     "id": "npanel",
+     "t": "NodePanel",
+     "tag": "A",
+     "new": false,
+     "do": "панель узла рабочего места: пока агент в среде модуля с деревом узлов, ядро вызывает запросы nodes[].context и кладёт ответ в контекст агента блоком «Рабочее место» (без модели: факты даёт модуль, ядро укладывает в бюджет и показывает изменения); узел берётся из state.node, видимость инструментов по tools[].node, срочность по nodes[].watch",
+     "out": "Context block",
+     "now": "app/node_panel.py (ТЗ 33), core_service.wire_workspace_nodes; правила: docs/WORKSPACE_MODULES.md"
+    },
+    {
      "id": "tstore",
      "t": "TaskStore",
      "tag": "I",
@@ -897,6 +906,30 @@ window.ARCH_DATA = {
    "tsvc",
    "use",
    "среда задач, checkpoint и возобновление"
+  ],
+  [
+   "wsm",
+   "npanel",
+   "use",
+   "текущая среда и узел"
+  ],
+  [
+   "npanel",
+   "ctx",
+   "flow",
+   "блок «Рабочее место»"
+  ],
+  [
+   "resident",
+   "npanel",
+   "use",
+   "обновить панель перед ходом"
+  ],
+  [
+   "npanel",
+   "hubout",
+   "use",
+   "запросы панели (tool.call)"
   ],
   [
    "tsvc",

@@ -17,6 +17,10 @@
       "data": {
         "type": "object",
         "description": "данные"
+      },
+      "node": {
+        "type": "string",
+        "description": "ТЗ 33: текущий узел рабочего места (путь из манифеста `nodes`, например architect/zone); модуль шлёт state сразу при смене узла"
       }
     },
     "additionalProperties": true,

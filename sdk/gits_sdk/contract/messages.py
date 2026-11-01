@@ -239,9 +239,12 @@ _emotion = Message(
 
 _state = Message(
     "state", M2C, NOTE, "Сводка состояния модуля для дашборда и выбора профиля.",
-    request=(F("summary", "string", True, "сводка", max=P.STATE_SUMMARY_MAX), F("data", "object", False, "данные")),
-    valid=({"summary": "работает"}, {"summary": "в игре", "data": {"colonists": 3}}),
-    invalid=({}, {"summary": "x" * (P.STATE_SUMMARY_MAX + 1)}, {"summary": "x", "data": []}),
+    request=(F("summary", "string", True, "сводка", max=P.STATE_SUMMARY_MAX), F("data", "object", False, "данные"),
+             F("node", "string", False, "ТЗ 33: текущий узел рабочего места (путь из манифеста `nodes`, например architect/zone); "
+                                       "модуль шлёт state сразу при смене узла")),
+    valid=({"summary": "работает"}, {"summary": "в игре", "data": {"colonists": 3}},
+           {"summary": "в Архитекторе", "node": "architect/zone"}),
+    invalid=({}, {"summary": "x" * (P.STATE_SUMMARY_MAX + 1)}, {"summary": "x", "data": []}, {"summary": "x", "node": 5}),
 )
 
 _job_update = Message(

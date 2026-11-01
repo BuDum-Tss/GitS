@@ -2,7 +2,7 @@
 
 Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора модуля: `docs/MODULES.md`, протокол: `docs/tz/01-module-contract.md`, ТЗ контракта: `docs/tz/31-module-contracts.md`.
 
-Версия протокола `PROTOCOL = 1`, версия контракта `1.7`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
+Версия протокола `PROTOCOL = 1`, версия контракта `1.8`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
 ## Версии и совместимость
 
@@ -24,6 +24,7 @@
 - `1.5`: ТЗ 32: поле манифеста workspace, запросы workspace.enter / workspace.exit / workspace.resume (policy.activate, focus.release, focus.resume остаются алиасами на один релиз)
 - `1.6`: удалены справочник и уроки ядра: запросы core.lookup, core.experience.add, core.kb.ingest и поле манифеста knowledge
 - `1.7`: эмоций в ядре нет: стикер питомца выбирает тег в тексте ответа; presence.sticker и sticker_ts вместо emotion и emotion_ts, из speak убрано emotion, сообщение emotion и поля emotion в say, core.tts, tts.synthesize устарели (ядро их игнорирует)
+- `1.8`: ТЗ 33: рабочее место. Поля манифеста nodes (дерево узлов, context узла, watch), tools[].node, у emits поля urgency_unfocused, topics, follow_up; поле node в сообщении state. Правила: docs/WORKSPACE_MODULES.md
 
 Устаревшее: `emotion` до 2027-01-01, заменить на тег стикера в тексте ответа; сообщение игнорируется ядром
 
@@ -532,6 +533,7 @@
 |---|---|---|---|---|
 | `summary` | string | да | до 300 симв. | сводка |
 | `data` | object | нет | - | данные |
+| `node` | string | нет | - | ТЗ 33: текущий узел рабочего места (путь из манифеста `nodes`, например architect/zone); модуль шлёт state сразу при смене узла |
 
 Пример:
 

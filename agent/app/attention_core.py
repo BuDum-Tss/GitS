@@ -123,6 +123,7 @@ class AttentionContext:
         self.clock = clock
         self.decider = decider
         self.env_of = lambda: None                      # текущая среда агента (WorkspaceManager.current, ставит ядро)
+        self.node_watch = lambda module_id: {}          # ТЗ 33: тема -> сдвиг срочности для текущего узла модуля (ставит ядро)
         self.settings_provider = settings_provider
         self.settings = settings_source
         self.log = log

@@ -14,11 +14,22 @@ def build_manifest() -> dict:
             {"name": "greet",
              "description": "Поздороваться от имени активного персонажа (для просьб «поздоровайся»).",
              "params": {"name": {"type": "string", "description": "кого поприветствовать"}},
-             "risk": "auto", "availability": "always", "keywords": ["поздоровайся", "привет"]},
+             "risk": "auto", "availability": "always", "keywords": ["поздоровайся", "привет"],
+             "node": "chat"},                    # ТЗ 33: действие видно, только пока модуль в узле chat
             {"name": "remember_fact",
              "description": "Запомнить факт в личной памяти ядра и вернуть то, что найдено по теме.",
              "params": {"text": {"type": "string", "description": "что запомнить"}},
              "risk": "auto", "availability": "always", "keywords": ["запомни"]},
         ],
-        "emits": [{"kind": "template.greeted", "description": "Модуль поздоровался", "default_urgency": 1}],
+        "emits": [{"kind": "template.greeted", "description": "Модуль поздоровался", "default_urgency": 1,
+                   "urgency_unfocused": 0,       # не в фокусе событие не интересно
+                   "topics": ["social"],         # тема: узел может сдвинуть срочность (nodes[].watch)
+                   "follow_up": ["remember_fact"]}],
+        # ТЗ 33: дерево узлов рабочего места. Узел повторяет экран или вкладку предметной области (docs/WORKSPACE_MODULES.md)
+        "nodes": [
+            {"path": "root", "title": "Главный экран"},
+            {"path": "chat", "title": "Чат",
+             "context": [{"tool": "remember_fact", "mode": "on_change", "max_chars": 200}],     # панель узла: запрос-инструмент
+             "watch": {"social": 1}},                                                           # в этом узле социальное важнее
+        ],
     }

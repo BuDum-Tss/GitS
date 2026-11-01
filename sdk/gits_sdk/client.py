@@ -686,9 +686,11 @@ class ModuleClient:
             return False
         return await self._notify("emotion", {"emotion": str(emotion), "cause": str(cause)})
 
-    async def state(self, summary: str, data: dict | None = None) -> bool:
+    async def state(self, summary: str, data: dict | None = None, node: str | None = None) -> bool:
         """Сводка для дашборда и выбора профиля. Последняя пересылается ядру заново после переподключения."""
         body = {"summary": P.clip(str(summary), P.STATE_SUMMARY_MAX), "data": dict(data or {})}
+        if node:
+            body["node"] = str(node)        # ТЗ 33: текущий узел рабочего места
         self._last_state = body
         return await self._notify("state", body)
 

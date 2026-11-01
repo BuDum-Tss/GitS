@@ -117,6 +117,13 @@ SDK для тяжёлых задач.
 правило TG-14 в `attention.submit`). Данные модуля лежат в `MEMORY_DIR` (его передаёт супервизор), секреты модуль читает сам из `agent/secrets.env`
 (`GITS_SECRETS_FILE` заменяет путь в проверках). Тесты, которые поднимают супервизор с настоящим `modules.yaml`, обязаны оставлять только нужные модули.
 
+## Контентные модули: рабочее место (ТЗ 33)
+Новый контентный модуль (игра, мессенджер, мир: RimWorld, Minecraft, Telegram) строится по `docs/WORKSPACE_MODULES.md`: дерево узлов
+по интерфейсу, `tools[].node`, запросы вместо снимка мира, события с `topics` и `urgency_unfocused`, `state.node`; один агент (ядра),
+без своих агентов, режимов и обходов. Поля манифеста проверяет `validate_manifest` (контракт 1.8), панель узла собирает
+`app/node_panel.py`, видимость по узлу `Registry.tool_visible`, сдвиг срочности `Normalizer.shift_urgency`. Шаблон: `sdk/template/`.
+Дерево RimWorld как данные: `modules/rimworld/agent/workspace_tree.py` (миграция модуля по нему, раздел 10 документа).
+
 ## Контракт модулей (ТЗ 31)
 Все запросы, сообщения, темы, окружение и ресурсы описаны в `sdk/gits_sdk/contract/` (единственный источник; проверки зовут SDK, `FakeCore`, `module_hub`, `core_requests`). Документ `docs/MODULE_CONTRACT.md` и схемы `docs/contract/*.json` создаёт `python sdk/tools/gen_contract_doc.py` (после правки контракта запусти его; тест сверяет). Новый запрос `core.*`: описание с примерами в `contract/messages.py`, обработчик в `core_requests.py`, метод в `ModuleClient`. `core.memory.recall` / `core.memory.remember` работают поверх `MemoryReader.search` и `MemoryWriter.add_fact` (память ставит `core_service.wire_modules`). Справочника и уроков в ядре нет (удалены, контракт 1.6). Модули не импортируют файлы `agent/` (тест в `agent/tests/test_architecture.py`): журнал `client.log` / `gits_sdk.host.log_nowait`, локальная модель `gits_sdk.host.llm_ask|llm_json` (запрос `core.llm.ask`), `gits_sdk.safety`, `gits_sdk.claude_path`, `gits_sdk.trace`. Тесты модулей `rimworld` и `montage` запускай с `PYTHONPATH=sdk` (иначе подхватится установленный SDK другого checkout).
 

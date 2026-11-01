@@ -71,6 +71,17 @@ class ContextBuilder:
         except Exception:
             return ""
 
+    def node_block(self) -> str:
+        """Панель текущего узла рабочего места модуля (ТЗ 33): последний `NodePanel.refresh()`. Источник ставит ядро
+        (`Companion.node_panel_block`); без него блока нет."""
+        provider = getattr(self._h, "node_panel_block", None)
+        if provider is None:
+            return ""
+        try:
+            return provider() or ""
+        except Exception:
+            return ""
+
     @staticmethod
     def actions_block(window_s: float = 600.0, limit: int = 8) -> str:
         """Что реально делается и сделано исполнителями (Claude: игровые ходы и задачи; планировщик: быстрые действия): по журналу
@@ -167,6 +178,9 @@ class ContextBuilder:
         events = self.events_block()
         if events:
             blocks.append(("events", events))
+        node = self.node_block()
+        if node:
+            blocks.append(("node", node))
         blocks.append(("actions", self.actions_block()))
         if h._self_block and not skip_memory:
             blocks.append(("self", h._self_block))

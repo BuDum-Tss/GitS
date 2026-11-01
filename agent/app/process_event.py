@@ -96,6 +96,8 @@ class EventPipeline:
         if await self.rules.apply(item, cfg, att, to_conversation, declared):
             return
         self.normalizer.assign_urgency(item, declared, ctx.env_of())
+        focused = ctx.env_of() == item.module
+        self.normalizer.shift_urgency(item, info, focused, ctx.node_watch(item.module) if focused else None)
         stance = ctx.rules.stance(item.module, item.kind, ctx.sender_name(item.sender))
         if stance == "say":                                              # правило «выдели» / «только это»
             item.urgency = max(item.urgency, scoring.SAY_URGENCY)

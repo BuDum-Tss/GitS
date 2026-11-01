@@ -38,12 +38,18 @@ class Registry:
         # () -> модули фокуса активного профиля (profile_manager); None: фокуса нет, видно всё (тесты)
         self.focus = None
         self.embedder = None   # tool_search.ToolEmbeddings: отбор по смыслу (CORE-36); None - только по основам слов
+        # (id модуля) -> текущий узел рабочего места, о котором сообщил модуль (ТЗ 33); None: узел неизвестен, видны все
+        self.node_of = None
 
     def _focus_modules(self) -> set[str] | None:
         return None if self.focus is None else set(self.focus())
 
     def tool_visible(self, env: Environment, tool: Tool, focus: set[str] | None = None) -> bool:
         """Виден ли инструмент планировщику (CORE-10): always - всегда; profile - когда модуль окружения в фокусе профиля."""
+        if tool.node and self.node_of is not None and env.module:
+            current = self.node_of(env.module)
+            if current and current != tool.node:
+                return False                      # ТЗ 33: действие узла видно, только пока агент в этом узле
         if self.focus is None or tool.availability == "always":
             return True
         return env.module in (focus if focus is not None else self._focus_modules())

@@ -31,6 +31,26 @@ class Normalizer:
             item.needs_reply = True
 
     @staticmethod
+    def shift_urgency(item: Item, info: dict | None, focused: bool, watch: dict | None) -> None:
+        """ТЗ 33, раздел 5: срочность по фокусу и узлу. Вне фокуса событие, оставшееся на уровне по умолчанию, берёт
+        `urgency_unfocused`; в фокусе тема события сдвигается по `watch` текущего узла (сумма сдвигов, не больше ±2).
+        Критичное (4 и выше) узлом не опускается ниже 4. Без объявленных полей ничего не меняется."""
+        if not info or item.urgency is None:
+            return
+        base = item.urgency
+        declared = info.get("default_urgency")
+        unfocused = info.get("urgency_unfocused")
+        if not focused and isinstance(unfocused, int) and isinstance(declared, int) and base <= declared:
+            item.urgency = unfocused
+            return
+        topics = info.get("topics") or []
+        if focused and watch and topics:
+            shift = max(-2, min(2, sum(int(watch.get(t, 0)) for t in topics if isinstance(t, str))))
+            if shift:
+                new = max(0, min(5, base + shift))
+                item.urgency = max(new, 4) if base >= 4 else new
+
+    @staticmethod
     def make_item(module_id: str, ev: dict, now: float) -> Item:
         sender = ev.get("sender") if isinstance(ev.get("sender"), dict) else None
         reply = ev.get("reply_channel") if isinstance(ev.get("reply_channel"), dict) else None
