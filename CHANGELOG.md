@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Added
+- `docs/AGENT_SCHEME.md`: упрощённая схема работы агента (диаграмма Mermaid по схеме из Minecraft, уточнённой по коду): входы, внимание, входящая очередь, единый агент, таймеры, инструменты, память, очередь речи. Подробная схема ядра в `spec.py` не менялась и остаётся верной.
+
 ### Removed
 - Чистка прежнего быстрого контура: единый агент (`app/resident.py`) теперь единственный путь обращений, событий и самоимпульсов. Убраны: настройка `resident_agent` (и её поле в форме), настройка `fast_llm` и локальная Gemma/LM Studio в быстром слое (`fast_brain` всегда идёт в Claude через `claude_llm`, нет `react_chat`, прогрева, очереди вызовов, `Preempted`); мгновенный уровень (`app/instant.py`); потоковый ответ, `quick_fact`, `StreamDeclutter` и `converse` в `ReplyGenerator` (остались `speak_about` и `declutter`); ветка классификатора, приказа в игру (`game_order`, `make_game_order`), `_converse`, `_act`, `_escalate`, `_learn`, `_consolidate` в `ConversationService` и `Companion`; ReAct-планировщик `Router.handle` с `PLANNER`, `_plan`, `_replan` (в `Router` остались `run_tool_ex` и шаги исполнения, конструктор `Router(registry, say)`); проверка поправки моделью в фоне (остался шаблон); `tools/measure_e2e.py`. В модуле RimWorld убраны `local_agent.py`, `local_planner.py`, `policy_actions.use_local_model` и локальная ветка `Controller._mode_turn`. Классификатор `decider` (сервис GLiNER), его клиент и `InputClassifier` оставлены: ими пользуется выбор области графа памяти. Тесты прежнего пути удалены или переписаны на заглушку единого агента (`tests/test_hard_rules.py` собрал живые тесты из `test_fast_contour.py`); в `conftest.py` сессия Claude единого агента подменена пустой.
 
