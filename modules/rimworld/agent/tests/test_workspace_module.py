@@ -144,3 +144,8 @@ def test_empty_resources_explain_why_they_may_be_empty(monkeypatch):
     assert "colony_items" in text and "склад" in text
     monkeypatch.setattr(rimworld_mcp, "_load_state", lambda: {"colony": {"resources": {"WoodLog": 57}, "food_days": 9}})
     assert "note" not in rimworld_mcp.get_resources()
+
+
+def test_notices_are_readable_and_closable_from_their_own_node():
+    names = {n for _o, _k, _p, n, _node in wm._specs_table()}
+    assert {"colony_notices", "notices_read", "notices_choose", "notices_dismiss"} <= names

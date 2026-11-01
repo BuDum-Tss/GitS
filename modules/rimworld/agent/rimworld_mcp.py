@@ -1309,6 +1309,39 @@ def ui_state() -> str:
 
 
 @mcp.tool()
+def get_notices() -> str:
+    """Уведомления справа на экране игры: письма (index, label, kind, можно ли убрать, есть ли кнопки выбора, возраст) и красные
+    или жёлтые плашки тревог (alerts: label, priority). Письма читай и закрывай действиями узла notices."""
+    missing = _need_mod("ui_state")
+    if missing:
+        return missing
+    raw = _query({"type": "ui_state"})
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return raw
+    return json.dumps({"letters": data.get("letters") or [], "alerts": data.get("alerts") or []}, ensure_ascii=False)
+
+
+@mcp.tool()
+def notice_read(index: int) -> str:
+    """Открыть письмо справа как клик игрока (index из get_notices); текст и кнопки выбора появятся в состоянии интерфейса."""
+    return _query({"type": "ui_letter", "index": index, "action": "read"})
+
+
+@mcp.tool()
+def notice_choose(index: int, choice: str) -> str:
+    """Выбрать кнопку в письме (index из get_notices, choice текст кнопки, например «Принять»). Письмо после выбора закроется."""
+    return _query({"type": "ui_letter", "index": index, "action": "choose", "choice": choice})
+
+
+@mcp.tool()
+def notice_dismiss(index: int) -> str:
+    """Закрыть письмо справа, когда ты на него отреагировала (index из get_notices). Письма с выбором сначала нужно прочитать и выбрать."""
+    return _query({"type": "ui_letter", "index": index, "action": "dismiss"})
+
+
+@mcp.tool()
 def ui_steps(steps: list) -> str:
     """Шаги интерфейса так, как их делает игрок, одной последовательностью (до 12). Шаг: {"do": ...}. Строительство: open_tab
     (tab=Architect), category (id), designator (id, stuff, rot), place (x, z) или drag (x1,z1,x2,z2, shape=line|rect), cancel.

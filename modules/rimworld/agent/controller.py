@@ -657,12 +657,28 @@ class Controller:
     def _send_change(self, line: str) -> None:
         """Важная строка разницы состояний -> событие для ядра: исследование, кончается еда, упал колонист, враг на карте."""
         link = self.link
-        ev = policy_events.from_statediff(line, True)
-        if link is None or ev is None:
+        if link is None:
             return
-        kind = {"raid": "enemy_seen"}.get(ev.kind, ev.kind)
-        if kind in ("enemy_seen", "pawn_downed", "research_done", "resource_out"):
-            asyncio.create_task(link.event(kind, dict(ev.fields), text=line[:1].upper() + line[1:]))
+        ev = policy_events.from_statediff(line, True)
+        if ev is not None:
+            kind, fields = {"raid": "enemy_seen"}.get(ev.kind, ev.kind), dict(ev.fields)
+        else:
+            kind, fields = self._change_kind(line), {}
+        if kind in ("enemy_seen", "pawn_downed", "research_done", "resource_out", "pawn_mood", "pawn_hurt", "pawn_lost", "newcomer"):
+            asyncio.create_task(link.event(kind, fields, text=line[:1].upper() + line[1:]))
+
+    @staticmethod
+    def _change_kind(line: str) -> str | None:
+        """Остальные важные строки разницы состояний (statediff) -> вид события для ядра. Паузу и свои приказы не пересылаем."""
+        if "на грани срыва" in line:
+            return "pawn_mood"
+        if "кровоточит" in line or "здоровье" in line and "→" in line and "враг" not in line.split(":")[0] or "драка между своими" in line:
+            return "pawn_hurt"
+        if "больше нет в колонии" in line:
+            return "pawn_lost"
+        if line.startswith("в колонии новый человек"):
+            return "newcomer"
+        return None
 
     async def _send_game_event(self, evt: dict):
         """Событие игры -> событие модуля для ядра (RW-9): набег, гибель колониста, пожар, письмо. Ядро решает, важно ли оно

@@ -23,6 +23,15 @@ namespace AgentBridge
             }).ToList();
         }
 
+        /// Красные и жёлтые плашки справа под письмами («колонист без сознания», «нет еды»): только чтение, сами исчезают, когда причина ушла.
+        private static object AlertsState()
+        {
+            if (!(Find.UIRoot is UIRoot_Play play) || play.alerts == null) return new object[0];
+            var active = Traverse.Create(play.alerts).Field("activeAlerts").GetValue<System.Collections.Generic.List<Alert>>();
+            if (active == null) return new object[0];
+            return active.Select(a => new { label = Plain(a.GetLabel()), priority = a.Priority.ToString() }).Take(ListMax).ToList();
+        }
+
         private static Letter LetterAt(JObject cmd)
         {
             var list = Find.LetterStack.LettersListForReading;

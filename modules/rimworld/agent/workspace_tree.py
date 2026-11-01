@@ -47,6 +47,7 @@ NODES: tuple[Node, ...] = (
     Node("pawn/gear", "Колонист: снаряжение", tab="Inspect"),
     Node("pawn/medical", "Колонист: лечение и спасение", tab="Inspect", watch=(("health", 2),)),
     Node("map", "Карта: камера и взгляд", context=("colony/threats",)),
+    Node("notices", "Уведомления справа: письма и тревожные плашки", context=("colony/notices",), watch=(("social", 1),)),
 )
 
 # нынешний инструмент -> (вид, путь узла или запроса, новое имя). Новое имя пустое, если инструмент удаляется или уходит в ядро.
@@ -90,6 +91,10 @@ TOOLS: dict[str, tuple[str, str, str]] = {
     "cancel_bill": ("action", "inspect", "cancel_bill"),
     "forbid_item": ("action", "inspect", "forbid"),
     "unforbid_item": ("action", "inspect", "unforbid"),
+    # Уведомления справа: письма читают, выбирают кнопку и закрывают после реакции
+    "notice_read": ("action", "notices", "read"),
+    "notice_choose": ("action", "notices", "choose"),
+    "notice_dismiss": ("action", "notices", "dismiss"),
     # Колонист
     "draft_pawns": ("action", "pawn/orders", "draft"),
     "undraft_pawns": ("action", "pawn/orders", "undraft"),
@@ -117,6 +122,7 @@ TOOLS: dict[str, tuple[str, str, str]] = {
     "get_resources": ("query", "colony/resources", "resources"),
     "get_buildings": ("query", "colony/buildings", "buildings"),
     "get_threats": ("query", "colony/threats", "threats"),
+    "get_notices": ("query", "colony/notices", "notices"),
     "get_items": ("query", "colony/items", "items"),
     "get_research": ("query", "research/current", "current"),
     "get_pawn_details": ("query", "pawn/details", "details"),           # дальше дробится по вкладкам персонажа

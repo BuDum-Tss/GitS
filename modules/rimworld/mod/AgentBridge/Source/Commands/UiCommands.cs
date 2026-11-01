@@ -51,6 +51,7 @@ namespace AgentBridge
             else if (name == "Wildlife") state["wildlife"] = Section(WildlifeState);
             if (name == "Restrict" || name == "Schedule") state["schedule"] = Section(ScheduleState);
             state["letters"] = Section(LettersState);
+            state["alerts"] = Section(AlertsState);
             state["pawns"] = Section(PawnsState);
             state["threats"] = Section(ThreatsState);
             return state.ToString(Formatting.None);
