@@ -3,8 +3,8 @@
 Этап 4. Репозитории: новый `C:\MyProjects\montage-module` (основной); `GitS` (WhisperX: слова с таймингами; профиль
 `editing`; `modules.yaml`); `rimworld-module` (автомонтаж забегов). Ветки: `tz/20-montage` в существующих
 репозиториях; в новом — `master` с первого коммита, дальше ветки.
-Читать перед этим: `00-architecture.md`, `01-module-contract.md`, `02-core.md`, `03-attention.md`,
-`04-memory-knowledge.md`, `12-voice-module.md`, `21-aperture-style.md` (регламент, по которому монтажёр работает).
+Читать перед этим: `01-module-contract.md`, `02-core.md`.
+`12-voice-module.md`, `21-aperture-style.md` (регламент, по которому монтажёр работает).
 
 ## 1. Цель
 

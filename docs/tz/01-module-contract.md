@@ -1,7 +1,7 @@
 # 01. Контракт модуля: протокол, манифест, SDK
 
 Этап 1. Репозиторий: `GitS`. Ветка: `tz/01-module-contract`.
-Читать перед этим: `00-architecture.md`.
+Читать перед этим: `01-module-contract.md`.
 
 ## 1. Цель
 
@@ -463,7 +463,7 @@ await client.run()     # подключение, рукопожатие, цик�
   `{policy, goal, task_id, event_id, priority, reason}` и `focus.release` `{reason, task_id, force, event_id, checkpoint}`,
   `focus.resume` `{task_id, policy, goal, checkpoint, subgoals}`. Ответ: `result` с `value.ok`. Отказ модуля (`ok: false`
   или `denied`) оставляет фокус у прежнего владельца; `unknown` на `focus.release` означает, что модуль не умеет освобождать
-  фокус. Протокол переключения и правила - `docs/FOCUS.md`.
+  фокус. Прежний менеджер фокуса удалён: среду выбирает `WorkspaceManager` (`docs/WORKSPACE_MODULES.md`).
 - **MOD-33 (ОБЯЗАТЕЛЬНО).** Статус модуля для ядра: тема `state`, поле `data.status` с полями `active_policy`,
   `interruptible`, `blocked` (строка при блокировке), `active_goal`, `urgency`, `estimated_remaining_s` (для дашборда).
   Ядро не верит статусу в первые 5 с после перехода фокуса (GRACE_S).

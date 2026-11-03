@@ -6,7 +6,7 @@
 где ответа нет, и задержку p50/p95. Эмбеддер: `hash` (детерминированный, без сети; знает только совпадения слов) или
 `lmstudio` (EmbeddingGemma, нужен запущенный LM Studio).
 
-Запуск из папки agent:  python -m tools.memory_bakeoff [--embedder hash|lmstudio] [--json] [--md docs/MEMORY_BAKEOFF_RESULTS.md]
+Запуск из папки agent:  python -m tools.memory_bakeoff [--embedder hash|lmstudio] [--json] [--md отчёт.md]
 """
 import argparse
 import asyncio

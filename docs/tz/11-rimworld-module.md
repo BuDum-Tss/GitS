@@ -2,7 +2,7 @@
 
 Этап 2. Репозитории: `rimworld-agent` → `rimworld-module` (основной), `GitS` (удаление старых каналов).
 Ветки: `tz/11-rimworld-module` в обоих.
-Читать перед этим: `00-architecture.md`, `01-module-contract.md`, `02-core.md`, `03-attention.md`.
+Читать перед этим: `01-module-contract.md`, `02-core.md`.
 
 ## 1. Цель
 

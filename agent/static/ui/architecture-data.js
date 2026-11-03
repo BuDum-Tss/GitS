@@ -203,7 +203,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "маршруты события и обращения: reflex (с already_done), chat, task, ignore, think; таблица D0-D4 и R1-R4 → маршруты; жёсткие правила из YAML",
      "out": "RouteDecision",
-     "now": "есть (ТЗ 25): routes.py, routes/hard_rules.yaml, docs/ROUTES.md"
+     "now": "есть (ТЗ 25): routes.py, routes/hard_rules.yaml"
     }
    ]
   },

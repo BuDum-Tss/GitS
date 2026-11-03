@@ -1,7 +1,7 @@
 # 10. Модуль `telegram`
 
 Этап 2. Репозиторий: `GitS`. Ветка: `tz/10-telegram-module` (после слияния ТЗ 01–03).
-Читать перед этим: `00-architecture.md`, `01-module-contract.md`, `02-core.md`, `03-attention.md`.
+Читать перед этим: `01-module-contract.md`, `02-core.md`.
 
 ## 1. Цель
 
