@@ -2,7 +2,7 @@
 
 Модуль монтажа ГЛаДОС (`module_id: montage`): превращает исходники (ролик с человеком, запись забега RimWorld, её
 закадр поверх графики, любые файлы) в готовый ролик в стиле Aperture Science. Работает по контракту модулей ядра GitS
-(`C:\MyProjects\GitS\docs\tz\01-module-contract.md`), подключается к нему сам по WebSocket. Монтажом занимается агент на
+(`C:\MyProjects\GitS\docs\MODULE_CONTRACT.md`), подключается к нему сам по WebSocket. Монтажом занимается агент на
 Claude Agent SDK со скиллами Remotion; сборка и рендер идут в Remotion (`template/`).
 
 Постановка: `C:\MyProjects\GitS\docs\tz\20-montage-module.md`, `21-aperture-style.md`, `22-editing-craft.md`.

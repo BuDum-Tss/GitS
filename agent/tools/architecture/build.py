@@ -86,7 +86,7 @@ def render_docs_html() -> str:
   core_service.py   только сборка
 sdk/gits_sdk/contract/   публичные контракты для модулей (ТЗ 31)</pre>
 <h2 class="text-xl font-semibold mt-8 mb-2">План рефакторинга без остановки проекта</h2>
-<p class="opacity-70 mb-2">Каждый шаг отдельной веткой, поведение не меняется, тесты зелёные. Подробно: <code>docs/tz/29-clean-architecture.md</code>, <code>30-impulses-reflection.md</code>, <code>31-module-contracts.md</code>.</p>{phases}
+<p class="opacity-70 mb-2">Каждый шаг отдельной веткой, поведение не меняется, тесты зелёные.</p>{phases}
 </div>
 <script src="../agent/static/ui/vendor/cytoscape.min.js"></script>
 <script src="../agent/static/ui/architecture-data.js"></script>

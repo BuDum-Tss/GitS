@@ -7,7 +7,7 @@
 `montage-module`: модуль `montage` ядра GitS. Монтирует ролики из исходников в стиле Aperture Science и в характере
 ГЛаДОС: расшифровка, история и план, закадр её голосом, сборка в Remotion, черновик, правки, финал. Монтажом занимается
 агент на Claude Agent SDK со скиллами Remotion; Python-часть (`agent/`) ведёт задачу, песочницу и связь с ядром по
-контракту модулей (`C:\MyProjects\GitS\docs\tz\01-module-contract.md`). Ядро и разговор принадлежат GitS: сюда
+контракту модулей (`C:\MyProjects\GitS\docs\MODULE_CONTRACT.md`). Ядро и разговор принадлежат GitS: сюда
 ассистентское не добавлять. Python 3.12+, `asyncio`; Node 18+ и Remotion для рендера; ffmpeg.
 
 Полная постановка: `C:\MyProjects\GitS\docs\tz\20-montage-module.md` (конвейер), `21-aperture-style.md` (стиль),
