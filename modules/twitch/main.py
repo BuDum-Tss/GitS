@@ -1,6 +1,6 @@
 """Точка входа модуля Twitch. Запускает супервизор ядра: `python main.py` из папки модуля.
 
-Секреты (TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_CHANNEL) модуль читает сам из agent/secrets.env (путь можно заменить
+Секреты (TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_CHANNEL) модуль читает сам из .env (путь можно заменить
 переменной GITS_SECRETS_FILE); значения нигде не печатаются. Токены входа лежат в папке памяти (twitch_tokens.json), их создаёт
 `tw_login.py`. Без настроек модуль работает и честно сообщает в состоянии «не настроен».
 """

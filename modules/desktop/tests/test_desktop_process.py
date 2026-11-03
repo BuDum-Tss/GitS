@@ -18,7 +18,7 @@ async def test_main_process_connects_reports_state_and_exits_on_shutdown(tmp_pat
     async with FakeCore(settings={"vision": False, "auto_accept": False, "dnd": False, "quiet_until": 0.0}) as core:
         env = dict(os.environ)
         env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="desktop",
-                   MEMORY_DIR=str(mem), GITS_SECRETS_FILE=str(tmp_path / "нет-secrets.env"),
+                   MEMORY_DIR=str(mem), GITS_SECRETS_FILE=str(tmp_path / "нет-.env"),
                    LOCALAPPDATA=str(tmp_path / "la"), GITS_DESKTOP_FAKE="1",
                    PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "sdk"))
         proc = await asyncio.create_subprocess_exec(

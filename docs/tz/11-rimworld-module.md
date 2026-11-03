@@ -55,12 +55,12 @@
   - `rimworld-module`: `agent/run_mcp.py` (жёсткий путь — заменить на путь относительно файла), `agent/game_api.py`,
     `agent/glados_agent.py`, `README.md`, `AGENTS.md`, `diagnose.ps1`, `rebuild_and_launch.ps1`. Файлы в
     `mod/AgentBridge/obj/` — сгенерированные: не править, пересоздадутся сборкой.
-  - `GitS`: `tray.py`, `main.py`, `dashboard.py`, `README.md`, `AGENTS.md`, `secrets.env.example`, `modules.yaml`,
+  - `GitS`: `tray.py`, `main.py`, `dashboard.py`, `README.md`, `AGENTS.md`, `.env.example`, `modules.yaml`,
     документы `docs/tz/*` — не править (там старое имя упоминается намеренно в истории).
   - Переменная окружения: новая `RIMWORLD_MODULE_DIR`; старая `RIMWORLD_AGENT_DIR` читается как запасная одну версию
-    (с предупреждением в журнал) и удаляется в следующем ТЗ, которое затронет эти файлы. В `secrets.env.example` —
-    новая. Пользователю в отчёте: «в `agent/secrets.env` замени `RIMWORLD_AGENT_DIR` на `RIMWORLD_MODULE_DIR`»
-    (исполнитель сам `secrets.env` не читает и не правит).
+    (с предупреждением в журнал) и удаляется в следующем ТЗ, которое затронет эти файлы. В `.env.example` —
+    новая. Пользователю в отчёте: «в `.env` замени `RIMWORLD_AGENT_DIR` на `RIMWORLD_MODULE_DIR`»
+    (исполнитель сам `.env` не читает и не правит).
 - **RW-3 (ЖЕЛАТЕЛЬНО).** Память Claude Code для проекта хранится по пути папки
   (`C:\Users\coffe\.claude\projects\C--MyProjects-rimworld-agent\memory\`). Предложить человеку скопировать её в
   `...\C--MyProjects-rimworld-module\memory\` (сделать только с разрешения).

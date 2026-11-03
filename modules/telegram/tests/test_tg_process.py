@@ -23,7 +23,7 @@ async def test_main_process_connects_reports_not_configured_and_shuts_down(tmp_p
             return {"terms": ["Анна"]}
 
         env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="telegram",
-                   MEMORY_DIR=str(mem), GITS_SECRETS_FILE=str(tmp_path / "нет-secrets.env"),
+                   MEMORY_DIR=str(mem), GITS_SECRETS_FILE=str(tmp_path / "нет-.env"),
                    LOCALAPPDATA=str(tmp_path / "la"), PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "sdk"))
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-u", "main.py", cwd=str(MODULE_DIR), env=env,

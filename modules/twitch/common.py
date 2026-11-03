@@ -15,8 +15,8 @@ def default_memory_dir() -> str:
 
 
 def secrets_file() -> Path:
-    """Файл секретов: agent/secrets.env (GITS_SECRETS_FILE переопределяет путь, например в проверках запуска)."""
-    return Path(os.getenv("GITS_SECRETS_FILE") or GITS_ROOT / "agent" / "secrets.env")
+    """Файл секретов: .env (GITS_SECRETS_FILE переопределяет путь, например в проверках запуска)."""
+    return Path(os.getenv("GITS_SECRETS_FILE") or GITS_ROOT / ".env")
 
 
 def quiet_active(cfg: dict) -> bool:

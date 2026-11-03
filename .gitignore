@@ -5,6 +5,7 @@ agent/memory/
 agent/_*.log
 agent/__pycache__/
 *.pyc
+.env
 agent/secrets.env
 agent/.env
 agent/models/

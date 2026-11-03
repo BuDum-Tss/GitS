@@ -16,6 +16,6 @@ def _isolated(tmp_path, monkeypatch):
     mem = tmp_path / "memory"
     mem.mkdir()
     monkeypatch.setenv("MEMORY_DIR", str(mem))
-    monkeypatch.setenv("GITS_SECRETS_FILE", str(tmp_path / "нет-такого-secrets.env"))
+    monkeypatch.setenv("GITS_SECRETS_FILE", str(tmp_path / "нет-такого-.env"))
     for name in ("TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET", "TWITCH_CHANNEL"):
         monkeypatch.delenv(name, raising=False)

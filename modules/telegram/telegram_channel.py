@@ -1,6 +1,6 @@
 """Telegram-канал и бот: она периодически публикует «мысли» в канал, пишет посты по просьбе и отвечает владельцу в боте.
 
-Секреты НЕ в репозитории: токен бота и канал модуль читает сам из agent/secrets.env (файл в .gitignore):
+Секреты НЕ в репозитории: токен бота и канал модуль читает сам из .env (файл в .gitignore):
     TELEGRAM_BOT_TOKEN=123456:ABC...        (выдаёт @BotFather)
     TELEGRAM_CHANNEL=@имя_канала            (или числовой id вида -100...)
 Бот должен быть администратором канала с правом публиковать сообщения.
@@ -239,7 +239,7 @@ class TelegramChannel:
     async def reply(self, chat_id: int | str, text: str, ogg: bytes | None = None) -> None:
         """Отправить текст от бота в чат (владельцу); с ogg - голосовым сообщением с текстом подписью. Бросает RuntimeError."""
         if not self._token:
-            raise RuntimeError("бот не настроен: нет TELEGRAM_BOT_TOKEN в agent/secrets.env")
+            raise RuntimeError("бот не настроен: нет TELEGRAM_BOT_TOKEN в .env")
         rest = text
         if ogg is not None:
             cap = text if len(text) <= CAPTION_MAX else ""
@@ -451,7 +451,7 @@ class TelegramChannel:
         if not self.configured():
             if not self._warned:
                 self._warned = True
-                self.log("включено, но не заданы TELEGRAM_BOT_TOKEN и TELEGRAM_CHANNEL в agent/secrets.env")
+                self.log("включено, но не заданы TELEGRAM_BOT_TOKEN и TELEGRAM_CHANNEL в .env")
             return
         if not await self.ensure_verified():
             await asyncio.sleep(600)   # не долбить Telegram при неверных настройках

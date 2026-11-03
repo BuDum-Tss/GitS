@@ -63,7 +63,7 @@
 ```powershell
 cd agent
 pip install -r requirements.txt -r ../modules/voice/requirements.txt    # ядро и звук
-copy secrets.env.example secrets.env     # токены Telegram и т.д. (не в git)
+copy .env.example .env     # токены Telegram и т.д. (не в git)
 python main.py                           # ядро и дашборд на http://localhost:8766; модули запускает само ядро
 pythonw tray.py                          # трей: поднимает только ядро
 ```
@@ -74,7 +74,7 @@ pythonw tray.py                          # трей: поднимает толь
 - Без звука и без окна для проверки запуска: `GITS_VOICE_FAKE=1`, `GITS_PET_HEADLESS=1`. Выключить второй эшелон фокуса: `GITS_FOCUS_LLM=0`.
 - Вручную (при разработке, ядро должно работать): `python modules/voice/main.py`, `python modules/pet/main.py`.
 - Telegram: токен бота и канал (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL`) и ключи аккаунта (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`) лежат
-  в `agent/secrets.env`; вход в аккаунт один раз вручную: `python modules/telegram/tg_login.py`.
+  в `.env`; вход в аккаунт один раз вручную: `python modules/telegram/tg_login.py`.
 
 ### Дашборд
 Вкладки: **Состояние** (профили, внимание, фокус, задержка реплики и бюджеты задержек), **Память** (что помнит, граф, эпизоды),

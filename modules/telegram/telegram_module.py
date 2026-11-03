@@ -28,7 +28,7 @@ VOICE_EXT = (".ogg", ".opus")
 
 # статус публикации (telegram_channel.publish / post_on_request) -> (текст отказа, код ошибки MOD-9)
 POST_FAILURES = {
-    "not_configured": ("Telegram не настроен: нет токена бота или канала в agent/secrets.env", "unavailable"),
+    "not_configured": ("Telegram не настроен: нет токена бота или канала в .env", "unavailable"),
     "not_verified": ("связь с каналом не прошла проверку: токен неверный или бот не администратор канала", "unavailable"),
     "unavailable": ("список личных слов от ядра ещё не получен: публиковать пока нельзя", "unavailable"),
     "unsafe": ("текст не прошёл проверку приватности, ничего не опубликовано", "denied"),

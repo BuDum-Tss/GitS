@@ -340,7 +340,7 @@ log.jsonl         # ход задачи: стадии, вызовы инстру
 - **MON-34 (ОБЯЗАТЕЛЬНО).** GitS: профиль `editing` — `planned: false`, `focus_modules: [montage, desktop]`; в
   `modules.yaml` модуль `montage` (`cwd: "{MONTAGE_MODULE_DIR}/agent"`, `command:
   "{MONTAGE_MODULE_DIR}/.venv/Scripts/python.exe"`, `autostart: true`, `restart: on-failure`); `MONTAGE_MODULE_DIR` — в
-  `secrets.env.example` (человек добавляет в `secrets.env` сам).
+  `.env.example` (человек добавляет в `.env` сам).
 
 ## 12. Забеги RimWorld
 

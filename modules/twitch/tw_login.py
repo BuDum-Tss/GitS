@@ -4,7 +4,7 @@
     python modules/twitch/tw_login.py broadcaster    # под аккаунтом владельца канала (события канала, название, клипы)
 
 Если бот и канал один аккаунт, достаточно `broadcaster` (бот возьмёт его токен). Нужны TWITCH_CLIENT_ID и TWITCH_CLIENT_SECRET
-в agent/secrets.env (dev.twitch.tv/console, Redirect URL приложения: http://localhost:3000). Токены сохраняются в папке памяти
+в .env (dev.twitch.tv/console, Redirect URL приложения: http://localhost:3000). Токены сохраняются в папке памяти
 (MEMORY_DIR, по умолчанию agent/memory) в twitch_tokens.json.
 """
 import asyncio
@@ -66,7 +66,7 @@ async def wait_for_code(state: str) -> str:
 async def main(role: str) -> None:
     client_id, client_secret = os.getenv("TWITCH_CLIENT_ID", "").strip(), os.getenv("TWITCH_CLIENT_SECRET", "").strip()
     if role not in SCOPES or not (client_id and client_secret):
-        print("Использование: tw_login.py bot|broadcaster. В agent/secrets.env нужны TWITCH_CLIENT_ID и TWITCH_CLIENT_SECRET.")
+        print("Использование: tw_login.py bot|broadcaster. В .env нужны TWITCH_CLIENT_ID и TWITCH_CLIENT_SECRET.")
         return
     state = secrets.token_urlsafe(16)
     url = "https://id.twitch.tv/oauth2/authorize?" + urllib.parse.urlencode({

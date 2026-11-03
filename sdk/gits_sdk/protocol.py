@@ -427,7 +427,7 @@ def _check_setting(name: Any, spec: Any, problems: list[str]) -> None:
     if not isinstance(title, str) or not title.strip():
         problems.append(f"{where}.title: обязательная непустая строка")
     if spec.get("secret"):
-        problems.append(f"{where}.secret: секретные настройки запрещены, секреты модуль читает сам из secrets.env")
+        problems.append(f"{where}.secret: секретные настройки запрещены, секреты модуль читает сам из .env")
     if "secret" in spec and not isinstance(spec["secret"], bool):
         problems.append(f"{where}.secret: должно быть true или false")
     if "default" not in spec:

@@ -17,7 +17,7 @@ async def test_main_process_speaks_fake_and_shuts_down(tmp_path):
                                   "dnd": False, "quiet_until": 0.0}) as core:
         env = dict(os.environ)
         env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="voice", MEMORY_DIR=str(mem),
-                   GITS_SECRETS_FILE=str(tmp_path / "нет-secrets.env"), LOCALAPPDATA=str(tmp_path / "la"),
+                   GITS_SECRETS_FILE=str(tmp_path / "нет-.env"), LOCALAPPDATA=str(tmp_path / "la"),
                    GITS_VOICE_TMP=str(tmp_path / "vtmp"), GITS_VOICE_FAKE="1", GITS_VOICE_FAKE_SEGMENT_MS="150",
                    PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "sdk"))
         proc = await asyncio.create_subprocess_exec(

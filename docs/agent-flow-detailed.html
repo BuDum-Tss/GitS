@@ -1300,7 +1300,7 @@ DIAGRAMS.push({
   minw: 230,
   lanes: [
     {title: 'Запуск ядра', nodes: [
-      {id: 'b_tray', t: 'tray.py / main.py', s: 'трей, загрузка secrets.env, путь к sdk/', k: 'core', f: 'agent/main.py'},
+      {id: 'b_tray', t: 'tray.py / main.py', s: 'трей, загрузка .env, путь к sdk/', k: 'core', f: 'agent/main.py'},
       {id: 'b_init', t: 'core_service._run: инициализация', s: 'settings.init → character.init → fast_brain.init → Relationships, PresenceTracker, SpeechSelector, Companion', k: 'core'},
       {id: 'b_wire', t: 'wire_modules', s: 'ModuleHub, ModuleRegistry, Attention, FocusManager, ProfileManager, Supervisor, обработчики kind', k: 'core'},
       {id: 'b_dash', t: 'dashboard.start :8766', s: 'HTTP API, чат, настройки, оценки; тот же порт — шина /module/ws', k: 'core'},

@@ -5,7 +5,7 @@
 Спросит номер телефона аккаунта, код из Telegram и, если включена, пароль двух шагов. Всё это вводишь ты сам:
 ассистентка и инструменты этих данных не видят. После входа в папке памяти (MEMORY_DIR, по умолчанию agent/memory)
 остаётся сессия tg_user.session.
-Нужны TELEGRAM_API_ID и TELEGRAM_API_HASH в agent/secrets.env (my.telegram.org, API development tools).
+Нужны TELEGRAM_API_ID и TELEGRAM_API_HASH в .env (my.telegram.org, API development tools).
 """
 import asyncio
 import os
@@ -30,7 +30,7 @@ async def main():
     memory = default_memory_dir()
     api_id, api_hash = os.getenv("TELEGRAM_API_ID", "").strip(), os.getenv("TELEGRAM_API_HASH", "").strip()
     if not (api_id and api_hash):
-        print("В agent/secrets.env нет TELEGRAM_API_ID и TELEGRAM_API_HASH (получить: my.telegram.org -> API development tools).")
+        print("В .env нет TELEGRAM_API_ID и TELEGRAM_API_HASH (получить: my.telegram.org -> API development tools).")
         return
     Path(memory).mkdir(parents=True, exist_ok=True)
     client = TelegramClient(str(Path(memory) / "tg_user"), int(api_id), api_hash)

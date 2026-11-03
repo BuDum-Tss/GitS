@@ -31,7 +31,7 @@ ENV_VARS = (
     EnvVar("PYTHONUNBUFFERED", SUPERVISOR, False, "1: журнал процесса без буфера"),
     EnvVar("PYTHONPATH", SUPERVISOR, False, "пути к sdk/ и agent/ до установки пакета gits-sdk"),
     EnvVar("GITS_RESOURCES_DIR", INHERITED, False, "корень ресурсов персонажей; по умолчанию resources/ рядом с sdk/"),
-    EnvVar("GITS_SECRETS_FILE", INHERITED, False, "путь к secrets.env; по умолчанию agent/secrets.env"),
+    EnvVar("GITS_SECRETS_FILE", INHERITED, False, "путь к .env; по умолчанию .env"),
 )
 
 # переменные, которые супервизор обязан положить в окружение процесса каждого модуля (не сервиса)
@@ -44,5 +44,5 @@ RESOURCE_RULES = (
     "Персонаж берётся из `GITS_CHARACTER_ID`, иначе `glados`; смена персонажа перезапускает модуль.",
     "Папка модуля не создаётся SDK и не изменяется модулем; изменяемые данные модуля лежат в `MEMORY_DIR`.",
     "Корень ресурсов: `GITS_RESOURCES_DIR` или `resources/` рядом с `sdk/`.",
-    "Секреты модуль читает сам из `agent/secrets.env` (или `GITS_SECRETS_FILE`); в журнал и в события они не попадают.",
+    "Секреты модуль читает сам из `.env` (или `GITS_SECRETS_FILE`); в журнал и в события они не попадают.",
 )

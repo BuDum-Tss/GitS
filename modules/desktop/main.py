@@ -1,6 +1,6 @@
 """Точка входа модуля desktop (ТЗ 14). Запускает супервизор ядра: `python main.py` из папки модуля.
 
-Секретов у модуля нет, но agent/secrets.env читается, как у других модулей монорепо. GITS_DESKTOP_FAKE=1 отключает опрос
+Секретов у модуля нет, но .env читается, как у других модулей монорепо. GITS_DESKTOP_FAKE=1 отключает опрос
 экрана и ввод, а инструменты, которые трогают экран, программы и Claude, отвечают `unavailable` (проверка запуска).
 """
 import asyncio
@@ -18,7 +18,7 @@ from envcompat import env  # noqa: E402
 
 from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv(Path(env("GITS_SECRETS_FILE") or GITS / "agent" / "secrets.env"))
+load_dotenv(Path(env("GITS_SECRETS_FILE") or GITS / ".env"))
 
 from desktop_module import DesktopModule  # noqa: E402
 from gits_sdk import ModuleClient  # noqa: E402

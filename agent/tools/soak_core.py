@@ -210,7 +210,7 @@ class Soak:
                  "GITS_NO_MODULES")
         self._saved_env = {k: os.environ.get(k) for k in names}               # возвращаются в close()
         os.environ["LOCALAPPDATA"] = str(Path(self.memory_dir) / "localappdata")        # файл токена модулей не в настоящем профиле
-        os.environ["GITS_SECRETS_FILE"] = str(Path(self.memory_dir) / "нет-secrets.env")
+        os.environ["GITS_SECRETS_FILE"] = str(Path(self.memory_dir) / "нет-.env")
         os.environ["GITS_VOICE_FAKE"] = "1"
         os.environ["GITS_PET_HEADLESS"] = "1"
         os.environ["GITS_DESKTOP_FAKE"] = "1"

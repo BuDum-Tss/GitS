@@ -411,6 +411,6 @@ async def _run(config: dict):
 
 def run(config: dict):
     # голос по умолчанию быстрый (edge-tts): голос персонажа (ESpeech, Fish Speech) синтезируется секунды, а при занятом сервисе речь
-    # падает на запасной голос, и голос «плавает». Выбрать другой: TTS_ENGINE=auto|espeech|fish в agent/secrets.env.
+    # падает на запасной голос, и голос «плавает». Выбрать другой: TTS_ENGINE=auto|espeech|fish в .env.
     os.environ.setdefault("TTS_ENGINE", "edge")
     asyncio.run(_run(config))

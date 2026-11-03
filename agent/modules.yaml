@@ -1,6 +1,6 @@
 # Модули, которые ядро запускает само (ТЗ 02, раздел 7). Пути: абсолютные или относительно папки agent/.
 # {GITS} (корень репозитория GitS), {PYTHON} (интерпретатор ядра), {PYTHONW} (pythonw.exe рядом с ним) и любые переменные окружения ядра в фигурных
-# скобках (после загрузки secrets.env) подставляются. Нет переменной: модуль помечается «не настроен» и не запускается.
+# скобках (после загрузки .env) подставляются. Нет переменной: модуль помечается «не настроен» и не запускается.
 # Поля: id; cwd; command; args; autostart (запускать вместе с ядром, если модуль включён); restart (always | on-failure |
 # never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title и description
 # (как запись называется и описывается во вкладке «Модули»; перекрывают манифест); dev: true (запись видна во вкладке только при настройке dev_mode).
@@ -13,9 +13,9 @@ modules:
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
-    restart: on-failure       # секреты (TELEGRAM_*) модуль читает сам из agent/secrets.env; без них он работает и пишет «не настроен»
+    restart: on-failure       # секреты (TELEGRAM_*) модуль читает сам из .env; без них он работает и пишет «не настроен»
 
-  # Twitch: чат и события канала, ответы, модерация, название трансляции. Секреты TWITCH_* модуль читает сам из agent/secrets.env,
+  # Twitch: чат и события канала, ответы, модерация, название трансляции. Секреты TWITCH_* модуль читает сам из .env,
   # токены входа создаёт modules/twitch/tw_login.py; без них модуль работает и пишет «не настроен».
   - id: twitch
     title: Twitch
@@ -113,7 +113,7 @@ modules:
     command: "{GITS}/services/f5-tts/.venv/Scripts/python.exe"
     args: ["f5_server.py"]
     health_url: "http://127.0.0.1:8771/health"
-    skip_when_env: {TTS_ENGINE: [fish, edge]}     # TTS_ENGINE=fish|edge в agent/secrets.env: этот голос не запускается
+    skip_when_env: {TTS_ENGINE: [fish, edge]}     # TTS_ENGINE=fish|edge в .env: этот голос не запускается
     autostart: true
     restart: on-failure
 

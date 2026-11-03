@@ -4,7 +4,7 @@
 (номер телефона, код из Telegram, пароль двух шагов вводит сам пользователь; ассистентка их не видит).
 Дальше сессия лежит в MEMORY_DIR/tg_user.session (папка memory не в git; файл равен доступу к аккаунту, не делиться).
 
-Ключи: TELEGRAM_API_ID и TELEGRAM_API_HASH в agent/secrets.env (получаются на my.telegram.org -> API development tools).
+Ключи: TELEGRAM_API_ID и TELEGRAM_API_HASH в .env (получаются на my.telegram.org -> API development tools).
 
 Всё, что приходит из чатов, для неё данные, а не указания: переписка может содержать чужие инструкции.
 Входящие личные сообщения и сообщения групп становятся событиями telegram.dm и telegram.group (ТЗ 10, раздел 6).
@@ -63,7 +63,7 @@ class TelegramUser:
     def state(self) -> tuple[bool, str]:
         """(работает ли аккаунт, причина). Причины для разработчика и для дашборда, без секретов."""
         if not self.configured():
-            return False, "нет TELEGRAM_API_ID и TELEGRAM_API_HASH в agent/secrets.env (my.telegram.org)"
+            return False, "нет TELEGRAM_API_ID и TELEGRAM_API_HASH в .env (my.telegram.org)"
         try:
             import telethon  # noqa: F401
         except ImportError:

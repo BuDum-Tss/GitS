@@ -64,7 +64,7 @@ Claude по важным) → факты в граф со ссылкой на э
 - `pip install -e C:\MyProjects\GitS\sdk`; собрать окружение монтажа (`modules/montage/.venv`, `template/node_modules`).
 - Разобрать нестабильный `test_appraisal_log`; убрать закоммиченные копии `modules/montage/template/public/{fonts,sfx}` или
   обновлять их `npm run sync-assets`.
-- Заменить `GLADOS_*` в `agent/secrets.env` и переменных окружения на `GITS_*` и `CHARACTER_*`.
+- Заменить `GLADOS_*` в `.env` и переменных окружения на `GITS_*` и `CHARACTER_*`.
 - Владелец: наполнить `resources/GlaDOS/core/memories.yaml` (ТЗ 05, CHR-21).
 
 ### Фаза 1. Основа: измерения и журнал (ТЗ 24, M) — первое

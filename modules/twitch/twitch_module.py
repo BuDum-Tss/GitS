@@ -81,7 +81,7 @@ class TwitchModule:
     def _need_ready(self) -> None:
         if not self.configured():
             raise ToolError("Twitch не настроен: нужны TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_CHANNEL в "
-                            "agent/secrets.env и вход бота (tw_login.py)", code="unavailable")
+                            ".env и вход бота (tw_login.py)", code="unavailable")
 
     # ── фон ──────────────────────────────────────────────────────────────────
 

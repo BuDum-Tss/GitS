@@ -1,6 +1,6 @@
 """Точка входа модуля Telegram (ТЗ 10). Запускает супервизор ядра: `python main.py` из папки модуля.
 
-Секреты (TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL, TELEGRAM_API_ID, TELEGRAM_API_HASH) модуль читает сам из agent/secrets.env
+Секреты (TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL, TELEGRAM_API_ID, TELEGRAM_API_HASH) модуль читает сам из .env
 (путь можно заменить переменной GITS_SECRETS_FILE); их значения нигде не печатаются. Без секретов модуль работает и честно
 сообщает в состоянии «не настроен».
 """

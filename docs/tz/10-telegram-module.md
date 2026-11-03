@@ -24,7 +24,7 @@ Telegram, ответ приходит туда же.
   окружение `telegram_account` (`tg_chats`, `tg_read`, `tg_unread`, `tg_send`), в окружении `assistant`
   `set_telegram_periodic`, `set_telegram_after_run`.
 - `core_service.py`: создание `TelegramChannel` и `TelegramUser`, `on_contact`, пост-итог по событию игры `run_ended`.
-- Секреты: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` в `agent/secrets.env`;
+- Секреты: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` в `.env`;
   сессия аккаунта `memory/tg_user.session`.
 
 ## 3. Правила модулей монорепо GitS (общие для ТЗ 10, 12, 13, 14)
@@ -40,7 +40,7 @@ Telegram, ответ приходит туда же.
   строкой с комментарием.
 - Данные модуля остаются в прежних файлах в `MEMORY_DIR` (переменная окружения; супервизор передаёт её равной папке
   памяти ядра): файлы не переименовываются и не переносятся, чтобы не терять состояние.
-- Секреты модуль читает сам: `dotenv.load_dotenv(<GitS>/agent/secrets.env)` в `main.py`. Значения не логируются.
+- Секреты модуль читает сам: `dotenv.load_dotenv(<GitS>/.env)` в `main.py`. Значения не логируются.
 - Тесты модуля — `GitS/modules/<id>/tests/`, запускаются `check.ps1` (добавить путь).
 
 ## 4. Перенос

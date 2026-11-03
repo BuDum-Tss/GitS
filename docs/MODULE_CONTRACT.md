@@ -1444,7 +1444,7 @@
 | `PYTHONUNBUFFERED` | supervisor | нет | 1: журнал процесса без буфера | - |
 | `PYTHONPATH` | supervisor | нет | пути к sdk/ и agent/ до установки пакета gits-sdk | - |
 | `GITS_RESOURCES_DIR` | inherited | нет | корень ресурсов персонажей; по умолчанию resources/ рядом с sdk/ | - |
-| `GITS_SECRETS_FILE` | inherited | нет | путь к secrets.env; по умолчанию agent/secrets.env | - |
+| `GITS_SECRETS_FILE` | inherited | нет | путь к .env; по умолчанию .env | - |
 
 ## Ресурсы персонажа
 
@@ -1453,7 +1453,7 @@
 - Персонаж берётся из `GITS_CHARACTER_ID`, иначе `glados`; смена персонажа перезапускает модуль.
 - Папка модуля не создаётся SDK и не изменяется модулем; изменяемые данные модуля лежат в `MEMORY_DIR`.
 - Корень ресурсов: `GITS_RESOURCES_DIR` или `resources/` рядом с `sdk/`.
-- Секреты модуль читает сам из `agent/secrets.env` (или `GITS_SECRETS_FILE`); в журнал и в события они не попадают.
+- Секреты модуль читает сам из `.env` (или `GITS_SECRETS_FILE`); в журнал и в события они не попадают.
 
 ## Что модулю запрещено
 
