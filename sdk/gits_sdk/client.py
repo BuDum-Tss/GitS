@@ -686,9 +686,11 @@ class ModuleClient:
             return False
         return await self._notify("emotion", {"emotion": str(emotion), "cause": str(cause)})
 
-    async def state(self, summary: str, data: dict | None = None) -> bool:
+    async def state(self, summary: str, data: dict | None = None, node: str | None = None) -> bool:
         """Сводка для дашборда и выбора профиля. Последняя пересылается ядру заново после переподключения."""
         body = {"summary": P.clip(str(summary), P.STATE_SUMMARY_MAX), "data": dict(data or {})}
+        if node:
+            body["node"] = str(node)        # ТЗ 33: текущий узел рабочего места
         self._last_state = body
         return await self._notify("state", body)
 
@@ -890,6 +892,10 @@ class ModuleClient:
         if limit:
             body["limit"] = limit
         return list(R.as_dict(await self._core("core.memory.recall", body)).get("facts", []))
+
+    async def tasks(self, workspace: str | None = None) -> dict:
+        """`core.tasks` (ТЗ 32): цель и открытые задачи среды (`{workspace, active, tasks}`), по умолчанию текущей."""
+        return R.as_dict(await self._core("core.tasks", {"workspace": workspace} if workspace else {}, timeout=15.0))
 
     async def memory_episodes(self, query: str | None = None, *, id: str | None = None, day: str | None = None,
                               limit: int | None = None) -> list[dict]:

@@ -8,7 +8,8 @@
 Ограничения: шагов и токенов на размышление, глубина цепочки импульсов, размышлений в час; «не отвлекать» запрещает речь, а не
 размышление; действие не исполняется по недоверенному стимулу (чужие тексты это данные). Значимое размышление пишется в журнал мыслей
 (`Thought`) краткосрочной памятью с оценкой важности (`domain/thoughts.py`), не озвучивается; пустое, оборванное лимитом или
-ничего не решившее в журнал не попадает. Событие с `data.silent` (размышление в простое) говорить не может. Модель подставляется снаружи (контракт `LanguageModel`), в тестах это заглушка.
+ничего не решившее в журнал не попадает. Созревшие мысли тем же сервисом переносятся в долговременную память (`consolidate`, после размышления не чаще раза в
+`CONSOLIDATE_GAP_S`), мелкие забываются. Событие с `data.silent` говорить не может. Модель подставляется снаружи (контракт `LanguageModel`), в тестах это заглушка.
 """
 import asyncio
 import json
@@ -21,11 +22,14 @@ from typing import Any, Awaitable, Callable
 from contracts import LanguageModel, MemoryReader, MemoryWriter, ThoughtJournal
 from domain import impulses
 from domain import thoughts as thought_dom
-from domain.event import KIND_AFTER_CONVERSATION, KIND_IDLE, Event
+from domain.event import KIND_AFTER_CONVERSATION, Event
 from domain.rules import EPISODE_KINDS
+
+from .inbox import BATCH_KIND
 
 logger = logging.getLogger("reflection")
 
+CONSOLIDATE_GAP_S = 600.0       # перенос мыслей в память не чаще, чем раз в столько секунд
 INTENT_KINDS = ("say", "do", "remind", "remember", "none")
 TEXT_MAX = 400
 DEFAULTS = {"max_steps": impulses.MAX_STEPS, "max_tokens": impulses.MAX_TOKENS, "max_per_hour": impulses.MAX_PER_HOUR,
@@ -83,6 +87,7 @@ class ReflectionService:
         self.context, self.settings, self.clock = context, settings, clock
         self.speak, self.plan, self.remind = speak, plan, remind
         self._stamps: list[float] = []
+        self._last_consolidate = clock()
         self.running = 0
 
     def limits(self) -> dict:
@@ -122,6 +127,7 @@ class ReflectionService:
         finally:
             self.running -= 1
         await self._record(thought)
+        await self._maybe_consolidate(now)
         return thought
 
     async def _record(self, thought: dict) -> None:
@@ -133,6 +139,41 @@ class ReflectionService:
         except Exception as e:
             logger.warning(f"Журнал мыслей: {e}")
 
+    # ── память: перенос созревших мыслей ─────────────────────────────────────
+
+    async def _maybe_consolidate(self, now: float) -> None:
+        if now - self._last_consolidate < CONSOLIDATE_GAP_S:
+            return
+        self._last_consolidate = now
+        try:
+            await self.consolidate()
+        except Exception as e:
+            logger.warning(f"Перенос мыслей: {e}")
+
+    async def consolidate(self, window: int = 200) -> dict:
+        """Один проход по последним мыслям: важные и созревшие (`domain/thoughts.plan`) уходят в долговременную память фактом
+        вида `episode` и получают стадию `long`, мелкие и устаревшие забываются (`dropped`). Модель не нужна: важность уже оценена
+        самим размышлением. Возвращает счётчики {promoted, dropped}."""
+        items = await asyncio.to_thread(self.journal.recent, window)
+        promote, drop = thought_dom.plan(items, self.clock())
+        done = {"promoted": 0, "dropped": 0}
+        for t in promote:
+            text = thought_dom.memory_text(t)
+            try:
+                if text:
+                    await asyncio.to_thread(self.writer.add_fact, text, "episode", thought_dom.clean_importance(t.get("importance")))
+                await asyncio.to_thread(self.journal.update, t["id"], stage=thought_dom.LONG)
+                done["promoted"] += 1
+            except Exception as e:
+                logger.warning(f"Перенос мысли в память: {e}")
+        for t in drop:
+            try:
+                await asyncio.to_thread(self.journal.update, t["id"], stage=thought_dom.DROPPED)
+                done["dropped"] += 1
+            except Exception as e:
+                logger.warning(f"Забывание мысли: {e}")
+        return done
+
     # ── внутренний диалог ────────────────────────────────────────────────────
 
     async def _think(self, event: Event, lim: dict, thought: dict) -> list[Intent]:
@@ -141,8 +182,8 @@ class ReflectionService:
         base = self.context(event.text) if self.context else ""
         if event.kind == KIND_AFTER_CONVERSATION or event.kind.endswith(EPISODE_KINDS):
             system = f"{system}\n{p.get('after', '')}".strip()           # IMP-10: итог разговора или эпизода: настроение и вывод
-        elif event.kind == KIND_IDLE:
-            system = f"{system}\n{p.get('idle', '')}".strip()            # размышление в простое: осмыслить события, ничего не говорить
+        elif event.kind == BATCH_KIND:
+            system = f"{system}\n{p.get('inbox', '')}".strip()           # пачка из входящей очереди: решить, что стоит слов
         notes: list[str] = []
         last: list[Intent] = []
         for n in range(1, lim["max_steps"] + 1):

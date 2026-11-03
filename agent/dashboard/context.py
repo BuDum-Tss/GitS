@@ -37,7 +37,6 @@ class DashboardContext:
     tasks: Callable[[], Any] | None = None   # () -> TaskService (цели и планы во вкладке «Память»)
     character: Any = None          # CharacterSwitch
     attention: Any = None          # Attention
-    focus: Any = None              # FocusManager
     workspace: Any = None          # WorkspaceManager (ТЗ 32)
     impulses: Any = None           # импульсы и размышление (ТЗ 30)
     chat_callback: Callable[[str], Any] | None = None

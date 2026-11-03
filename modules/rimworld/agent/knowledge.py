@@ -29,7 +29,23 @@ _WORD = re.compile(r"[а-яёa-z0-9]{3,}", re.I)
 _STOP = {"что", "как", "это", "для", "все", "всё", "или", "при", "над", "под", "если", "когда", "the", "and", "for", "with"}
 _URL = re.compile(r"https?://\S+")
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+_CURRENT_SAVE = [""]          # сейв идущей игры: записи про конкретную колонию других сейвов не показываются
+_COLONY_SNAPSHOT = re.compile(r"колони[яи] на год|тик \d{3,}", re.I)   # старые записи без сейва: снимки состояния чужой колонии
 _EMB_DOWN_UNTIL = [0.0]       # LM Studio недоступна: до этого времени не стучимся (не тормозим каждый запрос)
+
+
+def set_save(save_id: str) -> None:
+    """Сказать, какой сейв сейчас идёт (ставит контроллер и MCP-сервер при чтении состояния)."""
+    if save_id:
+        _CURRENT_SAVE[0] = save_id
+
+
+def _visible(e: dict) -> bool:
+    """Общая механика видна всегда; запись про колонию (с `save_id` или снимок состояния) только в её сейве."""
+    sid = e.get("save_id")
+    if sid:
+        return sid == _CURRENT_SAVE[0]
+    return not _COLONY_SNAPSHOT.search(e.get("text", ""))
 
 
 def _stems(text: str) -> set[str]:
@@ -95,7 +111,7 @@ def add(topic: str, text: str, source: str = "experience", url: str = "") -> tup
             return f"такое знание уже есть (тема «{e['topic']}»)", None
     entry = {"id": f"k{int(time.time() * 1000)}", "topic": topic, "text": text, "source": source,
              "url": url.strip()[:300] if source == "web" and url.startswith("http") else "",
-             "ts": time.strftime("%Y-%m-%d"), "uses": 0, "emb": _embed(topic + ". " + text, query=False)}
+             "ts": time.strftime("%Y-%m-%d"), "uses": 0, "save_id": _CURRENT_SAVE[0] if _COLONY_SNAPSHOT.search(text) else "", "emb": _embed(topic + ". " + text, query=False)}
     entries.append(entry)
     if len(entries) > MAX_ENTRIES:     # лишнее: сначала редко полезное и старое
         entries.sort(key=lambda e: (e["uses"], e["ts"]))
@@ -125,7 +141,7 @@ def _rank(query: str, entries: list[dict]) -> list[tuple[float, dict]]:
 
 def search(query: str, k: int = 5, semantic: bool = True) -> list[dict]:
     """Лучшие записи по запросу. semantic=False: только по словам (быстро, без обращения к модели)."""
-    entries = _load()
+    entries = [e for e in _load() if _visible(e)]
     if not entries or not query.strip():
         return []
     if semantic:

@@ -166,7 +166,7 @@ window.ARCH_DATA = {
    "title": "Решение",
    "tag": "A",
    "new": false,
-   "summary": "Правила до моделей, быстрая классификация, оценка важности и выбор маршрута: сказать, ответить, сделать, сменить фокус, подумать, отложить.",
+   "summary": "Жёсткие правила до моделей и простое решение по срочности, которую объявил модуль: сказать сразу или отложить во входящую очередь. Оценки важности и классификатора событий нет.",
    "out": "Decision + routes",
    "nodes": [
     {
@@ -180,30 +180,21 @@ window.ARCH_DATA = {
     },
     {
      "id": "cls",
-     "t": "Classifier (контракт)",
+     "t": "InputClassifier (контракт)",
      "tag": "A",
      "new": false,
-     "do": "категория, срочность, адресат, нужен ли фокус; реализация: служба GLiNER :8768; тайм-аут 1 с",
-     "out": "Classification",
-     "now": "decide.py + services/decider; в Attention его зовёт app/event_classifier.py (R3); сбои сервиса пишутся в трассу потока отдельным видом error (причина down, timeout, error)"
-    },
-    {
-     "id": "score",
-     "t": "PriorityScorer",
-     "tag": "D",
-     "new": false,
-     "do": "срочность × 20 × веса (профиль, отправитель, правила, пользователь) × свежесть",
-     "out": "priority 0..100",
-     "now": "выделен (R3): app/scorer.py поверх domain/scoring.py"
+     "do": "намерение обращения владельца (chat, action, stop...) до маршрутизатора; события модулей не классифицирует; реализация: служба GLiNER :8768, тайм-аут 2,5 с",
+     "out": "InputClass",
+     "now": "decide.py + services/decider; в Attention его зовёт app/input_classifier.py; без сервиса обращение идёт по правилам"
     },
     {
      "id": "disp",
      "t": "Dispatcher",
      "tag": "A",
      "new": false,
-     "do": "решение D0–D4 и routes[]: say, chat, task, focus, think, digest, ignore; пишет решение в журнал",
+     "do": "решение по срочности модуля: 0 выбросить (D0); ниже 4 во входящую очередь (D1); 4 сказать (D3); 5 сказать и поставить реакцию (D4). «Не отвлекать» и «пользователь отошёл» уводят в очередь; обращение к ней поднимает до 4",
      "out": "Decision",
-     "now": "выделен (R3): app/dispatcher.py (finish, act) и app/decision_log.py; ТЗ 25: routes[] (reflex, chat, task, ignore, think) по таблице D0-D4 в routes.py пишется в журнал решений"
+     "now": "app/dispatcher.py (finish, act), domain/scoring.py (decide: чистая функция), app/decision_log.py; Normalizer.assign_urgency ставит срочность по подсказке модуля; правила boost/only меняют её (RuleStore.stance)"
     },
     {
      "id": "routes",
@@ -230,9 +221,9 @@ window.ARCH_DATA = {
      "t": "ConversationService",
      "tag": "A",
      "new": false,
-     "do": "обращение владельца: проверки → ветка (болтовня / просьба / «что умеешь») → ответ",
-     "out": "Reply или Task",
-     "now": "app/conversation_service.py (фасад Companion); ТЗ 25: жёсткие правила → параллельно классификатор, приказ в игру, поиск в памяти (дедлайн 300 мс), запись реплики в потоке → маршруты"
+     "do": "обращение владельца: жёсткие правила → запись реплики → ответ на вопрос о разрешении или передача единому агенту",
+     "out": "Обращение агенту",
+     "now": "app/conversation_service.py (фасад Companion); жёсткие правила до моделей, запись реплики в потоке (не задерживает ответ), затем ResidentAgent.handle_user"
     },
     {
      "id": "ctx",
@@ -248,18 +239,18 @@ window.ARCH_DATA = {
      "t": "ReplyGenerator",
      "tag": "A",
      "new": false,
-     "do": "LanguageModel(fast) → LM Studio (Gemma): ответ; страховки стиля",
+     "do": "реплика по факту для очереди речи (объявление, итог, вопрос модуля): LanguageModel(fast) → быстрая модель (Claude без инструментов); страховки стиля declutter",
      "out": "ReplyCandidate",
-     "now": "app/reply_generator.py: ТЗ 25: поток токенов → предложения (speech_text.SentenceSplitter) → StreamDeclutter (держит последнее предложение) → прямо в вывод речи, отмена обрывает запрос и очередь; без голоса прежний путь целиком"
+     "now": "app/reply_generator.py: speak_about (факт → реплика), declutter; разговор с владельцем ведёт ResidentAgent"
     },
     {
-     "id": "instant",
-     "t": "InstantLevel",
+     "id": "resident",
+     "t": "ResidentAgent",
      "tag": "A",
      "new": false,
-     "do": "мгновенный уровень: на поручении через 300 мс факт «принято», при затянутом ответе факт-филлер; реплику формулирует модель",
-     "out": "Utterance",
-     "now": "есть (ТЗ 25): app/instant.py"
+     "do": "единый агент: сообщение владельца, событие, тревога и самоимпульс идут в одну постоянную сессию Claude; инструменты find_tools и call_tool поверх реестра и маршрутизатора (разрешения те же); текст агента звучит по мере появления",
+     "out": "Reply и ToolResult",
+     "now": "app/resident.py: ClaudeSDKClient, сброс после сбоя и 60 обращений; тревога обрывает ход (preempt)"
     }
    ]
   },
@@ -269,7 +260,7 @@ window.ARCH_DATA = {
    "title": "Размышление",
    "tag": "A",
    "new": false,
-   "summary": "Внутренний диалог агента: получает событие или импульс, думает, читая память, и решает: сказать, сделать, напомнить себе или записать.",
+   "summary": "Внутренний диалог агента: получает напоминание, итог разговора или эпизода либо пачку из входящей очереди, думает, читая память, и решает: сказать, сделать, напомнить себе или записать. Он же переносит созревшие мысли в долговременную память.",
    "out": "Intent",
    "nodes": [
     {
@@ -277,9 +268,9 @@ window.ARCH_DATA = {
      "t": "ReflectionService",
      "tag": "A",
      "new": false,
-     "do": "внутренний диалог в несколько шагов по событию или импульсу; читает память; лимиты шагов и токенов",
+     "do": "внутренний диалог в несколько шагов; запускают напоминание себе, итог разговора и эпизода и пачка из входящей очереди (inbox.batch); читает память; лимиты шагов и токенов; сам переносит созревшие мысли в память (consolidate)",
      "out": "Intent: сказать, сделать, напомнить, записать, ничего",
-     "now": "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route); лимиты шагов, токенов, часа, глубины; после разговора (self.after_conversation) и эпизода подводит итог: настроение и вывод (IMP-10)"
+     "now": "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route) для self-событий и итогов эпизодов, пачку шлёт Inbox.tick; отдельного размышления в простое и ThoughtConsolidator больше нет (перенос мыслей внутри сервиса); лимиты шагов, токенов, часа, глубины; после разговора (self.after_conversation) и эпизода подводит итог: настроение и вывод (IMP-10)"
     },
     {
      "id": "thoughts",
@@ -289,15 +280,6 @@ window.ARCH_DATA = {
      "do": "краткосрочная память: значимые рассуждения с оценкой важности 1-5 (пустые и оборванные не пишутся), важные переносятся в долговременную память, мелкие забываются через сутки; не озвучиваются",
      "out": "Thought",
      "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), domain/thoughts.py, GET /api/thoughts, вкладка «Мысли» дашборда"
-    },
-    {
-     "id": "idle",
-     "t": "Размышление в простое (IdleReflector + ThoughtConsolidator)",
-     "tag": "A",
-     "new": false,
-     "do": "когда фокус свободен, разговора нет и она не спит: осмысляет накопившиеся события (self.idle, молча, недоверенно), записывает вывод в память; созревшие мысли переносит в долговременную память",
-     "out": "Intent: записать, ничего",
-     "now": "есть: app/idle_reflection.py, app/thought_memory.py; настройка reflection.idle; материал дневника (app/diary.py)"
     }
    ]
   },
@@ -320,22 +302,13 @@ window.ARCH_DATA = {
      "now": "environments/registry.py, tool_search.py"
     },
     {
-     "id": "plan",
-     "t": "Planner",
-     "tag": "A",
-     "new": false,
-     "do": "LanguageModel → LM Studio (Gemma): план шагов или «не могу»",
-     "out": "Plan",
-     "now": "router._plan"
-    },
-    {
      "id": "risk",
      "t": "RiskPolicy + Approver",
      "tag": "D",
      "new": false,
      "do": "риск auto / ask / public / danger; вопрос пользователю, ответ да/нет",
      "out": "Approval",
-     "now": "router._step + approvals.py: 301 строка"
+     "now": "router._step_inner + approvals.py"
     },
     {
      "id": "exec",
@@ -344,7 +317,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "вызов инструмента в ядре или модуле, коды ошибок, итог-факт",
      "out": "ToolResult",
-     "now": "router._step и _run_step"
+     "now": "router.run_tool_ex и _step: проверка параметров, риск, вопрос о разрешении, вызов"
     },
     {
      "id": "jobs",
@@ -360,7 +333,7 @@ window.ARCH_DATA = {
   {
    "id": "g_foc",
    "row": 3,
-   "title": "Фокус",
+   "title": "Среды",
    "tag": "A",
    "new": false,
    "summary": "Решает, кому отдать главную роль (например, игре в бою), и когда её вернуть.",
@@ -368,48 +341,21 @@ window.ARCH_DATA = {
    "nodes": [
     {
      "id": "fmgr",
-     "t": "FocusManager (фасад)",
+     "t": "ModuleLink",
      "tag": "A",
      "new": false,
-     "do": "протокол входа, выхода и checkpoint по просьбе менеджера сред, команды пользователя, журнал; слот больше не выбирает среду (auto_switch выключен), прежние публичные методы",
-     "out": "FocusDecision",
-     "now": "focus.py: фасад над четырьмя частями (ТЗ 29, ARC-6); запросы модулю workspace.enter / exit / resume, прежние policy.activate / focus.release / focus.resume как откат (ТЗ 32)"
-    },
-    {
-     "id": "fpol",
-     "t": "FocusPolicy",
-     "tag": "D",
-     "new": false,
-     "do": "чистые правила: приоритет, запас, критичное, старение, конфликты",
-     "out": "FocusDecision",
-     "now": "domain/focus_policy.py: gate, ambiguity, дребезг, эшелон"
-    },
-    {
-     "id": "fque",
-     "t": "FocusQueue",
-     "tag": "A",
-     "new": false,
-     "do": "состояния событий, склейка, старение, сроки",
-     "out": "QueuedEvent",
-     "now": "focus_queue.py"
-    },
-    {
-     "id": "fstore",
-     "t": "CheckpointStore",
-     "tag": "A",
-     "new": false,
-     "do": "checkpoint задач и файл focus.json",
-     "out": "checkpoint",
-     "now": "focus_store.py"
+     "do": "вход, выход и возобновление среды модуля по протоколу workspace.enter / exit / resume (прежние policy.activate / focus.release / focus.resume как откат); один слот, checkpoint в памяти; очереди событий, закрепления и второго эшелона решений нет",
+     "out": "Workspace",
+     "now": "app/module_link.py (вместо менеджера фокуса ТЗ 18)"
     },
     {
      "id": "wsm",
      "t": "WorkspaceManager",
      "tag": "A",
      "new": false,
-     "do": "в какой среде агент сейчас: assistant, sleep и среды модулей из их манифестов (rimworld, montage); причина, цель, история. В среду модуля входят только по импульсу (сообщение, самоимпульс), события чужих сред это сигналы, критическое (срочность 5) переключает по правилам без LLM",
+     "do": "в какой среде агент сейчас: assistant, sleep и среды модулей из их манифестов (rimworld, montage); причина, цель, история. В среду модуля входят только по импульсу (сообщение, самоимпульс); события чужих сред среду не переключают, они идут в очередь речи и сводку",
      "out": "Workspace",
-     "now": "app/workspace_manager.py (ТЗ 32): поверх FocusManager, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"
+     "now": "app/workspace_manager.py (ТЗ 32): поверх ModuleLink, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"
     },
     {
      "id": "wsdom",
@@ -448,6 +394,24 @@ window.ARCH_DATA = {
      "now": "app/planner.py (LlmPlanner), контракт Planner; промпт planner в prompt.yaml"
     },
     {
+     "id": "npanel",
+     "t": "NodePanel",
+     "tag": "A",
+     "new": false,
+     "do": "панель узла рабочего места: пока агент в среде модуля с деревом узлов, ядро вызывает запросы nodes[].context и кладёт ответ в контекст агента блоком «Рабочее место» (без модели: факты даёт модуль, ядро укладывает в бюджет и показывает изменения); узел берётся из state.node, видимость инструментов по tools[].node, срочность по nodes[].watch",
+     "out": "Context block",
+     "now": "app/node_panel.py (ТЗ 33), core_service.wire_workspace_nodes; правила: docs/WORKSPACE_MODULES.md"
+    },
+    {
+     "id": "wloop",
+     "t": "WorkLoop",
+     "tag": "A",
+     "new": false,
+     "do": "автономная работа единого агента в среде контентного модуля (workspace.autonomous): пока агент свободен, раз в work_interval_s шлёт ему самоимпульс self.work_tick (маршрут think); молчит при «не отвлекать», выключенной настройке autoplay, занятом агенте и лимите Claude",
+     "out": "self.work_tick",
+     "now": "app/work_loop.py (ТЗ 33), core_service"
+    },
+    {
      "id": "tstore",
      "t": "TaskStore",
      "tag": "I",
@@ -455,15 +419,6 @@ window.ARCH_DATA = {
      "do": "SQLite tasks.db в папке памяти персонажа: дерево задач, напоминания и планы как задачи",
      "out": "Task",
      "now": "adapters/task_store.py (ТЗ 32), контракт TaskRepository"
-    },
-    {
-     "id": "fdisp",
-     "t": "FocusDispatch (контракт)",
-     "tag": "A",
-     "new": false,
-     "do": "Gemma только для неоднозначного; ответ строго проверяется",
-     "out": "Op",
-     "now": "focus_dispatch.py: класс FocusDispatch и validate"
     }
    ]
   },
@@ -487,12 +442,12 @@ window.ARCH_DATA = {
     },
     {
      "id": "digest",
-     "t": "Digest",
+     "t": "Inbox + Digest",
      "tag": "A",
      "new": false,
-     "do": "сводка событий D1 и предложение рассказать",
-     "out": "SpeechCandidate",
-     "now": "выделен (R3): app/digest.py"
+     "do": "одна входящая очередь на все модули: события срочности ниже 4 копятся с весом срочность × новизна (редкий вид весит больше) × среда (модуль текущей среды ×2, чужие ×0,5; полная очередь теряет самое лёгкое, а не самое старое); когда есть что-то заметное (2+) или много мелочи (в пачку идут 10 самых весомых), модель не занята, нет разговора, «не отвлекать» выключено и прошла минута, накопившееся уходит размышлению одним событием inbox.batch",
+     "out": "inbox.batch",
+     "now": "app/inbox.py (Inbox.tick из цикла внимания, Inbox.blocker: почему пачка ждёт), app/digest.py (история исходов события: ждёт, в контексте, сказано, выброшено, вытеснено; peek даёт самые весомые ждущие события в контекст ответа); вкладка «Состояние» показывает это через GET /api/buffer; настройка attention.inbox.min_interval_s; промпт inbox в prompt.yaml; пачка недоверенная: только сказать или запомнить"
     },
     {
      "id": "out",
@@ -629,7 +584,7 @@ window.ARCH_DATA = {
      "t": "LM Studio :1234",
      "tag": "X",
      "new": false,
-     "do": "Gemma (речь, план, факты) и EmbeddingGemma",
+     "do": "EmbeddingGemma (поиск) и разбор фактов графа (Gemma); ответов и планов в нём больше нет",
      "out": "",
      "now": ""
     },
@@ -665,7 +620,7 @@ window.ARCH_DATA = {
      "t": "Claude Agent SDK",
      "tag": "X",
      "new": false,
-     "do": "долгие и сложные задачи",
+     "do": "единый агент, быстрая модель без инструментов (claude_llm.py) и долгие задачи",
      "out": "",
      "now": ""
     },
@@ -685,14 +640,14 @@ window.ARCH_DATA = {
      "new": false,
      "do": "только собирает объекты и подставляет контракты; бизнес-логики быть не должно",
      "out": "",
-     "now": "core_service.py: только сборка; обработчики voice, colonists, run_lost, game_order в app/handlers/"
+     "now": "core_service.py: только сборка; обработчики voice, colonists, run_lost в app/handlers/"
     },
     {
      "id": "hnd",
      "t": "Обработчики модулей",
      "tag": "A",
      "new": false,
-     "do": "события voice.*, rimworld.colonists и run_ended, desktop.activity, приказ в игру (game_order)",
+     "do": "события voice.*, rimworld.colonists и run_ended, desktop.activity, события игры как данные",
      "out": "",
      "now": "app/handlers/: voice.py, game.py, desktop.py"
     }
@@ -798,21 +753,15 @@ window.ARCH_DATA = {
   ],
   [
    "rules",
-   "cls",
-   "flow",
-   "не решено правилами"
-  ],
-  [
-   "cls",
-   "score",
-   "flow",
-   "Classification"
-  ],
-  [
-   "score",
    "disp",
    "flow",
-   "priority"
+   "срочность из подсказки модуля"
+  ],
+  [
+   "conv",
+   "cls",
+   "use",
+   "намерение обращения"
   ],
   [
    "rules",
@@ -822,39 +771,15 @@ window.ARCH_DATA = {
   ],
   [
    "disp",
-   "conv",
-   "flow",
-   "route chat"
-  ],
-  [
-   "disp",
-   "plan",
-   "flow",
-   "route task"
-  ],
-  [
-   "disp",
-   "wsm",
-   "flow",
-   "событие модуля: сигнал или критическое"
-  ],
-  [
-   "disp",
-   "reflect",
-   "flow",
-   "route think"
-  ],
-  [
-   "disp",
    "queue",
    "flow",
-   "route say: факт"
+   "срочность 4+: сказать факт"
   ],
   [
    "disp",
    "digest",
    "flow",
-   "D1"
+   "ниже 4: во входящую очередь"
   ],
   [
    "conv",
@@ -881,12 +806,6 @@ window.ARCH_DATA = {
    "ReplyCandidate"
   ],
   [
-   "conv",
-   "plan",
-   "flow",
-   "просьба"
-  ],
-  [
    "rules",
    "routes",
    "use",
@@ -900,21 +819,39 @@ window.ARCH_DATA = {
   ],
   [
    "conv",
-   "instant",
+   "resident",
+   "flow",
+   "обращение"
+  ],
+  [
+   "resident",
+   "reg",
    "use",
-   "task / долго"
+   "find_tools"
   ],
   [
-   "instant",
-   "out",
+   "resident",
+   "exec",
    "flow",
-   "факт: принято, филлер"
+   "call_tool"
   ],
   [
-   "reply",
+   "resident",
    "out",
    "flow",
-   "предложения потоком"
+   "текст по мере появления"
+  ],
+  [
+   "reflect",
+   "resident",
+   "flow",
+   "событие и самоимпульс"
+  ],
+  [
+   "disp",
+   "resident",
+   "flow",
+   "срочность 4+: тревога"
   ],
   [
    "reflect",
@@ -936,12 +873,6 @@ window.ARCH_DATA = {
   ],
   [
    "reflect",
-   "plan",
-   "flow",
-   "хочет сделать"
-  ],
-  [
-   "reflect",
    "reminders",
    "w",
    "напомнить себе"
@@ -953,40 +884,16 @@ window.ARCH_DATA = {
    "записать"
   ],
   [
-   "idle",
-   "elog",
-   "r",
-   "события для осмысления"
-  ],
-  [
-   "idle",
    "reflect",
-   "flow",
-   "self.idle"
-  ],
-  [
-   "idle",
    "thoughts",
    "w",
-   "перенос или забывание"
+   "перенос в память или забывание"
   ],
   [
-   "idle",
-   "mw",
-   "w",
-   "важные мысли в память"
-  ],
-  [
-   "reg",
-   "plan",
-   "use",
-   "Tool[]"
-  ],
-  [
-   "plan",
+   "resident",
    "risk",
    "flow",
-   "Plan"
+   "вызов инструмента"
   ],
   [
    "risk",
@@ -1025,6 +932,42 @@ window.ARCH_DATA = {
    "среда задач, checkpoint и возобновление"
   ],
   [
+   "wsm",
+   "npanel",
+   "use",
+   "текущая среда и узел"
+  ],
+  [
+   "wsm",
+   "wloop",
+   "use",
+   "текущая среда"
+  ],
+  [
+   "wloop",
+   "norm",
+   "flow",
+   "self.work_tick"
+  ],
+  [
+   "npanel",
+   "ctx",
+   "flow",
+   "блок «Рабочее место»"
+  ],
+  [
+   "resident",
+   "npanel",
+   "use",
+   "обновить панель перед ходом"
+  ],
+  [
+   "npanel",
+   "hubout",
+   "use",
+   "запросы панели (tool.call)"
+  ],
+  [
    "tsvc",
    "tdom",
    "use",
@@ -1038,7 +981,7 @@ window.ARCH_DATA = {
   ],
   [
    "tplan",
-   "lms",
+   "cl",
    "use",
    "разбить на шаги"
   ],
@@ -1076,7 +1019,7 @@ window.ARCH_DATA = {
    "wsm",
    "fmgr",
    "use",
-   "вход, выход, checkpoint"
+   "вход, выход, возобновление"
   ],
   [
    "hub",
@@ -1085,34 +1028,10 @@ window.ARCH_DATA = {
    "манифесты сред, статус модулей"
   ],
   [
-   "plan",
+   "resident",
    "wsm",
    "ctl",
    "workspace.switch"
-  ],
-  [
-   "fmgr",
-   "fpol",
-   "use",
-   "правила"
-  ],
-  [
-   "fmgr",
-   "fdisp",
-   "use",
-   "неоднозначно"
-  ],
-  [
-   "fmgr",
-   "fque",
-   "use",
-   "события"
-  ],
-  [
-   "fmgr",
-   "fstore",
-   "use",
-   "checkpoint"
   ],
   [
    "fmgr",
@@ -1140,9 +1059,9 @@ window.ARCH_DATA = {
   ],
   [
    "digest",
-   "queue",
+   "reflect",
    "flow",
-   null
+   "пачка событий, когда она свободна"
   ],
   [
    "conv",
@@ -1206,7 +1125,7 @@ window.ARCH_DATA = {
   ],
   [
    "sleep",
-   "lms",
+   "cl",
    "ext",
    "резюме, дневник (короткие запросы)"
   ],

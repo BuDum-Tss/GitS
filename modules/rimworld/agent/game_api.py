@@ -16,6 +16,7 @@ import httpx
 from aiohttp import web
 
 import core_bridge
+import core_tasks
 import gamenet
 import settings
 
@@ -71,25 +72,22 @@ def _load_memory() -> dict:
     return result
 
 
+
+
+
+
+
+
 def _active_goals() -> list[dict]:
-    goals = _read_json("goals.json", [])
-    return [{"title": g.get("title"), "category": g.get("category"), "progress": g.get("progress_pct", 0),
-             "criteria": g.get("success_criteria", "")} for g in goals
-            if g.get("status") == "active" and g.get("category") != "ambition"][-6:]
+    return []          # отдельных целей игры нет: цель это активная задача среды (`core_tasks`)
 
 
 def _task_tree() -> list[dict]:
-    import tasks_tree
-    return tasks_tree.build(_read_json("tasks.json", []))
+    return core_tasks.tree()          # цели и задачи ведёт единый агент ядра, модуль берёт их запросом core.tasks
 
 
 def _ambition() -> dict | None:
-    found = [g for g in _read_json("goals.json", []) if g.get("category") == "ambition" and g.get("status") == "active"]
-    if not found:
-        return None
-    g = found[-1]
-    return {"title": g.get("title"), "criteria": g.get("success_criteria", ""), "progress": g.get("progress_pct", 0),
-            "notes": g.get("notes", "")}
+    return core_tasks.ambition()
 
 
 def _read_json(name: str, default):
@@ -99,25 +97,10 @@ def _read_json(name: str, default):
         return default
 
 
-def _active_goals() -> list[dict]:
-    goals = _read_json("goals.json", [])
-    return [{"title": g.get("title"), "category": g.get("category"), "progress": g.get("progress_pct", 0),
-             "criteria": g.get("success_criteria", "")} for g in goals
-            if g.get("status") == "active" and g.get("category") != "ambition"][-6:]
 
 
-def _task_tree() -> list[dict]:
-    import tasks_tree
-    return tasks_tree.build(_read_json("tasks.json", []))
 
 
-def _ambition() -> dict | None:
-    found = [g for g in _read_json("goals.json", []) if g.get("category") == "ambition" and g.get("status") == "active"]
-    if not found:
-        return None
-    g = found[-1]
-    return {"title": g.get("title"), "criteria": g.get("success_criteria", ""), "progress": g.get("progress_pct", 0),
-            "notes": g.get("notes", "")}
 
 
 def _is_local_json(request: web.Request) -> bool:

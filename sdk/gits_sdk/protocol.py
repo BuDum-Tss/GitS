@@ -129,6 +129,8 @@ CORE_REQUESTS = (
     "core.llm.ask", "core.events.tail", "core.claude.locate",
     # ТЗ 27 (контракт 1.2): эпизоды памяти
     "core.memory.episodes",
+    # ТЗ 32 (контракт 1.9): цель и задачи среды
+    "core.tasks",
 )
 MODULE_TO_CORE = frozenset(MODULE_TO_CORE_NOTES) | frozenset(CORE_REQUESTS)
 
@@ -186,6 +188,15 @@ STATE_SUMMARY_MAX = 300
 TIMEOUT_TOOL_MIN, TIMEOUT_TOOL_MAX, TIMEOUT_TOOL_DEFAULT = 1, 120, 30
 ASK_TIMEOUT_DEFAULT, ASK_TIMEOUT_MAX = 300, 86400
 URGENCY_MIN, URGENCY_MAX = 0, 5
+# ТЗ 33: рабочее место (дерево узлов), контекст узла и сдвиг срочности событий по теме
+NODE_PATH_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}(/[a-z0-9_]{1,32}){0,3}$")      # «architect/zone»: глубина до 4
+NODE_MAX = 64
+NODE_CONTEXT_MAX = 6
+NODE_CONTEXT_MODES = ("on_enter", "on_change", "every_turn")
+NODE_CONTEXT_MODE_DEFAULT = "on_change"
+NODE_CONTEXT_CHARS_MIN, NODE_CONTEXT_CHARS_MAX, NODE_CONTEXT_CHARS_DEFAULT = 50, 2000, 400
+WATCH_SHIFT_MIN, WATCH_SHIFT_MAX = -2, 2
+TOPIC_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 
 # пространство модуля в дашборде (TZ 15, поле panel и сообщение panel.set)
 PANEL_TITLE_MAX, PANEL_ICON_MAX = 60, 40
@@ -385,6 +396,8 @@ def _check_tool(i: int, tool: Any, problems: list[str], seen: set[str]) -> None:
         t = tool["timeout_s"]
         if not _is_int(t) or not TIMEOUT_TOOL_MIN <= t <= TIMEOUT_TOOL_MAX:
             problems.append(f"{where}.timeout_s: целое {TIMEOUT_TOOL_MIN}–{TIMEOUT_TOOL_MAX}")
+    if "node" in tool and (not isinstance(tool["node"], str) or not NODE_PATH_RE.match(tool["node"])):
+        problems.append(f"{where}.node: путь узла вида «architect/zone» (строчные латинские, глубина до 4)")
     if "keywords" in tool and not _is_str_list(tool["keywords"]):
         problems.append(f"{where}.keywords: должен быть списком строк")
     if "core_fills" in tool:
@@ -534,15 +547,94 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
                 urgency = emit.get("default_urgency")
                 if not _is_int(urgency) or not URGENCY_MIN <= urgency <= URGENCY_MAX:
                     problems.append(f"{where}.default_urgency: целое {URGENCY_MIN}–{URGENCY_MAX}")
+                if "urgency_unfocused" in emit and (not _is_int(emit["urgency_unfocused"])
+                                                    or not URGENCY_MIN <= emit["urgency_unfocused"] <= URGENCY_MAX):
+                    problems.append(f"{where}.urgency_unfocused: целое {URGENCY_MIN}–{URGENCY_MAX}")
+                if "topics" in emit and (not _is_str_list(emit["topics"])
+                                         or not all(TOPIC_RE.match(t) for t in emit["topics"])):
+                    problems.append(f"{where}.topics: список тем из строчных латинских букв")
+                if "follow_up" in emit and not _is_str_list(emit["follow_up"]):
+                    problems.append(f"{where}.follow_up: список имён инструментов")
 
     for flag in ("graph", "state"):
         if flag in manifest and not isinstance(manifest[flag], bool):
             problems.append(f"{flag}: должно быть true или false")
     _check_policies(manifest, problems)
     _check_workspace(manifest, problems)
+    _check_nodes(manifest, problems)
     if "panel" in manifest and warnings is not None:
         warnings.extend(parse_panel(manifest)[1])
     return problems
+
+
+def _check_nodes(manifest: dict, problems: list[str]) -> None:
+    """ТЗ 33: дерево узлов рабочего места (поле `nodes`) и ссылки на него. Необязательно: без него модуль работает как раньше
+    (плоский список инструментов, один неявный узел)."""
+    tool_names = {t["name"] for t in manifest.get("tools") or [] if isinstance(t, dict) and isinstance(t.get("name"), str)}
+    paths: set[str] = set()
+    nodes = manifest.get("nodes")
+    if nodes is not None:
+        if not isinstance(nodes, list):
+            problems.append("nodes: должен быть списком")
+            nodes = []
+        elif len(nodes) > NODE_MAX:
+            problems.append(f"nodes: не больше {NODE_MAX} узлов")
+        for i, node in enumerate(nodes):
+            where = f"nodes[{i}]"
+            if not isinstance(node, dict):
+                problems.append(f"{where}: должен быть объектом")
+                continue
+            path = node.get("path")
+            if not isinstance(path, str) or not NODE_PATH_RE.match(path):
+                problems.append(f"{where}.path: путь вида «architect/zone» (строчные латинские, глубина до 4)")
+                continue
+            where = f"nodes[{path}]"
+            if path in paths:
+                problems.append(f"{where}: путь повторяется")
+            paths.add(path)
+            if not isinstance(node.get("title"), str) or not node["title"].strip():
+                problems.append(f"{where}.title: обязательная непустая строка")
+            if "tab" in node and not isinstance(node["tab"], str):
+                problems.append(f"{where}.tab: строка")
+            context = node.get("context", [])
+            if not isinstance(context, list) or len(context) > NODE_CONTEXT_MAX:
+                problems.append(f"{where}.context: список не длиннее {NODE_CONTEXT_MAX}")
+                context = []
+            for j, item in enumerate(context):
+                cw = f"{where}.context[{j}]"
+                if not isinstance(item, dict):
+                    problems.append(f"{cw}: должен быть объектом")
+                    continue
+                if item.get("tool") not in tool_names:
+                    problems.append(f"{cw}.tool: имя инструмента-запроса из tools")
+                if "args" in item and not isinstance(item["args"], dict):
+                    problems.append(f"{cw}.args: должен быть объектом")
+                if item.get("mode", NODE_CONTEXT_MODE_DEFAULT) not in NODE_CONTEXT_MODES:
+                    problems.append(f"{cw}.mode: одно из {list(NODE_CONTEXT_MODES)}")
+                chars = item.get("max_chars", NODE_CONTEXT_CHARS_DEFAULT)
+                if not _is_int(chars) or not NODE_CONTEXT_CHARS_MIN <= chars <= NODE_CONTEXT_CHARS_MAX:
+                    problems.append(f"{cw}.max_chars: целое {NODE_CONTEXT_CHARS_MIN}–{NODE_CONTEXT_CHARS_MAX}")
+            watch = node.get("watch", {})
+            if not isinstance(watch, dict):
+                problems.append(f"{where}.watch: объект «тема: сдвиг срочности»")
+            else:
+                for topic, shift in watch.items():
+                    if not isinstance(topic, str) or not TOPIC_RE.match(topic):
+                        problems.append(f"{where}.watch: тема «{topic}» из строчных латинских букв")
+                    if not _is_int(shift) or not WATCH_SHIFT_MIN <= shift <= WATCH_SHIFT_MAX:
+                        problems.append(f"{where}.watch[{topic}]: целое {WATCH_SHIFT_MIN}–{WATCH_SHIFT_MAX}")
+        for path in sorted(paths):
+            parent = path.rpartition("/")[0]
+            if parent and parent not in paths:
+                problems.append(f"nodes[{path}]: нет родительского узла «{parent}»")
+    for tool in manifest.get("tools") or []:
+        if isinstance(tool, dict) and isinstance(tool.get("node"), str) and paths and tool["node"] not in paths:
+            problems.append(f"tools[{tool.get('name')}].node: узла «{tool['node']}» нет в nodes")
+    for emit in manifest.get("emits") or []:
+        if isinstance(emit, dict) and isinstance(emit.get("follow_up"), list):
+            for name in emit["follow_up"]:
+                if isinstance(name, str) and name not in tool_names:
+                    problems.append(f"emits[{emit.get('kind')}].follow_up: инструмента «{name}» нет в tools")
 
 
 def _check_workspace(manifest: dict, problems: list[str]) -> None:
@@ -574,7 +666,14 @@ def _check_workspace(manifest: dict, problems: list[str]) -> None:
     for key in ("safe_points", "signals_in"):
         if key in ws and (not isinstance(ws[key], list) or not all(isinstance(x, str) and x.strip() for x in ws[key])):
             problems.append(f"workspace.{key}: список непустых строк")
-    extra = set(ws) - {"id", "title", "purpose", "entry", "interruptible", "safe_points", "signals_in", "done_when"}
+    if "default_goal" in ws and (not isinstance(ws["default_goal"], str) or not ws["default_goal"].strip() or len(ws["default_goal"]) > 300):
+        problems.append("workspace.default_goal: непустая строка не длиннее 300 символов")
+    if "autonomous" in ws and not isinstance(ws["autonomous"], bool):
+        problems.append("workspace.autonomous: должно быть true или false")
+    if "work_interval_s" in ws and (not _is_int(ws["work_interval_s"]) or not 30 <= ws["work_interval_s"] <= 3600):
+        problems.append("workspace.work_interval_s: целое 30–3600 секунд")
+    extra = set(ws) - {"id", "title", "purpose", "entry", "interruptible", "safe_points", "signals_in", "done_when",
+                       "autonomous", "work_interval_s", "default_goal"}
     if extra:
         problems.append(f"workspace: неизвестные поля {sorted(extra)}")
 
@@ -654,6 +753,7 @@ class ToolSpec:
     fallback: bool = False
     core_fills: list[str] = field(default_factory=list)
     announce: bool = False          # долгое или заметное действие на ПК: ядро объявляет запуск до вызова (AN-3)
+    node: str | None = None         # ТЗ 33: узел рабочего места, в котором инструмент виден; None - виден всегда
 
     def full_id(self, module_id: str) -> str:
         return f"{module_id}.{self.name}"
@@ -667,14 +767,15 @@ class ToolSpec:
             timeout_s=int(d.get("timeout_s", TIMEOUT_TOOL_DEFAULT)), keywords=list(d.get("keywords") or []),
             danger_check=bool(d.get("danger_check", False)), job=bool(d.get("job", False)),
             fallback=bool(d.get("fallback", False)), core_fills=list(d.get("core_fills") or []),
-            announce=bool(d.get("announce", False)))
+            announce=bool(d.get("announce", False)), node=d.get("node"))
 
     def to_dict(self) -> dict:
         return {"name": self.name, "description": self.description, "params": self.params, "risk": self.risk,
                 "availability": self.availability, "informative": self.informative,
                 "self_confirming": self.self_confirming, "timeout_s": self.timeout_s, "keywords": self.keywords,
                 "danger_check": self.danger_check, "job": self.job, "fallback": self.fallback,
-                "core_fills": self.core_fills, "announce": self.announce}
+                "core_fills": self.core_fills, "announce": self.announce,
+                **({"node": self.node} if self.node else {})}
 
 
 @dataclass
@@ -684,6 +785,24 @@ class EmitSpec:
     kind: str
     description: str
     default_urgency: int
+    urgency_unfocused: int | None = None        # ТЗ 33: срочность, когда модуль не в фокусе (по умолчанию как default_urgency)
+    topics: list[str] = field(default_factory=list)      # темы события: по ним узел сдвигает срочность (nodes[].watch)
+    follow_up: list[str] = field(default_factory=list)   # какие инструменты-запросы вызвать после события
+
+    @classmethod
+    def from_dict(cls, e: dict) -> EmitSpec:
+        return cls(e["kind"], e["description"], e["default_urgency"], urgency_unfocused=e.get("urgency_unfocused"),
+                   topics=list(e.get("topics") or []), follow_up=list(e.get("follow_up") or []))
+
+    def to_dict(self) -> dict:
+        out = {"kind": self.kind, "description": self.description, "default_urgency": self.default_urgency}
+        if self.urgency_unfocused is not None:
+            out["urgency_unfocused"] = self.urgency_unfocused
+        if self.topics:
+            out["topics"] = list(self.topics)
+        if self.follow_up:
+            out["follow_up"] = list(self.follow_up)
+        return out
 
 
 @dataclass
@@ -1126,6 +1245,7 @@ class Manifest:
     policies: list[PolicySpec] = field(default_factory=list)  # ТЗ 18, FOC-1; пусто - режим совместимости (без фокуса)
     default_policy: str | None = None
     workspace: dict | None = None                       # ТЗ 32, WS-4: среда агента, которую объявляет модуль
+    nodes: list[dict] = field(default_factory=list)     # ТЗ 33: дерево узлов рабочего места (пусто: плоский список)
 
     @classmethod
     def from_dict(cls, d: Any) -> Manifest:
@@ -1139,7 +1259,8 @@ class Manifest:
             capabilities=list(d.get("capabilities") or []), subscribe=list(d.get("subscribe") or []),
             shared_settings=list(d.get("shared_settings") or []), settings_schema=dict(d.get("settings_schema") or {}),
             tools=[ToolSpec.from_dict(t) for t in d.get("tools") or []],
-            emits=[EmitSpec(e["kind"], e["description"], e["default_urgency"]) for e in d.get("emits") or []],
+            emits=[EmitSpec.from_dict(e) for e in d.get("emits") or []],
+            nodes=[dict(n) for n in d.get("nodes") or []],
             graph=bool(d.get("graph", False)), state=bool(d.get("state", False)),
             panel=panel, panel_warnings=panel_warnings,
             policies=[PolicySpec.from_dict(p) for p in d.get("policies") or []],
@@ -1150,8 +1271,7 @@ class Manifest:
                "capabilities": self.capabilities, "subscribe": self.subscribe,
                "shared_settings": self.shared_settings, "settings_schema": self.settings_schema,
                "tools": [t.to_dict() for t in self.tools],
-               "emits": [{"kind": e.kind, "description": e.description, "default_urgency": e.default_urgency}
-                         for e in self.emits],
+               "emits": [e.to_dict() for e in self.emits],
                "graph": self.graph, "state": self.state}
         if self.panel is not None:
             out["panel"] = self.panel.to_dict()
@@ -1160,6 +1280,8 @@ class Manifest:
             out["default_policy"] = self.default_policy
         if self.workspace:
             out["workspace"] = dict(self.workspace)
+        if self.nodes:
+            out["nodes"] = [dict(n) for n in self.nodes]
         return out
 
     def tool(self, name: str) -> ToolSpec | None:

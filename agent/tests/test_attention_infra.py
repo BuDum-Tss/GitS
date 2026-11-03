@@ -236,26 +236,25 @@ async def test_user_phrase_made_rule_mutes_module_events_and_digest_returns_them
 
 def test_attention_defaults_match_the_spec():
     a = settings.DEFAULTS["attention"]
-    assert a["classifier"] is True and a["thresholds"] == [15, 35, 60, 85] and a["interrupt_margin"] == 15
-    assert a["away_after_s"] == 600
-    assert a["half_life"] == {"rimworld.*": 60, "telegram.*": 900, "desktop.*": 120, "*.job": 600, "*": 300}
-    assert a["min_conf_event"] == 0.35 and a["min_conf_input"] == 0.5
+    assert a["classifier"] is True and a["interrupt_margin"] == 15
+    assert a["away_after_s"] == 600 and a["inbox"] == {"min_interval_s": 60}
+    assert a["min_conf_input"] == 0.5 and "thresholds" not in a and "half_life" not in a
 
 
 def test_attention_settings_deep_merge_keeps_other_keys():
     assert settings.load()["attention"] == settings.DEFAULTS["attention"]
     settings.update(attention={"classifier": False})
     cfg = settings.load()["attention"]
-    assert cfg["classifier"] is False and cfg["thresholds"] == [15, 35, 60, 85]
-    settings.update(attention={"thresholds": [10, 20, 30, 40]})
+    assert cfg["classifier"] is False and cfg["inbox"] == {"min_interval_s": 60}
+    settings.update(attention={"inbox": {"min_interval_s": 30}})
     cfg = settings.load()["attention"]
-    assert cfg["classifier"] is False and cfg["thresholds"] == [10, 20, 30, 40] and cfg["interrupt_margin"] == 15
+    assert cfg["classifier"] is False and cfg["inbox"] == {"min_interval_s": 30} and cfg["interrupt_margin"] == 15
     # файл с частично сохранённым attention не теряет остальное
     (settings.memory_dir() / "settings.json").write_text(json.dumps({"attention": {"interrupt_margin": 5}}), encoding="utf-8")
     cfg = settings.load()["attention"]
-    assert cfg["interrupt_margin"] == 5 and cfg["thresholds"] == [15, 35, 60, 85] and cfg["classifier"] is True
-    cfg["thresholds"].append(1)
-    assert settings.DEFAULTS["attention"]["thresholds"] == [15, 35, 60, 85]            # результат load не портит значения по умолчанию
+    assert cfg["interrupt_margin"] == 5 and cfg["inbox"] == {"min_interval_s": 60} and cfg["classifier"] is True
+    cfg["inbox"]["min_interval_s"] = 1
+    assert settings.DEFAULTS["attention"]["inbox"] == {"min_interval_s": 60}            # результат load не портит значения по умолчанию
 
 
 # ── дашборд ───────────────────────────────────────────────────────────────────────────────────────
@@ -263,7 +262,7 @@ def test_attention_settings_deep_merge_keeps_other_keys():
 async def test_dashboard_attention_endpoints(tmp_path):
     rig = Rig(tmp_path)
     await rig.att.set_rule(module="telegram", effect="mute", minutes=30)
-    await rig.submit("echo", urgency_hint=2, addressed_to_me=False, text="Пинг")
+    await rig.submit("echo", urgency_hint=4, addressed_to_me=False, text="Пинг")
     dashboard.set_attention(rig.att)
     runner = web.AppRunner(dashboard.build_app())
     await runner.setup()
@@ -273,8 +272,8 @@ async def test_dashboard_attention_endpoints(tmp_path):
     try:
         async with aiohttp.ClientSession() as http:
             snap = await (await http.get(base + "/api/attention")).json()
-            assert snap["rules"][0]["module"] == "telegram" and snap["queue"][0]["priority"] == 40
-            assert snap["settings"]["thresholds"] == [15, 35, 60, 85] and snap["focus"][0]["kind"] == "idle"
+            assert snap["rules"][0]["module"] == "telegram" and snap["queue"][0]["priority"] == 80
+            assert snap["focus"][0]["kind"] == "idle"
             hdr = {"Content-Type": "application/json"}
             bad = await http.post(base + "/api/attention/rules/clear", data="{}", headers={"Content-Type": "text/plain"})
             assert bad.status == 403
@@ -284,7 +283,7 @@ async def test_dashboard_attention_endpoints(tmp_path):
             r = await http.post(base + "/api/attention/rules/clear", json={"id": 5}, headers=hdr)
             assert r.status == 400
             r = await http.post(base + "/api/settings", json={"attention": {"classifier": False}}, headers=hdr)
-            assert (await r.json())["attention"]["classifier"] is False and (await r.json())["attention"]["thresholds"] == [15, 35, 60, 85]
+            assert (await r.json())["attention"]["classifier"] is False and (await r.json())["attention"]["inbox"] == {"min_interval_s": 60}
     finally:
         dashboard.set_attention(None)
         await runner.cleanup()

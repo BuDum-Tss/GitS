@@ -71,7 +71,6 @@ class Profile:
     priority: int = 0
     sticky_s: float = 0.0
     planned: bool = False                            # профиль ещё не написан: на графе виден, включить нельзя
-    focus_quiet: tuple[str, ...] = ()                # модули, которым профиль не даёт переключать фокус (ТЗ 18, focus.quiet_modules)
     workspace: str = ""                              # среда агента (ТЗ 32): профиль включается, пока агент в этой среде
 
 
@@ -103,10 +102,6 @@ def parse_profile(data) -> Profile:
     attention = data.get("attention") or {}
     if not isinstance(attention, dict):
         raise ValueError("attention: должен быть объектом")
-    focus_cfg = data.get("focus") or {}
-    if not isinstance(focus_cfg, dict):
-        raise ValueError("focus: должен быть объектом")
-    focus_quiet = _str_list(focus_cfg.get("quiet_modules"), "focus.quiet_modules")
     try:
         priority, sticky = int(data.get("priority", 0)), float(data.get("sticky_s", 0))
     except (TypeError, ValueError):
@@ -118,7 +113,7 @@ def parse_profile(data) -> Profile:
         memory_scopes=_str_list(data.get("memory_scopes"), "memory_scopes"),
         attention=attention,
         activate={"foreground_apps": apps, "module_state": state} if (apps or state) else {},
-        priority=priority, sticky_s=sticky, planned=bool(data.get("planned", False)), focus_quiet=focus_quiet,
+        priority=priority, sticky_s=sticky, planned=bool(data.get("planned", False)),
         workspace=str(data.get("workspace") or "").strip())
 
 

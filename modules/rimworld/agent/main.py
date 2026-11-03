@@ -1,7 +1,7 @@
 """Точка входа модуля RimWorld (ТЗ 11): игровые контуры, API оверлея на порту 8767, связь с ядром по контракту модулей.
 
 Запускает супервизор ядра (`agent/modules.yaml` в GitS): `python -u main.py` из папки agent/. Модуль сам подключается к ядру
-(`ws://127.0.0.1:8766/module/ws`, токен из GITS_MODULE_TOKEN), присылает манифест (инструменты MCP-сервера игры и `order`),
+(`ws://127.0.0.1:8766/module/ws`, токен из GITS_MODULE_TOKEN), присылает манифест (рабочее место RimWorld: узлы, действия, запросы, `launch_game`),
 состояние и события, говорит и показывает эмоции через ядро. Без игры не падает: контуры простаивают, `game_running: false`.
 Вручную (ядро должно работать): `python main.py`; токен тогда берётся из файла ядра.
 """
@@ -46,14 +46,15 @@ import game_launcher  # noqa: E402
 import game_api  # noqa: E402
 import game_panel  # noqa: E402
 import module_manifest  # noqa: E402
+import workspace_module  # noqa: E402
 import settings  # noqa: E402
 import usage_report  # noqa: E402
 from camera_director import CameraDirector  # noqa: E402
-from commentator import Commentator  # noqa: E402
 from controller import Controller  # noqa: E402
 from core_link import CoreLink  # noqa: E402
 from gits_sdk import ModuleClient  # noqa: E402
 from run_recorder import RunRecorder  # noqa: E402
+import core_tasks  # noqa: E402
 from state_reporter import StateReporter  # noqa: E402
 
 logger = logging.getLogger("rimworld")
@@ -75,7 +76,7 @@ async def amain(config: dict) -> int:
     loop = asyncio.get_running_loop()
 
     manifest = await module_manifest.build()
-    tools = [t for t in manifest["tools"] if t["name"] not in ("order", "launch_game")]
+    tools = [t for t in manifest["tools"] if t["name"] != "launch_game"]
     client = ModuleClient(manifest)
     link = CoreLink(client)
     usage_report.attach(client, loop)
@@ -93,18 +94,18 @@ async def amain(config: dict) -> int:
     ctrl.recorder = RunRecorder(mem_dir, settings.load,
                                 max_hours=lambda: link.module_settings.get("max_record_hours", 6))
     ctrl.director = CameraDirector()
+    node_state = workspace_module.NodeState()
     reporter = StateReporter(client, recording=lambda: game_panel.recording_info(ctrl.recorder.current),
-                             policy=ctrl.policy_state)
+                             policy=ctrl.policy_state, node=lambda: node_state.path)
+    node_state.on_change = reporter.poke                 # смена узла уходит ядру сразу (ТЗ 33)
     ctrl.on_phase_change = reporter.poke
-    ctrl.commentator = Commentator(mem_dir, link.say, link.last_user_ts, link.is_speaking, repeats=link.repeats)
-    ctrl.commentator.enabled = lambda: ctrl.policies.in_focus                  # ТЗ 11e POL-11: вне фокуса молчит
 
-    module_manifest.attach(client, tools, order=ctrl.handle_order, graph=game_api.graph_data,
-                           launch=ctrl.launch_game, focus=ctrl)                # ТЗ 11e: launch_game, policy.activate, focus.release
+    module_manifest.attach(client, tools, graph=game_api.graph_data,
+                           launch=ctrl.launch_game, focus=ctrl, node_state=node_state)   # ТЗ 11e, ТЗ 33
     api = await game_api.start(mem_dir, rimworld_url=config["rimworld_api"], core=client)
     logger.info(f"Манифест: {len(manifest['tools'])} инструментов, ядро {client.url}")
 
-    work = [loop.create_task(coro) for coro in (ctrl.commentator.run(), reporter.run())]
+    work = [loop.create_task(coro) for coro in (reporter.run(), core_tasks.run(client))]
     game = loop.create_task(ctrl._run_async())            # игровые контуры; падение контроллера останавливает модуль
     core = loop.create_task(link.run())
     for task in (*work, game):

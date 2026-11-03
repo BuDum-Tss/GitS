@@ -24,7 +24,7 @@ namespace AgentBridge
             "order_tame", "order_slaughter", "forbid", "unforbid", "research", "pause", "resume",
             "set_time_speed", "get_items", "set_manual_priorities", "force_work", "clear_work_queue", "capabilities",
             "plan_room", "build_room", "clear_plans", "room_info",
-            "check_enclosure", "camera_jump", "camera_follow", "open_tab", "select", "set_auto_camera", "set_user_camera_override", "set_strict_ui", "camera_zoom", "camera_move", "camera_view", "survey_map", "analyze_area", "estimate_build", "describe_def", "fit_room", "get_work_table",
+            "check_enclosure", "camera_jump", "camera_follow", "open_tab", "select", "set_auto_camera", "set_agent_camera", "ui_state", "ui_assign", "ui_category", "ui_designator", "ui_place", "ui_drag", "ui_cancel", "set_user_camera_override", "set_strict_ui", "camera_zoom", "camera_move", "camera_view", "survey_map", "analyze_area", "estimate_build", "describe_def", "fit_room", "get_work_table",
             "camera_mode", "camera_goto", "camera_track", "camera_release", "camera_state",
         };
 
@@ -51,11 +51,15 @@ namespace AgentBridge
                 "apparel"  => d => d.IsApparel,
                 "medicine" => d => d.IsMedicine,
                 "food"     => d => d.IsNutritionGivingIngestible && !d.IsCorpse,
-                _ => throw new Exception($"category должна быть weapon/ranged/melee/apparel/medicine/food, а не '{category}'"),
+                // стройматериалы и сырьё (брёвна, камень, сталь, ткань): их запрет мешает стройке, а оружия и еды в них нет
+                "material" => d => d.IsStuff || (d.thingCategories != null && d.thingCategories.Contains(ThingCategoryDefOf.ResourcesRaw)),
+                "forbidden" => d => true,        // любой предмет; вместе с only_unforbidden=false виден запрет в поле forbidden
+                _ => throw new Exception($"category должна быть weapon/ranged/melee/apparel/medicine/food/material/forbidden, а не '{category}'"),
             };
 
             var found = map.listerThings.AllThings
                 .Where(t => t.def.category == ThingCategory.Item && t.Spawned && match(t.def))
+                .Where(t => category != "forbidden" || t.IsForbidden(Faction.OfPlayer))      // "forbidden": только запрещённое
                 .Where(t => !onlyFree || !t.IsForbidden(Faction.OfPlayer))
                 .OrderBy(t => t.Position.DistanceTo(center))
                 .Take(max)

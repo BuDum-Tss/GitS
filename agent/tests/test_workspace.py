@@ -56,23 +56,13 @@ def test_spec_from_manifest_maps_entries_to_reasons_and_never_allows_process_sta
     spec = dom.spec_from_manifest("montage", {"id": "montage", "title": "Монтаж", "entry": ["user_message", "critical", "fallback"],
                                               "interruptible": False, "safe_points": ["между стадиями"], "signals_in": ["telegram.*"],
                                               "done_when": "готово"})
-    assert spec.entry == (Reason.USER, Reason.CRITICAL) and spec.interruptible is False and spec.signals_in == ("telegram.*",)
+    assert spec.entry == (Reason.USER, Reason.CRITICAL) and spec.interruptible is False
     assert not dom.can_enter(spec, Reason.SELF)[0] and not dom.can_enter(spec, "process_started")[0]
     default = dom.spec_from_manifest("rimworld", {"id": "rimworld", "title": "RimWorld"})
     assert default.entry == dom.MODULE_ENTRY
 
 
-def test_signal_routing_by_current_workspace():
-    assistant, sleep = dom.BUILTIN[ASSISTANT], dom.BUILTIN[SLEEP]
-    montage = dom.spec_from_manifest("montage", {"id": "montage", "title": "Монтаж", "signals_in": ["telegram.*"]})
-    game = dom.module_spec("rimworld", "RimWorld")
-    assert dom.route_signal(montage, game, "rimworld.letter", "rimworld", 4) == dom.SIGNAL_DIGEST    # не из signals_in: сводка
-    assert dom.route_signal(montage, None, "telegram.message", "telegram", 3) == dom.SIGNAL_NOTIFY
-    assert dom.route_signal(montage, game, "rimworld.raid", "rimworld", 5) == dom.SIGNAL_SWITCH      # критический
-    assert dom.route_signal(montage, None, "telegram.message", "telegram", 5) == dom.SIGNAL_NOTIFY   # у службы своей среды нет
-    assert dom.route_signal(montage, montage, "montage.done", "montage", 5) == dom.SIGNAL_OWN
-    assert dom.route_signal(assistant, game, "rimworld.letter", "rimworld", 2) == dom.SIGNAL_NOTIFY  # assistant принимает всё
-    assert dom.route_signal(sleep, game, "rimworld.letter", "rimworld", 2) == dom.SIGNAL_DIGEST      # сон молчит
+
 
 
 # ── менеджер ─────────────────────────────────────────────────────────────────
@@ -128,13 +118,7 @@ async def test_module_refusal_keeps_the_current_workspace():
     assert res == {"ok": False, "error": "небезопасная точка"} and mgr.current == ASSISTANT
 
 
-async def test_critical_signal_waits_for_a_safe_point_but_the_user_does_not():
-    safe = {"v": False}
-    mgr, _, _ = make(interruptible=lambda ws: safe["v"])
-    await mgr.enter("montage", Reason.USER)
-    refused = await mgr.enter("rimworld", Reason.CRITICAL, "набег")
-    assert not refused["ok"] and mgr.current == "montage"
-    assert (await mgr.enter("rimworld", Reason.USER))["ok"] and mgr.current == "rimworld"
+
 
 
 async def test_refused_release_keeps_the_module_unless_forced():
@@ -224,4 +208,4 @@ async def test_core_wiring_has_workspaces_and_release_holder_without_slot():
                                       battery=lambda: {"level": 1.0, "sleeping": False}, specs=[])
     snap = layer.workspaces.snapshot()
     assert snap["current"] == ASSISTANT and {a["id"] for a in snap["available"]} == {ASSISTANT, SLEEP}     # среды модулей - из манифестов
-    assert (await layer.focus.release_holder()) == {"ok": True, "already": True}
+    assert (await layer.link.release()) == {"ok": True, "already": True}

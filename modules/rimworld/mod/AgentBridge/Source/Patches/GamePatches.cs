@@ -155,7 +155,7 @@ namespace AgentBridge
     // не влияет на реальный ввод. Координаты — экран ОКНА игры (0,0 —
     // левый верхний угол клиентской области), совпадают с тем, что
     // использует game_ui.py на стороне Python.
-    [HarmonyPatch(typeof(UIRoot), nameof(UIRoot.UIRootOnGUI))]
+    [HarmonyPatch(typeof(UIRoot_Play), nameof(UIRoot.UIRootOnGUI))]
     public static class DrawAiCursorPatch
     {
         private static Texture2D _arrowTex, _ringTex;

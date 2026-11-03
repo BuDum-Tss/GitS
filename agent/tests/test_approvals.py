@@ -136,7 +136,7 @@ async def test_request_wrapper_keeps_old_behaviour(tmp_path):
         said.append(text)
     task = asyncio.create_task(approvals.request("Хочу выполнить действие.", announce))
     await _wait_pending()
-    assert said == ["Хочу выполнить действие. Разрешаешь? Скажи «да» или «нет»."]
+    assert len(said) == 1 and said[0].startswith("Хочу выполнить действие.") and "«да» или «нет»" in said[0]   # факт для модели, не готовая реплика
     approvals.resolve(True)
     assert await task is True
     settings.update(auto_accept=True)

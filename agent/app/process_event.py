@@ -1,19 +1,20 @@
-"""Приём события: Normalizer -> HardRules -> Classifier -> Scorer -> Dispatcher (ТЗ 29, ARC-4; ТЗ 25, FAST-1).
+"""Приём события: Normalizer -> HardRules -> Dispatcher (ТЗ 29, ARC-4; ТЗ 25, FAST-1).
 
   1. Normalizer (`normalizer.py`): тело события -> Item, отправитель -> человек и память;
   2. дедупликация (`items.py`, решение в `domain/dedupe.py`);
   3. HardRules (здесь): правила до классификатора (ATT-7) R1 обращение владельца -> разговор; R2 ответ на вопрос в том же
      канале; R3 временное правило mute -> в сводку; R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
-  4. Classifier (`event_classifier.py`): срочность и категория (ATT-8);
-  5. Scorer и Dispatcher (`scorer.py`, `dispatcher.py`): приоритет, D0-D4, сводка или очередь речи.
+  4. срочность без классификатора (`Normalizer.assign_urgency`): подсказка модуля, обращение к ней поднимает до «сказать»;
+  5. Dispatcher (`dispatcher.py`): D0-D4 по срочности; сказать сразу (срочность 4+) или во входящую очередь (`inbox.py`).
 """
 import logging
+
+from domain import scoring
 
 from .announce import Announcer, is_announce_event
 from .attention_core import TEXT_LOG, AttentionContext, Item
 from .decision_log import DecisionLog
 from .dispatcher import Dispatcher
-from .event_classifier import EventClassifier
 from .items import ItemStore
 from .normalizer import Normalizer
 from .questions import QuestionService
@@ -59,9 +60,9 @@ class HardRules:
 
 class EventPipeline:
     def __init__(self, ctx: AttentionContext, normalizer: Normalizer, store: ItemStore, rules: HardRules,
-                 classifier: EventClassifier, dispatcher: Dispatcher, announcer: Announcer, decisions: DecisionLog):
+                 dispatcher: Dispatcher, announcer: Announcer, decisions: DecisionLog):
         self.ctx, self.normalizer, self.store, self.rules = ctx, normalizer, store, rules
-        self.classifier, self.dispatcher, self.announcer, self.decisions = classifier, dispatcher, announcer, decisions
+        self.dispatcher, self.announcer, self.decisions = dispatcher, announcer, decisions
 
     async def submit(self, module_id: str, event: dict) -> None:
         """Событие модуля (тело `event`, ТЗ 01 раздел 7.1)."""
@@ -94,10 +95,14 @@ class EventPipeline:
         declared = info.get("default_urgency") if info else None
         if await self.rules.apply(item, cfg, att, to_conversation, declared):
             return
-        if self.classifier.needs(item, att):
-            await self.classifier.run(item, cfg, att, declared)
-            return
-        self.classifier.apply(item, None, declared)
+        self.normalizer.assign_urgency(item, declared, ctx.env_of())
+        focused = ctx.env_of() == item.module
+        self.normalizer.shift_urgency(item, info, focused, ctx.node_watch(item.module) if focused else None)
+        stance = ctx.rules.stance(item.module, item.kind, ctx.sender_name(item.sender))
+        if stance == "say":                                              # правило «выдели» / «только это»
+            item.urgency = max(item.urgency, scoring.SAY_URGENCY)
+        elif stance == "wait":                                           # «только это», событие не из выбранного
+            item.urgency = min(item.urgency, scoring.SAY_URGENCY - 1)
         await self.dispatcher.finish(item, cfg, att)
 
     @staticmethod

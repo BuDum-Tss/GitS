@@ -16,7 +16,6 @@ _VERBS = ("напиш", "включ", "выключ", "найд", "сдела", 
           "закр", "замолч", "помолч", "запост", "опублик", "посмотр", "провер", "удал", "созд",
           "скач", "установ", "запуст", "запуск", "стартуй", "поигра", "останов", "постав", "заказ", "купи", "переключ", "отключ",
           "поруч", "клод", "claude", "попроси", "отвлека", "нажм", "кликн", "набер", "напечата", "прокрут", "вспомн", "помниш", "запиши", "закаж", "оплат", "забронир", "отмен", "перезапуст", "обнови", "загруз", "видиш", "слыши", "подсматр", "подслуш", "слушай", "прочит", "сохран", "измени", "поменяй")
-_VERB_RE = re.compile(r"\b(" + "|".join(_VERBS) + ")", re.I)
 
 
 def looks_like_stop(text: str) -> bool:
@@ -24,42 +23,14 @@ def looks_like_stop(text: str) -> bool:
     return len(text) <= 40 and bool(_STOP_RE.match(text.strip()))
 
 
-def looks_like_action(text: str) -> bool:
-    """Быстрая проверка без модели: похоже ли сообщение на просьбу что-то сделать."""
-    return bool(_VERB_RE.search(text.lower()))
-
-
-CRITICAL_URGENCY = 4        # с этой срочности слабый «нет» классификатора реакцию не гасит
-
-
-def route_flags(decision: str, urgency: int | None, *, react: bool | None = None, speak: bool | None = None,
-                think: bool | None = None) -> tuple[str, bool]:
-    """Решение роутера (decide): (решение D0-D4, подумать ли). Уверенное «реагировать не нужно» или «говорить не нужно» гасит
-    речь (D2-D4 -> D1, в сводку), кроме срочных событий: да/нет-вопросы классификатора смещены в «нет», критичное они не
-    отменяют. «Подумать» работает, если реакция не отменена. None - классификатор не уверен, решение формулы не меняется."""
-    critical = (urgency or 0) >= CRITICAL_URGENCY
-    if not critical and decision in ("D2", "D3", "D4") and (react is False or speak is False):
-        decision = "D1"
-    want_think = bool(think) and decision != "D0" and (critical or react is not False)
-    return decision, want_think
-
-
 EPISODE_KINDS = ("episode.summary", "episode.ended")
-THINK_MIN_PRIORITY = 25.0
 
 
-def think_route(*, origin: str, kind: str, decision: str, urgency: int | None, priority: float, memorable: bool,
-                needs_reply: bool, spoken: bool = False) -> bool:
-    """Маршрут `think` (ТЗ 30, IMP-4, IMP-10): напоминание себе; итог разговора; итог эпизода; значимое событие без срочности (D1-D2);
-    вопрос без ответа. Мысль сама размышление не запускает (нет петли)."""
+def think_route(*, origin: str, kind: str, **_) -> bool:
+    """Маршрут `think` (ТЗ 30, IMP-4, IMP-10): напоминание себе, итог разговора, итог эпизода. Остальные события копятся во
+    входящей очереди и уходят размышлению пачкой (`app/inbox.py`). Мысль сама размышление не запускает (нет петли)."""
     if kind == "self.thought":
         return False
     if origin == "self":
-        return kind in ("self.reminder", "self.after_conversation")
-    if kind.endswith(EPISODE_KINDS):
-        return True
-    if (urgency or 0) >= 4 or decision not in ("D1", "D2"):
-        return False
-    if needs_reply and not spoken:
-        return True
-    return memorable or priority >= THINK_MIN_PRIORITY
+        return kind in ("self.reminder", "self.after_conversation", "self.work_tick")
+    return kind.endswith(EPISODE_KINDS)

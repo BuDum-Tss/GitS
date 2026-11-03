@@ -63,6 +63,7 @@ class CoreRequests:
         self.memory_reader = memory_reader        # MemoryReader / MemoryWriter ядра (core.memory.*); None: unavailable
         self.memory_writer = memory_writer
         self.hub = None                           # ModuleHub: core.tts передаёт запрос модулю голоса
+        self.tasks = None                         # TaskService (ТЗ 32): ставит ядро; без него core.tasks недоступен
         self.episodes = None                      # EpisodeService (ТЗ 27): ставит ядро; без него core.memory.episodes недоступен
 
     async def handle(self, conn: ModuleConnection, msg_type: str, body: Any) -> Any:
@@ -71,7 +72,7 @@ class CoreRequests:
             "core.persona": self._persona, "core.claude_usage": self._claude_usage, "core.web_search": self._web_search,
             "core.privacy_terms": self._privacy_terms, "core.llm.ask": self._llm_ask,
             "core.events.tail": self._events_tail, "core.claude.locate": self._claude_locate,
-            "core.memory.episodes": self._episodes,
+            "core.memory.episodes": self._episodes, "core.tasks": self._tasks,
             "core.memory.recall": self._memory_recall, "core.memory.remember": self._memory_remember,
         }.get(msg_type)
         if contract.is_planned(msg_type):                      # MC-5: запрос описан, реализации пока нет
@@ -191,20 +192,18 @@ class CoreRequests:
     # ── ТЗ 31: локальная модель, журнал, путь к Claude ─────────────────────────
 
     async def _llm_ask(self, conn: ModuleConnection, body: dict) -> dict:
-        """Один вызов локальной модели ядра (`fast_brain._ask`). Срочное вытесняет фоновое (`background`)."""
+        """Один вызов быстрой модели ядра (Claude без инструментов, `fast_brain._ask`)."""
         import fast_brain
         try:
             text = await fast_brain._ask(
                 body["system"], body["user"], timeout=float(body.get("timeout_s", 60)),
                 max_tokens=int(body.get("max_tokens", 40)), image_b64=body.get("image_b64"),
                 temperature=float(body.get("temperature", 0.3)), background=bool(body.get("background", False)))
-        except fast_brain.Preempted as e:
-            raise ModuleError("unavailable", "локальная модель занята срочными вызовами") from e
         except asyncio.TimeoutError as e:
-            raise ModuleError("timeout", "локальная модель не ответила вовремя") from e
+            raise ModuleError("timeout", "модель не ответила вовремя") from e
         except Exception as e:
             logger.warning(f"core.llm.ask от {conn.module_id}: {type(e).__name__}: {e}")
-            raise ModuleError("unavailable", "локальная модель недоступна") from e
+            raise ModuleError("unavailable", "модель недоступна") from e
         out: dict = {"text": text}
         if body.get("json"):
             data = fast_brain._json_of(text)
@@ -239,6 +238,16 @@ class CoreRequests:
             found = await svc.recall.find(str(body["query"]), k=limit)
             return {"episodes": found}
         return {"episodes": await svc.recall.listing(limit=limit)}
+
+    async def _tasks(self, conn: ModuleConnection, body: dict) -> dict:
+        """ТЗ 32: снимок задач среды (по умолчанию текущей) для панели модуля."""
+        if self.tasks is None:
+            raise ModuleError("unavailable", "общие задачи не подключены")
+        snap = await self.tasks.snapshot(body.get("workspace") or None)
+        out = {"workspace": snap["workspace"], "tasks": snap["tasks"]}
+        if snap.get("active"):
+            out["active"] = snap["active"]
+        return out
 
     async def _claude_locate(self, conn: ModuleConnection, body: Any) -> dict:
         from gits_sdk import claude_path

@@ -1,7 +1,7 @@
 # Зависимости модуля голоса (ТЗ 12). Модуль работает в окружении Python ядра: ставить в него же.
 #   pip install -r agent/requirements.txt -r modules/voice/requirements.txt
 # httpx и numpy общие с ядром (agent/requirements.txt).
-edge-tts>=6.1.0        # запасной голос, если Fish Speech недоступен
+edge-tts>=7.3.1        # запасной голос, если Fish Speech и ESpeech недоступны (7.2.8 получал 403 от сервиса Microsoft)
 ormsgpack>=1.5.0       # запросы к Fish Speech
 soundcard              # микрофон и запись звука колонок (слух)
 faster-whisper         # запасное локальное распознавание на процессоре (слух, микрофон без WhisperX)

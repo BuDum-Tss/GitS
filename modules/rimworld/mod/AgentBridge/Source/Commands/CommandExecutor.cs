@@ -27,6 +27,7 @@ namespace AgentBridge
             "clear_work_queue", "add_bill", "cancel_bill", "order_tame", "order_slaughter", "open_tab",
             "set_work_priority", "set_manual_priorities", "set_schedule", "set_schedule_range", "set_medical_care", "research",
             "look_at", "forbid", "unforbid",   // осмотр клетки и запрет предмета: камера тоже едет туда
+            "ui_category", "ui_designator", "ui_place", "ui_drag", "ui_assign", "ui_policy", "ui_bed", "ui_area", "ui_animal", "ui_letter", "ui_quest",   // шаги «Архитектора»: курсор едет к месту, шаг виден
         };
 
         public static void ProcessQueue()
@@ -70,6 +71,13 @@ namespace AgentBridge
             }
         }
 
+        /// Команды, которые двигают камеру (чтение камеры и сам переключатель не в счёт).
+        private static bool MovesCamera(string type)
+        {
+            if (type == "camera_view" || type == "camera_state") return false;
+            return type.StartsWith("camera_") || type == "set_auto_camera";
+        }
+
         /// Пауза после действия, чтобы зритель успел его увидеть (только для действий в мире).
         private static float DwellAfter(string json, bool compact)
         {
@@ -90,9 +98,11 @@ namespace AgentBridge
             var cmd = JObject.Parse(json);
             var type = cmd["type"]?.Value<string>()
                 ?? throw new ArgumentException("Missing 'type' field");
+            if (!UserCamera.AgentHasCamera && MovesCamera(type))
+                return "{\"skipped\":\"камера у игрока: переключатель камеры в игре выключен, агент её не двигает\"}";
 
             Log.Message($"[AgentBridge] Executing: {type}");
-            CheckTabGate(type);
+            CheckTabGate(type, cmd);
 
             switch (type)
             {
@@ -136,8 +146,23 @@ namespace AgentBridge
                 case "camera_jump":        return CameraJump(cmd);
                 case "camera_follow":      return CameraFollow(cmd);
                 case "open_tab":           return OpenTab(cmd);
+                case "ui_state":           return UiState();
+                case "ui_category":        return UiCategory(cmd);
+                case "ui_designator":      return UiDesignator(cmd);
+                case "ui_place":           return UiPlace(cmd);
+                case "ui_drag":            return UiDrag(cmd);
+                case "ui_cancel":          return UiCancel();
+                case "ui_assign":          return UiAssign(cmd);
+                case "dev_test_setup":     return DevTestSetup();
+                case "ui_policy":          return UiPolicy(cmd);
+                case "ui_bed":             return UiBed(cmd);
+                case "ui_area":            return UiArea(cmd);
+                case "ui_animal":          return UiAnimal(cmd);
+                case "ui_letter":          return UiLetter(cmd);
+                case "ui_quest":           return UiQuest(cmd);
                 case "select":             return SelectTarget(cmd);
                 case "set_auto_camera":    AutoCamera = cmd["enabled"]?.Value<bool>() ?? true; break;
+                case "set_agent_camera":   UserCamera.AgentHasCamera = cmd["enabled"]?.Value<bool>() ?? true; break;
                 case "set_user_camera_override":
                     UserCamera.Enabled = cmd["enabled"]?.Value<bool>() ?? true;
                     UserCamera.OverrideSeconds = Mathf.Clamp(cmd["seconds"]?.Value<float>() ?? UserCamera.DefaultOverrideSeconds, 1f, 30f);
@@ -701,11 +726,14 @@ namespace AgentBridge
 
         private static void SetForbidden(JObject cmd, bool forbidden)
         {
-            var thingId = cmd["thing_id"].Value<string>();
-            var thing   = Find.CurrentMap.spawnedThings
-                .FirstOrDefault(t => t.ThingID == thingId)
-                ?? throw new Exception($"Thing not found: {thingId}");
-            thing.SetForbidden(forbidden);
+            // thing_id: один id или несколько через запятую (брёвен и камней на карте много, по одному разрешать долго)
+            foreach (var thingId in cmd["thing_id"].Value<string>().Split(',').Select(s => s.Trim()).Where(s => s.Length > 0))
+            {
+                var thing = Find.CurrentMap.spawnedThings
+                    .FirstOrDefault(t => t.ThingID == thingId)
+                    ?? throw new Exception($"Thing not found: {thingId}");
+                thing.SetForbidden(forbidden);
+            }
         }
 
         // ── Исследования ───────────────────────────────────────────────────────

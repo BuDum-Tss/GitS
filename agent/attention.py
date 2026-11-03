@@ -40,8 +40,6 @@ from app.attention_core import (  # noqa: F401  (прежние имена мо�
     ANNOUNCE_DEFAULT_URGENCY,
     CONVERSATION_FOCUS_P,
     CONVERSATION_P,
-    DEFAULT_HALF_LIFE,
-    DEFAULT_THRESHOLDS,
     FOCUS_DEPTH,
     PROACTIVE_P,
     QUESTION_ANNOUNCE_P,
@@ -61,14 +59,14 @@ from app.attention_core import (  # noqa: F401  (прежние имена мо�
 from app.decision_log import DecisionLog
 from app.digest import Digest
 from app.dispatcher import Dispatcher
-from app.event_classifier import EventClassifier
+from app.inbox import Inbox
+from app.input_classifier import InputClassifier
 from app.focus_stack import FocusStack
 from app.items import ItemStore, event_fact, event_of
 from app.jobs import JobTracker
 from app.normalizer import Normalizer
 from app.process_event import EventPipeline, HardRules
 from app.questions import QuestionService
-from app.scorer import Scorer
 from app.speech_coordinator import SpeechCoordinator
 from attention_rules import FILE_NAME as RULES_FILE
 from attention_rules import RuleStore
@@ -111,8 +109,6 @@ class Attention:
     kind_handlers = _Via("ctx", "kind_handlers")      # kind -> async (Item) -> None: служебные события (ТЗ 11, RW-9)
     kind_hooks = _Via("ctx", "kind_hooks")            # то же с побочным действием (ТЗ 12, VOICE-14)
     on_think = _Via("ctx", "on_think")                # ТЗ 30: маршрут think (item) -> размышление в фоне
-    on_decided = _Via("ctx", "on_decided")            # ТЗ 18: решение (item, decision, priority, rule) -> менеджер фокуса
-    policy_options = _Via("ctx", "policy_options")    # ТЗ 18, первый эшелон: варианты подсказки политики
     silent_kinds = _Via("ctx", "silent_kinds")        # виды, которые не пишутся в журнал module_event
     last_decision = _Via("ctx", "last_decision")      # для отладки и дашборда
     decisions = _Via("ctx", "decisions")
@@ -129,10 +125,9 @@ class Attention:
     speech = _Via("coordinator", "speech")             # SpeechQueue
     _items = _Via("store", "items")
     _by_key = _Via("store", "by_key")
-    _digest = _Via("digest_", "buffers")
+    _digest = _Via("digest_", "entries")
     _focus = _Via("focus_", "stack")
     _reaction_focus = _Via("focus_", "reaction_focus")
-    _cls_pending = _Via("classifier", "pending")
     _job_states = _Via("jobs", "states")
     _announces = _Via("announcer", "recent")
     _question_channel = _Via("questions", "channel")   # куда доставлен вопрос (ответ принимается правилом R2)
@@ -168,14 +163,14 @@ class Attention:
         self.store.speech = self.digest_.speech = self.focus_.speech = self.coordinator
         self.store.digest = self.focus_.digest = self.digest_
         self.decision_log = DecisionLog(ctx)
-        self.scorer = Scorer(ctx, self.focus_)
-        self.dispatcher = Dispatcher(ctx, self.scorer, self.digest_, self.coordinator, self.focus_, self.decision_log)
-        self.classifier = EventClassifier(ctx, self.dispatcher)
+        self.dispatcher = Dispatcher(ctx, self.digest_, self.coordinator, self.focus_, self.decision_log)
+        self.classifier = InputClassifier(ctx)
+        self.inbox = Inbox(ctx, self.digest_, self.focus_, self.coordinator)
         self.questions = QuestionService(ctx, self.coordinator, self.focus_)
         self.announcer = Announcer(ctx, self.store, self.digest_, self.coordinator, self.decision_log)
         self.normalizer = Normalizer(ctx)
         self.hard_rules = HardRules(ctx, self.dispatcher, self.decision_log, self.questions)
-        self.pipeline = EventPipeline(ctx, self.normalizer, self.store, self.hard_rules, self.classifier, self.dispatcher,
+        self.pipeline = EventPipeline(ctx, self.normalizer, self.store, self.hard_rules, self.dispatcher,
                                       self.announcer, self.decision_log)
         self.jobs = JobTracker(ctx, self.store, self.dispatcher)
 
@@ -224,6 +219,7 @@ class Attention:
             self._last_purge = now
             if self.rules.purge():
                 await asyncio.to_thread(self.rules.save)
+        self.inbox.tick(now)
         await self.coordinator.pump()
 
     def _att(self, cfg: dict | None = None) -> dict:
@@ -330,6 +326,20 @@ class Attention:
                 "focus": [{"id": f.id, "kind": f.kind, "topic": f.topic, "priority": f.priority} for f in self._focus],
                 "digest": self.digest_counts(), "decisions": list(self.decisions)[-20:], "settings": self._att()}
 
+    def buffer_view(self) -> dict:
+        """Вкладка «Состояние», буфер событий: очередь с весами, история исходов, последние пачки и когда уйдёт следующая."""
+        now = self._clock()
+        view = self.digest_.view(now)
+        blocker = self.inbox.blocker(now)
+        view["inbox"] = {"blocker": blocker, "ready": not blocker, "min_interval_s": self._att().get("inbox", {}).get("min_interval_s", 60),
+                         "last_batch_ago_s": round(now - self.inbox.last_wake, 1) if self.inbox.last_wake else None}
+        view["now"] = now
+        return view
+
+    def context_events(self, limit: int = 6) -> str:
+        """Самые весомые ждущие события для контекста ответа (не забирает их из очереди)."""
+        return self.digest_.peek(limit)
+
     # ── обращения пользователя ───────────────────────────────────────────────
 
     @staticmethod
@@ -417,18 +427,6 @@ class Attention:
 
     def _note_sender(self, item: Item, *, skip_memory: bool) -> None:
         self.normalizer.note_sender(item, skip_memory=skip_memory)
-
-    def _apply_classification(self, item: Item, cls: decide.EventClass | None, declared: int | None) -> None:
-        self.classifier.apply(item, cls, declared)
-
-    def _score(self, item: Item, cfg: dict, att: dict) -> dict:
-        return self.scorer.score(item, cfg, att)
-
-    def _decide(self, priority: float, att: dict, away: bool) -> str:
-        return self.scorer.decide(priority, att, away)
-
-    def _half_life(self, kind: str, att: dict) -> float:
-        return self.scorer.half_life(kind, att)
 
     def _fact(self, item: Item) -> str:
         return event_fact(self.ctx, item)

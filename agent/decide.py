@@ -29,10 +29,8 @@ logger = logging.getLogger("decide")
 
 URL = env("GITS_DECIDER_URL", "http://127.0.0.1:8768")
 TIMEOUT = float(env("GITS_DECIDER_TIMEOUT", "2.5"))
-EVENT_TIMEOUT_S = float(env("GITS_DECIDER_EVENT_TIMEOUT", "3.0"))    # ATT-3: событие модуля (замер: ответ 0.6-1 с на процессоре, а вызовы идут по очереди)
 INPUT_TIMEOUT_S = float(env("GITS_DECIDER_INPUT_TIMEOUT", "2.5"))   # ATT-3: обращение пользователя (пользователь ждёт ответа)
 MAX_CHARS = 600               # ATT-3: длиннее текст обрезается
-MAX_POLICY_OPTIONS = 12      # вариантов в вопросе policy не больше (ТЗ 18)
 _DOWN_FOR = 30.0
 _down_until = [0.0]
 _client: httpx.AsyncClient | None = None
@@ -40,54 +38,15 @@ _client: httpx.AsyncClient | None = None
 
 # ── вопросы (ATT-4): метки на английском с описаниями, вход русский ──────────────────────────────
 
-EVENT_QUESTIONS = {
-    "category": {"type": "choice", "options": {
-        "danger": "attack, raid, threat to life or property happening now",
-        "death_injury": "someone died, was badly hurt or fell ill",
-        "disaster": "fire, flood, breakdown, data loss or similar emergency",
-        "request_to_assistant": "someone asks the assistant to do something",
-        "question": "someone asks a question and waits for an answer",
-        "personal_message": "a personal message from a person to the recipient",
-        "news": "information, update, announcement",
-        "social": "small talk, jokes, greetings, chatter",
-        "routine": "status, progress, normal operation, nothing changed",
-        "spam": "advertising, scam, automated junk"}},
-    # decide это роутер (маршруты `routes.py`): нужна ли реакция вообще и какая, можно несколько сразу
-    "react": {"type": "noul", "instructions": "Does the assistant need to react to this event at all?"},
-    "speak": {"type": "noul", "instructions": "Should the assistant say something aloud about this?"},
-    "act": {"type": "noul", "instructions": "Should the assistant take a quick action in response, not just talk?"},
-    "think": {"type": "noul", "instructions": "Does this deserve thinking over later, beyond an instant reaction?"},
-}
-
-NONE_FOCUS = "none"           # метка варианта «оставить фокус как есть» в вопросе active_focus
-FOCUS_MIN_CONF = 0.6          # фокус переключается редко: подсказка active_focus принимается только при высокой уверенности
-
-
-def event_questions(policy_options: dict | None = None) -> dict:
-    """Вопросы о событии. policy_options {"модуль/политика": назначение} - варианты из активных политик модулей (манифесты):
-    вопрос `active_focus` «чей фокус нужен после события» (rimworld, montage, агент...) с вариантом «оставить как есть»
-    (подсказка менеджеру фокуса, ТЗ 18). Без вариантов - базовые EVENT_QUESTIONS (тот же объект)."""
-    if not policy_options:
-        return EVENT_QUESTIONS
-    options = dict(list(policy_options.items())[:MAX_POLICY_OPTIONS])
-    options[NONE_FOCUS] = "keep the current focus, nothing needs to switch"
-    return {**EVENT_QUESTIONS, "active_focus": {"type": "choice", "options": options,
-                                                "instructions": "Which module should hold the agent's focus after this event?"}}
-
 INPUT_QUESTIONS = {
     "intent": {"type": "choice", "options": {
         "chat": "small talk, opinion, sharing, joking; no task",
         "action": "asks to do something on the computer, in a game, in a messenger, or to find information",
-        "about_self": "asks what the assistant can do, how she works, what she remembers",
         "approval": "answers yes or no to a question the assistant asked",
         "attention_rule": "asks to not disturb, to mute or to prioritize something for some time",
         "stop": "asks the assistant to be quiet or stop talking right now"}},
     "needs_memory": {"type": "noul", "instructions": "Does a good reply need facts about people, past events or preferences?"},
 }
-
-CATEGORY_URGENCY = {"danger": 5, "death_injury": 4, "disaster": 4, "request_to_assistant": 3, "question": 3,
-                    "personal_message": 3, "news": 1, "social": 1, "routine": 0, "spam": 0}
-
 
 # ── клиент протокола ─────────────────────────────────────────────────────────────────────────────
 
@@ -149,7 +108,7 @@ class Decider:
         self.last_ms: float | None = None          # время последнего вызова, мс
         self.last_error: str | None = None         # причина сбоя последнего вызова (down, timeout, error, backend); None - без сбоя
 
-    async def classify(self, text: str, questions: dict, *, timeout: float = EVENT_TIMEOUT_S) -> dict | None:
+    async def classify(self, text: str, questions: dict, *, timeout: float = INPUT_TIMEOUT_S) -> dict | None:
         text = (text or "").strip()
         if not text or not questions:
             return None
@@ -192,46 +151,10 @@ def _answer(answers: dict, qid: str) -> tuple[str | None, float]:
 
 
 @dataclass
-class EventClass:
-    """Что классификатор сказал о событии; поля None, если уверенности не хватило."""
-
-    category: str | None = None
-    category_conf: float = 0.0
-    react: bool | None = None              # роутер: реагировать ли вообще; None - не уверен
-    speak: bool | None = None              # реплика (маршрут chat)
-    act: bool | None = None                # быстрое действие (маршрут reflex)
-    think: bool | None = None              # подумать (маршрут think)
-    active_focus: str | None = None        # чей фокус нужен: «модуль/политика» или NONE_FOCUS; None - не уверен (порог FOCUS_MIN_CONF)
-    focus_conf: float = 0.0
-
-    @property
-    def urgency(self) -> int | None:
-        return CATEGORY_URGENCY.get(self.category) if self.category else None
-
-
-def parse_event(answers: dict | None, min_conf: float) -> EventClass | None:
-    """Ответ на EVENT_QUESTIONS (ATT-8): ответ с уверенностью ниже порога не используется."""
-    if not answers:
-        return None
-    out = EventClass()
-    cat, conf = _answer(answers, "category")
-    if cat in CATEGORY_URGENCY and conf >= min_conf:
-        out.category, out.category_conf = cat, conf
-    for name in ("react", "speak", "act", "think"):
-        value, conf = _answer(answers, name)
-        if value in ("yes", "no") and conf >= min_conf:
-            setattr(out, name, value == "yes")
-    focus, conf = _answer(answers, "active_focus")
-    if focus and conf >= max(min_conf, FOCUS_MIN_CONF):
-        out.active_focus, out.focus_conf = focus, conf
-    return out
-
-
-@dataclass
 class InputClass:
     """Что классификатор сказал об обращении пользователя (ATT-28)."""
 
-    intent: str | None = None              # chat | action | about_self | approval | attention_rule | stop
+    intent: str | None = None              # chat | action | approval | attention_rule | stop
     intent_conf: float = 0.0
     needs_memory: bool | None = None
 

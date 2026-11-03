@@ -60,27 +60,20 @@ def make_router(tool, plan):
         def describe(self):
             return ""
 
-    return Router(Registry(), lambda _t: None, lambda: "", llm=FakeLLM(plan), event_log=FakeLog(),
-                  settings_provider=SettingsModule(), approver=ApprovalsModule())
+    router = Router(Registry(), lambda _t: None, event_log=FakeLog(), settings_provider=SettingsModule(),
+                    approver=ApprovalsModule())
+    router.registry.get = lambda _tid: tool
+    return router
 
 
 PLAN = '{"kind": "action", "feasible": true, "reason": "", "say_first": "", "steps": [{"tool": "home.light", "args": {}}]}'
-
-
-async def test_planner_step_is_recorded_as_fast_executor():
-    async def ok(_args):
-        return "включено"
-    router = make_router(make_tool(ok), PLAN)
-    await router.handle("включи свет", announce=False)
-    [e] = tool_trace.recent()
-    assert (e["executor"], e["tool"], e["state"], e["result"]) == ("fast", "home.light", "done", "включено")
 
 
 async def test_failed_step_is_recorded_with_reason():
     async def broken(_args):
         raise ToolError("лампа сломана")
     router = make_router(make_tool(broken), PLAN)
-    await router.handle("включи свет", announce=False)
+    await router.run_tool_ex("home.light", {})
     [e] = tool_trace.recent()
     assert e["state"] == "failed" and "лампа сломана" in e["result"]
 
@@ -90,7 +83,6 @@ async def test_call_from_outside_is_external():
         return "ок"
     tool = make_tool(ok)
     router = make_router(tool, PLAN)
-    router.registry.get = lambda tid: tool
     await router.run_tool_ex("home.light", {})
     assert [e["executor"] for e in tool_trace.recent()] == ["external"]
 

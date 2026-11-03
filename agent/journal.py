@@ -12,7 +12,7 @@ import events_log
 import latency_trace
 
 MISTAKE_TYPES = ("correction", "denied", "tool_failed", "plan_failed", "bad_rating", "misroute", "run_lost")
-RULES_VERSIONS = {"attention": "R1-R4,D0-D4/1", "conversation": "intent+router/1", "focus": "FOC/1", "router": "plan/1"}
+RULES_VERSIONS = {"attention": "R1-R4,D0-D4/1", "conversation": "intent+router/1", "router": "plan/1"}
 DECISIONS_SCAN = 1000         # сколько решений просматриваем, когда выборка идёт по trace_id (фильтр после выборки)
 
 # токены и пароли не попадают в журнал: текст ошибок может нести адрес с токеном бота или ключ в строке запроса

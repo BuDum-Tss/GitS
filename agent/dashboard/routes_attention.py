@@ -24,13 +24,6 @@ async def handle_api_thoughts(request: web.Request) -> web.Response:
     return web.json_response({"thoughts": thoughts, "reminders": reminders})
 
 
-async def handle_api_focus(request: web.Request) -> web.Response:
-    """Фокус (ТЗ 18, FOC-9): кто в фокусе, очередь, checkpoint, журнал переходов, политики модулей."""
-    if ctx.focus is None:
-        return web.json_response({"holder": None, "queue": [], "checkpoints": [], "journal": [], "policies": {}})
-    return web.json_response(ctx.focus.snapshot())
-
-
 async def handle_api_workspace(request: web.Request) -> web.Response:
     """Среда агента (ТЗ 32): где он сейчас, почему, цель, доступные среды и история переключений."""
     if ctx.workspace is None:
@@ -60,43 +53,12 @@ async def handle_api_workspace_exit(request: web.Request) -> web.Response:
     return web.json_response(res, status=200 if res.get("ok") else 409)
 
 
-async def handle_api_focus_pin(request: web.Request) -> web.Response:
-    """{"module": "rimworld"} закрепить фокус за модулем; {"module": null} снять закрепление."""
-    body, err = await json_body(request)
-    if err:
-        return err
-    if ctx.focus is None:
-        return web.json_response({"error": "фокус не подключён"}, status=503)
-    module = body.get("module")
-    if module is not None and (not isinstance(module, str) or not module):
-        return web.json_response({"error": "module: строка или null"}, status=400)
-    return web.json_response(await ctx.focus.pin(module))
-
-
-async def handle_api_focus_dnd(request: web.Request) -> web.Response:
-    """{"module": "telegram" | "all", "on": true|false} - «не беспокоить» для модуля или для всего агента."""
-    body, err = await json_body(request)
-    if err:
-        return err
-    if ctx.focus is None:
-        return web.json_response({"error": "фокус не подключён"}, status=503)
-    module, on = body.get("module", "all"), body.get("on")
-    if not isinstance(module, str) or not module or not isinstance(on, bool):
-        return web.json_response({"error": "нужны module (строка) и on (true или false)"}, status=400)
-    return web.json_response(await ctx.focus.set_dnd(module, on))
-
-
-async def handle_api_focus_once(request: web.Request) -> web.Response:
-    """{"module": "telegram"} - разовое исключение из «не беспокоить» для следующего обычного события модуля."""
-    body, err = await json_body(request)
-    if err:
-        return err
-    if ctx.focus is None:
-        return web.json_response({"error": "фокус не подключён"}, status=503)
-    module = body.get("module")
-    if not isinstance(module, str) or not module:
-        return web.json_response({"error": "нужен module (строка)"}, status=400)
-    return web.json_response(await ctx.focus.allow_once(module))
+async def handle_api_buffer(request: web.Request) -> web.Response:
+    """Буфер событий для вкладки «Состояние»: очередь с весами, история исходов (в очереди, в контексте, сказано, выброшено,
+    вытеснено), последние пачки и причина, по которой следующая пачка пока не ушла."""
+    if ctx.attention is None:
+        return web.json_response({"queue": [], "history": [], "batches": [], "inbox": {}, "now": 0})
+    return web.json_response(ctx.attention.buffer_view())
 
 
 async def handle_api_attention(request: web.Request) -> web.Response:
@@ -143,14 +105,13 @@ async def handle_api_notify(request: web.Request) -> web.Response:
 
 ROUTES = [
     ("GET", "/api/attention", handle_api_attention),
+    ("GET", "/api/buffer", handle_api_buffer),
     ("POST", "/api/attention/rules/clear", handle_api_attention_clear),
-    ("GET", "/api/focus", handle_api_focus),
     ("GET", "/api/workspace", handle_api_workspace),
     ("POST", "/api/workspace/enter", handle_api_workspace_enter),
     ("POST", "/api/workspace/exit", handle_api_workspace_exit),
     ("GET", "/api/thoughts", handle_api_thoughts),
-    ("POST", "/api/focus/pin", handle_api_focus_pin),
-    ("POST", "/api/focus/dnd", handle_api_focus_dnd),
-    ("POST", "/api/focus/allow_once", handle_api_focus_once),
+
+
     ("POST", "/api/notify", handle_api_notify),
 ]

@@ -38,12 +38,18 @@ class Registry:
         # () -> модули фокуса активного профиля (profile_manager); None: фокуса нет, видно всё (тесты)
         self.focus = None
         self.embedder = None   # tool_search.ToolEmbeddings: отбор по смыслу (CORE-36); None - только по основам слов
+        # (id модуля) -> текущий узел рабочего места, о котором сообщил модуль (ТЗ 33); None: узел неизвестен, видны все
+        self.node_of = None
 
     def _focus_modules(self) -> set[str] | None:
         return None if self.focus is None else set(self.focus())
 
     def tool_visible(self, env: Environment, tool: Tool, focus: set[str] | None = None) -> bool:
         """Виден ли инструмент планировщику (CORE-10): always - всегда; profile - когда модуль окружения в фокусе профиля."""
+        if tool.node and self.node_of is not None and env.module:
+            current = self.node_of(env.module)
+            if current and current != tool.node:
+                return False                      # ТЗ 33: действие узла видно, только пока агент в этом узле
         if self.focus is None or tool.availability == "always":
             return True
         return env.module in (focus if focus is not None else self._focus_modules())
@@ -125,6 +131,26 @@ class Registry:
         picked = [t for _, t in scored[:k]]
         picked += [t for t in tools if t.always and t not in picked]   # запасной путь не должен отсеиваться
         return picked
+
+    def search_hidden(self, text: str, k: int = 6) -> list[Tool]:
+        """Действия других узлов рабочего места (ТЗ 33), которые сейчас скрыты: по ним нельзя вызвать, но найти можно, чтобы агент
+        узнал, в какой узел зайти (`Tool.node`). Только совпавшие с запросом по основам слов."""
+        if self.node_of is None:
+            return []
+        shown = {t.id for t in self.active_tools()}
+        query = _stems(text)
+        found = []
+        for env in self.envs.values():
+            if not env.state()[0]:
+                continue
+            for t in env.tools:
+                if t.id in shown or not t.node:
+                    continue
+                doc = _stems(f"{t.name} {t.description} {' '.join(t.keywords)} {t.node.replace('/', ' ')}")
+                if query & doc:
+                    found.append((len(query & doc), t))
+        found.sort(key=lambda x: -x[0])
+        return [t for _, t in found[:k]]
 
     async def search_async(self, text: str, k: int = 14) -> list[Tool]:
         """Как search, но сначала по смыслу (эмбеддинги описаний); недоступны или кэш ещё не собран - по основам слов."""

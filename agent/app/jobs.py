@@ -21,7 +21,7 @@ class JobTracker:
         """(срочность, факт) по состоянию задачи."""
         title = job.get("title") or job.get("job_id")
         if state == "done":
-            urgency, text = 3, f"Задача «{title}» (модуль {module_id}) выполнена."
+            urgency, text = 4, f"Задача «{title}» (модуль {module_id}) выполнена."
         elif state == "failed":
             reason = (job.get("error") or {}).get("message") or "причина не названа"
             urgency, text = 4, f"Задача «{title}» (модуль {module_id}) не удалась: {reason}."

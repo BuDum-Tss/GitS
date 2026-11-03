@@ -1,5 +1,8 @@
 """MCP-сервер для RimWorld Agent Bridge (localhost:8765)."""
 import json
+import re
+import knowledge
+import real_threats
 
 from envcompat import env
 import time
@@ -134,7 +137,9 @@ _LEAN_PAWN_FIELDS = ("id", "name", "mood_pct", "health_pct", "current_job",
 def _load_state() -> dict | None:
     raw = _get("/state")
     try:
-        return json.loads(raw)
+        state = real_threats.filter_threats(json.loads(raw))
+        knowledge.set_save(state.get("save_id", ""))
+        return state
     except Exception:
         return None
 
@@ -298,6 +303,58 @@ def get_work_table() -> str:
 
 
 @mcp.tool()
+def experiment_start(title: str, hypothesis: str) -> str:
+    """Начать эксперимент для ролика: название и гипотеза («что проверяю и что ожидаю»). Идущий прежде закрывается как прерванный.
+    Сначала experiment_list: не начинай новый, пока не закончен активный."""
+    import experiments
+    try:
+        exp = experiments.start(title, hypothesis)
+    except ValueError as e:
+        return f"ERROR: {e}"
+    return f"OK: эксперимент #{exp['id']} «{exp['title']}» начат"
+
+
+@mcp.tool()
+def experiment_log(text: str, kind: str = "step", importance: int = 2) -> str:
+    """Запись в тетрадь активного эксперимента. kind: step (что сделала и что увидела), moment (момент для ролика: смешное,
+    опасное, переломное; станет меткой записи), narration (закадровая реплика для ролика, 1-2 фразы от первого лица).
+    importance 1-3. Только то, что игра подтвердила."""
+    import experiments
+    try:
+        experiments.log(text, kind, importance)
+    except ValueError as e:
+        return f"ERROR: {e}"
+    return "OK"
+
+
+@mcp.tool()
+def experiment_finish(result: str, conclusion: str) -> str:
+    """Закончить активный эксперимент: result (что получилось, по фактам) и conclusion (вывод и что проверить дальше)."""
+    import experiments
+    try:
+        exp = experiments.finish(result, conclusion)
+    except ValueError as e:
+        return f"ERROR: {e}"
+    return f"OK: эксперимент #{exp['id']} закрыт"
+
+
+@mcp.tool()
+def experiment_list() -> str:
+    """Активный эксперимент (с последними записями) и итоги прошлых. Смотри перед тем, как начать или продолжить."""
+    import experiments
+    return experiments.summary()
+
+
+def _work_type_names() -> list[str]:
+    """Имена работ из таблицы «Работа» (defName): по ним проверяются приоритеты. Нет таблицы: пусто, проверка пропускается."""
+    try:
+        data = json.loads(_query({"type": "get_work_table"}))
+        return [str(w) for w in data.get("work_types") or []]
+    except Exception:
+        return []
+
+
+@mcp.tool()
 def set_work_priorities(pawn_id: str, priorities: dict) -> str:
     """ТОЧНАЯ НАСТРОЙКА работ одного колониста сразу: priorities = {"Cooking": 1, "Construction": 2, "Hauling": 3, "Research": 0, ...}
     (1 высший, 2 высокий, 3 нормальный, 4 низкий, 0 выкл). Правки идут по одной, цифры меняются в открытом окне на глазах.
@@ -309,6 +366,10 @@ def set_work_priorities(pawn_id: str, priorities: dict) -> str:
     for work, prio in changes.items():
         if not 0 <= prio <= 4:
             return f"ERROR: приоритет {work}={prio} вне 0..4"
+    known = _work_type_names()
+    unknown = [w for w in changes if known and w not in known]
+    if unknown:                                    # мод на неизвестной работе падает с NullReferenceException без объяснений
+        return f"ERROR: нет работы {', '.join(unknown)}. Есть: {', '.join(known)}"
     for work, prio in changes.items():
         r = _post({"type": "set_work_priority", "pawn_id": pawn_id, "work_type": work, "priority": prio})
         if r.startswith("ERROR") or r.startswith("WARNING"):
@@ -429,13 +490,33 @@ def get_schedule_table() -> str:
     return json.dumps({"types": list(_SCHEDULE_TYPES), "pawns": pawns}, ensure_ascii=False)
 
 
+_RANGE_TEXT = re.compile(r"(\d{1,2})\s*[-–:]\s*(\d{1,2})\s+([A-Za-z]+)")
+
+
+def _coerce_ranges(ranges) -> list[dict]:
+    """Промежутки приходят и строкой JSON, и строками «22-5 Sleep»: приводим к списку {from, to, type}."""
+    if isinstance(ranges, str):
+        try:
+            ranges = json.loads(ranges)
+        except ValueError:
+            ranges = [x for x in re.split(r"[;,\n]+", ranges) if x.strip()]
+    out = []
+    for r in ranges or []:
+        if isinstance(r, str):
+            m = _RANGE_TEXT.search(r)
+            r = {"from": m.group(1), "to": m.group(2), "type": m.group(3).capitalize()} if m else {}
+        out.append(r)
+    return out
+
+
 @mcp.tool()
-def set_schedule_plan(pawn_id: str, ranges: list[dict]) -> str:
+def set_schedule_plan(pawn_id: str, ranges: list[dict | str] | str) -> str:
     """ТОЧНАЯ НАСТРОЙКА режима дня одного колониста (или всех: pawn_id="all") сразу целым планом:
     ranges = [{"from": 22, "to": 5, "type": "Sleep"}, {"from": 6, "to": 8, "type": "Anything"}, {"from": 9, "to": 17, "type": "Work"},
               {"from": 18, "to": 21, "type": "Joy"}] (часы включительно, можно через полночь, type: Work/Joy/Sleep/Anything/Meditate).
     Часы, не вошедшие в план, не меняются. Правки идут по одному часу, ячейки меняются в открытом окне на глазах, в конце результат
     сверяется с игрой. Только при открытом окне «Режим дня»: open_game_tab("schedule") -> это -> open_game_tab("close")."""
+    ranges = _coerce_ranges(ranges)
     if not ranges:
         return "ERROR: ranges пуст"
     plan = []
@@ -554,7 +635,8 @@ def get_items(category: str = "weapon", x: int | None = None, z: int | None = No
               only_unforbidden: bool = False, max_results: int = 20) -> str:
     """Предметы на карте с ThingID (чтобы вооружить и одеть колонистов).
 
-    category: weapon (всё оружие) / ranged / melee / apparel / medicine / food.
+    category: weapon (всё оружие) / ranged / melee / apparel / medicine / food / material (брёвна, камень, сталь, ткань) /
+    forbidden (всё запрещённое: такое колонисты не трогают, см. unforbid_item).
     x, z: от этой точки ближайшие (по умолчанию центр карты). only_unforbidden: только разрешённые.
     В ответе: id, def, label, count, позиция, forbidden, quality, ranged/range, armor_sharp/armor_blunt (броня).
     """
@@ -832,7 +914,8 @@ def forbid_item(thing_id: str) -> str:
 
 @mcp.tool()
 def unforbid_item(thing_id: str) -> str:
-    """Разрешить предмет."""
+    """Разрешить предмет: колонисты начнут им пользоваться (брёвна и камень для стройки, еду, оружие). thing_id: один id или
+    несколько через запятую (ids берутся из get_items, category=forbidden или material)."""
     return _post({"type": "unforbid", "thing_id": thing_id})
 
 
@@ -1212,6 +1295,73 @@ def camera_move(dx: int, dz: int) -> str:
     if missing:
         return missing
     return _query({"type": "camera_move", "dx": dx, "dz": dz})
+
+
+@mcp.tool()
+def ui_state() -> str:
+    """Состояние интерфейса игры текстом: какая вкладка открыта и что на ней (Архитектор: категории и постройки; Работа:
+    приоритеты; Исследования; Животные; Области; Назначения: питание, лекарства, одежда), выбранный инструмент, выделение,
+    колонисты (призыв, задание, оружие, здоровье) и враги. Смотри перед шагами: действуй только тем, что есть на экране."""
+    missing = _need_mod("ui_state")
+    if missing:
+        return missing
+    return _query({"type": "ui_state"})
+
+
+@mcp.tool()
+def get_notices() -> str:
+    """Уведомления справа на экране игры: письма (index, label, kind, можно ли убрать, есть ли кнопки выбора, возраст) и красные
+    или жёлтые плашки тревог (alerts: label, priority). Письма читай и закрывай действиями узла notices."""
+    missing = _need_mod("ui_state")
+    if missing:
+        return missing
+    raw = _query({"type": "ui_state"})
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return raw
+    return json.dumps({"letters": data.get("letters") or [], "alerts": data.get("alerts") or []}, ensure_ascii=False)
+
+
+@mcp.tool()
+def notice_read(index: int) -> str:
+    """Открыть письмо справа как клик игрока (index из get_notices); текст и кнопки выбора появятся в состоянии интерфейса."""
+    return _query({"type": "ui_letter", "index": index, "action": "read"})
+
+
+@mcp.tool()
+def notice_choose(index: int, choice: str) -> str:
+    """Выбрать кнопку в письме (index из get_notices, choice текст кнопки, например «Принять»). Письмо после выбора закроется."""
+    return _query({"type": "ui_letter", "index": index, "action": "choose", "choice": choice})
+
+
+@mcp.tool()
+def notice_dismiss(index: int) -> str:
+    """Закрыть письмо справа, когда ты на него отреагировала (index из get_notices). Письма с выбором сначала нужно прочитать и выбрать."""
+    return _query({"type": "ui_letter", "index": index, "action": "dismiss"})
+
+
+@mcp.tool()
+def ui_steps(steps: list) -> str:
+    """Шаги интерфейса так, как их делает игрок, одной последовательностью (до 12). Шаг: {"do": ...}. Строительство: open_tab
+    (tab=Architect), category (id), designator (id, stuff, rot), place (x, z) или drag (x1,z1,x2,z2, shape=line|rect), cancel.
+    Назначения: open_tab (tab=Assign), assign (pawn_id, kind=food|drugs|apparel|medical, value). Политики: policy (kind=food|drugs|apparel, action=show|create|rename|delete|allow|deny|set_drug, name, item, drug...). Кровати: bed (action=assign|unassign, bed_id из state.beds, pawn_id). Области и питомцы: area (pawn_id, area), animal (animal_id, master, follow_drafted, follow_fieldwork, train). Уведомления: letter (index из state.letters, action=read|choose|dismiss, choice=текст кнопки). Задания: open_tab (tab=Quests), quest (id, action=accept|dismiss, pawn_id). Остальное по вкладкам: select,
+    draft, undraft, move, attack, set_work_priority, research, order_tame, set_zone_home... (do равно типу команды). Идёт
+    по порядку, останавливается на первой ошибке игры и возвращает её причину и текущее состояние."""
+    import ui_steps as _ui
+    commands, error = _ui.plan(steps)
+    if error:
+        return "ERROR: " + error
+    done = []
+    for i, cmd in enumerate(commands, 1):
+        missing = _need_mod(cmd["type"])
+        if missing:
+            return missing
+        result = _query(cmd)
+        if str(result).startswith(("ERROR", "WARNING")):
+            return json.dumps({"done": done, "failed_step": i, "error": result}, ensure_ascii=False)
+        done.append(cmd["type"])
+    return json.dumps({"done": done, "state": json.loads(_query({"type": "ui_state"}))}, ensure_ascii=False)
 
 
 @mcp.tool()
@@ -1671,7 +1821,11 @@ def get_resources(min_amount: int = 1) -> str:
         return "ERROR: состояние игры недоступно"
     res = _colony(data).get("resources") or {}
     top = sorted(((k, v) for k, v in res.items() if (v or 0) >= min_amount), key=lambda kv: -float(kv[1] or 0))[:30]
-    return _brief({"food_days": _colony(data).get("food_days"), "resources": dict(top)})
+    out = {"food_days": _colony(data).get("food_days"), "resources": dict(top)}
+    if not top:
+        out["note"] = ("пусто не значит, что ничего нет: игра считает ресурсами только то, что лежит в зоне склада и не запрещено; "
+                       "предметы на карте смотри в colony_items, зону склада ставит architect_zone_stockpile")
+    return _brief(out)
 
 
 @mcp.tool()

@@ -17,9 +17,7 @@ class DecisionLog:
         score = score or {}
         extra["routes"] = extra.get("routes") or routes.of_decision(item.decision)       # маршруты решения (ТЗ 25, FAST-1)
         record = {"item": item.id, "module": item.module, "event_kind": item.kind, "urgency": item.urgency,
-                  "w_profile": score.get("w_profile"), "w_sender": score.get("w_sender"), "w_rule": score.get("w_rule"),
-                  "w_user": score.get("w_user"), "freshness": score.get("freshness"),
-                  "priority": round(item.priority, 1) if score else None, "decision": item.decision,
+                                    "priority": round(item.priority, 1) if score else None, "decision": item.decision,
                   "classifier_ms": ms, "rule": rule, "rule_id": rule_id, "count": item.count,
                   "category": item.data.get("category") if isinstance(item.data, dict) else None, **extra}
         # яркость (ТЗ 24, TRC-4): срочность, оценка модуля игры (если прислана), итог, явная просьба, новизна

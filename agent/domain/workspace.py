@@ -5,7 +5,6 @@
 запуск процесса, окно и состояние модуля среду не включают. Сон начинает планировщик сна (простой, расписание).
 """
 from dataclasses import dataclass
-from fnmatch import fnmatchcase
 
 ASSISTANT = "assistant"        # базовая среда: наблюдение за ПК, разговор, память
 SLEEP = "sleep"                # агент сам не активен, идёт обработка воспоминаний (ТЗ 27)
@@ -29,8 +28,6 @@ class Reason:
     FORCED = (DONE, BLOCKED, DISCONNECT, USER)     # выход в эти моменты не ждёт безопасной точки
 
 
-CRITICAL_URGENCY = 5               # срочность критического сигнала (ТЗ 32, WS-6)
-
 # значения `entry` в манифесте модуля (ТЗ 32, 4.1) -> причины входа; запуск процесса и окно сюда не попадают
 ENTRY_REASONS = {"user_message": Reason.USER, "self_impulse": Reason.SELF, "schedule": Reason.SCHEDULE,
                  "critical": Reason.CRITICAL}
@@ -45,7 +42,6 @@ class WorkspaceSpec:
     entry: tuple[str, ...] = ()        # причины, по которым в среду можно войти
     interruptible: bool = True         # можно ли выйти, когда среда не сообщает иного
     safe_points: tuple[str, ...] = ()  # когда выход безопасен (для промпта и дашборда)
-    signals_in: tuple[str, ...] = ()   # какие чужие сигналы среда принимает уведомлениями (шаблоны видов); пусто - все
     done_when: str = ""                # когда задача среды считается законченной
 
 
@@ -69,7 +65,7 @@ def spec_from_manifest(module_id: str, ws: dict, title: str = "") -> WorkspaceSp
     entry = tuple(dict.fromkeys(ENTRY_REASONS[n] for n in names if n in ENTRY_REASONS))
     return WorkspaceSpec(module_id, str(ws.get("title") or title or module_id), KIND_MODULE, str(ws.get("purpose") or ""),
                          entry=entry, interruptible=bool(ws.get("interruptible", True)),
-                         safe_points=tuple(ws.get("safe_points") or ()), signals_in=tuple(ws.get("signals_in") or ()),
+                         safe_points=tuple(ws.get("safe_points") or ()),
                          done_when=str(ws.get("done_when") or ""))
 
 
@@ -99,30 +95,3 @@ def exit_target(reason: str) -> str:
 
 def switch_record(ts: float, old: str, new: str, reason: str, goal: str = "", note: str = "") -> dict:
     return {"ts": ts, "from": old, "to": new, "reason": reason, "goal": goal, "note": note}
-
-
-# ── сигналы (WS-6): события чужих сред не борются за слот ──────────────────────────
-
-SIGNAL_OWN = "own"             # событие текущей среды: она обрабатывает его сама
-SIGNAL_NOTIFY = "notify"       # уведомление: среда принимает такие сигналы (signals_in)
-SIGNAL_DIGEST = "digest"       # копится в сводке
-SIGNAL_SWITCH = "switch"       # критический: переключает среду по правилам без LLM (среда вправе отказать в небезопасной точке)
-
-
-def accepts_signal(spec: WorkspaceSpec, kind: str) -> bool:
-    """Принимает ли среда сигнал такого вида уведомлением. Встроенная `assistant` принимает всё, `sleep` ничего (она молчит);
-    у модульной среды пустой `signals_in` значит «всё»."""
-    if spec.id == SLEEP:
-        return False
-    if not spec.signals_in:
-        return True
-    return any(fnmatchcase(kind, pat) for pat in spec.signals_in)
-
-
-def route_signal(current: WorkspaceSpec, target: WorkspaceSpec | None, kind: str, module: str, urgency: int | None) -> str:
-    """Что делать с событием модуля `module` в текущей среде `current`. `target` это среда этого модуля, если она есть."""
-    if module == current.id:
-        return SIGNAL_OWN
-    if (urgency or 0) >= CRITICAL_URGENCY and target is not None and Reason.CRITICAL in target.entry:
-        return SIGNAL_SWITCH
-    return SIGNAL_NOTIFY if accepts_signal(current, kind) else SIGNAL_DIGEST

@@ -1,5 +1,4 @@
 """Отбор инструментов по эмбеддингам (ТЗ 02, CORE-36) на заглушке эмбеддингов: смысл, кэш, откат на слова."""
-import asyncio
 
 import tool_search
 from environments.base import Environment, Tool
@@ -126,20 +125,3 @@ def test_cosine_and_key_helpers():
     assert tool_search._cosine([1, 0], [1, 0]) == 1.0 and tool_search._cosine([1, 0], [0, 1]) == 0.0
     assert tool_search._cosine([0, 0], [1, 1]) == 0.0
     assert tool_search._key("a") != tool_search._key("b") and tool_search._key("a") == tool_search._key("a")
-
-
-async def test_router_uses_semantic_search(tmp_path, monkeypatch):
-    from router import Router
-    stub = Stub()
-    reg = make_registry(tmp_path, stub)
-    await reg.search_async("экран", k=3)
-    await settle(reg)
-    seen = {}
-
-    async def fake_plan(self, text, tools):
-        seen["ids"] = [t.id for t in tools]
-        return {"kind": "chat", "steps": []}
-    monkeypatch.setattr(Router, "_plan", fake_plan)
-    router = Router(reg, lambda t: asyncio.sleep(0), lambda: "")
-    await router.handle("сделай снимок экрана")
-    assert seen["ids"][0] == "system.screenshot" and len(seen["ids"]) == 14

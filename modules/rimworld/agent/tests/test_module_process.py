@@ -1,6 +1,6 @@
-"""Процесс модуля целиком (ТЗ 11, раздел 11 проверки запуска): main.py как отдельный процесс против FakeCore, без игры.
+﻿"""Процесс модуля целиком (ТЗ 11, раздел 11 проверки запуска): main.py как отдельный процесс против FakeCore, без игры.
 
-Модуль должен подключиться, прислать манифест (инструменты MCP-сервера и order), состояние с game_running: false, не падать и
+Модуль должен подключиться, прислать манифест (инструменты MCP-сервера, без order), состояние с game_running: false, не падать и
 выйти кодом 0 по shutdown. Если на машине сейчас запущена RimWorld, тест пропускается: настоящий модуль начал бы играть."""
 import asyncio
 import os
@@ -47,22 +47,21 @@ async def test_main_process_connects_reports_state_and_shuts_down(tmp_path):
             manifest = hello["manifest"]
             assert hello["module_id"] == "rimworld" and manifest["capabilities"] == ["game"]
             names = {t["name"] for t in manifest["tools"]}
-            assert "order" in names and "get_colony_state" in names and "launch_game" in names and len(names) > 60
+            assert "order" not in names and "colony_overview" in names and "launch_game" in names and {"open", "back", "where"} <= names and len(names) > 50
             assert not any(n.startswith("game_") for n in names) and "get_pending_events" not in names
             assert manifest["graph"] is True and manifest["state"] is True
 
             state = (await core.wait_message("state", timeout=30)).body
             assert state["data"]["game_running"] is False and state["data"]["connected"] is False
             assert state["data"]["policy"]["id"] == "afk"                 # ТЗ 11e: старт вне фокуса (POL-11)
-            assert state["summary"].startswith("игра: нет,")
+            assert state["summary"].startswith("игра: нет")
             assert proc.returncode is None                                           # не упал
 
             assert (await core.request("graph.get", {}))["nodes"]
             from gits_sdk import ToolError
             with pytest.raises(ToolError) as e:
-                await core.call_tool("get_colony_state", {})
+                await core.call_tool("colony_overview", {})
             assert e.value.code == "unavailable"                                     # игры нет: честный отказ
-            assert await core.call_tool("order", {"text": "построй стену"}) == {"accepted": False}
 
             await core.shutdown("тест")
             code = await asyncio.wait_for(proc.wait(), 15)

@@ -18,17 +18,14 @@ LAYERS = {
 NODES = [
     ("bus", "Шина событий", "attention"),
     ("gliner", "Классификатор GLiNER", "attention"),
-    ("attention", "Внимание D0-D4", "attention"),
-    ("focus", "Фокус", "attention"),
+    ("attention", "Внимание (срочность)", "attention"),
     ("speech_queue", "Очередь речи", "output"),
     ("planner", "Выбор инструментов", "thinking"),
-    ("gemma", "Gemma (речь, план)", "thinking"),
+    ("gemma", "Claude (быстрая модель)", "thinking"),                  # id узла прежний, модель теперь Claude (claude_llm)
     ("claude", "Claude (долгие задачи)", "thinking"),
     ("tools", "Инструменты", "tools"),
     ("working_memory", "Рабочая память", "wm"),
     ("graph_memory", "Личная память (граф)", "ltm"),
-    ("kb", "Справочник (RAG)", "ltm"),
-    ("experience", "Опыт", "ltm"),
     ("out_voice", "Голос", "output"),
     ("out_pet", "Питомец", "output"),
     ("out_telegram", "Telegram", "output"),
@@ -36,10 +33,10 @@ NODES = [
 ]
 
 EDGES = [
-    ("bus", "gliner"), ("gliner", "attention"), ("attention", "focus"), ("attention", "working_memory"),
+    ("bus", "gliner"), ("gliner", "attention"), ("bus", "attention"), ("attention", "working_memory"),
     ("attention", "planner"), ("attention", "speech_queue"), ("planner", "gemma"), ("planner", "claude"),
     ("planner", "tools"), ("planner", "graph_memory"), ("gemma", "speech_queue"), ("gemma", "working_memory"),
-    ("gemma", "graph_memory"), ("working_memory", "graph_memory"), ("graph_memory", "kb"), ("graph_memory", "experience"),
+    ("gemma", "graph_memory"), ("working_memory", "graph_memory"),
     ("speech_queue", "out_voice"), ("speech_queue", "out_pet"), ("speech_queue", "out_telegram"),
     ("speech_queue", "out_dashboard"), ("claude", "speech_queue"),
 ]

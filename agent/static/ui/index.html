@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ассистент</title>
-<!-- UI-кит: Tailwind (play CDN) + daisyUI 4. Сборки нет, всё подгружается по CDN. -->
+<!-- UI-кит: Tailwind (собран локально в vendor/tailwind.css, `agent/tools/build_ui_css.ps1`) + daisyUI 4 (CDN). Пока Tailwind брался с CDN, при его недоступности пропадала вся раскладка. -->
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css">
-<script src="https://cdn.tailwindcss.com"></script>
+<link href="/static/ui/vendor/tailwind.css" rel="stylesheet" type="text/css">
 <style>
   html, body { height: 100%; }
   .scroll-y { overflow-y: auto; }
@@ -90,51 +90,61 @@
         <a role="tab" class="tab" data-tab="settings" title="Настройки" aria-label="Настройки" style="flex:0 0 auto;width:2rem;padding:0;margin-left:auto"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
       </div>
 
-      <!-- Состояние: чем занята сейчас, что видит, возможности -->
+      <!-- Состояние: что с ней сейчас (только чтение), буфер событий, что видит, игра; остальное в разделах «Диагностика» и «Возможности» -->
       <div id="tab-status" class="card bg-base-100 shadow-sm scroll-y min-h-0">
         <div class="card-body gap-4">
-          <div class="flex flex-wrap items-center gap-3">
-            <div class="font-medium">Персонаж</div>
-            <select id="character-pick" class="select select-sm select-bordered" onchange="switchCharacter(this.value)"></select>
-            <span id="character-msg" class="text-sm opacity-70"></span>
-          </div>
           <div id="now-box" class="rounded-box border border-base-300 p-3">
-            <div class="flex flex-wrap items-center gap-3">
-              <div class="font-medium">Сейчас</div>
-              <span id="modes-current" class="badge badge-primary"></span>
-              <span id="now-source" class="badge badge-ghost badge-sm" title="Почему включён именно этот режим"></span>
-              <label class="flex items-center gap-1 text-sm" title="Стример: в игре она вслух говорит мысли и планы (переключатель состояния, не профиль)"><span>Стример</span><input id="modes-streamer" type="checkbox" class="toggle toggle-sm"></label>
-              <span class="flex items-center gap-2 ml-auto"><span id="modes-battery"></span><button id="modes-refresh" class="btn btn-xs btn-ghost" title="Обновить заряд и режим">↻</button></span>
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="st-env" class="badge badge-primary" title="В какой среде она сейчас"></span>
+              <span id="st-profile" class="badge badge-ghost" title="Профиль: тон и набор инструментов"></span>
+              <span id="st-speech" class="badge badge-ghost badge-sm"></span>
+              <span id="st-game" class="badge badge-ghost badge-sm"></span>
+              <span class="ml-auto flex items-center gap-2">
+                <span id="modes-battery" title="Заряд Claude"></span>
+                <select id="character-pick" class="select select-xs select-bordered" title="Персонаж" onchange="switchCharacter(this.value)"></select>
+                <span id="character-msg" class="text-xs opacity-70"></span>
+              </span>
             </div>
-            <div id="modes-state" class="text-sm opacity-80 mt-2"></div>
-            <div id="now-goal" class="text-sm mt-1"></div>
+            <div id="now-goal" class="text-sm mt-2"></div>
             <div id="now-meta" class="text-xs opacity-70 mt-1"></div>
             <div id="now-last" class="text-xs opacity-60 mt-1"></div>
-            <div class="flex flex-wrap items-center gap-2 mt-3">
-              <select id="modes-select" class="select select-bordered select-sm" title="Режим: выбирает сама или закрепить вручную">
-                <option value="auto">Выбирает сама</option><option value="assistant">Ассистент</option>
-                <option value="rimworld">RimWorld</option>
-              </select>
-              <button id="now-assistant-btn" class="btn btn-sm btn-outline" title="Вручную вернуть обычный режим ассистента">вернуться в ассистента</button>
-              <button id="now-pin-btn" class="btn btn-sm btn-outline" title="Закрепить фокус за модулем, который его держит: другие модули его не переключат, кроме критических событий">закрепить</button>
-              <button id="now-dnd-btn" class="btn btn-sm btn-outline" title="Не беспокоить: сообщения копятся и не переключают фокус">не беспокоить</button>
-              <span id="modes-msg" class="text-xs opacity-60"></span>
-            </div>
-            <div id="modes-when" class="text-xs opacity-70 mt-1"></div>
           </div>
-          <details id="focus-box">
-            <summary class="cursor-pointer text-sm opacity-80">Подробнее о фокусе: очередь событий и решения</summary>
-            <div class="flex flex-wrap items-center gap-3 mt-2">
-              <div class="font-medium">Фокус</div>
-              <span id="focus-holder" class="badge badge-ghost badge-sm" title="Модуль, который держит фокус сейчас (слот фокуса один)"></span>
-              <button id="focus-pin-btn" class="btn btn-xs btn-outline ml-auto" title="Закрепить фокус за модулем, который его держит: другие модули его не переключат, кроме критических событий">закрепить</button>
-              <button id="focus-dnd-btn" class="btn btn-xs btn-outline" title="Не беспокоить: сообщения копятся и не переключают фокус">не беспокоить</button>
+
+          <div id="buf-box">
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="font-medium">Буфер событий</div>
+              <span id="buf-count" class="badge badge-ghost badge-sm" title="Сколько событий ждёт в очереди"></span>
+              <span id="buf-next" class="text-xs opacity-70"></span>
+              <span id="buf-legend" class="ml-auto flex flex-wrap gap-1 text-xs"></span>
             </div>
-            <div class="text-xs opacity-70 mt-2" id="focus-meta"></div>
-            <ul id="focus-queue" class="space-y-1 text-sm mt-1"></ul>
-            <div class="text-xs opacity-60 mt-2">Последние решения фокуса</div>
-            <ul id="focus-journal" class="space-y-1 text-xs"></ul>
-          </details>
+            <div id="buf-batch" class="text-xs opacity-70 mt-1"></div>
+            <div id="buf-list" class="mt-2 rounded-box border border-base-300 overflow-y-auto" style="max-height:360px"></div>
+          </div>
+
+          <div id="panel-assistant">
+              <div class="font-medium mb-2">Что она видит</div>
+              <div id="screen-now" class="text-sm mb-2 opacity-80"></div>
+              <ul id="activity" class="space-y-2 text-sm"></ul>
+            </div>
+          <div id="panel-rimworld" class="hidden space-y-4">
+<div id="game-on" class="space-y-4">
+            <div class="stats shadow w-full">
+              <div class="stat py-2"><div class="stat-title">Колония</div><div id="g-colony" class="stat-value text-lg"></div></div>
+              <div class="stat py-2"><div class="stat-title">Тик</div><div id="g-tick" class="stat-value text-lg"></div></div>
+            </div>
+            <div id="g-mode" class="alert items-start text-sm"></div>
+            <div id="g-ambition" class="alert alert-warning items-start"></div>
+            <div><div class="font-medium mb-2">Цели</div><ul id="g-goals" class="space-y-2 text-sm"></ul></div>
+            <div><div class="font-medium mb-2">Задачи</div><ul id="g-tasks" class="space-y-1 text-sm"></ul></div>
+            <div><div class="font-medium mb-2">Колонисты</div><div id="g-pawns" class="space-y-3"></div></div>
+            <div><div class="font-medium mb-2">Исследование</div><div id="g-research" class="text-sm"></div></div>
+            <div><div class="font-medium mb-2">Ресурсы</div><div class="overflow-x-auto"><table class="table table-sm"><tbody id="g-res"></tbody></table></div></div>
+            <div><div class="font-medium mb-2">Последние решения</div><ul id="g-decisions" class="space-y-2 text-sm"></ul></div>
+            <div><div class="font-medium mb-2">Потери</div><ul id="g-fates" class="text-sm"></ul></div>
+          </div>
+            </div>
+          <details id="diag-box" class="rounded-box border border-base-300 p-3">
+            <summary class="cursor-pointer text-sm font-medium">Диагностика: поток данных, задержка, настройки внимания</summary>
           <div id="flow-box" class="mt-3">
             <div class="flex flex-wrap items-center gap-3">
               <div class="font-medium">Поток данных</div>
@@ -168,14 +178,11 @@
               <div class="font-medium">Внимание</div>
               <span id="att-focus" class="badge badge-ghost badge-sm" title="Чем она занята сейчас (стек фокуса)"></span>
               <span id="att-queue" class="text-xs opacity-70" title="Очередь речи"></span>
-              <label class="flex items-center gap-1 text-sm ml-auto" title="Классификатор (сервис decider) подсказывает важность событий и намерение обращений; выключен: только подсказки модулей"><span>Классификатор</span><input id="att-classifier" type="checkbox" class="toggle toggle-sm"></label>
+              <label class="flex items-center gap-1 text-sm ml-auto" title="Классификатор (сервис decider) определяет намерение обращений владельца; выключен: просьбу узнают только по глаголам. События модулей он не оценивает: срочность берётся у модуля"><span>Классификатор</span><input id="att-classifier" type="checkbox" class="toggle toggle-sm"></label>
             </div>
             <div class="flex flex-wrap items-center gap-2 mt-2 text-xs">
-              <span class="opacity-70" title="Приоритет события 0-100: ниже 1-го порога выбрасывается, до 2-го уходит в сводку, до 3-го говорит при случае, до 4-го скоро, выше прерывает">Пороги решений</span>
-              <input id="att-th-0" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
-              <input id="att-th-1" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
-              <input id="att-th-2" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
-              <input id="att-th-3" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
+              <span class="opacity-70" title="Как часто накопившиеся события (входящая очередь) отдаются ей на обдумывание, в секундах">пачка событий не чаще, с</span>
+              <input id="att-inbox" type="number" min="10" max="3600" class="input input-bordered input-xs w-16">
               <span class="opacity-70" title="На сколько приоритет нового события должен превышать приоритет текущего фокуса, чтобы прервать">запас прерывания</span>
               <input id="att-margin" type="number" min="0" max="100" class="input input-bordered input-xs w-16">
               <span id="att-msg" class="text-error"></span>
@@ -183,57 +190,14 @@
             <div class="text-xs opacity-70 mt-2" id="att-digest"></div>
             <ul id="att-rules" class="space-y-1 text-sm mt-1"></ul>
           </div>
-          <div id="modes-panel" class="space-y-4">
-            <div class="divider my-0"></div>
-            <div id="panel-assistant">
-              <div class="font-medium mb-2">Что она видит</div>
-              <div id="screen-now" class="text-sm mb-2 opacity-80"></div>
-              <ul id="activity" class="space-y-2 text-sm"></ul>
-            </div>
-            <div id="panel-rimworld" class="hidden space-y-4">
-<div id="game-off" role="alert" class="alert">
-            <span>RimWorld не запущена. Когда она появится, здесь будут колонисты и ресурсы.</span>
-          </div>
-          <div id="game-on" class="hidden space-y-4">
-            <div class="stats shadow w-full">
-              <div class="stat py-2"><div class="stat-title">Колония</div><div id="g-colony" class="stat-value text-lg"></div></div>
-              <div class="stat py-2"><div class="stat-title">Тик</div><div id="g-tick" class="stat-value text-lg"></div></div>
-            </div>
-            <div id="g-mode" class="alert items-start text-sm"></div>
-            <div id="g-ambition" class="alert alert-warning items-start"></div>
-            <div><div class="font-medium mb-2">Цели</div><ul id="g-goals" class="space-y-2 text-sm"></ul></div>
-            <div><div class="font-medium mb-2">Задачи</div><ul id="g-tasks" class="space-y-1 text-sm"></ul></div>
-            <div><div class="font-medium mb-2">Колонисты</div><div id="g-pawns" class="space-y-3"></div></div>
+          </details>
+          <details id="caps-box" class="rounded-box border border-base-300 p-3">
+            <summary class="cursor-pointer text-sm font-medium">Что она умеет сейчас</summary>
             <div>
-              <div class="font-medium mb-1">Приоритеты работ <span id="g-prio-mode" class="badge badge-ghost badge-sm ml-1"></span></div>
-              <div class="text-xs opacity-60 mb-2">1 высший, 4 низкий, пусто выключено. Точная настройка, как в окне «Работа».</div>
-              <div class="overflow-x-auto"><table class="table table-xs"><thead id="g-prio-head"></thead><tbody id="g-prio"></tbody></table></div>
-            </div>
-            <div>
-              <div class="font-medium mb-1">Режим дня</div>
-              <div class="text-xs opacity-60 mb-2">24 часа: <span class="inline-block rounded px-1.5 bg-info text-info-content">сон</span>
-                <span class="inline-block rounded px-1.5 bg-success text-success-content">работа</span>
-                <span class="inline-block rounded px-1.5 bg-warning text-warning-content">отдых</span>
-                <span class="inline-block rounded px-1.5 bg-base-300">любое</span>
-                <span class="inline-block rounded px-1.5 bg-secondary text-secondary-content">медитация</span></div>
-              <div class="overflow-x-auto"><table class="table table-xs"><thead id="g-sched-head"></thead><tbody id="g-sched"></tbody></table></div>
-            </div>
-            <div>
-              <div class="font-medium mb-1">Оценки событий <span class="text-xs opacity-60 font-normal">быстрая модель решений; отметь верно или нет: по отметкам считается точность</span></div>
-              <div class="overflow-x-auto"><table class="table table-xs"><tbody id="g-appr"></tbody></table></div>
-            </div>
-            <div><div class="font-medium mb-2">Исследование</div><div id="g-research" class="text-sm"></div></div>
-            <div><div class="font-medium mb-2">Ресурсы</div><div class="overflow-x-auto"><table class="table table-sm"><tbody id="g-res"></tbody></table></div></div>
-            <div><div class="font-medium mb-2">Последние решения</div><ul id="g-decisions" class="space-y-2 text-sm"></ul></div>
-            <div><div class="font-medium mb-2">Потери</div><ul id="g-fates" class="text-sm"></ul></div>
-          </div>
-            </div>
-            <div>
-              <div class="font-medium mb-1">Возможности сейчас</div>
               <p class="text-xs opacity-60 mb-2">Окружения и инструменты текущего режима. Любая просьба сначала проверяется по этому списку: если подходящего инструмента нет, она так и скажет.</p>
               <div id="caps-list" class="space-y-4"></div>
             </div>
-          </div>
+          </details>
         </div>
       </div>
 
@@ -496,7 +460,7 @@ showMemPane(['user', 'plan', 'eps', 'facts'].includes(savedPane) ? savedPane : '
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('tab-active', t === tab));
   ['status', 'memory', 'thoughts', 'modules', 'events', 'arch', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
-  if (tab.dataset.tab === 'status') { loadModes().catch(() => {}); loadFocus().catch(() => {}); }
+  if (tab.dataset.tab === 'status') { loadModes().catch(() => {}); loadWorkspace().catch(() => {}); loadBuffer().catch(() => {}); }
   if (tab.dataset.tab === 'modules') { loadModules().catch(() => {}); }
   if (tab.dataset.tab === 'thoughts') { loadThoughts().catch(() => {}); }
   if (tab.dataset.tab === 'memory') { loadFacts().catch(() => {}); }
@@ -592,28 +556,24 @@ function stateLine(g) {
   return g.current === 'sleep' ? 'Токены кончились, жду, пока освободится окно лимита' : '';
 }
 const agoText = ts => { const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60)); return m < 1 ? 'только что' : m < 90 ? `${m} мин назад` : `${Math.round(m / 60)} ч назад`; };
-// карточка «Сейчас»: режим (профиль), держатель фокуса, цель, закрепление, очередь, последнее переключение
+// карточка «Состояние»: только чтение (среда, профиль, речь, игра, цель, последняя смена среды)
+const ST = {last: null};
 function renderNow() {
-  const g = MD.data, f = FOC.last;
+  const g = MD.data, st = ST.last, w = WS.last;
   if (!g) return;
   const cur = g.nodes.find(n => n.id === g.current) || {};
   const sleeping = !!(g.battery && g.battery.sleeping);
-  $('modes-current').textContent = cur.label || g.current || '';
-  $('now-source').textContent = sleeping ? 'нет заряда Claude' : (g.override && g.override === g.current ? 'выбрано вручную' : 'выбирает сама');
-  $('modes-state').textContent = stateLine(g) || cur.title || '';
-  const h = f && f.holder;
-  $('now-goal').textContent = h
-    ? `Фокус у модуля ${h.module}, политика ${h.policy}${h.goal ? ': ' + h.goal : ''}${h.since ? ` (с ${new Date(h.since * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})})` : ''}`
-    : 'Фокус свободен: она с вами, в разговоре и наблюдении.';
-  const queued = f ? (f.queue || []).length : 0;
-  $('now-meta').textContent = f ? [f.pin && `закреплён за ${f.pin}`, f.dnd && f.dnd.all && 'не беспокоить для всего агента',
-    queued ? `в очереди фокуса: ${queued}` : 'очередь фокуса пуста'].filter(Boolean).join('. ') : '';
-  const last = f && (f.switches || []).slice(-1)[0];
-  $('now-last').textContent = last ? `Последнее переключение: ${last.type}${last.module ? ' ' + last.module : ''}${last.reason ? ' (' + last.reason + ')' : ''}, ${agoText(last.ts)}` : '';
-  $('now-assistant-btn').disabled = g.current === 'assistant' && !g.override && !sleeping;
-  $('now-pin-btn').textContent = f && f.pin ? 'снять закрепление' : 'закрепить';
-  $('now-pin-btn').disabled = !(f && (f.pin || f.holder));
-  $('now-dnd-btn').textContent = f && f.dnd && f.dnd.all ? 'выключить «не беспокоить»' : 'не беспокоить';
+  $('st-env').textContent = w ? w.title : 'Ассистент';
+  $('st-profile').textContent = 'профиль: ' + (cur.label || g.current || '—');
+  const pr = (st && st.presence) || {};
+  $('st-speech').textContent = pr.speaking ? 'говорит' : (pr.busy ? 'занята' : 'молчит');
+  $('st-game').textContent = st && st.connected ? `игра: ${st.colony_name || 'онлайн'}${st.mode && st.mode.label ? ', ' + st.mode.label : ''}` : 'игра не запущена';
+  $('now-goal').textContent = w && w.current !== 'assistant'
+    ? `Цель: ${w.goal || '—'}${w.since ? ` (с ${new Date(w.since * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})})` : ''}`
+    : (sleeping ? 'Спит: токены Claude кончились.' : 'Наблюдает за компьютером, на связи.');
+  $('now-meta').textContent = stateLine(g) || cur.title || '';
+  const last = w && (w.history || []).slice(-1)[0];
+  $('now-last').textContent = last ? `Последняя смена среды: ${last.from} → ${last.to} (${last.reason}), ${agoText(last.ts)}` : '';
 }
 async function loadModes() {
   const g = await (await fetch('/api/modes')).json();
@@ -622,32 +582,50 @@ async function loadModes() {
   $('badge-battery').style.cursor = 'pointer'; $('badge-battery').onclick = () => loadModes().catch(() => {});
   if ($('tab-status').classList.contains('hidden')) return;
   $('modes-battery').innerHTML = batteryHtml(g.battery, true);
-  $('modes-when').textContent = batteryWhen(g.battery).trim();
-  const selOpts = g.nodes.filter(n => !n.planned), selSig = selOpts.map(n => n.id).join(',');
-  if ($('modes-select').dataset.sig !== selSig) {     // профили приходят из agent/profiles/*.yaml
-    $('modes-select').dataset.sig = selSig;
-    $('modes-select').innerHTML = '<option value="auto">Выбирает сама</option>' + selOpts.map(n => `<option value="${esc(n.id)}">${esc(n.label)}</option>`).join('');
-  }
-  if (document.activeElement !== $('modes-select')) $('modes-select').value = g.override || 'auto';
-  if (document.activeElement !== $('modes-streamer')) $('modes-streamer').checked = !!(g.flags && g.flags.streamer);
-  $('panel-rimworld').classList.toggle('hidden', g.current !== 'rimworld');
-  if (!MD.bound) {
-    MD.bound = true;
-    const setMode = async mode => {
-      const r = await fetch('/api/mode', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode})});
-      $('modes-msg').textContent = r.ok ? '' : (await r.json()).error;
-      loadModes().catch(() => {});
-    };
-    $('modes-refresh').onclick = async e => { e.target.disabled = true; try { await loadModes(); await loadFocus(); } finally { e.target.disabled = false; } };
-    $('modes-select').onchange = e => setMode(e.target.value);
-    $('now-assistant-btn').onclick = () => setMode('assistant');
-    $('modes-streamer').onchange = e => fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({streamer: e.target.checked})});
-  }
   renderNow();
   await loadCaps().catch(() => {});
 }
 setInterval(() => loadModes().catch(() => {}), 3000);
 loadModes().catch(() => {});
+
+// ── буфер событий: очередь с весами и судьбы событий; то, что попало в контекст модели, подсвечено ──
+const BUF_STATE = {
+  queued: ['ждёт', 'badge-ghost', 'В очереди: ещё не ушло к модели'],
+  context: ['в контексте', 'badge-primary', 'Попало в контекст модели'],
+  said: ['сказано', 'badge-success', 'Срочное: сказано сразу'],
+  dropped: ['выброшено', 'badge-outline', 'Срочность 0: не стоит внимания'],
+  evicted: ['вытеснено', 'badge-warning', 'Очередь переполнилась: ушло самое лёгкое'],
+};
+const BUF_VIA = {batch: 'пачка для размышления', asked: 'по просьбе «что я пропустила»', reply: 'контекст ответа'};
+async function loadBuffer() {
+  if ($('tab-status').classList.contains('hidden')) return;
+  const b = await fetch('/api/buffer').then(r => r.json());
+  const weight = new Map((b.queue || []).map(q => [q.id, q]));
+  const t = ts => new Date(ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  $('buf-count').textContent = `в очереди ${(b.queue || []).length}`;
+  const inbox = b.inbox || {};
+  $('buf-next').textContent = inbox.ready ? 'пачка уйдёт на ближайшем шаге' : (inbox.blocker ? 'пачка ждёт: ' + inbox.blocker : '');
+  const last = (b.batches || [])[0];
+  $('buf-batch').textContent = last ? `Последняя выдача модели: ${t(last.ts)}, ${last.ids.length} соб., ${BUF_VIA[last.via] || last.via}.` : 'Модель пока ничего из очереди не получала.';
+  $('buf-legend').innerHTML = Object.values(BUF_STATE).map(([name, cls, tip]) => `<span class="badge badge-sm ${cls}" title="${esc(tip)}">${name}</span>`).join('');
+  const lastCtx = new Set(last ? last.ids : []);
+  const rows = (b.history || []).map(h => {
+    const [name, cls] = BUF_STATE[h.state] || [h.state, 'badge-ghost'];
+    const q = weight.get(h.id), inCtx = h.state === 'context';
+    const fresh = inCtx && b.now - h.context_ts < 45;           // только что попало в контекст
+    const style = inCtx ? `background:oklch(var(--p)/${fresh ? 0.22 : 0.12});border-left:3px solid oklch(var(--p))` : 'border-left:3px solid transparent';
+    const dim = h.state === 'dropped' ? 'opacity-50 line-through' : (h.state === 'evicted' ? 'opacity-60' : '');
+    const via = inCtx && h.via ? ` · ${BUF_VIA[h.via] || h.via}` : '';
+    return `<div class="flex items-start gap-2 px-2 py-1 text-xs border-b border-base-200 ${dim}" style="${style}">
+      <time class="opacity-50 shrink-0">${t(h.ts)}</time>
+      <span class="badge badge-ghost badge-sm shrink-0">${esc(h.module)}</span>
+      <span class="grow min-w-0 bubble-text" title="${esc(h.kind)}">${esc(h.text)}${h.count > 1 ? ` <span class="opacity-60">(×${h.count})</span>` : ''}</span>
+      <span class="opacity-60 shrink-0" title="Вес: срочность × новизна × среда">${q ? q.weight : ''}</span>
+      <span class="badge badge-sm ${cls} shrink-0" title="${esc(BUF_STATE[h.state] ? BUF_STATE[h.state][2] : '')}${esc(via)}">${name}${fresh ? ' ●' : ''}</span></div>`;
+  }).join('') || '<div class="p-3 text-xs opacity-60">Событий пока не было.</div>';
+  if ($('buf-list').dataset.sig !== rows) { $('buf-list').dataset.sig = rows; $('buf-list').innerHTML = rows; }
+}
+setInterval(() => loadBuffer().catch(() => {}), 2000);
 
 // ── факты (память-граф в SQLite) и сводка по слоям памяти ──
 const MEMSTAT = {};          // последние данные слоёв для таблицы «Как устроена память»
@@ -785,7 +763,7 @@ $('chat').addEventListener('scroll', () => {
 });
 let chatMsgs = [];
 // кто запустил инструмент: быстрый контур (планировщик на локальной модели), медленный (Claude-помощник), вызов со стороны
-const TOOL_WHO = {fast: 'быстрый контур · Gemma', claude: 'медленный контур · Claude', external: 'вызов извне'};
+const TOOL_WHO = {fast: 'быстрый контур · Claude', claude: 'Claude-помощник', external: 'единый агент и модули'};
 const TOOL_MARK = {running: '…', done: '✓', failed: '✗'};
 function toolRow(e) {
   const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
@@ -865,6 +843,8 @@ const SETTINGS_CATALOG = [
      options: HOTKEYS.map(h => [h, h])}]},
   {title: 'Восприятие', items: [
     {key: 'vision', type: 'toggle', label: 'Зрение', hint: 'Смотреть на активное окно. Всё обрабатывается локально, окна с паролями и банками пропускаются.'},
+    {key: 'autoplay', type: 'toggle', label: 'Играть самой', hint: 'Пока она в среде игры или мира и свободна, раз в несколько минут сама решает, что делать дальше (темп задаёт модуль). Выключено: действует только по событиям, просьбам и своим напоминаниям.'},
+    {key: 'fast_claude_model', type: 'select', label: 'Какой Claude отвечает быстро', options: [['haiku', 'Haiku: быстро'], ['sonnet', 'Sonnet: думает глубже, дороже по лимиту']]},
     {key: 'game_model', type: 'select', label: 'Модель игрока (ходы и планирование)', options: [['haiku', 'Haiku: быстро и дёшево'], ['sonnet', 'Sonnet: думает глубже, дороже по лимиту']]},
     {key: 'streamer', type: 'toggle', label: 'Режим стримера', hint: 'В игре она вслух ведёт стрим: что видит, о чём думает, планы, цель игры. Без него комментирует только заметные события.'},
     {key: 'mic', type: 'toggle', label: 'Микрофон (разговор голосом)', hint: 'Слушает тебя и узнаёт по голосу. Распознаётся локально (GigaAM; WhisperX, если запущен, добавляет узнавание голосов), в облако звук не уходит.'},
@@ -1072,8 +1052,7 @@ async function labelAppraisal(id, ok, correctKind) {
 }
 
 function renderGame(d) {
-  $('game-off').classList.toggle('hidden', d.connected);
-  $('game-on').classList.toggle('hidden', !d.connected);
+  $('panel-rimworld').classList.toggle('hidden', !d.connected);
   if (!d.connected) return;
   $('g-colony').textContent = d.colony_name || '—';
   $('g-tick').textContent = d.tick != null ? d.tick.toLocaleString() : '—';
@@ -1090,43 +1069,6 @@ function renderGame(d) {
   const taskRow = (t, depth) => `<li style="margin-left:${depth * 1.1}rem"><div class="flex gap-2 ${t.status === 'done' ? 'opacity-50 line-through' : ''}"><span>${taskMark(t.status)}</span><span class="flex-1">${esc(t.text)}</span>${t.children.length ? `<span class="opacity-60">${t.progress}%</span>` : ''}</div></li>`
     + t.children.map(c => taskRow(c, depth + 1)).join('');
   $('g-tasks').innerHTML = (d.tasks || []).map(t => taskRow(t, 0)).join('') || '<li class="opacity-60">Задач пока нет.</li>';
-  // оценки событий быстрой моделью и отметки игрока
-  const KIND_RU = {combat: 'бой', death: 'смерть', injury: 'ранение', fire: 'пожар', trade: 'торговля', social: 'общение', work: 'работа', resources: 'ресурсы', other: 'другое'};
-  const apr = d.appraisals || [];
-  $('g-appr').innerHTML = apr.map(a => {
-    const m = a.model || {}, k = (m.kind || {}), dv = a.derived || {}, lb = a.label;
-    const verdict = lb ? (lb.ok ? '<span class="badge badge-success badge-sm">верно</span>' : `<span class="badge badge-error badge-sm">нет${lb.correct_kind ? ': ' + esc(KIND_RU[lb.correct_kind] || lb.correct_kind) : ''}</span>`)
-      : `<span class="flex gap-1"><button class="btn btn-xs btn-ghost" data-apr="${esc(a.id)}" data-ok="1" title="Оценка верна">✓</button>
-         <select class="select select-xs select-bordered" data-apr-bad="${esc(a.id)}" title="Неверно: выбери правильную категорию"><option value="">✗</option>${Object.entries(KIND_RU).map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></span>`;
-    return `<tr><td class="max-w-[16rem] truncate" title="${esc(a.text)}">${esc(a.text)}</td>
-      <td class="whitespace-nowrap">${esc(KIND_RU[k.answer] || k.answer || '?')} ${k.confidence != null ? '(' + Math.round(k.confidence * 100) + '%)' : ''}</td>
-      <td class="whitespace-nowrap text-xs opacity-80">важн. ${dv.importance ?? '?'}${dv.action && dv.action !== 'none' ? ', ' + esc(dv.action) : ''}, ${esc(dv.comment || '')}</td>
-      <td class="text-xs opacity-70 max-w-[10rem] truncate" title="${esc(a.outcome || '')}">${esc(a.outcome || '')}</td><td>${verdict}</td></tr>`;
-  }).join('') || '<tr><td class="opacity-60">Событий пока не было.</td></tr>';
-  $('g-appr').querySelectorAll('[data-apr]').forEach(b => b.onclick = () => labelAppraisal(b.dataset.apr, true, ''));
-  $('g-appr').querySelectorAll('[data-apr-bad]').forEach(sel => sel.onchange = () => sel.value && labelAppraisal(sel.dataset.aprBad, false, sel.value));
-  // режим дня: у кого какой час чем занят
-  const SCOL = {Sleep: 'bg-info', Work: 'bg-success', Joy: 'bg-warning', Anything: 'bg-base-300', Meditate: 'bg-secondary'};
-  const SLBL = {Sleep: 'сон', Work: 'работа', Joy: 'отдых', Anything: 'любое', Meditate: 'медитация'};
-  const sp = (d.pawns || []).filter(p => p.schedule && p.schedule.length === 24);
-  $('g-sched-head').innerHTML = '<tr><th></th>' + Array.from({length: 24}, (_, h) => `<th class="text-center px-0 font-normal text-[10px]">${h}</th>`).join('') + '</tr>';
-  $('g-sched').innerHTML = sp.map(p => `<tr><td class="whitespace-nowrap">${esc(p.name)}</td>` + p.schedule.map((t, h) =>
-    `<td class="p-0.5" title="${h}:00 ${esc(SLBL[t] || t)}"><div class="h-4 rounded-sm ${SCOL[t] || 'bg-base-300'}"></div></td>`).join('') + '</tr>').join('');
-  // таблица приоритетов работ: у кого что и какой цифрой
-  const WORKS = ['Firefighter', 'Patient', 'Doctor', 'PatientBedRest', 'Childcare', 'BasicWorker', 'Warden', 'Handling', 'Cooking', 'Hunting',
-    'Construction', 'Growing', 'Mining', 'PlantCutting', 'Smithing', 'Tailoring', 'Art', 'Crafting', 'Hauling', 'Cleaning', 'Research'];
-  const TITLE = {Firefighter: 'Пожар', Patient: 'Пациент', Doctor: 'Врач', PatientBedRest: 'Отдых', Childcare: 'Няня', BasicWorker: 'Работа', Warden: 'Надзор',
-    Handling: 'Зверо', Cooking: 'Повар', Hunting: 'Охота', Construction: 'Стройка', Growing: 'Ферма', Mining: 'Шахта', PlantCutting: 'Сад', Smithing: 'Кузнец',
-    Tailoring: 'Портной', Art: 'Худож.', Crafting: 'Ремесло', Hauling: 'Носка', Cleaning: 'Уборка', Research: 'Учёный'};
-  const pr = (d.pawns || []).filter(p => p.work_priorities);
-  const cols = WORKS.filter(w => pr.some(p => w in p.work_priorities));
-  $('g-prio-mode').textContent = d.manual_priorities === false ? 'только вкл/выкл' : d.manual_priorities ? 'ручные приоритеты' : '';
-  $('g-prio-head').innerHTML = '<tr><th></th>' + cols.map(w => `<th class="text-center px-1" title="${esc(w)}">${esc(TITLE[w] || w)}</th>`).join('') + '</tr>';
-  const COL = {1: 'bg-success text-success-content', 2: 'bg-info text-info-content', 3: 'bg-base-300', 4: 'opacity-50'};
-  $('g-prio').innerHTML = pr.map(p => `<tr><td class="whitespace-nowrap">${esc(p.name)}</td>` + cols.map(w => {
-    const v = p.work_priorities[w];
-    return `<td class="text-center px-1"><span class="inline-block rounded px-1.5 ${COL[v] || ''}">${v ? v : ''}</span></td>`;
-  }).join('') + '</tr>').join('');
   $('g-pawns').innerHTML = (d.pawns || []).map(p => {
     const hp = Math.round((p.health_pct ?? 1) * 100);
     return `<div><div class="flex justify-between text-sm"><span class="font-medium">${esc(p.name || p.id)}</span><span class="opacity-60">${hp}%</span></div>
@@ -1150,7 +1092,7 @@ function renderGame(d) {
     || '<li class="opacity-60">Потерь нет.</li>';
 }
 
-// ── внимание (ТЗ 03, ATT-30): классификатор, пороги, действующие правила ──
+// ── внимание (ТЗ 03, ATT-30): классификатор обращений, входящая очередь, действующие правила ──
 const ATT = {sig: ''};
 async function loadAttention() {
   if ($('tab-status').classList.contains('hidden')) return;
@@ -1163,7 +1105,7 @@ async function loadAttention() {
   $('att-digest').textContent = digest ? `В сводке накопилось: ${digest}. Спроси «что я пропустила?».` : 'Сводка пуста.';
   if (!typing) {
     $('att-classifier').checked = !!s.classifier;
-    (s.thresholds || []).forEach((v, i) => { $('att-th-' + i).value = v; });
+    $('att-inbox').value = (s.inbox || {}).min_interval_s ?? '';
     $('att-margin').value = s.interrupt_margin ?? '';
   }
   const html = (a.rules || []).map(r => `<li class="flex items-center justify-between gap-2 border border-base-300 rounded px-2 py-1">
@@ -1174,12 +1116,7 @@ async function loadAttention() {
   if (ATT.sig !== html) { ATT.sig = html; $('att-rules').innerHTML = html; }
 }
 $('att-classifier').onchange = e => post('/api/settings', {attention: {classifier: e.target.checked}});
-const attThresholds = () => {
-  const th = [0, 1, 2, 3].map(i => parseFloat($('att-th-' + i).value));
-  if (th.some(x => Number.isNaN(x)) || th.some((x, i) => i && x < th[i - 1])) { $('att-msg').textContent = 'Пороги: четыре числа по возрастанию'; return; }
-  $('att-msg').textContent = ''; post('/api/settings', {attention: {thresholds: th}});
-};
-[0, 1, 2, 3].forEach(i => { $('att-th-' + i).onchange = attThresholds; });
+$('att-inbox').onchange = e => { const v = parseFloat(e.target.value); if (!Number.isNaN(v) && v >= 10) post('/api/settings', {attention: {inbox: {min_interval_s: v}}}); };
 $('att-margin').onchange = e => { const v = parseFloat(e.target.value); if (!Number.isNaN(v) && v >= 0) post('/api/settings', {attention: {interrupt_margin: v}}); };
 $('att-rules').addEventListener('click', async e => {
   const el = e.target.closest('[data-att-clear]'); if (!el) return;
@@ -1187,45 +1124,14 @@ $('att-rules').addEventListener('click', async e => {
 });
 setInterval(() => loadAttention().catch(() => {}), 3000);
 loadAttention().catch(() => {});
-// ТЗ 18, FOC-9: блок «Фокус» во вкладке «Состояние»
-const FOC = {sig: '', last: null};
-// ТЗ 18: какой эшелон решил (правила, GLiNER или Gemma) и уверенность классификатора
-const ECHELON_NAME = {rules: 'правила', gliner: 'GLiNER', gemma: 'Gemma'};
-const echelonBadge = (e, conf) => e ? `<span class="badge badge-sm badge-ghost" title="Эшелон решения">${esc(ECHELON_NAME[e] || e)}${conf != null ? ' ' + Number(conf).toFixed(2) : ''}</span>` : '';
-async function loadFocus() {
+// среда агента для карточки «Сейчас»
+const WS = {last: null};
+async function loadWorkspace() {
   if ($('tab-status').classList.contains('hidden')) return;
-  const f = await fetch('/api/focus').then(r => r.json());
-  FOC.last = f;
-  $('focus-holder').textContent = f.holder ? `${f.holder.module}: ${f.holder.policy}${f.holder.echelon ? ' · решил ' + (ECHELON_NAME[f.holder.echelon] || f.holder.echelon) : ''}` : 'свободен (фокус у разговора)';
-  const dndMods = (f.dnd && f.dnd.modules) || [];
-  const profMods = (f.dnd && f.dnd.profile) || [];
-  $('focus-meta').textContent = [f.pin && `закреплён за ${f.pin}`, f.dnd && f.dnd.all && 'не беспокоить для всего агента',
-    dndMods.length && `не беспокоить: ${dndMods.join(', ')}`, profMods.length && `профиль не переключает фокус: ${profMods.join(', ')}`,
-    (f.once || []).length && `разовое исключение: ${f.once.join(', ')}`]
-    .filter(Boolean).join('. ');
-  $('focus-pin-btn').textContent = f.pin ? 'снять закрепление' : 'закрепить';
-  $('focus-dnd-btn').textContent = f.dnd && f.dnd.all ? 'выключить «не беспокоить»' : 'не беспокоить';
-  const q = (f.queue || []).map(e => `<li class="border border-base-300 rounded px-2 py-1"><span class="badge badge-sm badge-outline">${esc(e.status)}</span> ${echelonBadge(e.echelon, e.confidence)} ${esc(e.module)}: <span class="text-xs">${esc(e.text)}</span> <span class="opacity-60 text-xs">· ${esc(e.reason || '')}</span></li>`).join('')
-    || '<li class="opacity-60 text-xs">Очередь событий пуста.</li>';
-  const j = (f.journal || []).slice(-8).reverse().map(r => `<li class="opacity-80">${esc(r.type)}${r.echelon ? ' [' + esc(ECHELON_NAME[r.echelon] || r.echelon) + ']' : ''}: ${esc(r.reason || r.module || '')}</li>`).join('')
-    || '<li class="opacity-60">Решений пока нет.</li>';
+  WS.last = await fetch('/api/workspace').then(r => r.json());
   renderNow();
-  const sig = q + j + $('focus-meta').textContent;
-  if (FOC.sig !== sig) { FOC.sig = sig; $('focus-queue').innerHTML = q; $('focus-journal').innerHTML = j; }
 }
-const focusPin = async () => {
-  const f = FOC.last || {};
-  await post('/api/focus/pin', {module: f.pin ? null : (f.holder ? f.holder.module : null)});
-  FOC.sig = ''; loadFocus().catch(() => {});
-};
-const focusDnd = async () => {
-  const f = FOC.last || {};
-  await post('/api/focus/dnd', {module: 'all', on: !(f.dnd && f.dnd.all)});
-  FOC.sig = ''; loadFocus().catch(() => {});
-};
-$('focus-pin-btn').onclick = $('now-pin-btn').onclick = focusPin;
-$('focus-dnd-btn').onclick = $('now-dnd-btn').onclick = focusDnd;
-setInterval(() => loadFocus().catch(() => {}), 3000);
+setInterval(() => loadWorkspace().catch(() => {}), 3000);
 // ТЗ 17: схема потока данных (Cytoscape) и трасса хода с задержками по шагам
 const FLOW = {cy: null, topo: null, hidden: new Set(), paused: false, turn: null, sig: '', es: null, steps: []};
 function flowStyle(c) {
@@ -1353,7 +1259,7 @@ async function loadLatency() {
 }
 setInterval(() => loadLatency().catch(() => {}), 10000);
 loadLatency().catch(() => {});
-loadFocus().catch(() => {});
+loadWorkspace().catch(() => {});
 
 // ── мысли (ТЗ 30, IMP-6): GET /api/thoughts ──
 const INTENT_NAME = {say: 'сказать', do: 'сделать', remind: 'напомнить себе', remember: 'запомнить', none: 'ничего'};
@@ -1745,6 +1651,7 @@ async function poll() {
     $('badge-core').textContent = 'ядро работает'; $('badge-core').className = 'badge badge-success badge-outline';
     $('badge-game').textContent = st.connected ? ('игра: ' + (st.colony_name || 'онлайн')) : 'игра не запущена';
     $('badge-game').className = 'badge ' + (st.connected ? 'badge-info badge-outline' : 'badge-ghost');
+    ST.last = st; renderNow();
     renderSettings(st.settings);
     $('badge-auto').classList.toggle('hidden', !(st.settings && st.settings.auto_accept));
     $('badge-quiet').classList.toggle('hidden', !(st.settings && (st.settings.dnd || st.settings.quiet_until * 1000 > Date.now())));

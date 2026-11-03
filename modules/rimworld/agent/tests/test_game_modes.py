@@ -23,9 +23,10 @@ def test_mode_lists_are_short_and_core_has_switch():
     # ТЗ 11e: к базовым добавлены запросы мира (колонисты, ресурсы) и switch_policy; порог поднят с 12 до 14 осознанно.
     # Исследования (unlock_for, закрытые постройки): порог режимов поднят с 32 до 33 осознанно, режим build стал 33 инструмента.
     # unforbid_item стал базовым (запрещённые материалы мешают стройке, лечению и бою из любого режима): порог 14 -> 15 и 33 -> 34 осознанно.
-    assert "switch_mode" in gm.CORE and len(gm.CORE) <= 15
+    # Эксперименты (experiment_start/log/finish/list) стали базовыми: порог 15 -> 19 и 34 -> 38 осознанно.
+    assert "switch_mode" in gm.CORE and len(gm.CORE) <= 19
     for m in gm.MODES.values():
-        assert len(gm.tools_for(m.id)) <= 34, m.id
+        assert len(gm.tools_for(m.id)) <= 38, m.id
     assert gm.home_mode("build_room") == "build" and gm.home_mode("get_colony_state") is None
 
 

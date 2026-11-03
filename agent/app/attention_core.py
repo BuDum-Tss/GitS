@@ -1,7 +1,7 @@
 """Общее для компонентов внимания (ТЗ 29, ARC-4): константы, данные события и общий контекст.
 
 `AttentionContext` держит то, что делят все компоненты и что ядро подставляет после создания (`hub`, `modules`, `profiles`,
-`on_decided`, `policy_options`, `kind_handlers`...). Компоненты читают поля контекста при каждом вызове, поэтому подмена
+`kind_handlers`...). Компоненты читают поля контекста при каждом вызове, поэтому подмена
 после создания (в ядре и в тестах) работает.
 """
 import asyncio
@@ -16,23 +16,17 @@ logger = logging.getLogger("attention")
 
 TEXT_LOG = 200                       # сколько символов текста уходит в журнал (ATT-29)
 TEXT_MAX = 1000
-CLASSIFIER_QUEUE_MAX = 20            # ATT-32
 TICK_S = 0.5
 RULES_PURGE_S = 60.0
-DIGEST_MAX = 50                      # ATT-26
-DIGEST_SPEECH_MAX = 5                # ATT-27
-DIGEST_MIN_ITEMS, DIGEST_MIN_PRIORITY, DIGEST_QUIET_S = 3, 25, 600.0
+DIGEST_MAX = 100                     # ATT-26: записей во входящей очереди на все модули
 CONVERSATION_FOCUS_P, CONVERSATION_IDLE_S, RETURN_WINDOW_S, RETURN_P = 90, 60.0, 300.0, 40
 FOCUS_DEPTH = 3                      # ATT-21
 REACTION_MAX_AGE_S = 900.0
-SPEECH_DEFAULT_URGENCY = 2           # речь модуля без urgency_hint
+SPEECH_DEFAULT_URGENCY = 4           # речь модуля без urgency_hint: модуль просит сказать, значит говорится
 PROACTIVE_P = 30                     # проактивная реплика - «болтовня»: звучит, когда больше нечего сказать
 CONVERSATION_P = 95                  # ATT-13
 QUESTION_ANNOUNCE_P = 80             # формулировка вопроса разрешения (approvals.request), сказанная вне submit_question
 ANNOUNCE_DEFAULT_URGENCY = 3
-DEFAULT_HALF_LIFE = {"rimworld.*": 60, "telegram.*": 900, "desktop.*": 120, "*.job": 600, "*": 300}
-DEFAULT_THRESHOLDS = (15, 35, 60, 85)
-REPLY_CATEGORIES = ("question", "request_to_assistant")      # категории, в которых ответа ждут сами по себе
 
 
 @dataclass
@@ -128,6 +122,8 @@ class AttentionContext:
         self.io = io
         self.clock = clock
         self.decider = decider
+        self.env_of = lambda: None                      # текущая среда агента (WorkspaceManager.current, ставит ядро)
+        self.node_watch = lambda module_id: {}          # ТЗ 33: тема -> сдвиг срочности для текущего узла модуля (ставит ядро)
         self.settings_provider = settings_provider
         self.settings = settings_source
         self.log = log
@@ -145,12 +141,11 @@ class AttentionContext:
         self.kind_handlers: dict[str, Callable] = {}
         # то же для событий, которым нужно побочное действие, но которые дальше идут обычным путём внимания
         self.kind_hooks: dict[str, Callable] = {}
-        # менеджер фокуса (ТЗ 18): on_decided(item, decision, priority, rule), синхронный; None - фокуса нет
-        self.on_decided: Callable[[Item, str, float, str | None], None] | None = None
-        # ТЗ 18, первый эшелон: варианты подсказки политики для классификатора; None - не спрашиваем
-        self.policy_options: Callable[[], dict] | None = None
         # ТЗ 30, IMP-4: маршрут think; on_think(item) синхронный, запускает размышление в фоне; None - размышления нет
         self.on_think: Callable[[Item], None] | None = None
+        # важное событие (решение D3/D4, пришло не от пользователя): on_alert(item) -> True, если его берёт единый агент и обрывает
+        # свою текущую работу; озвучивает его тогда сам агент, в очередь речи оно не кладётся. None - обычный путь.
+        self.on_alert: Callable[[Item], bool] | None = None
         self.silent_kinds: set[str] = set()      # виды, которые не пишутся в журнал module_event
         self.last_decision: dict | None = None   # для отладки и дашборда
         self.decisions: deque = deque(maxlen=100)
@@ -178,15 +173,11 @@ class AttentionContext:
         raw = raw if isinstance(raw, dict) else {}
         d = settings.DEFAULTS["attention"]
         out = {**d, **raw}
-        th = out.get("thresholds")
-        if not (isinstance(th, (list, tuple)) and len(th) == 4 and all(isinstance(x, (int, float)) for x in th)
-                and list(th) == sorted(th)):
-            out["thresholds"] = list(DEFAULT_THRESHOLDS)
-        for key in ("interrupt_margin", "away_after_s", "min_conf_event", "min_conf_input"):
+        for key in ("interrupt_margin", "away_after_s", "min_conf_input"):
             if not isinstance(out.get(key), (int, float)) or isinstance(out.get(key), bool):
                 out[key] = d[key]
-        if not isinstance(out.get("half_life"), dict) or not out["half_life"]:
-            out["half_life"] = dict(DEFAULT_HALF_LIFE)
+        if not isinstance(out.get("inbox"), dict):
+            out["inbox"] = dict(d["inbox"])
         out["classifier"] = bool(out.get("classifier", True))
         return out
 

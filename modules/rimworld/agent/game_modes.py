@@ -18,6 +18,7 @@ from pathlib import Path
 CORE = (
     "get_colony_state", "get_pawn_details", "get_items", "find_nearest", "pause_game", "resume_game", "open_game_tab", "note_decision",
     "search_knowledge", "remember_knowledge", "switch_mode",
+    "experiment_start", "experiment_log", "experiment_finish", "experiment_list",      # тетрадь экспериментов для роликов
     "get_colonists", "get_resources", "switch_policy",       # ТЗ 11e (POL-2, POL-5): запросы мира и просьба о политике
     "unforbid_item",        # запрещённое сырьё и еда мешают любой работе (стройке, лечению, бою): разрешить можно из любого режима
 )
@@ -101,6 +102,16 @@ MODES: dict[str, GameMode] = {m.id: m for m in (
         "Показать происходящее зрителям: камера, приближение, слежение, выделение.",
         ("camera_look", "camera_view", "camera_follow", "camera_zoom", "camera_move", "select_target", "set_auto_camera"),
         "Ты ведёшь камеру для зрителей: покажи место действия (camera_look), следи за пешкой (camera_follow), приблизь важное."
+    ),
+    GameMode(
+        "interface", "Интерфейс как у игрока (состояние и шаги)",
+        "Строительство, работа и приоритеты, технологии, питомцы, области, настройка пешки (питание, лекарства, одежда) и ручное "
+        "управление пешкой теми же шагами, что делает игрок: открыть вкладку, выбрать, поставить. Состояние приходит текстом.",
+        ("ui_state", "ui_steps", "get_notices", "notice_read", "notice_choose", "notice_dismiss"),
+        "Сначала ui_state: он показывает, что сейчас на экране (вкладка, категории и постройки, выбранный инструмент, колонисты, враги). "
+        "Потом ui_steps одной последовательностью шагов, как их делает игрок (open_tab, category, designator, place или drag, "
+        "assign, select, draft, move, attack). Игра сама решает, можно ли так сделать, и называет причину отказа: исправь шаг, а не "
+        "повторяй его. После ui_steps смотри state из ответа. Заявляй о сделанном только по ответу игры."
     ),
     GameMode(
         "screen", "Экран (запасной интерфейс)",

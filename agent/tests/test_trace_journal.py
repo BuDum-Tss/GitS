@@ -51,7 +51,7 @@ def test_from_bus_without_trace_is_none():
     assert lt.from_bus({"marks": {}}, "x") is None
 
 
-async def test_chat_turn_writes_one_trace_with_stages_in_order(mk):
+async def test_turn_writes_one_trace_with_stages_in_order(mk):
     rig = mk()
     await rig.say("привет, как дела")
     await rig.pump()
@@ -59,7 +59,7 @@ async def test_chat_turn_writes_one_trace_with_stages_in_order(mk):
     assert len(rows) == 1
     marks = rows[0]["data"]["marks"]
     order = [s for s in lt.STAGES if s in marks]
-    for s in ("core_in", "classify_done", "route", "retrieve_done", "llm_done", "first_sentence_ready"):
+    for s in ("core_in",):
         assert s in marks, s
     assert order == sorted(order, key=lt.STAGES.index)
     values = [marks[s] for s in order]
@@ -205,4 +205,4 @@ async def test_route_decision_is_written_for_each_turn(mk):
     await rig.pump()
     events_log.flush()
     rows = events_log.tail(limit=50, kinds={"decision"})
-    assert any(r["data"].get("route") == "chat" and r["data"].get("trace_id") for r in rows)
+    assert any(r["data"].get("route") == "resident" and r["data"].get("trace_id") for r in rows)

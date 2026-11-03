@@ -418,7 +418,8 @@ class ModuleHub:
             if not isinstance(summary, str) or len(summary) > P.STATE_SUMMARY_MAX or not isinstance(data, dict):
                 logger.warning(f"Модуль {mid}: state неверный (summary строка до {P.STATE_SUMMARY_MAX}, data объект)")
                 return
-            self.modules.set_state(mid, summary, data)
+            node = body.get("node")
+            self.modules.set_state(mid, summary, data, node if isinstance(node, str) and P.NODE_PATH_RE.match(node) else None)
             return
         if t == "panel.set":                           # TZ 15: блоки пространства модуля
             if not self._enabled(conn):

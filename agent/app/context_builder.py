@@ -33,8 +33,8 @@ class ContextBuilder:
         lines += ["- " + self._short(note) for note in h.module_notes()]
         lines.append("- Помощник Claude (Клод): сложные задачи на компьютере (программы, файлы, код, команды, интернет, анализ); "
                      "разрешение на изменения он спрашивает сам.")
-        lines.append("- Состояние модулей и их недавние события в контекст не входят: узнавай инструментами "
-                     "core.modules_status и core.module_events.")
+        lines.append("- Состояние модулей в контекст не входит: узнавай инструментом core.modules_status; ждущие события "
+                     "идут отдельным блоком ниже, полный журнал событий модулей это core.module_events.")
         status = h._memory_reader.graph_status()
         if status is not None:
             lines.append("- " + status)
@@ -59,6 +59,64 @@ class ContextBuilder:
             return self._h.environment_note() or ""
         except Exception:
             return ""
+
+    def events_block(self) -> str:
+        """Ждущие события входящей очереди (самые весомые): так видно, на что она может отреагировать, и это же видно в кнопке
+        «Контекст» у реплики. Источник ставит ядро (`Companion.events_block`); без него блока нет."""
+        provider = getattr(self._h, "events_block", None)
+        if provider is None:
+            return ""
+        try:
+            return provider() or ""
+        except Exception:
+            return ""
+
+    def node_block(self) -> str:
+        """Панель текущего узла рабочего места модуля (ТЗ 33): последний `NodePanel.refresh()`. Источник ставит ядро
+        (`Companion.node_panel_block`); без него блока нет."""
+        provider = getattr(self._h, "node_panel_block", None)
+        if provider is None:
+            return ""
+        try:
+            return provider() or ""
+        except Exception:
+            return ""
+
+    @staticmethod
+    def actions_block(window_s: float = 600.0, limit: int = 8) -> str:
+        """Что реально делается и сделано исполнителями (Claude: игровые ходы и задачи; планировщик: быстрые действия): по журналу
+        запусков инструментов, подряд идущие одинаковые склеены. Нет записей: так и сказано, чтобы она ничего не заявляла."""
+        import time
+
+        import tool_trace
+        who = {"claude": "Claude-помощник", "fast": "быстрая модель", "external": "ты сама (и модули)"}
+        state = {"running": "идёт", "done": "сделано", "failed": "не удалось"}
+        now = time.time()
+        rows: list[list] = []
+        for e in tool_trace.recent(60):
+            if now - e["ts"] > window_s:
+                continue
+            key = (e["executor"], e["tool"], e["state"])
+            if rows and rows[-1][0] == key:
+                rows[-1][1] += 1
+            else:
+                rows.append([key, 1, e])
+        head = "Что реально делается и сделано инструментами, в том числе тобой самой (за последние 10 минут)"
+        if not rows:
+            return head + ": ничего не запущено и не сделано. Не заявляй, что что-то делаешь или уже сделала."
+        lines = []
+        for key, n, e in rows[-limit:]:
+            extra = f" ×{n}" if n > 1 else ""
+            fail = f": {e['result']}" if e["state"] == "failed" and e.get("result") else ""
+            lines.append(f"- {who.get(e['executor'], e['executor'])}: {e['tool']}{extra} ({state.get(e['state'], e['state'])}){fail}")
+        return head + ":\n" + "\n".join(lines)
+
+    def in_module_env(self) -> bool:
+        """Она сейчас в среде модуля (например, играет)."""
+        try:
+            return self._h.workspace_of() not in ("assistant", "sleep")
+        except Exception:
+            return False
 
     def owner_allowed(self) -> bool:
         """Можно ли класть сведения о пользователе: только в среде `assistant` (ответ на реплику передаёт `owner=True`)."""
@@ -101,10 +159,13 @@ class ContextBuilder:
         skip_memory = mode == "pull" or needs_memory == "no"
         budget = (cfg.get("budget_tokens") or {}).get(role) or {}
         blocks: list[tuple[str, str]] = []
+        dialogue = h._memory_reader.context_block(dialogue=8)
+        if self.in_module_env():
+            dialogue = "\n".join(ln for ln in dialogue.splitlines() if not ln.startswith("Недавно на экране"))   # она играет, экран пользователя не тема
         blocks += [
-            ("dialogue", h._memory_reader.context_block(dialogue=8)),
+            ("dialogue", dialogue),
             ("profile", "" if (not owner or SPEAKER_TAG.match(query or "")) else getattr(h._memory_reader, "profile_block", lambda: "")()),   # главное о владельце (если говорит он) и её выводы о себе: всегда, вне темы
-            ("capabilities", h._capabilities())]
+            ("capabilities", "" if role == "fact" else h._capabilities())]
         if include_hearing and h._settings.load()["hearing"]:
             heard = h.recent_heard()
             if heard:
@@ -114,6 +175,13 @@ class ContextBuilder:
         env = self.environment_note()
         if env:
             blocks.append(("environment", env))
+        events = self.events_block()
+        if events:
+            blocks.append(("events", events))
+        node = self.node_block()
+        if node:
+            blocks.append(("node", node))
+        blocks.append(("actions", self.actions_block()))
         if h._self_block and not skip_memory:
             blocks.append(("self", h._self_block))
         if h._graph_block and not skip_memory:

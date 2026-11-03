@@ -20,10 +20,10 @@ def test_phase_and_summary_texts():
     assert state_reporter.phase_of(True, snapshot(False)) == "menu"
     assert state_reporter.phase_of(True, snapshot(True)) == "colony"
     assert state_reporter.summary_of("colony", snapshot(), "действует") == \
-        "игра: колония «Дом», режим агента: действует, цель: Построить базу"
+        "игра: колония «Дом»"
     assert state_reporter.summary_of("menu", snapshot(False, ambition=None), "наблюдает") == \
-        "игра: меню, режим агента: наблюдает, цель: не поставлена"
-    assert state_reporter.summary_of("none", snapshot(False), "наблюдает").startswith("игра: нет,")
+        "игра: меню"
+    assert state_reporter.summary_of("none", snapshot(False), "наблюдает")== "игра: нет"
 
 
 async def test_state_without_game_has_game_running_false(tmp_path, monkeypatch):
@@ -36,7 +36,7 @@ async def test_state_without_game_has_game_running_false(tmp_path, monkeypatch):
         await state_reporter.StateReporter(rig.client).send_once()
         body = (await rig.core.wait_message("state")).body
         assert body["data"]["game_running"] is False and body["data"]["game_phase"] == "none"
-        assert body["summary"].startswith("игра: нет,")
+        assert body["summary"]== "игра: нет"
 
 
 async def test_state_with_colony_has_game_running_true_and_game_data(tmp_path, monkeypatch):

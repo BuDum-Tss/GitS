@@ -59,7 +59,7 @@ async def test_set_profile_tool_is_rebuilt_on_profiles(tmp_path):
     assert "автоматически" in await tool.call({"mode": "auto"})
     with pytest.raises(ToolError):
         await tool.call({"mode": "minecraft"})                  # ещё не написан
-    ok, _name, info = await Router(reg, FakeCompanion().say, lambda: "")._run_step(
+    ok, _name, info, _code = await Router(reg, FakeCompanion().say)._step(
         {"tool": "assistant.set_profile", "args": {"mode": "game"}}, {"assistant.set_profile": tool})
     assert not ok and "одним из" in info                        # enum из файлов профилей, прежних значений в нём нет
 
@@ -75,7 +75,7 @@ def test_core_tools_exist_and_are_always_visible():
             return "ок"
     builtin.register_core_tools(reg, Mods())
     reg.focus = lambda: set()
-    assert {t.id for t in reg.active_tools()} == {"core.jobs", "core.job_cancel", "core.set_setting", "core.set_character"}
+    assert {t.id for t in reg.active_tools()} == {"core.jobs", "core.job_cancel", "core.set_setting", "core.set_character", "core.modules_status", "core.module_events"}
     assert reg.get("core.jobs").risk == "auto" and reg.get("core.jobs").informative
     assert reg.get("core.job_cancel").risk == "ask"
     assert asyncio.run(reg.get("core.jobs").call({})) == "задач у модулей сейчас нет"
@@ -110,3 +110,58 @@ async def test_legacy_manifest_environments_become_profile_only(tmp_path):
     reg.focus = lambda: {"game"}
     assert {t.id for t in reg.active_tools()} == {"plain.ping", "game.ping"}
     assert reg.get("game.ping").availability == "profile" and reg.get("plain.ping").availability == "always"
+
+
+async def test_permission_question_is_a_fact_without_the_tool_description():
+    """Вопрос о разрешении уходит модели фактом: в нём нет описания инструмента (оно написано для агента: «используй, только если…»)."""
+    from types import SimpleNamespace
+
+    said = []
+
+    async def say(text):
+        said.append(text)
+
+    class Approver:
+        async def request(self, text, announce, danger=None):
+            await announce(text)
+            return True
+
+    async def call(args):
+        return "ok"
+    tool = SimpleNamespace(id="desktop.click_text", env="desktop", name="click_text", params={"text": {"type": "string", "description": "надпись"}}, danger=None, danger_check=False,
+                           check=None, risk="ask", self_confirming=False, timeout_s=5, informative=False,
+                           description="ЗАПАСНОЙ УРОВЕНЬ: используй, только если у программы нет прямого инструмента.", call=call)
+    router = Router(SimpleNamespace(), say, approver=Approver())
+    ok, *_ = await router._step({"tool": "desktop.click_text", "args": {"text": "Работа"}}, {"desktop.click_text": tool})
+    assert ok and len(said) == 1
+    assert "click_text" in said[0] and "text=Работа" in said[0] and "ЗАПАСНОЙ" not in said[0] and "используй" not in said[0]
+
+
+async def test_agent_playing_in_an_autonomous_environment_is_not_asking_for_ordinary_permission():
+    """Пока агент играет сам (автономная среда), действие с риском ask идёт без вопроса; опасное всё равно спрашивается."""
+    from types import SimpleNamespace
+
+    asked = []
+
+    class Approver:
+        async def request(self, text, announce, danger=None):
+            asked.append((text, danger))
+            return True
+
+    async def call(args):
+        return "ok"
+
+    def tool(danger=None):
+        return SimpleNamespace(id="desktop.click_text", env="desktop", name="click_text", params={}, danger=(lambda a: danger),
+                               danger_check=False, check=None, risk="ask", self_confirming=False, timeout_s=5, informative=False,
+                               description="d", call=call)
+    router = Router(SimpleNamespace(), lambda t: None, approver=Approver())
+    router.auto_ok = lambda: True
+    ok, *_ = await router._step({"tool": "desktop.click_text", "args": {}}, {"desktop.click_text": tool()})
+    assert ok and asked == []
+    ok, *_ = await router._step({"tool": "desktop.click_text", "args": {}}, {"desktop.click_text": tool("удаление файла")})
+    assert ok and len(asked) == 1                                      # опасное спрашивается всегда
+    router.auto_ok = lambda: False
+    asked.clear()
+    ok, *_ = await router._step({"tool": "desktop.click_text", "args": {}}, {"desktop.click_text": tool()})
+    assert ok and len(asked) == 1                                      # вне игры всё как раньше

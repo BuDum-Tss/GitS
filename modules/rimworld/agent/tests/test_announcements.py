@@ -120,38 +120,5 @@ async def test_quick_start_press_in_the_menu_is_announced(ctrl, monkeypatch):
     assert "«Быстрый запуск»" in gl.announced[0]
 
 
-async def test_menu_navigation_is_announced_once_with_its_goal(ctrl, monkeypatch):
-    monkeypatch.setattr(game_watchdog, "press_quick_start", lambda: False)              # кнопки нет: идём через навигацию
-    monkeypatch.setattr(controller, "QUICK_START_ATTEMPTS", 1)
-    monkeypatch.setattr(controller, "QUICK_START_WAIT_POLLS", 0)
-
-    async def no_ocr():
-        pass
-    monkeypatch.setattr(ctrl, "_menu_autostart", no_ocr)
-    monkeypatch.setattr(controller.asyncio, "sleep", lambda s: no_ocr())
-    calls = []
-
-    async def fake_navigation(goal):
-        calls.append(goal)
-        return {"actions": []}
-    monkeypatch.setattr(controller, "run_game_navigation", fake_navigation)
-    await ctrl._new_colony()
-    assert calls == [controller.MENU_GOAL]
-    assert len(gl.announced) == 1 and controller.MENU_GOAL[:40] in gl.announced[0]
-    assert "веду интерфейс игры" in gl.announced[0]
 
 
-async def test_quick_start_is_retried_before_claude_navigation(ctrl, monkeypatch):
-    presses = iter([False, False, True])                                                 # окно ещё не отрисовалось
-    monkeypatch.setattr(game_watchdog, "press_quick_start", lambda: next(presses))
-    monkeypatch.setattr(controller, "_state_ready", lambda state: True)
-
-    async def instant(_s):
-        pass
-    monkeypatch.setattr(controller.asyncio, "sleep", instant)
-
-    async def no_navigation(goal):
-        raise AssertionError("до навигации через Claude дойти не должно")
-    monkeypatch.setattr(controller, "run_game_navigation", no_navigation)
-    await ctrl._new_colony()
-    assert len(gl.announced) == 1 and "«Быстрый запуск»" in gl.announced[0]

@@ -15,6 +15,42 @@ class Normalizer:
         self.ctx = ctx
 
     @staticmethod
+    def assign_urgency(item: Item, declared: int | None, env: str | None = None) -> None:
+        """Срочность события 0..5 без классификатора: подсказка модуля, иначе срочность из его манифеста, иначе 1. Обращение к ней
+        (`addressed_to_me`) поднимает срочность до «сказать сразу» и означает, что ответа ждут."""
+        from domain import scoring
+        if item.urgency is not None:
+            return
+        if scoring.is_assistant_noise(env, item.module, item.kind):
+            item.urgency = 0                              # она играет: чужие окна и вкладки не отвлекают
+            return
+        hint = item.urgency_hint if item.urgency_hint is not None else (declared if isinstance(declared, int) else None)
+        item.urgency = hint if hint is not None else 1
+        if item.addressed_to_me:
+            item.urgency = max(item.urgency, scoring.SAY_URGENCY)
+            item.needs_reply = True
+
+    @staticmethod
+    def shift_urgency(item: Item, info: dict | None, focused: bool, watch: dict | None) -> None:
+        """ТЗ 33, раздел 5: срочность по фокусу и узлу. Вне фокуса событие, оставшееся на уровне по умолчанию, берёт
+        `urgency_unfocused`; в фокусе тема события сдвигается по `watch` текущего узла (сумма сдвигов, не больше ±2).
+        Критичное (4 и выше) узлом не опускается ниже 4. Без объявленных полей ничего не меняется."""
+        if not info or item.urgency is None:
+            return
+        base = item.urgency
+        declared = info.get("default_urgency")
+        unfocused = info.get("urgency_unfocused")
+        if not focused and isinstance(unfocused, int) and isinstance(declared, int) and base <= declared:
+            item.urgency = unfocused
+            return
+        topics = info.get("topics") or []
+        if focused and watch and topics:
+            shift = max(-2, min(2, sum(int(watch.get(t, 0)) for t in topics if isinstance(t, str))))
+            if shift:
+                new = max(0, min(5, base + shift))
+                item.urgency = max(new, 4) if base >= 4 else new
+
+    @staticmethod
     def make_item(module_id: str, ev: dict, now: float) -> Item:
         sender = ev.get("sender") if isinstance(ev.get("sender"), dict) else None
         reply = ev.get("reply_channel") if isinstance(ev.get("reply_channel"), dict) else None

@@ -75,15 +75,6 @@ class FightBudget:
         self._stamps.append(self._clock())
 
 
-# ── выбор модели хода ─────────────────────────────────────────────────────────────────────────
-
-def use_local_model(model: str, turn_index: int = 0, claude_every: int = 3, claude_blocked: bool = False) -> bool:
-    """True, если ход ведёт локальная модель: только когда политика прямо просит `local`. Игрой управляет Claude: лимит Claude
-    (`claude_blocked`) не переводит ход на Gemma, ход просто пропускается; Gemma только комментирует. `mixed` и `none` теперь
-    тоже Claude (параметры `turn_index`, `claude_every` оставлены для совместимости)."""
-    return model == "local"
-
-
 # ── manual: застрявшие задачи и принуждение ───────────────────────────────────────────────────
 
 def stalls(tasks: list[dict], first_seen: dict[str, int], tick: int | None, stall_hours: float) -> list[dict]:

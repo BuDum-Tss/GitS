@@ -41,7 +41,7 @@ ESPEECH_TIMEOUT   = 60.0
 ESPEECH_START_WAIT_S = 90.0    # при первой проверке ждём, пока сервис догрузит модель (пока грузится, /health отвечает 503), а не уходим в запасной голос
 ESPEECH_DOWN_GRACE_S = 20.0    # порт не открылся за это время после первой проверки: сервиса нет, идём дальше по цепочке
 ESPEECH_RECHECK_S = 30.0       # сервис грузит модель около 15 с после старта, поэтому проверяем чаще, чем Fish Speech
-ENGINE            = os.getenv("TTS_ENGINE", "auto").strip().lower()      # auto | espeech | fish | edge
+ENGINE            = os.getenv("TTS_ENGINE", "edge").strip().lower()      # edge (быстрый, по умолчанию) | auto | espeech | fish
 
 # ── edge-tts fallback ─────────────────────────────────────────────────────────
 
@@ -71,10 +71,15 @@ def set_tone(tone) -> None:
     _tone["pitch_hz"], _tone["rate_pct"] = num("pitch_hz", 40), num("rate_pct", 25)
 
 
+EDGE_PITCH_LIMIT_HZ = 20     # сервис edge-tts отвечает таймаутом на сдвиг тона ниже -20Hz (проверено живым запуском, 2026-10)
+
+
 def _shifted(base: str, delta: float) -> str:
-    """'-25Hz' + 3 -> '-22Hz'; '-12%' + 2 -> '-10%'."""
+    """'-25Hz' + 3 -> '-20Hz' (тон в Гц ограничен допустимым для edge-tts); '-12%' + 2 -> '-10%'."""
     unit = "%" if base.endswith("%") else "Hz"
     value = int(round(float(base.rstrip("%Hz")) + delta))
+    if unit == "Hz":
+        value = max(-EDGE_PITCH_LIMIT_HZ, min(EDGE_PITCH_LIMIT_HZ, value))
     return f"{value:+d}{unit}"
 
 MAX_CHARS = 600

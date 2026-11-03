@@ -11,11 +11,10 @@ from types import SimpleNamespace
 import prompts
 from adapters.impulse_store import JsonReminders, JsonThoughts
 from app import impulse_origin
-from app.idle_reflection import IdleReflector
 from app.impulse_timer import ImpulseTimer
+from app.items import event_of
 from app.plan_nudge import PlanNudger
 from app.reflection import ReflectionService
-from app.thought_memory import ThoughtConsolidator
 from domain.event import KIND_AFTER_CONVERSATION
 
 logger = logging.getLogger("impulses")
@@ -24,8 +23,8 @@ REMINDERS_FILE = "reminders.json"
 THOUGHTS_FILE = "thoughts.json"
 
 
-def build(companion, attention, *, router=lambda: None, settings_source=None, clock=None, tasks=None) -> SimpleNamespace:
-    """companion - Companion (память, модель, контекст), attention - Attention, router() -> Router или None (планировщик),
+def build(companion, attention, *, settings_source=None, clock=None, tasks=None) -> SimpleNamespace:
+    """companion - Companion (память, модель, контекст, единый агент), attention - Attention,
     tasks - TaskService (ТЗ 32): напоминания себе и планы пользователя живут в общих задачах; без него прежний `reminders.json`."""
     import time
     clock = clock or time.time
@@ -35,9 +34,8 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
     timer = ImpulseTimer(reminders, attention.submit_self, clock=clock)
 
     async def plan(text: str):
-        r = router()
-        with impulse_origin.as_self():          # ТЗ 32: то, что планировщик сделает по этому намерению, это действие по самоимпульсу
-            return await r.handle(text, announce=False) if r is not None else None
+        with impulse_origin.as_self():          # ТЗ 32: то, что агент сделает по этому намерению, это действие по самоимпульсу
+            return await companion.resident.handle_event("self.action", text, "self")
 
     service = ReflectionService(
         llm=companion._llm, memory=companion.memory_reader, writer=companion.memory_writer, journal=journal,
@@ -45,6 +43,19 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
         settings=settings_source or companion._settings.load, clock=clock, speak=attention.reflect_speech, plan=plan,
         remind=timer.add)
     attention.attach_reflection(service)
+
+    def think(item):
+        """Один агент: событие и самоимпульс обдумывает единый агент."""
+        e = event_of(item)
+        return attention.ctx.spawn(companion.resident.handle_event(e.kind, e.text, e.origin))
+    attention.ctx.on_think = think
+
+    def alert(item) -> bool:
+        """Важное событие модуля (игра: враги, смерть, пожар) прерывает работу агента и разбирается им первым."""
+        e = event_of(item)
+        attention.ctx.spawn(companion.resident.preempt(e.kind, e.text, e.origin))
+        return True
+    attention.ctx.on_alert = alert
     plans = PlanNudger(tasks, timer.add, clock=clock)   # планы пользователя -> напоминания себе
 
     def conversation_ended(text: str) -> None:
@@ -54,23 +65,6 @@ def build(companion, attention, *, router=lambda: None, settings_source=None, cl
         task.add_done_callback(lambda t: t.cancelled() or t.exception() is None or logger.warning(f"Итог разговора: {t.exception()}"))
 
     companion.on_conversation_end = conversation_ended
-    consolidator = ThoughtConsolidator(journal=journal, writer=companion.memory_writer, clock=clock)
-    impulses = SimpleNamespace(timer=timer, reflection=service, journal=journal, reminders=reminders, plans=plans,
-                               consolidator=consolidator, idle=None)
+    impulses = SimpleNamespace(timer=timer, reflection=service, journal=journal, reminders=reminders, plans=plans)
     companion.impulses = impulses
     return impulses
-
-
-def attach_idle(impulses, companion, *, is_free, events_since=None, settings_source=None, clock=None) -> IdleReflector:
-    """Размышление в свободное время: `is_free()` - свободна ли она (фокус, внимание, сон, «не отвлекать»); события для осмысления
-    берутся из журнала событий, если `events_since` не задан. Запуск: `impulses.idle.start()`."""
-    import time
-
-    import events_log
-    clock = clock or time.time
-    kinds = {"user", "say", "telegram", "game", "module_event", "vision", "hearing", "plan"}
-    events_since = events_since or (lambda since, limit: events_log.tail(limit, kinds, since))
-    idle = IdleReflector(reflection=impulses.reflection, consolidator=impulses.consolidator, is_free=is_free,
-                         events_since=events_since, settings=settings_source or companion._settings.load, clock=clock)
-    impulses.idle = idle
-    return idle

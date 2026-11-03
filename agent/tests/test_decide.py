@@ -7,44 +7,19 @@ from aiohttp import web
 from decide import decide as http_decide      # настоящий клиент: conftest подменяет decide.decide заглушкой
 
 import decide
-from decide import CATEGORY_URGENCY, EVENT_QUESTIONS, INPUT_QUESTIONS, Decider, parse_event, parse_input
+from decide import INPUT_QUESTIONS, Decider, parse_input
 
 
 def ans(value, conf):
     return {"type": "choice", "answer": value, "confidence": conf, "probabilities": {value: conf}}
 
 
-def test_questions_match_the_protocol_and_urgency_table():
-    cats = set(EVENT_QUESTIONS["category"]["options"])
-    assert cats == set(CATEGORY_URGENCY)                                 # у каждой категории есть срочность
-    assert CATEGORY_URGENCY["danger"] == 5 and CATEGORY_URGENCY["spam"] == 0
-    assert EVENT_QUESTIONS["category"]["type"] == "choice" and EVENT_QUESTIONS["react"]["type"] == "noul"
-    assert {"react", "speak", "act", "think"} <= set(EVENT_QUESTIONS)         # decide это роутер
-    assert "emotion" not in EVENT_QUESTIONS and "emotion" not in INPUT_QUESTIONS             # эмоций нет, только решения
-    assert not {"addressed", "needs_reply", "focus_needed", "policy"} & set(EVENT_QUESTIONS)
-    assert set(INPUT_QUESTIONS["intent"]["options"]) == {"chat", "action", "about_self", "approval", "attention_rule", "stop"}
-    for q in (*EVENT_QUESTIONS.values(), *INPUT_QUESTIONS.values()):
+def test_questions_match_the_protocol():
+    assert "emotion" not in INPUT_QUESTIONS                                                  # эмоций нет, только решения
+    assert set(INPUT_QUESTIONS["intent"]["options"]) == {"chat", "action", "approval", "attention_rule", "stop"}
+    for q in INPUT_QUESTIONS.values():
         assert q["type"] in ("choice", "noul")                           # только категориальные вопросы, порядковых нет
         assert q["type"] != "choice" or all(isinstance(v, str) and v for v in q["options"].values())   # метка с описанием
-
-
-def test_parse_event_uses_answers_only_above_the_confidence_threshold():
-    answers = {"category": ans("danger", 0.73), "react": ans("yes", 0.5), "speak": ans("yes", 0.52), "act": ans("no", 0.6)}
-    cls = parse_event(answers, 0.35)
-    assert (cls.category, cls.urgency, cls.react, cls.speak, cls.act, cls.think) == ("danger", 5, True, True, False, None)
-    weak = parse_event({"category": ans("danger", 0.34), "react": ans("yes", 0.2), "speak": ans("yes", 0.1)}, 0.35)
-    assert (weak.category, weak.urgency, weak.react, weak.speak) == (None, None, None, None)
-    # порог из настроек: 0.35 - граница включительно
-    assert parse_event({"category": ans("news", 0.35)}, 0.35).category == "news"
-    assert parse_event({"category": ans("news", 0.35)}, 0.5).category is None
-
-
-def test_parse_event_router_flags_and_garbage():
-    assert parse_event({"think": ans("yes", 0.9), "react": ans("no", 0.9)}, 0.35).react is False
-    assert parse_event({"think": ans("maybe", 0.9)}, 0.35).think is None             # не yes/no: как будто ответа нет
-    assert parse_event({"category": ans("нет-такой-категории", 0.99)}, 0.35).category is None
-    assert parse_event({"category": "не словарь"}, 0.35).category is None
-    assert parse_event(None, 0.35) is None and parse_event({}, 0.35) is None
 
 
 def test_parse_input_threshold_is_stricter():
@@ -63,9 +38,9 @@ async def test_decider_truncates_text_and_passes_timeout():
         seen.update(text=text, questions=questions, timeout=timeout)
         return {"category": ans("news", 0.9)}
     d = Decider(backend)
-    out = await d.classify("а" * 1000, EVENT_QUESTIONS, timeout=1.5)
+    out = await d.classify("а" * 1000, INPUT_QUESTIONS, timeout=1.5)
     assert out["category"]["answer"] == "news"
-    assert len(seen["text"]) == 600 and seen["timeout"] == 1.5 and seen["questions"] is EVENT_QUESTIONS
+    assert len(seen["text"]) == 600 and seen["timeout"] == 1.5 and seen["questions"] is INPUT_QUESTIONS
     assert d.last_ms is not None and d.last_ms >= 0
 
 
@@ -75,10 +50,10 @@ async def test_decider_returns_none_instead_of_raising():
 
     async def empty(text, questions, timeout):
         return {}
-    assert await Decider(broken).classify("текст", EVENT_QUESTIONS) is None
-    assert await Decider(empty).classify("текст", EVENT_QUESTIONS) is None
+    assert await Decider(broken).classify("текст", INPUT_QUESTIONS) is None
+    assert await Decider(empty).classify("текст", INPUT_QUESTIONS) is None
     d = Decider(broken)
-    assert await d.classify("   ", EVENT_QUESTIONS) is None and await d.classify("текст", {}) is None
+    assert await d.classify("   ", INPUT_QUESTIONS) is None and await d.classify("текст", {}) is None
 
 
 # ── клиент протокола против локального сервера ───────────────────────────────────────────────────
@@ -123,44 +98,35 @@ def fresh_client(monkeypatch):
 async def test_client_posts_state_and_questions(fresh_client, monkeypatch):
     async with Service() as svc:
         monkeypatch.setattr(decide, "URL", svc.url)
-        out = await http_decide("Скидка 70%", EVENT_QUESTIONS, timeout=2)
+        out = await http_decide("Скидка 70%", INPUT_QUESTIONS, timeout=2)
         assert out["category"]["answer"] == "spam"
-        assert svc.requests == [{"state": "Скидка 70%", "questions": EVENT_QUESTIONS}]
+        assert svc.requests == [{"state": "Скидка 70%", "questions": INPUT_QUESTIONS}]
         assert decide.available()
 
 
 async def test_client_remembers_unavailability_for_30_seconds(fresh_client, monkeypatch):
     monkeypatch.setattr(decide, "URL", "http://127.0.0.1:1")           # закрытый порт
-    assert await http_decide("текст", EVENT_QUESTIONS, timeout=1) is None
+    assert await http_decide("текст", INPUT_QUESTIONS, timeout=1) is None
     assert not decide.available()
     async with Service() as svc:
         monkeypatch.setattr(decide, "URL", svc.url)
-        assert await http_decide("текст", EVENT_QUESTIONS) is None and svc.requests == []   # в закрытую дверь не стучимся
+        assert await http_decide("текст", INPUT_QUESTIONS) is None and svc.requests == []   # в закрытую дверь не стучимся
         decide.forget_down()
-        assert await http_decide("текст", EVENT_QUESTIONS) is not None
+        assert await http_decide("текст", INPUT_QUESTIONS) is not None
 
 
 async def test_timeout_is_not_unavailability_for_decider(fresh_client, monkeypatch):
     async with Service(delay=0.5) as svc:
         monkeypatch.setattr(decide, "URL", svc.url)
         # Decider (через модульную функцию без подмены backend) не помечает сервис недоступным при тайм-ауте
-        out = await http_decide("текст", EVENT_QUESTIONS, timeout=0.05, down_on_timeout=False)
+        out = await http_decide("текст", INPUT_QUESTIONS, timeout=0.05, down_on_timeout=False)
         assert out is None and decide.available()
-        out = await http_decide("текст", EVENT_QUESTIONS, timeout=0.05)
+        out = await http_decide("текст", INPUT_QUESTIONS, timeout=0.05)
         assert out is None and not decide.available()                   # прежнее поведение клиента: тайм-аут = недоступен
 
 
 async def test_client_http_error_is_none(fresh_client, monkeypatch):
     async with Service(status=500) as svc:
         monkeypatch.setattr(decide, "URL", svc.url)
-        assert await http_decide("текст", EVENT_QUESTIONS) is None
+        assert await http_decide("текст", INPUT_QUESTIONS) is None
 
-
-def test_route_flags_rules():
-    from domain import rules
-    assert rules.route_flags("D3", 3, speak=False) == ("D1", False)
-    assert rules.route_flags("D3", 3, react=False, think=True) == ("D1", False)        # реакция отменена: и думать незачем
-    assert rules.route_flags("D3", 5, react=False, speak=False, think=True) == ("D3", True)    # срочное не гасится
-    assert rules.route_flags("D2", 2, think=True) == ("D2", True)
-    assert rules.route_flags("D0", 1, think=True) == ("D0", False)
-    assert rules.route_flags("D2", 2) == ("D2", False)                                # классификатор не уверен: формула как была

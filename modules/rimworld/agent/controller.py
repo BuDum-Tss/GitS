@@ -23,33 +23,25 @@ import time
 from pathlib import Path
 
 import httpx
-import claude_quota
-import glados_agent
 from collections import deque
 
-from glados_agent import (run_turn, run_planning, run_long_term_planning,
-                          run_reflection, run_self_improvement, run_game_navigation)
 from memory import Memory
-import agent_mode
+import core_tasks
 import events_log
-import fast_brain
+import event_text
 import game_errors
 import gamenet
-import planning_pause
-import claude_budget
 import settings
 import statediff
 from relationships import Relationships
-import decider
 import focus_checkpoint
 import focus_mode
 import focus_status
 import policy_actions as pa
-import policy_context
 import policy_events
 import policy_manager
-import watch_rules
-from glados_agent import run_plan_check
+import knowledge
+import real_threats
 
 logger = logging.getLogger("controller")
 MEM_DIR = Path(__file__).parent / "memory"      # файлы модуля рядом с кодом (как memory/tasks.json в _tasks_block)
@@ -103,14 +95,6 @@ _GAME_TALK = ("напад", "налёт", "налет", "рейд", "враг", 
               "график", "караван", "торговц", "вооруж", "в бой", "драф", "отбей", "убеж", "бункер")
 
 
-def _is_game_talk(text: str, pawn_names: list[str]) -> bool:
-    """Сообщение игрока про игру (приказ или тревога), а не просто болтовня."""
-    low = text.lower()
-    if any(w in low for w in _GAME_TALK):
-        return True
-    return any(n and len(n) > 2 and n.lower() in low for n in pawn_names)
-
-
 def _game_command(cmd: dict) -> bool:
     """Прямая команда игре (пауза/снятие паузы), минуя MCP. True при успехе."""
     if not _game_port_open():
@@ -141,7 +125,7 @@ def _get_state() -> dict:
     if not _game_port_open():
         return {}
     try:
-        return httpx.get(f"{_BASE}/state", timeout=5).json()
+        return real_threats.filter_threats(httpx.get(f"{_BASE}/state", timeout=5).json())
     except Exception:
         return {}
 
@@ -173,24 +157,13 @@ def _state_ready(state: dict) -> bool:
     return bool(state) and state.get("status") not in ("no_game", "no_map", "initializing")
 
 
-def _similarity(a: str, b: str) -> float:
-    """Доля общих слов (Jaccard) — грубая, но дешёвая проверка на повтор."""
-    wa, wb = set(a.lower().split()), set(b.lower().split())
-    if not wa or not wb:
-        return 0.0
-    return len(wa & wb) / len(wa | wb)
-
-
 MAX_COMMENTARY_CHARS  = 220   # жёсткий потолок длины — подстраховка поверх промпта
 REPEAT_SIMILARITY_MAX = 0.55  # выше — считаем повтором предыдущей реплики
 
 
-def _trim_commentary(text: str) -> str:
-    if len(text) <= MAX_COMMENTARY_CHARS:
-        return text
-    cut = text[:MAX_COMMENTARY_CHARS]
-    last_stop = max(cut.rfind('. '), cut.rfind('! '), cut.rfind('? '))
-    return cut[:last_stop + 1] if last_stop > MAX_COMMENTARY_CHARS // 2 else cut.rstrip() + "…"
+_READ_ONLY_PREFIXES = ("get_", "look_at", "survey_", "analyze_", "search_", "describe_", "estimate_", "find_", "list_", "switch_mode",
+                       "open_game_tab", "game_screenshot", "camera_", "web_search", "remember_", "note_decision", "set_goal",
+                       "request_planning", "select_target", "ui_state")
 
 
 class Controller:
@@ -219,7 +192,6 @@ class Controller:
         self._seen_game_errors    = 0      # сколько ошибок игры из state.game_log уже записано в журнал
         self.watchdog             = None   # GameWatchdog: игра запущена, видна, подключена
         self.link                 = None   # CoreLink: речь, эмоции и события игры через ядро (модуль rimworld, ТЗ 11)
-        glados_agent.set_tool_hook(self._on_tool_call)
         self.on_phase_change      = None   # () -> None: игра загрузилась или забег закончился (модуль отправит состояние сразу)
         self._goal_status         = None   # статусы целей на прошлой проверке (id -> status): событие, когда цель закрыта
         self._goal_mtime          = 0.0
@@ -234,7 +206,6 @@ class Controller:
         self._planning_wake       = asyncio.Event()   # цели поставлены: пора раскладывать их на задачи
         self._last_turn_end       = 0.0    # когда закончился последний ход: темп обычных ходов зависит от режима расхода
         self._refl_seen           = -1     # сколько решений было при прошлой рефлексии
-        self.commentator          = None   # Commentator: живые реплики по ходу игры (локальная модель)
         self._graph_sent          = 0.0    # когда состав колонии в последний раз ушёл ассистенту (для графа памяти)
         self._prev_snap           = None   # снимок прошлого цикла: из разницы важное идёт в протокол событий
         self._turn_snap           = None   # снимок на начало её прошлого хода: из разницы «что изменилось»
@@ -243,7 +214,6 @@ class Controller:
         self._turn_started        = 0.0
         # ТЗ 11e: политики, правила наблюдения, бюджеты боя, ручное управление, скорость, checkpoint фокуса
         self.policies             = policy_manager.PolicyManager(log=_policy_log)
-        self.watch                = watch_rules.WatchRules()
         self._tick_now: int | None = None
         self._pending_events: deque = deque(maxlen=12)     # события с прошлого хода (для подсказки)
         self._recent_changes: deque = deque(maxlen=10)     # важные изменения (для checkpoint при потере фокуса)
@@ -268,61 +238,6 @@ class Controller:
         self._game_up             = False                  # мод отвечает (игра запущена) по последнему опросу
         self._game_gone_ticks     = 0                      # сколько опросов подряд игра не отвечает
 
-    def add_chat_message(self, message: str):
-        self._chat_buffer.append(message)
-        # Рефлекс: сразу оценить тон сообщения (эмоция + отношение к игроку)
-        try:
-            asyncio.get_running_loop().create_task(fast_brain.react_chat(message, self._rel))
-        except RuntimeError:
-            pass  # вызвано вне event loop — пропускаем рефлекс, Claude всё равно увидит сообщение
-
-    def _context(self) -> str:
-        """Контекст для Claude: память архива + личные отношения."""
-        import action_journal
-        import knowledge
-        situation = self._ambition_block() + self._tasks_block() + (self._turn_reason or "")
-        import colony_intel
-        st = getattr(self, "_last_state", None) or {}
-        intel = colony_intel.age_block(st) + colony_intel.survey_block(st, colony_intel.load_survey(st.get("save_id", "")))
-        return (intel + self._ambition_block() + self._tasks_block() + action_journal.block() + knowledge.block(situation)
-                + self._memory.build_context_block(situation) + self._rel.summary())
-
-    @staticmethod
-    def _tasks_block() -> str:
-        """Активные задачи деревом: ход должен их ВЫПОЛНЯТЬ (разметка, приказы), а не только смотреть на колонию."""
-        import tasks_tree
-        try:
-            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "tasks.json"), encoding="utf-8") as f:
-                import json
-                tree = tasks_tree.build(json.load(f))
-        except (OSError, ValueError):
-            return ""
-        lines = []
-
-        def walk(nodes, depth):
-            for n in nodes:
-                if n["status"] == "done":
-                    continue
-                lines.append("  " * depth + f"- [{n['status']}] {n['text'][:140]}")
-                walk(n["children"], depth + 1)
-        walk(tree, 0)
-        if not lines:
-            return ""
-        return ("=== ТВОИ ЗАДАЧИ (план). Бери верхние невыполненные и ДЕЛАЙ их прямо в этом ходе: разметка, заказы, "
-                "приказы; готовому шагу ставь set_task(..., status=\"done\") ===\n"
-                + "\n".join(lines[:16]) + "\n\n")
-
-    @staticmethod
-    def _ambition_block() -> str:
-        """Главная цель игры (цель категории ambition) всегда на виду: ход начинается с неё."""
-        goal = _active_ambition()
-        if goal is None:
-            return ("=== ГЛАВНОЙ ЦЕЛИ ИГРЫ ЕЩЁ НЕТ ===\nПоставь её сейчас: set_goal(category=\"ambition\", "
-                    "priority=\"high\"), измеримую и амбициозную, на всю игру.\n\n")
-        return (f"=== ГЛАВНАЯ ЦЕЛЬ ИГРЫ ===\n{goal.get('title')} (прогресс {goal.get('progress_pct', 0)}%)\n"
-                f"Критерий: {goal.get('success_criteria')}\nЗаметки: {goal.get('notes', '')}\n"
-                "Каждый твой ход должен приближать колонию к ней.\n\n")
-
     def run(self):
         asyncio.run(self._run_async())
 
@@ -339,11 +254,6 @@ class Controller:
             logger.info("RimWorld не запущена: вне фокуса игру не запускаю, жду просьбы или фокуса.")
         if self.recorder is not None:
             self._start_watchdog()
-        asyncio.create_task(fast_brain.warmup())
-        asyncio.create_task(self._planning_loop())
-        asyncio.create_task(self._long_term_planning_loop())
-        asyncio.create_task(self._reflection_loop())
-        asyncio.create_task(self._self_improvement_loop())
 
         await self._tick_loop()
 
@@ -379,8 +289,7 @@ class Controller:
 
     def policy_state(self) -> dict:
         """Политика, правила наблюдения, ручное управление, фокус и скорость для state (дашборд, панель RimWorld)."""
-        return {"policy": self.policies.snapshot(), "watch_rules": self.watch.public(self._tick_now),
-                "watch_fired": self.watch.fired_public(), "speed": self._speed,
+        return {"policy": self.policies.snapshot(), "speed": self._speed,
                 "manual": {"forced": sorted(self._forced)[:5], "stalled": sorted(self._stall_reported)[:5]},
                 "focus": self._focus_public(), "status": self.focus_status()}
 
@@ -405,14 +314,15 @@ class Controller:
 
     def _focus_watch(self, state: dict) -> None:
         """Каждый опрос. Режим auto без менеджера фокуса в ядре: модуль берёт фокус сам, когда игра запущена. Игра закрыта
-        (несколько опросов подряд без ответа): свой фокус снимает и уходит в afk. Фокус от ядра здесь не трогаем."""
+        (несколько опросов подряд без ответа): фокус снимается и модуль уходит в afk, в том числе когда среду дало ядро: иначе
+        после вылета игры ядро считало бы, что она всё ещё играет (по возврату в фоновую политику оно само выйдет из среды)."""
         if not state:
             self._game_gone_ticks += 1
             if self._game_gone_ticks < focus_mode.GAME_GONE_TICKS:
                 return
             self._game_up = False
             self._held_off = False                       # игру закрыли: отпущенный фокус снова доступен после запуска
-            if self.policies.in_focus and self._focus_source in ("auto", "button"):
+            if self.policies.in_focus and self._focus_source in ("auto", "button", "core"):
                 self._focus_source = "none"
                 self._game_seen_running = False          # игру закрыли сами: сторож её не поднимает вне фокуса (POL-12)
                 self.policies.enter_afk("игра закрыта: фокус модуля снят, модуль ждёт игру", source="auto")
@@ -469,8 +379,6 @@ class Controller:
                                     pending=[getattr(e, "text", str(e)) for e in self._pending_events],
                                     paused_by_module=paused)
         saved = await asyncio.to_thread(focus_checkpoint.save, cp)
-        if self._turn_running():
-            self._turn_task.cancel()
         self.policies.enter_afk(reason, source=source)
         self._focus_source = "none"
         self._fight.reset()
@@ -554,60 +462,6 @@ class Controller:
             asyncio.create_task(self.link.event(kind, {**ev.fields, "needs_focus": True}, text=ev.text,
                                                 urgency=ev.importance))
 
-    def _policy_event(self, ev) -> None:
-        """Событие для политик: вид с классификатором уточняется в фоне, остальное применяется сразу."""
-        if ev is None:
-            return
-        kind = self.policies.reg.kind(ev.kind)
-        if kind is not None and kind.classify:
-            asyncio.get_running_loop().create_task(self._classify_and_apply(ev))
-        else:
-            self._apply_policy_event(ev)
-
-    async def _classify_and_apply(self, ev) -> None:
-        ev = await policy_events.classify(ev, decide=lambda text, q: decider.decide(text, q, timeout=1.5))
-        self._apply_policy_event(ev)
-
-    def _apply_policy_event(self, ev) -> None:
-        """Событие -> правила наблюдения (усиление важности, переход) -> политика по `enter`. Всё пишется в журнал."""
-        before = self.policies.current
-        self._pending_events.append(ev)
-        if ev.kind == "research_done":
-            self._research_done(str(ev.fields.get("research") or ""))
-        self.watch.refresh()
-        rules = self.watch.match(ev.kind, ev.fields)
-        imp = ev.importance
-        for rule in rules:
-            imp = min(5, imp + rule.boost)
-        self.policies.on_event(ev.kind, imp, reason=ev.text)
-        for rule in rules:
-            if rule.switch_to:
-                self.policies.rule_switch(rule.switch_to, f"правило {rule.id}: {rule.why}")
-            events_log.log("game", f"правило наблюдения сработало: {rule.why} ({ev.text[:80]})")
-            self.watch.consume(rule, ev.text, self._tick_now)
-        if ev.importance >= 3:
-            self._quiet_since = time.time()
-            self._speed_reset_req = True
-        if self.policies.current == "combat" and before != "combat":
-            self._fight.reset()
-        if self.policies.current == "plan" and before != "plan":
-            self._planning_wake.set()
-
-    def _research_done(self, research: str) -> None:
-        """Исследование завершено (ТЗ 11e, исследования): шаги дерева задач, которые его ждали, снова в работе, исследование
-        снимается с очереди, ход начинается с возвратом к шагу. Правило наблюдения переводит политику (см. _apply_policy_event)."""
-        import research_unlock as ru
-        if not research:
-            return
-        resumed = ru.resume_tasks_file(MEM_DIR / "tasks.json", research)
-        ru.pop_done(research)
-        if resumed:
-            events_log.log("game", f"исследование {research} завершено: возвращаюсь к шагу: {'; '.join(resumed)[:160]}")
-            self._need_turn = True
-
-    def _wake_planning_policy(self, reason: str) -> None:
-        self._policy_event(policy_events.make("plan_request", reason, {"reason": reason}))
-
     def _step_line(self) -> str:
         tasks = self._load_tasks()
         current = next((t for t in tasks if t.get("status") == "in_progress"), None) or \
@@ -615,98 +469,13 @@ class Controller:
         return str(current.get("description")) if current else ""
 
     def _load_tasks(self) -> list[dict]:
-        import json
-        try:
-            with open(MEM_DIR / "tasks.json", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, list) else []
-        except (OSError, ValueError):
-            return []
-
-    def _turn_brief(self, changes: list[str] | None) -> str:
-        """Подсказка хода без полного снимка мира (ТЗ 11e, POL-1): события, важное, цель, шаг, инструменты-запросы."""
-        events = list(self._pending_events)
-        self._pending_events.clear()
-        ambition = self._active_ambition_title()
-        import research_unlock as ru
-        return policy_context.turn_brief(events, changes or [], policy_title=self.policies.policy.title,
-                                         ambition=ambition, step=self._step_line(), research_next=ru.next_research())
+        return core_tasks.steps_for_focus()        # задачи ведёт единый агент ядра (core.tasks); файлы прежнего агента не читаются
 
     def _active_ambition_title(self) -> str:
-        goal = _active_ambition()
-        return str(goal.get("title")) if goal else ""
+        return core_tasks.goal_title()
 
     def _exit_quiet_s(self, policy_id: str) -> float:
         return self.policies.reg.policies[policy_id].exit_quiet_s
-
-    async def _manual_watch(self, snap: dict, tick: int | None, stalled_hours_default: float = 2.0) -> None:
-        """POL-…/раздел 3.4: застрявшие задачи -> событие ручного управления; в режиме ручного: принуждение и откат."""
-        pol = self.policies.reg.policies.get("manual")
-        if pol is None:
-            return
-        budget = pol.budget
-        stall_hours = float(self._module_setting("manual_stall_hours", budget.get("stall_hours", stalled_hours_default)))
-        confirm = bool(self._module_setting("manual_confirm", budget.get("confirm", False)))
-        tasks = self._load_tasks()
-        stalled = pa.stalls(tasks, self._task_first_seen, tick, stall_hours)
-        stalled_now = {str(t.get("description")) for t in stalled}
-        for t in stalled:
-            desc = str(t.get("description"))
-            if desc not in self._stall_reported:
-                self._stall_reported.add(desc)
-                self._policy_event(policy_events.make("task_stalled", f"задача застряла: {desc}", {"description": desc}))
-        self._stall_reported &= stalled_now
-        if self.policies.current != "manual":
-            return
-        idle_ids = [pid for pid, p in snap["pawns"].items()
-                    if p["job"] in statediff.IDLE_JOBS and not p["drafted"] and not p["downed"] and not p["prisoner"]]
-        done = {str(t.get("description")) for t in tasks if t.get("status") == "done"}
-        actions = pa.plan_forced(stalled, forced=self._forced, idle_pawn_ids=idle_ids, tick=tick,
-                                 interval_hours=float(budget.get("interval_hours", 2)), confirm=confirm)
-        actions += pa.plan_rollback(self._forced, done, tick, float(budget.get("rollback_hours", 1)))
-        for a in actions:
-            await self._manual_action(a, tick)
-        if not self._forced:
-            self.policies.finish("ручные задачи обработаны")
-
-    async def _manual_action(self, a: dict, tick: int | None) -> None:
-        if a["type"] == "force":
-            ok = await asyncio.to_thread(_game_command, a["cmd"])
-            if ok:
-                self._forced[a["task"]] = {"pawn": a["pawn"], "tick": tick if tick is not None else 0}
-            events_log.log("game", f"принудительная работа {a['pawn']} → «{a['task'][:80]}»: {'принято' if ok else 'не принято игрой'}")
-        elif a["type"] == "rollback":
-            await asyncio.to_thread(_game_command, a["cmd"])
-            self._forced.pop(a["task"], None)
-            events_log.log("game", f"откат принуждения {a['pawn']}: «{a['task'][:80]}» не сдвинулась, очередь сброшена")
-        elif a["type"] == "forget":
-            self._forced.pop(a["task"], None)
-        elif a["type"] == "note":
-            events_log.log("game", f"ручное управление: {a['text']} («{a['task'][:80]}»)")
-
-    async def _apply_speed(self, threats_now: bool, now: float) -> None:
-        """POL-…/раздел 3.1: наблюдение растёт ступенями скорости в тишине; любое важное событие и не-наблюдение возвращают 1."""
-        if self.policies.current != "observe":
-            target = 1
-        elif self._speed_reset_req:
-            target = 1
-            self._speed_reset_req = False
-        else:
-            if threats_now:
-                self._quiet_since = now
-            pol = self.policies.reg.policies["observe"]
-            new = pa.observe_speed_plan(now=now, quiet_since=self._quiet_since, last_step_at=self._last_speed_step,
-                                        current_speed=self._speed, ladder=list(pol.time.get("speed_ladder", [1])),
-                                        max_speed=int(self._module_setting("observe_max_speed", 3)),
-                                        step_quiet_s=float(pol.time.get("step_quiet_s", 120)))
-            if new is None:
-                return
-            target = new
-        if target == self._speed:
-            return
-        if await asyncio.to_thread(_game_command, {"type": "set_time_speed", "speed": target}):
-            self._speed = target
-            self._last_speed_step = now
 
     async def _new_colony(self):
         """Создать поселение из главного меню. Сначала быстро и точно: нажать кнопку «Быстрый запуск (Dev)» (до трёх попыток:
@@ -739,7 +508,21 @@ class Controller:
             await asyncio.sleep(2)
             if _state_ready(await asyncio.to_thread(_get_state)):
                 return
-        await self._navigate_to_game(MENU_GOAL)
+
+    async def _sync_camera_switch(self) -> None:
+        """Переключатель «камерой управляет агент». Главный выключатель живёт в моде (кнопка «CAM» у края экрана игры, команда
+        `set_agent_camera`; при каждом запуске игры он включён). Модуль только передаёт моду настройку `camera_agent`, когда её
+        изменили в дашборде или когда игра запустилась с выключенной настройкой. Кнопку в игре настройка не перебивает."""
+        want = bool(self._module_setting("camera_agent", True))
+        game_up = bool(self._game_up)
+        if getattr(self, "_camera_pushed", None) == (want, game_up):
+            return
+        was = getattr(self, "_camera_pushed", None)
+        self._camera_pushed = (want, game_up)
+        if not game_up or (was is None and want):
+            return                                       # игры нет, или первый опрос с включённой настройкой (в моде и так включено)
+        logger.info("Камера: " + ("управляет агент" if want else "у игрока, агент её не двигает"))
+        await asyncio.to_thread(_camera_command, {"type": "set_agent_camera", "enabled": want})
 
     async def _camera(self, cmds: list[dict]):
         """Отправить команды камеры в мод (не блокируя тик). Сбой камеры не должен влиять на игру."""
@@ -780,11 +563,9 @@ class Controller:
                     self._menu_since = time.time()
                 elif (self.watchdog is None and not self._navigating and self._menu_since and self.policies.in_focus and
                       time.time() - self._menu_since > MENU_STUCK_THRESHOLD_SECS):   # с наблюдателем меню проходит он; вне фокуса не трогаем игру (POL-11)
-                    if True:     # локальный путь (OCR) всегда первым; Claude только если кнопка не нашлась
-                        self._menu_since = time.time()
-                        asyncio.create_task(self._menu_autostart())
-                        return
-                    asyncio.create_task(self._navigate_to_game(MENU_GOAL))
+                    self._menu_since = time.time()
+                    asyncio.create_task(self._menu_autostart())          # кнопка по тексту (OCR), без Claude
+                    return
             return
 
         self._menu_greeted = False  # снова в игре — при возврате в меню поздоровается заново
@@ -803,21 +584,12 @@ class Controller:
         self._ensure_run_started(state)
         snap = statediff.snapshot(state)
         if self._prev_snap is not None:
-            own = self._turn_running() or time.time() - self._last_turn_end < 15
             for important, line in statediff.compare(self._prev_snap, snap):
-                if own and statediff.is_pause_change(line):
-                    continue            # паузу ставит и снимает сама она во время хода: это не событие со стороны
                 if important:
                     events_log.log("game", "изменение: " + line)
                     self._recent_changes.append(line)
-                    self._policy_event(policy_events.from_statediff(line, True))
-                if self.commentator is not None:
-                    self.commentator.feed(line, important)
+                    self._send_change(line)
         self._prev_snap = snap
-        if self.commentator is not None:
-            self.commentator.update_state(
-                (state.get("colony") or {}).get("name") or "колония",
-                "; ".join(f"{p['name']}: {p.get('job') or '?'}" for p in snap["pawns"].values()))
         self._rel.sync_colonists((state.get("colony") or {}).get("pawns") or [])
         if self.link is not None and time.time() - self._graph_sent >= 60:
             self._graph_sent = time.time()
@@ -825,27 +597,17 @@ class Controller:
             colony_name = (state.get("colony") or {}).get("name") or "колония"
             asyncio.create_task(self.link.event("colonists", {"pawns": pawns, "colony": colony_name},
                                                 text=f"Колония «{colony_name}»: колонистов {len(pawns)}."))
-        if self.link is not None:
-            await self._check_goals()
-
+        await self._sync_camera_switch()
         events = await asyncio.to_thread(_get_events)
         filming = self.director is not None and bool(settings.load().get("record_runs"))
         if filming:
             await self._camera(self.director.update(state))
 
         for evt in events:
-            events_log.log("game", fast_brain.describe(evt), type=evt.get("type"),
+            events_log.log("game", event_text.describe(evt), type=evt.get("type"),
                            priority=evt.get("priority"))
-            self._policy_event(policy_events.from_mod(evt))
-            # Рефлекс: локальная LLM выбирает эмоцию, не дожидаясь Claude
-            asyncio.create_task(fast_brain.react(evt, state, self._rel))
             if self.link is not None:
                 await self._send_game_event(evt)
-            if self.commentator is not None and evt.get("type") in ("incident", "pawn_died", "letter", "fire_started"):
-                d = evt.get("data", {})
-                self.commentator.feed(f"налёт или угроза: {d.get('label')}" if evt.get("type") == "incident"
-                                      else f"погиб колонист {d.get('name', '?')}" if evt.get("type") == "pawn_died"
-                                      else fast_brain.describe(evt), True)   # письма: срыв, ссора, торговцы, события
             if filming:
                 await self._camera(self.director.on_event(evt, state))
             if self.recorder is not None and evt.get("type") in ("pawn_died", "incident"):
@@ -882,364 +644,41 @@ class Controller:
                         text=f"Забег закончен: вся колония «{d.get('colony') or 'без имени'}» погибла (тик {d.get('tick')})."))
                 if self.on_phase_change is not None:
                     self.on_phase_change()
-                self._colony_started = False
-                if not self._navigating:
-                    asyncio.create_task(self._navigate_to_game(
-                        "Колония погибла — все колонисты мертвы. Пройди экран "
-                        "окончания игры/статистики RimWorld, вернись в главное "
-                        "меню если нужно, начни НОВУЮ колонию (New colony), "
-                        "выбери любое подходящее место на карте мира и стартуй игру."))
+                self._colony_started = False                # новую колонию начнёт агент (среда rimworld) или пользователь
 
-        critical = [e for e in events if e.get("priority") in ("critical", "high")]
-        ticks_since_last = current_tick - self._last_proactive_tick
-        threats_now = bool(state.get("threats"))
-        battle_over = self._had_threats and not threats_now
-        self._had_threats = threats_now
-        if threats_now and self.policies.current != "combat":
-            n = len(state.get("threats") or [])
-            self._policy_event(policy_events.make("raid", f"на карте враги: {n}", {"label": "враги на карте"}))
-        if self.policies.current == "combat":          # ТЗ 11e: выход из боя, когда угрозы нет дольше quiet_s
-            if threats_now:
-                self._threat_gone_since = None
-            else:
-                self._threat_gone_since = self._threat_gone_since or time.time()
-                if time.time() - self._threat_gone_since >= self._exit_quiet_s("combat"):
-                    self.policies.finish("угроза миновала")
-                    self._threat_gone_since = None
-        await self._manual_watch(snap, current_tick)
-        await self._apply_speed(threats_now, time.time())
-        if battle_over:
-            events_log.log("game", "угроза миновала: врагов на карте нет")
-        b = claude_budget.get()
-        meaningful = False
-        if statediff.idle_pawns(snap):
-            self._idle_since = self._idle_since or time.time()
-        else:
-            self._idle_since = 0.0
-        self._planning_signals(snap)
-        if threats_now and not self._turn_running():
-            n = len(state.get("threats") or [])
-            agent_mode.set_mode("tactic", f"бой: врагов на карте {n}")
-        elif not threats_now and agent_mode.get()["mode"] == "tactic" and not self._turn_running():
-            agent_mode.set_mode("observe", "")      # враги исчезли, а хода-итога ещё нет
-        if not (critical or battle_over) and ticks_since_last >= PROACTIVE_TICK_INTERVAL:
-            since_turn = time.time() - self._last_turn_end
-            if since_turn >= (min(b["turn_gap_s"], 20) if threats_now else b["turn_gap_s"]):   # в бою оценка каждые ~20 с
-                important = [c for c in statediff.compare(self._turn_snap, snap) if c[0]] if self._turn_snap else []
-                idle_long = bool(self._idle_since) and time.time() - self._idle_since >= 120 \
-                    and since_turn >= max(b["turn_gap_s"], 240)
-                meaningful = (bool(important) or idle_long or self._need_turn or since_turn >= b["turn_idle_s"]
-                              or self._turn_snap is None or threats_now)
-        should_think = bool(critical) or battle_over or meaningful
-        # ТЗ 11e: в бою ход по срезу игры и в бюджете; в планировании обычные ходы молчат (план разложит контур планирования)
-        if self.policies.current == "combat" and not (critical or battle_over):
-            should_think = bool(threats_now) and self._fight.allow()[0] and pa.combat_ready(
-                tick=current_tick, last_turn_tick=self._last_turn_tick,
-                slice_ticks=int(self.policies.policy.budget.get("slice_ticks", 600)),
-                now=time.time(), last_turn_at=self._last_turn_at)
-        elif self.policies.current == "plan" and not critical:
-            should_think = False
-
-        if not should_think:
-            return
-
-        running = self._turn_task is not None and not self._turn_task.done()
-        if running and not critical:
-            return                     # ход уже идёт: обычному не мешаем, срочному уступаем место ниже
-
-        hours_passed  = round(ticks_since_last / TICKS_PER_HOUR, 1) if self._last_proactive_tick else None
-        self._last_proactive_tick = current_tick
-        event_type    = "reactive" if critical else "proactive"
-        self._turn_reason = (("угроза: " if any(e.get("type") != "game_loaded" for e in critical) else "")
-                             + fast_brain.describe(critical[0])) if critical else (
-            "бой окончен, оцениваю итоги" if battle_over else
-            "бой продолжается, переоцениваю обстановку" if threats_now else
-            "есть колонисты без дела" if (self._idle_since and time.time() - self._idle_since >= 120) else
-            "прошлый ход оборвался, повторяю" if self._need_turn else
-            "изменения в колонии")
-        chat_signals  = list(self._chat_buffer)
-        self._chat_buffer.clear()
-
-        just_loaded = self._just_loaded
-        self._just_loaded = False
-        urgent = [fast_brain.describe(e) for e in critical][:6] if critical else None
-        # смерть при загрузке сейва и подобное: тревога только если сейчас реально есть враги
-        if urgent and not (state.get("threats") or any(e.get("type") == "pawn_died" for e in critical)):
-            urgent = None
-        if self.policies.current == "combat" and not urgent and state.get("threats"):
-            # бой: каждый ход начинается с паузы и тревоги (игра встаёт на паузу, приказы, потом срез)
-            urgent = [f"враги на карте: {len(state.get('threats') or [])}"]
-        situation = BATTLE_OVER if battle_over and not urgent else None
-        await self._start_turn(current_tick, event_type, hours_passed, chat_signals, just_loaded,
-                               urgent=urgent, preempt=bool(critical), situation=situation)
+        self._had_threats = bool(state.get("threats"))
 
     # ── игровой ход: фоновая задача, которую можно прервать ───────────────────
-
-    async def _start_turn(self, tick, event_type, hours_passed, chat_signals, just_loaded,
-                          urgent=None, order=None, preempt=False, situation=None):
-        running = self._turn_task is not None and not self._turn_task.done()
-        if running:
-            # свежий ход (меньше минуты) тревога не обрывает: он и так реагирует
-            if not preempt or time.time() - self._turn_started < 60 and self._turn_kind == "reactive" and not order:
-                return
-            logger.info(f"Ход прерван: срочное дело ({'приказ игрока' if order else 'тревога'})")
-            self._turn_task.cancel()
-            try:
-                await self._turn_task
-            except BaseException:
-                pass
-        self._turn_kind = "reactive" if (urgent or order) else event_type
-        self._turn_started = time.time()
-        self._turn_task = asyncio.create_task(
-            self._turn(tick, event_type, hours_passed, chat_signals, just_loaded, urgent, order, situation))
-
-    def _wake_planning(self, reason: str):
-        if self._had_threats or time.time() - self._last_plan_wake < 300:
-            return              # в бою не планируем: сейчас важна тактика;                    # не чаще раза в пять минут: иначе она только и делала бы, что планировала
-        self._last_plan_wake = time.time()
-        self._plan_reason = reason
-        events_log.log("game", "режим планирования: " + reason)
-        self._wake_planning_policy(reason)           # ТЗ 11e: событие «просьба спланировать» включает политику plan
-        self._planning_wake.set()
-
-    def _planning_signals(self, snap: dict):
-        """Что она заметила и из-за чего пора спланировать: колонисты без дела, чертежи, которые не строятся,
-        и явная просьба самого агента (request_planning)."""
-        req = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "plan_request.json")
-        try:
-            if os.path.exists(req):
-                import json
-                with open(req, encoding="utf-8") as f:
-                    reason = json.load(f).get("reason") or "агент попросил план"
-                os.remove(req)
-                self._wake_planning("она сама: " + reason)
-                return
-        except Exception as e:
-            logger.warning(f"plan_request: {e}")
-        pending = sum(snap["pending"].values())
-        if pending and pending == self._pending_seen:
-            if time.time() - self._pending_since >= 600:
-                self._wake_planning(f"чертежи ({pending}) висят больше десяти минут: возможно, не хватает материала")
-        else:
-            self._pending_seen, self._pending_since = pending, time.time()
-        if self._idle_since and time.time() - self._idle_since >= 300:
-            self._wake_planning("колонисты давно без дела: нужны задачи")
-
-    def _turn_running(self) -> bool:
-        return self._turn_task is not None and not self._turn_task.done()
-
-    def _local_context(self, state: dict, changes) -> str:
-        """Короткий контекст для локальной модели (Gemma): возраст колонии, цель, задачи, факты, что изменилось."""
-        import colony_intel
-        parts = [colony_intel.age_block(state), self._turn_brief(changes), self._ambition_block(), self._tasks_block()]
-        return chr(10).join(p for p in parts if p)
-
-    async def _mode_turn(self, mode, state, chat_signals, hours_passed, just_loaded, urgent, order, situation, changes):
-        """Ход в режиме (ТЗ 11e): модель задаёт политика (`think`): локальная (Gemma), Claude или смешанно (в бою Claude
-        на первом ходе и каждый claude_every-й). Без лимита Claude, если политика не требует его. Подсказка без полного
-        снимка мира: события, важное, цель, шаг и список инструментов-запросов."""
-        think = self.policies.policy.think
-        turn_index = self._fight.turns - 1 if self.policies.current == "combat" else 0
-        local = pa.use_local_model(think.get("model", "local"), max(0, turn_index), int(think.get("claude_every", 3)),
-                                   claude_blocked=claude_quota.blocked())
-        if local:
-            import local_agent
-            return await local_agent.run_local_turn(self._local_context(state, changes), mode, order, urgent, situation,
-                                                    max_steps=int(think.get("max_steps", 8)),
-                                                    timeout=float(think.get("timeout_s", 300)))
-        return await run_turn(self._context(), chat_signals, hours_passed, just_loaded, urgent=urgent, order=order,
-                              situation=situation, changes=None, mode=mode, brief=self._turn_brief(changes))
-
-    async def _turn(self, tick, event_type, hours_passed, chat_signals, just_loaded, urgent, order,
-                    situation=None):
-        paused_by_us = False
-        self._last_turn_tick = self._tick_now
-        self._last_turn_at = time.time()
-        if self.policies.current == "combat":
-            self._fight.spend()                  # ТЗ 11e: бюджет боя (ходов за бой и в минуту)
-        fighting = bool(urgent) or self._had_threats
-        agent_mode.set_mode("tactic" if fighting else "act",
-                            "приказ игрока" if order else (self._turn_reason or "ход"))
-        try:
-            if urgent:   # как живой игрок: тревога, пауза, приказы, снять паузу
-                st = await asyncio.to_thread(_get_state)
-                if st and not st.get("paused"):
-                    paused_by_us = await asyncio.to_thread(_game_command, {"type": "pause"})
-            changes = None
-            st_now = await asyncio.to_thread(_get_state)
-            self._last_state = st_now
-            if st_now and _state_ready(st_now):
-                snap_now = statediff.snapshot(st_now)
-                changes = statediff.render([c for c in statediff.compare(self._turn_snap, snap_now)
-                                            if c[0] and not statediff.is_pause_change(c[1])]) or None   # ТЗ 11e: только важное
-                self._turn_snap = snap_now
-            logger.info(f"[tick {tick}] GLaDOS думает ({event_type}{', приказ' if order else ''}, +{hours_passed}ч, "
-                        f"изменений: {len(changes or [])})…")
-            import game_modes
-            mode = self.policies.coerce_mode(game_modes.pick_mode(st_now, order or "", urgent, self._tasks_block()))
-            game_modes.take_request()                     # старая просьба о смене режима уже неактуальна
-            agent_mode.set_mode("tactic" if mode == "combat" else "act", f"режим «{game_modes.MODES[mode].title}»")
-            agent_mode.set_game_mode(mode)
-            logger.info(f"[tick {tick}] режим хода: {game_modes.MODES[mode].title}")
-            result = await self._mode_turn(mode, st_now, chat_signals, hours_passed, just_loaded, urgent, order, situation, changes)
-            await self._finish_turn(tick, event_type, result)
-            # агент попросил другой режим (switch_mode): новый ход в нём, не больше трёх переходов за цикл
-            for _hop in range(3):
-                req = game_modes.take_request()
-                if not req or req["mode"] == mode:
-                    break
-                mode = req["mode"]
-                logger.info(f"[tick {tick}] переход в режим «{game_modes.MODES[mode].title}»: {req.get('reason', '')}")
-                agent_mode.set_mode("tactic" if mode == "combat" else "act", f"режим «{game_modes.MODES[mode].title}»")
-                agent_mode.set_game_mode(mode)
-                result = await self._mode_turn(mode, st_now, [], None, False, None, None,
-                                               f"Ты перешла в режим «{game_modes.MODES[mode].title}»: {req.get('reason', '')}", None)
-                await self._finish_turn(tick, event_type, result)
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.error(f"Ход не удался: {e}", exc_info=True)
-        finally:
-            self._last_turn_end = time.time()
-            if self._had_threats:
-                agent_mode.set_mode("tactic", "бой продолжается")
-            else:
-                agent_mode.set_mode("observe", "")
-            if paused_by_us:
-                await asyncio.to_thread(_game_command, {"type": "resume"})
-            if planning_pause.marked():     # паузу под планирование она поставила и не сняла: игра не должна остаться стоять
-                await asyncio.to_thread(_game_command, {"type": "resume"})
-                planning_pause.clear()
-
-    async def handle_order(self, text: str) -> bool:
-        """Сообщение игрока про игру превращается в приказ: прерывает текущий ход и выполняется сразу.
-        True, если приказ принят (игра запущена и фраза про игру)."""
-        state = await asyncio.to_thread(_get_state)
-        if not _state_ready(state):
-            return False
-        pawns = [p.get("name", "") for p in (state.get("colony") or {}).get("pawns", [])]
-        if not _is_game_talk(text, pawns):
-            return False
-        logger.info(f"Приказ игрока: {text}")
-        events_log.log("game", f"приказ игрока: {text}")
-        threats = bool(state.get("threats"))
-        urgent = ["В колонии враги на карте"] if threats else None
-        await self._start_turn(state.get("tick", 0), "order", None, [], False,
-                               urgent=urgent, order=text, preempt=True)
-        return True
-
-    def _speak_commentary(self, commentary: str) -> str:
-        """Реплика хода: обрезать, отсеять служебное и повторы, озвучить. Возвращает то, что прозвучало (или пусто)."""
-        commentary = _trim_commentary((commentary or "").strip())
-
-        _boring = ("отчёт", "тик ", "tick ", "мониторинг", "инициализация")
-        _tech = ("localhost", ":8765", "mcp", "api не", "не подключен", "соединение с", "соединение потеряно")
-        if any(commentary.lower().startswith(p) for p in _boring):
-            commentary = ""
-        if commentary and any(t in commentary.lower() for t in _tech):
-            logger.info(f"[GLaDOS-тех. сообщение не озвучиваю] {commentary[:80]}")
-            commentary = ""    # игра пропала посреди хода: это сбой связи, а не реплика
-
-        if commentary and self._last_commentary and \
-                _similarity(commentary, self._last_commentary) > REPEAT_SIMILARITY_MAX:
-            logger.info(f"[GLaDOS-повтор подавлен] {commentary}")
-            commentary = ""
-
-        if commentary:
-            logger.info(f"[GLaDOS] {commentary}")
-            self._last_commentary = commentary
-            self._say(commentary)
-        return commentary
-
-    def _speak_background(self, result: dict) -> None:
-        """Итог фонового прохода (планирование, цели): ГЛаДОС получает факты хода, реплику формирует она. Лимит Claude: тишина."""
-        if result.get("quota"):
-            return
-        self._speak_facts(result)
-
-    def _turn_fact(self, result: dict) -> str:
-        """Факты хода для её голоса: вызовы с результатами и заметки Claude. Пусто, если ничего не происходило."""
-        trace, notes = result.get("trace") or [], result.get("notes") or []
-        if not trace and not notes:
-            return ""
-        names = {"turn": "ход в игре", "planning": "раскладка целей на задачи", "plan_check": "проверка плана",
-                 "goals": "пересмотр долгосрочных целей", "reflection": "рефлексия", "navigation": "проход по меню"}
-        lines = [f"Ты только что сама играла в RimWorld ({names.get(result.get('contour'), 'ход')}). Ниже что ты сделала; "
-                 "прокомментируй это вслух своими словами, коротко, по смыслу, от первого лица, как рассказ о колонии, стройке "
-                 "и колонистах. Не обращайся к игроку или зрителям на «ты», не называй его подопытным, не задавай вопросов и "
-                 "не говори, что он делает или смотрит; без названий инструментов и координат."]
-        for t in trace[:14]:
-            mark = "ОШИБКА" if t.get("error") or str(t.get("result", "")).startswith("ERROR") else "итог"
-            lines.append(f"- {t['name']}" + (f" ({t['summary']})" if t.get("summary") else "")
-                         + (f": {mark}: {t['result'][:110]}" if t.get("result") else ""))
-        if len(trace) > 14:
-            lines.append(f"- … и ещё вызовов: {len(trace) - 14}")
-        if notes:
-            lines.append("Твои заметки по ходу: " + " ".join(n.strip() for n in notes[-3:])[:300])
-        return chr(10).join(lines)[:950]
-
-    def _speak_facts(self, result: dict) -> None:
-        """Отдать ядру факты хода (`say` режима fact): реплику формулирует она, промпт виден в дашборде."""
-        fact = self._turn_fact(result)
-        if not fact or self.link is None or settings.quiet_active():
-            return
-        try:
-            asyncio.get_running_loop().create_task(self.link.say_fact(fact))
-        except RuntimeError:
-            pass
-
-    def _on_tool_call(self, name: str, summary: str) -> None:
-        """Вызов инструмента игрового контура: строка в чат дашборда (job.update со стадией tool:, как у помощника)."""
-        link = self.link
-        if link is None or not link.online:
-            return
-        try:
-            asyncio.get_running_loop().create_task(link.tool_call(name, summary))
-        except RuntimeError:
-            pass
-
-    async def _finish_turn(self, current_tick: int, event_type: str, result: dict):
-        commentary = result.get("commentary", "").strip()
-        actions    = result.get("actions", [])
-        if result.get("quota"):
-            return                     # лимит Claude исчерпан: ничего не говорим и не пишем в журнал решений
-        self._need_turn = bool(result.get("timed_out"))   # оборвался: повторить без долгого ожидания
-        if result.get("timed_out"):
-            events_log.log("error", f"ход в игре прерван по таймауту, сделано вызовов: {len(actions)}")
-        elif not actions:
-            events_log.log("game", "ход без единого действия")
-
-        if result.get("trace") or result.get("notes"):
-            self._speak_facts(result)           # Claude молчит: факты хода уходят ей
-        else:
-            commentary = self._speak_commentary(commentary)       # локальный ход: реплика уже её
-        if actions:
-            logger.info(f"[ACTIONS] {actions}")
-
-        self._memory.log_decision(
-            tick=current_tick,
-            directive=commentary,   # пусто, если реплики не было: никаких заготовок вроде «(молчание)»
-            actions=actions,
-            event_type=event_type,
-        )
-
-    @staticmethod
-    def _archive_stale_plans():
-        """Новая колония начинает с чистых целей и задач: прошлые заметки («враги на карте», имена
-        погибших) сбивают с толку и держат её в обороне. Старое уезжает в memory/archive/."""
-        import shutil
-        mem = os.getenv("MEMORY_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory")
-        dest = os.path.join(mem, "archive", time.strftime("%Y%m%d_%H%M%S"))
-        for name in ("goals.json", "tasks.json", "territory.json"):
-            src = os.path.join(mem, name)
-            if os.path.exists(src):
-                os.makedirs(dest, exist_ok=True)
-                shutil.move(src, os.path.join(dest, name))
-        logger.info("Новая колония: старые цели и задачи убраны в архив")
 
     # письма, о которых ядро уже знает отдельным событием (набег, гибель колониста): второй раз их не шлём
     _COVERED_LETTERS = ("ThreatBig", "ThreatSmall", "Death")
     _LETTER_URGENCY = {"critical": 4, "high": 3}
+
+    def _send_change(self, line: str) -> None:
+        """Важная строка разницы состояний -> событие для ядра: исследование, кончается еда, упал колонист, враг на карте."""
+        link = self.link
+        if link is None:
+            return
+        ev = policy_events.from_statediff(line, True)
+        if ev is not None:
+            kind, fields = {"raid": "enemy_seen"}.get(ev.kind, ev.kind), dict(ev.fields)
+        else:
+            kind, fields = self._change_kind(line), {}
+        if kind in ("enemy_seen", "pawn_downed", "research_done", "resource_out", "pawn_mood", "pawn_hurt", "pawn_lost", "newcomer"):
+            asyncio.create_task(link.event(kind, fields, text=line[:1].upper() + line[1:]))
+
+    @staticmethod
+    def _change_kind(line: str) -> str | None:
+        """Остальные важные строки разницы состояний (statediff) -> вид события для ядра. Паузу и свои приказы не пересылаем."""
+        if "на грани срыва" in line:
+            return "pawn_mood"
+        if "кровоточит" in line or "здоровье" in line and "→" in line and "враг" not in line.split(":")[0] or "драка между своими" in line:
+            return "pawn_hurt"
+        if "больше нет в колонии" in line:
+            return "pawn_lost"
+        if line.startswith("в колонии новый человек"):
+            return "newcomer"
+        return None
 
     async def _send_game_event(self, evt: dict):
         """Событие игры -> событие модуля для ядра (RW-9): набег, гибель колониста, пожар, письмо. Ядро решает, важно ли оно
@@ -1253,12 +692,18 @@ class Controller:
                                text=f"Угроза колонии: {label}.", urgency=5 if evt.get("priority") == "critical" else 4)
         elif kind == "pawn_died":
             event = link.event("death", {"name": d.get("name"), "cause": d.get("cause"), "age": d.get("age")},
-                               text=fast_brain.describe(evt))
+                               text=event_text.describe(evt))
         elif kind == "fire_started":
-            event = link.event("fire", {"x": d.get("x"), "z": d.get("z")}, text=fast_brain.describe(evt))
+            event = link.event("fire", {"x": d.get("x"), "z": d.get("z")}, text=event_text.describe(evt))
+        elif kind == "pawn_downed":
+            event = link.event("pawn_downed", {"name": d.get("name")}, text=f"Колонист {d.get('name') or '?'} упал и лежит.")
+        elif kind in ("enemy_downed", "enemy_killed"):
+            label = d.get("label") or d.get("name") or d.get("def") or "враг"
+            event = link.event("enemy_down", {"label": str(label), "killed": kind == "enemy_killed"},
+                               text=f"Враг {'убит' if kind == 'enemy_killed' else 'повержен'}: {label}.")
         elif kind == "letter" and d.get("letter_def") not in self._COVERED_LETTERS:
             event = link.event("letter", {"label": d.get("label"), "letter_def": d.get("letter_def")},
-                               text=fast_brain.describe(evt), urgency=self._LETTER_URGENCY.get(evt.get("priority"), 2))
+                               text=event_text.describe(evt), urgency=self._LETTER_URGENCY.get(evt.get("priority"), 2))
         else:
             return
         asyncio.create_task(event)
@@ -1343,6 +788,7 @@ class Controller:
         colony_name = state.get("colony", {}).get("name", "Unknown Colony")
         save_id     = state.get("save_id", "")
         run         = self._memory.get_current_run()
+        knowledge.set_save(save_id)
 
         if run and save_id and run.get("save_id") != save_id:
             logger.info(f"Обнаружена другая колония/сейв (было: {run.get('colony_name')}, "
@@ -1351,9 +797,14 @@ class Controller:
             run = None
 
         if not run:
-            self._archive_stale_plans()
             run = self._memory.start_run(colony_name, save_id)
             logger.info(f"Начат эксперимент: {colony_name} (save_id={save_id})")
+            try:
+                import experiments
+                if experiments.abandon_active("начат новый забег"):
+                    logger.info("Идущий эксперимент прошлого забега закрыт как прерванный.")
+            except Exception as e:                       # заметки прошлого не должны мешать началу забега
+                logger.warning(f"Не удалось закрыть прежний эксперимент: {e}")
             if self.recorder is not None:
                 self.recorder.start(run["id"], colony_name)
         else:
@@ -1369,161 +820,17 @@ class Controller:
                     self._last_commentary = last_directive
 
         self._colony_started = True
-        self._long_term_trigger.set()  # разбудить долгосрочное планирование
-
-    def _say(self, text: str):
-        """Любая реплика идёт через компаньона: попадает в чат, в say.json (питомец)
-        и в память разговора. Без этого фраза звучит у питомца, но её нет в чате."""
-        if self.link is None:
-            return
-        if settings.quiet_active():
-            return   # «не отвлекать»: комментарии игры молчат (в журнале решений они остаются)
-        try:
-            asyncio.get_running_loop().create_task(self.link.say(text))
-        except RuntimeError:
-            pass
 
     # ── Контур 2: тактическое планирование (средний темп) ────────────────────
 
-    async def _planning_loop(self):
-        # Небольшая задержка перед первым проходом — чтобы долгосрочные цели
-        # (контур 3) успели появиться раньше, есть из чего раскладывать задачи
-        await asyncio.sleep(10)
-        while True:
-            if self.policies.current == "afk":          # ТЗ 11e POL-11: вне фокуса планирование не работает
-                self._planning_wake.clear()
-                await asyncio.sleep(AFK_SLEEP_S)
-                continue
-            try:
-                if _state_ready(await asyncio.to_thread(_get_state)):
-                    logger.info("GLaDOS раскладывает цели на задачи (планирование)…")
-                    async with self._background_lock:
-                        agent_mode.set_mode("plan", self._plan_reason or "раскладываю цели на задачи")
-                        try:
-                            result = await (self._plan_cycle() if self.policies.current == "plan"
-                                            else run_planning(self._context()))
-                        finally:
-                            self._plan_reason = ""
-                            if not self._turn_running():
-                                agent_mode.set_mode("observe", "")
-                    self._speak_background(result)
-                    if result.get("actions"):
-                        logger.info(f"[PLANNING] {result['actions']}")
-                        if any("set_task" in a for a in result["actions"]):
-                            self._need_turn = True      # задачи розданы: пусть ближайший ход их исполняет
-            except Exception as e:
-                logger.error(f"Ошибка планирования: {e}", exc_info=True)
-            try:
-                await asyncio.wait_for(self._planning_wake.wait(), claude_budget.get()["planning_s"])
-            except asyncio.TimeoutError:
-                pass
-            self._planning_wake.clear()
-
-    async def _plan_cycle(self) -> dict:
-        """Политика «планирование» (ТЗ 11e, раздел 3.2): пауза, разметка плана Claude, проход самопроверки, снятие паузы,
-        выход в наблюдение. Паузу снимаем всегда, даже при сбое: игра не должна остаться стоять."""
-        paused = False
-        st = await asyncio.to_thread(_get_state)
-        if _state_ready(st) and not st.get("paused"):
-            paused = bool(await asyncio.to_thread(_game_command, {"type": "pause"}))
-            if paused:
-                planning_pause.mark()
-        result: dict = {}
-        try:
-            result = await run_planning(self._context())
-            if result.get("actions") and self.policies.policy.think.get("self_check", True):
-                check = await run_plan_check(self._context(), result)
-                result = {**result, "actions": result.get("actions", []) + check.get("actions", [])}
-        finally:
-            if paused:
-                planning_pause.clear()
-                await asyncio.to_thread(_game_command, {"type": "resume"})
-            self._plan_reason = ""
-            self.policies.finish("план разложен и проверен")
-        return result
-
     # ── Контур 3: долгосрочное планирование (медленный темп) ─────────────────
 
-    async def _long_term_planning_loop(self):
-        while True:
-            if self.policies.current == "afk":          # ТЗ 11e POL-11: вне фокуса контур спит, токены не тратятся
-                await asyncio.sleep(AFK_SLEEP_S)
-                continue
-            try:
-                st_goals = await asyncio.to_thread(_get_state)
-                if _state_ready(st_goals) and claude_quota.blocked():
-                    pass                      # Claude спит (лимит): планируем позже, Gemma игрой не управляет
-                elif _state_ready(st_goals):
-                    logger.info("GLaDOS пересматривает стратегические цели…")
-                    async with self._background_lock:
-                        result = await run_long_term_planning(self._context())
-                    self._speak_background(result)
-                    if result.get("actions"):
-                        logger.info(f"[LONG-TERM] {result['actions']}")
-                    if any("set_goal" in a or "update_goal" in a for a in result.get("actions", [])):
-                        self._planning_wake.set()      # цели изменились: сразу разложить их на задачи
-            except Exception as e:
-                logger.error(f"Ошибка долгосрочного планирования: {e}", exc_info=True)
-
-            self._long_term_trigger.clear()
-            try:
-                # Ждём обычный интервал, но просыпаемся раньше, если пришло
-                # первое состояние новой колонии (см. _ensure_run_started)
-                await asyncio.wait_for(self._long_term_trigger.wait(), timeout=claude_budget.get()["longterm_s"])
-            except asyncio.TimeoutError:
-                pass
-
     # ── Контур 4: рефлексия (самый медленный темп) ────────────────────────────
-
-    async def _reflection_loop(self):
-        while True:
-            if self.policies.current == "afk":          # ТЗ 11e POL-11: вне фокуса контур спит, токены не тратятся
-                await asyncio.sleep(AFK_SLEEP_S)
-                continue
-            try:
-                run = self._memory.get_current_run()
-                decisions = len(run["key_decisions"]) if run else 0
-                # без новых решений анализировать нечего: рефлексия не тратит запрос впустую
-                fresh = self._refl_seen < 0 or decisions - self._refl_seen >= 3
-                if fresh and _state_ready(await asyncio.to_thread(_get_state)):
-                    self._refl_seen = decisions
-                    logger.info("GLaDOS анализирует историю (рефлексия)…")
-                    async with self._background_lock:
-                        result = await run_reflection(self._context())
-                    if result.get("actions"):
-                        logger.info(f"[REFLECTION] {result['actions']}")
-            except Exception as e:
-                logger.error(f"Ошибка рефлексии: {e}", exc_info=True)
-            await asyncio.sleep(claude_budget.get()["reflection_s"])
 
     # ── Контур 5: самоулучшение (самый редкий, самый мощный) ─────────────────
     # Полный доступ к файлам проекта (Read/Write/Edit/Bash), правит свой же
     # код и код мода. Правки controller.py/glados_agent.py применятся только
     # после перезапуска процесса main.py — сам себя контур не перезапускает.
-
-    async def _self_improvement_loop(self):
-        await asyncio.sleep(SELF_IMPROVEMENT_INTERVAL_SECS)  # дать системе поработать, накопить сигнал
-        while True:
-            if self.policies.current == "afk":          # ТЗ 11e POL-11: вне фокуса самоулучшение не работает
-                await asyncio.sleep(AFK_SLEEP_S)
-                continue
-            try:
-                if not claude_budget.get()["selfimp_s"]:
-                    await asyncio.sleep(1800)    # в этом режиме расхода самоулучшение выключено
-                    continue
-                if not _state_ready(await asyncio.to_thread(_get_state)):
-                    # Самоулучшение правит код — только пока идёт активная колония,
-                    # как раньше (иначе в режиме «всегда включена» она бы правила код вхолостую)
-                    await asyncio.sleep(10 * 60)
-                    continue
-                logger.info("GLaDOS запускает контур самоулучшения…")
-                async with self._background_lock:
-                    result = await run_self_improvement()
-                if result.get("actions"):
-                    logger.info(f"[SELF-IMPROVEMENT] {result['actions']}")
-            except Exception as e:
-                logger.error(f"Ошибка самоулучшения: {e}", exc_info=True)
-            await asyncio.sleep(claude_budget.get()["selfimp_s"] or 1800)
 
     # ── Контур 6: навигация по UI (разовые вызовы, не периодический цикл) ────
 
@@ -1545,25 +852,5 @@ class Controller:
                     logger.info(f"Автозапуск: нажала «{label}» ({r.get('result')})")
                     return
             logger.info("Автозапуск: подходящей кнопки меню на экране не нашла")
-        finally:
-            self._navigating = False
-
-    async def _navigate_to_game(self, goal: str):
-        if self._navigating:
-            return
-        self._navigating = True
-        try:
-            import game_launcher
-            game_launcher.announce_self(f"веду интерфейс игры (через Claude по экрану) к цели: {goal[:160]}", kind="game")
-            logger.info(f"GLaDOS проходит интерфейс игры: {goal[:70]}…")
-            # Замок фоновых контуров не берём: проход меню не должен держать пересмотр целей и планирование.
-            # Таймаут: если зависла, откатываем попытку и пробуем позже.
-            result = await asyncio.wait_for(run_game_navigation(goal), timeout=NAVIGATION_TIMEOUT_SECS)
-            if result.get("actions"):
-                logger.info(f"[NAVIGATION] {result['actions']}")
-        except asyncio.TimeoutError:
-            logger.warning("Навигация по UI превысила таймаут — система перезагружена или зависла")
-        except Exception as e:
-            logger.error(f"Ошибка навигации по UI: {e}", exc_info=True)
         finally:
             self._navigating = False

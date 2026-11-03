@@ -92,7 +92,7 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
             # профиль assistant: echo.repeat виден (availability=always) и выполняется планировщиком;
             # задача с вопросом: прогресс во вкладке, ответ кнопкой доходит до модуля
             from router import Router
-            router = Router(registry, lambda t: asyncio.sleep(0), lambda: "")
+            router = Router(registry, lambda t: asyncio.sleep(0))
             layer.requests.router = router
             assert await router.run_tool("echo.repeat", {"text": "кукуруза"}) == (True, "кукуруза")
             ok, text = await router.run_tool("echo.count", {"n": 2})

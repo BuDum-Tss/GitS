@@ -1,7 +1,7 @@
 """Оценка классификатора внимания на русских примерах: точность по вопросам, уверенность и задержка (ТЗ 03, ATT-5, ATT-31).
 
 Сервис decider должен работать (`python decider_server.py`, порт 8768). Скрипт использует только стандартную библиотеку и
-вопросы из `agent/decide.py` (EVENT_QUESTIONS, INPUT_QUESTIONS), поэтому проверяет именно то, что спрашивает ядро.
+вопросы из `agent/decide.py` (INPUT_QUESTIONS), поэтому проверяет именно то, что спрашивает ядро.
 
     python eval_decider.py                 точность на размеченных примерах (события и обращения)
     python eval_decider.py --bench 200     задержка (p50, p95) на 200 текстах до 400 символов, собранных из шаблонов
@@ -66,10 +66,10 @@ INPUTS = [
     ("Напиши Маше, что я задержусь", "action", True),
     ("Найди в интернете рецепт борща", "action", False),
     ("Поставь таймер на десять минут", "action", False),
-    ("Что ты умеешь делать?", "about_self", False),
-    ("Как ты работаешь?", "about_self", False),
-    ("Что ты помнишь обо мне?", "about_self", True),
-    ("Расскажи, какие у тебя есть возможности", "about_self", False),
+    ("Что ты умеешь делать?", "chat", False),
+    ("Как ты работаешь?", "chat", False),
+    ("Что ты помнишь обо мне?", "chat", True),
+    ("Расскажи, какие у тебя есть возможности", "chat", False),
     ("Да, разрешаю", "approval", False),
     ("Нет, не надо", "approval", False),
     ("Да, давай", "approval", False),
@@ -120,18 +120,11 @@ def report(name: str, rows: list[tuple[bool, float]], thresholds: tuple[float, .
 
 def accuracy(url: str) -> None:
     rows: dict[str, list[tuple[bool, float]]] = {"category": [], "addressed": [], "needs_reply": [], "intent": [], "needs_memory": []}
-    for text, cat, who, reply in EVENTS:
-        a, _ = ask(url, text, decide.EVENT_QUESTIONS)
-        rows["category"].append((a["category"]["answer"] == cat, a["category"]["confidence"]))
-        rows["addressed"].append((a["addressed"]["answer"] == who, a["addressed"]["confidence"]))
-        rows["needs_reply"].append(((a["needs_reply"]["answer"] == "yes") == reply, a["needs_reply"]["confidence"]))
     for text, intent, memory in INPUTS:
         a, _ = ask(url, text, decide.INPUT_QUESTIONS)
         rows["intent"].append((a["intent"]["answer"] == intent, a["intent"]["confidence"]))
         rows["needs_memory"].append(((a["needs_memory"]["answer"] == "yes") == memory, a["needs_memory"]["confidence"]))
-    print(f"События: {len(EVENTS)}, обращения: {len(INPUTS)}")
-    for name in ("category", "addressed", "needs_reply"):
-        report(name, rows[name], (0.0, 0.35))
+    print(f"Обращения: {len(INPUTS)}")
     for name in ("intent", "needs_memory"):
         report(name, rows[name], (0.0, 0.5))
 
@@ -144,8 +137,8 @@ def percentile(values: list[float], q: float) -> float:
 def bench(url: str, n: int) -> None:
     rng = random.Random(7)
     texts = [sample_text(rng) for _ in range(n)]
-    ask(url, texts[0], decide.EVENT_QUESTIONS)                       # прогрев
-    for label, questions in (("событие (3 вопроса)", decide.EVENT_QUESTIONS), ("обращение (2 вопроса)", decide.INPUT_QUESTIONS)):
+    ask(url, texts[0], decide.INPUT_QUESTIONS)                       # прогрев
+    for label, questions in (("обращение (2 вопроса)", decide.INPUT_QUESTIONS),):
         ms = [ask(url, t, questions)[1] for t in texts]
         print(f"{label:22s} n={n}  p50={statistics.median(ms):.0f} мс  p95={percentile(ms, 0.95):.0f} мс  "
               f"среднее={statistics.mean(ms):.0f} мс  максимум={max(ms):.0f} мс  длина текста {min(map(len, texts))}-{max(map(len, texts))}")

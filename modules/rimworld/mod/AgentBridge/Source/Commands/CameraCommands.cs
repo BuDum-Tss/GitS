@@ -28,7 +28,7 @@ namespace AgentBridge
 
         private static readonly Dictionary<string, string> TabAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["work"] = "Work", ["restrict"] = "Restrict", ["schedule"] = "Restrict", ["assign"] = "Assign", ["medical"] = "Assign",
+            ["work"] = "Work", ["restrict"] = "Schedule", ["schedule"] = "Schedule", ["assign"] = "Assign", ["medical"] = "Assign",
             ["animals"] = "Animals", ["wildlife"] = "Wildlife", ["history"] = "History", ["architect"] = "Architect",
             ["research"] = "Research", ["inspect"] = "Inspect", ["menu"] = "Menu", ["quests"] = "Quests", ["factions"] = "Factions",
         };
@@ -37,18 +37,29 @@ namespace AgentBridge
         private static readonly Dictionary<string, string> RequiredTab = new Dictionary<string, string>
         {
             ["set_work_priority"] = "Work", ["set_manual_priorities"] = "Work",
-            ["set_schedule"] = "Restrict", ["set_schedule_range"] = "Restrict",
+            ["set_schedule"] = "Schedule", ["set_schedule_range"] = "Schedule",
             ["set_medical_care"] = "Assign", ["research"] = "Research",
+            ["ui_assign"] = "Assign", ["ui_policy"] = "Assign", ["ui_bed"] = "Assign", ["ui_animal"] = "Animals", ["ui_area"] = "Schedule",
         };
         private static readonly Dictionary<string, string> TabTool = new Dictionary<string, string>
         {
-            ["Work"] = "work", ["Restrict"] = "schedule", ["Assign"] = "assign", ["Research"] = "research",
+            ["Work"] = "work", ["Schedule"] = "schedule", ["Assign"] = "assign", ["Research"] = "research", ["Animals"] = "animals",
         };
 
         /// Запрет: окно-зависимая команда без открытого окна. Подсказывает правильную последовательность.
-        private static void CheckTabGate(string type)
+        /// Нужное окно закрыто: правка в нём невозможна, и курсору нечего показывать (иначе он кликает по воздуху).
+        private static bool TabMissing(string type, JObject cmd)
+        {
+            if (!StrictUi || !InGame || !RequiredTab.TryGetValue(type, out var need)) return false;
+            if (type == "ui_area" && cmd != null && GetPawnById(cmd["pawn_id"]?.Value<string>() ?? "")?.RaceProps.Animal == true) need = "Animals";
+            var open = Find.MainTabsRoot.OpenTab;
+            return open == null || open.defName != need;
+        }
+
+        private static void CheckTabGate(string type, JObject cmd = null)
         {
             if (!StrictUi || !InGame || !RequiredTab.TryGetValue(type, out var need)) return;
+            if (type == "ui_area" && cmd != null && GetPawnById(cmd["pawn_id"]?.Value<string>() ?? "")?.RaceProps.Animal == true) need = "Animals";
             var open = Find.MainTabsRoot.OpenTab;
             if (open != null && open.defName == need)
             {
@@ -157,6 +168,8 @@ namespace AgentBridge
         {
             var defName = TabAliases.TryGetValue(name, out var mapped) ? mapped : name;
             var def = DefDatabase<MainButtonDef>.GetNamedSilentFail(defName)
+                ?? DefDatabase<MainButtonDef>.AllDefsListForReading.FirstOrDefault(d => d.defName.IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0
+                    || d.defName.IndexOf(defName, StringComparison.OrdinalIgnoreCase) >= 0)
                 ?? throw new Exception($"нет вкладки «{name}». Есть: {string.Join(", ", TabAliases.Keys)}");
             Find.MainTabsRoot.SetCurrentTab(def, false);
             if (auto) { _openedTab = def; _closeTabAt = Time.realtimeSinceStartup + seconds; }
@@ -222,7 +235,7 @@ namespace AgentBridge
             var now = Time.realtimeSinceStartup;
             var map = Find.CurrentMap;
 
-            if (RequiredTab.ContainsKey(type)) return AimAtTable(type, cmd);   // правка в открытом окне: курсор едет к ячейке (TableCursor.cs)
+            if (RequiredTab.ContainsKey(type)) return TabMissing(type, cmd) ? 0f : AimAtTable(type, cmd);   // правка в открытом окне: курсор едет к ячейке (TableCursor.cs)
 
             if (type == "open_tab")
             {
@@ -313,6 +326,7 @@ namespace AgentBridge
                 center = new { x = c.x, z = c.z },
                 view = new { x1 = r.minX, z1 = r.minZ, x2 = r.maxX, z2 = r.maxZ },
                 size = d.RootSize,
+                agent_camera = UserCamera.AgentHasCamera,
                 open_tab = Find.MainTabsRoot.OpenTab?.defName,
             });
         }

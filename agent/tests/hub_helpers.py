@@ -103,7 +103,7 @@ class Core:
         self.hub = ModuleHub(self.modules, sink=AttentionEventSink(self.attention), requests=self.requests,
                              settings_source=lambda: self.settings_state, token_file=tmp_path / "module_token",
                              hello_timeout=0.5)
-        self.router = Router(self.envs, self._say, lambda: "")
+        self.router = Router(self.envs, self._say)
         self.requests.router = self.router
         self.modules.supervisor = None
         self._spoof = spoof_remote

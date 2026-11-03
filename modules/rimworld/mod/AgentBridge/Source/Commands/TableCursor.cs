@@ -48,12 +48,13 @@ namespace AgentBridge
         private static Vector2 TableSpot(string type, JObject cmd)
         {
             var table = OpenPawnTable();
-            var origin = table != null && ReferenceEquals(LastTable, table) ? LastOrigin : TableGeometry.FallbackOrigin();
+            var origin = table != null && ReferenceEquals(LastTable, table) ? LastOrigin + TableWindowOffset() : TableGeometry.FallbackOrigin();
 
             if (type == "set_manual_priorities")       // переключатель «ручные приоритеты» стоит над таблицей (приближённо)
                 return TableGeometry.OnScreen(origin + new Vector2(80f, -20f));
 
-            var pawn = Find.CurrentMap.mapPawns.AllPawns.FirstOrDefault(p => p.ThingID == cmd["pawn_id"]?.Value<string>());
+            var pawnKey = cmd["pawn_id"]?.Value<string>() ?? cmd["animal_id"]?.Value<string>();
+            var pawn = Find.CurrentMap.mapPawns.AllPawns.FirstOrDefault(p => p.ThingID == pawnKey);
             int row = RowIndex(table, pawn);
             var colWidths = table != null ? PrivateList(table, "cachedColumnWidths") : null;
             var rowHeights = table != null ? PrivateList(table, "cachedRowHeights") : null;
@@ -74,6 +75,18 @@ namespace AgentBridge
                     if (col < 0) col = 1;
                     return TableGeometry.OnScreen(TableGeometry.CellCenter(origin, colWidths, rowHeights, header, scrollY, row, col));
                 }
+                case "ui_assign":
+                case "ui_policy":
+                case "ui_bed":
+                case "ui_area":
+                case "ui_animal":
+                {
+                    string[] names = type == "ui_assign" || type == "ui_policy" ? AssignColumnNames(cmd["kind"]?.Value<string>())
+                        : type == "ui_area" ? new[] { "AllowedArea", "Area" } : AnimalColumnNames(cmd);
+                    int col = table != null ? ColumnIndexWhere(table, c => names.Any(n => WorkerNameContains(c, n) || c.defName.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0)) : -1;
+                    if (col < 0) col = 1;
+                    return TableGeometry.OnScreen(TableGeometry.CellCenter(origin, colWidths, rowHeights, header, scrollY, row, col));
+                }
                 case "set_schedule":
                 case "set_schedule_range":
                 {
@@ -83,6 +96,30 @@ namespace AgentBridge
                 }
             }
             return TableGeometry.OnScreen(origin);
+        }
+
+        private static string[] AssignColumnNames(string kind) => kind switch
+        {
+            "food" => new[] { "Food" }, "drugs" => new[] { "Drug" }, "apparel" => new[] { "Outfit", "Apparel" }, _ => new[] { "MedicalCare" },
+        };
+
+        private static string[] AnimalColumnNames(JObject cmd)
+        {
+            if (cmd["master"] != null) return new[] { "Master" };
+            if (cmd["follow_drafted"] != null) return new[] { "FollowDrafted" };
+            if (cmd["follow_fieldwork"] != null) return new[] { "FollowFieldwork" };
+            var train = cmd["train"]?.Value<string>();
+            return train != null ? new[] { train, "Trainable" } : new[] { "Master" };
+        }
+
+        /// PawnTableOnGUI получает позицию внутри окна вкладки, а курсор рисуется по экрану: прибавляем положение окна и его поля.
+        private static Vector2 TableWindowOffset()
+        {
+            var w = Find.WindowStack?.Windows.OfType<MainTabWindow>().FirstOrDefault(x => ValuesOfType(x, typeof(PawnTable)).Any());
+            if (w == null) return Vector2.zero;
+            float margin = 18f;
+            try { margin = Traverse.Create(w).Property("Margin").GetValue<float>(); } catch (Exception) { }
+            return w.windowRect.position + new Vector2(margin, margin);
         }
 
         /// Открытое окно таблицы (MainTabWindow, в котором есть PawnTable), иначе null.
