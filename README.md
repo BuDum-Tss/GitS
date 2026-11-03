@@ -112,7 +112,7 @@ pythonw tray.py                          # трей: поднимает толь
 Ядро принимает модули по WebSocket (`ws://127.0.0.1:8766/module/ws`, токен в `%LOCALAPPDATA%\GitS\module_token`) и само
 запускает их по `agent/modules.yaml` (супервизор). Включаются и выключаются во вкладке «Модули» дашборда (там же настройки,
 задачи и вопросы модулей). Профили поведения лежат в `agent/profiles/*.yaml`. Руководство автора модуля: [docs/MODULES.md](docs/MODULES.md),
-ТЗ: [docs/tz/](docs/tz/README.md). Первый тестовый модуль, `echo` (`sdk/examples/echo_module.py`), выключен по умолчанию.
+Первый тестовый модуль, `echo` (`sdk/examples/echo_module.py`), выключен по умолчанию.
 
 ## Как проверять
 ```powershell
@@ -131,4 +131,3 @@ python -m pytest -q modules/telegram/tests           # то же для voice, p
 
 ## Для разработки
 Правила работы, карта модулей и порядок добавления инструментов и настроек: [AGENTS.md](AGENTS.md). Изменения: [CHANGELOG.md](CHANGELOG.md).
-Технические задания: [docs/tz/](docs/tz/README.md).

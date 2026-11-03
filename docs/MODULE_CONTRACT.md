@@ -1,6 +1,6 @@
 # Контракт модулей GitS
 
-Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора модуля: `docs/MODULES.md`, протокол: `docs/tz/01-module-contract.md`, ТЗ контракта: `docs/tz/31-module-contracts.md`.
+Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора модуля: `docs/MODULES.md`, код контракта: `sdk/gits_sdk/contract/`.
 
 Версия протокола `PROTOCOL = 1`, версия контракта `1.9`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 

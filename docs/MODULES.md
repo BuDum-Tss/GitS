@@ -2,7 +2,7 @@
 
 Модуль это отдельный процесс, который сам подключается к ядру по WebSocket, объявляет свои инструменты и события и
 получает вызовы. Внутри модуль устроен как угодно (Python, Node, C#). Здесь короткая версия для Python-модулей.
-Полная спецификация протокола, источник правды: [docs/tz/01-module-contract.md](tz/01-module-contract.md). Схема ядра и
+Полная спецификация протокола, источник правды: [docs/MODULE_CONTRACT.md](MODULE_CONTRACT.md). Схема ядра и
 схема ядра: [docs/architecture-clean.html](architecture-clean.html).
 **Все запросы, сообщения, темы, переменные окружения и ресурсы со всеми полями и кодами ошибок:
 [docs/MODULE_CONTRACT.md](MODULE_CONTRACT.md)** (создаётся из кода скриптом `python sdk/tools/gen_contract_doc.py`, схемы в

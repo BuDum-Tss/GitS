@@ -6,7 +6,7 @@
 ## Что это за проект
 Модуль RimWorld (`rimworld-module`) для ядра GitS: мод `mod/AgentBridge`, MCP-сервер `agent/rimworld_mcp.py`, игровые ходы на
 Claude. Разговор, голос, питомец, Telegram и память-граф принадлежат ядру в репозитории `GitS`: сюда ассистентское не добавлять.
-С ТЗ 11 это процесс-модуль `rimworld` по контракту модулей (`GitS/docs/MODULES.md`, `GitS/docs/tz/01-module-contract.md`): он сам
+С ТЗ 11 это процесс-модуль `rimworld` по контракту модулей (`GitS/docs/MODULES.md`, `GitS/docs/MODULE_CONTRACT.md`): он сам
 подключается к ядру по WebSocket (`core_link.py`), присылает манифест (рабочее место: узлы, действия, запросы), состояние и события, а
 ядро запускает его супервизором (`GitS/agent/modules.yaml`). По HTTP остаётся только то, что нужно OBS и пульту (`game_api.py`,
 :8767). Python 3.12+, `asyncio`; локальная модель (LM Studio) нужна комментатору и быстрому слою, Claude Code SDK для игровых

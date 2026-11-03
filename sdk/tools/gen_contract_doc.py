@@ -84,7 +84,7 @@ def build_markdown() -> str:
         "# Контракт модулей GitS", "",
         "Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде "
         "и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора модуля: `docs/MODULES.md`, "
-        "протокол: `docs/tz/01-module-contract.md`, ТЗ контракта: `docs/tz/31-module-contracts.md`.", "",
+        "код контракта: `sdk/gits_sdk/contract/`.", "",
         f"Версия протокола `PROTOCOL = {P.PROTOCOL}`, версия контракта `{V.CONTRACT_VERSION}`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.", "",
         "## Версии и совместимость", "",
     ]
