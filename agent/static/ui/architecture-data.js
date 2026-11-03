@@ -7,7 +7,7 @@ window.ARCH_DATA = {
    "title": "Источники событий",
    "tag": "I",
    "new": false,
-   "summary": "Модули (голос, Telegram, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.",
+   "summary": "Модули (голос, Telegram, Twitch, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.",
    "out": "Event",
    "nodes": [
     {
@@ -36,6 +36,15 @@ window.ARCH_DATA = {
      "do": "бот, её аккаунт, посты канала",
      "out": "Event telegram.*",
      "now": "modules/telegram"
+    },
+    {
+     "id": "tw",
+     "t": "twitch",
+     "tag": "I",
+     "new": false,
+     "do": "чат и события канала, ответы в чат, модерация",
+     "out": "Event twitch.*",
+     "now": "modules/twitch"
     },
     {
      "id": "rim",
@@ -705,6 +714,12 @@ window.ARCH_DATA = {
   ],
   [
    "tg",
+   "hub",
+   "flow",
+   null
+  ],
+  [
+   "tw",
    "hub",
    "flow",
    null

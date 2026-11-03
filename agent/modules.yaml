@@ -15,6 +15,16 @@ modules:
     autostart: true
     restart: on-failure       # секреты (TELEGRAM_*) модуль читает сам из agent/secrets.env; без них он работает и пишет «не настроен»
 
+  # Twitch: чат и события канала, ответы, модерация, название трансляции. Секреты TWITCH_* модуль читает сам из agent/secrets.env,
+  # токены входа создаёт modules/twitch/tw_login.py; без них модуль работает и пишет «не настроен».
+  - id: twitch
+    title: Twitch
+    cwd: "{GITS}/modules/twitch"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
+
   # Голос (ТЗ 12): весь звук - микрофон, распознавание, узнавание голосов, синтез, воспроизведение, слух системного звука.
   # Зависимости модуля: modules/voice/requirements.txt (в окружение ядра); Fish Speech и WhisperX в docker необязательны.
   - id: voice
