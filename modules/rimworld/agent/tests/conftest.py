@@ -15,6 +15,8 @@ os.environ["GITS_NO_LAUNCH"] = "1"
 @pytest.fixture(autouse=True)
 def _never_launch_the_real_game(request, monkeypatch):
     import game_launcher
+    import rimworld_mcp
+    rimworld_mcp._ERROR_STREAK[0] = 0          # счётчик подряд идущих ошибок общий на процесс: без сброса тесты зависят от порядка
     if request.node.get_closest_marker("game"):
         monkeypatch.delenv("GITS_NO_LAUNCH", raising=False)        # настоящий запуск: тест отвечает за объявление
         return
