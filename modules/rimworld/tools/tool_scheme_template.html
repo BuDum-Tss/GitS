@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RimWorld: схема инструментов</title>
+<!-- Создано modules/rimworld/tools/build_tool_scheme.py из манифеста модуля. Не править вручную: правь шаблон tools/tool_scheme_template.html -->
+<style>
+:root{--bg:#f4f1ea;--panel:#fff;--ink:#222;--mute:#6b665c;--line:#d6d0c2;--acc:#b5542a;--hl:#ffd24a;--q:#2b6f8f;--g:#3d7a47}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1b19;--panel:#262521;--ink:#e8e4da;--mute:#9a9486;--line:#3a3833;--acc:#e0804f;--hl:#e0a800;--q:#6fb4d4;--g:#78b383}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,Segoe UI,sans-serif}
+header{padding:14px 16px 6px}h1{margin:0;font-size:20px}header p{margin:4px 0;color:var(--mute);max-width:900px}
+main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,1fr);gap:14px;padding:8px 16px 24px}
+@media(max-width:980px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.card h2{margin:0 0 6px;font-size:15px}
+svg#ui{width:100%;height:auto;display:block}
+.shot{border-radius:6px;overflow:hidden;background:#222}
+.screens{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.screens button{font:inherit;padding:2px 8px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);cursor:pointer}
+.screens button.cur{background:var(--acc);color:#fff;border-color:var(--acc)}
+svg .reg{cursor:pointer;fill:transparent;stroke:none}
+svg .reg.base{pointer-events:all}
+svg .reg:hover{stroke:#fff8;stroke-width:3}
+svg .reg.on{fill:#ffd24a33;stroke:var(--hl);stroke-width:5}
+svg .map{pointer-events:all}
+svg text{font:22px system-ui,sans-serif;fill:#fff;paint-order:stroke;stroke:#000;stroke-width:4px;pointer-events:none}
+.tree ul{list-style:none;margin:0;padding-left:16px;border-left:1px dashed var(--line)}
+.tree>ul{padding-left:0;border:0}
+.node>.head{display:flex;gap:6px;align-items:baseline;padding:2px 4px;border-radius:5px;cursor:pointer}
+.node>.head:hover,.node.on>.head{background:color-mix(in srgb,var(--hl) 35%,transparent)}
+.path{font-family:ui-monospace,Consolas,monospace;font-weight:600}
+.tab{font-size:11px;color:var(--mute)}
+.cnt{font-size:11px;color:var(--mute);margin-left:auto}
+.tools{margin:2px 0 4px 16px;display:flex;flex-wrap:wrap;gap:4px}
+.t{font:12px ui-monospace,Consolas,monospace;padding:1px 6px;border-radius:10px;border:1px solid var(--line);cursor:pointer;background:var(--bg)}
+.t.action{border-color:var(--g);color:var(--g)}.t.query{border-color:var(--q);color:var(--q)}
+.t.on,.t:hover{background:var(--hl);color:#222;border-color:#222}
+.sel{min-height:90px}.sel code{font-family:ui-monospace,Consolas,monospace}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
+.step{padding:3px 8px;border-radius:6px;border:1px solid var(--acc);font:12px ui-monospace,Consolas,monospace}
+.arrow{color:var(--mute)}
+.legend span{margin-right:12px;font-size:12px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+small.mute,.mute{color:var(--mute)}
+table{border-collapse:collapse;width:100%}td{padding:2px 6px;border-top:1px solid var(--line);vertical-align:top}
+</style>
+</head>
+<body>
+<header>
+<h1>RimWorld: иерархия инструментов</h1>
+<p>Наведи на часть экрана игры, на узел дерева или на инструмент: связанные элементы подсветятся. Клик закрепляет выбор. Дерево и список инструментов строятся из манифеста модуля, снимки интерфейса сделаны в игре.</p>
+</header>
+<main>
+<section>
+<div class="card">
+<h2>Интерфейс игры</h2>
+<div class="screens" id="screens"></div>
+<div class="shot"><svg id="ui" viewBox="0 0 1920 1080" role="img" aria-label="Снимок интерфейса RimWorld"></svg></div>
+<p class="mute"><small>Снимки сделаны из запущенной игры (docs/gui). Клик по вкладке на снимке переключает экран. Области заданы в <code>UI_SCREENS</code> генератора.</small></p>
+</div>
+
+<div class="card">
+<h2>Порядок вызовов</h2>
+<div class="flow"><span class="step">where</span><span class="arrow">→</span><span class="step">open(path[, id])</span><span class="arrow">→</span><span class="step">действие узла</span><span class="arrow">→</span><span class="step">back</span></div>
+<ul>
+<li><b>Навигация</b> (<span id="navlist"></span>) работает всегда: <code>open</code> повторяет игрока (вкладка, категория Архитектора, выделение колониста), <code>back</code> поднимается на уровень выше, <code>where</code> показывает узел, его действия и дочерние узлы.</li>
+<li><b>Действие узла</b> работает только когда узел открыт. Вызов из другого узла отклоняется с подсказкой, какой узел открыть. В узле не больше <span id="maxact"></span> действий.</li>
+<li><b>Глобальные действия корня</b> (<span id="rootlist"></span>) доступны из любого узла, как кнопки внизу экрана.</li>
+<li><b>Запросы</b> (чтение, не меняют игру и не требуют открытого узла): дерево <code>colony/*</code>, <code>map/*</code>, <code>work/*</code>, <code>pawn/*</code> и т. д. Запросы панели узла подмешиваются в контекст при его открытии.</li>
+</ul>
+</div>
+</section>
+
+<section>
+<div class="card legend"><span><i style="background:var(--g)"></i>действие узла</span><span><i style="background:var(--q)"></i>запрос</span><span><i style="background:var(--hl)"></i>подсветка</span></div>
+<div class="card tree" id="tree"><h2>Дерево узлов</h2></div>
+<div class="card sel" id="sel"><h2>Выбрано</h2><p class="mute">Наведи или нажми на инструмент.</p></div>
+<div class="card"><h2>Прочее вне дерева</h2><div class="tools" id="other"></div></div>
+</section>
+</main>
+<script>
+const DATA = /*__DATA__*/;
+const $ = (s, r = document) => r.querySelector(s);
+const nodesByPath = Object.fromEntries(DATA.nodes.map(n => [n.path, n]));
+let curScreen = 'main';
+const screenOfNode = {};   // узел -> первый снимок, где он есть
+for (const pass of [0, 1]) for (const [sid, sc] of Object.entries(DATA.screens)) for (const r of sc.regions) if ((r[0] !== 'map' || sid === 'main') && (pass === 1 || !r[6])) screenOfNode[r[0]] ||= sid;
+const SVGNS = 'http://www.w3.org/2000/svg';
+function renderScreen(id) {
+  curScreen = id; const sc = DATA.screens[id], svg = $('#ui'); svg.innerHTML = '';
+  const img = document.createElementNS(SVGNS, 'image'); img.setAttribute('href', sc.image); img.setAttribute('width', 1920); img.setAttribute('height', 1080); svg.appendChild(img);
+  [...sc.regions].sort((a, b) => b[3] * b[4] - a[3] * a[4]).forEach(([node, x, y, w, h, label, go]) => {
+    const r = document.createElementNS(SVGNS, 'rect'); r.setAttribute('class', 'reg'); r.dataset.node = node;
+    Object.entries({x, y, width: w, height: h}).forEach(([k, v]) => r.setAttribute(k, v));
+    const ti = document.createElementNS(SVGNS, 'title'); ti.textContent = `${label} → ${node}`; r.appendChild(ti);
+    r.addEventListener('mouseenter', e => { e.stopPropagation(); clearOn(); lightNode(node, false); showNode(node); });
+    r.addEventListener('mouseleave', restore);
+    r.addEventListener('click', e => { e.stopPropagation(); pinned = {kind: 'node', key: node}; if (go) renderScreen(go); restore(); });
+    svg.appendChild(r);
+  });
+  document.querySelectorAll('#screens button').forEach(b => b.classList.toggle('cur', b.dataset.id === id));
+}
+const toolsByName = Object.fromEntries(DATA.tools.map(t => [t.name, t]));
+let pinned = null;   // {kind:'node'|'tool', key}
+
+function nodeOf(item) {            // узел, к которому относится инструмент (для подсветки областей)
+  if (item.group === 'nav') return 'root';
+  return item.owner || '';
+}
+function chain(path) { const out = [], p = path.split('/'); for (let i = p.length; i > 0; i--) out.push(p.slice(0, i).join('/')); return out; }
+
+function clearOn() { document.querySelectorAll('.on').forEach(e => e.classList.remove('on')); }
+function lightNode(path, follow = true) {
+  if (follow && !DATA.screens[curScreen].regions.some(r => r[0] === path) && screenOfNode[path]) renderScreen(screenOfNode[path]);
+  document.querySelectorAll(`#ui rect[data-node="${path}"]`).forEach(e => e.classList.add('on'));
+  document.querySelector(`.node[data-path="${path}"]`)?.classList.add('on');
+}
+function lightTool(name) {
+  const t = toolsByName[name]; if (!t) return;
+  document.querySelectorAll(`.t[data-name="${name}"]`).forEach(e => e.classList.add('on'));
+  const n = nodeOf(t); if (n) lightNode(n);
+}
+function showTool(name) {
+  const t = toolsByName[name];
+  const owner = t.owner ? `узел <code>${t.owner}</code>` : 'вне узлов';
+  const grp = {action: 'действие узла', query: 'запрос', root: 'глобальное действие корня', nav: 'навигация', other: 'прочее'}[t.group];
+  $('#sel').innerHTML = `<h2>${t.name}</h2><p>${grp}, ${owner}${t.query_path ? `, путь запроса <code>${t.query_path}</code>` : ''}</p><p>${t.desc}</p>` +
+    `<p class="mute">Параметры: ${t.params.length ? t.params.map(p => t.required.includes(p) ? `<b>${p}</b>` : p).join(', ') : 'нет'} (жирные обязательны)</p>`;
+}
+function showNode(path) {
+  const n = nodesByPath[path];
+  const acts = DATA.tools.filter(t => t.group === 'action' && t.owner === path), qs = DATA.tools.filter(t => t.group === 'query' && t.owner === path);
+  $('#sel').innerHTML = `<h2>${path}</h2><p>${n.title}${n.tab ? `<br><span class="mute">вкладка игры: ${n.tab}</span>` : ''}</p>` +
+    `<p>Действий: ${acts.length} из ${DATA.max_actions}, запросов в поддереве: ${qs.length}.</p>` +
+    (n.context.length ? `<p class="mute">Панель узла (контекст при открытии): ${n.context.join(', ')}</p>` : '') +
+    (Object.keys(n.watch).length ? `<p class="mute">Сдвиг срочности событий: ${Object.entries(n.watch).map(([k, v]) => `${k} ${v > 0 ? '+' : ''}${v}`).join(', ')}</p>` : '');
+}
+function preview(kind, key) { clearOn(); kind === 'node' ? lightNode(key) : lightTool(key); (kind === 'node' ? showNode : showTool)(key); }
+function restore() { clearOn(); if (pinned) { preview(pinned.kind, pinned.key); } else $('#sel').innerHTML = '<h2>Выбрано</h2><p class="mute">Наведи или нажми на инструмент.</p>'; }
+function bind(el, kind, key) {
+  el.addEventListener('mouseenter', () => preview(kind, key));
+  el.addEventListener('mouseleave', restore);
+  el.addEventListener('click', e => { e.stopPropagation(); pinned = (pinned && pinned.key === key) ? null : {kind, key}; restore(); });
+}
+function toolChip(t) { const s = document.createElement('span'); s.className = `t ${t.group === 'query' ? 'query' : 'action'}`; s.dataset.name = t.name; s.textContent = t.name; s.title = t.desc; bind(s, 'tool', t.name); return s; }
+
+// дерево
+function build() {
+  const kids = {}; DATA.nodes.forEach(n => { const p = n.path.includes('/') ? n.path.slice(0, n.path.lastIndexOf('/')) : (n.path === 'root' ? null : 'root'); (kids[p] ||= []).push(n.path); });
+  const top = (path) => {
+    const n = nodesByPath[path], li = document.createElement('li'); li.className = 'node'; li.dataset.path = path;
+    const acts = DATA.tools.filter(t => t.group === 'action' && t.owner === path), qs = DATA.tools.filter(t => t.group === 'query' && t.owner === path);
+    const head = document.createElement('div'); head.className = 'head';
+    head.innerHTML = `<span class="path">${path}</span><span class="tab">${n.tab || ''}</span><span class="cnt">${acts.length ? acts.length + ' дейст.' : ''}${qs.length ? ' · ' + qs.length + ' запр.' : ''}</span>`;
+    bind(head, 'node', path); li.appendChild(head);
+    const box = document.createElement('div'); box.className = 'tools';
+    DATA.tools.filter(t => t.owner === path && t.group !== 'nav').forEach(t => box.appendChild(toolChip(t)));
+    if (box.children.length) li.appendChild(box);
+    const sub = kids[path] || [];
+    if (sub.length) { const ul = document.createElement('ul'); sub.forEach(c => ul.appendChild(top(c))); li.appendChild(ul); }
+    return li;
+  };
+  const ul = document.createElement('ul'); ul.appendChild(top('root')); $('#tree').appendChild(ul);
+  // запросы без узла-владельца: дерево colony/*
+  const colony = DATA.tools.filter(t => t.group === 'query' && !t.owner);
+  if (colony.length) {
+    const li = document.createElement('li'); li.className = 'node'; li.dataset.path = 'colony';
+    li.innerHTML = '<div class="head"><span class="path">colony/*</span><span class="tab">запросы вне узлов</span></div>';
+    const box = document.createElement('div'); box.className = 'tools'; colony.forEach(t => box.appendChild(toolChip(t))); li.appendChild(box); ul.appendChild(li);
+  }
+  const nav = DATA.tools.filter(t => t.group === 'nav'), root = DATA.tools.filter(t => t.group === 'root');
+  $('#navlist').textContent = nav.map(t => t.name).join(', ');
+  $('#rootlist').textContent = root.map(t => t.name).join(', ');
+  $('#maxact').textContent = DATA.max_actions;
+  nav.forEach(t => $('#other').appendChild(toolChip(t)));
+  DATA.tools.filter(t => t.group === 'other').forEach(t => $('#other').appendChild(toolChip(t)));
+  Object.entries(DATA.screens).forEach(([id, sc]) => { const b = document.createElement('button'); b.dataset.id = id; b.textContent = sc.title; b.onclick = e => { e.stopPropagation(); renderScreen(id); restore(); }; $('#screens').appendChild(b); });
+  renderScreen('main');
+  document.addEventListener('click', () => { pinned = null; restore(); });
+}
+build();
+</script>
+</body>
+</html>

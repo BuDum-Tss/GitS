@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Added
+- Схема инструментов `docs/TOOLS_SCHEME.html`: интерактивная страница со снимками интерфейса игры (`docs/gui`), деревом узлов и инструментами из манифеста; наведение на часть экрана, узел или инструмент подсвечивает связанное. Создаётся `python modules/rimworld/tools/build_tool_scheme.py` (данные из `module_manifest.build()`), тест `agent/tests/test_tool_scheme.py` следит за актуальностью. Схему архитектуры ядра не затрагивает.
+
 ### Changed
 - ТЗ 32, этап B: модуль объявляет среду агента (`workspace` в манифесте, вход по сообщению, самоимпульсу или критическому сигналу), принимает запросы `workspace.enter` / `workspace.exit` / `workspace.resume` (прежние `policy.activate`, `focus.release`, `focus.resume` приходят в те же обработчики). `focus_mode` по умолчанию `core`: игра сама фокус не берёт. Запуск игры шлёт ядру сигнал `rimworld.game_started` (срочность 1); среду он не включает.
 
