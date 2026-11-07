@@ -16,11 +16,12 @@ def test_three_scenes_with_items_pointing_to_real_sources():
     assert [s["name"] for s in data["scene_order"]] == ["Кабинет", "AFK", "Игра"]
     scenes = {s["name"]: s for s in data["sources"] if s["id"] == "scene"}
     game = scenes["Игра"]["settings"]["items"]
-    assert [by_uuid[i["source_uuid"]]["id"] for i in game] == ["game_capture", "browser_source"]       # захват под рамкой
-    assert [i["id"] for i in game] == [1, 2] and scenes["Игра"]["settings"]["id_counter"] == 2
+    assert [by_uuid[i["source_uuid"]]["id"] for i in game] == ["game_capture", "wasapi_process_output_capture", "browser_source"]
+    assert [i["id"] for i in game] == [1, 2, 3] and scenes["Игра"]["settings"]["id_counter"] == 3
     for sc in scenes.values():
         assert all(i["source_uuid"] in by_uuid for i in sc["settings"]["items"])
-    assert data["DesktopAudioDevice1"] == TEMPLATE["DesktopAudioDevice1"] and data["modules"] == {"x": 1}
+    assert "DesktopAudioDevice1" not in data and "AuxAudioDevice1" not in data          # весь звук ПК в эфир не идёт
+    assert data["modules"] == {"x": 1}
     assert all(s.get("canvas_uuid") == "c-1" for s in data["sources"])
     json.dumps(data, ensure_ascii=False)
 

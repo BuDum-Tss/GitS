@@ -4,7 +4,7 @@
 Запуск из папки `agent` (OBS можно не закрывать, коллекция появится в меню «Коллекция сцен» при открытии меню):
     python -m tools.obs_scenes              # записать Стрим.json в папку сцен OBS (APPDATA/obs-studio/basic/scenes)
     python -m tools.obs_scenes --out файл   # записать в другое место
-Устройства звука и версия берутся из уже существующей коллекции OBS, если она есть. Ядро должно работать (страницы идут с :8766).
+Звук: общие устройства (весь звук ПК, микрофон) в коллекцию не входят, в эфир идёт звук игры (захват звука приложения). Ядро должно работать (страницы идут с :8766).
 """
 import argparse
 import json
@@ -16,7 +16,7 @@ NAME = "Стрим"
 BASE_URL = "http://localhost:8766/static/stream"
 NS = uuid.UUID("6f1c2b6e-3d0a-4f5e-9d2a-5a7c0b1e4d10")
 GAME_WINDOW = "RimWorld by Ludeon Studios:UnityWndClass:RimWorldWin64.exe"       # заголовок:класс:exe окна игры
-SCENES = (("Кабинет", ("browser:office",)), ("AFK", ("browser:afk",)), ("Игра", ("game", "browser:game")))
+SCENES = (("Кабинет", ("browser:office",)), ("AFK", ("browser:afk",)), ("Игра", ("game", "audio:game", "browser:game")))
 
 
 def _uuid(name: str) -> str:
@@ -25,7 +25,7 @@ def _uuid(name: str) -> str:
 
 def _source(name: str, kind: str, settings: dict, canvas: str | None) -> dict:
     src = {"prev_ver": 553648129, "name": name, "uuid": _uuid(name), "id": kind, "versioned_id": kind, "settings": settings,
-           "mixers": 255 if kind == "browser_source" else 0, "sync": 0, "flags": 0, "volume": 1.0, "balance": 0.5, "enabled": True,
+           "mixers": 255 if kind in ("browser_source", "wasapi_process_output_capture") else 0, "sync": 0, "flags": 0, "volume": 1.0, "balance": 0.5, "enabled": True,
            "muted": False, "push-to-mute": False, "push-to-mute-delay": 0, "push-to-talk": False, "push-to-talk-delay": 0,
            "hotkeys": {}, "deinterlace_mode": 0, "deinterlace_field_order": 0, "monitoring_type": 0, "private_settings": {}}
     if canvas:
@@ -50,6 +50,7 @@ def build(template: dict | None = None, base_url: str = BASE_URL) -> dict:
         "browser:office": ("Кабинет: страница", "browser_source", {"url": f"{base_url}/office.html"}),
         "browser:afk": ("AFK: страница", "browser_source", {"url": f"{base_url}/afk.html"}),
         "browser:game": ("Игра: рамка и персонаж", "browser_source", {"url": f"{base_url}/game.html"}),
+        "audio:game": ("Звук: игра", "wasapi_process_output_capture", {"window": GAME_WINDOW, "priority": 2}),     # звук только игры
         "game": ("Игра: захват", "game_capture", {"capture_mode": "window", "window": GAME_WINDOW, "priority": 1,
                                                   "capture_cursor": False}),
     }
@@ -69,10 +70,7 @@ def build(template: dict | None = None, base_url: str = BASE_URL) -> dict:
            "saved_projectors": [], "preview_locked": False, "scaling_enabled": False, "scaling_level": 0,
            "scaling_off_x": 0.0, "scaling_off_y": 0.0, "modules": template.get("modules", {}), "canvases": template.get("canvases", []),
            "version": 2}
-    for key in ("DesktopAudioDevice1", "AuxAudioDevice1"):
-        if key in template:
-            out[key] = template[key]
-    return out
+    return out                                                   # общих устройств (звук рабочего стола, микрофон) нет: в эфир идёт только звук игры
 
 
 def obs_scenes_dir() -> Path:
