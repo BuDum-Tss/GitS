@@ -225,3 +225,25 @@ async def test_eventsub_welcome_subscribes_and_dispatches():
     await s.handle({"metadata": {"message_type": "session_reconnect"}, "payload": {"session": {"reconnect_url": "wss://new"}}})
     await s.handle({"metadata": {"message_type": "session_welcome"}, "payload": {"session": {"id": "S2"}}})
     assert len(created) == 2                                 # при переходе на новый адрес подписки не создаются заново
+
+
+async def test_eventsub_retries_subscriptions_rejected_for_the_connection_limit(monkeypatch):
+    import eventsub
+
+    class FakeHelix:
+        def __init__(self):
+            self.calls = []
+
+        async def subscribe(self, role, sub_type, version, condition, session_id):
+            self.calls.append(sub_type)
+            if len(self.calls) == 1:
+                raise TwitchError(400, "number of websocket transports limit exceeded")
+
+    monkeypatch.setattr(eventsub, "SUB_RETRY_S", (0.01, 0.01))
+    helix = FakeHelix()
+    session = EventSubSession(helix, "bot", [("channel.raid", "1", {})], lambda *a: None)
+    session.session_id, session.connected = "s1", True
+    later = await session._subscribe()
+    assert later and session.failed == ["channel.raid"]
+    await asyncio.wait_for(session._retry, 2)
+    assert helix.calls == ["channel.raid", "channel.raid"] and session.failed == []     # повтор прошёл, отметка о сбое снята

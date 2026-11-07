@@ -114,8 +114,11 @@ class TwitchModule:
             log.warning("канал не найден: %s", scrub(e.message))
             return
         roles = ["bot"] + (["broadcaster"] if self.helix.has_role("broadcaster") else [])
-        for role in roles:
-            session = EventSubSession(self.helix, role, self._subs(role, cid), self.on_event)
+        plan = [(role, self._subs(role, cid)) for role in roles]
+        if len(roles) == 2 and self.helix.user_id("bot") and self.helix.user_id("bot") == self.helix.user_id("broadcaster"):
+            plan = [("broadcaster", plan[0][1] + plan[1][1])]    # бот и канал один аккаунт: одно соединение вместо двух (лимит Twitch 3 на аккаунт)
+        for role, subs in plan:
+            session = EventSubSession(self.helix, role, subs, self.on_event)
             self.sessions.append(session)
             self.tasks.append(asyncio.get_running_loop().create_task(session.run()))
 

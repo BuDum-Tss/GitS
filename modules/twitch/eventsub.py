@@ -16,6 +16,7 @@ log = logging.getLogger("twitch.eventsub")
 
 URL = "wss://eventsub.wss.twitch.tv/ws"
 RETRY_S = (2.0, 5.0, 15.0, 30.0)
+SUB_RETRY_S = (30.0, 90.0, 300.0, 600.0)     # повтор подписок, которые Twitch отклонил на время (лимит соединений)
 
 
 class EventSubSession:
@@ -26,6 +27,7 @@ class EventSubSession:
         self.connected = False
         self.failed: list[str] = []          # типы подписок, которые Twitch не принял (не хватает прав)
         self._reconnect_url = ""
+        self._retry: asyncio.Task | None = None
 
     async def handle(self, msg: dict) -> None:
         meta = msg.get("metadata") or {}
@@ -44,14 +46,41 @@ class EventSubSession:
         elif kind == "revocation":
             log.warning("подписка отозвана: %s", (payload.get("subscription") or {}).get("type"))
 
-    async def _subscribe(self) -> None:
-        self.failed = []
-        for sub_type, version, condition in self.subs:
+    @staticmethod
+    def _transient(e: TwitchError) -> bool:
+        """Отказ на время: лимит соединений (чужие или старые сессии ещё не закрылись) или 429; права от повтора не появятся."""
+        return "limit exceeded" in e.message.lower() or e.status == 429
+
+    async def _subscribe(self, subs=None) -> list:
+        """Создать подписки; вернуть те, что отклонены на время (их повторят)."""
+        later = []
+        if subs is None:
+            self.failed = []
+        for sub_type, version, condition in (self.subs if subs is None else subs):
             try:
                 await self.helix.subscribe(self.role, sub_type, version, condition, self.session_id)
+                if sub_type in self.failed:
+                    self.failed.remove(sub_type)
             except TwitchError as e:
-                self.failed.append(sub_type)
+                if self._transient(e):
+                    later.append((sub_type, version, condition))
+                if sub_type not in self.failed:
+                    self.failed.append(sub_type)
                 log.warning("подписка %s не создана (%s): %s", sub_type, self.role, scrub(e.message))
+        if later and (self._retry is None or self._retry.done()):
+            self._retry = asyncio.get_running_loop().create_task(self._retry_later(later, self.session_id))
+        return later
+
+    async def _retry_later(self, subs: list, session_id: str) -> None:
+        """Повторять отклонённые на время подписки той же сессии с растущей паузой, пока они не пройдут."""
+        for delay in SUB_RETRY_S:
+            await asyncio.sleep(delay)
+            if not self.connected or self.session_id != session_id:
+                return                                           # сессия сменилась: новая подпишется сама
+            subs = await self._subscribe(subs)
+            if not subs:
+                log.info("подписки Twitch (%s) созданы повторно", self.role)
+                return
 
     async def _open(self, url: str):
         """Асинхронный генератор сообщений-словарей одного соединения."""
