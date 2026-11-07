@@ -13,14 +13,14 @@ logger = logging.getLogger("voice_fx")
 
 # цепочки подбираются на слух: `python modules/voice/tools/fx_sample.py` складывает образцы всех пресетов в одну папку
 PRESETS: dict[str, str] = {
-    # лёгкий холодок: чуть выше тон, короткое металлическое эхо
-    "light": "highpass=f=100,rubberband=pitch=1.03,aecho=0.8:0.7:7:0.18,alimiter=limit=0.9",
+    # лёгкий холодок: тон выше примерно на полторы ступени, короткое металлическое эхо
+    "light": "highpass=f=100,rubberband=pitch=1.10:formant=shifted,aecho=0.8:0.7:7:0.18,alimiter=limit=0.9",
     # машинный голос: тон выше, тонкий корпус, хорус и короткое эхо как «металл», лёгкий цифровой шум, подъём около 3 кГц
-    "glados": ("highpass=f=140,lowpass=f=8500,rubberband=pitch=1.05,"
+    "glados": ("highpass=f=140,lowpass=f=8500,rubberband=pitch=1.16:formant=shifted,"
                "chorus=0.7:0.9:35|50:0.3|0.25:0.3|0.4:1.5|2,aecho=0.8:0.75:5|11:0.3|0.2,"
                "acrusher=bits=13:mode=log:aa=1:mix=0.18,equalizer=f=2800:t=q:w=1:g=3,alimiter=limit=0.9"),
     # сильнее: ниже разрядность, заметный хорус и фазер
-    "heavy": ("highpass=f=170,lowpass=f=7500,rubberband=pitch=1.07,"
+    "heavy": ("highpass=f=170,lowpass=f=7500,rubberband=pitch=1.22:formant=shifted,"
               "chorus=0.6:0.9:25|40|60:0.4|0.3|0.25:0.25|0.35|0.4:1.2|1.8|2.5,aphaser=type=t:speed=0.4:decay=0.4,"
               "aecho=0.8:0.8:4|9|14:0.35|0.25|0.15,acrusher=bits=10:mode=log:aa=1:mix=0.3,"
               "equalizer=f=3000:t=q:w=1:g=4,alimiter=limit=0.9"),
