@@ -10,6 +10,7 @@ import asyncio
 import io
 import logging
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -45,11 +46,28 @@ class TtsRequest(BaseModel):
 _accent_cache: dict[str, str] = {}
 
 
+def _accent_safe(text: str) -> str:
+    """RUAccent иногда падает на отдельных словах (ValueError: нет token_type_ids), и тогда весь запрос давал 500, а голос
+    падал на запасной движок. Ошибка на предложении оставляет это предложение без ударений, остальные размечаются."""
+    try:
+        return _state["accent"].process_all(text)
+    except Exception as e:
+        logger.warning(f"ударения не расставлены целиком ({type(e).__name__}), разбираю по предложениям")
+    parts = re.split(r"(?<=[.!?…])\s+", text)
+    out = []
+    for part in parts:
+        try:
+            out.append(_state["accent"].process_all(part))
+        except Exception:
+            out.append(part)
+    return " ".join(out)
+
+
 def _accent(text: str) -> str:
     """Ударения; результат запоминается (референс одинаков в каждом запросе, повторные реплики тоже)."""
     hit = _accent_cache.get(text)
     if hit is None:
-        hit = _state["accent"].process_all(text)
+        hit = _accent_safe(text)
         if len(_accent_cache) > 512:
             _accent_cache.clear()
         _accent_cache[text] = hit
