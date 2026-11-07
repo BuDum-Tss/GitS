@@ -55,7 +55,7 @@ DEFAULTS = {
     "pet_visible": True,        # показывать окно питомца (модуль pet при этом остаётся подключённым)
     "volume": 100,              # громкость озвучки, 0-100
     "tts_speed": 100,           # скорость речи в процентах (50-150, 100 - обычная); ESpeech и edge-tts
-    "tts_fx": "glados",         # фильтр под голос персонажа после синтеза: off | light | glados | heavy (modules/voice/voice_fx.py)
+    "tts_fx": "off",            # фильтр под голос персонажа после синтеза: off | light | glados | heavy (modules/voice/voice_fx.py)
     "hotkey_input": "Ctrl+Shift+Space",   # глобальная клавиша строки быстрого ввода
     "autoplay": True,           # ТЗ 33: единый агент сам продолжает работу в среде автономного модуля (игра), раз в work_interval_s модуля
     "dnd": False,               # «не отвлекать» до выключения (включает пользователь)

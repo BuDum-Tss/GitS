@@ -26,7 +26,7 @@ PRESETS: dict[str, str] = {
               "equalizer=f=3000:t=q:w=1:g=4,alimiter=limit=0.9"),
 }
 OFF = "off"
-_preset = "glados"
+_preset = OFF
 
 
 def set_preset(name) -> None:

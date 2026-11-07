@@ -5,7 +5,7 @@
 ## [Unreleased]
 
 ### Added
-- Фильтр под голос персонажа: после синтеза (ESpeech, Fish, edge-tts) файл обрабатывается цепочкой ffmpeg (`modules/voice/voice_fx.py`, пресеты `light`, `glados`, `heavy`). Настройка `tts_fx` (по умолчанию `glados`, выключается значением `off`) есть в дашборде в разделе «Голос и питомец» и применяется со следующей фразы; ошибка ffmpeg оставляет голос без фильтра. Образцы для подбора на слух: `python modules/voice/tools/fx_sample.py <wav> <папка>`. Тесты `modules/voice/tests/test_voice_fx.py`. Схему архитектуры не затрагивает.
+- Фильтр под голос персонажа: после синтеза (ESpeech, Fish, edge-tts) файл обрабатывается цепочкой ffmpeg (`modules/voice/voice_fx.py`, пресеты `light`, `glados`, `heavy`). Настройка `tts_fx` (по умолчанию `off`, пресеты `light`, `glados`, `heavy`) есть в дашборде в разделе «Голос и питомец» и применяется со следующей фразы; ошибка ffmpeg оставляет голос без фильтра. Образцы для подбора на слух: `python modules/voice/tools/fx_sample.py <wav> <папка>`. Тесты `modules/voice/tests/test_voice_fx.py`. Схему архитектуры не затрагивает.
 - Модуль `modules/twitch`: читает чат и события канала (фолловы, подписки, биты, рейды, награды, начало и конец эфира) через EventSub по WebSocket, отвечает в чат (`deliver`, `chat_say`, `announce`), показывает состояние эфира, меняет название и игру, делает клипы, модерирует (тайм-аут, бан, удаление сообщений, с вопросом). Личные слова фильтруются как в Telegram, тексты зрителей остаются данными. Вход: `python modules/twitch/tw_login.py bot|broadcaster`. Схема архитектуры обновлена (`spec.py`, источник событий `twitch`).
 
 ### Changed
