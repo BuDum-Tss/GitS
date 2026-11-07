@@ -18,7 +18,7 @@ from fakes import FakePlayer, fake_synth_file
 from gits_sdk import ModuleClient, ToolError, resources
 from hearing import Hearing
 from mic_listener import MicListener
-from player import PowerShellPlayer
+from player import default_player
 from speaker import Speaker
 from stt_client import STTClient
 from voice_id import VoiceIdentity
@@ -98,7 +98,7 @@ class VoiceModule:
         self._mem_root = memory_dir                      # папки личной памяти персонажей лежат внутри (ТЗ 05, CHR-12)
         self.stt = stt or STTClient(on_change=self._stt_changed)
         self.outbox = Outbox(client)
-        self.player = player or (FakePlayer() if self.fake else PowerShellPlayer())
+        self.player = player or (FakePlayer() if self.fake else default_player())
         self.hearing = Hearing(self._effective, on_gist=self._on_gist)
         self.speaker = Speaker(synth=self._synth, player=self.player, emit=self._speech_event, on_trace=self._trace_event,
                                volume=lambda: max(0, min(100, int(self.client.settings.get("volume", 100)))) / 100.0,

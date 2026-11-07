@@ -16,8 +16,10 @@ def test_three_scenes_with_items_pointing_to_real_sources():
     assert [s["name"] for s in data["scene_order"]] == ["Кабинет", "AFK", "Игра"]
     scenes = {s["name"]: s for s in data["sources"] if s["id"] == "scene"}
     game = scenes["Игра"]["settings"]["items"]
-    assert [by_uuid[i["source_uuid"]]["id"] for i in game] == ["game_capture", "wasapi_process_output_capture", "browser_source"]
-    assert [i["id"] for i in game] == [1, 2, 3] and scenes["Игра"]["settings"]["id_counter"] == 3
+    assert [by_uuid[i["source_uuid"]]["id"] for i in game] == ["game_capture", "wasapi_process_output_capture", "wasapi_process_output_capture", "browser_source"]
+    assert [i["id"] for i in game] == [1, 2, 3, 4] and scenes["Игра"]["settings"]["id_counter"] == 4
+    voice = {i["name"] for sc in scenes.values() for i in sc["settings"]["items"] if i["name"] == "Звук: голос"}
+    assert voice == {"Звук: голос"} and all(any(i["name"] == "Звук: голос" for i in sc["settings"]["items"]) for sc in scenes.values())
     for sc in scenes.values():
         assert all(i["source_uuid"] in by_uuid for i in sc["settings"]["items"])
     assert "DesktopAudioDevice1" not in data and "AuxAudioDevice1" not in data          # весь звук ПК в эфир не идёт

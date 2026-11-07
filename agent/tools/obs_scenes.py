@@ -4,7 +4,7 @@
 Запуск из папки `agent` (OBS можно не закрывать, коллекция появится в меню «Коллекция сцен» при открытии меню):
     python -m tools.obs_scenes              # записать Стрим.json в папку сцен OBS (APPDATA/obs-studio/basic/scenes)
     python -m tools.obs_scenes --out файл   # записать в другое место
-Звук: общие устройства (весь звук ПК, микрофон) в коллекцию не входят, в эфир идёт звук игры (захват звука приложения). Ядро должно работать (страницы идут с :8766).
+Звук: общие устройства (весь звук ПК, микрофон) в коллекцию не входят, в эфир идёт звук игры и голос (захват звука приложений: игра и ffplay модуля голоса). Ядро должно работать (страницы идут с :8766).
 """
 import argparse
 import json
@@ -16,7 +16,9 @@ NAME = "Стрим"
 BASE_URL = "http://localhost:8766/static/stream"
 NS = uuid.UUID("6f1c2b6e-3d0a-4f5e-9d2a-5a7c0b1e4d10")
 GAME_WINDOW = "RimWorld by Ludeon Studios:UnityWndClass:RimWorldWin64.exe"       # заголовок:класс:exe окна игры
-SCENES = (("Кабинет", ("browser:office",)), ("AFK", ("browser:afk",)), ("Игра", ("game", "audio:game", "browser:game")))
+SCENES = (("Кабинет", ("browser:office", "audio:voice")), ("AFK", ("browser:afk", "audio:voice")),
+          ("Игра", ("game", "audio:game", "audio:voice", "browser:game")))
+VOICE_WINDOW = "GladosVoice:SDL_app:ffplay.exe"      # окно ffplay модуля голоса (modules/voice/player.py, FFPLAY_TITLE)
 
 
 def _uuid(name: str) -> str:
@@ -50,6 +52,7 @@ def build(template: dict | None = None, base_url: str = BASE_URL) -> dict:
         "browser:office": ("Кабинет: страница", "browser_source", {"url": f"{base_url}/office.html"}),
         "browser:afk": ("AFK: страница", "browser_source", {"url": f"{base_url}/afk.html"}),
         "browser:game": ("Игра: рамка и персонаж", "browser_source", {"url": f"{base_url}/game.html"}),
+        "audio:voice": ("Звук: голос", "wasapi_process_output_capture", {"window": VOICE_WINDOW, "priority": 2}),     # только голос
         "audio:game": ("Звук: игра", "wasapi_process_output_capture", {"window": GAME_WINDOW, "priority": 2}),     # звук только игры
         "game": ("Игра: захват", "game_capture", {"capture_mode": "window", "window": GAME_WINDOW, "priority": 1,
                                                   "capture_cursor": False}),

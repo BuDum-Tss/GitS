@@ -43,3 +43,20 @@ def test_all_presets_run_with_real_ffmpeg(tmp_path):
         assert voice_fx.apply(src, name) == src
         assert open(src, "rb").read() != before, name
         subprocess.run(["ffmpeg", "-v", "error", "-i", src, "-f", "null", "-"], check=True)
+
+
+def test_ffplay_command_has_hidden_titled_window_and_clamped_volume():
+    import player
+    cmd = player.ffplay_args("ffplay.exe", "a.wav", 1.7)
+    assert cmd[0] == "ffplay.exe" and cmd[-1] == "a.wav"
+    assert cmd[cmd.index("-window_title") + 1] == player.FFPLAY_TITLE
+    assert cmd[cmd.index("-volume") + 1] == "100" and "-noborder" in cmd and "-autoexit" in cmd
+    assert player.ffplay_args("f", "a.wav", -1)[player.ffplay_args("f", "a.wav", -1).index("-volume") + 1] == "0"
+
+
+def test_default_player_falls_back_to_powershell_without_ffplay(monkeypatch):
+    import player
+    monkeypatch.setattr(player, "find_ffplay", lambda: None)
+    assert isinstance(player.default_player(), player.PowerShellPlayer)
+    monkeypatch.setattr(player, "find_ffplay", lambda: "ffplay.exe")
+    assert isinstance(player.default_player(), player.FfplayPlayer)
