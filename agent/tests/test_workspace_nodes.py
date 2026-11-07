@@ -172,7 +172,7 @@ def _loop(env, manifest, agent, now, sent, *, settings=None, quiet=False, blocke
     async def emit(body):
         sent.append(body)
     return WorkLoop(env_of=lambda: env[0], manifest_of=lambda m: manifest if m == "game" else None, agent=agent, emit=emit,
-                    settings=lambda: settings or {}, quiet=lambda: quiet, blocked=lambda: blocked, clock=lambda: now[0])
+                    settings=lambda: {"autoplay": True} if settings is None else settings, quiet=lambda: quiet, blocked=lambda: blocked, clock=lambda: now[0])
 
 
 WS_MANIFEST = {"workspace": {"id": "game", "title": "Игра", "purpose": "играть вместе", "autonomous": True, "work_interval_s": 100}}
@@ -294,3 +294,11 @@ def test_module_events_report_hides_the_users_screen_while_she_plays():
     reg.is_noise = lambda module, kind: module == "desktop" and kind in ("desktop.activity", "desktop.app_changed")
     report = reg.events_report()
     assert "rimworld.raid" in report and "desktop.activity" not in report
+
+
+def test_work_loop_is_silent_when_autoplay_is_not_set():
+    env, now, sent = ["game"], [1000.0], []
+    loop = _loop(env, WS_MANIFEST, _Agent(), now, sent, settings={})      # настройки нет: автоплей по умолчанию выключен
+    assert asyncio.run(loop.tick()) is False
+    now[0] = 5000.0
+    assert asyncio.run(loop.tick()) is False and sent == []

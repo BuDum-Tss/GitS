@@ -70,7 +70,7 @@ async def test_set_setting_changes_only_whitelisted_boolean_settings(tmp_path):
             tool = core.envs.get("core.set_setting")
             assert tool.risk == "auto" and tool.availability == "always" and tool.env == "core"
             assert tool.params["key"]["enum"] == ["telegram", "telegram_after_run", "telegram_voice", "telegram_confirm",
-                                                  "pet_visible"]
+                                                  "pet_visible", "autoplay"]
             for key in ("telegram", "telegram_after_run", "telegram_voice", "telegram_confirm", "pet_visible"):
                 body = await call_core_tool(raw, "core.set_setting", {"key": key, "value": True})
                 assert body["ok"] is True, body
@@ -236,3 +236,7 @@ def test_module_events_report_and_trace_of_module_launch():
     core_service._log_workspace("switch", {"from": "rimworld", "to": "assistant", "reason": "done"})
     assert [e["summary"] for e in tool_trace.recent()] == ["rimworld -> assistant (done)"]    # по инструменту смена уже в чате
     tool_trace.clear()
+
+
+def test_agent_can_toggle_autoplay_through_set_setting():
+    assert "autoplay" in builtin.MODULE_SETTINGS

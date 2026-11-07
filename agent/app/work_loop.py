@@ -50,7 +50,7 @@ class WorkLoop:
             return False
         module, ws = target
         self._since.setdefault(module, now)
-        if not self._settings().get("autoplay", True) or self._quiet() or self._blocked() or self._agent.busy:
+        if not self._settings().get("autoplay", False) or self._quiet() or self._blocked() or self._agent.busy:
             return False
         interval = float(ws.get("work_interval_s") or DEFAULT_INTERVAL_S)
         ready = max(self._last, getattr(self._agent, "last_end", 0.0), self._since[module])

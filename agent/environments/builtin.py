@@ -19,7 +19,7 @@ from .base import Environment, Tool, ToolError
 
 # настройки, которые модули меняют инструментом core.set_setting (TG-13): белый список, остальное только человек.
 # pet_visible добавлена по решению владельца (TZ 15b): кнопки «Показать» и «Скрыть» в пространстве модуля pet
-MODULE_SETTINGS = ("telegram", "telegram_after_run", "telegram_voice", "telegram_confirm", "pet_visible")
+MODULE_SETTINGS = ("telegram", "telegram_after_run", "telegram_voice", "telegram_confirm", "pet_visible", "autoplay")
 
 
 def _tool(env, name, description, params, call, risk="auto", keywords=(), self_confirming=False,
@@ -566,7 +566,7 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
                   module_events, informative=True, keywords=("события", "что было", "что произошло", "что нового", "в игре", "колония")),
             _tool("core", "set_setting", "Включить или выключить общую настройку для модулей: telegram (посты-мысли), "
                   "telegram_after_run (пост-итог после забега), telegram_voice (посты голосом), telegram_confirm (спрашивать "
-                  "перед публикацией), pet_visible (показывать окно питомца).",
+                  "перед публикацией), pet_visible (показывать окно питомца), autoplay (играть самой: рабочие циклы в среде игры; включай, когда пользователь просит начать стрим или играть сама, выключай, когда просит закончить).",
                   {"key": {"type": "string", "enum": list(MODULE_SETTINGS), "description": "какая настройка"},
                    "value": {"type": "boolean", "description": "true - включить, false - выключить"}},
                   set_setting, keywords=("настройка",)),
