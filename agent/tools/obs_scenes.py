@@ -1,8 +1,8 @@
-"""Коллекция сцен OBS для стрима: «Кабинет» (ГЛаДОС говорит со зрителями), «AFK» (раздумья над чертежами) и «Игра» (захват игры,
-рамка и ГЛаДОС). Страницы сцен лежат в `agent/static/stream/` и раздаются дашбордом ядра (источники «Браузер»).
+"""Коллекция сцен OBS для стрима: «Кабинет» (персонаж говорит со зрителями), «AFK» (раздумья над чертежами) и «Игра» (захват игры,
+рамка и персонаж). Страницы сцен лежат в `agent/static/stream/` и раздаются дашбордом ядра (источники «Браузер»).
 
 Запуск из папки `agent` (OBS можно не закрывать, коллекция появится в меню «Коллекция сцен» при открытии меню):
-    python -m tools.obs_scenes              # записать GLaDOS.json в папку сцен OBS (APPDATA/obs-studio/basic/scenes)
+    python -m tools.obs_scenes              # записать Стрим.json в папку сцен OBS (APPDATA/obs-studio/basic/scenes)
     python -m tools.obs_scenes --out файл   # записать в другое место
 Устройства звука и версия берутся из уже существующей коллекции OBS, если она есть. Ядро должно работать (страницы идут с :8766).
 """
@@ -12,7 +12,7 @@ import os
 import uuid
 from pathlib import Path
 
-NAME = "GLaDOS"
+NAME = "Стрим"
 BASE_URL = "http://localhost:8766/static/stream"
 NS = uuid.UUID("6f1c2b6e-3d0a-4f5e-9d2a-5a7c0b1e4d10")
 GAME_WINDOW = "RimWorld by Ludeon Studios:UnityWndClass:RimWorldWin64.exe"       # заголовок:класс:exe окна игры
@@ -49,7 +49,7 @@ def build(template: dict | None = None, base_url: str = BASE_URL) -> dict:
     defs = {
         "browser:office": ("Кабинет: страница", "browser_source", {"url": f"{base_url}/office.html"}),
         "browser:afk": ("AFK: страница", "browser_source", {"url": f"{base_url}/afk.html"}),
-        "browser:game": ("Игра: рамка и ГЛаДОС", "browser_source", {"url": f"{base_url}/game.html"}),
+        "browser:game": ("Игра: рамка и персонаж", "browser_source", {"url": f"{base_url}/game.html"}),
         "game": ("Игра: захват", "game_capture", {"capture_mode": "window", "window": GAME_WINDOW, "priority": 1,
                                                   "capture_cursor": False}),
     }
