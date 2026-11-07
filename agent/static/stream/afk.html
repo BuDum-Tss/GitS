@@ -20,11 +20,10 @@ svg{position:absolute;inset:0;width:1920px;height:1080px}
 #scan{animation:scan 7s ease-in-out infinite;fill:var(--bp-line);opacity:.12}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes scan{0%,100%{transform:translateX(120px)}50%{transform:translateX(1700px)}}
-.dots{position:absolute;right:300px;bottom:270px}
-.dots span{display:inline-block;width:14px;height:14px;margin:0 6px;border-radius:50%;background:var(--bp-line);animation:dot 1.4s infinite}
-.dots span:nth-child(2){animation-delay:.25s}.dots span:nth-child(3){animation-delay:.5s}
-@keyframes dot{0%,80%,100%{opacity:.2;transform:scale(.7)}40%{opacity:1;transform:scale(1)}}
-#st{right:90px;bottom:70px;width:200px;height:auto}
+#plate{position:absolute;left:72px;bottom:64px}
+#title{font-family:PlexHeading,sans-serif;font-weight:700;font-stretch:75%;font-size:120px;line-height:1;letter-spacing:.14em;text-transform:uppercase;color:var(--bp-line);transform:skewX(-8deg);transform-origin:0 100%}
+#rule{margin-top:18px;width:520px;height:3px;background:var(--bp-line);opacity:.8;transform-origin:0 50%;animation:rule 6s ease-in-out infinite}
+@keyframes rule{0%,100%{transform:scaleX(.3)}50%{transform:scaleX(1)}}
 </style></head><body>
 <div id="frame"></div>
 <svg viewBox="0 0 1920 1080" aria-hidden="true">
@@ -51,9 +50,7 @@ svg{position:absolute;inset:0;width:1920px;height:1080px}
     <text class="t" x="1290" y="586" style="animation-delay:.3s" id="d4">0.00</text>
   </g>
 </svg>
-<div class="dots"><span></span><span></span><span></span></div>
-<img id="st" class="sticker" src="stickers/thinking.png" alt="">
-<script src="common.js"></script>
+<div id="plate"><div id="title">Перерыв</div><div id="rule"></div></div>
 <script>
 // зубчатое колесо
 (function(){const cx=1480,cy=330,n=14,r1=120,r2=146;let d='';
@@ -63,6 +60,5 @@ svg{position:absolute;inset:0;width:1920px;height:1080px}
 // цифры на чертеже пересчитываются раз в цикл
 const rnd=(a,b)=>Math.round(a+Math.random()*(b-a));
 setInterval(()=>{d1.textContent=rnd(600,900);d2.textContent=rnd(300,520);d3.textContent='R '+rnd(40,90);d4.textContent=(Math.random()*9).toFixed(2)},18000);
-StreamScene.bind({sticker: document.getElementById('st')});
 </script>
 </body></html>
