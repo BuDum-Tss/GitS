@@ -28,11 +28,12 @@ def N(id, t, tag, do, out, now, new=False):
 # summary: что показываем, пока группа свёрнута
 GROUPS = [
     dict(id="g_src", col="A", title="Источники событий", tag="I",
-         summary="Модули (голос, Telegram, Twitch, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.", out="Event", nodes=[
+         summary="Модули (голос, Telegram, Twitch, OBS, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.", out="Event", nodes=[
         N("voice", "voice", "I", "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (ESpeech, запасные Fish Speech и edge-tts)", "Event voice.utterance", "modules/voice"),
         N("desk", "desktop", "I", "экран, активность, мышь и клавиатура, Claude-помощник", "Event desktop.*, job.update", "modules/desktop"),
         N("tg", "telegram", "I", "бот, её аккаунт, посты канала", "Event telegram.*", "modules/telegram"),
         N("tw", "twitch", "I", "чат и события канала, ответы в чат, модерация", "Event twitch.*", "modules/twitch"),
+        N("obs", "obs", "I", "сцены, трансляция и запись OBS, субтитры в поток (obs-websocket)", "Event obs.*", "modules/obs"),
         N("rim", "rimworld", "I", "игровой агент: ходы, комментатор, запись забега", "Event raid, death, colonists", "modules/rimworld"),
         N("mont", "montage", "I", "конвейер роликов: Remotion + ffmpeg, агент Claude", "job.update, вопросы", "modules/montage"),
         N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (flow_trace.py, flow_spec.py, /api/flow; ошибки GLiNER, Claude и выходов отдельно; настройка «Только ядро»)"),
@@ -125,7 +126,7 @@ OWNER = {n["id"]: g["id"] for g in GROUPS for n in g["nodes"]}
 BYID = {g["id"]: g for g in GROUPS}
 
 EDGES = [
-    ("voice", "hub", "flow", "Event", None), ("desk", "hub", "flow", None, None), ("tg", "hub", "flow", None, None), ("tw", "hub", "flow", None, None),
+    ("voice", "hub", "flow", "Event", None), ("desk", "hub", "flow", None, None), ("tg", "hub", "flow", None, None), ("tw", "hub", "flow", None, None), ("obs", "hub", "flow", None, None),
     ("rim", "hub", "flow", None, None), ("mont", "hub", "flow", "job.update", None), ("dash", "hub", "flow", "UserInput", None),
     ("reminders", "timer", "use", "срок", None), ("mr", "plans", "r", "планы пользователя", None), ("plans", "reminders", "w", "напомнить", None),
     ("conv", "reflect", "flow", "разговор затих", None), ("timer", "norm", "flow", "self.reminder", None),

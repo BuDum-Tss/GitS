@@ -7,7 +7,7 @@ window.ARCH_DATA = {
    "title": "Источники событий",
    "tag": "I",
    "new": false,
-   "summary": "Модули (голос, Telegram, Twitch, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.",
+   "summary": "Модули (голос, Telegram, Twitch, OBS, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.",
    "out": "Event",
    "nodes": [
     {
@@ -45,6 +45,15 @@ window.ARCH_DATA = {
      "do": "чат и события канала, ответы в чат, модерация",
      "out": "Event twitch.*",
      "now": "modules/twitch"
+    },
+    {
+     "id": "obs",
+     "t": "obs",
+     "tag": "I",
+     "new": false,
+     "do": "сцены, трансляция и запись OBS, субтитры в поток (obs-websocket)",
+     "out": "Event obs.*",
+     "now": "modules/obs"
     },
     {
      "id": "rim",
@@ -675,6 +684,12 @@ window.ARCH_DATA = {
   ],
   [
    "tw",
+   "hub",
+   "flow",
+   null
+  ],
+  [
+   "obs",
    "hub",
    "flow",
    null

@@ -25,6 +25,16 @@ modules:
     autostart: true
     restart: on-failure
 
+  # OBS: сцены, трансляция, запись, субтитры в поток через obs-websocket. Пароль OBS_WEBSOCKET_PASSWORD (и адрес OBS_WEBSOCKET_URL)
+  # модуль читает сам из .env; без OBS работает и пишет «не на связи».
+  - id: obs
+    title: OBS
+    cwd: "{GITS}/modules/obs"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
+
   # Голос (ТЗ 12): весь звук - микрофон, распознавание, узнавание голосов, синтез, воспроизведение, слух системного звука.
   # Зависимости модуля: modules/voice/requirements.txt (в окружение ядра); Fish Speech и WhisperX в docker необязательны.
   - id: voice

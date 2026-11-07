@@ -1,7 +1,17 @@
-/* Общие стили сцен стрима (источники «Браузер» в OBS, 1920x1080). Страницы раздаёт дашборд: http://localhost:8766/static/stream/ */
+/* Общие стили сцен стрима (источники «Браузер» в OBS, 1920x1080). Цвета, шрифты и размеры равны токенам дизайн-системы
+   (modules/montage/template/src/style/tokens.ts, design/tokens.json). Страницы раздаёт дашборд: http://localhost:8766/static/stream/ */
+@font-face{font-family:PlexCaption;src:url(fonts/IBMPlexSansCondensed-SemiBold.ttf);font-weight:600}
+@font-face{font-family:PlexHeading;src:url(fonts/IBMPlexSansCondensed-Bold.ttf);font-weight:700}
+@font-face{font-family:PlexService;src:url(fonts/IBMPlexSans-Medium.ttf);font-weight:500}
+@font-face{font-family:PlexMono;src:url(fonts/IBMPlexMono-Regular.ttf);font-weight:400}
+:root{--chamberDark:#15181c;--chamberDark-plate:rgba(21,24,28,.72);--labWhite:#f2f2ee;--labGrey:#b9bec4;--portalOrange:#ff8b1f;
+  --bp-center:#4a9be0;--bp-mid:#2b6fba;--bp-edge:#18467f;--bp-line:#eaf4ff;--bp-grid:rgba(255,255,255,.08);--bp-grid-major:rgba(255,255,255,.18)}
 *{box-sizing:border-box;margin:0}
-html,body{width:1920px;height:1080px;overflow:hidden;background:transparent;font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif}
-.sticker{position:absolute;image-rendering:auto;filter:drop-shadow(0 12px 18px #0008);transform-origin:50% 0;transition:filter .3s}
-.sticker.speaking{filter:drop-shadow(0 0 26px #ffb43ccc) drop-shadow(0 12px 18px #0008)}
-.sub{position:absolute;max-width:980px;padding:18px 26px;border-radius:6px;background:#0d1217d9;border:2px solid #aeb4bc;color:#f2f4f6;font-size:34px;line-height:1.3;opacity:0;transform:translateY(8px);transition:opacity .35s,transform .35s}
+html,body{width:1920px;height:1080px;overflow:hidden;background:transparent;font-family:PlexService,"IBM Plex Sans",sans-serif}
+.sticker{position:absolute;image-rendering:auto;filter:drop-shadow(0 30px 40px rgba(0,0,0,.45));transform-origin:50% 0;transition:filter .3s}
+.sticker.speaking{filter:drop-shadow(0 0 12px rgba(255,139,31,.6)) drop-shadow(0 30px 40px rgba(0,0,0,.45))}
+/* плашка субтитров как в роликах: chamberDark-plate, скругление 4, поля 22x14, полоса её голоса portalOrange 4 px */
+.sub{position:absolute;max-width:1766px;padding:14px 22px 14px 26px;border-radius:4px;background:var(--chamberDark-plate);
+  border-left:4px solid var(--portalOrange);color:var(--labWhite);font-family:PlexCaption,sans-serif;font-weight:600;font-stretch:75%;
+  font-size:56px;line-height:1.2;opacity:0;transform:translateY(8px);transition:opacity .1s,transform .35s}
 .sub.on{opacity:1;transform:none}
