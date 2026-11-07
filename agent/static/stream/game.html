@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Сцена: игра, оверлей</title>
+<link rel="stylesheet" href="common.css">
+<style>
+/* поверх источника «Захват игры»: рамка во весь кадр, ГЛаДОС в левом нижнем углу, субтитр правее */
+#frame{position:absolute;inset:0;width:1920px;height:1080px;pointer-events:none}
+#st{left:46px;bottom:60px;width:300px;height:auto;transform-origin:50% 100%;animation:bob 5s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.sub{left:370px;bottom:78px;max-width:1000px;font-size:30px}
+</style></head><body>
+<img id="frame" src="hud-frame.svg" alt="">
+<img id="st" class="sticker" src="stickers/idle.png" alt="">
+<div id="sub" class="sub"></div>
+<script src="common.js"></script>
+<script>StreamScene.bind({sticker: document.getElementById('st'), sub: document.getElementById('sub')});</script>
+</body></html>

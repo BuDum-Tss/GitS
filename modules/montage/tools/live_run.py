@@ -31,7 +31,7 @@ CARD = ("Ты ГЛаДОС: сухая учтивость, научный про
         "факта, без грубости. Говоришь коротко и по-русски.")
 
 
-async def run(smoke: bool, models: str, resume: str | None = None) -> int:
+async def run(smoke: bool, models: str, resume: str | None = None, source: str | None = None) -> int:
     layout = Layout(root=ROOT, jobs=ROOT / "jobs" / "live")           # своя папка: чужие задачи из jobs/ не подхватываются
     out_dir = layout.jobs / "live_out"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -67,8 +67,10 @@ async def run(smoke: bool, models: str, resume: str | None = None) -> int:
         if resume:                                                           # продолжить упавшую задачу с её стадии (экономит лимит Claude)
             job_id = resume
         else:
-            job_id = (await core.call_tool("start", {"sources": [], "brief": BRIEF, "source_kind": "narrated", "platform": "shorts",
-                                                     "duration_s": 20}))["job_id"]
+            args = ({"sources": [source], "brief": "20 секунд лучшего из забега RimWorld, ГЛаДОС коротко комментирует",
+                     "source_kind": "rimworld_run", "platform": "shorts", "duration_s": 20, "voiceover": "none"} if source else
+                    {"sources": [], "brief": BRIEF, "source_kind": "narrated", "platform": "shorts", "duration_s": 20})
+            job_id = (await core.call_tool("start", args))["job_id"]
         print("задача", job_id, flush=True)
         answered: set[str] = set()
         last = None
@@ -124,6 +126,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--models", default="sonnet", help="модель для всех стадий (по умолчанию sonnet: экономия лимита)")
+    ap.add_argument("--source", help="путь к записи забега: прогон по настоящему видео (rimworld_run) вместо «narrated»")
     ap.add_argument("--resume", help="id упавшей задачи в jobs/live: вернуть её в очередь и продолжить")
     a = ap.parse_args()
     if a.resume:
@@ -131,4 +134,4 @@ if __name__ == "__main__":
         data = json.loads(path.read_text(encoding="utf-8"))
         data.update(state="queued", error=None)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    sys.exit(asyncio.run(run(a.smoke, a.models, a.resume)))
+    sys.exit(asyncio.run(run(a.smoke, a.models, a.resume, a.source)))
