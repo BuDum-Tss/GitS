@@ -21,6 +21,8 @@ from pathlib import Path
 import httpx
 from gits_sdk import resources
 
+import voice_fx
+
 logger = logging.getLogger("tts")
 
 # ── Fish Speech ────────────────────────────────────────────────────────────────
@@ -351,7 +353,8 @@ def synth_file(text: str, directory: Path | None = None) -> str | None:
     if not clean:
         return None
     try:
-        return _synthesize(clean, directory)
+        path = _synthesize(clean, directory)
+        return voice_fx.apply(path) if path else path          # фильтр под голос персонажа (настройка tts_fx)
     except Exception as e:
         logger.warning(f"Синтез не удался: {type(e).__name__}: {e}")
         return None

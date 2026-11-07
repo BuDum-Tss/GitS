@@ -26,6 +26,7 @@ from voice_id import VoiceIdentity
 import common
 from gits_sdk import host
 import tts_engine
+import voice_fx
 
 log = logging.getLogger("voice")
 
@@ -273,6 +274,7 @@ class VoiceModule:
     def _synth_file(self, text: str, directory: Path | None = None) -> str | None:
         """Настоящий синтез со скоростью из настройки `tts_speed` (читается на каждую фразу, переключать модуль не нужно)."""
         tts_engine.set_speed(self.client.settings.get("tts_speed", 100))
+        voice_fx.set_preset(self.client.settings.get("tts_fx", "glados"))
         return tts_engine.synth_file(text, directory)
 
     async def _on_barge_in(self) -> None:

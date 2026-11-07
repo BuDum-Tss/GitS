@@ -835,6 +835,7 @@ const SETTINGS_CATALOG = [
     {key: 'voice_muted', type: 'toggle', invert: true, label: 'Озвучка', hint: 'Выключает голос, текст остаётся в чате и в облачке. Горячая клавиша Ctrl+Alt+M.'},
     {key: 'volume', type: 'range', label: 'Громкость', hint: 'Применяется со следующей фразы.'},
     {key: 'tts_speed', type: 'range', min: 60, max: 130, step: 5, unit: '%', label: 'Скорость речи', hint: '100% - как записан образец голоса, меньше - медленнее. Применяется со следующей фразы (ESpeech и запасной edge-tts).'},
+    {key: 'tts_fx', type: 'select', label: 'Фильтр голоса', options: [['off', 'Без фильтра'], ['light', 'Лёгкий'], ['glados', 'ГЛаДОС'], ['heavy', 'Сильный']], hint: 'Машинная обработка голоса после синтеза. Применяется со следующей фразы.'},
     {key: 'pet_visible', type: 'toggle', label: 'Показывать питомца', hint: 'Голос работает и при скрытом питомце.'},
     {key: 'pet_pinned', type: 'toggle', label: 'Закрепить питомца', hint: 'Окно нельзя сдвинуть мышью.'},
     {key: 'pet_bubble', type: 'toggle', label: 'Облачко с текстом', hint: 'Показывать над питомцем текст того, что она говорит. Без облачка остаётся только стикер.'},
@@ -872,7 +873,7 @@ const SETTINGS_CATALOG = [
      hint: 'Она будет выполнять действия без вопросов: команды, запись файлов, игровые команды. Всё равно спрашивается: удаление данных, файлы с секретами, установка программ, запись вне проекта. Включай, только если доверяешь всему, что она читает (страницы, файлы): такой текст может пытаться ею управлять. Включается только здесь и в трее, не из чата.'}]},
 ];
 const MODULE_SETTING_KEYS = {
-  voice: ['voice_muted', 'volume', 'tts_speed', 'mic', 'hearing'],
+  voice: ['voice_muted', 'volume', 'tts_speed', 'tts_fx', 'mic', 'hearing'],
   pet: ['pet_visible', 'pet_pinned', 'pet_bubble', 'pet_bubble_secs', 'hotkey_input'],
   desktop: ['vision'],
   telegram: ['telegram', 'telegram_voice', 'telegram_confirm'],
