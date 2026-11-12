@@ -30,3 +30,17 @@ def test_claude_uses_claude_quota(monkeypatch):
     llm_gate.note_pi_error("usage limit", now=1.0)              # отдых pi на Claude ничего не значит
     monkeypatch.setattr(claude_quota, "blocked", lambda: False)
     assert llm_gate.blocked() is False
+
+
+def test_module_usage_on_pi_does_not_drain_claude_battery(monkeypatch):
+    import asyncio
+    import claude_battery
+    from core_requests import CoreRequests
+    recorded = []
+    monkeypatch.setattr(claude_battery, "record", lambda tokens, source: recorded.append((tokens, source)))
+    conn = type("C", (), {"module_id": "desktop"})()
+    _runtime(monkeypatch, "pi")
+    assert asyncio.run(CoreRequests._claude_usage(None, conn, {"tokens": 500})) == {} and recorded == []
+    _runtime(monkeypatch, "claude")
+    asyncio.run(CoreRequests._claude_usage(None, conn, {"tokens": 500}))
+    assert recorded == [(500, "desktop")]
