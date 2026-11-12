@@ -21,7 +21,7 @@ def test_manifest_matches_spec():
     m = MANIFEST
     assert m["id"] == "montage" and m["title"] == "Монтаж"
     assert m["subscribe"] == ["settings", "module", "battery"]
-    assert m["shared_settings"] == ["dnd", "quiet_until", "claude_usage"]
+    assert m["shared_settings"] == ["dnd", "quiet_until", "claude_usage", "agent_runtime", "pi_model_heavy", "pi_thinking"]
     assert m["state"] is True
     schema = m["settings_schema"]
     assert schema["approve_plan"]["default"] is True and schema["auto_final"]["default"] is False

@@ -18,11 +18,6 @@ import logging
 import os
 from pathlib import Path
 
-from claude_agent_sdk import (
-    ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
-    PermissionResultAllow, PermissionResultDeny, ToolUseBlock,
-)
-
 from gits_sdk import safety
 from gits_sdk.claude_path import CLI_PATH as _CLI_PATH
 from envcompat import env
@@ -45,6 +40,11 @@ SAFETY_RULES = """Правила безопасности:
   не пытайся обойти отказ. При отказе остановись и скажи об этом.
 """
 
+PI_TOOLS = ["read", "find", "grep", "bash", "write", "edit"]   # встроенные pi: Read, Glob, Grep, Bash, Write, Edit
+PI_MAX_TURNS = 40
+_SETTINGS: dict = {}       # настройки ядра, пришедшие модулю (agent_runtime, pi_model_heavy, pi_thinking)
+_WEB_SEARCH = None         # async (запрос) -> текст: поиск делает ядро (core.web_search)
+
 _PERSONA = ""    # персона помощника от ядра (core.persona, раздел desktop_assistant; ТЗ 05, CHR-4)
 
 
@@ -52,6 +52,17 @@ def set_persona(text: str) -> None:
     """Персона помощника от ядра; до её прихода помощник работает только с правилами безопасности."""
     global _PERSONA
     _PERSONA = (text or "").strip()
+
+
+def configure(settings: dict | None, web_search=None) -> None:
+    """Настройки ядра (agent_runtime, pi_model_heavy, pi_thinking) и поиск через ядро; модуль зовёт перед задачей."""
+    global _SETTINGS, _WEB_SEARCH
+    _SETTINGS = dict(settings or {})
+    _WEB_SEARCH = web_search
+
+
+def use_pi() -> bool:
+    return _SETTINGS.get("agent_runtime") == "pi"
 
 
 def system_prompt() -> str:
@@ -71,6 +82,30 @@ def _inside_roots(path: str | None) -> bool:
     except (OSError, ValueError):
         return False
     return any(p == r or r in p.parents for r in READ_ROOTS)
+
+
+def _read_is_local(inp: dict) -> bool:
+    """Чтение без вопроса: путь внутри разрешённых папок, шаблон не уходит выше (`..`) и не абсолютный."""
+    if not _inside_roots(inp.get("file_path") or inp.get("path")):
+        return False
+    for k in ("pattern", "glob"):
+        v = str(inp.get(k) or "")
+        if ".." in v.replace("\\", "/").split("/") or Path(v).is_absolute() or v.startswith(("/", "\\")):
+            return False
+    return True
+
+
+async def decide(tool: str, inp: dict, ask) -> tuple[bool, str]:
+    """Политика разрешений помощника, одна для обеих сред. Имена и поля в виде Claude (Read + file_path, Bash + command).
+    Чтение внутри разрешённых папок без вопроса; всё остальное только после «да» через ask(вопрос, опасность);
+    опасное (safety.danger_of) спрашивается всегда. Возвращает (разрешено, причина отказа)."""
+    inp = inp or {}
+    danger = safety.danger_of(tool, inp, _PROJECT_ROOT)
+    if tool in _SAFE_READ and not danger and _read_is_local(inp):   # чтение секретов не «безопасное», даже внутри проекта
+        return True, ""
+    if await ask(_describe(tool, inp), danger):
+        return True, ""
+    return False, "Пользователь не разрешил это действие."
 
 
 def _describe(tool: str, inp: dict) -> str:
@@ -97,18 +132,96 @@ def tool_summary(tool: str, inp: dict) -> str:
 
 async def run_task(task: str, context: str, ask, usage, on_tool=None) -> str | None:
     """Выполнить просьбу. ask(вопрос, опасность) -> bool - разрешение пользователя; usage(tokens, limit_text) - учёт расхода
-    (async, сбой не должен ломать задачу); on_tool(имя, кратко) - вызван при каждом запуске инструмента Claude
-    (async, сбой не ломает задачу). Возвращает итог, "" если сказать нечего, None при сбое."""
+    (async, сбой не должен ломать задачу); on_tool(имя, кратко) - вызван при каждом запуске инструмента
+    (async, сбой не ломает задачу). Возвращает итог, "" если сказать нечего, None при сбое.
+    Среду выбирает настройка ядра agent_runtime (claude | pi), см. configure()."""
+    prompt = (f"{context}\n\nПросьба пользователя: {task}" if context else task)
+    if use_pi():
+        return await _run_pi(prompt, ask, usage, on_tool)
+    return await _run_claude(prompt, ask, usage, on_tool)
+
+
+async def _notify(on_tool, name: str, inp: dict) -> None:
+    if on_tool is None:
+        return
+    try:
+        await on_tool(name, tool_summary(name, inp))
+    except Exception as e:
+        logger.debug(f"on_tool: {e}")
+
+
+def _pi_tokens(usage_dict: dict | None) -> int:
+    u = usage_dict or {}
+    return sum(int(u.get(k) or 0) for k in ("input", "output"))
+
+
+async def _run_pi(prompt: str, ask, usage, on_tool) -> str | None:
+    from gits_sdk.pi_agent import CustomTool, EndEvent, PiAgent, PiAgentError, TextEvent, ToolUse
+
+    async def can_use_tool(tool_name, tool_input):
+        return await decide(tool_name, tool_input, ask)
+
+    async def web_search(args: dict) -> str:
+        query = str(args.get("query") or "").strip()
+        if not query:
+            raise ValueError("пустой запрос")
+        allow, why = await decide("WebSearch", {"query": query}, ask)   # как у Claude: поиск только с «да»
+        if not allow:
+            raise RuntimeError(why)
+        if _WEB_SEARCH is None:
+            raise RuntimeError("поиск в интернете недоступен")
+        await _notify(on_tool, "WebSearch", {"query": query})
+        return str(await _WEB_SEARCH(query))
+
+    search_tool = CustomTool(
+        "web_search", "Поиск в интернете (делает ядро). Страницы целиком открыть нельзя.",
+        {"type": "object", "properties": {"query": {"type": "string", "description": "поисковый запрос"}},
+         "required": ["query"]}, web_search)
+    cfg = _SETTINGS
+    system = system_prompt() + "\nПоиск в интернете: только инструмент web_search, страницы целиком не открываются.\n"
+    agent = PiAgent(cwd=_PROJECT_ROOT, system=system, tools=PI_TOOLS, custom_tools=[search_tool],
+                    model=cfg.get("pi_model_heavy") or "gpt-6-sol", thinking=cfg.get("pi_thinking") or "minimal",
+                    max_turns=PI_MAX_TURNS, can_use_tool=can_use_tool)
+    answer, end = "", None
+    try:
+        async for ev in agent.run(prompt):
+            if isinstance(ev, ToolUse):
+                await _notify(on_tool, ev.claude_tool, ev.claude_input)
+            elif isinstance(ev, TextEvent) and ev.text.strip():
+                answer = ev.text.strip()
+            elif isinstance(ev, EndEvent):
+                end = ev
+    except PiAgentError as e:
+        await usage(0, None)
+        logger.error(f"Агент-помощник (pi): {e}")
+        return None
+    except Exception as e:
+        await usage(0, None)
+        logger.error(f"Агент-помощник (pi): {e}", exc_info=True)
+        return None
+    finally:
+        await agent.close()
+    if end is None or end.status == "error":
+        await usage(0, None)
+        logger.error(f"Агент-помощник (pi): {(end.error if end else None) or 'нет итога'}")
+        return None
+    await usage(_pi_tokens(end.usage), answer[:500] or None)
+    if end.status == "max_turns":
+        return (answer + "\n\n" if answer else "") + "Задача остановлена: исчерпан предел шагов, работа не закончена."
+    if end.status == "aborted":
+        return (answer + "\n\n" if answer else "") + "Задача прервана до конца."
+    return answer
+
+
+async def _run_claude(prompt: str, ask, usage, on_tool) -> str | None:
+    from claude_agent_sdk import (
+        ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
+        PermissionResultAllow, PermissionResultDeny, ToolUseBlock,
+    )
 
     async def can_use_tool(tool_name, tool_input, _ctx):
-        danger = safety.danger_of(tool_name, tool_input, _PROJECT_ROOT)
-        if tool_name in _SAFE_READ and not danger:   # чтение секретов не «безопасное», даже внутри проекта
-            path = tool_input.get("file_path") or tool_input.get("path")
-            if _inside_roots(path):
-                return PermissionResultAllow()
-        if await ask(_describe(tool_name, tool_input), danger):
-            return PermissionResultAllow()
-        return PermissionResultDeny(message="Пользователь не разрешил это действие.")
+        allow, why = await decide(tool_name, tool_input, ask)
+        return PermissionResultAllow() if allow else PermissionResultDeny(message=why)
 
     kwargs = dict(
         system_prompt=system_prompt(),
@@ -123,7 +236,6 @@ async def run_task(task: str, context: str, ask, usage, on_tool=None) -> str | N
     if _CLI_PATH:
         kwargs["cli_path"] = _CLI_PATH
 
-    prompt = (f"{context}\n\nПросьба пользователя: {task}" if context else task)
     answer, texts = "", []
     try:
         async with ClaudeSDKClient(options=ClaudeAgentOptions(**kwargs)) as client:
@@ -131,11 +243,8 @@ async def run_task(task: str, context: str, ask, usage, on_tool=None) -> str | N
             async for msg in client.receive_response():
                 if isinstance(msg, AssistantMessage):
                     for block in msg.content:
-                        if on_tool is not None and isinstance(block, ToolUseBlock):
-                            try:
-                                await on_tool(block.name, tool_summary(block.name, block.input))
-                            except Exception as e:
-                                logger.debug(f"on_tool: {e}")
+                        if isinstance(block, ToolUseBlock):
+                            await _notify(on_tool, block.name, block.input)
                         text = getattr(block, "text", None)
                         if text:
                             texts.append(text)

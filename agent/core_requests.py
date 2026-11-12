@@ -180,6 +180,9 @@ class CoreRequests:
     async def _claude_usage(self, conn: ModuleConnection, body: Any) -> dict:
         import claude_battery
         import claude_quota
+        import llm_gate
+        if llm_gate.is_pi():                                     # расход модуля на pi не тратит «батарейку» Claude
+            return {}
         if body.get("limit_text"):
             claude_quota.note(body["limit_text"])                # лимит исчерпан: батарейка обнуляется сразу
         await asyncio.to_thread(claude_battery.record, body["tokens"], str(body.get("source") or conn.module_id))

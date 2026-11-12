@@ -21,6 +21,8 @@ class CoreAPI(Protocol):
     def settings(self) -> dict: ...
     @property
     def sleeping(self) -> bool: ...
+    @property
+    def runtime_settings(self) -> dict: ...
     async def tts(self, text: str, emotion: str = "neutral") -> dict: ...
     async def persona(self) -> dict: ...
     async def claude_usage(self, tokens: int, source: str, limit_text: str | None = None) -> None: ...
@@ -38,6 +40,11 @@ class ClientCore:
     @property
     def settings(self) -> dict:
         return self.client.module_settings
+
+    @property
+    def runtime_settings(self) -> dict:
+        """Общие настройки ядра (`shared_settings` манифеста): `agent_runtime`, `pi_model_heavy`, `pi_thinking`."""
+        return self.client.settings
 
     @property
     def sleeping(self) -> bool:
