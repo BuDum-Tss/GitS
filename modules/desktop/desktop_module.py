@@ -451,6 +451,7 @@ class DesktopModule:
                 calls += 1
                 await c.job_update(job_id, stage=f"tool:{name}:{calls}", text=summary or None)
 
+            assistant_agent.configure(getattr(c, "settings", None), c.web_search)   # среда и поиск через ядро
             answer = await assistant_agent.run_task(task, context, lambda q, d: self._ask(q, d, job_id), self._usage,
                                                     on_tool)
             if answer is None:
