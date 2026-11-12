@@ -18,6 +18,7 @@ from contracts import EndEvent, RuntimeEvent, TextEvent, ToolEvent, ToolSpec
 logger = logging.getLogger("resident")
 
 MAX_QUERIES = 60            # после стольких обращений сессия начинается заново (контекст не растёт вечно)
+AUTH_FAILED = "Failed to authenticate"   # вход Claude CLI истёк: CLI отдаёт это текстом ответа
 
 _PY_TYPES = {"string": str, "object": dict, "array": list, "integer": int, "number": float, "boolean": bool}
 
@@ -158,6 +159,8 @@ class ClaudeRuntime:
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     text = getattr(block, "text", "")
+                    if text and text.strip().startswith(AUTH_FAILED):      # служебный текст CLI, не реплика: вслух не говорить
+                        raise RuntimeError(text.strip()[:200])
                     if text and text.strip() and not claude_quota.note(text):
                         yield TextEvent(text.strip())
                     elif hasattr(block, "name"):

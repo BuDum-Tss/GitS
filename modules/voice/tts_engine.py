@@ -40,7 +40,8 @@ FISH_RECHECK_S = 60.0    # недоступный Fish Speech проверяет
 
 ESPEECH_URL       = os.getenv("ESPEECH_URL", "http://127.0.0.1:8771")
 ESPEECH_TIMEOUT   = 60.0
-ESPEECH_START_WAIT_S = 90.0    # при первой проверке ждём, пока сервис догрузит модель (пока грузится, /health отвечает 503), а не уходим в запасной голос
+ESPEECH_START_WAIT_S = 300.0   # при первой проверке ждём, пока сервис догрузит модель (пока грузится, /health отвечает 503): живой запуск занял 110 с
+ESPEECH_RELOAD_WAIT_S = 180.0  # повторная проверка застала загрузку модели: ждём, а не говорим запасным голосом (иначе она звучит двумя голосами)
 ESPEECH_DOWN_GRACE_S = 20.0    # порт не открылся за это время после первой проверки: сервиса нет, идём дальше по цепочке
 ESPEECH_RECHECK_S = 30.0       # сервис грузит модель около 15 с после старта, поэтому проверяем чаще, чем Fish Speech
 ENGINE            = os.getenv("TTS_ENGINE", "edge").strip().lower()      # edge (быстрый, по умолчанию) | auto | espeech | fish
@@ -318,7 +319,11 @@ def _check_espeech() -> bool:
     now = time.monotonic()
     if _espeech_available is None or (not _espeech_available and now - _espeech_checked_at >= ESPEECH_RECHECK_S):
         was = _espeech_available
-        _espeech_available = asyncio.run(_espeech_wait(ESPEECH_START_WAIT_S if was is None else 0.0)) and _espeech_reference() is not None
+        if was is None:
+            limit = ESPEECH_START_WAIT_S
+        else:                                   # сервис жив и грузит модель: дождаться, порт молчит: не ждать
+            limit = ESPEECH_RELOAD_WAIT_S if asyncio.run(_espeech_state()) == "loading" else 0.0
+        _espeech_available = asyncio.run(_espeech_wait(limit)) and _espeech_reference() is not None
         _espeech_checked_at = now
         if _espeech_available:
             logger.info("ESpeech доступен — использую голос персонажа")

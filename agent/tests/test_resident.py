@@ -223,3 +223,17 @@ def test_actions_block_names_the_agents_own_calls_as_hers():
     tool_trace.note("external", "rimworld.colony_overview")
     block = ContextBuilder.actions_block()
     assert "ты сама" in block and "colony_overview" in block and "вне планировщика" not in block
+
+
+def test_cli_login_failure_is_not_spoken(monkeypatch):
+    """Живой запуск: вход Claude CLI истёк, CLI отдал «Failed to authenticate...» текстом ответа, и она сказала это вслух."""
+    agent, host = _agent(monkeypatch)
+
+    class Expired(FakeClient):
+        async def receive_response(self):
+            yield AssistantMessage(content=[TextBlock(text="Failed to authenticate: OAuth session expired")], model="haiku")
+
+    from adapters import runtime_claude
+    monkeypatch.setattr(runtime_claude, "ClaudeSDKClient", Expired)
+    asyncio.run(agent.handle_user("привет"))
+    assert host.said == []
