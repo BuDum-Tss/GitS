@@ -257,9 +257,36 @@ window.ARCH_DATA = {
      "t": "ResidentAgent",
      "tag": "A",
      "new": false,
-     "do": "единый агент: сообщение владельца, событие, тревога и самоимпульс идут в одну постоянную сессию Claude; инструменты find_tools и call_tool поверх реестра и маршрутизатора (разрешения те же); текст агента звучит по мере появления",
+     "do": "единый агент: сообщение владельца, событие, тревога и самоимпульс идут в одну постоянную сессию через контракт AgentRuntime (Claude SDK или pi, настройка agent_runtime); инструменты find_tools и call_tool описаны один раз (ToolSpec) поверх реестра и маршрутизатора (разрешения те же); текст агента звучит по мере появления; на среде, которая умеет steer (pi), новое сообщение владельца и событие подмешиваются в идущий ход",
      "out": "Reply и ToolResult",
-     "now": "app/resident.py: ClaudeSDKClient, сброс после сбоя и 60 обращений; тревога обрывает ход (preempt)"
+     "now": "app/resident.py: больше не знает про SDK; сброс после сбоя; тревога обрывает ход (preempt), на pi без сброса истории"
+    },
+    {
+     "id": "rtc",
+     "t": "AgentRuntime (контракт)",
+     "tag": "I",
+     "new": false,
+     "do": "среда исполнения единого агента: start(system, tools), run(prompt) -> события text / tool / end, steer, abort, reset, close; can_steer",
+     "out": "RuntimeEvent",
+     "now": "contracts.py: AgentRuntime, ToolSpec, TextEvent, ToolEvent, EndEvent"
+    },
+    {
+     "id": "rtcl",
+     "t": "ClaudeRuntime",
+     "tag": "I",
+     "new": false,
+     "do": "Claude Agent SDK: ClaudeSDKClient, инструменты ядра как SDK MCP-сервер core, продолжение сессии после перезапуска, сброс после 60 обращений, interrupt, учёт лимита и расхода; steer нет",
+     "out": "RuntimeEvent",
+     "now": "adapters/runtime_claude.py (по умолчанию)"
+    },
+    {
+     "id": "rtpi",
+     "t": "PiRuntime",
+     "tag": "I",
+     "new": false,
+     "do": "pi по подписке ChatGPT: запускает мост Node, говорит с ним строками JSON, исполняет tool_call обработчиками ToolSpec, steer и abort посреди хода, история в resident_pi_session.json; процесс умер: ход кончается ошибкой, следующий поднимает мост заново",
+     "out": "RuntimeEvent",
+     "now": "adapters/runtime_pi.py"
     }
    ]
   },
@@ -634,6 +661,15 @@ window.ARCH_DATA = {
      "now": ""
     },
     {
+     "id": "bridge",
+     "t": "services/agent-runtime (Node)",
+     "tag": "X",
+     "new": false,
+     "do": "мост к pi-agent-core: процесс Node, протокол строк JSON по stdin и stdout; модель по подписке ChatGPT (вход auth.json вручную)",
+     "out": "",
+     "now": "services/agent-runtime/bridge.mjs"
+    },
+    {
      "id": "sup",
      "t": "Supervisor",
      "tag": "I",
@@ -843,6 +879,36 @@ window.ARCH_DATA = {
    "reg",
    "use",
    "find_tools"
+  ],
+  [
+   "resident",
+   "rtc",
+   "use",
+   "ход, steer, abort"
+  ],
+  [
+   "rtc",
+   "rtcl",
+   "use",
+   "claude (по умолчанию)"
+  ],
+  [
+   "rtc",
+   "rtpi",
+   "use",
+   "pi"
+  ],
+  [
+   "rtcl",
+   "cl",
+   "ext",
+   "Agent SDK"
+  ],
+  [
+   "rtpi",
+   "bridge",
+   "ext",
+   "строки JSON"
   ],
   [
    "resident",

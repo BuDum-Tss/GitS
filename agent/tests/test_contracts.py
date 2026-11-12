@@ -18,6 +18,8 @@ from adapters.event_log_sqlite import SqliteEventLog
 from adapters.llm_claude import ClaudeLLM
 from adapters.memory import UserMemoryAdapter
 from adapters.people import RelationshipsAdapter
+from adapters.runtime_claude import ClaudeRuntime, _sdk_schema
+from adapters.runtime_pi import PiRuntime
 from adapters.settings_provider import SettingsModule
 from attention import Attention
 from companion import Companion
@@ -40,9 +42,27 @@ from router import Router
     (decide.Decider(), contracts.Classifier),
     (Router(None, None), contracts.ToolInvoker),
     (time.time, contracts.Clock),
+    (ClaudeRuntime(), contracts.AgentRuntime),
+    (PiRuntime(), contracts.AgentRuntime),
 ])
 def test_adapters_satisfy_their_contracts(obj, contract):
     assert isinstance(obj, contract)
+
+
+def test_runtimes_declare_whether_they_can_steer():
+    assert ClaudeRuntime.can_steer is False and PiRuntime.can_steer is True
+
+
+def test_claude_runtime_turns_tool_specs_into_the_sdk_schema_and_back():
+    assert _sdk_schema({"type": "object", "properties": {"tool_id": {"type": "string"}, "args": {"type": "object"}}}) == {
+        "tool_id": str, "args": dict}
+
+    async def handler(args):
+        return False, "нет"
+    rt = ClaudeRuntime()
+    rt._tools = [contracts.ToolSpec("call_tool", "d", {"type": "object", "properties": {"tool_id": {"type": "string"}}},
+                                    handler)]
+    assert rt._server()["name"] == "core"
 
 
 def test_adapters_delegate_to_the_old_modules(monkeypatch):

@@ -6,7 +6,7 @@ import character
 import decide
 import events_log
 import prompts
-from app import resident
+from adapters import runtime_claude
 import settings
 
 
@@ -49,7 +49,7 @@ def _isolated_core(tmp_path, monkeypatch):
         async def receive_response(self):
             return
             yield
-    monkeypatch.setattr(resident, "ClaudeSDKClient", NullClient)
+    monkeypatch.setattr(runtime_claude, "ClaudeSDKClient", NullClient)
     yield
     events_log.flush()                                  # фоновая запись журнала не должна уйти в папку следующего теста
     approvals.reset()
