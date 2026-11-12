@@ -47,7 +47,7 @@ from environments import builtin
 from environments.registry import Registry
 from adapters.module_events import AttentionEventSink
 from app.handlers.desktop import desktop_state, make_activity_hook
-import claude_quota
+import llm_gate
 from domain import scoring
 from app.node_panel import NodePanel
 from app.work_loop import WorkLoop
@@ -378,7 +378,7 @@ async def _run(config: dict):
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     work_loop = WorkLoop(env_of=lambda: layer.workspaces.current, manifest_of=layer.modules.manifest_of, agent=companion.resident,
                          emit=layer.attention.submit_self, settings=layer.attention.ctx.settings,
-                         quiet=lambda: layer.attention.ctx.quiet(layer.attention.ctx.settings()), blocked=claude_quota.blocked,
+                         quiet=lambda: layer.attention.ctx.quiet(layer.attention.ctx.settings()), blocked=llm_gate.blocked,
                          tasks=companion.tasks)
     work_loop.start()                                    # ТЗ 33: автономная работа агента в среде игры или мира
     companion.router.auto_ok = lambda: work_loop.spec() is not None      # пока она играет сама, обычные действия идут без вопроса

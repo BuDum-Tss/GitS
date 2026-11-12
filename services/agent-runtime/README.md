@@ -62,3 +62,47 @@ npm test
 ```
 
 Тесты идут на поддельном поставщике, без сети и без входа.
+
+## Рабочий агент (`worker.mjs`): файлы и команды
+
+Замена Claude Code там, где нужны встроенные инструменты: `worker.mjs` работает поверх `@earendil-works/pi-coding-agent`
+(`createAgentSession`). Клиент для ядра и модулей: `sdk/gits_sdk/pi_agent.py` (`PiAgent`). Протокол строк JSON, как у моста.
+
+`init`: `provider` (`openai` | `faux`), `model`, `thinking`, `auth_file`, `cwd` (рабочая папка встроенных инструментов), `system` или
+`system_file`, `tools` (встроенные: `read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`), `custom_tools` (свои, исполняет
+вызывающая сторона: `tool_call` / `tool_result`), `skills_dir` (или `null`), `session_file` (история между запусками или `null`),
+`max_turns`, `faux_responses`. Ответ `ready` (`restored`, `tools`) или фатальный `error`.
+
+Дальше: `prompt` (`id`, `text`), `steer`, `abort`, `shutdown`. События: `text_delta`, `text`, `tool_call` (свой инструмент),
+`permission`, `tool_use` (после разрешения, для журнала), `end` (`status`: `ok` | `aborted` | `error` | `max_turns`, `error`,
+`usage` {`requests`, `input`, `output`}, `turns`).
+
+### Разрешения (главное)
+
+Каждый вызов встроенного инструмента до исполнения уходит вызывающей стороне: `{"type":"permission","call_id","tool","input"}`.
+Исполняется он только после `{"type":"permission_result","call_id","allow":true}`; при `allow:false` (или любом другом значении)
+модель видит `reason`. Без ответа инструмент не исполняется никогда; `abort` и `max_turns` закрывают ждущие вызовы отказом.
+Реализовано расширением pi на событии `tool_call` (ошибка расширения тоже блокирует). Инструменты вне `tools` модели не объявляются.
+Свои инструменты (`custom_tools`) разрешений не спрашивают: их исполняет сама вызывающая сторона. В `PiAgent` это `can_use_tool(tool, input) -> (allow, reason)`;
+нет функции или она упала: отказ.
+
+### Изоляция от домашней папки
+
+Служебная папка pi (`PI_CODING_AGENT_DIR`) временная и пустая; расширения, шаблоны, темы и контекстные файлы (`AGENTS.md`,
+`CLAUDE.md`) не загружаются, настройки в памяти, скиллы только из `skills_dir`, вход только из `auth_file`. Из окружения процесса
+удаляются переменные `*_API_KEY`, `*_TOKEN`, `*_SECRET` (клиент вдобавок не передаёт процессу переменные с KEY, TOKEN, SECRET,
+PASSWORD в имени: `bash` наследует окружение). Папка `cwd` не песочница: путь `../` или абсолютный решает `can_use_tool`.
+
+### Соответствие инструментов pi и Claude (`gits_sdk.pi_agent.to_claude`)
+
+| pi | Claude | поля |
+|---|---|---|
+| `read` | `Read` | `path` -> `file_path` (абсолютный относительно `cwd`), `offset`, `limit` |
+| `write` | `Write` | `path` -> `file_path`, `content` |
+| `edit` | `Edit` | `path` -> `file_path`; `edits[0]` -> `old_string`, `new_string` (весь список в `edits`) |
+| `bash` | `Bash` | `command`, `timeout` |
+| `grep` | `Grep` | `pattern`, `path` (абсолютный), `glob`, `ignoreCase` -> `-i`, `context` -> `-C`, `limit` -> `head_limit` |
+| `find` | `Glob` | `pattern`, `path` (абсолютный) |
+| `ls` | `LS` | `path` (абсолютный) |
+
+Установка: `npm ci` в этой папке; вход `auth.json` общий с мостом. Где лежит мост: параметр `runtime_dir` или `GITS_PI_RUNTIME_DIR`.

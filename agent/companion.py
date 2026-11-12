@@ -26,7 +26,6 @@ import logging
 import time
 from pathlib import Path
 
-import claude_quota
 import flow_trace
 import character
 import prompts
@@ -319,8 +318,9 @@ class Companion:
         """Сложная задача на Claude (модуль desktop, инструмент claude_task, ТЗ 14 DESK-11): запускается задачей и ждёт её итога.
         Контекст разговора без услышанного подставляет ядро (core_fills). Возвращает итог, "" если добавить нечего,
         None при сбое или если модуль desktop не подключён."""
-        if claude_quota.blocked():
-            return f"Claude сейчас недоступен: исчерпан лимит до {claude_quota.until_text()}."
+        import llm_gate
+        if llm_gate.blocked():
+            return f"Модель для тяжёлых задач сейчас недоступна: {llm_gate.note()}."
         if self.router is None or self.job_wait is None:
             return None
         ok, text, _code = await self.router.run_tool_ex("desktop.claude_task", {"task": task})
