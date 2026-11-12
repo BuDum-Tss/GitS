@@ -849,6 +849,7 @@ const SETTINGS_CATALOG = [
     {key: 'agent_runtime', type: 'select', label: 'Среда единого агента', options: [['claude', 'Claude: Agent SDK'], ['pi', 'pi: подписка ChatGPT, принимает сообщения посреди хода']], hint: 'Применяется со следующего обращения. Для pi нужен вход: services/agent-runtime/README.md.'},
     {key: 'pi_model', type: 'select', label: 'Модель среды pi', options: [['gpt-6-luna', 'gpt-6-luna']], hint: 'Другое имя модели: ключ pi_model в settings.json.'},
     {key: 'pi_thinking', type: 'select', label: 'Размышление среды pi', options: [['minimal', 'Минимальное'], ['low', 'Малое'], ['medium', 'Среднее'], ['high', 'Глубокое']]},
+    {key: 'pi_model_heavy', type: 'select', label: 'Модель среды pi для кода (помощник на ПК, монтаж)', options: [['gpt-6-sol', 'gpt-6-sol'], ['gpt-6-luna', 'gpt-6-luna']], hint: 'Другое имя модели: ключ pi_model_heavy в settings.json.'},
     {key: 'game_model', type: 'select', label: 'Модель игрока (ходы и планирование)', options: [['haiku', 'Haiku: быстро и дёшево'], ['sonnet', 'Sonnet: думает глубже, дороже по лимиту']]},
     {key: 'streamer', type: 'toggle', label: 'Режим стримера', hint: 'В игре она вслух ведёт стрим: что видит, о чём думает, планы, цель игры. Без него комментирует только заметные события.'},
     {key: 'mic', type: 'toggle', label: 'Микрофон (разговор голосом)', hint: 'Слушает тебя и узнаёт по голосу. Распознаётся локально (GigaAM; WhisperX, если запущен, добавляет узнавание голосов), в облако звук не уходит.'},

@@ -31,6 +31,23 @@ READONLY_TOOLS = ["Read", "Glob"]
 LIMIT_RE = re.compile(r"(usage|rate|session|weekly|5-hour)\s+limit|limit\s+reached|hit your .*limit|credit balance", re.I)
 
 
+# свои инструменты агента: описания общие для веток Claude и pi (pi берёт их в `pi_runner`)
+OWN_TOOL_DESCRIPTIONS = {
+    "ask_user": "Задать вопрос пользователю (через ядро) и получить ответ. Только на стадиях clarify (до 2 раз) и build "
+                "(1 раз). kind: choice (с options) или text.",
+    "progress": "Сообщить ход работы: progress от 0 до 1 внутри стадии и короткий текст-факт.",
+    "synthesize_voice": "Синтезировать реплику её голосом в work/public/vo/<id>.wav. Возвращает duration_ms. "
+                        "Единственный способ получить закадр.",
+    "transcript_words": "Слова расшифровки с таймингами в отрезке from_ms..to_ms (не весь файл).",
+}
+OWN_TOOL_SCHEMAS = [
+    ("ask_user", {"question": str, "kind": str, "options": list}),
+    ("progress", {"progress": float, "text": str}),
+    ("synthesize_voice", {"id": str, "text": str, "emotion": str}),
+    ("transcript_words", {"from_ms": int, "to_ms": int}),
+]
+
+
 class ClaudeLimitError(Exception):
     """Лимит Claude исчерпан: повторять бессмысленно (MON-9, батарейка)."""
 
@@ -115,18 +132,9 @@ class SdkRunner:
                 return {"content": [{"type": "text", "text": text}]}
             return handler
 
-        defs = [
-            ("ask_user", "Задать вопрос пользователю (через ядро) и получить ответ. Только на стадиях clarify (до 2 раз) и build "
-                         "(1 раз). kind: choice (с options) или text.",
-             {"question": str, "kind": str, "options": list}, tools.ask_user),
-            ("progress", "Сообщить ход работы: progress от 0 до 1 внутри стадии и короткий текст-факт.",
-             {"progress": float, "text": str}, tools.progress),
-            ("synthesize_voice", "Синтезировать реплику её голосом в work/public/vo/<id>.wav. Возвращает duration_ms. "
-                                 "Единственный способ получить закадр.",
-             {"id": str, "text": str, "emotion": str}, tools.synthesize_voice),
-            ("transcript_words", "Слова расшифровки с таймингами в отрезке from_ms..to_ms (не весь файл).",
-             {"from_ms": int, "to_ms": int}, tools.transcript_words),
-        ]
+        fns = {"ask_user": tools.ask_user, "progress": tools.progress, "synthesize_voice": tools.synthesize_voice,
+               "transcript_words": tools.transcript_words}
+        defs = [(name, OWN_TOOL_DESCRIPTIONS[name], schema, fns[name]) for name, schema in OWN_TOOL_SCHEMAS]
         sdk_tools = [tool(name, desc, schema)(wrap(fn)) for name, desc, schema, fn in defs]
         return create_sdk_mcp_server("montage", "1.0.0", sdk_tools)
 

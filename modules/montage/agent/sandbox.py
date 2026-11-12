@@ -358,10 +358,16 @@ class Sandbox:
             except Exception:
                 pass
 
+    async def check(self, name: str, tool_input: dict | None) -> tuple[bool, str]:
+        """Решение и запись в журнал без типов Claude SDK: так зовёт песочницу ветка pi (`PiAgent.can_use_tool`)."""
+        tool_input = tool_input or {}
+        allowed, reason = self.decide(name, tool_input)
+        self._record(name, tool_input, allowed, reason)
+        return allowed, reason
+
     async def can_use_tool(self, name, tool_input, _ctx=None):
         from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
-        allowed, reason = self.decide(name, tool_input)
-        self._record(name, tool_input or {}, allowed, reason)
+        allowed, reason = await self.check(name, tool_input)
         if allowed:
             return PermissionResultAllow()
         return PermissionResultDeny(message=reason)

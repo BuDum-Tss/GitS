@@ -110,7 +110,11 @@ def build(layout: Layout = DEFAULT, *, client: ModuleClient | None = None, runne
     if renderer is None:
         from render import RemotionRenderer
         renderer = RemotionRenderer()
-    pipeline = Pipeline(store, core, runner or SdkRunner(layout), layout, renderer, qa)
+    if runner is None:
+        from pi_runner import PiRunner, RuntimeRunner
+        shared = lambda: getattr(core, "runtime_settings", None) or {}  # noqa: E731
+        runner = RuntimeRunner(SdkRunner(layout), PiRunner(layout, settings=shared), shared)
+    pipeline = Pipeline(store, core, runner, layout, renderer, qa)
     manager = Manager(store, core, pipeline, layout)
     wire(client, manager)
     return client, manager
