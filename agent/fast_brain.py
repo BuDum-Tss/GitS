@@ -1,4 +1,4 @@
-"""Быстрая модель: один вызов `_ask` и потоковый `_ask_stream` (оба идут в Claude через `claude_llm`).
+"""Быстрая модель: один вызов `_ask` и потоковый `_ask_stream` (Claude через `claude_llm`, при настройке `agent_runtime = pi` pi через `pi_llm`).
 
 Отдельного локального слоя нет: реплика по факту, зрение, размышление и запросы модулей (`core.llm.ask`) вызывают здесь
 Claude без инструментов (модель `fast_claude_model`). Разговор с владельцем ведёт единый агент (`app/resident.py`). Теги
@@ -41,21 +41,31 @@ def _json_of(txt: str) -> dict | None:
     return out
 
 
+def _llm():
+    """Поставщик быстрой модели по настройке `agent_runtime`: (модуль с `ask` и `ask_stream`, метка для трассы)."""
+    import settings
+    if settings.load().get("agent_runtime") == "pi":
+        import pi_llm
+        return pi_llm, "pi"
+    import claude_llm
+    return claude_llm, "claude"
+
+
 async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
                image_b64: str | None = None, temperature: float = 0.3,
                background: bool = False, parallel: bool = False) -> str:
     """Один вызов Claude без инструментов. `max_tokens`, `temperature`, `background` и `parallel` остались в сигнатуре для
     вызывающих: Claude их не использует."""
-    import claude_llm
+    llm, label = _llm()
     t0 = time.perf_counter()
-    out = await claude_llm.ask(system, user, max(timeout, 30.0), image_b64=image_b64)
+    out = await llm.ask(system, user, max(timeout, 30.0), image_b64=image_b64)
     flow_trace.step(None, "gemma", "planner", "gemma", "llm", ms=(time.perf_counter() - t0) * 1000, size=len(system) + len(str(user)),
-                    label="claude")
+                    label=label)
     return out
 
 
 async def _ask_stream(system: str, user: str, timeout: float, max_tokens: int = 140, temperature: float = 0.7):
     """Ответ потоком кусков текста (асинхронный генератор). Закрытие генератора обрывает запрос."""
-    import claude_llm
-    async for piece in claude_llm.ask_stream(system, user, max(timeout, 30.0)):
+    llm, _ = _llm()
+    async for piece in llm.ask_stream(system, user, max(timeout, 30.0)):
         yield piece
