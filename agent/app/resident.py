@@ -286,7 +286,11 @@ class ResidentAgent:
                 tool_id = str(event.args.get("tool_id") or "")
                 logger.info(f"[агент] {event.name} {tool_id}".rstrip())
             elif isinstance(event, EndEvent) and event.status == "error":
-                logger.error(f"Резидентный агент ({self._kind or 'среда'}): {event.error}")
+                import llm_gate
+                if self._kind == "pi" and llm_gate.note_pi_error(event.error):
+                    logger.warning("Лимит подписки на pi: агент отдыхает")
+                else:
+                    logger.error(f"Резидентный агент ({self._kind or 'среда'}): {event.error}")
 
     @staticmethod
     def _quiet() -> bool:

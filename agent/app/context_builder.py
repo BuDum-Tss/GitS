@@ -18,9 +18,10 @@ class ContextBuilder:
         self._h = host
 
     def claude_note(self) -> str:
-        import claude_quota
-        return (f"Claude (игровые ходы, глубокий анализ, помощник) сейчас недоступен: исчерпан лимит до "
-                f"{claude_quota.until_text()}. Если просят то, что требует Claude, честно скажи это.") if claude_quota.blocked() else ""
+        import llm_gate
+        why = llm_gate.note()
+        return (f"Модель для тяжёлых задач (игровые ходы, глубокий анализ, помощник) сейчас недоступна: {why}. "
+                f"Если просят то, что её требует, честно скажи это.") if why else ""
 
     def capabilities(self) -> str:
         """Честный список того, что у неё сейчас включено: без него она выдумывает возможности."""
