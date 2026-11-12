@@ -165,3 +165,28 @@ def test_edge_pitch_is_clamped_to_what_the_service_accepts():
     assert tts_engine._shifted("-18Hz", -5.0) == "-20Hz"
     assert tts_engine._shifted("+18Hz", 5.0) == "+20Hz"
     assert tts_engine._shifted("-12%", -5.0) == "-17%"                  # проценты (скорость) не ограничиваются
+
+
+def test_recheck_waits_for_a_loading_service_instead_of_fallback_voice(monkeypatch):
+    """Живой запуск: ESpeech грузил модель дольше первой проверки, первые фразы ушли запасным голосом, следующие голосом персонажа.
+    Повторная проверка, заставшая загрузку, ждёт сервис; молчащий порт не ждёт (запасной голос сразу)."""
+    waits: list[float] = []
+    state = {"now": "loading"}
+
+    async def e_state():
+        return state["now"]
+
+    async def e_wait(limit):
+        waits.append(limit)
+        return state["now"] == "loading"          # загрузка закончится готовностью, молчащий порт нет
+
+    monkeypatch.setattr(tts_engine, "_espeech_state", e_state)
+    monkeypatch.setattr(tts_engine, "_espeech_wait", e_wait)
+    monkeypatch.setattr(tts_engine, "_espeech_reference", lambda: ("ref.wav", "текст"))
+    monkeypatch.setattr(tts_engine, "_espeech_available", False)
+    monkeypatch.setattr(tts_engine, "_espeech_checked_at", -1e9)
+    assert tts_engine._check_espeech() is True and waits == [tts_engine.ESPEECH_RELOAD_WAIT_S]
+    state["now"] = "down"
+    monkeypatch.setattr(tts_engine, "_espeech_available", False)
+    monkeypatch.setattr(tts_engine, "_espeech_checked_at", -1e9)
+    assert tts_engine._check_espeech() is False and waits[-1] == 0.0
