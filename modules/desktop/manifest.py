@@ -134,7 +134,7 @@ MANIFEST = {
     "version": "1.0.0",
     "capabilities": ["screen.observe"],
     "subscribe": ["settings", "module", "character"],
-    "shared_settings": ["vision", "dnd", "quiet_until", "auto_accept"],
+    "shared_settings": ["vision", "dnd", "quiet_until", "auto_accept", "agent_runtime", "pi_model", "pi_model_heavy", "pi_thinking"],
     "tools": TOOLS,
     "emits": EMITS,
     "state": True,

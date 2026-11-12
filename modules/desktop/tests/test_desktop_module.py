@@ -403,3 +403,30 @@ async def test_panel_cancel_all_stops_every_task(core, monkeypatch):
         assert answer == {"ok": True, "message": "остановлено задач: 2"}
     finally:
         await close(client, task)
+
+
+async def test_claude_task_passes_core_settings_and_web_search_to_assistant(core, monkeypatch):
+    got = {}
+
+    def fake_configure(settings, web_search=None):
+        got["settings"], got["web_search"] = settings, web_search
+
+    async def fake_run(task, context, ask, usage_cb, on_tool=None):
+        return "ок"
+
+    monkeypatch.setattr(appmod.assistant_agent, "configure", fake_configure)
+    monkeypatch.setattr(appmod.assistant_agent, "run_task", fake_run)
+    mod, _scene, client, task = await connect(core)
+    try:
+        client.settings["agent_runtime"] = "pi"
+        value = await core.call_tool("claude_task", {"task": "x"})
+        await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b["state"] == "done")
+        assert got["settings"]["agent_runtime"] == "pi" and callable(got["web_search"])
+    finally:
+        await close(client, task)
+
+
+def test_manifest_shares_runtime_settings_with_module():
+    from manifest import MANIFEST
+    for key in ("agent_runtime", "pi_model", "pi_model_heavy", "pi_thinking"):
+        assert key in MANIFEST["shared_settings"]
