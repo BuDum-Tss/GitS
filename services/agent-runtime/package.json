@@ -1,0 +1,15 @@
+{
+  "name": "gits-agent-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Мост между ядром и pi-agent-core: строки JSON через stdin/stdout",
+  "type": "module",
+  "main": "bridge.mjs",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.5.2",
+    "@earendil-works/pi-ai": "1.5.2"
+  }
+}

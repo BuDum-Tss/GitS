@@ -1,6 +1,7 @@
 """Единый агент: сообщение пользователя идёт в одну сессию, а не в классификатор, планировщик и быструю модель."""
 import asyncio
 
+from adapters import runtime_claude
 from app import resident
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
@@ -71,12 +72,12 @@ class FakeHost:
 
 def _agent(monkeypatch):
     FakeClient.instances = []
-    monkeypatch.setattr(resident, "ClaudeSDKClient", FakeClient)
+    monkeypatch.setattr(runtime_claude, "ClaudeSDKClient", FakeClient)
     monkeypatch.setattr(resident.claude_quota, "blocked", lambda: False)
     import tempfile
     from pathlib import Path
     session_file = Path(tempfile.mkdtemp()) / "resident_session.json"
-    monkeypatch.setattr(resident.ResidentAgent, "_session_file", staticmethod(lambda: session_file))
+    monkeypatch.setattr(runtime_claude.ClaudeRuntime, "_session_file", staticmethod(lambda: session_file))
     host = FakeHost()
     return resident.ResidentAgent(host), host
 
@@ -136,7 +137,7 @@ def test_failure_forgets_the_saved_session(monkeypatch):
 
 def test_session_restarts_after_limit(monkeypatch):
     agent, host = _agent(monkeypatch)
-    monkeypatch.setattr(resident, "MAX_QUERIES", 1)
+    monkeypatch.setattr(runtime_claude, "MAX_QUERIES", 1)
     asyncio.run(agent.handle_user("раз"))
     asyncio.run(agent.handle_user("два"))
     assert len(FakeClient.instances) == 2
@@ -159,7 +160,7 @@ def test_important_event_interrupts_current_work_and_is_handled_first(monkeypatc
             async for m in super().receive_response():
                 yield m
 
-    monkeypatch.setattr(resident, "ClaudeSDKClient", SlowClient)
+    monkeypatch.setattr(runtime_claude, "ClaudeSDKClient", SlowClient)
     monkeypatch.setattr(agent, "_quiet", lambda: True)      # «не отвлекать»: тревога всё равно говорит
 
     async def go():
@@ -195,7 +196,7 @@ def test_reaction_tag_becomes_sticker_and_is_not_spoken(monkeypatch):
             yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False, num_turns=1,
                                 session_id="s", total_cost_usd=0.0, usage={}, result="")
     agent, host = _agent(monkeypatch)
-    monkeypatch.setattr(resident, "ClaudeSDKClient", TaggedClient)
+    monkeypatch.setattr(runtime_claude, "ClaudeSDKClient", TaggedClient)
     asyncio.run(agent.handle_user("привет"))
     assert host.said == ["Как тебя зовут?"] and host.stickers == ["question"]
 
@@ -206,11 +207,11 @@ def test_session_reset_after_timeout_leaves_a_note_for_the_new_session(monkeypat
             await asyncio.sleep(5)
             yield
     agent, host = _agent(monkeypatch)
-    monkeypatch.setattr(resident, "ClaudeSDKClient", Slow)
+    monkeypatch.setattr(runtime_claude, "ClaudeSDKClient", Slow)
     monkeypatch.setattr(resident, "TURN_TIMEOUT_S", 0.05)
     asyncio.run(agent.handle_user("играй"))
     assert "оборвался по времени" in agent._note
-    monkeypatch.setattr(resident, "ClaudeSDKClient", FakeClient)
+    monkeypatch.setattr(runtime_claude, "ClaudeSDKClient", FakeClient)
     FakeClient.instances = []
     asyncio.run(agent.handle_user("продолжай"))
     assert FakeClient.instances[0].prompts[0].startswith("=== ЗАМЕТКА ===") and agent._note == ""

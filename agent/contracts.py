@@ -7,6 +7,8 @@
 Здесь только `typing.Protocol` и стандартная библиотека: без `settings`, `events_log`, `fast_brain`, `character`,
 сети и баз данных. Проверяет это `agent/tests/test_architecture.py`.
 """
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -258,3 +260,68 @@ class RequestHandler(Protocol):
     """Обработчик запросов модуля к ядру `core.*` (шина зовёт его для каждого запроса). Ошибки: `ModuleError`."""
 
     async def handle(self, conn: Any, msg_type: str, body: dict) -> Any: ...
+
+
+# ── среда исполнения единого агента ────────────────────────────────────────────────────────
+
+ToolHandler = Callable[[dict], Awaitable[tuple[bool, str]]]
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    """Инструмент ядра для единого агента: имя, описание, параметры (JSON Schema) и обработчик `args -> (успех, текст)`.
+    Описывается один раз и отдаётся любой среде исполнения; обработчик не бросает наружу ничего, кроме отмены."""
+    name: str
+    description: str
+    parameters: dict
+    handler: ToolHandler
+
+
+@dataclass(frozen=True)
+class TextEvent:
+    """Целое сообщение модели (кусок речи)."""
+    text: str
+
+
+@dataclass(frozen=True)
+class ToolEvent:
+    """Агент вызывает инструмент (для журнала; исполняет его ядро через `ToolSpec.handler`)."""
+    name: str
+    args: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class EndEvent:
+    """Ход закончен, ровно один раз на ход: `status` ok | aborted | error, `error` текст ошибки, `usage` расход."""
+    status: str = "ok"
+    error: str | None = None
+    usage: dict = field(default_factory=dict)
+
+
+RuntimeEvent = TextEvent | ToolEvent | EndEvent
+
+
+@runtime_checkable
+class AgentRuntime(Protocol):
+    """Среда исполнения единого агента (Claude Agent SDK или pi через мост Node). Держит одну постоянную сессию.
+
+    `start` запоминает системную подсказку и инструменты (вызывается перед каждым ходом, повтор безвреден; подсказка,
+    изменившаяся между ходами, действует со следующего запроса или новой сессии). `run` ведёт один ход и отдаёт события;
+    последним всегда приходит `EndEvent`. Сбой среды поднимается исключением (Claude) или завершает ход `EndEvent` со
+    статусом error (pi). `steer` подмешивает сообщение в идущий ход: True принято, False хода нет или среда не умеет.
+    `abort` обрывает идущий ход. `reset(forget=True)` забывает историю, `forget=False` только закрывает сессию, чтобы её
+    подхватил следующий запуск. `close` освобождает ресурсы."""
+
+    can_steer: bool
+
+    async def start(self, system: str, tools: list[ToolSpec]) -> None: ...
+
+    def run(self, prompt: str) -> AsyncIterator[RuntimeEvent]: ...
+
+    async def steer(self, text: str) -> bool: ...
+
+    async def abort(self) -> None: ...
+
+    async def reset(self, forget: bool = True) -> None: ...
+
+    async def close(self) -> None: ...

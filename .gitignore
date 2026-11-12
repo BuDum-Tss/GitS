@@ -33,3 +33,7 @@ services/decider/hf/
 services/f5-tts/.venv/
 services/f5-tts/weights/
 services/f5-tts/out/
+
+# среда исполнения агента на pi (мост Node): зависимости и вход по подписке
+services/agent-runtime/node_modules/
+services/agent-runtime/auth.json
