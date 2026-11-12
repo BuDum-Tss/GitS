@@ -41,12 +41,13 @@ class PiRuntime:
 
     def __init__(self, *, command: list[str] | None = None, provider: str = "openai", model: str | None = None,
                  thinking: str | None = None, auth_file: str | None = None, session_file: Path | None = None,
-                 faux_responses: list | None = None, cwd: str | None = None):
+                 faux_responses: list | None = None, cwd: str | None = None, persist: bool = True):
         self._command = command             # тесты подставляют поддельный мост; иначе node bridge.mjs
         self._provider, self._model, self._thinking = provider, model, thinking
         self._auth_file, self._session_file_override = auth_file, session_file
         self._faux = faux_responses
         self._cwd = cwd
+        self._persist = persist             # False: история не сохраняется (в `init` уходит session_file: null)
         self._system, self._sent_system = "", None
         self._tools: dict[str, ToolSpec] = {}
         self._proc: asyncio.subprocess.Process | None = None
@@ -95,7 +96,7 @@ class PiRuntime:
                "thinking": self._thinking or cfg.get("pi_thinking") or "minimal", "system": self._system,
                "tools": [{"name": t.name, "description": t.description, "parameters": t.parameters}
                          for t in self._tools.values()],
-               "auth_file": auth, "session_file": str(self._session_path()), "session_id": SESSION_ID,
+               "auth_file": auth, "session_file": str(self._session_path()) if self._persist else None, "session_id": SESSION_ID,
                "max_context_chars": MAX_CONTEXT_CHARS}
         if self._faux is not None:
             msg["faux_responses"] = self._faux
@@ -352,8 +353,9 @@ class PiRuntime:
                 if self._reset_fut is fut:
                     self._reset_fut = None
             await self._kill()
-        with contextlib.suppress(Exception):
-            self._session_path().unlink(missing_ok=True)
+        if self._persist:
+            with contextlib.suppress(Exception):
+                self._session_path().unlink(missing_ok=True)
 
     async def close(self) -> None:
         proc = self._proc
