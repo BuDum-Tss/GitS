@@ -23,7 +23,7 @@ from typing import Awaitable, Callable
 import httpx
 
 import flow_trace
-from envcompat import env
+from gits_sdk.envcompat import env
 
 logger = logging.getLogger("decide")
 

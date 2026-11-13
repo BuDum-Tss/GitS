@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 
-from envcompat import env
+from gits_sdk.envcompat import env
 from pathlib import Path
 
 import httpx

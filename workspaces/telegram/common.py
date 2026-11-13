@@ -7,7 +7,7 @@ import os
 import re
 import time
 from pathlib import Path
-from envcompat import env
+from gits_sdk.envcompat import env
 
 TEXT_MAX = 300                    # TG-10: сколько символов сообщения идёт в факт события
 TG_MESSAGE_MAX = 4096             # предел длины одного сообщения Telegram

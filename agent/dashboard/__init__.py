@@ -14,7 +14,7 @@ from aiohttp import web
 from services.memory_service import episode_routes
 import events_log
 import settings
-from envcompat import env
+from gits_sdk.envcompat import env
 
 from . import presenters, routes_attention, routes_memory, routes_peers, routes_system
 from .context import ctx

@@ -11,7 +11,7 @@ import os
 from urllib.parse import quote
 
 from pipeline import APPROVE, EDITS, READY, REDO_PLAN, REDO_STORY
-from envcompat import env
+from gits_sdk.envcompat import env
 
 PLAN_OPTIONS = (APPROVE, REDO_PLAN, REDO_STORY)       # вопрос plan_approval: утвердить историю и план / переделать
 DRAFT_OPTIONS = (READY, EDITS)                         # вопрос review: готово / правки

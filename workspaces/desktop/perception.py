@@ -27,7 +27,7 @@ import numpy as np
 from PIL import ImageGrab
 
 from gits_sdk import host
-from envcompat import env
+from gits_sdk.envcompat import env
 
 logger = logging.getLogger("desktop.perception")
 

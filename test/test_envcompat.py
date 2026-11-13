@@ -4,7 +4,7 @@ import os
 import re
 from pathlib import Path
 
-import envcompat
+from gits_sdk import envcompat
 
 ROOT = Path(__file__).resolve().parents[1]
 CODE_DIRS = ("agent", "workspaces", "agent/interfaces/workspace/gits_sdk", "services")
@@ -52,20 +52,20 @@ def test_names_without_prefix_have_no_fallback():
     assert envcompat.legacy_name("RIMWORLD_MODULE_DIR") is None
 
 
-def test_copies_of_envcompat_are_identical():
-    """Модули, SDK и сервис decider не импортируют agent/: их копии обязаны совпадать с каноническим файлом."""
-    canon = (ROOT / "agent" / "envcompat.py").read_bytes()
-    copies = sorted(ROOT.glob("workspaces/*/envcompat.py")) + sorted(ROOT.glob("services/*/envcompat.py")) + [
-        ROOT / "agent" / "interfaces" / "workspace" / "gits_sdk" / "envcompat.py"]
-    assert len(copies) >= 6
-    for copy in copies:
-        assert copy.read_bytes() == canon, f"копия не совпадает с agent/envcompat.py: {copy.relative_to(ROOT)}"
+def test_decider_copy_of_envcompat_is_identical_to_the_sdk_file():
+    """Участники и ядро берут `gits_sdk.envcompat`; единственная копия нужна сервису decider (его образ без SDK) и обязана совпадать."""
+    canon = (ROOT / "agent" / "interfaces" / "workspace" / "gits_sdk" / "envcompat.py").read_bytes()
+    assert (ROOT / "services" / "decider" / "envcompat.py").read_bytes() == canon
+    import subprocess
+    tracked = subprocess.run(["git", "ls-files", "*envcompat.py"], cwd=ROOT, capture_output=True, text=True).stdout.split()
+    assert sorted(f for f in tracked if not f.startswith("test/")) == [
+        "agent/interfaces/workspace/gits_sdk/envcompat.py", "services/decider/envcompat.py"]       # других копий нет
 
 
 def test_no_old_names_left_in_code():
     """После ТЗ 05 старое имя GLADOS_* живёт только в envcompat.py (таблица переименования) и в его тесте."""
     pattern = re.compile(r"GLADOS_[A-Z]")
-    allowed = {ROOT / "agent" / "envcompat.py", ROOT / "agent" / "tests" / "test_envcompat.py"}
+    allowed = {ROOT / "agent" / "interfaces" / "workspace" / "gits_sdk" / "envcompat.py", ROOT / "services" / "decider" / "envcompat.py", ROOT / "test" / "test_envcompat.py"}
     hits = []
     for folder in CODE_DIRS:
         for path in (ROOT / folder).rglob("*.py"):

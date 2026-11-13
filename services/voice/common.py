@@ -6,7 +6,7 @@
 import os
 import tempfile
 from pathlib import Path
-from envcompat import env
+from gits_sdk.envcompat import env
 
 GITS_ROOT = Path(__file__).resolve().parent.parent.parent
 TEMP_DIR_NAME = "gits_voice"            # VOICE-5: файлы синтеза лежат в %TEMP%\gits_voice\

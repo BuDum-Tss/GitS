@@ -8,7 +8,7 @@ import queue
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
-from envcompat import env
+from gits_sdk.envcompat import env
 
 STICKER_MAP = {
     "idle":      "idle",

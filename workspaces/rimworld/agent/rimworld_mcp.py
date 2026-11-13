@@ -4,7 +4,7 @@ import re
 import knowledge
 import real_threats
 
-from envcompat import env
+from gits_sdk.envcompat import env
 import time
 from pathlib import Path
 

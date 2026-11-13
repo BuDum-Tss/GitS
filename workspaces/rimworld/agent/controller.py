@@ -18,7 +18,7 @@ import asyncio
 import logging
 import os
 
-from envcompat import env
+from gits_sdk.envcompat import env
 import time
 from pathlib import Path
 

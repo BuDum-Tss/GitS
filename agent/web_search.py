@@ -21,7 +21,7 @@ import flow_trace
 import web_tools
 from claude_cli import _CLI_PATH
 from interfaces.contracts import EndEvent, TextEvent, ToolSpec
-from envcompat import env
+from gits_sdk.envcompat import env
 
 logger = logging.getLogger("web_search")
 

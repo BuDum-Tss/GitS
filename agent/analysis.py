@@ -24,7 +24,7 @@ import events_log
 import flow_trace
 import safety
 from claude_cli import _CLI_PATH
-from envcompat import env
+from gits_sdk.envcompat import env
 
 logger = logging.getLogger("analysis")
 

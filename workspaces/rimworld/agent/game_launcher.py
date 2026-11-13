@@ -8,7 +8,7 @@ import json
 import logging
 import os
 
-from envcompat import env
+from gits_sdk.envcompat import env
 import subprocess
 import time
 import urllib.request

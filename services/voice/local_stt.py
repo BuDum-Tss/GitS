@@ -19,7 +19,7 @@ import threading
 import time
 
 import numpy as np
-from envcompat import env
+from gits_sdk.envcompat import env
 
 logger = logging.getLogger("local_stt")
 

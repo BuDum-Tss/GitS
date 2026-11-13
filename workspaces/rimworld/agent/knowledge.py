@@ -10,7 +10,7 @@ import json
 import math
 import os
 
-from envcompat import env
+from gits_sdk.envcompat import env
 import re
 import time
 from pathlib import Path

@@ -8,7 +8,7 @@ import ctypes
 import ctypes.wintypes as wt
 import os
 import sys
-from envcompat import env
+from gits_sdk.envcompat import env
 
 _DEFAULT_BLOCK = (
     "пароль", "password", "keepass", "bitwarden", "1password", "lastpass",

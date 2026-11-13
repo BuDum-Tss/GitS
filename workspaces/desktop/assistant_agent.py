@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from gits_sdk import safety
-from envcompat import env
+from gits_sdk.envcompat import env
 
 logger = logging.getLogger("desktop.assistant")
 

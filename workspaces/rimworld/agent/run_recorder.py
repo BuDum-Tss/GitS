@@ -19,7 +19,7 @@ import asyncio
 import json
 import logging
 
-from envcompat import env
+from gits_sdk.envcompat import env
 import shutil
 import subprocess
 import time

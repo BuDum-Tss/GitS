@@ -1,4 +1,4 @@
-"""Загрузка воспоминаний персонажа в граф (ТЗ 05, CHR-16): `python -m character seed <id> [--dry-run]`.
+"""Загрузка воспоминаний персонажа в граф (ТЗ 05, CHR-16): `python -m services.memory_service.character_seed seed <id> [--dry-run]` (из папки agent).
 
 Граф персонажа (группа = id, ТЗ 05 CHR-9) приводится к memories.yaml: новые записи добавляются, изменённые заменяются
 (обновление по id, без дублей), удалённые из YAML удаляются. Факт: субъект — имя персонажа, отношение ПОМНИТ, объект —
@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 import character
 import character_memory
-from services.memory_service import Fact
+from services.memory_service.graph import Fact
 
 RELATION = "ПОМНИТ"
 
@@ -52,7 +52,7 @@ async def seed(char: character.Character, backend, when: datetime | None = None)
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="python -m character", description="Персонажи GitS (ТЗ 05)")
+    ap = argparse.ArgumentParser(prog="python -m services.memory_service.character_seed", description="Персонажи GitS (ТЗ 05)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("seed", help="загрузить воспоминания персонажа в граф (по memories.yaml)")
     s.add_argument("id", help="id персонажа: папка resources/<Имя> с этим id")
@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print(f"{char.id}: записей в memories.yaml: {len(items)}, файл в порядке")
         return 0
-    from services.memory_service import SqliteBackend
+    from services.memory_service.graph import SqliteBackend
     counts = asyncio.run(seed(char, SqliteBackend(Path(args.memory_dir) / "graph.db")))
     print(f"{char.id}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
     return 0

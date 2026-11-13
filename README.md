@@ -90,7 +90,7 @@ pythonw tray.py                          # трей: поднимает толь
 1. Скопировать `resources/_template/` в `resources/<Имя>/` (id в `core/character.yaml`: строчные латинские буквы, цифры, `_`).
 2. Заполнить `core/character.yaml`: `id`, `name`, `aliases`, `anchor` (до 600 символов), `voice`.
 3. Написать `core/prompt.yaml` и `<участник шины>/persona.yaml`. `core/character.yaml` (карточка и конституция) меняет только человек.
-4. Воспоминания: `core/memories.yaml`, загрузка в граф `python -m character seed <id>` (`--dry-run` только проверяет файл).
+4. Воспоминания: `core/memories.yaml`, загрузка в граф `python -m services.memory_service.character_seed seed <id>` (`--dry-run` только проверяет файл).
 5. Переключение: дашборд (`POST /api/character`) или инструмент `core.set_character`.
 
 ## Характер, память и учёба
@@ -100,7 +100,7 @@ pythonw tray.py                          # трей: поднимает толь
 Реплика идёт по понятным маршрутам (`reflex`, `chat`, `task`, `ignore`, `think`): жёсткие правила
 до моделей («замолчи» и другое, `agent/routes/hard_rules.yaml`), затем реплика уходит единому агенту (одна постоянная сессия Claude,
 `agent/app/resident.py`): он сам ищет и вызывает инструменты, а его текст звучит по мере появления; «замолчи» и перебивание
-обрывают ход. Поиск в памяти идёт с дедлайном 300 мс. Настройки `fast_contour` и `latency_budget`.
+обрывают ход. Поиск в памяти идёт с дедлайном 300 мс. Настройка `latency_budget`.
 
 ## Устойчивость ядра
 `python tools/soak_core.py --minutes 10` поднимает настоящее ядро без участников шины (модель и речь заглушены), шлёт реплики и события,

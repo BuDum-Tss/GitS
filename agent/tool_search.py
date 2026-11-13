@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 import httpx
-from envcompat import env
+from gits_sdk.envcompat import env
 
 logger = logging.getLogger("tool_search")
 

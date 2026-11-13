@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parent
 os.environ["MEMORY_DIR"] = os.getenv("RIMWORLD_MEMORY_DIR") or str(HERE / "memory")
 sys.path.insert(0, str(HERE))
 
-from envcompat import env  # noqa: E402
+from gits_sdk.envcompat import env  # noqa: E402
 
 
 def _ensure_sdk() -> None:

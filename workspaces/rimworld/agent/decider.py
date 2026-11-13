@@ -12,7 +12,7 @@ Gemma на видеокарте. С ТЗ 11 он живёт в репозито�
 запоминается, чтобы не стучаться в неё на каждом событии."""
 import logging
 
-from envcompat import env
+from gits_sdk.envcompat import env
 import time
 
 import httpx

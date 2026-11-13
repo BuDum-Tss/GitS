@@ -25,7 +25,7 @@ from gits_sdk import host
 import local_stt
 import window
 from local_stt import _JUNK  # noqa: F401  (прежнее место: mic_listener берёт фильтр отсюда)
-from envcompat import env
+from gits_sdk.envcompat import env
 
 logger = logging.getLogger("hearing")
 

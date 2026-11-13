@@ -20,7 +20,7 @@ from services.memory_service.episode_recall import EpisodeRecall
 from services.memory_service.episode_summary import EpisodeSummarizer
 from services.memory_service.sleep import SleepRunner
 from services.memory_service.sleep_scheduler import SleepScheduler
-from services.memory_service import episodes as dom
+import services.memory_service.episodes as dom
 from search import HybridIndex, HybridSearch, SearchConfig
 from search.embedder import LmStudioEmbedder
 

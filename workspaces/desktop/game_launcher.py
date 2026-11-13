@@ -11,7 +11,7 @@ from pathlib import Path
 import psutil
 
 import gamenet
-from envcompat import env
+from gits_sdk.envcompat import env
 
 PROCESS = "RimWorldWin64.exe"
 _CANDIDATES = (r"C:\GOG Games\RimWorld\RimWorldWin64.exe",

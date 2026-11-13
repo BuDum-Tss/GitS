@@ -12,7 +12,7 @@ undraft только когда врагов нет, плюс пауза меж�
 import asyncio
 import logging
 
-from envcompat import env
+from gits_sdk.envcompat import env
 import time
 
 import httpx

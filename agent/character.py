@@ -202,8 +202,3 @@ def group_id(char_id: str = DEFAULT_ID, area: str = CORE_AREA) -> str:
     """group_id в памяти-графе: `<id персонажа>` для области ядра (личная память) и `<id>:<область>` для модуля (ТЗ 04c)."""
     return char_id if area == CORE_AREA else f"{char_id}:{area}"
 
-
-if __name__ == "__main__":
-    from character_seed import main as _seed_main
-
-    raise SystemExit(_seed_main())

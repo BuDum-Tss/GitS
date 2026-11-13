@@ -13,7 +13,7 @@ import asyncio
 import logging
 import ctypes
 
-from envcompat import env
+from gits_sdk.envcompat import env
 import time
 
 import events_log

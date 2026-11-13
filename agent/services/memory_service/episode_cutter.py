@@ -12,7 +12,7 @@ from typing import Callable
 
 import salience
 from interfaces.contracts import EventSource
-from services.memory_service import episodes as dom
+import services.memory_service.episodes as dom
 
 logger = logging.getLogger("episodes")
 

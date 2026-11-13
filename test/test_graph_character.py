@@ -8,7 +8,7 @@ from pathlib import Path
 
 import character
 import character_memory
-import character_seed
+from services.memory_service import character_seed
 import events_log
 from services.memory_service.graph import Fact, GraphMemory
 

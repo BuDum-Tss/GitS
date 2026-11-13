@@ -35,7 +35,7 @@ python -m tools.migrate_falkordb           # перенос в $MEMORY_DIR/graph
 ```
 Переносятся даты, канон, воспоминания персонажа и группы; повторный запуск безопасен. Потом контейнер `glados-graph` и том можно
 удалить: `docker rm -f glados-graph`, `docker volume rm <проект>_graph_data`. Воспоминания персонажа можно и перезагрузить
-(`python -m character seed <id>`).
+(`python -m services.memory_service.character_seed seed <id>`).
 
 ## Почему извлечение наше, а не Graphiti (историческая справка: хранилище Graphiti заменено на SQLite)
 Проба на 10 репликах. Полный конвейер Graphiti на Gemma 4B (4 прогона): принимает без сбоев, но теряет половину фактов

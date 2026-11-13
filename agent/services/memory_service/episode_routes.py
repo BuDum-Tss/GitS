@@ -9,7 +9,7 @@ POST /api/sleep/interrupt        разбудить (прервать сон)
 Сервис ставит ядро (`set_service`); без него ответы пустые."""
 from aiohttp import web
 
-from services.memory_service import episodes as dom
+import services.memory_service.episodes as dom
 
 _SERVICE = None
 
