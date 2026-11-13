@@ -2,12 +2,12 @@
 функции SDK, заменившие внутренности ядра, совпадают с ядром."""
 from pathlib import Path
 
-import latency_trace
-import safety
+from services.tracing import latency_trace
+from services.tools import safety
 from gits_sdk import safety as sdk_safety
 from gits_sdk import trace as sdk_trace
 from gits_sdk.contract import environment as E
-from supervisor import Supervisor, load_specs
+from host.supervisor import Supervisor, load_specs
 
 
 def test_supervisor_passes_every_declared_variable(tmp_path):

@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import character
+from services.character import character
 from interfaces import contracts
-import events_log
+from services.tracing import events_log
 from services.memory_service.episode_store import EpisodeStore
 from services.memory_service.adapters import UserMemoryAdapter
 from services.memory_service.diary import DayWriter
@@ -797,7 +797,7 @@ async def test_enrich_gives_module_events_salience_from_hint():
 
 
 def test_prompts_have_episode_sections():
-    import prompts
+    from services.character import prompts
     for fn in (prompts.episode, prompts.diary, prompts.digest):
         p = fn()
         assert p["system"] and p["format"] and "{name}" not in p["system"]

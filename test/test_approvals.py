@@ -1,8 +1,8 @@
 """approvals.ask (ТЗ 02, CORE-30): approval, choice, text, тайм-аут, очередь вопросов, обёртка request."""
 import asyncio
 
-import approvals
-import settings
+from services.conversation import approvals
+from host import settings
 
 
 async def _wait_pending():

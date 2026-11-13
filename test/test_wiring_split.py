@@ -8,9 +8,9 @@ import pytest
 import dashboard
 from services.attention import AttentionEventSink
 from interfaces.contracts import EventSink, RequestHandler
-from core_requests import CoreRequests
-from peer_hub import PeerHub
-from peer_outbound import Outbound
+from services.peers.requests import CoreRequests
+from services.peers.hub import PeerHub
+from services.peers.outbound import Outbound
 
 AGENT = Path(__file__).resolve().parents[1] / "agent"
 
@@ -20,17 +20,19 @@ def _imports(path: Path) -> set[str]:
     out = set()
     for node in tree.body:                                   # верхний уровень: ленивые импорты внутри функций не в счёт
         if isinstance(node, ast.Import):
-            out |= {a.name.split(".")[0] for a in node.names}
+            out |= {a.name for a in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module:
-            out.add(node.module.split(".")[0])
+            out.add(node.module)
+            out |= {f"{node.module}.{a.name}" for a in node.names}
     return out
 
 
 # ── R6 ────────────────────────────────────────────────────────────────────────────────────────
 
 def test_hub_does_not_import_attention_or_fast_brain():
-    for name in ("peer_hub.py", "peer_outbound.py"):
-        assert not ({"attention", "fast_brain", "companion"} & _imports(AGENT / name)), name
+    for name in ("services/peers/hub.py", "services/peers/outbound.py"):
+        bad = [m for m in _imports(AGENT / name) if m.startswith(("services.attention", "services.runtime.fast_brain", "services.conversation"))]
+        assert not bad, (name, bad)
 
 
 def test_core_service_has_no_event_handlers():

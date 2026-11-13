@@ -6,10 +6,10 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-import character
-import character_memory
+from services.character import character
+from services.character import character_memory
 from services.memory_service import character_seed
-import events_log
+from services.tracing import events_log
 from services.memory_service.graph import Fact, GraphMemory
 
 REAL_CHARACTERS = Path(__file__).resolve().parents[1] / "resources"

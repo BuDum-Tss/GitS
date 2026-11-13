@@ -1,8 +1,8 @@
 """Решение и действие по событию (ТЗ 29, ARC-4; ТЗ 03, ATT-10): приоритет, D0-D4, входящая очередь, очередь речи."""
 import logging
 
-import flow_trace
-import routes
+from services.tracing import flow_trace
+from services.tools import routes
 from kernel import hard_rules as rules
 from kernel import scoring
 

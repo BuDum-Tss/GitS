@@ -24,7 +24,7 @@ def test_user_message_goes_to_one_session_and_is_spoken_as_it_comes():
 def test_wait_speech_returns_when_queue_is_empty_and_gives_up_after_limit():
     """Инструмент ждёт, пока договорит очередь речи, но не дольше предела."""
     import time
-    from companion import Companion
+    from services.conversation.companion import Companion
 
     class Queue:
         def __init__(self, items, busy):
@@ -48,7 +48,7 @@ def test_wait_speech_returns_when_queue_is_empty_and_gives_up_after_limit():
 
 
 def test_turn_stages_are_marked_in_the_latency_trace():
-    import latency_trace
+    from services.tracing import latency_trace
     agent, host, _ = _agent()
     t = latency_trace.start("dashboard")
     token = latency_trace.bind(t)
@@ -107,7 +107,7 @@ def test_turn_timeout_leaves_a_note_for_the_next_turn(monkeypatch):
 
 
 def test_actions_block_names_the_agents_own_calls_as_hers():
-    import tool_trace
+    from services.tracing import tool_trace
     from services.conversation.context_builder import ContextBuilder
     tool_trace.note("external", "rimworld.colony_overview")
     block = ContextBuilder.actions_block()

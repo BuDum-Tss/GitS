@@ -359,7 +359,7 @@ async def test_no_speech_without_stimulus(tmp_path):
     """Опроса по таймеру нет совсем: ни файла, ни настройки, ни метода; без стимула модель не зовётся и слова нет."""
     import importlib.util
     c, llm = make_companion(tmp_path)
-    from settings import DEFAULTS
+    from host.settings import DEFAULTS
     assert importlib.util.find_spec("services.reflection.proactive_legacy") is None and "proactive_tick" not in DEFAULTS
     assert not hasattr(c, "proactive_loop")
     await asyncio.sleep(0.05)

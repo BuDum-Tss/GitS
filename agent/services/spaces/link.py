@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Any, Callable
 
-from peer_hub import PeerError
+from services.peers.hub import PeerError
 
 logger = logging.getLogger("workspace_link")
 

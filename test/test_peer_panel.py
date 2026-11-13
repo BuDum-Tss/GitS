@@ -13,7 +13,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from hub_helpers import RawModule, manifest, running_core, tool
 
 import dashboard
-import peer_panel
+from services.peers import panel as peer_panel
 from gits_sdk import protocol as P
 
 PANEL = {
@@ -403,7 +403,7 @@ def test_panel_spec_has_serve_dirs_for_core():
 
 async def test_events_filter_by_module(monkeypatch):
     """Журнал событий для вкладки модуля: только его события (по data.module), последние limit."""
-    import events_log
+    from services.tracing import events_log
     from aiohttp.test_utils import make_mocked_request
     rows = [{"ts": 1.0, "kind": "module", "text": "a", "data": {"module": "montage"}},
             {"ts": 2.0, "kind": "module", "text": "b", "data": {"module": "voice"}},

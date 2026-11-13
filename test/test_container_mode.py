@@ -6,12 +6,12 @@ import pytest
 import yaml
 from hub_helpers import running_core
 
-import supervisor
-import tray_launch
+from host import supervisor
+from host import tray_launch
 from environments.registry import Registry
 from gits_sdk import protocol as P
-from peer_hub import PeerHub, parse_allow, remote_allowed
-from peer_registry import PeerRegistry
+from services.peers.hub import PeerHub, parse_allow, remote_allowed
+from services.peers.registry import PeerRegistry
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTAINER_FILE = ROOT / "agent" / "peers.container.yaml"
@@ -115,7 +115,7 @@ def test_hub_reads_allow_from_environment():
 # ── токен ───────────────────────────────────────────────────────────────────────
 
 async def test_container_token_from_environment_and_no_file(tmp_path, monkeypatch):
-    import settings
+    from host import settings
     monkeypatch.setattr(settings, "_dir", tmp_path)
     hub = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1", P.ENV_TOKEN: "test-token"})
     assert hub.token == "test-token"
@@ -125,7 +125,7 @@ async def test_container_token_from_environment_and_no_file(tmp_path, monkeypatc
 
 
 async def test_container_token_old_name_is_ignored(tmp_path, monkeypatch):
-    import settings
+    from host import settings
     monkeypatch.setattr(settings, "_dir", tmp_path)
     legacy = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1", "GITS_MODULE_TOKEN": "old-token"})
     assert legacy.token != "old-token"                                         # прежнее имя GITS_MODULE_TOKEN не читается
@@ -135,7 +135,7 @@ async def test_container_token_old_name_is_ignored(tmp_path, monkeypatch):
 
 
 async def test_container_without_token_writes_file_to_memory_dir(tmp_path, monkeypatch):
-    import settings
+    from host import settings
     monkeypatch.setattr(settings, "_dir", tmp_path)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     hub = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1"})

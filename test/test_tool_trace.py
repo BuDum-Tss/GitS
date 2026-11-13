@@ -1,12 +1,12 @@
 """Журнал запусков инструментов для чата: планировщик (быстрый контур), Claude-помощник (медленный), вызовы со стороны."""
 import pytest
 
-import tool_trace
-import approvals
-import settings
+from services.tracing import tool_trace
+from services.conversation import approvals
+from host import settings
 from dashboard import presenters
 from environments.base import ToolError
-from router import Router
+from services.tools.router import Router
 from test_app_attention import Rig
 
 

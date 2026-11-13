@@ -6,7 +6,7 @@
 
   1. правила до классификатора (ATT-7, `services/attention/pipeline.py`): R1 обращение владельца -> разговор; R2 ответ на вопрос в том же
      канале; R3 временное правило mute -> в сводку; R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
-  2. срочность 0-5 (ATT-8, `app/event_classifier.py`): подсказка модуля и категория от классификатора (`decide.py`);
+  2. срочность 0-5 (ATT-8, `app/event_classifier.py`): подсказка модуля и категория от классификатора (`services/classifier/decide.py`);
   3. приоритет 0-100 = срочность * 20 * вес профиля * вес отправителя * вес правил * вес состояния пользователя * свежесть
      (ATT-9, `app/scorer.py`, `kernel/scoring.py`) и решение D0-D4 по порогам (ATT-10, `services/attention/dispatcher.py`);
   4. очередь речи (`services/attention/speech_queue.py`, `services/attention/speech_coordinator.py`) и стек фокуса (`services/attention/focus_stack.py`): ATT-13-ATT-23;
@@ -28,11 +28,11 @@ import logging
 import time
 from typing import Any, Callable
 
-import approvals
-import decide
-import events_log
+from services.conversation import approvals
+from services.classifier import decide
+from services.tracing import events_log
 from services.memory_service import writer_for_companion
-from relationships import people_for_companion
+from services.character.relationships import people_for_companion
 from services.attention.announce import Announcer, is_announce_event
 from services.attention.core import (  # noqa: F401  (прежние имена модуля: их импортируют ядро, модули и тесты)
     ANNOUNCE_DEFAULT_URGENCY,
@@ -72,7 +72,7 @@ from kernel import hard_rules as rules
 from kernel.event import KIND_THOUGHT, SELF_MODULE, Event
 from services.attention.speech_queue import INTERRUPT_P, SpeechCandidate
 
-import settings
+from host import settings
 
 logger = logging.getLogger("attention")
 REFLECTION_P = 40            # речь по итогам размышления: выше болтовни (30), ниже событий

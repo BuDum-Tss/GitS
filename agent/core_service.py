@@ -19,31 +19,31 @@ import time as _time
 from pathlib import Path
 from types import SimpleNamespace
 
-import character
+from services.character import character
 import dashboard
-import events_log
-import tool_trace
+from services.tracing import events_log
+from services.tracing import tool_trace
 from services.memory_service import episode_routes
 from services.memory_service import episode_service
 from services.memory_service import scope as graph_scope
 from services.reflection import service as impulse_service
 from services.memory_service import migration as memory_migration
 from services.tasks import wiring as task_wiring
-import profile_manager
-import settings
+from services.spaces import profile_manager
+from host import settings
 from gits_sdk import protocol as P
-import speech_out
-import supervisor as supervisor_mod
-import tool_search
+from services.conversation import speech_out
+from host import supervisor as supervisor_mod
+from services.tools import tool_search
 from services.spaces.manager import WorkspaceManager
 from services.attention import Attention, AttentionEventSink
 from services.spaces.link import WorkspaceLink
 from services.spaces.lease import LeaseAdapter
-from character_switch import CharacterSwitch
-from companion import Companion
-from conversation_io import ConversationIO
-import core_requests
-from core_requests import CoreRequests
+from services.character.character_switch import CharacterSwitch
+from services.conversation.companion import Companion
+from services.conversation.conversation_io import ConversationIO
+from services.peers import requests as core_requests
+from services.peers.requests import CoreRequests
 from environments import builtin
 from environments.registry import Registry
 from services.event_handlers.desktop import desktop_state, make_activity_hook
@@ -53,11 +53,11 @@ from services.spaces.node_panel import NodePanel
 from services.reflection.work_loop import WorkLoop
 from services.event_handlers.game import make_colonists_handler, make_run_lost_hook
 from services.event_handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
-from peer_hub import PeerHub
-from peer_registry import PeerRegistry
+from services.peers.hub import PeerHub
+from services.peers.registry import PeerRegistry
 from services.memory_service import GraphMemory
-from relationships import Relationships
-from router import Router
+from services.character.relationships import Relationships
+from services.tools.router import Router
 
 logger = logging.getLogger("core")
 

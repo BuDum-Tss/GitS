@@ -1,7 +1,7 @@
 """Домен: политика риска инструмента (ТЗ 29, ARC-2): когда нужно разрешение человека. Логика прежней `Router._step`."""
 import pytest
 
-import router as risk
+from services.tools import router as risk
 
 
 @pytest.mark.parametrize("danger, rk, self_confirming, telegram_confirm, expected", [

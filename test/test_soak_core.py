@@ -3,17 +3,17 @@
 import asyncio
 from types import SimpleNamespace
 
-import flow_trace
+from services.tracing import flow_trace
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from tools import soak_core
 
 import dashboard
-import decide
-import settings
-from conversation_io import Channel, ConversationIO
-from peer_outbound import Outbound
-from supervisor import PeerSpec, Supervisor
+from services.classifier import decide
+from host import settings
+from services.conversation.conversation_io import Channel, ConversationIO
+from services.peers.outbound import Outbound
+from host.supervisor import PeerSpec, Supervisor
 
 
 @pytest.fixture(autouse=True)
@@ -152,7 +152,7 @@ async def test_presence_without_subscriber_is_not_traced():
 
 async def test_web_search_traces_the_deep_node_without_text(monkeypatch):
     """Среда агента заглушена: сеть и настоящая модель не вызываются."""
-    import web_search
+    from services.runtime import web_search
 
     class FailingRuntime:
         async def start(self, system, tools):

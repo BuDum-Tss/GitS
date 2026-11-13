@@ -8,7 +8,7 @@ import json
 import time
 from pathlib import Path
 
-import character
+from services.character import character
 
 _MAX_DIALOGUE = 60
 _MAX_ACTIVITY = 40

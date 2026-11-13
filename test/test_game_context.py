@@ -4,7 +4,7 @@ import time
 import pytest
 from test_app_attention import Rig, _item
 
-import tool_trace
+from services.tracing import tool_trace
 from services.conversation.context_builder import ContextBuilder
 from services.conversation import repeat
 from kernel import scoring

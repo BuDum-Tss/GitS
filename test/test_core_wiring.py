@@ -9,13 +9,13 @@ import psutil
 from aiohttp import web
 from hub_helpers import FakeCompanion
 
-import approvals
+from services.conversation import approvals
 import core_service
 import dashboard
-import settings
-import speech_out
+from host import settings
+from services.conversation import speech_out
 from environments.registry import Registry
-from supervisor import load_specs
+from host.supervisor import load_specs
 
 JSON = {"Content-Type": "application/json"}
 
@@ -91,7 +91,7 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
 
             # профиль assistant: echo.repeat виден (availability=always) и выполняется планировщиком;
             # задача с вопросом: прогресс во вкладке, ответ кнопкой доходит до модуля
-            from router import Router
+            from services.tools.router import Router
             router = Router(registry, lambda t: asyncio.sleep(0))
             layer.requests.router = router
             assert await router.run_tool("echo.repeat", {"text": "кукуруза"}) == (True, "кукуруза")

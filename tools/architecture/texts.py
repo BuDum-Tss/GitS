@@ -6,11 +6,11 @@ ENT = [
     ("Impulse (self.*)", "Внутренний стимул: срок напоминания, которое агент назначил себе, или мысль, что-то напомнившая. Становится обычным Event и проходит тот же конвейер.", "нет"),
     ("Thought / Intent", "Thought: запись внутреннего диалога (не озвучивается). Intent: вывод размышления: сказать, сделать, напомнить себе, записать, ничего.", "нет"),
     ("SpeechCandidate / Utterance", "Что и с каким приоритетом хочет сказать агент; очередь выбирает момент, канал доставляет.", "<code>attention.speech_queue.SpeechCandidate</code>"),
-    ("Plan / ToolCall / ToolResult", "Шаги из инструментов, вызов инструмента, результат или код ошибки.", "словари в <code>router.py</code>"),
+    ("Plan / ToolCall / ToolResult", "Шаги из инструментов, вызов инструмента, результат или код ошибки.", "словари в <code>services/tools/router.py</code>"),
     ("Tool", "Инструмент: имя, схема параметров, риск, видимость по профилю, исполнитель.", "<code>environments/base.Tool</code>"),
     ("Slot / FocusDecision / Checkpoint", "Единственный слот фокуса, очередь событий, состояние прерванной задачи.", "<code>focus.py</code>"),
     ("MemoryRecord / MemoryHit", "Единица памяти: факт, запись о человеке, воспоминание о себе, план, (план) эпизод, урок, убеждение; результат поиска с близостью.", "четыре формата: граф, <code>MemoryStore</code>, отношения, диалог"),
-    ("Person · Character · Job", "Человек или колонист; данные персонажа; долгая задача участника шины.", "<code>relationships.py</code> · <code>character.py</code> · <code>peer_registry.py</code>"),
+    ("Person · Character · Job", "Человек или колонист; данные персонажа; долгая задача участника шины.", "<code>services/character/relationships.py</code> · <code>services/character/character.py</code> · <code>services/peers/registry.py</code>"),
 ]
 SMELLS = [
     ("Бог-объекты", "<code>Attention</code>: 1108 строк, 70 методов. <code>Companion</code>: 37 методов, 15 импортов. <code>FocusManager</code>: 60 методов.", "разрезать по сценариям (шаги R3–R5)"),
@@ -24,15 +24,15 @@ SMELLS = [
 ]
 MAP = [
     ("services/attention/service.py (1108)", "Normalizer, PeopleDirectory, HardRules, PriorityScorer, Dispatcher, Digest, JobTracker (часть), вопросы"),
-    ("companion.py (666)", "ConversationService, ContextBuilder, ReplyGenerator, MemoryWriter (capture, consolidate); проактивность по таймеру удалена (ТЗ 30)"),
+    ("services/conversation/companion.py (666)", "ConversationService, ContextBuilder, ReplyGenerator, MemoryWriter (capture, consolidate); проактивность по таймеру удалена (ТЗ 30)"),
     ("focus.py (1061)", "FocusPolicy (чистая), FocusManager (очередь и переходы), CheckpointStore"),
-    ("router.py (225) + approvals.py (301)", "Planner, RiskPolicy, Approver, Executor"),
+    ("services/tools/router.py (225) + services/conversation/approvals.py (301)", "Planner, RiskPolicy, Approver, Executor"),
     ("core_service.py", "Composition root; обработчики в <code>services/event_handlers/</code>"),
-    ("peer_hub.py + peer_outbound.py", "PeerHub: входящие, исходящие в <code>PeerHub.outbound</code>, без импорта домена"),
+    ("services/peers/hub.py + services/peers/outbound.py", "PeerHub: входящие, исходящие в <code>PeerHub.outbound</code>, без импорта домена"),
     ("dashboard/", "HTTP-адаптер: роутеры <code>routes_*.py</code> и презентеры <code>presenters.py</code>"),
     ("services/memory_service/graph.py, services/memory_service/user.py, services/memory_service/adapters.py", "MemoryWriter/MemoryReader + репозитории"),
     ("services/attention/speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
-    ("events_log.py, settings.py, character.py", "контракты EventLog, SettingsProvider, CharacterRepo"),
+    ("services/tracing/events_log.py, host/settings.py, services/character/character.py", "контракты EventLog, SettingsProvider, CharacterRepo"),
     ("нет", "ReminderStore, ImpulseTimer, ReflectionService, журнал мыслей (ТЗ 30)"),
 ]
 PHASES = [

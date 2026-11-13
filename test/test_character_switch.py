@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-import character
-import prompts
-import settings
-from character_switch import CharacterSwitch
+from services.character import character
+from services.character import prompts
+from host import settings
+from services.character.character_switch import CharacterSwitch
 
 REAL = Path(__file__).resolve().parents[1] / "resources"
 

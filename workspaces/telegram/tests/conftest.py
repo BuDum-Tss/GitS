@@ -10,10 +10,10 @@ for p in (GITS / "test", GITS / "agent" / "interfaces" / "workspace", GITS / "ag
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-import approvals  # noqa: E402
-import decide  # noqa: E402
-import events_log  # noqa: E402
-import settings  # noqa: E402  (только для сквозных тестов с настоящим ядром; сам модуль settings не импортирует)
+from services.conversation import approvals  # noqa: E402
+from services.classifier import decide  # noqa: E402
+from services.tracing import events_log  # noqa: E402
+from host import settings  # noqa: E402  (только для сквозных тестов с настоящим ядром; сам модуль settings не импортирует)
 
 
 @pytest.fixture(autouse=True)

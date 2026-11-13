@@ -5,6 +5,7 @@
 2. Размеры классов агента печатаются (без падения): строки и число методов крупнейших классов `agent/*.py`.
    Классы выше 400 строк или 40 методов помечаются как предупреждение.
 """
+from core_files import core_sources
 import ast
 import sys
 from pathlib import Path
@@ -67,7 +68,7 @@ def test_contracts_import_only_the_standard_library():
 def test_class_sizes_report():
     """Только отчёт: печатает крупнейшие классы и предупреждает о превышении порогов, не падает."""
     rows = []
-    for path in sorted(AGENT.glob("*.py")):
+    for path in core_sources():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in tree.body:
             if isinstance(node, ast.ClassDef):

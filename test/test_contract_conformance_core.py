@@ -3,7 +3,7 @@
 import pytest
 from hub_helpers import RawModule, manifest, running_core
 
-import events_log
+from services.tracing import events_log
 from services.runtime import fast_brain
 from gits_sdk import contract, testing
 from gits_sdk import protocol as P
@@ -23,7 +23,7 @@ def _no_external_services(monkeypatch):
 
     async def fake_search(query):
         return "нашлось"
-    import web_search
+    from services.runtime import web_search
     monkeypatch.setattr(web_search, "search", fake_search)
 
 

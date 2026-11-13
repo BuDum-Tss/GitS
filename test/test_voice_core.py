@@ -8,13 +8,13 @@ import pytest
 from aiohttp import web
 
 import core_service
-import events_log
-import speech_out
-from companion import Companion
+from services.tracing import events_log
+from services.conversation import speech_out
+from services.conversation.companion import Companion
 from services.memory_service.graph import GraphMemory
 from environments.registry import Registry
 from gits_sdk import ServiceClient
-from relationships import Relationships
+from services.character.relationships import Relationships
 
 
 def free_port() -> int:
@@ -384,8 +384,8 @@ async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tm
     речь ядра -> speak -> события voice.speech -> presence -> конец; выключение модуля возвращает речь в текст."""
     import psutil
 
-    import settings
-    from supervisor import load_specs
+    from host import settings
+    from host.supervisor import load_specs
     monkeypatch.setenv("GITS_VOICE_FAKE", "1")
     monkeypatch.setenv("GITS_VOICE_FAKE_SEGMENT_MS", "150")
     monkeypatch.setenv("GITS_VOICE_TMP", str(tmp_path / "vtmp"))

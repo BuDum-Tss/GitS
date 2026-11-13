@@ -8,8 +8,8 @@ import logging
 import re
 
 from services.runtime import fast_brain
-import prompts
-import reply_trace
+from services.character import prompts
+from services.tracing import reply_trace
 
 logger = logging.getLogger("companion")
 

@@ -5,7 +5,7 @@ import json
 import pytest
 
 from services.memory_service import graph as gm
-import settings
+from host import settings
 from services.memory_service.graph import Fact, GraphMemory, parse_facts
 
 

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-import character
-import settings
-from character_switch import CharacterSwitch
+from services.character import character
+from host import settings
+from services.character.character_switch import CharacterSwitch
 from tools import character_home
 
 

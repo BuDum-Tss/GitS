@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
-import events_log  # noqa: E402
+from services.tracing import events_log  # noqa: E402
 
 PLAN_WINDOW_S = 180.0                 # итог маршрутизатора ищется не позже чем через столько секунд после реплики
 ROUTER_INTENTS = ("action", "attention_rule")
@@ -74,7 +74,7 @@ async def evaluate(rows: list[dict], classify: Callable[[str], Awaitable[str | N
 
 
 async def _classify_with_service(text: str) -> str | None:
-    import decide
+    from services.classifier import decide
     cls = decide.parse_input(await decide.Decider().classify(text, decide.INPUT_QUESTIONS, timeout=5.0), 0.5)
     return cls.intent if cls else None
 

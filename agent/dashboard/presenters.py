@@ -21,7 +21,7 @@ def screen_state(modules) -> dict | None:
 
 def relations_view(rel: dict, now: float | None = None) -> list[dict]:
     """Люди из relationships.json: до 12 не колонистов и до 12 колонистов, по убыванию |симпатии|."""
-    from relationships import is_hidden, kind_of, label
+    from services.character.relationships import is_hidden, kind_of, label
     now = time.time() if now is None else now
     rows = sorted(
         ({"name": r.get("name", n), "affinity": r.get("affinity", 0), "label": label(r.get("affinity", 0)),

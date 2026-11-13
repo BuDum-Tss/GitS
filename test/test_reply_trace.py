@@ -5,7 +5,7 @@ import time
 import pytest
 from aiohttp.test_utils import make_mocked_request
 
-import reply_trace
+from services.tracing import reply_trace
 from dashboard import routes_memory
 
 

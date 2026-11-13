@@ -1,5 +1,6 @@
 """Ядро и питомец-модуль (ТЗ 13: PET-9, PET-10, PET-11): запись в peers.yaml, {PYTHONW}, трей не запускает питомца,
 дашборд без say.json и поля say, presence с emotion_ts, настоящий процесс питомца (без окна) под супервизором."""
+from core_files import core_sources
 import asyncio
 import time
 from pathlib import Path
@@ -12,10 +13,10 @@ from test_dashboard_endpoints import serve
 
 import core_service
 import dashboard
-import settings
-import speech_out
+from host import settings
+from services.conversation import speech_out
 from environments.registry import Registry
-from supervisor import Supervisor, load_specs
+from host.supervisor import Supervisor, load_specs
 
 AGENT = Path(__file__).resolve().parent.parent / "agent"
 GITS = AGENT.parent
@@ -41,7 +42,7 @@ def test_pythonw_placeholder_falls_back_to_python_without_pythonw(tmp_path):
 
 
 def test_tray_does_not_start_the_pet_any_more():
-    src = (AGENT / "tray.py").read_text(encoding="utf-8")
+    src = (AGENT / "host" / "tray.py").read_text(encoding="utf-8")
     assert "desktop_pet" not in src and "start_pet" not in src
     assert "pet_visible" not in src and "_toggle_pet" not in src                                          # пунктов питомца в трее нет
     assert '"services" / "pet"' not in src and "services/pet" not in src                  # трей не читает файлы питомца
@@ -52,7 +53,7 @@ def test_tray_does_not_start_the_pet_any_more():
 
 def test_legacy_pet_speech_and_say_json_are_gone():
     assert not hasattr(speech_out, "LegacyPetSpeech")
-    for path in AGENT.glob("*.py"):
+    for path in core_sources():
         assert "say.json" not in path.read_text(encoding="utf-8") or path.name == "speech_out.py", path.name
 
 
@@ -71,7 +72,7 @@ async def test_state_endpoint_has_presence_with_sticker_time_and_no_say(tmp_path
 
 
 async def test_say_does_not_write_say_json(tmp_path):
-    from companion import Companion
+    from services.conversation.companion import Companion
     c = Companion(str(tmp_path / "memory"), rel=None)
     await c.say("Привет")
     assert not (tmp_path / "memory" / "say.json").exists()

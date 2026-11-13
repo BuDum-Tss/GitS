@@ -11,7 +11,7 @@ for p in (GITS / "agent" / "interfaces" / "workspace", GITS / "agent", HERE):   
         sys.path.remove(str(p))
     sys.path.insert(0, str(p))
 
-import events_log  # noqa: E402
+from services.tracing import events_log  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

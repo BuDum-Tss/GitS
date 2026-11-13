@@ -2,10 +2,10 @@
 
 from hub_helpers import RawModule, manifest, running_core
 
-import events_log
-import speech_out
-from companion import Companion
-from conversation_io import DASHBOARD, VOICE, Channel, ConversationIO, UserInput, current_channel
+from services.tracing import events_log
+from services.conversation import speech_out
+from services.conversation.companion import Companion
+from services.conversation.conversation_io import DASHBOARD, VOICE, Channel, ConversationIO, UserInput, current_channel
 
 
 class RecordingSpeech:

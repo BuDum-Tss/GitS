@@ -1,7 +1,7 @@
-"""Трей стартует вместе с ядром (tray_launch.py). Процессов не создаём: spawn подменён."""
+"""Трей стартует вместе с ядром (host/tray_launch.py). Процессов не создаём: spawn подменён."""
 from pathlib import Path
 
-import tray_launch as tl
+from host import tray_launch as tl
 
 
 def test_wanted_only_on_windows_and_unless_switched_off():

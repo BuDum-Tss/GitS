@@ -9,7 +9,7 @@ import logging
 import re
 import time
 
-import flow_trace
+from services.tracing import flow_trace
 from services.runtime import pi_llm
 
 logger = logging.getLogger("fast_brain")

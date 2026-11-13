@@ -3,14 +3,14 @@
 import gc
 import warnings
 
-import events_log
-import journal
-import latency_trace as lt
+from services.tracing import events_log
+from services.tracing import journal
+from services.tracing import latency_trace as lt
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 import dashboard
-from peer_hub import PeerHub
+from services.peers.hub import PeerHub
 from test_companion_attention import Rig
 
 

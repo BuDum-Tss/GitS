@@ -13,9 +13,9 @@ import asyncio
 import logging
 import time
 
-import latency_trace
+from services.tracing import latency_trace
 from services.runtime import llm_gate
-import prompts
+from services.character import prompts
 from interfaces.contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
 from services.conversation.stickers import first_sticker, plain as strip_tags
 
@@ -285,5 +285,5 @@ class ResidentAgent:
 
     @staticmethod
     def _quiet() -> bool:
-        import settings
+        from host import settings
         return bool(settings.quiet_active())

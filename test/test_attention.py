@@ -7,11 +7,11 @@ from types import SimpleNamespace
 import pytest
 from hub_helpers import FakeCompanion, FakeIO
 
-import approvals
-import events_log
-import settings
+from services.conversation import approvals
+from services.tracing import events_log
+from host import settings
 from services.attention import Attention, Question
-from conversation_io import Channel
+from services.conversation.conversation_io import Channel
 from environments.base import ToolError
 
 
@@ -432,7 +432,7 @@ async def test_user_input_pushes_conversation_which_expires_after_a_minute(rig):
 
 
 async def test_conversation_reply_extends_the_conversation(rig):
-    from conversation_io import DASHBOARD, current_channel
+    from services.conversation.conversation_io import DASHBOARD, current_channel
     await rig.att.on_user_input("вопрос")
     rig.clock.t += 50
     token = current_channel.set(DASHBOARD)
@@ -723,7 +723,7 @@ async def test_classify_input_threshold_and_switch(tmp_path):
 
 
 async def test_enqueue_say_by_context(rig):
-    from conversation_io import VOICE, current_channel
+    from services.conversation.conversation_io import VOICE, current_channel
     cand = rig.att.enqueue_say("сама", None, None)
     assert (cand.source, cand.priority) == ("proactive", 30)
     cand = rig.att.enqueue_say("сама", None, None, source="proactive")

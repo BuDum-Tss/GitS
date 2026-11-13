@@ -1,7 +1,7 @@
 """Реестр окружений: отбор инструментов для планировщика всегда оставляет Claude-помощника."""
 import tempfile
 
-import settings
+from host import settings
 from environments import builtin
 from environments.registry import Registry
 from services.memory_service.user import UserMemory

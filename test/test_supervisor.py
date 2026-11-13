@@ -8,8 +8,8 @@ import psutil
 import pytest
 import yaml
 
-import supervisor
-from supervisor import PeerSpec, Supervisor, load_specs, redact
+from host import supervisor
+from host.supervisor import PeerSpec, Supervisor, load_specs, redact
 
 TOKEN = "ab" * 32            # 64 hex, как настоящий токен ядра
 
@@ -96,7 +96,7 @@ async def test_crash_restarts_with_backoff_then_gives_up_after_five(tmp_path):
         delays.append(s)
     ticks = iter(range(0, 1000, 10))                  # 10 с между сбоями: все в одном десятиминутном окне
     sup, mod, _ = make(tmp_path, CRASH, sleep=fake_sleep, clock=lambda: next(ticks))
-    import events_log
+    from services.tracing import events_log
     await sup.start()
     await wait_for(lambda: sup.status("fake")["status"] == "crashed")
     assert delays == [2, 5, 15, 60]                   # CORE-15; пятое падение - конец
@@ -362,7 +362,7 @@ def _cleanup_children():
 
 
 def test_skip_when_env_keeps_the_module_from_starting(tmp_path, monkeypatch):
-    from supervisor import _skip_when_env
+    from host.supervisor import _skip_when_env
     assert _skip_when_env(None) == {}
     assert _skip_when_env({"TTS_ENGINE": ["Fish", " edge "]}) == {"TTS_ENGINE": ["fish", "edge"]}
     with pytest.raises(ValueError):

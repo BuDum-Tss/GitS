@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from aiohttp import web
 
-import settings as settings_module
+from host import settings as settings_module
 
 
 def default_is_local_json(request: web.Request) -> bool:

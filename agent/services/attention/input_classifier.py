@@ -3,7 +3,7 @@
 События модулей классификатор больше не оценивает: срочность берётся из подсказки модуля (`Normalizer.assign_urgency`). Без
 сервиса (не запущен, настройка выключена, ошибка) обращение идёт как раньше, по правилам.
 """
-import decide
+from services.classifier import decide
 
 from .core import TEXT_LOG, AttentionContext
 

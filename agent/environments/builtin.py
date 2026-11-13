@@ -9,9 +9,9 @@ import asyncio
 import re
 import time
 
-import events_log
-import settings
-from stems import stems
+from services.tracing import events_log
+from host import settings
+from services.conversation.stems import stems
 from services.tasks.service import TaskError
 from services.tasks import model as task_dom
 from .base import Environment, Tool, ToolError
@@ -30,7 +30,7 @@ def _tool(env, name, description, params, call, risk="auto", keywords=(), self_c
 
 def register(registry, companion, memory, profiles=None):
     """Собрать и добавить встроенные окружения. Все объекты живут в одном процессе ядра.
-    profiles - ProfileManager (profile_manager.py): нужен инструменту assistant.set_profile."""
+    profiles - ProfileManager (services/spaces/profile_manager.py): нужен инструменту assistant.set_profile."""
 
     # ── сама ассистентка: её настройки и память ───────────────────────────────
 
@@ -104,7 +104,7 @@ def register(registry, companion, memory, profiles=None):
         ])
 
         async def job():
-            import analysis
+            from services.runtime import analysis
             _analysis_running["on"] = True
             try:
                 res = await analysis.analyze(question, hours, extra)
@@ -321,7 +321,7 @@ def register(registry, companion, memory, profiles=None):
         ]))
 
     async def web_search_tool(a):
-        import web_search
+        from services.runtime import web_search
         return await web_search.search(a["query"])
 
     # общий для всех профилей: поиск нужен и ассистенту, и игре, и монтажу (module=core: включён всегда)

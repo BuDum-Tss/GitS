@@ -1,7 +1,7 @@
 """Запись решения внимания в журнал (ТЗ 29, ARC-4; ТЗ 03, ATT-29; ТЗ 24, TRC-4, TRC-6)."""
-import journal
-import routes
-import salience
+from services.tracing import journal
+from services.tools import routes
+from services.tracing import salience
 
 from .core import TEXT_LOG, AttentionContext, Item
 

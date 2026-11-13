@@ -89,7 +89,7 @@ class ContextBuilder:
         запусков инструментов, подряд идущие одинаковые склеены. Нет записей: так и сказано, чтобы она ничего не заявляла."""
         import time
 
-        import tool_trace
+        from services.tracing import tool_trace
         who = {"code": "Модуль кода", "fast": "быстрая модель", "external": "ты сама (и модули)"}
         state = {"running": "идёт", "done": "сделано", "failed": "не удалось"}
         now = time.time()

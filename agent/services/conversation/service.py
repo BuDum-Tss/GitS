@@ -7,11 +7,11 @@ import re
 import time
 import logging
 
-import journal
-import routes
-import latency_trace
-import salience
-from conversation_io import DASHBOARD, VOICE, UserInput, current_channel
+from services.tracing import journal
+from services.tools import routes
+from services.tracing import latency_trace
+from services.tracing import salience
+from services.conversation.conversation_io import DASHBOARD, VOICE, UserInput, current_channel
 
 from services.memory_service import SPEAKER_TAG
 
@@ -60,7 +60,7 @@ class ConversationService:
 
     async def handle_text(self, text: str):
         """Единый вход обращения (ТЗ 25, FAST-1): жёсткие правила до моделей -> параллельно классификатор, приказ в игру, поиск
-        в памяти и запись реплики -> маршруты (`routes.py`) -> ответ потоком, поручение или то и другое."""
+        в памяти и запись реплики -> маршруты (`services/tools/routes.py`) -> ответ потоком, поручение или то и другое."""
         h = self._h
         text = text.strip()
         if not text:

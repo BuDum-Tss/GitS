@@ -1,6 +1,6 @@
 """Характер: конституция плюс prompt.yaml, запасные тексты при поломке файлов."""
-import character
-import prompts
+from services.character import character
+from services.character import prompts
 
 
 def test_persona_has_core_and_rules():

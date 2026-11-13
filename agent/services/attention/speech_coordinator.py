@@ -3,8 +3,8 @@
 Владеет `SpeechQueue`: ставит в неё реплики и факты компаньона, говорит выбранного кандидата через компаньона и реагирует на
 итог (сказано, отброшено): фокус реакции снимается, устаревшее нерассказанное уходит в сводку.
 """
-import latency_trace
-from conversation_io import current_channel
+from services.tracing import latency_trace
+from services.conversation.conversation_io import current_channel
 from services.attention.speech_queue import SpeechCandidate, SpeechQueue
 
 from .core import (

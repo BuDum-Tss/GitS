@@ -195,16 +195,16 @@ class Soak:
     # ── сборка ядра ────────────────────────────────────────────────────────────
 
     async def build(self):
-        import decide
-        import events_log
-        import settings
-        import speech_out
+        from services.classifier import decide
+        from services.tracing import events_log
+        from host import settings
+        from services.conversation import speech_out
         from aiohttp import web
         import core_service
         import dashboard
-        from companion import Companion
+        from services.conversation.companion import Companion
         from environments.registry import Registry
-        from relationships import Relationships
+        from services.character.relationships import Relationships
 
         names = ("LOCALAPPDATA", "GITS_SECRETS_FILE", "GITS_VOICE_FAKE", "GITS_PET_HEADLESS", "GITS_DESKTOP_FAKE", "GITS_NO_DECIDER",
                  "GITS_NO_MODULES")
@@ -236,7 +236,7 @@ class Soak:
         self.graph = StubGraph()
         self.companion.graph = self.graph
         registry = Registry()
-        from supervisor import load_specs
+        from host.supervisor import load_specs
         want = set(self.real_modules)
         specs = [s for s in load_specs() if s.id in want]
         self.layer = core_service.wire_modules(self.companion, registry, port=self.port,
@@ -257,8 +257,8 @@ class Soak:
         self._baseline_tasks = {t for t in asyncio.all_tasks()}
 
     async def close(self):
-        import decide
-        import events_log
+        from services.classifier import decide
+        from services.tracing import events_log
         t0 = time.perf_counter()
         try:
             await asyncio.wait_for(self.layer.stop(), 30)
@@ -364,7 +364,7 @@ class Soak:
     # ── снятие показателей ─────────────────────────────────────────────────────
 
     def snapshot(self, t: float) -> dict:
-        import flow_trace
+        from services.tracing import flow_trace
         att = self.layer.attention
         lag = self.lag.take()
         return {"t": round(t, 1), "rss_mb": round(_rss_mb(), 1), "tasks": len(asyncio.all_tasks()),

@@ -1,8 +1,8 @@
 """Отношения: действующий состав из игры, выбывшие, давние записи."""
 import time
 
-import relationships as rl
-from relationships import Relationships
+from services.character import relationships as rl
+from services.character.relationships import Relationships
 
 
 def pawns(*names):

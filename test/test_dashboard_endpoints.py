@@ -5,10 +5,10 @@ import aiohttp
 from aiohttp import web
 from test_core_wiring import JSON, WiredCompanion, free_port, wait_for
 
-import approvals
+from services.conversation import approvals
 import core_service
 import dashboard
-import settings
+from host import settings
 from environments.registry import Registry
 
 

@@ -17,7 +17,7 @@ import re
 import time
 from typing import Any, Callable
 
-import character_memory
+from services.character import character_memory
 from services.memory_service import plan_due
 
 MIN_PLAN_IMPORTANCE = 3          # план записывается и со средней важностью: дедлайны и встречи сами по себе не мелочь

@@ -2,8 +2,8 @@
 состояния нет: стикер выбирает только текст ответа."""
 import pytest
 
-import decide
-import prompts
+from services.classifier import decide
+from services.character import prompts
 from services.conversation import stickers as st
 
 

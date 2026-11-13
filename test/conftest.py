@@ -1,13 +1,13 @@
 """Общие настройки тестов ядра: каждый тест в своей папке памяти, без токена в настоящем %LOCALAPPDATA%."""
 import pytest
 
-import approvals
-import character
-import decide
-import events_log
-import prompts
+from services.conversation import approvals
+from services.character import character
+from services.classifier import decide
+from services.tracing import events_log
+from services.character import prompts
 from services.conversation import resident
-import settings
+from host import settings
 from interfaces.contracts import EndEvent
 
 

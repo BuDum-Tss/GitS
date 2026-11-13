@@ -1,8 +1,8 @@
 """core.memory.recall / core.memory.remember поверх MemoryReader и MemoryWriter (ТЗ 31, MC-5)."""
 import pytest
 
-from core_requests import CoreRequests
-from peer_hub import PeerError
+from services.peers.requests import CoreRequests
+from services.peers.hub import PeerError
 
 
 class FakeMemory:

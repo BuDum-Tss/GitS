@@ -8,10 +8,10 @@ from hub_helpers import FakeCompanion
 
 import core_service
 import dashboard
-import settings
-import speech_out
+from host import settings
+from services.conversation import speech_out
 from environments.registry import Registry
-from supervisor import load_planned, load_specs
+from host.supervisor import load_planned, load_specs
 
 AGENT = Path(__file__).resolve().parent.parent / "agent"
 

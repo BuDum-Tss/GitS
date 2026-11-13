@@ -7,8 +7,8 @@ import pytest
 from echo_module import build_client
 from hub_helpers import RawModule, manifest, running_client, running_core, tool
 
-import approvals
-import settings
+from services.conversation import approvals
+from host import settings
 from environments import builtin
 from environments.base import ToolError
 from gits_sdk import WorkspaceClient
@@ -155,7 +155,7 @@ async def test_sdk_exits_with_code_2_on_fatal_reject(tmp_path):
 # ── журнал ──────────────────────────────────────────────────────────────────────
 
 async def test_journal_has_connect_disconnect_and_reject_without_content(tmp_path):
-    import events_log
+    from services.tracing import events_log
     async with running_core(tmp_path) as core:
         client = build_client(interval=0.01, url=core.url, token=core.token)
         async with running_client(client, core):
@@ -421,7 +421,7 @@ async def test_events_speech_state_reach_core_and_emotion_is_ignored(tmp_path):
             await asyncio.sleep(0.1)
         finally:
             await raw.close()
-        import events_log
+        from services.tracing import events_log
         logged = events_log.tail(50, {"module_event"})
         assert [e["data"]["event_kind"] for e in logged] == ["tg.ping"]                       # журнал событий модулей
         assert core.companion.about == [("Борис уснул.", False, False)]                 # fact -> очередь речи -> _speak_about
@@ -591,7 +591,7 @@ async def test_core_tool_call_runs_through_router_with_permissions(tmp_path):
 
 
 async def test_core_persona_and_web_search(tmp_path, monkeypatch):
-    import web_search
+    from services.runtime import web_search
 
     async def fake_search(query):
         return f"нашла: {query}"

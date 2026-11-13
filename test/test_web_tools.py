@@ -1,12 +1,12 @@
-"""Инструменты поиска для pi (`web_tools.py`) и поиск агентом pi (`web_search.py`): сеть и разрешение имён подменены."""
+"""Инструменты поиска для pi (`services/runtime/web_tools.py`) и поиск агентом pi (`services/runtime/web_search.py`): сеть и разрешение имён подменены."""
 import asyncio
 
 import httpx
 import pytest
 
-import settings
-import web_search
-import web_tools
+from host import settings
+from services.runtime import web_search
+from services.runtime import web_tools
 from interfaces.contracts import EndEvent, TextEvent, ToolEvent
 
 PUBLIC = "93.184.216.34"

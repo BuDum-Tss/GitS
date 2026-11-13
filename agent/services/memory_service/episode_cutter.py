@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 from typing import Callable
 
-import salience
+from services.tracing import salience
 from interfaces.contracts import EventSource
 import services.memory_service.episodes as dom
 

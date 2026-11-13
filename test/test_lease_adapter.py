@@ -8,13 +8,13 @@ from aiohttp.test_utils import make_mocked_request
 from gits_sdk.control import ControlServer
 
 import dashboard
-import settings
+from host import settings
 from services.spaces.lease import LeaseAdapter
 from services.spaces.link import WorkspaceLink
 from services.spaces.manager import WorkspaceManager
 from services.spaces import model as dom
 from environments.builtin import _workspace_tools
-from supervisor import PeerSpec, Supervisor, load_specs
+from host.supervisor import PeerSpec, Supervisor, load_specs
 
 TOKEN = "control-secret"
 CORE_TOKEN = "core-secret-token"
@@ -240,7 +240,7 @@ async def test_switch_into_free_space_takes_lease_without_prior_connection(space
 
 async def test_peer_snapshot_and_api_show_lease_and_space_without_secrets(space, monkeypatch):
     import core_service
-    import speech_out
+    from services.conversation import speech_out
     from environments.registry import Registry
     from hub_helpers import FakeCompanion
 

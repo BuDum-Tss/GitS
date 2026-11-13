@@ -1,7 +1,7 @@
 """Ход задач модулей (ТЗ 29, ARC-4; ТЗ 03, ATT-12): состояние задачи -> событие внимания."""
 import secrets
 
-import tool_trace
+from services.tracing import tool_trace
 
 from .core import TEXT_MAX, AttentionContext, Item
 from .dispatcher import Dispatcher

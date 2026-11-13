@@ -3,7 +3,7 @@
 Игрового кода тут нет: ядро знает события `rimworld.*` как данные. Приказы игре агент отдаёт инструментами среды."""
 import logging
 
-import journal
+from services.tracing import journal
 
 logger = logging.getLogger("core")
 

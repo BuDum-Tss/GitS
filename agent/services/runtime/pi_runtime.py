@@ -32,7 +32,7 @@ SESSION_ID = "gits-resident"
 
 
 def _session_file() -> Path:
-    import settings
+    from host import settings
     return settings.memory_dir() / "resident_pi_session.json"
 
 
@@ -90,7 +90,7 @@ class PiRuntime:
         return [node, str(bridge)], ""
 
     def _init_message(self) -> dict:
-        import settings
+        from host import settings
         cfg = settings.load()
         auth = self._auth_file or os.environ.get("GITS_PI_AUTH") or str(BRIDGE_DIR / "auth.json")
         msg = {"type": "init", "provider": self._provider, "model": self._model or cfg.get("pi_model") or "gpt-6-luna",

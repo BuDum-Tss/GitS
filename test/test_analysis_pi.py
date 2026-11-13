@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-import analysis
-import settings
+from services.runtime import analysis
+from host import settings
 from gits_sdk import pi_agent
 
 ROOT = analysis._PROJECT_ROOT
 
 
 @pytest.mark.parametrize("tool,inp,denied", [
-    ("Read", {"file_path": str(ROOT / "agent" / "analysis.py")}, False),
+    ("Read", {"file_path": str(ROOT / "agent" / "services" / "runtime" / "analysis.py")}, False),
     ("Read", {"file_path": str(ROOT.parent / "outside.txt")}, True),
     ("Read", {"file_path": str(ROOT / ".env")}, True),
     ("Grep", {"pattern": "x", "path": str(ROOT / "agent")}, False),
@@ -44,7 +44,7 @@ class FakeAgent:
     async def run(self, prompt):
         self.prompt = prompt
         cb = self.kw["can_use_tool"]
-        FakeAgent.results.append(await cb("Read", {"file_path": str(ROOT / "agent" / "analysis.py")}))
+        FakeAgent.results.append(await cb("Read", {"file_path": str(ROOT / "agent" / "services" / "runtime" / "analysis.py")}))
         FakeAgent.results.append(await cb("Read", {"file_path": str(ROOT.parent / "x.txt")}))
         FakeAgent.results.append(await cb("Bash", {"command": "ls"}))
         yield pi_agent.TextEvent(FakeAgent.answer)

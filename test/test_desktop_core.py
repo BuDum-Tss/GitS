@@ -1,6 +1,7 @@
 """Ядро и модуль desktop (ТЗ 14, DESK-18): core_fills, fallback, задача Claude через модуль-заглушку, выбор профиля и простой
 по state модуля, алиасы прежних id, запись активности в память, меню через маршрутизатор, в ядре нет кода экрана.
 Без экрана, мыши, OCR, LM Studio и Claude: модуль заменён заглушкой шины."""
+from core_files import core_sources
 import asyncio
 import re
 from pathlib import Path
@@ -10,8 +11,8 @@ from hub_helpers import FakeCompanion
 
 import core_service
 import dashboard
-import peer_registry
-from companion import Companion
+from services.peers import registry as peer_registry
+from services.conversation.companion import Companion
 from environments.base import Environment, Tool
 from environments.registry import Registry
 from gits_sdk import protocol as P
@@ -106,7 +107,7 @@ def make_companion(tmp_path):
 
 
 def make_layer(tmp_path):
-    from speech_out import PresenceTracker
+    from services.conversation.speech_out import PresenceTracker
     comp = FakeCompanion()
     comp.presence = PresenceTracker()
     comp.io = None
@@ -191,7 +192,7 @@ def test_core_has_no_screen_or_perception_code():
     """ТЗ 14, приёмка 1: в процессе ядра нет импортов экрана, восприятия и ввода (они в модуле desktop)."""
     banned = re.compile(r"^\s*(import|from)\s+(perception|screenshots|screen_operator|app_launcher|assistant_agent|"
                         r"game_launcher|pyautogui|pygetwindow|rapidocr|numpy|environments\.pc_control|pc_control)\b", re.M)
-    offenders = [p.name for p in AGENT.glob("*.py") if banned.search(p.read_text(encoding="utf-8"))]
+    offenders = [p.name for p in core_sources() if banned.search(p.read_text(encoding="utf-8"))]
     offenders += [p.name for p in (AGENT / "environments").glob("*.py") if banned.search(p.read_text(encoding="utf-8"))]
     assert offenders == []
     assert not (AGENT / "perception.py").exists() and not (AGENT / "environments" / "pc_control.py").exists()

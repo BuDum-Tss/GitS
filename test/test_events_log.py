@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-import events_log
+from services.tracing import events_log
 
 
 @pytest.fixture

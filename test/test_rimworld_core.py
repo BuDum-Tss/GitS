@@ -13,10 +13,10 @@ from test_companion_attention import Rig as ConversationRig
 
 import core_service
 import dashboard
-import settings
+from host import settings
 from environments.registry import Registry
 from gits_sdk import WorkspaceClient
-from supervisor import Supervisor, load_specs
+from host.supervisor import Supervisor, load_specs
 
 AGENT = Path(__file__).resolve().parent.parent / "agent"
 
@@ -179,7 +179,7 @@ def test_old_game_agent_channels_are_gone():
 
 
 def test_tray_no_longer_starts_the_game_agent():
-    import tray
+    from host import tray
     for name in ("start_game_agent", "restart_game_agent", "GAME_AGENT_DIR", "game_agent_available"):
         assert not hasattr(tray, name), name
 

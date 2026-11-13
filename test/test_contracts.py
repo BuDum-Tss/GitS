@@ -7,20 +7,20 @@ import pytest
 from hub_helpers import FakeCompanion, FakeIO
 from test_attention import Clock, StubDecider
 
-import character
+from services.character import character
 from interfaces import contracts
-import approvals
-import decide
+from services.conversation import approvals
+from services.classifier import decide
 from services.runtime.fast_brain import FastLLM
-import events_log
-import settings
+from services.tracing import events_log
+from host import settings
 from services.memory_service.adapters import UserMemoryAdapter
-from relationships import RelationshipsAdapter
+from services.character.relationships import RelationshipsAdapter
 from services.runtime.pi_runtime import PiRuntime
 from services.attention import Attention
-from companion import Companion
+from services.conversation.companion import Companion
 from services.memory_service.graph import GraphMemory
-from router import Router
+from services.tools.router import Router
 
 
 # ── адаптеры удовлетворяют контрактам ──────────────────────────────────────────────────────

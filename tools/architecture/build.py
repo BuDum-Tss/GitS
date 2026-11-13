@@ -77,12 +77,12 @@ def render_docs_html() -> str:
 <p class="opacity-70 mb-2">Ядро тогда: 46 модулей, 12 054 строки. Шаги R0–R7 и ТЗ 24–31 выполнены (см. статусы блоков схемы и записи CHANGELOG); таблица оставлена как история причин. Измерено разбором исходников (<code>ast</code>): строки, методы, импорты; ссылки найдены поиском.</p>{smells}
 <h2 class="text-xl font-semibold mt-8 mb-2">Где что окажется</h2>{mapping}
 <pre class="bg-base-100 border border-base-300 rounded-box p-3 text-sm overflow-auto my-3">agent/
-  domain/      entities.py scoring.py rules.py risk.py focus_policy.py salience.py                 (без ввода-вывода)
+  domain/      entities.py scoring.py rules.py risk.py focus_policy.py services/tracing/salience.py                 (без ввода-вывода)
   app/         process_event.py conversation.py context_builder.py planner.py executor.py focus_manager.py
                memory_capture.py reflection.py impulses.py digest.py jobs.py                       (сценарии)
   contracts.py MemoryReader, MemoryWriter, PeopleDirectory, FactGraph, LanguageModel, Classifier, EventLog, SettingsProvider, ToolInvoker, Approver, Clock
-  adapters/    peer_hub.py dashboard/ llm_lmstudio.py classifier_gliner.py graph_graphiti.py stores_json.py
-               event_log_sqlite.py speech_voice_module.py reminders_sqlite.py supervisor.py
+  adapters/    services/peers/hub.py dashboard/ llm_lmstudio.py classifier_gliner.py graph_graphiti.py stores_json.py
+               event_log_sqlite.py speech_voice_module.py reminders_sqlite.py host/supervisor.py
   core_service.py   только сборка
 agent/interfaces/workspace/gits_sdk/contract/   публичные контракты для модулей (ТЗ 31)</pre>
 <h2 class="text-xl font-semibold mt-8 mb-2">План рефакторинга без остановки проекта</h2>

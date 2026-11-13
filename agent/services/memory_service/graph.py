@@ -20,12 +20,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import character
-import character_memory
-import events_log
+from services.character import character
+from services.character import character_memory
+from services.tracing import events_log
 import services.memory_service.scope as graph_scope
-import settings
-import stems as stemlib
+from host import settings
+from services.conversation import stems as stemlib
 from gits_sdk.envcompat import env
 from services.memory_service.fact_store import FactStore, iso
 from search.embedder import LmStudioEmbedder

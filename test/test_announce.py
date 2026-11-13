@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from test_attention import Rig, evt_log
 
-import peer_registry
+from services.peers import registry as peer_registry
 from services.attention import Attention
 from environments.registry import Registry
 from gits_sdk import protocol as P

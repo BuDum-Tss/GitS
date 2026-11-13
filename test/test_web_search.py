@@ -2,8 +2,8 @@
 import asyncio
 import tempfile
 
-import settings
-import web_search
+from host import settings
+from services.runtime import web_search
 from environments import builtin
 from environments.registry import Registry
 from services.memory_service.user import UserMemory

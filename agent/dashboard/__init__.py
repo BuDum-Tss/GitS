@@ -12,8 +12,8 @@ from pathlib import Path
 from aiohttp import web
 
 from services.memory_service import episode_routes
-import events_log
-import settings
+from services.tracing import events_log
+from host import settings
 from gits_sdk.envcompat import env
 
 from . import presenters, routes_attention, routes_memory, routes_peers, routes_system

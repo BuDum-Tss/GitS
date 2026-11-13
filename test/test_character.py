@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-import character
-import prompts
-import settings
+from services.character import character
+from services.character import prompts
+from host import settings
 
 CONSTITUTION_SHA256 = "bd95c53c07d006c81627569b0e253d2058a324a5bcfbcae98694edd54cf6bea2"   # CHR-5: sha256 json раздела constitution (sort_keys)
 

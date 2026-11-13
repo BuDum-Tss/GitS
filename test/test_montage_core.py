@@ -1,8 +1,8 @@
 """Модуль монтажа в ядре (ТЗ 20, MON-34): запись в peers.yaml, поиск папки модуля, профиль editing."""
 from pathlib import Path
 
-from profile_manager import load_profiles
-from supervisor import Supervisor, load_planned, load_specs
+from services.spaces.profile_manager import load_profiles
+from host.supervisor import Supervisor, load_planned, load_specs
 
 TOKEN = "ab" * 32
 

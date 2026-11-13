@@ -5,7 +5,7 @@ import logging
 import re
 from pathlib import Path
 
-import gamenet
+from host import gamenet
 from .base import Environment, Tool
 from . import sources
 

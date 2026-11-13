@@ -5,13 +5,13 @@ import os
 import time
 from pathlib import Path
 
-import character
+from services.character import character
 from services.memory_service import episode_routes
-import events_log
-import flow_spec
-import flow_trace
-import journal
-import latency_trace
+from services.tracing import events_log
+from services.tracing import flow_spec
+from services.tracing import flow_trace
+from services.tracing import journal
+from services.tracing import latency_trace
 from aiohttp import web
 
 from . import presenters
@@ -245,7 +245,7 @@ async def handle_api_character_post(request: web.Request) -> web.Response:
 
 
 async def handle_api_settings_post(request: web.Request) -> web.Response:
-    import settings
+    from host import settings
     body, err = await raw_json_body(request)
     if err:
         return err

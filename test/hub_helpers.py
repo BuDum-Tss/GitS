@@ -7,17 +7,17 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
-import speech_out
-from conversation_io import current_channel
+from services.conversation import speech_out
+from services.conversation.conversation_io import current_channel
 from services.attention import AttentionEventSink
 from services.attention import Attention
-from core_requests import CoreRequests
+from services.peers.requests import CoreRequests
 from environments.registry import Registry
 from gits_sdk import protocol as P
 from gits_sdk.protocol import Envelope
-from peer_hub import PeerHub
-from peer_registry import PeerRegistry
-from router import Router
+from services.peers.hub import PeerHub
+from services.peers.registry import PeerRegistry
+from services.tools.router import Router
 
 
 class FakeSpeech:

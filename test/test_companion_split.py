@@ -1,6 +1,6 @@
 """Companion разрезан на компоненты agent/app (ТЗ 29, ARC-5): фасад сохраняет интерфейс, компоненты работают на заглушках."""
 from types import SimpleNamespace
-from companion import Companion
+from services.conversation.companion import Companion
 
 
 class Speech:

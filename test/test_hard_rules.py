@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import pytest
 from test_voice_core import Wired
 
-import events_log
-import latency_trace as lt
-import routes
-import speech_out
-from speech_text import SentenceSplitter
+from services.tracing import events_log
+from services.tracing import latency_trace as lt
+from services.tools import routes
+from services.conversation import speech_out
+from services.conversation.speech_text import SentenceSplitter
 
 
 @pytest.mark.parametrize("text", ["Замолчи!", "замол", "Пожалуйста, стоп", "заткнись", "хватит болтать", "ЗАМОЛЧИТЕ"])

@@ -25,7 +25,7 @@ import secrets
 import time
 from dataclasses import dataclass, field
 
-import flow_trace
+from services.tracing import flow_trace
 from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger("speech_queue")

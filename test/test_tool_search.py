@@ -1,9 +1,9 @@
 """Отбор инструментов по эмбеддингам (ТЗ 02, CORE-36) на заглушке эмбеддингов: смысл, кэш, откат на слова."""
 
-import tool_search
+from services.tools import tool_search
 from environments.base import Environment, Tool
 from environments.registry import Registry
-from tool_search import ToolEmbeddings
+from services.tools.tool_search import ToolEmbeddings
 
 # «смысл» заглушки: ось 0 - экран и скриншоты, ось 1 - почта и письма, ось 2 - музыка
 AXES = {"экран": 0, "скриншот": 0, "снимок": 0, "почт": 1, "письм": 1, "музык": 2, "песн": 2}

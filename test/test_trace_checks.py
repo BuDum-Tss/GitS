@@ -1,12 +1,12 @@
 """Проверки ошибок в разговоре и маршрутах (ТЗ 24, TRC-5): поправка по шаблону и провал инструмента."""
 from types import SimpleNamespace
 
-import events_log
+from services.tracing import events_log
 import pytest
 from test_companion_attention import Rig
 
 from environments.base import ToolError
-from router import Router
+from services.tools.router import Router
 
 
 @pytest.fixture

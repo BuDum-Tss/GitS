@@ -2,8 +2,8 @@
 import asyncio
 import time
 
-import flow_spec
-import flow_trace
+from services.tracing import flow_spec
+from services.tracing import flow_trace
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -123,7 +123,7 @@ async def test_flow_endpoints():
 
 
 def test_core_only_mode_blocks_modules_but_keeps_services(monkeypatch):
-    import supervisor
+    from host import supervisor
 
     class S:
         def __init__(self, external):

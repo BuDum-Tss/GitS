@@ -71,7 +71,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "чат, настройки, пульт, оценки",
      "out": "UserInput как Event",
-     "now": "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (flow_trace.py, flow_spec.py, /api/flow; ошибки GLiNER, Claude и выходов отдельно; настройка «Только ядро»)"
+     "now": "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (services/tracing/flow_trace.py, services/tracing/flow_spec.py, /api/flow; ошибки GLiNER, Claude и выходов отдельно; настройка «Только ядро»)"
     }
    ]
   },
@@ -129,7 +129,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "реестр участников шины: роль workspace или service (из peers.yaml, манифест главнее), режим владения shared или owned, состояние, задачи, окружение инструментов",
      "out": "Tool[]",
-     "now": "peer_registry.py: PeerRecord (role, ownership, external), записи объявляет agent/peers.yaml (разделы workspaces, services, planned), включённость в настройке peers"
+     "now": "services/peers/registry.py: PeerRecord (role, ownership, external), записи объявляет agent/peers.yaml (разделы workspaces, services, planned), включённость в настройке peers"
     },
     {
      "id": "hub",
@@ -138,7 +138,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "WebSocket :8766 (/ws): рукопожатие (id и role, манифест с role и ownership), проверка формата, очередь входящих; запросы core.*",
      "out": "Event",
-     "now": "peer_hub.py: приёмник событий EventSink колбэком (adapters/module_events.py), без attention и fast_brain"
+     "now": "services/peers/hub.py: приёмник событий EventSink колбэком (adapters/module_events.py), без attention и fast_brain"
     },
     {
      "id": "event",
@@ -185,7 +185,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»",
      "out": "RuleResult",
-     "now": "выделен (R3): services/attention/pipeline.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в kernel/hard_rules.py; жёсткие правила обращений владельца (ТЗ 25): routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
+     "now": "выделен (R3): services/attention/pipeline.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в kernel/hard_rules.py; жёсткие правила обращений владельца (ТЗ 25): services/tools/routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
     },
     {
      "id": "cls",
@@ -194,7 +194,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "намерение обращения владельца (chat, action, stop...) до маршрутизатора; события участников шины не классифицирует; реализация: служба GLiNER :8768, тайм-аут 2,5 с",
      "out": "InputClass",
-     "now": "decide.py + services/decider; в Attention его зовёт services/attention/input_classifier.py; без сервиса обращение идёт по правилам"
+     "now": "services/classifier/decide.py + services/decider; в Attention его зовёт services/attention/input_classifier.py; без сервиса обращение идёт по правилам"
     },
     {
      "id": "attn",
@@ -221,7 +221,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "маршруты события и обращения: reflex (с already_done), chat, task, ignore, think; таблица D0-D4 и R1-R4 → маршруты; жёсткие правила из YAML",
      "out": "RouteDecision",
-     "now": "есть (ТЗ 25): routes.py, routes/hard_rules.yaml"
+     "now": "есть (ТЗ 25): services/tools/routes.py, routes/hard_rules.yaml"
     }
    ]
   },
@@ -335,7 +335,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "инструменты ядра и окружений, видимость по профилю, отбор по смыслу",
      "out": "Tool[]",
-     "now": "environments/registry.py, tool_search.py"
+     "now": "environments/registry.py, services/tools/tool_search.py"
     },
     {
      "id": "risk",
@@ -344,7 +344,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "риск auto / ask / public / danger; вопрос пользователю, ответ да/нет",
      "out": "Approval",
-     "now": "router._step_inner + approvals.py"
+     "now": "router._step_inner + services/conversation/approvals.py"
     },
     {
      "id": "exec",
@@ -501,7 +501,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "голос (speak), чат, Telegram (deliver), питомец",
      "out": "доставка",
-     "now": "speech_out.py, conversation_io.py"
+     "now": "services/conversation/speech_out.py, services/conversation/conversation_io.py"
     },
     {
      "id": "aff",
@@ -519,7 +519,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "доставка команд участникам шины: tool.call, speak, workspace.enter, job.answer",
      "out": "ToolResult, события",
-     "now": "peer_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как PeerHub.outbound"
+     "now": "services/peers/outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как PeerHub.outbound"
     }
    ]
   },
@@ -593,7 +593,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "SQLite events.db: журнал событий, трасса, решения",
      "out": "контракт журнала",
-     "now": "events_log.py: глобальные функции, 16 импортов"
+     "now": "services/tracing/events_log.py: глобальные функции, 16 импортов"
     },
     {
      "id": "stores",
@@ -602,7 +602,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "JSON: диалог и активность; планы и напоминания это задачи (tasks.db); отношения",
      "out": "репозитории",
-     "now": "services/memory_service/user.py, services/tasks/store.py, relationships.py"
+     "now": "services/memory_service/user.py, services/tasks/store.py, services/character/relationships.py"
     },
     {
      "id": "graph",
@@ -620,7 +620,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "resources/<Имя>: конституция, prompt, канон, голос; в контейнере вся папка персонажа это том CHARACTER_HOME (ресурсы и memory/)",
      "out": "Character",
-     "now": "character.py + resources/"
+     "now": "services/character/character.py + resources/"
     }
    ]
   },
@@ -676,7 +676,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "запуск и перезапуск процессов участников шины (окружения и сервисы из peers.yaml)",
      "out": "",
-     "now": "supervisor.py: 573 строки; режим «только ядро» (GITS_NO_MODULES=1 или настройка only_core); устойчивость ядра проверяет tools/soak_core.py"
+     "now": "host/supervisor.py: 573 строки; режим «только ядро» (GITS_NO_MODULES=1 или настройка only_core); устойчивость ядра проверяет tools/soak_core.py"
     },
     {
      "id": "root",

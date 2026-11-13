@@ -1,9 +1,9 @@
 """Роутер дашборда: разговор, память, граф, разрешения (ТЗ 29, ARC-8)."""
 from datetime import datetime
 
-import approvals
-import reply_trace
-import tool_trace
+from services.conversation import approvals
+from services.tracing import reply_trace
+from services.tracing import tool_trace
 from aiohttp import web
 from services.tasks import model as task_dom
 

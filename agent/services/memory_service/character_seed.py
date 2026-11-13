@@ -13,8 +13,8 @@ import sys
 from pathlib import Path
 from datetime import datetime, timezone
 
-import character
-import character_memory
+from services.character import character
+from services.character import character_memory
 from services.memory_service.graph import Fact
 
 RELATION = "ПОМНИТ"

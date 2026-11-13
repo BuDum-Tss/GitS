@@ -34,7 +34,7 @@ def image_ok(image_b64: str | None) -> bool:
 
 
 def _settings_cfg() -> dict:
-    import settings
+    from host import settings
     return settings.load()
 
 

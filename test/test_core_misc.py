@@ -4,12 +4,12 @@ import asyncio
 import pytest
 from hub_helpers import FakeCompanion
 
-import settings
+from host import settings
 from environments import builtin
 from environments.base import ToolError
 from environments.registry import Registry
-from profile_manager import ProfileManager
-from router import Router
+from services.spaces.profile_manager import ProfileManager
+from services.tools.router import Router
 from services.memory_service.user import UserMemory
 
 
@@ -221,7 +221,7 @@ async def test_agent_playing_in_an_autonomous_environment_is_not_asking_for_ordi
 def test_pet_settings_migrate_from_core_settings_to_peers_pet(tmp_path):
     """Настройки питомца раньше лежали в общих настройках ядра; теперь это собственные настройки участника `peers.pet`."""
     import json
-    import settings
+    from host import settings
     (tmp_path / "settings.json").write_text(json.dumps({
         "pet_visible": False, "pet_pinned": True, "pet_bubble_secs": 40, "pet_x": 120, "pet_y": None,
         "hotkey_input": "Alt+Shift+Space", "volume": 70}), encoding="utf-8")

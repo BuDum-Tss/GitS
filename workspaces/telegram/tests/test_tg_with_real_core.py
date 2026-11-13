@@ -12,11 +12,11 @@ import pytest
 from hub_helpers import Core
 from tg_rig import NetStubs
 
-import approvals
-import core_requests
-import settings
+from services.conversation import approvals
+from services.peers import requests as core_requests
+from host import settings
 from telegram_module import TelegramModule
-from conversation_io import Channel, ConversationIO
+from services.conversation.conversation_io import Channel, ConversationIO
 from environments import builtin
 from gits_sdk import WorkspaceClient
 from manifest import build_manifest
@@ -192,7 +192,7 @@ async def test_disabling_the_module_hides_its_tools_and_drops_its_events(tmp_pat
 @pytest.mark.parametrize("path", ["post", "send"])
 def test_planner_search_finds_telegram_tools_by_old_requests(path):
     from environments.registry import Registry
-    from peer_registry import PeerRegistry
+    from services.peers.registry import PeerRegistry
 
     reg = Registry()
     mods = PeerRegistry(reg, settings_source=lambda: {"peers": {}})

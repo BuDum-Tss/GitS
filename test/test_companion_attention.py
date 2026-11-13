@@ -10,14 +10,14 @@ import pytest
 from hub_helpers import FakeIO, FakeSpeech
 from test_attention import StubDecider, ans
 
-import approvals
+from services.conversation import approvals
 from services.runtime import fast_brain
-import settings
-import speech_out
+from host import settings
+from services.conversation import speech_out
 from services.attention import Attention
-from companion import Companion
-from conversation_io import DASHBOARD, VOICE, Channel, UserInput, current_channel
-from relationships import Relationships
+from services.conversation.companion import Companion
+from services.conversation.conversation_io import DASHBOARD, VOICE, Channel, UserInput, current_channel
+from services.character.relationships import Relationships
 
 
 class StubResident:

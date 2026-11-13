@@ -44,7 +44,7 @@ async def test_other_events_do_not_get_the_summing_up_prompt():
 
 
 def test_real_prompt_has_the_after_section():
-    import prompts
+    from services.character import prompts
     assert prompts.reflection()["after"]
 
 

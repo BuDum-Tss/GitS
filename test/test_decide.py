@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 from aiohttp import web
-from decide import decide as http_decide      # настоящий клиент: conftest подменяет decide.decide заглушкой
+from services.classifier.decide import decide as http_decide  # настоящий клиент: conftest подменяет decide.decide заглушкой
 
-import decide
-from decide import INPUT_QUESTIONS, Decider, parse_input
+from services.classifier import decide
+from services.classifier.decide import INPUT_QUESTIONS, Decider, parse_input
 
 
 def ans(value, conf):

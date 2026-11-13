@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from types import SimpleNamespace
 
-import prompts
+from services.character import prompts
 from services.reflection.store import JsonReminders, JsonThoughts
 from services.reflection import origin as impulse_origin
 from services.reflection.timer import ImpulseTimer

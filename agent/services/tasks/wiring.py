@@ -7,8 +7,8 @@
 import time
 from pathlib import Path
 
-import events_log
-import prompts
+from services.tracing import events_log
+from services.character import prompts
 from services.tasks.migration import migrate_reminders
 from services.tasks.reminders import TaskReminders
 from services.tasks.store import FILE, TaskStore

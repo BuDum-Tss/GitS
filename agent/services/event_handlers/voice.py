@@ -1,7 +1,7 @@
 """Обработчики событий модуля голоса (ТЗ 12; вынесены из core_service в ТЗ 29, ARC-7, поведение прежнее)."""
 import asyncio
 
-import latency_trace
+from services.tracing import latency_trace
 
 VOICE_SILENT_KINDS = {"voice.speech", "voice.user_speaking", "voice.utterance", "voice.trace"}      # частые и служебные: в module_event не пишутся
 

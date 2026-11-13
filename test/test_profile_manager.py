@@ -1,8 +1,8 @@
 """Профили (ТЗ 02, CORE-19…CORE-23): файлы, выбор активного профиля, тон, видимость инструментов, граф."""
-import settings
+from host import settings
 from environments.base import Environment, Tool
 from environments.registry import Registry
-from profile_manager import HUB, SLEEP, ProfileManager, load_profiles, parse_profile
+from services.spaces.profile_manager import HUB, SLEEP, ProfileManager, load_profiles, parse_profile
 
 # тексты tone: у rimworld обновлён (играет сама, а не пользователь), остальные из прежнего profiles.py дословно (CORE: «тексты tone перенести дословно»)
 TONE_GAME = ("Колония и колонисты в игре твои, играешь в неё ты сама, а пользователь наблюдает или помогает советом. "
@@ -57,7 +57,7 @@ def test_tones_are_verbatim_from_old_profiles():
     assert profiles["assistant"].tone == TONE_GENERAL
     assert set(profiles["work"].activate["foreground_apps"]) == {
         "code", "devenv", "pycharm64", "idea64", "rider64", "windowsterminal", "powershell", "cmd", "wt", "claude"}
-    from profile_manager import load_streamer_tone
+    from services.spaces.profile_manager import load_streamer_tone
     assert load_streamer_tone() == TONE_STREAM
 
 

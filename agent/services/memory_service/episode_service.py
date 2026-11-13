@@ -10,10 +10,10 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
-import character
-import prompts
+from services.character import character
+from services.character import prompts
 from services.memory_service.episode_store import FILE, EpisodeStore
-import events_log
+from services.tracing import events_log
 from services.memory_service.diary import DayWriter
 from services.memory_service.episode_cutter import EpisodeCutter
 from services.memory_service.episode_recall import EpisodeRecall

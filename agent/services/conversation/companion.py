@@ -1,0 +1,362 @@
+"""Ядро-компаньон: разговор, память о пользователе, проактивность.
+
+Не зависит от игры. Каждое сообщение идёт одним путём:
+  1. ответ «да/нет» на открытый вопрос о разрешении;
+  2. маршрутизатор (services/tools/router.py): просит ли пользователь действие, и есть ли для него
+     инструмент в каком-либо окружении; план и исполнение либо честное «не могу»;
+  3. иначе обычный разговор: локальная модель отвечает сама.
+Зашитых веток под отдельные команды больше нет: новая возможность это новый инструмент
+в окружении (environments/), а не новая регулярка здесь.
+
+Реплики уходят через вывод речи (services/conversation/speech_out.py): модуль голоса, пока он подключён (озвучка и текущее предложение для облачка
+питомца идут событиями voice.speech и темой presence), иначе только текст в чате и в presence. Обращения приходят из любых
+каналов (services/conversation/conversation_io.py), ответ уходит в канал обращения: голос и чат дашборда как раньше, модуль-канал через deliver.
+
+Звучит речь только через очередь менеджера внимания (attention.py, ТЗ 03): `say` и `_speak_about` кладут кандидата в
+очередь, а сам планировщик зовёт их с direct=True. Без менеджера (атрибут `attention` пуст: тесты, запуск до сборки слоя
+модулей) они говорят сразу, как раньше. Ответ в канал модуля (Telegram) не речь: он доставляется сразу, мимо очереди.
+
+Companion теперь тонкий фасад (ТЗ 29, ARC-5): состояние и публичный интерфейс здесь, логика в `agent/app/`:
+ConversationService (путь обращения), ContextBuilder (контекст), ReplyGenerator (ответ), MemoryCapture (запоминание).
+Проактивности по таймеру нет (ТЗ 30): её заменили внутренние импульсы, `services/reflection/service.py`.
+"""
+import asyncio
+import collections
+import logging
+import time
+from pathlib import Path
+
+from services.conversation import approvals
+from services.character import character
+from services.tracing import events_log
+from services.character import prompts
+from services.tracing import reply_trace
+from host import settings
+from services.runtime.fast_brain import FastLLM
+from services.character.relationships import RelationshipsAdapter
+from services.memory_service import UserMemoryAdapter
+from services.conversation.context_builder import ContextBuilder
+from services.conversation.service import ConversationService, _sender_ctx  # noqa: F401  (_sender_ctx: прежнее имя)
+from services.memory_service import MemoryCapture
+from services.conversation.reply_generator import ReplyGenerator
+from services.conversation.resident import ResidentAgent
+from services.conversation.conversation_io import UserInput, current_channel
+from services.conversation.speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
+from services.memory_service import UserMemory
+
+logger = logging.getLogger("companion")
+IDLE_CONSOLIDATE_S = 8 * 60 + 5
+
+
+def persona() -> str:
+    """Характер компаньона активного персонажа (конституция + prompt.yaml); функция, чтобы переключение подхватывало новый."""
+    return prompts.companion_persona()
+
+
+class Companion:
+    def __init__(self, memory_dir: str, rel, speech=None, presence: PresenceTracker | None = None, *,
+                 llm=None, memory_reader=None, memory_writer=None, people=None, event_log=None,
+                 settings_provider=None, approver=None):
+        """Контракты (ТЗ 29, ARC-3, шаг R2) необязательны: без них подставляются адаптеры к текущим модулям ядра.
+        llm - LanguageModel, memory_reader/memory_writer - MemoryReader/MemoryWriter, people - PeopleDirectory,
+        event_log - EventLog, settings_provider - SettingsProvider, approver - Approver."""
+        self._dir = Path(memory_dir)
+        self.presence = presence or PresenceTracker()          # тема presence (ставит слушателя ядро)
+        self.speech = speech or TextOnlySpeech(self.presence)  # вывод речи (CORE-27, VOICE-15): ядро ставит выбор голос/текст
+        self.io = None                                         # ConversationIO: доставка ответов в каналы модулей
+        self.attention = None                                  # Attention: очередь речи и фокус (ТЗ 03); None - говорит сразу
+        self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
+        self.environment_note = lambda: ""                      # () -> строка о текущей среде модуля (ставит ядро)
+        self.workspace_of = lambda: "assistant"                # () -> текущая среда (WorkspaceManager.current, ставит ядро)
+        self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
+        self._rel = rel
+        self._people = people if people is not None else RelationshipsAdapter(lambda: self._rel)
+        self._llm = llm if llm is not None else FastLLM()
+        self._log = event_log if event_log is not None else events_log
+        self._settings = settings_provider if settings_provider is not None else settings
+        self._approver = approver if approver is not None else approvals
+        self.router = None    # Router, ставится ядром после создания реестра окружений
+        self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (PeerRegistry.notes, ставит ядро)
+        self.graph = None        # GraphMemory: факты о людях и жизни в графе
+        self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
+        self._self_block = ""     # воспоминания персонажа о себе к последней реплике (ТЗ 05, CHR-19)
+        self._heard: collections.deque = collections.deque(maxlen=20)   # (время, сводка) услышанного в колонках (voice.heard)
+        self.idle_seconds = lambda: 0.0          # секунды простоя ввода (ставит ядро из state модуля desktop; без модуля 0: за компьютером)
+        self.screen_activity = lambda: None      # текущая активность экрана {app, category, summary, ...} (ставит ядро, ТЗ 14 DESK-7)
+        self.job_wait = None                     # async (peer_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
+        if memory_reader is None or memory_writer is None:
+            self._mem = UserMemory(memory_dir)                 # личная память на диске (адаптеры по умолчанию)
+            default_memory = UserMemoryAdapter(lambda: self._mem, lambda: self.graph, lambda: getattr(self, "episodes", None),
+                                               lambda: getattr(self, "tasks", None), lambda: self._owner_name())
+        else:
+            self._mem = None                                   # память передана контрактами: диска не трогаем
+            default_memory = None
+        self._memory_reader = memory_reader if memory_reader is not None else default_memory
+        self._memory_writer = memory_writer if memory_writer is not None else default_memory
+        self._last_say = self._load_last_say()   # переживает перезапуски
+        self.on_conversation_end = None  # (text) -> None: разговор затих, повод подвести итог (ставит impulse_service, ТЗ 30 IMP-10)
+        self._idle_handle = None         # отложенное осмысление беседы после паузы (вместо опроса по таймеру, ТЗ 30)
+        self._busy = asyncio.Lock()      # один разговор за раз
+        self._pending_memory = 0         # сообщений с последнего осмысления беседы
+        self._last_user_ts = 0.0
+        self._last_say_text = ""          # последняя реплика персонажа (для поправки «нет, не так», ТЗ 24 TRC-5)
+        self._bg_tasks: set = set()       # фоновые проверки поправок (ТЗ 24)
+        self._prefetch = None             # поиск в памяти, закончившийся после дедлайна: ждёт следующей реплики (ТЗ 25, FAST-6)
+        # компоненты (ТЗ 29, ARC-5): состояние остаётся здесь, логика в agent/app/
+        self.context_builder = ContextBuilder(self)
+        self.reply_generator = ReplyGenerator(self)
+        self.memory_capture = MemoryCapture(self)
+        self.conversation = ConversationService(self)
+        self.resident = ResidentAgent(self)  # один агент на всё: разговор, события и самоимпульсы в одной сессии агента
+
+    @property
+    def people(self):
+        """PeopleDirectory: профили людей (менеджер внимания берёт отсюда отправителей)."""
+        return self._people
+
+    @property
+    def memory_reader(self):
+        """MemoryReader: чтение памяти для ответа."""
+        return self._memory_reader
+
+    @property
+    def memory_writer(self):
+        """MemoryWriter: запись памяти (менеджер внимания кладёт сюда события, которые стоит запомнить)."""
+        return self._memory_writer
+
+    def _load_last_say(self) -> float:
+        """Когда она в последний раз говорила: из журнала разговора (а не «сейчас»),
+        иначе каждый перезапуск откладывал бы её реплики заново."""
+        for m in reversed(self._memory_reader.recent_dialogue(60)):
+            if m["role"] != "user":
+                return m["ts"]
+        return time.time() - 3600
+
+    # ── вывод ────────────────────────────────────────────────────────────────
+
+    def _queued(self, direct: bool) -> bool:
+        """Идёт ли речь через очередь внимания: ответ в канал модуля (не речь) и прямой вызов планировщика идут мимо неё."""
+        if direct or self.attention is None:
+            return False
+        channel = current_channel.get()
+        return not (channel is not None and channel.kind == "module")
+
+    async def wait_speech(self, max_s: float = 10.0) -> None:
+        """Дождаться, пока договорит всё, что она уже сказала (очередь речи пуста и звука нет), но не дольше `max_s`. Единый агент
+        зовёт перед инструментом: комментарий должен прозвучать до действия, а не после него."""
+        att = getattr(self, "attention", None)
+        queue = getattr(att, "speech", None)
+        if queue is None:
+            return
+        deadline = time.monotonic() + max_s
+        while time.monotonic() < deadline and (queue.items or queue.busy()):
+            await asyncio.sleep(0.25)
+
+    async def _wait_spoken(self, cand) -> None:
+        """Формулировка вопроса считается сказанной, когда она прозвучала (ATT-19); ответ раньше озвучки снимает кандидата."""
+        if cand.source == "question" and cand.done is not None:
+            try:
+                await cand.done
+            except asyncio.CancelledError:
+                self.attention.discard_speech(cand, "cancelled")
+                raise
+
+    async def say(self, text: str, sticker: str | None = None, priority: int | None = None, *, direct: bool = False,
+                  source: str | None = None):
+        """Сказать реплику: через очередь речи внимания (ATT-13) или сразу (direct=True: так зовёт сам планировщик)."""
+        if self._queued(direct):
+            await self._wait_spoken(self.attention.enqueue_say(text, sticker, priority, source=source))
+            return
+        await self._say_now(text, sticker, priority)
+
+    async def _say_now(self, text: str, sticker: str | None = None, priority: int | None = None):
+        """Журнал, вывод речи (питомец), стикер. В канале модуля вместо речи идёт deliver."""
+        from services.conversation.speech_text import clean_speech
+        text = clean_speech(text)   # без разметки, ремарок в скобках и оборванного хвоста: это произносится вслух
+        if not text:
+            return
+        channel = current_channel.get()
+        if channel is not None and channel.kind == "module":
+            # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
+            self._record_say(text, channel)
+            if self.io is not None:
+                await self.io.deliver(channel, text)
+            self._publish_sticker(sticker)
+        else:
+            utterance = new_utterance_id()
+            self.last_utterance_id = utterance
+            # синхронизатор речи и действий: текст в чате, запись в диалог и жест появляются, когда реплика зазвучала,
+            # а не когда она только отправлена на синтез (синтез занимает секунды); без голоса сразу
+            await self.speech.speak(utterance, text, sticker, priority or 50)      # реплика попадает среди звучащих до ожидания
+            self._when_audible(utterance, lambda: (self._record_say(text, channel), self._publish_sticker(sticker)))
+        logger.info(f"[{character.active().name}] {text}")
+
+    def _when_audible(self, utterance: str, action) -> None:
+        """Выполнить action, когда реплика зазвучала (`speech.when_audible`); у вывода речи без такого метода сразу."""
+        hook = getattr(self.speech, "when_audible", None)
+        if hook is None:
+            action()
+        else:
+            hook(utterance, action)
+
+    def _publish_sticker(self, sticker: str | None) -> None:
+        if sticker:
+            self.presence.update(sticker=sticker, sticker_ts=time.time())
+
+    def _record_say(self, text: str, channel) -> None:
+        """Реплика сказана: диалог, журнал (в фоне, без ожидания диска: ТЗ 25 FAST-7), последняя реплика, присутствие."""
+        reply_trace.attach(text)                                         # запрос к модели, по которому родилась фраза (дашборд)
+        self._memory_writer.add_dialogue(character.active().id, text)   # роль реплики персонажа: его id (данные диалога)
+        self._log.log_nowait("say", text, **({"channel": channel.label()} if channel else {}))
+        self._last_say = time.time()
+        self._last_say_text = text
+        self.presence.update(last_say=text, last_say_ts=self._last_say)
+
+    def cancel_reply(self, reason: str = "stop") -> bool:
+        """Оборвать идущий ход единого агента: «замолчи», перебивание, экстренное слово. True, если было что обрывать."""
+        if not self.resident.busy:
+            return False
+        try:
+            asyncio.get_running_loop().create_task(self.resident.cancel())
+        except RuntimeError:
+            return False
+        return True
+
+    # ── входящее сообщение ─────────────────────────────────────────────────────
+
+    def rebind_memory(self, memory_dir) -> None:
+        """Переключение персонажа (ТЗ 05, CHR-7): личная память этого персонажа, та же беседа и тон."""
+        self._memory_writer.rebind(memory_dir)
+        self._dir = Path(memory_dir)                 # задачи (tasks.db) открываются в папке нового персонажа
+
+    def is_speaking(self) -> bool:
+        return self.speech.is_speaking()
+
+    def note_heard(self, summary: str) -> None:
+        """Сводка услышанного в колонках (событие `voice.heard`, VOICE-14): в контекст разговора. Сырой текст остаётся в модуле
+        голоса (инструмент recent_audio отдаёт его по запросу)."""
+        self._heard.append((time.time(), summary))
+
+    def recent_heard(self, secs: int = 600) -> str:
+        cutoff = time.time() - secs
+        return " ".join(s for ts, s in self._heard if ts >= cutoff)[-900:]
+
+
+    async def on_voice(self, text: str, speaker: dict, trace=None):
+        await self.conversation.on_voice(text, speaker, trace)
+
+    async def on_user_message(self, text: str, channel=None):
+        await self.conversation.on_user_message(text, channel)
+
+    async def on_input(self, ui: UserInput):
+        await self.conversation.on_input(ui)
+
+    async def _handle_text(self, text: str):
+        await self.conversation.handle_text(text)
+
+    def _check_correction(self, text: str) -> None:
+        self.conversation.check_correction(text)
+
+    async def _confirm_correction(self, text: str, ref: float, prev: str) -> None:
+        await self.conversation.confirm_correction(text, ref, prev)
+
+    async def _answer_approval(self, text: str) -> bool:
+        """Реплика как ответ на открытый вопрос (да/нет, вариант, свободный текст): см. approvals.try_answer."""
+        return await self._approver.try_answer(text)
+
+    # ── разговор ───────────────────────────────────────────────────────────────
+
+    async def ask_permission(self, fact: str) -> None:
+        """Вопрос о разрешении: факт уходит модели, она спрашивает владельца своими словами (в очередь речи как вопрос). Готовых
+        фраз в коде нет."""
+        await self._speak_about_impl(fact, "", True, True, False)
+
+    async def speak_about(self, fact: str, user_text: str = "", must: bool = False, question: bool = False,
+                          direct: bool = False):
+        """Публичный вход (ТЗ 29): менеджер внимания зовёт его вместо приватного имени. Старое имя `_speak_about` ниже."""
+        return await self._speak_about_impl(fact, user_text, must, question, direct)
+
+    async def _speak_about(self, fact: str, user_text: str = "", must: bool = False, question: bool = False,
+                           direct: bool = False):
+        return await self._speak_about_impl(fact, user_text, must, question, direct)
+
+    async def _speak_about_impl(self, fact: str, user_text: str, must: bool, question: bool, direct: bool):
+        await self.reply_generator.speak_about(fact, user_text, must, question, direct)
+
+    def _model_note(self) -> str:
+        return self.context_builder.model_note()
+
+    def _capabilities(self) -> str:
+        return self.context_builder.capabilities()
+
+    def _context(self, include_hearing: bool = True, query: str = "", owner: bool | None = None, role: str = "reply") -> str:
+        return self.context_builder.build(include_hearing, query, role=role, owner=owner)
+
+    def _declutter(self, reply: str) -> str:
+        return self.reply_generator.declutter(reply)
+
+    def _owner_name(self) -> str:
+        return self.memory_capture.owner_name()
+
+    def _queue_graph(self, text: str):
+        self.memory_capture.queue_graph(text)
+
+    async def _refresh_graph(self, query: str):
+        await self.context_builder.refresh_graph(query)
+
+    def _store_memories(self, data) -> list[str]:
+        return self.memory_capture.store_memories(data)
+
+    async def remember_text(self, text: str, hint_kind: str | None = None) -> list[str]:
+        return await self.memory_capture.remember_text(text, hint_kind)
+
+    def _set_quiet(self, minutes):
+        self.memory_capture.set_quiet(minutes)
+
+    def arm_idle_consolidation(self) -> None:
+        """После реплики пользователя: если беседа замолкнет, осмыслить её через IDLE_CONSOLIDATE_S (один отложенный вызов)."""
+        if self._idle_handle is not None:
+            self._idle_handle.cancel()
+        try:
+            self._idle_handle = asyncio.get_running_loop().call_later(IDLE_CONSOLIDATE_S, self._idle_consolidate)
+        except RuntimeError:
+            self._idle_handle = None
+
+    def _idle_consolidate(self) -> None:
+        self._idle_handle = None
+        if self._pending_memory >= 2:
+            self._pending_memory = 0
+            self._notify_conversation_end()
+
+    def _notify_conversation_end(self) -> None:
+        """IMP-10: разговор затих. Хуку идут факты (последние реплики), он решает, отдавать ли их на размышление."""
+        hook = self.on_conversation_end
+        if hook is None:
+            return
+        try:
+            lines = [f"{'Пользователь' if m['role'] == 'user' else 'Ты'}: {str(m['text'])[:160]}"
+                     for m in self._memory_reader.recent_dialogue(6)]
+            hook("Разговор с пользователем затих. Последние реплики:\n" + "\n".join(lines))
+        except Exception as e:
+            logger.warning(f"Итог разговора: {e}")
+
+    # ── повторы ───────────────────────────────────────────────────────────────
+
+    def _repeats_recent(self, text: str) -> bool:
+        """Не повторять недавние темы: сильное пересечение по словам с её последними репликами (очередь речи спрашивает это
+        у каждого кандидата)."""
+        from services.conversation.stems import stems
+        new = stems(text)
+        if len(new) < 3:
+            return False
+        cache = self.__dict__.setdefault("_stems_cache", {})          # основы старых реплик: прогон ядра (ТЗ 17) показал, что их пересчёт держал цикл событий
+        who = character.active().id                                    # алиасы персонажа входят в стоп-слова: при смене персонажа ключ другой
+        for m in [m for m in self._memory_reader.recent_dialogue(10) if m["role"] != "user"][-5:]:
+            old = cache.get((who, m["text"]))
+            if old is None:
+                if len(cache) > 64:
+                    cache.clear()
+                old = cache[(who, m["text"])] = stems(m["text"])
+            if old and len(new & old) / min(len(new), len(old)) >= 0.5:
+                return True
+        return False

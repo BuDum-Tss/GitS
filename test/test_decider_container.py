@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-import supervisor
+from host import supervisor
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = ROOT / "docker-compose.yml"

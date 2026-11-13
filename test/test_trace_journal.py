@@ -2,10 +2,10 @@
 ошибки, решения с trace_id, яркость. Модели, голос и сеть подменены: Rig из test_companion_attention."""
 import time
 
-import events_log
-import journal
-import latency_trace as lt
-import salience
+from services.tracing import events_log
+from services.tracing import journal
+from services.tracing import latency_trace as lt
+from services.tracing import salience
 import pytest
 
 from test_companion_attention import Rig

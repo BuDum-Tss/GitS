@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 from hub_helpers import RawModule, manifest, running_core
 
-import core_requests
-import settings
+from services.peers import requests as core_requests
+from host import settings
 from environments import builtin
-from relationships import Relationships
-from supervisor import Supervisor, load_specs
+from services.character.relationships import Relationships
+from host.supervisor import Supervisor, load_specs
 
 AGENT = Path(__file__).resolve().parent.parent / "agent"
 
@@ -131,7 +131,7 @@ async def test_wire_modules_hands_core_memory_dir_to_modules():
     import core_service
     from hub_helpers import FakeCompanion
     from environments.registry import Registry
-    import speech_out
+    from services.conversation import speech_out
 
     companion = FakeCompanion()
     companion.profile_hint = lambda: ""
@@ -145,7 +145,7 @@ async def test_wire_modules_hands_core_memory_dir_to_modules():
 def test_module_notes_describe_connected_modules_with_tools():
     from types import SimpleNamespace
 
-    from peer_registry import PeerRecord, PeerRegistry
+    from services.peers.registry import PeerRecord, PeerRegistry
     reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"peers": {}})
     reg.records["telegram"] = PeerRecord("telegram", title="Telegram", description="Telegram: канал и бот.", connected=True,
                                            manifest={"tools": [{"name": "post"}]},
@@ -162,8 +162,8 @@ def test_module_notes_describe_connected_modules_with_tools():
 
 
 async def test_companion_context_uses_module_notes_not_telegram_objects():
-    from companion import Companion
-    from relationships import Relationships
+    from services.conversation.companion import Companion
+    from services.character.relationships import Relationships
 
     c = Companion(str(settings.memory_dir()), Relationships(str(settings.memory_dir())))
     assert not hasattr(c, "telegram") and not hasattr(c, "tg_user")
@@ -202,8 +202,8 @@ def test_module_events_report_and_trace_of_module_launch():
     from types import SimpleNamespace
 
     import core_service
-    import tool_trace
-    from peer_registry import PeerRegistry
+    from services.tracing import tool_trace
+    from services.peers.registry import PeerRegistry
     reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"peers": {}})
     assert reg.events_report() == "событий модулей нет"
     tool_trace.clear()

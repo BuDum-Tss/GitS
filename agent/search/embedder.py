@@ -1,6 +1,6 @@
 """Эмбеддеры для гибридного поиска (контракт `contracts.Embedder`).
 
-`LmStudioEmbedder` переиспользует вызов EmbeddingGemma из `tool_search.py` (приставки запроса и документа те же).
+`LmStudioEmbedder` переиспользует вызов EmbeddingGemma из `services/tools/tool_search.py` (приставки запроса и документа те же).
 `HashEmbedder` детерминированный и без сети: хеширование основ слов и пар слов в вектор. Нужен тестам и стенду
 `tools/memory_bakeoff.py`; смысла за пределами совпадения слов он не знает."""
 import hashlib
@@ -35,5 +35,5 @@ class LmStudioEmbedder:
         self.batch_timeout = batch_timeout
 
     async def embed(self, texts: list[str], query: bool = False) -> list[list[float]]:
-        import tool_search
+        from services.tools import tool_search
         return await tool_search.lm_studio_embed(texts, query, self.query_timeout if query else self.batch_timeout)

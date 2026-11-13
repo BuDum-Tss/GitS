@@ -2,7 +2,7 @@
 import asyncio
 from typing import Any
 
-from conversation_io import Channel, current_channel
+from services.conversation.conversation_io import Channel, current_channel
 
 from .core import AttentionContext, Question, clamp
 from .focus_stack import FocusStack

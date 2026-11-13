@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-import character
-import character_memory as cm
+from services.character import character
+from services.character import character_memory as cm
 
 SAMPLE_MEMORIES = Path(__file__).resolve().parents[1] / "resources" / "GlaDOS" / "core" / "memories.yaml"
 

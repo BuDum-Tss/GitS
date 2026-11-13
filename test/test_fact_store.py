@@ -78,7 +78,7 @@ async def test_delete_memory_and_delete_remove_from_search(backend):
 
 
 async def test_graph_memory_uses_backend_scores_without_extra_embedding(tmp_path, monkeypatch):
-    import settings
+    from host import settings
     settings.init(str(tmp_path))
     b = SqliteBackend(tmp_path / "graph.db", embedder=HashEmbedder())
     await b.add_fact(Fact("Аня", "ВЛАДЕЕТ", "кот", "У Ани есть рыжий кот Барсик"), T0, "glados")
@@ -111,7 +111,7 @@ async def test_migration_from_falkordb_rows_is_idempotent_and_searchable(tmp_pat
 
 
 async def test_stats_snapshot_and_explain_for_the_dashboard(tmp_path):
-    import settings
+    from host import settings
     settings.init(str(tmp_path))
     b = SqliteBackend(tmp_path / "graph.db", embedder=HashEmbedder())
     await b.add_fact(Fact("Аня", "ЖИВЁТ_В", "Москва", "Аня живёт в Москве"), T0, "glados")

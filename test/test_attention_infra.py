@@ -14,13 +14,13 @@ from test_attention import Rig
 from test_supervisor import wait_for
 
 import dashboard
-import events_log
-import peer_registry
-import settings
+from services.tracing import events_log
+from services.peers import registry as peer_registry
+from host import settings
 from environments import builtin
 from environments.base import ToolError, validate_args
 from environments.registry import Registry
-from supervisor import PeerSpec, Supervisor, load_specs
+from host.supervisor import PeerSpec, Supervisor, load_specs
 
 # ── сервис в супервизоре (ATT-2) ──────────────────────────────────────────────────────────────────
 

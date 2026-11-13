@@ -1,7 +1,7 @@
 """Роутер дашборда: участники шины (окружения и сервисы), пространство окружения, артефакты и задачи (ТЗ 02, ТЗ 15, ТЗ 29 ARC-8)."""
 import asyncio
 
-import peer_panel
+from services.peers import panel as peer_panel
 from aiohttp import web
 from gits_sdk.protocol import JOB_ID_RE, ROLE_SERVICE, ROLE_WORKSPACE
 
@@ -122,7 +122,7 @@ async def handle_api_peer_panel_action(request: web.Request) -> web.Response:
     conn = ctx.hub.connection(rec.id)
     if conn is None:
         return web.json_response({"error": "модуль не подключён"}, status=409)
-    from peer_hub import PeerError
+    from services.peers.hub import PeerError
     try:
         value = await conn.request("panel.action", {"action_id": action_id, "args": args},
                                    timeout=PANEL_ACTION_TIMEOUT_S)
@@ -178,7 +178,7 @@ async def _run_tool_link(rec, link: dict, body: dict) -> web.Response:
     conn = ctx.hub.connection(rec.id)
     if conn is None:
         return web.json_response({"error": "модуль не подключён"}, status=409)
-    from peer_hub import PeerError
+    from services.peers.hub import PeerError
     try:
         value = await conn.request("tool.call", {"tool": spec["name"], "args": args},
                                    timeout=float(spec.get("timeout_s", 30)))
@@ -232,7 +232,7 @@ async def handle_api_job_cancel(request: web.Request) -> web.Response:
     conn = ctx.hub.connection(request.match_info["module"])
     if conn is None:
         return web.json_response({"error": "модуль не подключён"}, status=409)
-    from peer_hub import PeerError
+    from services.peers.hub import PeerError
     try:
         await conn.request("job.cancel", {"job_id": request.match_info["job_id"]}, timeout=15.0)
     except PeerError as e:

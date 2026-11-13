@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-import nowindow  # noqa: F401  (побочный эффект: скрывает окна консоли)
+from host import nowindow  # noqa: F401  (побочный эффект: скрывает окна консоли)
 from dotenv import load_dotenv
 
 # Загружаем .env до импорта ядра (на случай если задан ANTHROPIC_API_KEY)
@@ -14,8 +14,8 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")   # секреты 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "interfaces" / "workspace"))
 
 import core_service
-import settings
-import tray_launch
+from host import settings
+from host import tray_launch
 
 logging.basicConfig(
     level=logging.INFO,

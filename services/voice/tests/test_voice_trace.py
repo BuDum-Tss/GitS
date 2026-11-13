@@ -1,6 +1,6 @@
 """Трасса задержки в модуле голоса (ТЗ 24, TRC-1): реплика несёт трассу ядра, озвучка ставит метки tts_first_audio и
 play_start и отдаёт их событием voice.trace; распознавание ставит mic_end и stt_done; без трассы ничего не меняется."""
-import latency_trace as lt
+from services.tracing import latency_trace as lt
 from mic_listener import MicListener
 from speaker import Speaker
 from voice_rig import FakePlayer, FakeSynth, until

@@ -2,7 +2,7 @@
 import logging
 import secrets
 
-import latency_trace
+from services.tracing import latency_trace
 from kernel.event import ORIGIN_EXTERNAL, ORIGIN_SELF, SELF_MODULE
 
 from .core import SPEECH_DEFAULT_URGENCY, TEXT_MAX, AttentionContext, Item

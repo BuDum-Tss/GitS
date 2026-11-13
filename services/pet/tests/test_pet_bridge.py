@@ -36,7 +36,7 @@ def test_manifest_matches_the_spec():
 
 
 def test_shared_settings_exist_in_the_core_settings():
-    import settings
+    from host import settings
     for key in MANIFEST["shared_settings"]:
         assert key in settings.DEFAULTS, key
 

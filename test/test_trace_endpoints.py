@@ -1,7 +1,7 @@
 """Эндпоинты трассы задержки и журнала решений дашборда (ТЗ 24, TRC-2, TRC-5, TRC-6): только свои запросы, без процессов."""
-import events_log
-import journal
-import latency_trace as lt
+from services.tracing import events_log
+from services.tracing import journal
+from services.tracing import latency_trace as lt
 from aiohttp.test_utils import TestClient, TestServer
 
 import dashboard
