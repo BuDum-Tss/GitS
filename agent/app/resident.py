@@ -1,4 +1,4 @@
-"""Единый резидентный агент: одна постоянная сессия Claude делает всё (слушает, думает, планирует, действует, говорит).
+"""Единый резидентный агент: одна постоянная сессия агента делает всё (слушает, думает, планирует, действует, говорит).
 
 Вместо цепочки «классификатор -> маршрутизатор -> планировщик -> генератор ответа -> быстрая модель» сообщение пользователя
 и события приходят в одну сессию. У агента два инструмента ядра: `find_tools` (что умеет прямо сейчас: инструменты всех
@@ -6,15 +6,15 @@
 журнал). Его текст между вызовами и в конце идёт в речь по мере появления. Жёсткие правила без моделей («замолчи», ответ на
 вопрос о разрешении, экстренные слова), очередь внимания, очередь речи и модули остаются за ядром.
 
-Среда исполнения (`AgentRuntime`: Claude SDK или pi, настройка `agent_runtime`) спрятана за контрактом;
-сессия начинается заново при сбое, отмене и после лимита обращений Claude. Работает всегда: другого пути обращения и событий нет.
+Среда исполнения (`AgentRuntime`, сейчас pi) спрятана за контрактом;
+сессия начинается заново при сбое, отмене и после лимита обращений. Работает всегда: другого пути обращения и событий нет.
 """
 import asyncio
 import logging
 import time
 
-import claude_quota
 import latency_trace
+import llm_gate
 import prompts
 from interfaces.contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
 from domain.stickers import first_sticker, plain as strip_tags
@@ -66,13 +66,9 @@ def _schema_args(args) -> dict:
     return args if isinstance(args, dict) else {}
 
 
-def _default_runtime(kind: str) -> AgentRuntime:
-    """Среда исполнения по настройке `agent_runtime` (claude | pi). Адаптеры подключаются здесь по требованию."""
-    if kind == "pi":
-        from adapters.runtime_pi import PiRuntime
-        return PiRuntime()
-    from adapters.runtime_claude import ClaudeRuntime
-    return ClaudeRuntime()
+def _default_runtime() -> AgentRuntime:
+    from adapters.runtime_pi import PiRuntime
+    return PiRuntime()
 
 
 class ResidentAgent:
@@ -81,7 +77,6 @@ class ResidentAgent:
         self._runtime: AgentRuntime | None = runtime        # подставленная извне (тесты) не меняется настройкой
         self._pinned = runtime is not None
         self._factory = runtime_factory or _default_runtime
-        self._kind = ""                     # какая среда создана по настройке
         self._specs: list[ToolSpec] | None = None
         self._lock: asyncio.Lock | None = None
         self._busy = False
@@ -142,20 +137,11 @@ class ResidentAgent:
     # ── среда исполнения ───────────────────────────────────────────
 
     async def _runtime_for_turn(self) -> AgentRuntime:
-        """Среда по настройке `agent_runtime` на момент хода: смена настройки применяется со следующего хода (под блокировкой)."""
-        if not self._pinned:
-            import settings
-            kind = "pi" if settings.load().get("agent_runtime") == "pi" else "claude"
-            if self._runtime is not None and kind != self._kind:
-                old, self._runtime = self._runtime, None
-                try:
-                    await old.close()                       # история прежней среды остаётся в её файле
-                except Exception as e:
-                    logger.debug(f"закрытие среды: {e}")
-            if self._runtime is None:
-                self._runtime, self._kind = self._factory(kind), kind
-        elif self._runtime is None:
-            raise RuntimeError("среда исполнения агента не задана")
+        """Среда исполнения на момент хода: создаётся при первом обращении и после сброса сессии."""
+        if self._runtime is None:
+            if self._pinned:
+                raise RuntimeError("среда исполнения агента не задана")
+            self._runtime = self._factory()
         return self._runtime
 
     async def reset(self, forget: bool = True) -> None:
@@ -263,8 +249,8 @@ class ResidentAgent:
                 raise
             except Exception as e:
                 await self.reset()
-                if claude_quota.note(str(e)):
-                    logger.warning("Лимит Claude исчерпан")
+                if llm_gate.note_pi_error(str(e)):
+                    logger.warning("Лимит подписки: агент отдыхает")
                 else:
                     logger.error(f"Резидентный агент: {e}", exc_info=True)
             finally:
@@ -292,11 +278,10 @@ class ResidentAgent:
             elif isinstance(event, EndEvent):
                 latency_trace.mark("llm_done")
             if isinstance(event, EndEvent) and event.status == "error":
-                import llm_gate
-                if self._kind == "pi" and llm_gate.note_pi_error(event.error):
+                if llm_gate.note_pi_error(event.error):
                     logger.warning("Лимит подписки на pi: агент отдыхает")
                 else:
-                    logger.error(f"Резидентный агент ({self._kind or 'среда'}): {event.error}")
+                    logger.error(f"Резидентный агент: {event.error}")
 
     @staticmethod
     def _quiet() -> bool:

@@ -147,20 +147,6 @@ async def test_events_tail_returns_only_allowed_kinds(tmp_path):
             await raw.close()
 
 
-async def test_claude_locate_returns_an_object(tmp_path, monkeypatch):
-    from gits_sdk import claude_path
-    monkeypatch.setattr(claude_path, "locate", lambda: "C:/claude.exe")
-    async with running_core(tmp_path) as core:
-        raw = RawModule(core, manifest())
-        try:
-            await raw.hello()
-            assert (await raw.request("core.claude.locate", {}))["value"] == {"path": "C:/claude.exe"}
-            monkeypatch.setattr(claude_path, "locate", lambda: None)
-            assert (await raw.request("core.claude.locate", {}))["value"] == {}
-        finally:
-            await raw.close()
-
-
 def test_protocol_lists_agree_with_the_contract():
     assert set(P.CORE_REQUESTS) == set(contract.CORE_REQUESTS)
     assert "log" in P.MODULE_TO_CORE_NOTES

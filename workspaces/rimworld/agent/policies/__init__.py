@@ -18,7 +18,7 @@ import game_modes
 DIR = Path(__file__).parent
 FOCUS = ("background", "active")
 LOOPS = ("passive", "single", "iterative")
-THINK_MODELS = ("none", "local", "claude", "mixed")
+THINK_MODELS = ("none", "local", "remote", "mixed")
 EXIT_WHEN = ("never", "no_threats", "plan_done", "manual_done")
 SOURCES = ("mod_event", "statediff", "monitor")
 POLICY_KEYS = {"id", "title", "purpose", "priority", "default", "focus", "interruptible", "urgency", "enter", "exit",
@@ -66,8 +66,8 @@ class Policy:
     resources: dict = field(default_factory=dict)                 # ресурсы, которые тратит (gpu, tokens), 0..1
 
 
-# Ресурсы политики выводятся из того, какая модель думает: локальная - видеокарта, Claude - токены (ТЗ 18, FOC-1).
-_RESOURCES_BY_MODEL = {"local": {"gpu": 1}, "claude": {"tokens": 1}, "mixed": {"gpu": 1, "tokens": 1}, "none": {}}
+# Ресурсы политики выводятся из того, какая модель думает: локальная - видеокарта, remote - токены (ТЗ 18, FOC-1).
+_RESOURCES_BY_MODEL = {"local": {"gpu": 1}, "remote": {"tokens": 1}, "mixed": {"gpu": 1, "tokens": 1}, "none": {}}
 
 
 def resources_of(think: dict) -> dict:

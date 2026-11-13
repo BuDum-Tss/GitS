@@ -87,12 +87,12 @@ async def test_call_from_outside_is_external():
     assert [e["executor"] for e in tool_trace.recent()] == ["external"]
 
 
-async def test_claude_inner_tool_stage_goes_to_chat_not_to_attention(tmp_path):
+async def test_code_assistant_inner_tool_stage_goes_to_chat_not_to_attention(tmp_path):
     rig = Rig(tmp_path)
     await rig.att.on_job_update("desktop", {"job_id": "j-1", "state": "running", "stage": "tool:Bash:1", "text": "ls -la"})
     await rig.att.settle()
     [e] = tool_trace.recent()
-    assert (e["executor"], e["tool"], e["summary"], e["state"]) == ("claude", "Bash", "ls -la", "done")
+    assert (e["executor"], e["tool"], e["summary"], e["state"]) == ("code", "Bash", "ls -la", "done")
     assert len(rig.att._items) == 0
 
 

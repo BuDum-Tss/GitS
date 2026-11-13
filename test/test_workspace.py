@@ -204,8 +204,7 @@ async def test_core_wiring_has_workspaces_and_release_holder_without_slot():
     import core_service
     from environments.registry import Registry
     from test_core_wiring import WiredCompanion
-    layer = core_service.wire_modules(WiredCompanion(), Registry(), port=free_port(),
-                                      battery=lambda: {"level": 1.0, "sleeping": False}, specs=[])
+    layer = core_service.wire_modules(WiredCompanion(), Registry(), port=free_port(), specs=[])
     snap = layer.workspaces.snapshot()
     assert snap["current"] == ASSISTANT and {a["id"] for a in snap["available"]} == {ASSISTANT, SLEEP}     # среды модулей - из манифестов
     assert (await layer.link.release()) == {"ok": True, "already": True}

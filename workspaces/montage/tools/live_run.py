@@ -1,4 +1,4 @@
-"""Живой прогон модуля монтажа против FakeCore из SDK: настоящий Claude (по подписке пользователя), настоящий Remotion и ffmpeg.
+"""Живой прогон модуля монтажа против FakeCore из SDK: настоящий агент pi (по подписке пользователя), настоящий Remotion и ffmpeg.
 
 Ядра GitS здесь нет: синтез голоса (`core.tts`) подменён тоном нужной длины через ffmpeg, персонаж и справочник отвечают
 заглушками, вопросы (утвердить план, готово) закрываются автоматически. Нужен для проверки всей цепочки на одном коротком ролике.
@@ -35,7 +35,6 @@ async def run(smoke: bool, models: str, resume: str | None = None, source: str |
     layout = Layout(root=ROOT, jobs=ROOT / "jobs" / "live")           # своя папка: чужие задачи из jobs/ не подхватываются
     out_dir = layout.jobs / "live_out"
     out_dir.mkdir(parents=True, exist_ok=True)
-    usage: list[dict] = []
     tts_count = [0]
     core = FakeCore(module_settings={"output_dir": str(out_dir), "plan_model": models, "build_model": models})
 
@@ -51,11 +50,6 @@ async def run(smoke: bool, models: str, resume: str | None = None, source: str |
         await media.synth_tone(path, seconds, freq=180 + 40 * tts_count[0])
         return {"path": str(path), "duration_ms": int(seconds * 1000)}
 
-    @core.on_request("core.claude_usage")
-    def claude_usage(body):
-        usage.append(body)
-        return {}
-
     t0 = time.time()
     async with core:
         client = WorkspaceClient(build_manifest(), url=core.url, token=core.token)
@@ -63,8 +57,8 @@ async def run(smoke: bool, models: str, resume: str | None = None, source: str |
         task = asyncio.create_task(main_mod.run(client, manager))
         await core.wait_connected()
         if smoke:
-            return await smoke_test(manager, layout, usage)
-        if resume:                                                           # продолжить упавшую задачу с её стадии (экономит лимит Claude)
+            return await smoke_test(manager, layout)
+        if resume:                                                           # продолжить упавшую задачу с её стадии (экономит лимит подписки)
             job_id = resume
         else:
             args = ({"sources": [source], "brief": "20 секунд лучшего из забега RimWorld, ГЛаДОС коротко комментирует",
@@ -94,8 +88,8 @@ async def run(smoke: bool, models: str, resume: str | None = None, source: str |
                 break
         await asyncio.sleep(2)
         job = manager.store.load(job_id)
-        summary = {"job_id": job_id, "state": job.state, "seconds": round(time.time() - t0), "tokens": job.data["claude"]["tokens"],
-                   "usage_calls": len(usage), "error": job.data.get("error"), "artifacts": job.data.get("artifacts"),
+        summary = {"job_id": job_id, "state": job.state, "seconds": round(time.time() - t0), "tokens": job.data["agent"]["tokens"],
+                   "error": job.data.get("error"), "artifacts": job.data.get("artifacts"),
                    "qa": job.data.get("qa"), "output": job.data.get("output"), "folder": str(job.folder)}
         (layout.jobs / "live_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(summary, ensure_ascii=False, indent=2))
@@ -104,19 +98,18 @@ async def run(smoke: bool, models: str, resume: str | None = None, source: str |
         return 0 if job.state == "done" else 1
 
 
-async def smoke_test(manager, layout, usage) -> int:
-    """Один короткий вызов агента: проверка параметров SDK, песочницы и учёта расхода."""
+async def smoke_test(manager, layout) -> int:
+    """Один короткий вызов агента: проверка запуска pi и песочницы."""
     from agent_tools import JobEnv
-    from claude_runner import SdkRunner
+    from pi_runner import PiRunner
     job = manager.store.create({"sources": [], "brief": "smoke", "platform": "none"})
     (job.work / "src").mkdir(parents=True, exist_ok=True)
     (job.folder / "persona.json").write_text(json.dumps({"card": CARD}, ensure_ascii=False), encoding="utf-8")
     env = JobEnv(job=job, store=manager.store, core=manager.core, layout=layout, stage="story")
-    res = await SdkRunner(layout).run(env, "story", "Прочитай файл ../../../docs/APERTURE_STYLE.md (первые 20 строк) и ответь одним "
+    res = await PiRunner(layout, settings=lambda: {}).run(env, "story", "Прочитай файл ../../../docs/APERTURE_STYLE.md (первые 20 строк) и ответь одним "
                                       "предложением, как называется стиль. Больше ничего не делай.", model="sonnet", max_turns=6)
     print("ответ:", res.text[:300], "| токены:", res.tokens, "| сессия:", res.session_id, "| ходов:", res.turns)
     print("решения песочницы:", [(r["tool"], r["allowed"]) for r in manager.store.read_log(job) if r["kind"] == "sandbox"])
-    print("расход ушёл в ядро:", usage)
     job.data["state"] = "cancelled"                                       # проверочная задача не должна подхватываться как незавершённая
     manager.store.save(job)
     return 0

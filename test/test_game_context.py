@@ -46,8 +46,8 @@ def clean_trace():
 
 def test_actions_block_lists_what_executors_really_do_and_says_when_nothing_is_running(clean_trace):
     assert "ничего не запущено" in ContextBuilder.actions_block()
-    tool_trace.note("claude", "place_building", "кровать")
-    tool_trace.note("claude", "place_building", "кровать")
+    tool_trace.note("code", "place_building", "кровать")
+    tool_trace.note("code", "place_building", "кровать")
     eid = tool_trace.start("fast", "desktop.menu_click", "text=Продолжить")
     tool_trace.finish(eid, False, "пользователь за компьютером")
     text = ContextBuilder.actions_block()
@@ -56,7 +56,7 @@ def test_actions_block_lists_what_executors_really_do_and_says_when_nothing_is_r
 
 
 def test_actions_block_forgets_old_entries(clean_trace):
-    tool_trace.note("claude", "old_tool", ts=time.time() - 3600)
+    tool_trace.note("code", "old_tool", ts=time.time() - 3600)
     assert "old_tool" not in ContextBuilder.actions_block()
 
 

@@ -1,7 +1,7 @@
 """Память-граф: факты о людях и мире в SQLite (`graph.db`), всё локально, без Docker.
 
 Схема (замена Graphiti и FalkorDB, см. docs/MEMORY_GRAPH.md):
-  1. ИЗВЛЕЧЕНИЕ наше: одна простая задача для Claude без инструментов («выпиши устойчивые факты») со строгой схемой ответа.
+  1. ИЗВЛЕЧЕНИЕ наше: одна простая задача для быстрой модели без инструментов («выпиши устойчивые факты») со строгой схемой ответа.
   2. ХРАНЕНИЕ `fact_store.FactStore`: таблица связей «субъект - отношение - объект» с интервалами действия; точный повтор не
      дублируется, однозначное отношение (живёт_в, работает) закрывает прежний факт датой (переехала в Казань - «живёт в Москве» закрыт).
   3. ПОИСК общий `search.HybridIndex` (слова FTS5 + векторы EmbeddingGemma из LM Studio) в том же файле; устаревшее по умолчанию
@@ -107,13 +107,13 @@ def parse_facts(raw: str) -> list[Fact]:
 
 
 class FactExtractor:
-    """Извлечение фактов: один короткий вызов Claude без инструментов (`fast_brain._ask`), ответ JSON по схеме `_SCHEMA`."""
+    """Извлечение фактов: один короткий вызов быстрой модели без инструментов (`fast_brain._ask`), ответ JSON по схеме `_SCHEMA`."""
 
     def __init__(self, ask=None):
-        self._ask = ask or self._claude
+        self._ask = ask or self._fast
 
     @staticmethod
-    async def _claude(system: str, user: str) -> str:
+    async def _fast(system: str, user: str) -> str:
         import fast_brain
         return await fast_brain._ask(system, user, timeout=60, max_tokens=700, temperature=0.1, background=True)
 

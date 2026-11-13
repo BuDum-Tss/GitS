@@ -1,4 +1,4 @@
-"""Заглушки для тестов конвейера: ядро, агент Claude, Remotion и контроль качества. Без сети, Claude и Chromium; ffmpeg
+"""Заглушки для тестов конвейера: ядро, агент, Remotion и контроль качества. Без сети, модели и Chromium; ffmpeg
 настоящий там, где стадии его вызывают (loudnorm, проверка файлов), файлы крошечные."""
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import media
 import qa as qa_mod
-from claude_runner import StageResult
+from stage_runner import StageResult
 from layout import Layout
 
 
@@ -68,10 +68,8 @@ class StubCore:
     def __init__(self, tmp: Path, settings: dict | None = None):
         self.tmp = tmp
         self.settings = dict(settings or {})
-        self.sleeping = False
         self.updates: list[dict] = []
         self.events: list[dict] = []
-        self.usage: list[tuple] = []
         self.tts_calls: list[str] = []
         self.persona_card = "Сухая учтивость, научный протокол."
 
@@ -84,9 +82,6 @@ class StubCore:
 
     async def persona(self):
         return {"name": "ГЛаДОС", "card": self.persona_card}
-
-    async def claude_usage(self, tokens, source, limit_text=None):
-        self.usage.append((tokens, source, limit_text))
 
     async def job_update(self, job_id, **fields):
         self.updates.append({"job_id": job_id, **fields})
@@ -141,7 +136,7 @@ Responder = Callable[..., Awaitable[StageResult] | StageResult]
 
 
 class FakeRunner:
-    """Агент без Claude: на каждую стадию пишет ожидаемые файлы. `override[stage]` — функция(env, prompt, call_no) вместо
+    """Агент без модели: на каждую стадию пишет ожидаемые файлы. `override[stage]` — функция(env, prompt, call_no) вместо
     стандартного поведения; `calls` — журнал вызовов."""
 
     def __init__(self, plan_factory: Callable[[], dict] = make_plan, story: dict | None = None):
@@ -158,7 +153,7 @@ class FakeRunner:
         self.calls.append({"stage": stage, "model": model, "prompt": prompt, "readonly": readonly, "fresh": fresh, "n": n})
         if self.fail_stage.get(stage, 0) > 0:
             self.fail_stage[stage] -= 1
-            from claude_runner import StageFailed
+            from stage_runner import StageFailed
             raise StageFailed("заглушка: агент упал")
         text = "готово"
         if stage in self.override:

@@ -1,5 +1,5 @@
-"""Прогон ядра на устойчивость и хвосты ТЗ 17 (FLOW-1..FLOW-3, трасса Claude, Telegram, питомца, ошибки GLiNER). Без сети,
-моделей, Claude и настоящих модулей."""
+"""Прогон ядра на устойчивость и хвосты ТЗ 17 (FLOW-1..FLOW-3, трасса долгих задач, Telegram, питомца, ошибки GLiNER). Без сети,
+моделей и настоящих модулей."""
 import asyncio
 from types import SimpleNamespace
 
@@ -94,7 +94,7 @@ async def test_gliner_backend_exception_is_traced_as_error():
     assert flow_trace.node_errors("gliner")["last_label"] == "error:backend"
 
 
-# ── выходы: Telegram, питомец, Claude ───────────────────────────────────────────────
+# ── выходы: Telegram, питомец, долгие задачи ───────────────────────────────────────────────
 
 async def test_deliver_to_telegram_is_traced_ok_and_error_without_text():
     class Conn:
@@ -150,33 +150,23 @@ async def test_presence_without_subscriber_is_not_traced():
     assert not [r for r in flow_trace.records() if r["node"] == "out_presence"]
 
 
-async def test_web_search_and_analysis_trace_claude_without_text(monkeypatch):
-    """Claude SDK заглушен: сеть и настоящий Claude не вызываются."""
+async def test_web_search_traces_the_deep_node_without_text(monkeypatch):
+    """Среда агента заглушена: сеть и настоящая модель не вызываются."""
     import web_search
 
-    class FakeClient:
-        def __init__(self, options=None):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *a):
-            return False
-
-        async def query(self, q):
+    class FailingRuntime:
+        async def start(self, system, tools):
             raise RuntimeError("нет сети")
 
-        async def receive_response(self):
-            if False:
-                yield None
+        async def close(self):
+            pass
 
-    monkeypatch.setattr(web_search, "ClaudeSDKClient", FakeClient)
+    monkeypatch.setattr(web_search, "_pi_runtime", FailingRuntime)
     out = await web_search.search("секретный запрос про погоду")
     assert out == "Поиск не удался."
-    rec = [r for r in flow_trace.records() if r["node"] == "claude"][-1]
-    assert rec["kind"] == "error" and rec["label"] == "web:error" and "секретный" not in str(rec)
-    assert flow_trace.node_errors("claude")["total"] == 1
+    rec = [r for r in flow_trace.records() if r["node"] == "deep"][-1]
+    assert rec["kind"] == "error" and rec["label"] == "web:pi:error" and "секретный" not in str(rec)
+    assert flow_trace.node_errors("deep")["total"] == 1
 
 
 # ── режим «только ядро»: настройка ──────────────────────────────────────────────────

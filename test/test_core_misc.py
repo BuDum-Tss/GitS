@@ -98,7 +98,7 @@ class _Dummy:
 
 async def test_set_profile_tool_is_rebuilt_on_profiles(tmp_path):
     reg = Registry()
-    pm = ProfileManager(battery=lambda: {}, foreground_app=lambda: None)
+    pm = ProfileManager(foreground_app=lambda: None)
     pm.evaluate()
     builtin.register(reg, FakeCompanion(), UserMemory(str(tmp_path)), profiles=pm)
     tool = reg.get("assistant.set_profile")

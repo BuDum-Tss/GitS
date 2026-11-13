@@ -2,7 +2,7 @@
 
 Файл создан скриптом `agent/interfaces/workspace/tools/gen_contract_doc.py` из `agent/interfaces/workspace/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `agent/interfaces/workspace/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора участника шины: `docs/MODULES.md`, код контракта: `agent/interfaces/workspace/gits_sdk/contract/`.
 
-Версия протокола `PROTOCOL = 2`, версия контракта `2.0`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
+Версия протокола `PROTOCOL = 3`, версия контракта `3.0`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
 ## Версии и совместимость
 
@@ -29,6 +29,7 @@
 - `1.10`: удалены политики модуля: поля policies и default_policy, запросы policy.activate, focus.release, focus.resume, параметр policy у workspace.*, active_policy в статусе; конец состояния «задача кончилась» сообщает модуль флагом done в статусе
 - `1.11`: фаза 1 переименования «модуль -> workspace / service» (аддитивно): поля манифеста role и ownership, поля id и role в hello (прежнее module_id шлётся рядом), адрес входа /ws рядом с /module/ws (доступен с фазы 2), переменные GITS_ID и GITS_TOKEN (GITS_MODULE_ID и GITS_MODULE_TOKEN остаются алиасами), HTTP-интерфейс управления workspace с ownership shared: аренда без срока и продления (GET /status, GET /info, POST /acquire, /release; аренда кончается по release или при обрыве WebSocket участника), поля среды workspace.when_to_use и keywords
 - `2.0`: фаза 4 переименования, PROTOCOL 2: удалены алиасы фаз 1-3 (ModuleClient, module_id в hello и в ответе ядра, адрес /module/ws, переменные GITS_MODULE_ID и GITS_MODULE_TOKEN, раздел modules: в peers.yaml, /api/modules); role в манифесте и hello и ownership у workspace обязательны (без них reject). Запросы workspace.enter, workspace.exit, workspace.resume без изменений
+- `3.0`: PROTOCOL 3, только pi: удалены запросы core.claude_usage и core.claude.locate, тема battery и поле battery в welcome (батарейки Claude нет), клиентские методы claude_usage, claude_locate, поле client.battery и модуль claude_path
 
 Устаревшее: `emotion` до 2027-01-01, заменить на тег стикера в тексте ответа; сообщение игнорируется ядром
 
@@ -270,34 +271,6 @@
 {}
 ```
 
-### `core.claude_usage`
-
-Учесть расход токенов Claude участником шины и, если лимит исчерпан, сообщить его текст.
-
-направление: module->core, вид: request, статус: **stable**, с версии 1.0.
-
-Коды ошибок: `bad_request`.
-
-Тело:
-
-| Поле | Тип | Обязательно | Ограничения | Описание |
-|---|---|---|---|---|
-| `tokens` | integer | да | от 0 | расход токенов |
-| `source` | string | нет | - | кто потратил |
-| `limit_text` | string | нет | - | текст исчерпанного лимита |
-
-Ответ (`result.value`):
-
-Произвольное JSON-значение или пустой объект.
-
-Пример:
-
-```json
-{
-  "tokens": 0
-}
-```
-
 ### `core.web_search`
 
 Поиск в интернете средствами ядра.
@@ -384,30 +357,6 @@
 | Поле | Тип | Обязательно | Ограничения | Описание |
 |---|---|---|---|---|
 | `events` | array[object] | да | - | события: ts, kind, text, data |
-
-Пример:
-
-```json
-{}
-```
-
-### `core.claude.locate`
-
-Путь к claude.exe для Claude Agent SDK (или null, если не найден).
-
-направление: module->core, вид: request, статус: **stable**, с версии 1.1.
-
-Коды ошибок: `unavailable`.
-
-Тело:
-
-Полей нет.
-
-Ответ (`result.value`):
-
-| Поле | Тип | Обязательно | Ограничения | Описание |
-|---|---|---|---|---|
-| `path` | string | нет | - | путь к claude.exe или отсутствует |
 
 Пример:
 
@@ -1016,7 +965,7 @@
 
 ### `welcome`
 
-Ответ на hello: версия, включённость, настройки, профиль, батарейка.
+Ответ на hello: версия, включённость, настройки, профиль.
 
 направление: core->module, вид: note, статус: **stable**, с версии 1.0.
 
@@ -1030,7 +979,6 @@
 | `settings` | object | нет | - | общие настройки |
 | `module_settings` | object | нет | - | настройки участника шины |
 | `profile` | object | нет | - | активный профиль |
-| `battery` | object | нет | - | батарейка Claude |
 
 Пример:
 
@@ -1040,8 +988,7 @@
   "enabled": true,
   "settings": {},
   "module_settings": {},
-  "profile": {},
-  "battery": {}
+  "profile": {}
 }
 ```
 
@@ -1247,28 +1194,6 @@
   "id": "assistant",
   "title": "Ассистент",
   "focus_modules": []
-}
-```
-
-### `battery`
-
-Батарейка Claude: процент и сон.
-
-направление: core->module, вид: topic, статус: **stable**, с версии 1.0.
-
-Тело:
-
-| Поле | Тип | Обязательно | Ограничения | Описание |
-|---|---|---|---|---|
-| `percent` | integer | да | от 0; до 100 | процент |
-| `sleeping` | boolean | да | - | спит ли |
-
-Пример:
-
-```json
-{
-  "percent": 80,
-  "sleeping": false
 }
 ```
 

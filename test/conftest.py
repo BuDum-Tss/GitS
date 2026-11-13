@@ -6,8 +6,9 @@ import character
 import decide
 import events_log
 import prompts
-from adapters import runtime_claude
+from app import resident
 import settings
+from interfaces.contracts import EndEvent
 
 
 @pytest.fixture(autouse=True)
@@ -30,26 +31,27 @@ def _isolated_core(tmp_path, monkeypatch):
         return None
     monkeypatch.setattr(decide, "decide", no_classifier)
 
-    class NullClient:                                  # единый агент без Claude: сессия принимает запрос и ничего не отвечает
-        def __init__(self, options=None):
+    class NullRuntime:                                 # единый агент без модели: сессия принимает запрос и ничего не отвечает
+        can_steer = True
+
+        async def start(self, system, tools):
             pass
 
-        async def connect(self):
+        async def run(self, prompt):
+            yield EndEvent("ok")
+
+        async def steer(self, text):
+            return False
+
+        async def abort(self):
             pass
 
-        async def disconnect(self):
+        async def reset(self, forget=True):
             pass
 
-        async def interrupt(self):
+        async def close(self):
             pass
-
-        async def query(self, prompt):
-            pass
-
-        async def receive_response(self):
-            return
-            yield
-    monkeypatch.setattr(runtime_claude, "ClaudeSDKClient", NullClient)
+    monkeypatch.setattr(resident, "_default_runtime", NullRuntime)
     yield
     events_log.flush()                                  # фоновая запись журнала не должна уйти в папку следующего теста
     approvals.reset()

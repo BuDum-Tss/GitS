@@ -28,9 +28,10 @@ def make(**kw):
     """Менеджер на реальных файлах профилей с управляемыми источниками."""
     src = {"sleeping": False, "app": None, "states": {}, "choice": "auto", "streamer": False, "workspace": "assistant"}
     clock = Clock()
-    pm = ProfileManager(battery=lambda: {"sleeping": src["sleeping"]}, foreground_app=lambda: src["app"],
+    pm = ProfileManager(foreground_app=lambda: src["app"],
                         workspace_of=lambda: src["workspace"], module_state=lambda m: src["states"].get(m), choice=lambda: src["choice"],
                         streamer=lambda: src["streamer"], now=clock, **kw)
+    pm.sleeping = lambda: src["sleeping"]
     pm.evaluate()
     return pm, src, clock
 
@@ -170,7 +171,7 @@ def test_hint_text_wrapper_and_streamer_addition():                           # 
 
 def test_set_override_writes_setting(tmp_path):
     settings.init(str(tmp_path))
-    pm = ProfileManager(battery=lambda: {}, foreground_app=lambda: None)
+    pm = ProfileManager(foreground_app=lambda: None)
     pm.evaluate()
     assert pm.set_override("work") is None and settings.load()["profile"] == "work" and pm.current_id == "work"
     assert "ещё не написан" in pm.set_override("minecraft")
@@ -215,7 +216,7 @@ async def test_graph_format_with_live_and_default_subgraphs():                # 
     src["workspace"] = "rimworld"
     pm.evaluate()
     g = await pm.graph()
-    assert {"current", "auto", "override", "battery", "nodes", "edges", "subgraphs"} <= set(g)
+    assert {"current", "auto", "override", "nodes", "edges", "subgraphs"} <= set(g)
     assert g["current"] == "rimworld" and g["override"] is None
     assert [n["id"] for n in g["nodes"] if n["current"]] == ["rimworld"]
     assert all(e["from"] == HUB for e in g["edges"]) and all(n["drill"] for n in g["nodes"])

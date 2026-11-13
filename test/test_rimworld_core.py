@@ -61,8 +61,7 @@ class Wired:
         self.companion = self.rig.companion
         self.port = free_port()
         self.registry = Registry()
-        self.layer = core_service.wire_modules(self.companion, self.registry, port=self.port, specs=[],
-                                               battery=lambda: {"level": 1.0, "sleeping": False})
+        self.layer = core_service.wire_modules(self.companion, self.registry, port=self.port, specs=[])
         self.url = f"ws://127.0.0.1:{self.port}/ws"
 
     async def __aenter__(self):
@@ -188,7 +187,7 @@ def test_tray_no_longer_starts_the_game_agent():
 def test_record_runs_is_a_shared_setting_with_a_form_field():
     assert settings.DEFAULTS["record_runs"] is True
     # RW-7: все общие настройки из манифеста модуля игры есть в настройках ядра (иначе до модуля они не дойдут)
-    for key in ("streamer", "dnd", "quiet_until", "game_model", "claude_usage", "voice_muted", "telegram_after_run", "record_runs"):
+    for key in ("streamer", "dnd", "quiet_until", "game_model", "voice_muted", "telegram_after_run", "record_runs"):
         assert key in settings.DEFAULTS, key
     html = (AGENT / "clients" / "gui" / "index.html").read_text(encoding="utf-8")
     assert "key: 'record_runs'" in html

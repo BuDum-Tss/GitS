@@ -25,7 +25,7 @@ SAFETY_RULES = """Правила безопасности:
 
 PI_TOOLS = ["read", "find", "grep", "bash", "write", "edit"]   # встроенные pi: Read, Glob, Grep, Bash, Write, Edit
 PI_MAX_TURNS = 40
-_SETTINGS: dict = {}       # настройки ядра, пришедшие модулю (agent_runtime, pi_model_heavy, pi_thinking)
+_SETTINGS: dict = {}       # настройки ядра, пришедшие модулю (pi_model_heavy, pi_thinking)
 _WEB_SEARCH = None         # async (запрос) -> текст: поиск делает ядро (core.web_search)
 
 _PERSONA = ""    # персона помощника от ядра (core.persona, раздел desktop_assistant; ТЗ 05, CHR-4)
@@ -38,7 +38,7 @@ def set_persona(text: str) -> None:
 
 
 def configure(settings: dict | None, web_search=None) -> None:
-    """Настройки ядра (agent_runtime, pi_model_heavy, pi_thinking) и поиск через ядро; модуль зовёт перед задачей."""
+    """Настройки ядра (pi_model_heavy, pi_thinking) и поиск через ядро; модуль зовёт перед задачей."""
     global _SETTINGS, _WEB_SEARCH
     _SETTINGS = dict(settings or {})
     _WEB_SEARCH = web_search
@@ -46,13 +46,6 @@ def configure(settings: dict | None, web_search=None) -> None:
 
 def system_prompt() -> str:
     return (_PERSONA + "\n\n" + SAFETY_RULES) if _PERSONA else SAFETY_RULES
-
-
-def tokens_of(usage: dict | None) -> int:
-    """Токены из поля usage ответа Claude: вход, выход и запись в кэш (чтение кэша не считается).
-    Копия claude_battery.tokens_of: сам модуль ядра тянет настройки ядра, модулю их нельзя."""
-    u = usage or {}
-    return sum(int(u.get(k) or 0) for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens"))
 
 
 def _inside_roots(path: str | None) -> bool:
@@ -75,7 +68,7 @@ def _read_is_local(inp: dict) -> bool:
 
 
 async def decide(tool: str, inp: dict, ask) -> tuple[bool, str]:
-    """Политика разрешений помощника, одна для обеих сред. Имена и поля в виде Claude (Read + file_path, Bash + command).
+    """Политика разрешений помощника, Имена и поля в общем виде (Read + file_path, Bash + command).
     Чтение внутри разрешённых папок без вопроса; всё остальное только после «да» через ask(вопрос, опасность);
     опасное (safety.danger_of) спрашивается всегда. Возвращает (разрешено, причина отказа)."""
     inp = inp or {}
@@ -102,20 +95,19 @@ def _describe(tool: str, inp: dict) -> str:
 
 
 def tool_summary(tool: str, inp: dict) -> str:
-    """Коротко, что делает вызов инструмента Claude (для чата): команда, файл, адрес или запрос."""
+    """Коротко, что делает вызов инструмента (для чата): команда, файл, адрес или запрос."""
     inp = inp or {}
     detail = (inp.get("command") or inp.get("file_path") or inp.get("path") or inp.get("url") or inp.get("query")
               or inp.get("pattern") or "")
     return " ".join(str(detail).split())[:160]
 
 
-async def run_task(task: str, context: str, ask, usage, on_tool=None) -> str | None:
-    """Выполнить просьбу. ask(вопрос, опасность) -> bool - разрешение пользователя; usage(tokens, limit_text) - учёт расхода
-    (async, сбой не должен ломать задачу); on_tool(имя, кратко) - вызван при каждом запуске инструмента
+async def run_task(task: str, context: str, ask, on_tool=None) -> str | None:
+    """Выполнить просьбу. ask(вопрос, опасность) -> bool - разрешение пользователя; on_tool(имя, кратко) - вызван при каждом запуске инструмента
     (async, сбой не ломает задачу). Возвращает итог, "" если сказать нечего, None при сбое.
-    Исполнитель задач кода всегда pi, независимо от настройки агента ядра."""
+    """
     prompt = (f"{context}\n\nПросьба пользователя: {task}" if context else task)
-    return await _run_pi(prompt, ask, usage, on_tool)
+    return await _run_pi(prompt, ask, on_tool)
 
 
 async def _notify(on_tool, name: str, inp: dict) -> None:
@@ -127,12 +119,7 @@ async def _notify(on_tool, name: str, inp: dict) -> None:
         logger.debug(f"on_tool: {e}")
 
 
-def _pi_tokens(usage_dict: dict | None) -> int:
-    u = usage_dict or {}
-    return sum(int(u.get(k) or 0) for k in ("input", "output"))
-
-
-async def _run_pi(prompt: str, ask, usage, on_tool) -> str | None:
+async def _run_pi(prompt: str, ask, on_tool) -> str | None:
     from gits_sdk.pi_agent import CustomTool, EndEvent, PiAgent, PiAgentError, TextEvent, ToolUse
 
     async def can_use_tool(tool_name, tool_input):
@@ -142,7 +129,7 @@ async def _run_pi(prompt: str, ask, usage, on_tool) -> str | None:
         query = str(args.get("query") or "").strip()
         if not query:
             raise ValueError("пустой запрос")
-        allow, why = await decide("WebSearch", {"query": query}, ask)   # как у Claude: поиск только с «да»
+        allow, why = await decide("WebSearch", {"query": query}, ask)   # поиск только с «да»
         if not allow:
             raise RuntimeError(why)
         if _WEB_SEARCH is None:
@@ -169,20 +156,16 @@ async def _run_pi(prompt: str, ask, usage, on_tool) -> str | None:
             elif isinstance(ev, EndEvent):
                 end = ev
     except PiAgentError as e:
-        await usage(0, None)
         logger.error(f"Агент-помощник (pi): {e}")
         return None
     except Exception as e:
-        await usage(0, None)
         logger.error(f"Агент-помощник (pi): {e}", exc_info=True)
         return None
     finally:
         await agent.close()
     if end is None or end.status == "error":
-        await usage(0, None)
         logger.error(f"Агент-помощник (pi): {(end.error if end else None) or 'нет итога'}")
         return None
-    await usage(_pi_tokens(end.usage), answer[:500] or None)
     if end.status == "max_turns":
         return (answer + "\n\n" if answer else "") + "Задача остановлена: исчерпан предел шагов, работа не закончена."
     if end.status == "aborted":

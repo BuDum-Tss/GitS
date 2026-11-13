@@ -1,6 +1,6 @@
-"""Модуль desktop против FakeCore (ТЗ 14, DESK-17): события, состояние, разрешения, задача Claude, тестовый режим.
+"""Модуль desktop против FakeCore (ТЗ 14, DESK-17): события, состояние, разрешения, задача помощника, тестовый режим.
 
-Без экрана, мыши, OCR, LM Studio и Claude: окно, простой, анализ и помощник подменены. Тики опроса вызываются напрямую
+Без экрана, мыши, OCR, LM Studio и помощника: окно, простой, анализ и помощник подменены. Тики опроса вызываются напрямую
 (модуль не запускает свой цикл в тестах), часы подменены."""
 import asyncio
 import re
@@ -75,7 +75,7 @@ async def test_manifest_is_valid_and_every_tool_has_a_handler(core):
         assert names == set(client._tools)                       # обработчики есть у каждого инструмента
         assert {n for n in names if n in client._checks} == {"take_screenshot", "type_text", "press_key"}
         by = {t["name"]: t for t in m["tools"]}
-        assert by["code_task"]["job"] and by["claude_task"]["fallback"] and by["claude_task"]["core_fills"] == ["context"]
+        assert by["code_task"]["job"] and by["code_task"]["fallback"] and by["code_task"]["core_fills"] == ["context"]
         assert {n for n, t in by.items() if t.get("announce")} == {"launch_app", "operate_screen", "code_task"}      # menu_click не объявляется: механическое нажатие
         assert m["capabilities"] == ["screen.observe"] and m["state"] is True
     finally:
@@ -143,13 +143,12 @@ async def test_screen_is_not_analysed_when_window_is_sensitive(core):
         await close(client, task)
 
 
-async def test_claude_task_is_a_job_asks_once_and_reports_done(core, monkeypatch):
-    seen, usage = [], []
+async def test_code_task_is_a_job_asks_once_and_reports_done(core, monkeypatch):
+    seen = []
 
-    async def fake_run(task, context, ask, usage_cb, on_tool=None):
+    async def fake_run(task, context, ask, on_tool=None):
         seen.append((task, context))
         assert await ask("Хочу выполнить команду: ls.", None) is True
-        await usage_cb(42, None)
         return "В проекте порт 8766."
 
     asked = []
@@ -158,27 +157,21 @@ async def test_claude_task_is_a_job_asks_once_and_reports_done(core, monkeypatch
     def answer_yes(body):
         asked.append(body)
         return {"answer": True}
-
-    def record_usage(body):
-        usage.append(body)
-        return {}
     core.handlers["core.ask"] = answer_yes
-    core.handlers["core.claude_usage"] = record_usage
     mod, _scene, client, task = await connect(core)
     try:
-        value = await core.call_tool("claude_task", {"task": "найди порт", "context": "контекст"})
+        value = await core.call_tool("code_task", {"task": "найди порт", "context": "контекст"})
         assert re.fullmatch(r"j-[0-9a-f]{8}", value["job_id"])
         done = await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b["state"] == "done")
         assert done.body["text"] == "В проекте порт 8766."
         assert seen == [("найди порт", "контекст")]
         assert len(asked) == 1 and asked[0]["kind"] == "approval"
-        assert usage == [{"tokens": 42, "source": "desktop"}]
     finally:
         await close(client, task)
 
 
-async def test_claude_task_reports_each_inner_tool_as_a_stage(core, monkeypatch):
-    async def fake_run(task, context, ask, usage_cb, on_tool=None):
+async def test_code_task_reports_each_inner_tool_as_a_stage(core, monkeypatch):
+    async def fake_run(task, context, ask, on_tool=None):
         await on_tool("Bash", "ls -la")
         await on_tool("Bash", "pwd")
         return "готово"
@@ -186,7 +179,7 @@ async def test_claude_task_reports_each_inner_tool_as_a_stage(core, monkeypatch)
     monkeypatch.setattr(appmod.assistant_agent, "run_task", fake_run)
     mod, _scene, client, task = await connect(core)
     try:
-        value = await core.call_tool("claude_task", {"task": "x"})
+        value = await core.call_tool("code_task", {"task": "x"})
         first = await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b.get("stage") == "tool:Bash:1")
         assert first.body["text"] == "ls -la"
         await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b.get("stage") == "tool:Bash:2")
@@ -201,14 +194,14 @@ def test_tool_summary_picks_command_path_or_query():
     assert appmod.assistant_agent.tool_summary("Task", None) == ""
 
 
-async def test_claude_task_without_answer_fails_with_error(core, monkeypatch):
-    async def fake_run(task, context, ask, usage_cb, on_tool=None):
+async def test_code_task_without_answer_fails_with_error(core, monkeypatch):
+    async def fake_run(task, context, ask, on_tool=None):
         return None
 
     monkeypatch.setattr(appmod.assistant_agent, "run_task", fake_run)
     mod, _scene, client, task = await connect(core)
     try:
-        value = await core.call_tool("claude_task", {"task": "x"})
+        value = await core.call_tool("code_task", {"task": "x"})
         failed = await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b["state"] == "failed")
         assert failed.body["error"]["code"] == "internal"
     finally:
@@ -218,14 +211,14 @@ async def test_claude_task_without_answer_fails_with_error(core, monkeypatch):
 async def test_cancel_job_stops_the_run(core, monkeypatch):
     started = asyncio.Event()
 
-    async def forever(task, context, ask, usage_cb, on_tool=None):
+    async def forever(task, context, ask, on_tool=None):
         started.set()
         await asyncio.Event().wait()
 
     monkeypatch.setattr(appmod.assistant_agent, "run_task", forever)
     mod, _scene, client, task = await connect(core)
     try:
-        value = await core.call_tool("claude_task", {"task": "долго"})
+        value = await core.call_tool("code_task", {"task": "долго"})
         await asyncio.wait_for(started.wait(), 5)
         await core.job_cancel(value["job_id"])
         await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b["state"] == "cancelled")
@@ -256,11 +249,11 @@ async def test_permission_timeout_counts_as_no(core):
         await close(client, task)
 
 
-async def test_fake_mode_refuses_screen_programs_and_claude(core):
+async def test_fake_mode_refuses_screen_programs_and_assistant(core):
     mod, _scene, client, task = await connect(core, fake=True)
     try:
         for name, args in [("take_screenshot", {}), ("describe_screen", {}), ("launch_app", {"name": "блокнот"}),
-                           ("claude_task", {"task": "x"}), ("menu_click", {"text": "Продолжить"})]:
+                           ("code_task", {"task": "x"}), ("menu_click", {"text": "Продолжить"})]:
             with pytest.raises(ToolError) as err:
                 await core.call_tool(name, args)
             assert err.value.code == "unavailable", name
@@ -361,17 +354,17 @@ async def test_panel_declared_and_shows_window_and_permissions(core):
         await close(client, task)
 
 
-async def test_panel_lists_claude_tasks_with_stop_buttons(core, monkeypatch):
+async def test_panel_lists_code_tasks_with_stop_buttons(core, monkeypatch):
     started = asyncio.Event()
 
-    async def forever(task, context, ask, usage_cb, on_tool=None):
+    async def forever(task, context, ask, on_tool=None):
         started.set()
         await asyncio.Event().wait()
 
     monkeypatch.setattr(appmod.assistant_agent, "run_task", forever)
     mod, _scene, client, task = await connect(core)
     try:
-        value = await core.call_tool("claude_task", {"task": "долго"})
+        value = await core.call_tool("code_task", {"task": "долго"})
         await asyncio.wait_for(started.wait(), 5)
         await mod._tick()
         blocks = (await core.wait_for(
@@ -390,14 +383,14 @@ async def test_panel_lists_claude_tasks_with_stop_buttons(core, monkeypatch):
 
 
 async def test_panel_cancel_all_stops_every_task(core, monkeypatch):
-    async def forever(task, context, ask, usage_cb, on_tool=None):
+    async def forever(task, context, ask, on_tool=None):
         await asyncio.Event().wait()
 
     monkeypatch.setattr(appmod.assistant_agent, "run_task", forever)
     mod, _scene, client, task = await connect(core)
     try:
-        await core.call_tool("claude_task", {"task": "первое"})
-        await core.call_tool("claude_task", {"task": "второе"})
+        await core.call_tool("code_task", {"task": "первое"})
+        await core.call_tool("code_task", {"task": "второе"})
         await core.wait_for(lambda: len(mod._jobs) == 2)
         answer = await core.panel_action("cancel_all")
         assert answer == {"ok": True, "message": "остановлено задач: 2"}
@@ -405,28 +398,28 @@ async def test_panel_cancel_all_stops_every_task(core, monkeypatch):
         await close(client, task)
 
 
-async def test_claude_task_passes_core_settings_and_web_search_to_assistant(core, monkeypatch):
+async def test_code_task_passes_core_settings_and_web_search_to_assistant(core, monkeypatch):
     got = {}
 
     def fake_configure(settings, web_search=None):
         got["settings"], got["web_search"] = settings, web_search
 
-    async def fake_run(task, context, ask, usage_cb, on_tool=None):
+    async def fake_run(task, context, ask, on_tool=None):
         return "ок"
 
     monkeypatch.setattr(appmod.assistant_agent, "configure", fake_configure)
     monkeypatch.setattr(appmod.assistant_agent, "run_task", fake_run)
     mod, _scene, client, task = await connect(core)
     try:
-        client.settings["agent_runtime"] = "pi"
-        value = await core.call_tool("claude_task", {"task": "x"})
+        client.settings["pi_thinking"] = "low"
+        value = await core.call_tool("code_task", {"task": "x"})
         await core.wait_message("job.update", lambda b: b["job_id"] == value["job_id"] and b["state"] == "done")
-        assert got["settings"]["agent_runtime"] == "pi" and callable(got["web_search"])
+        assert got["settings"]["pi_thinking"] == "low" and callable(got["web_search"])
     finally:
         await close(client, task)
 
 
 def test_manifest_shares_runtime_settings_with_module():
     from manifest import MANIFEST
-    for key in ("agent_runtime", "pi_model", "pi_model_heavy", "pi_thinking"):
+    for key in ("pi_model", "pi_model_heavy", "pi_thinking"):
         assert key in MANIFEST["shared_settings"]

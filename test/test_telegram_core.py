@@ -136,7 +136,7 @@ async def test_wire_modules_hands_core_memory_dir_to_modules():
     companion = FakeCompanion()
     companion.profile_hint = lambda: ""
     companion.io = None
-    layer = core_service.wire_modules(companion, Registry(), specs=[], battery=lambda: {"level": 1.0, "sleeping": False})
+    layer = core_service.wire_modules(companion, Registry(), specs=[])
     assert layer.supervisor.memory_dir == settings.memory_dir().resolve()
     assert companion.module_notes == layer.modules.notes
     assert isinstance(companion.presence, speech_out.PresenceTracker)

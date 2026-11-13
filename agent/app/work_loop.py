@@ -3,7 +3,7 @@
 Пока агент в среде модуля, который объявил `workspace.autonomous` (игра, мир), и он свободен, раз в `work_interval_s` ядро шлёт ему
 внутреннее событие `self.work_tick`. Это обычный самоимпульс: он идёт тем же конвейером внимания, маршрутом `think`, агент решает сам,
 что делать (посмотреть узел и запросы, продвинуть задачу, поставить себе напоминание) или промолчать. Текст события это факт, не
-команда. Цикл молчит, когда агент занят, пользователь просит не отвлекать, выключена настройка `autoplay` или у Claude кончился лимит.
+команда. Цикл молчит, когда агент занят, пользователь просит не отвлекать, выключена настройка `autoplay` или кончился лимит подписки.
 Каждый модуль задаёт свой темп (`work_interval_s`), общего таймера «играй» в ядре нет.
 """
 import asyncio
@@ -25,7 +25,7 @@ class WorkLoop:
                  emit: Callable[[dict], Awaitable[None]], settings: Callable[[], dict], quiet: Callable[[], bool],
                  blocked: Callable[[], bool] = lambda: False, clock: Callable[[], float] = time.time, tasks=None):
         """env_of() - текущая среда; manifest_of(id) - манифест модуля; agent - единый агент (`busy`, `last_end`);
-        emit(тело события) - `Attention.submit_self`; settings() - настройки ядра; quiet() - «не отвлекать»; blocked() - лимит Claude."""
+        emit(тело события) - `Attention.submit_self`; settings() - настройки ядра; quiet() - «не отвлекать»; blocked() - лимит подписки."""
         self._env_of, self._manifest_of, self._agent, self._emit = env_of, manifest_of, agent, emit
         self._settings, self._quiet, self._blocked, self._clock = settings, quiet, blocked, clock
         self._tasks = tasks                      # TaskService: цель среды (`workspace.default_goal`) и активная задача

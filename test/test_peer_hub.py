@@ -69,10 +69,10 @@ async def test_welcome_body_follows_the_contract(tmp_path):
         try:
             welcome = await raw.hello()
             b = welcome.body
-            assert b["protocol"] == 2 and "module_id" not in b and b["enabled"] is True and b["core_version"]
+            assert b["protocol"] == 3 and "module_id" not in b and b["enabled"] is True and b["core_version"]
             assert b["settings"] == {"streamer": True}                          # только shared_settings модуля
             assert b["module_settings"] == {"poll": 9, "mode": "a"}             # сохранённое поверх умолчаний
-            assert set(b["profile"]) == {"id", "title", "focus_modules"} and b["battery"] == {"percent": 100, "sleeping": False}
+            assert set(b["profile"]) == {"id", "title", "focus_modules"} and "battery" not in b
         finally:
             await raw.close()
 
@@ -451,7 +451,7 @@ async def test_unknown_and_malformed_messages_do_not_break_connection(tmp_path):
         try:
             await raw.hello()
             await raw.ws.send_str("это не JSON")
-            await raw.ws.send_str('{"v": 2, "type": "weird", "id": "m-1", "re": null, "ts": 1, "body": {}}')
+            await raw.ws.send_str('{"v": 3, "type": "weird", "id": "m-1", "re": null, "ts": 1, "body": {}}')
             await raw.send("job.update", {"job_id": "плохой", "state": "running"})
             body = await raw.request("core.nothing")                          # неизвестный запрос с core.
             assert body["ok"] is False and body["error"]["code"] == "unknown"
@@ -562,7 +562,6 @@ async def test_core_ask_bad_body_is_bad_request_and_memory_requests_unavailable(
             assert (await raw.request("core.tool.call", {"tool": 5}))["error"]["code"] == "bad_request"
             assert (await raw.request("core.tool.call", {"tool": "no.such"}))["error"]["code"] == "unknown"
             assert (await raw.request("core.web_search", {}))["error"]["code"] == "bad_request"
-            assert (await raw.request("core.claude_usage", {"tokens": -1}))["error"]["code"] == "bad_request"
             assert (await raw.request("core.tts", {"text": "x", "format": "mp3"}))["error"]["code"] == "bad_request"
         finally:
             await raw.close()
@@ -591,13 +590,8 @@ async def test_core_tool_call_runs_through_router_with_permissions(tmp_path):
             assert e.value.code == "denied"
 
 
-async def test_core_persona_claude_usage_and_web_search(tmp_path, monkeypatch):
-    import claude_battery
-    import claude_quota
+async def test_core_persona_and_web_search(tmp_path, monkeypatch):
     import web_search
-    recorded, noted = [], []
-    monkeypatch.setattr(claude_battery, "record", lambda tokens, source="": recorded.append((tokens, source)))
-    monkeypatch.setattr(claude_quota, "note", lambda text: noted.append(text) or True)
 
     async def fake_search(query):
         return f"нашла: {query}"
@@ -608,9 +602,6 @@ async def test_core_persona_claude_usage_and_web_search(tmp_path, monkeypatch):
             persona = await client.request("core.persona", {})
             assert persona["name"] == "ГЛаДОС" and 0 < len(persona["card"]) <= 2000
             assert "подопытным" in persona["card"]                          # из prompt.yaml, не из конституции
-            await client.request("core.claude_usage", {"tokens": 1500, "source": "montage"})
-            await client.request("core.claude_usage", {"tokens": 10, "limit_text": "You've hit your session limit"})
-            assert recorded == [(1500, "montage"), (10, "echo")] and noted == ["You've hit your session limit"]
             assert await client.request("core.web_search", {"query": "размер комнаты"}) == {"text": "нашла: размер комнаты"}
 
 

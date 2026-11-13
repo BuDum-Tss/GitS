@@ -2,7 +2,7 @@
 
 Кто запускает (`executor`):
   fast     - быстрый контур: планировщик на локальной модели (Gemma), `Router.handle`;
-  claude   - медленный контур: Claude-помощник (`claude_task`), его внутренние вызовы Read/Bash/Edit…
+  code     - медленный контур: помощник по коду (`code_task`), его внутренние вызовы Read/Bash/Edit…
              приходят от модуля как `job.update` со стадией `tool:<Имя>:<номер>` (`JobTracker`);
   external - вызов «со стороны»: модуль (`core.tool.call`), дашборд, другой агент.
 
@@ -15,7 +15,7 @@ from collections import deque
 RING = 200
 SUMMARY_MAX = 160
 RESULT_MAX = 160
-EXECUTORS = ("fast", "claude", "external")
+EXECUTORS = ("fast", "code", "external")
 
 _lock = threading.Lock()
 _entries: deque = deque(maxlen=RING)

@@ -2,51 +2,9 @@
 import asyncio
 
 from interfaces import contracts
-import settings
 from app import resident
-from interfaces.contracts import EndEvent, TextEvent
-from test_resident import FakeHost
-
-
-class FakeRuntime:
-    """Среда с управляемым ходом: пока не отпущена `release`, ход идёт; события отдаёт из `script`."""
-
-    def __init__(self, can_steer=True, steer_result=True, script=None):
-        self.can_steer = can_steer
-        self.steer_result = steer_result
-        self.script = script if script is not None else [TextEvent("готово")]
-        self.prompts, self.steered, self.resets, self.aborts, self.closed = [], [], [], 0, 0
-        self.release = asyncio.Event()
-        self.hold = False
-        self.started = asyncio.Event()
-        self.system = None
-
-    async def start(self, system, tools):
-        self.system = system
-        self.tools = tools
-
-    async def run(self, prompt):
-        self.prompts.append(prompt)
-        self.started.set()
-        if self.hold and len(self.prompts) == 1:
-            await self.release.wait()
-        for e in self.script:
-            yield e
-        yield EndEvent("ok")
-
-    async def steer(self, text):
-        self.steered.append(text)
-        return self.steer_result
-
-    async def abort(self):
-        self.aborts += 1
-        self.release.set()
-
-    async def reset(self, forget=True):
-        self.resets.append(forget)
-
-    async def close(self):
-        self.closed += 1
+from interfaces.contracts import EndEvent
+from resident_helpers import FakeHost, FakeRuntime
 
 
 def test_fake_runtime_satisfies_the_contract():
@@ -145,7 +103,7 @@ async def test_error_end_is_logged_and_history_is_kept(caplog):
     rt.run = run
     agent = resident.ResidentAgent(FakeHost(), runtime=rt)
     await agent.handle_user("привет")
-    assert "лимит подписки" in caplog.text and rt.resets == []
+    assert "лимит подписки" in caplog.text.lower() and rt.resets == []
 
 
 async def test_tools_are_described_once_and_given_to_the_runtime():
@@ -158,15 +116,15 @@ async def test_tools_are_described_once_and_given_to_the_runtime():
     assert ok and text == "окружения"
 
 
-async def test_runtime_is_chosen_by_setting_and_switched_on_the_next_turn():
+async def test_runtime_is_created_once_and_reset_goes_to_it():
     made = []
 
-    def factory(kind):
-        made.append(kind)
+    def factory():
+        made.append(1)
         return FakeRuntime()
     agent = resident.ResidentAgent(FakeHost(), runtime_factory=factory)
     await agent.handle_user("раз")
-    settings.update(agent_runtime="pi")
-    first = agent._runtime
     await agent.handle_user("два")
-    assert made == ["claude", "pi"] and first.closed == 1 and agent._runtime is not first
+    assert len(made) == 1                                   # одна сессия на все обращения
+    await agent.reset()
+    assert agent._runtime.resets == [True]                  # сброс идёт в среду, объект остаётся

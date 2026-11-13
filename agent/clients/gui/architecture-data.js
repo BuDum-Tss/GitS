@@ -280,15 +280,6 @@ window.ARCH_DATA = {
      "now": "contracts.py: AgentRuntime, ToolSpec, TextEvent, ToolEvent, EndEvent"
     },
     {
-     "id": "rtcl",
-     "t": "ClaudeRuntime",
-     "tag": "I",
-     "new": false,
-     "do": "Claude Agent SDK: ClaudeSDKClient, инструменты ядра как SDK MCP-сервер core, продолжение сессии после перезапуска, сброс после 60 обращений, interrupt, учёт лимита и расхода; steer нет",
-     "out": "RuntimeEvent",
-     "now": "adapters/runtime_claude.py (по умолчанию)"
-    },
-    {
      "id": "rtpi",
      "t": "PiRuntime",
      "tag": "I",
@@ -670,15 +661,6 @@ window.ARCH_DATA = {
      "now": ""
     },
     {
-     "id": "cl",
-     "t": "Claude Agent SDK",
-     "tag": "X",
-     "new": false,
-     "do": "единый агент, быстрая модель без инструментов (claude_llm.py) и долгие задачи",
-     "out": "",
-     "now": ""
-    },
-    {
      "id": "bridge",
      "t": "services/agent-runtime (Node)",
      "tag": "X",
@@ -906,21 +888,9 @@ window.ARCH_DATA = {
   ],
   [
    "rtc",
-   "rtcl",
-   "use",
-   "claude (по умолчанию)"
-  ],
-  [
-   "rtc",
    "rtpi",
    "use",
    "pi"
-  ],
-  [
-   "rtcl",
-   "cl",
-   "ext",
-   "Agent SDK"
   ],
   [
    "rtpi",
@@ -1079,12 +1049,6 @@ window.ARCH_DATA = {
    "цель"
   ],
   [
-   "tplan",
-   "cl",
-   "use",
-   "разбить на шаги"
-  ],
-  [
    "tsvc",
    "tstore",
    "w",
@@ -1233,12 +1197,6 @@ window.ARCH_DATA = {
    "mw",
    "w",
    "факты со ссылкой на эпизод"
-  ],
-  [
-   "sleep",
-   "cl",
-   "ext",
-   "резюме, дневник (короткие запросы)"
   ],
   [
    "sleep",

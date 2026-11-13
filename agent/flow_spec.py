@@ -21,8 +21,8 @@ NODES = [
     ("attention", "Внимание (срочность)", "attention"),
     ("speech_queue", "Очередь речи", "output"),
     ("planner", "Выбор инструментов", "thinking"),
-    ("gemma", "Claude (быстрая модель)", "thinking"),                  # id узла прежний, модель теперь Claude (claude_llm)
-    ("claude", "Claude (долгие задачи)", "thinking"),
+    ("gemma", "pi (быстрая модель)", "thinking"),                     # id узла прежний
+    ("deep", "pi (долгие задачи)", "thinking"),
     ("tools", "Инструменты", "tools"),
     ("working_memory", "Рабочая память", "wm"),
     ("graph_memory", "Личная память (граф)", "ltm"),
@@ -34,11 +34,11 @@ NODES = [
 
 EDGES = [
     ("bus", "gliner"), ("gliner", "attention"), ("bus", "attention"), ("attention", "working_memory"),
-    ("attention", "planner"), ("attention", "speech_queue"), ("planner", "gemma"), ("planner", "claude"),
+    ("attention", "planner"), ("attention", "speech_queue"), ("planner", "gemma"), ("planner", "deep"),
     ("planner", "tools"), ("planner", "graph_memory"), ("gemma", "speech_queue"), ("gemma", "working_memory"),
     ("gemma", "graph_memory"), ("working_memory", "graph_memory"),
     ("speech_queue", "out_voice"), ("speech_queue", "out_presence"), ("speech_queue", "out_telegram"),
-    ("speech_queue", "out_dashboard"), ("claude", "speech_queue"),
+    ("speech_queue", "out_dashboard"), ("deep", "speech_queue"),
 ]
 
 # Состояния хода и узел, который переводит в состояние (поведенческий граф без LangGraph)

@@ -19,7 +19,6 @@ from gits_sdk import protocol as P
 
 STAGES = ("intake", "clarify", "transcribe", "story", "plan", "plan_approval", "voiceover", "build", "preview", "review",
           "final", "done")
-PAUSED_STAGE = "paused_battery"
 FINISHED = ("done", "failed", "cancelled")
 SUBDIRS = ("sources", "transcript", "plan", "work", "renders", "qa")
 
@@ -124,7 +123,7 @@ class JobStore:
         now = time.time()
         data = {"job_id": job_id, "title": title or default_title(request), "created": now, "updated": now,
                 "state": "queued", "stage": "intake", "progress": 0.0, "request": dict(request), "question": None,
-                "answers": [], "revisions": [], "claude": {"session_id": None, "tokens": 0}, "artifacts": [],
+                "answers": [], "revisions": [], "agent": {"session_id": None, "tokens": 0}, "artifacts": [],
                 "error": None}
         job = Job(folder, data)
         self.save(job)

@@ -1,7 +1,7 @@
-"""Быстрая модель: один вызов `_ask` и потоковый `_ask_stream` (Claude через `claude_llm`, при настройке `agent_runtime = pi` pi через `pi_llm`).
+"""Быстрая модель: один вызов `_ask` и потоковый `_ask_stream` (pi через `pi_llm`).
 
 Отдельного локального слоя нет: реплика по факту, зрение, размышление и запросы модулей (`core.llm.ask`) вызывают здесь
-Claude без инструментов (модель `fast_claude_model`). Разговор с владельцем ведёт единый агент (`app/resident.py`). Теги
+пи без инструментов. Разговор с владельцем ведёт единый агент (`app/resident.py`). Теги
 стикеров ставит сама модель в тексте ответа (`domain/stickers.py`).
 """
 import json
@@ -10,6 +10,7 @@ import re
 import time
 
 import flow_trace
+import pi_llm
 
 logger = logging.getLogger("fast_brain")
 
@@ -41,31 +42,19 @@ def _json_of(txt: str) -> dict | None:
     return out
 
 
-def _llm():
-    """Поставщик быстрой модели по настройке `agent_runtime`: (модуль с `ask` и `ask_stream`, метка для трассы)."""
-    import settings
-    if settings.load().get("agent_runtime") == "pi":
-        import pi_llm
-        return pi_llm, "pi"
-    import claude_llm
-    return claude_llm, "claude"
-
-
 async def _ask(system: str, user: str, timeout: float, max_tokens: int = 40,
                image_b64: str | None = None, temperature: float = 0.3,
                background: bool = False, parallel: bool = False) -> str:
-    """Один вызов Claude без инструментов. `max_tokens`, `temperature`, `background` и `parallel` остались в сигнатуре для
-    вызывающих: Claude их не использует."""
-    llm, label = _llm()
+    """Один вызов модели без инструментов. `max_tokens`, `temperature`, `background` и `parallel` остались в сигнатуре для
+    вызывающих: pi их не использует."""
     t0 = time.perf_counter()
-    out = await llm.ask(system, user, max(timeout, 30.0), image_b64=image_b64)
+    out = await pi_llm.ask(system, user, max(timeout, 30.0), image_b64=image_b64)
     flow_trace.step(None, "gemma", "planner", "gemma", "llm", ms=(time.perf_counter() - t0) * 1000, size=len(system) + len(str(user)),
-                    label=label)
+                    label="pi")
     return out
 
 
 async def _ask_stream(system: str, user: str, timeout: float, max_tokens: int = 140, temperature: float = 0.7):
     """Ответ потоком кусков текста (асинхронный генератор). Закрытие генератора обрывает запрос."""
-    llm, _ = _llm()
-    async for piece in llm.ask_stream(system, user, max(timeout, 30.0)):
+    async for piece in pi_llm.ask_stream(system, user, max(timeout, 30.0)):
         yield piece

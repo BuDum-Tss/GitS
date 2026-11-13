@@ -16,7 +16,7 @@ GOOD = {
     "version": "1.0.0",
     "capabilities": ["game"],
     "subscribe": ["presence", "settings", "profile", "module"],
-    "shared_settings": ["streamer", "dnd", "quiet_until", "game_model", "claude_usage", "voice_muted"],
+    "shared_settings": ["streamer", "dnd", "quiet_until", "game_model", "voice_muted"],
     "settings_schema": {
         "poll_seconds": {"type": "integer", "title": "Опрос игры, секунд", "default": 5, "min": 1, "max": 60}
     },
@@ -265,7 +265,7 @@ def test_unknown_manifest_fields_are_ignored():
 
 def test_hello_body_validates():
     body = P.hello_body(GOOD, "c0ffee12", 123)
-    assert body["id"] == "rimworld" and body["role"] == "workspace" and body["protocol"] == 2 and "module_id" not in body
+    assert body["id"] == "rimworld" and body["role"] == "workspace" and body["protocol"] == 3 and "module_id" not in body
     assert P.validate_hello(body) == []
 
 
@@ -294,7 +294,7 @@ def test_hello_manifest_problems_are_reported():
 
 def test_envelope_roundtrip():
     env = Envelope("event", {"kind": "echo.x", "text": "привет"})
-    assert env.id.startswith("m-") and len(env.id) == 18 and env.v == 2 and env.re is None
+    assert env.id.startswith("m-") and len(env.id) == 18 and env.v == 3 and env.re is None
     raw = env.dumps()
     assert "привет" in raw                       # UTF-8, а не \u-экранирование
     back = Envelope.loads(raw)
@@ -323,7 +323,7 @@ def test_envelope_rejects_bad_frames(raw):
 
 
 def test_envelope_ignores_unknown_fields():
-    env = Envelope.loads(json.dumps({"v": 2, "type": "x", "id": "m-1", "re": None, "ts": 1, "body": {"a": 1},
+    env = Envelope.loads(json.dumps({"v": 3, "type": "x", "id": "m-1", "re": None, "ts": 1, "body": {"a": 1},
                                      "новое": True}))
     assert env.body == {"a": 1}
 

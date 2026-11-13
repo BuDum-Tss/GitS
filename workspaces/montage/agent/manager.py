@@ -102,7 +102,7 @@ class Manager:
 
     # ================================================================================================ поставить задачу
 
-    def preflight(self, args: dict, *, battery_sleeping: bool) -> tuple[list[Path], dict]:
+    def preflight(self, args: dict) -> tuple[list[Path], dict]:
         """Проверки MON-5 до постановки. Возвращает (пути исходников, request); иначе ToolError."""
         missing = self.layout.missing_fonts()
         if missing:
@@ -131,8 +131,6 @@ class Manager:
         for key, allowed in (("source_kind", SOURCE_KINDS), ("platform", PLATFORMS), ("format", FORMATS), ("voiceover", VOICEOVERS)):
             if args.get(key) is not None and args[key] not in allowed:
                 raise ToolError(f"{key}: одно из {', '.join(allowed)}", code="bad_request")
-        if battery_sleeping:
-            raise ToolError("нет заряда Claude", code="unavailable")                       # MON-5
         need = DISK_FACTOR * total_size(paths)
         free = shutil.disk_usage(self.store.dir).free
         if free < need:
@@ -146,7 +144,7 @@ class Manager:
         return paths, request
 
     async def start(self, args: dict) -> dict:
-        _, request = await asyncio.to_thread(self.preflight, args, battery_sleeping=self.core.sleeping)
+        _, request = await asyncio.to_thread(self.preflight, args)
         if not request.get("format") and request["platform"] in ("shorts", "reels", "telegram"):
             request["format"] = "vertical"
         job = await asyncio.to_thread(self.store.create, request)

@@ -26,13 +26,12 @@ import logging
 import time
 from pathlib import Path
 
-import flow_trace
 import character
 import prompts
 import reply_trace
 from adapters.approver import ApprovalsModule
 from adapters.event_log_sqlite import SqliteEventLog
-from adapters.llm_claude import ClaudeLLM
+from adapters.llm_fast import FastLLM
 from services.memory_service import UserMemoryAdapter
 from adapters.people import RelationshipsAdapter
 from adapters.settings_provider import SettingsModule
@@ -72,7 +71,7 @@ class Companion:
         self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
         self._rel = rel
         self._people = people if people is not None else RelationshipsAdapter(lambda: self._rel)
-        self._llm = llm if llm is not None else ClaudeLLM()
+        self._llm = llm if llm is not None else FastLLM()
         self._log = event_log if event_log is not None else SqliteEventLog()
         self._settings = settings_provider if settings_provider is not None else SettingsModule()
         self._approver = approver if approver is not None else ApprovalsModule()
@@ -108,7 +107,7 @@ class Companion:
         self.reply_generator = ReplyGenerator(self)
         self.memory_capture = MemoryCapture(self)
         self.conversation = ConversationService(self)
-        self.resident = ResidentAgent(self)  # один агент на всё: разговор, события и самоимпульсы в одной сессии Claude
+        self.resident = ResidentAgent(self)  # один агент на всё: разговор, события и самоимпульсы в одной сессии агента
 
     @property
     def people(self):
@@ -284,8 +283,8 @@ class Companion:
     async def _speak_about_impl(self, fact: str, user_text: str, must: bool, question: bool, direct: bool):
         await self.reply_generator.speak_about(fact, user_text, must, question, direct)
 
-    def _claude_note(self) -> str:
-        return self.context_builder.claude_note()
+    def _model_note(self) -> str:
+        return self.context_builder.model_note()
 
     def _capabilities(self) -> str:
         return self.context_builder.capabilities()
@@ -313,29 +312,6 @@ class Companion:
 
     def _set_quiet(self, minutes):
         self.memory_capture.set_quiet(minutes)
-
-    async def run_claude(self, task: str) -> str | None:
-        """Сложная задача на Claude (модуль desktop, инструмент claude_task, ТЗ 14 DESK-11): запускается задачей и ждёт её итога.
-        Контекст разговора без услышанного подставляет ядро (core_fills). Возвращает итог, "" если добавить нечего,
-        None при сбое или если модуль desktop не подключён."""
-        import llm_gate
-        if llm_gate.blocked():
-            return f"Модель для тяжёлых задач сейчас недоступна: {llm_gate.note()}."
-        if self.router is None or self.job_wait is None:
-            return None
-        ok, text, _code = await self.router.run_tool_ex("desktop.claude_task", {"task": task})
-        from peer_registry import PeerRegistry
-        job_id = PeerRegistry.job_id_from(text) if ok else None
-        if job_id is None:
-            return None
-        t0 = time.perf_counter()
-        job = await self.job_wait("desktop", job_id, 600)
-        done = job.get("state") == "done"
-        flow_trace.step(None, "claude", "planner", "claude", "llm" if done else "error", ms=(time.perf_counter() - t0) * 1000,
-                        label="task" if done else "task:error")           # ТЗ 17: долгая задача Claude как отдельный выход схемы
-        if done:
-            return str(job.get("text") or "")
-        return None
 
     def arm_idle_consolidation(self) -> None:
         """После реплики пользователя: если беседа замолкнет, осмыслить её через IDLE_CONSOLIDATE_S (один отложенный вызов)."""

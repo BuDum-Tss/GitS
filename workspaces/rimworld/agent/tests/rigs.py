@@ -13,8 +13,7 @@ import workspace_module
 import settings
 from core_link import CoreLink
 
-SHARED = {"streamer": False, "dnd": False, "quiet_until": 0.0, "game_model": "haiku", "claude_usage": "normal",
-          "voice_muted": False, "telegram_after_run": False, "record_runs": False}
+SHARED = {"streamer": False, "dnd": False, "quiet_until": 0.0, "voice_muted": False, "telegram_after_run": False, "record_runs": False}
 
 
 class Rig:
@@ -22,7 +21,6 @@ class Rig:
         self.tmp = tmp_path
         self.core = FakeCore(settings={**SHARED, **(shared or {})}, module_settings=module_settings)
         self.tool_calls: list[dict] = []
-        self.usage: list[dict] = []
         self._task: asyncio.Task | None = None
 
     async def __aenter__(self):
@@ -42,11 +40,6 @@ class Rig:
         def tool_call(body):
             rig.tool_calls.append(body)
             return {"text": "ok"}
-
-        @self.core.on_request("core.claude_usage")
-        def usage(body):
-            rig.usage.append(body)
-            return {}
 
         self._task = asyncio.create_task(self.link.run())
         await self.core.wait_connected()

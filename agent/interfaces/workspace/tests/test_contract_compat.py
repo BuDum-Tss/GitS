@@ -35,7 +35,6 @@ OLD_BODIES = {
     "core.tool.call": [{"tool": "echo.ping", "args": {"text": "x"}}],
     "core.persona": [{}],
     "core.privacy_terms": [{}],
-    "core.claude_usage": [{"tokens": 100, "source": "desktop"}, {"tokens": 0, "limit_text": "лимит"}],
     "core.web_search": [{"query": "погода"}],
     "state": [{"summary": "работает", "data": {"n": 1}}],
     "panel.set": [{"blocks": [{"type": "text", "text": "привет"}]}],
@@ -49,19 +48,19 @@ OLD_BODIES = {
     "graph.get": [{}],
 }
 
-# имена сообщений версии 1.0: удалять нельзя без повышения PROTOCOL (исключения по решению владельца: справочник удалён в 1.6, политики в 1.10)
+# имена сообщений версии 1.0: удалять нельзя без повышения PROTOCOL (исключения по решению владельца: справочник удалён в 1.6, политики в 1.10, батарейка Claude в 3.0)
 NAMES_1_0 = {"hello", "event", "say", "emotion", "state", "job.update", "panel.set", "core.ask", "core.tts", "core.tool.call",
              "core.memory.recall", "core.memory.remember",
-             "core.persona", "core.privacy_terms", "core.claude_usage", "core.web_search", "tool.call", "tool.check",
+             "core.persona", "core.privacy_terms", "core.web_search", "tool.call", "tool.check",
              "job.cancel", "job.list", "graph.get", "deliver", "tts.synthesize", "panel.action",
              "welcome", "reject", "job.answer", "speak", "speak.stop", "shutdown",
-             "presence", "settings", "profile", "battery", "character", "module"}
+             "presence", "settings", "profile", "character", "module"}
 
 
 def test_old_manifest_still_passes():
     assert P.validate_manifest(OLD_MANIFEST) == []
     hello = P.hello_body(OLD_MANIFEST, "inst0001", 1234)
-    assert hello["protocol"] == 2 and P.validate_hello(hello) == []
+    assert hello["protocol"] == 3 and P.validate_hello(hello) == []
 
 
 def test_manifest_of_1_x_without_role_is_rejected():
@@ -85,7 +84,7 @@ def test_no_message_of_version_1_0_was_removed():
 
 
 def test_protocol_and_contract_versions_agree():
-    assert P.PROTOCOL == versions.PROTOCOL == 2
+    assert P.PROTOCOL == versions.PROTOCOL == 3
     assert re.fullmatch(r"\d+\.\d+", versions.CONTRACT_VERSION)
     assert versions.CONTRACT_VERSION.split(".")[0] == str(P.PROTOCOL)            # мажор контракта = протокол
     cur = tuple(int(x) for x in versions.CONTRACT_VERSION.split("."))
@@ -95,7 +94,7 @@ def test_protocol_and_contract_versions_agree():
 
 
 def test_new_elements_are_marked_with_their_version():
-    for name in ("core.llm.ask", "core.events.tail", "core.claude.locate", "log"):
+    for name in ("core.llm.ask", "core.events.tail", "log"):
         assert contract.get(name).since == "1.1"
 
 

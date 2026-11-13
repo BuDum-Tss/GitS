@@ -47,7 +47,7 @@ async def wait_for(predicate, timeout=15.0):
 async def test_echo_module_end_to_end_through_dashboard(tmp_path):
     port = free_port()
     companion, registry = WiredCompanion(), Registry()
-    layer = core_service.wire_modules(companion, registry, port=port, battery=lambda: {"level": 1.0, "sleeping": False},
+    layer = core_service.wire_modules(companion, registry, port=port,
                                       specs=[x for x in load_specs() if x.id == "echo"])      # только эхо: Telegram в тесте не запускаем
     dashboard._MEMORY_DIR = tmp_path / "memory"
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
@@ -136,7 +136,7 @@ async def test_module_launch_from_the_dashboard_is_announced_through_attention(t
     внимания (факт о настройке; фразу строит модель). Проверка проводки `announce` супервизора в core_service."""
     port = free_port()
     companion, registry = WiredCompanion(), Registry()
-    layer = core_service.wire_modules(companion, registry, port=port, battery=lambda: {"level": 1.0, "sleeping": False},
+    layer = core_service.wire_modules(companion, registry, port=port,
                                       specs=[x for x in load_specs() if x.id == "echo"])
     said = []
     submit = layer.attention.submit_announce

@@ -1,7 +1,7 @@
-"""Глубокий анализ силами Claude: протокол событий, причины гибели колонии, разбор собственной работы.
+"""Глубокий анализ силами агента pi: протокол событий, причины гибели колонии, разбор собственной работы.
 
 Локальная модель для этого слишком мелкая: на «проанализируй себя» она выдаёт отписки. Здесь работает
-отдельный агент на Claude Code. Ему готовится досье (хронология, решения в игре, ошибки, невыполненные
+отдельный агент pi. Ему готовится досье (хронология, решения в игре, ошибки, невыполненные
 обещания, цели и уроки), и он сам читает сырые файлы проекта (журналы, код) инструментами Read/Glob/Grep.
 Права только на чтение внутри проекта, без команд и записи: спрашивать разрешений не нужно.
 Результат: подробный отчёт (memory/reports/), краткое резюме для озвучки, выводы для памяти, предложения правок.
@@ -12,23 +12,14 @@ import os
 import time
 from pathlib import Path
 
-from claude_agent_sdk import (
-    ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
-    PermissionResultAllow, PermissionResultDeny,
-)
-
 import character
-import claude_battery
-import claude_quota
 import events_log
 import flow_trace
+import llm_gate
 import safety
-from claude_cli import _CLI_PATH
-from gits_sdk.envcompat import env
 
 logger = logging.getLogger("analysis")
 
-MODEL = env("GITS_ANALYSIS_MODEL", "sonnet")
 TIMEOUT = 600
 PI_MAX_TURNS = 60
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -58,13 +49,8 @@ SYSTEM_PROMPT = """Ты — аналитик системы {name} (ассист
  "fixes": ["до 5 конкретных правок в коде, настройках или инструментах, с указанием файла, если знаешь"]}
 """
 
-def _use_pi() -> bool:
-    import settings
-    return settings.load().get("agent_runtime") == "pi"
-
-
 def check_read(tool_name: str, tool_input: dict, allowed: set[str] = _READ) -> str | None:
-    """Причина отказа или None. Только чтение внутри проекта, без файлов с секретами (одна проверка для Claude и pi)."""
+    """Причина отказа или None. Только чтение внутри проекта, без файлов с секретами ."""
     if tool_name not in allowed:
         return "Здесь разрешено только чтение."
     if safety.danger_of(tool_name, tool_input, _PROJECT_ROOT):
@@ -81,32 +67,7 @@ def check_read(tool_name: str, tool_input: dict, allowed: set[str] = _READ) -> s
     return "Читать можно только внутри проекта."
 
 
-async def _claude_runner(prompt: str) -> str:
-    async def can_use_tool(tool_name, tool_input, _ctx):
-        why = check_read(tool_name, tool_input)
-        return PermissionResultDeny(message=why) if why else PermissionResultAllow()
-
-    kwargs = dict(system_prompt=character.fill(SYSTEM_PROMPT), model=MODEL, tools=sorted(_READ), allowed_tools=[],
-                  permission_mode="default", can_use_tool=can_use_tool, setting_sources=[],
-                  cwd=str(_PROJECT_ROOT))
-    if _CLI_PATH:
-        kwargs["cli_path"] = _CLI_PATH
-    answer = ""
-    async with ClaudeSDKClient(options=ClaudeAgentOptions(**kwargs)) as client:
-        await client.query(prompt)
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    t = getattr(block, "text", None)
-                    if t:
-                        answer = t.strip()
-            elif isinstance(msg, ResultMessage):
-                claude_battery.record_result(msg, "analysis")
-                break
-    return answer
-
-
-async def _pi_runner(prompt: str) -> str:
+async def _runner(prompt: str) -> str:
     """Тот же анализ на рабочем агенте pi: только чтение, те же пути и проверка. Шаблон `..` и пути вне проекта отказываются."""
     import settings
     from gits_sdk.pi_agent import EndEvent, PiAgent, PiAgentError, TextEvent
@@ -231,20 +192,13 @@ def _parse(answer: str) -> dict | None:
 
 async def analyze(question: str, hours: float = 6.0, extra: str = "") -> dict:
     """Запустить анализ. Возвращает {summary, report, conclusions, fixes, report_path} или бросает RuntimeError
-    с человеческим текстом причины (например, исчерпан лимит Claude)."""
-    if not _use_pi() and claude_quota.blocked():
-        raise RuntimeError(f"лимит Claude исчерпан до {claude_quota.until_text()}, анализ невозможен до сброса")
+    с человеческим текстом причины (например, исчерпан лимит подписки)."""
     dossier = build_dossier(question, hours, extra)
     export = _mem() / "reports" / f"events_{time.strftime('%Y%m%d_%H%M%S')}.jsonl"
     events_log.export_jsonl(export, since=time.time() - hours * 3600)
     for stale in sorted(export.parent.glob("events_*.jsonl"))[:-5]:
         stale.unlink(missing_ok=True)
 
-    use_pi = _use_pi()
-    if use_pi:
-        answer_runner = _pi_runner
-    else:
-        answer_runner = _claude_runner
     prompt = (f"Вопрос: {question}\n\nДосье: {dossier}\nВыгрузка событий (JSONL): {export}\n(абсолютные пути; прочитай досье "
               "первым, дальше действуй по обстоятельствам.)")
     import asyncio
@@ -252,20 +206,18 @@ async def analyze(question: str, hours: float = 6.0, extra: str = "") -> dict:
     t0 = time.perf_counter()
     answer = ""
     try:
-        answer = await asyncio.wait_for(answer_runner(prompt), TIMEOUT)
+        answer = await asyncio.wait_for(_runner(prompt), TIMEOUT)
     except asyncio.TimeoutError:
-        flow_trace.step(None, "claude", "planner", "claude", "error", ms=(time.perf_counter() - t0) * 1000, label="analysis:error")
+        flow_trace.step(None, "deep", "planner", "deep", "error", ms=(time.perf_counter() - t0) * 1000, label="analysis:error")
         raise RuntimeError("анализ не уложился в 10 минут")
     except Exception as e:
-        flow_trace.step(None, "claude", "planner", "claude", "error", ms=(time.perf_counter() - t0) * 1000, label="analysis:error")
-        if not use_pi and claude_quota.note(str(e)):
-            raise RuntimeError(f"лимит Claude исчерпан до {claude_quota.until_text()}")
+        flow_trace.step(None, "deep", "planner", "deep", "error", ms=(time.perf_counter() - t0) * 1000, label="analysis:error")
+        if llm_gate.note_pi_error(str(e)):
+            raise RuntimeError(llm_gate.note())
         logger.error(f"Анализ: {e}", exc_info=True)
         raise RuntimeError(str(e)[:300])
 
-    flow_trace.step(None, "claude", "planner", "claude", "llm", ms=(time.perf_counter() - t0) * 1000, size=len(answer), label="analysis")
-    if not use_pi and claude_quota.note(answer):
-        raise RuntimeError(f"лимит Claude исчерпан до {claude_quota.until_text()}")
+    flow_trace.step(None, "deep", "planner", "deep", "llm", ms=(time.perf_counter() - t0) * 1000, size=len(answer), label="analysis")
     res = _parse(answer)
     if not res:
         raise RuntimeError("аналитик ответил не по формату: " + answer[:200])

@@ -8,7 +8,7 @@
 условиям или вручную. Сон такое же состояние: пока идёт разбор памяти (`sleeping()`), активен профиль `sleep`.
 
 Выбор профиля (CORE-19), каждые 2 секунды и при смене состояния модулей:
-  1. нет заряда Claude (`battery.sleeping`) или идёт сон памяти (`sleeping()`) -> `sleep` (сильнее ручного выбора);
+  1. идёт сон памяти (`sleeping()`) -> `sleep` (сильнее ручного выбора);
   2. настройка `profile` не `auto`, такой профиль есть и он не `planned` -> он;
   3. иначе из профилей с выполненным условием `activate` берётся с наибольшим `priority` (при равенстве текущий, иначе
      первый по алфавиту);
@@ -37,7 +37,7 @@ logger = logging.getLogger("profiles")
 
 PROFILES_DIR = Path(__file__).resolve().parent / "profiles"
 HUB = "assistant"          # профиль по умолчанию (центр графа)
-SLEEP = "sleep"            # особый профиль: нет заряда Claude
+SLEEP = "sleep"            # особый профиль: идёт сон памяти
 STREAMER_TONE_FILE = "_streamer_tone.txt"
 
 # прежние значения настройки `profile` (до ТЗ 02) -> нынешние профили; stream профилем больше не является
@@ -129,7 +129,7 @@ def load_profiles(directory: Path | str = PROFILES_DIR) -> dict[str, Profile]:
             continue
         out[profile.id] = profile
     out.setdefault(HUB, Profile(HUB, "Ассистент", "Обычное состояние: разговор, память, управление компьютером."))
-    out.setdefault(SLEEP, Profile(SLEEP, "Сон", "Токены Claude кончились: только лёгкий разговор."))
+    out.setdefault(SLEEP, Profile(SLEEP, "Сон", "Идёт разбор памяти: только лёгкий разговор."))
     return out
 
 
@@ -146,7 +146,6 @@ def _norm_app(app) -> str:
 
 class ProfileManager:
     def __init__(self, profiles: dict[str, Profile] | None = None, *,
-                 battery: Callable[[], dict] = lambda: {},
                  foreground_app: Callable[[], str | None] = lambda: None,
                  workspace_of: Callable[[], str] = lambda: "assistant",
                  module_state: Callable[[str], dict | None] = lambda peer_id: None,
@@ -156,12 +155,11 @@ class ProfileManager:
                  on_change: Callable[[str, str], None] | None = None,
                  streamer_tone: str | None = None,
                  subgraph: Callable[[Profile], Awaitable[dict | None]] | None = None):
-        """battery() -> claude_battery.status(); foreground_app() -> имя процесса активного окна (модуль desktop, а до
+        """foreground_app() -> имя процесса активного окна (модуль desktop, а до
         ТЗ 14: состояние модуля desktop); module_state(id) -> последний state.data модуля или None; choice() -> настройка
         profile; streamer() -> настройка streamer; on_change(старый, новый) вызывается при смене профиля;
         subgraph(profile) -> живой подграф профиля от его модуля (graph.get) или None."""
         self.profiles = profiles if profiles is not None else load_profiles()
-        self._battery = battery
         self._foreground = foreground_app
         self._workspace = workspace_of
         self._module_state = module_state
@@ -227,14 +225,13 @@ class ProfileManager:
     def evaluate(self) -> str:
         """Пересчитать активный профиль (CORE-19). Возвращает его id; при смене вызывает on_change."""
         now = self._now()
-        battery_sleep = bool(self._battery().get("sleeping"))
-        sleeping = battery_sleep or bool(self.sleeping())
+        sleeping = bool(self.sleeping())
         auto = SLEEP if sleeping else self._pick_auto(now)
         manual = None if sleeping else self.manual_choice()
         new = SLEEP if sleeping else (manual or auto)
         self._auto = auto
         old = self._current
-        self._why = self._reason(new, manual, battery_sleep)
+        self._why = self._reason(new, manual)
         if new != old or not self._evaluated:
             self._current, self._since = new, now
             if self._evaluated:
@@ -248,10 +245,10 @@ class ProfileManager:
             self._evaluated = True
         return new
 
-    def _reason(self, new: str, manual: str | None, battery_sleep: bool) -> str:
+    def _reason(self, new: str, manual: str | None) -> str:
         """Почему сейчас это состояние (для дашборда)."""
         if new == SLEEP:
-            return "нет заряда Claude" if battery_sleep else "идёт разбор памяти"
+            return "идёт разбор памяти"
         if manual == new:
             return "выбрано вручную"
         if new == HUB:
@@ -331,7 +328,7 @@ class ProfileManager:
         if p.planned:
             return "В планах, пока не написано"
         if p.id == SLEEP:
-            return "Сама: простой, час расписания или нет заряда Claude. Или по кнопке «Уснуть сейчас»"
+            return "Сама: простой или час расписания. Или по кнопке «Уснуть сейчас»"
         if p.id == HUB:
             return "По умолчанию, когда нет других занятий"
         act, parts = p.activate or {}, []
@@ -367,7 +364,7 @@ class ProfileManager:
             sub = live or DEFAULT_SUBGRAPHS.get(p.id)
             if sub:
                 subs[p.id] = {**sub, "live": bool(live)}
-        return {"current": cur, "auto": self._auto, "override": self.manual_choice(), "battery": self._battery(),
+        return {"current": cur, "auto": self._auto, "override": self.manual_choice(),
                 "nodes": nodes, "edges": edges, "subgraphs": subs, "states": self.states(), "why": self._why,
                 "since": self._since, "history": list(self.history)[:20]}
 

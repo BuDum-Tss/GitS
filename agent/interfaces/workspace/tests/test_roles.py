@@ -78,7 +78,7 @@ def test_service_with_ownership_or_workspace_is_rejected():
 
 def test_hello_carries_only_id_and_role():
     body = P.hello_body(MANIFEST, "inst0001", 1)
-    assert body["id"] == "demo" and body["role"] == "workspace" and "module_id" not in body and body["protocol"] == 2
+    assert body["id"] == "demo" and body["role"] == "workspace" and "module_id" not in body and body["protocol"] == 3
     assert validate_hello(body) == []
     assert P.hello_body(service_manifest(), "i", 1)["role"] == "service"
 
@@ -122,7 +122,7 @@ def test_env_names(monkeypatch):
 def test_ws_path_and_default_url():
     assert P.WS_PATH == "/ws" and not hasattr(P, "WS_PATH_NEW")
     assert P.DEFAULT_CORE_URL.endswith("/ws") and "module" not in P.DEFAULT_CORE_URL
-    assert P.PROTOCOL == 2
+    assert P.PROTOCOL == 3
 
 
 async def test_token_from_env_name(monkeypatch, tmp_path):

@@ -43,8 +43,8 @@ MANIFEST = {
     "description": "Монтаж роликов из файлов: расшифровка, план, её закадровый голос, графика Aperture, субтитры, "
                    "черновик и финальный рендер. Задачи долгие, результат приходит позже.",
     "version": "0.1.0",
-    "subscribe": ["settings", "module", "battery"],
-    "shared_settings": ["dnd", "quiet_until", "claude_usage", "agent_runtime", "pi_model_heavy", "pi_thinking"],
+    "subscribe": ["settings", "module"],
+    "shared_settings": ["dnd", "quiet_until", "pi_model_heavy", "pi_thinking"],
     "settings_schema": {
         "approve_plan": {"type": "boolean", "title": "Спрашивать утверждение плана монтажа", "default": True},
         "auto_final": {"type": "boolean", "title": "Рендерить финал без вопроса «готово / правки»", "default": False},

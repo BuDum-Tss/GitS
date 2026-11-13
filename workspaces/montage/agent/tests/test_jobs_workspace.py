@@ -2,7 +2,7 @@
 import json
 import threading
 
-from jobs import JobStore, PAUSED_STAGE, STAGES
+from jobs import JobStore, STAGES
 from layout import DEFAULT
 from tests.stubs import make_plan
 import srt as srt_mod
@@ -21,11 +21,10 @@ def test_job_folder_layout_and_job_json(tmp_path):
     for sub in ("sources", "transcript", "plan", "work", "renders", "qa"):
         assert (job.folder / sub).is_dir()
     data = json.loads((job.folder / "job.json").read_text(encoding="utf-8"))
-    assert {"job_id", "title", "created", "updated", "state", "stage", "progress", "request", "question", "answers", "revisions", "claude",
+    assert {"job_id", "title", "created", "updated", "state", "stage", "progress", "request", "question", "answers", "revisions", "agent",
             "artifacts", "error"} <= set(data)
-    assert data["state"] == "queued" and data["stage"] == "intake" and data["claude"] == {"session_id": None, "tokens": 0}
+    assert data["state"] == "queued" and data["stage"] == "intake" and data["agent"] == {"session_id": None, "tokens": 0}
     assert STAGES.index("story") == STAGES.index("transcribe") + 1 and STAGES.index("plan") == STAGES.index("story") + 1
-    assert PAUSED_STAGE == "paused_battery"
 
 
 def test_save_is_atomic_and_thread_safe(tmp_path):

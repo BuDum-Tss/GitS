@@ -17,7 +17,7 @@ class ContextBuilder:
     def __init__(self, host):
         self._h = host
 
-    def claude_note(self) -> str:
+    def model_note(self) -> str:
         import llm_gate
         why = llm_gate.note()
         return (f"Модель для тяжёлых задач (игровые ходы, глубокий анализ, помощник) сейчас недоступна: {why}. "
@@ -39,7 +39,7 @@ class ContextBuilder:
         status = h._memory_reader.graph_status()
         if status is not None:
             lines.append("- " + status)
-        note = h._claude_note()
+        note = h._model_note()
         if note:
             lines.append("- " + note)
         return "\n".join(lines)
@@ -85,12 +85,12 @@ class ContextBuilder:
 
     @staticmethod
     def actions_block(window_s: float = 600.0, limit: int = 8) -> str:
-        """Что реально делается и сделано исполнителями (Claude: игровые ходы и задачи; планировщик: быстрые действия): по журналу
+        """Что реально делается и сделано исполнителями (модуль кода: игровые ходы и задачи; планировщик: быстрые действия): по журналу
         запусков инструментов, подряд идущие одинаковые склеены. Нет записей: так и сказано, чтобы она ничего не заявляла."""
         import time
 
         import tool_trace
-        who = {"claude": "Модуль кода", "fast": "быстрая модель", "external": "ты сама (и модули)"}
+        who = {"code": "Модуль кода", "fast": "быстрая модель", "external": "ты сама (и модули)"}
         state = {"running": "идёт", "done": "сделано", "failed": "не удалось"}
         now = time.time()
         rows: list[list] = []

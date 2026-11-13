@@ -169,12 +169,12 @@ def test_readonly_reviewer_only_reads(tmp_path):
 async def test_decisions_are_logged_without_file_contents(box):
     rows = []
     box.log = rows.append
-    r1 = await box.can_use_tool("Bash", {"command": "ffmpeg -i a.mp4 b.mp4"}, None)
-    r2 = await box.can_use_tool("Bash", {"command": "curl http://x"}, None)
-    r3 = await box.can_use_tool("Write", {"file_path": abs_(box, "work/a.ts"), "content": "СЕКРЕТНОЕ СОДЕРЖИМОЕ"}, None)
-    assert type(r1).__name__ == "PermissionResultAllow" and type(r2).__name__ == "PermissionResultDeny" and r2.message
+    r1 = await box.check("Bash", {"command": "ffmpeg -i a.mp4 b.mp4"})
+    r2 = await box.check("Bash", {"command": "curl http://x"})
+    r3 = await box.check("Write", {"file_path": abs_(box, "work/a.ts"), "content": "СЕКРЕТНОЕ СОДЕРЖИМОЕ"})
+    assert r1[0] is True and r2[0] is False and r2[1] and r3[0] is True
     assert [(r["tool"], r["allowed"]) for r in rows] == [("Bash", True), ("Bash", False), ("Write", True)]
-    assert "СЕКРЕТНОЕ" not in json.dumps(rows, ensure_ascii=False) and type(r3).__name__ == "PermissionResultAllow"
+    assert "СЕКРЕТНОЕ" not in json.dumps(rows, ensure_ascii=False)
 
 
 def test_tokenize_basics():

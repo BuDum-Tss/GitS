@@ -253,7 +253,7 @@ async def test_peer_snapshot_and_api_show_lease_and_space_without_secrets(space,
     monkeypatch.setenv("GITS_CONTROL_TOKEN", TOKEN)
     spec = PeerSpec(id="montage", cwd=".", command="", ownership="shared", unmanaged=True, control_url=space.server.url,
                     title="Монтаж видео")
-    layer = core_service.wire_modules(Companion(), Registry(), port=1, specs=[spec], battery=lambda: {"level": 1.0, "sleeping": False})
+    layer = core_service.wire_modules(Companion(), Registry(), port=1, specs=[spec])
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     settings.update(dev_mode=False)
 

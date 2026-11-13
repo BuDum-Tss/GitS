@@ -15,10 +15,9 @@ import settings
 from adapters.approver import ApprovalsModule
 from adapters.classifier_gliner import GlinerClassifier
 from adapters.event_log_sqlite import SqliteEventLog
-from adapters.llm_claude import ClaudeLLM
+from adapters.llm_fast import FastLLM
 from services.memory_service.adapters import UserMemoryAdapter
 from adapters.people import RelationshipsAdapter
-from adapters.runtime_claude import ClaudeRuntime, _sdk_schema
 from adapters.runtime_pi import PiRuntime
 from adapters.settings_provider import SettingsModule
 from services.attention import Attention
@@ -30,7 +29,7 @@ from router import Router
 # ── адаптеры удовлетворяют контрактам ──────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("obj, contract", [
-    (ClaudeLLM(), contracts.LanguageModel),
+    (FastLLM(), contracts.LanguageModel),
     (GlinerClassifier(), contracts.Classifier),
     (SqliteEventLog(), contracts.EventLog),
     (SettingsModule(), contracts.SettingsProvider),
@@ -42,27 +41,14 @@ from router import Router
     (decide.Decider(), contracts.Classifier),
     (Router(None, None), contracts.ToolInvoker),
     (time.time, contracts.Clock),
-    (ClaudeRuntime(), contracts.AgentRuntime),
     (PiRuntime(), contracts.AgentRuntime),
 ])
 def test_adapters_satisfy_their_contracts(obj, contract):
     assert isinstance(obj, contract)
 
 
-def test_runtimes_declare_whether_they_can_steer():
-    assert ClaudeRuntime.can_steer is False and PiRuntime.can_steer is True
-
-
-def test_claude_runtime_turns_tool_specs_into_the_sdk_schema_and_back():
-    assert _sdk_schema({"type": "object", "properties": {"tool_id": {"type": "string"}, "args": {"type": "object"}}}) == {
-        "tool_id": str, "args": dict}
-
-    async def handler(args):
-        return False, "нет"
-    rt = ClaudeRuntime()
-    rt._tools = [contracts.ToolSpec("call_tool", "d", {"type": "object", "properties": {"tool_id": {"type": "string"}}},
-                                    handler)]
-    assert rt._server()["name"] == "core"
+def test_pi_runtime_can_steer():
+    assert PiRuntime.can_steer is True
 
 
 def test_adapters_delegate_to_the_old_modules(monkeypatch):
@@ -171,7 +157,7 @@ async def test_companion_converses_on_fake_contracts_and_leaves_no_files(tmp_pat
                               quiet_active=lambda cfg=None: False),
                           approver=SimpleNamespace(has_pending=lambda: False,
                                                    try_answer=lambda text: False))
-    class Agent:                                                     # единый агент без Claude: отвечает через say
+    class Agent:                                                     # единый агент без модели: отвечает через say
         busy = False
 
         async def handle_user(self, text, use_memory=True):

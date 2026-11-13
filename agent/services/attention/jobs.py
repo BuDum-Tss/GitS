@@ -41,7 +41,7 @@ class JobTracker:
         key, state, stage = (peer_id, str(job.get("job_id"))), job.get("state"), job.get("stage")
         if state == "running" and str(stage or "").startswith(TOOL_STAGE):
             # внутренний вызов Claude-помощника (`tool:<Имя>:<номер>`): в чат, не в внимание
-            tool_trace.note("claude", str(stage).split(":")[1], str(job.get("text") or ""))
+            tool_trace.note("code", str(stage).split(":")[1], str(job.get("text") or ""))
             return
         before = self.states.get(key)
         self.states[key] = (state, stage)

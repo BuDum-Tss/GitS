@@ -45,14 +45,13 @@ class FakeCore:
     """Ядро в памяти. Все списки (`messages`, `hellos`, ...) пополняются по мере работы."""
 
     def __init__(self, *, token: str = "fake-token", enabled: bool = True, settings: dict | None = None,
-                 module_settings: dict | None = None, profile: dict | None = None, battery: dict | None = None,
+                 module_settings: dict | None = None, profile: dict | None = None,
                  core_version: str = "fake"):
         self.token = token
         self.enabled = enabled
         self.settings: dict = {"streamer": False, "dnd": False} if settings is None else dict(settings)
         self.module_settings: dict | None = None if module_settings is None else dict(module_settings)
         self.profile: dict = profile or {"id": "assistant", "title": "Ассистент", "focus_modules": []}
-        self.battery: dict = battery or {"percent": 100, "sleeping": False}
         self.core_version = core_version
 
         self.messages: list[Envelope] = []       # всё, что прислал модуль после рукопожатия (включая result)
@@ -235,7 +234,7 @@ class FakeCore:
         module_settings.update(self.module_settings or {})
         return {"protocol": P.PROTOCOL, "core_version": self.core_version, "enabled": self.enabled,
                 "settings": {k: self.settings[k] for k in shared if k in self.settings},
-                "module_settings": module_settings, "profile": self.profile, "battery": self.battery}
+                "module_settings": module_settings, "profile": self.profile}
 
     async def _on_hello(self, conn: _Conn, env: Envelope) -> None:
         body = env.body

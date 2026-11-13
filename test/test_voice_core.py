@@ -76,8 +76,7 @@ class Wired:
             self.voiced.append((text, speaker))
         self.companion.on_voice = on_voice
         self.port = free_port()
-        self.layer = core_service.wire_modules(self.companion, Registry(), port=self.port, specs=[],
-                                               battery=lambda: {"level": 1.0, "sleeping": False})
+        self.layer = core_service.wire_modules(self.companion, Registry(), port=self.port, specs=[])
         self.url = f"ws://127.0.0.1:{self.port}/ws"
 
     async def __aenter__(self):
@@ -398,8 +397,7 @@ async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tm
     selector = speech_out.SpeechSelector(voice, speech_out.TextOnlySpeech(presence))
     companion = Companion(mem, Relationships(mem), speech=selector, presence=presence)
     port = free_port()
-    layer = core_service.wire_modules(companion, Registry(), port=port, specs=specs,
-                                      battery=lambda: {"level": 1.0, "sleeping": False})
+    layer = core_service.wire_modules(companion, Registry(), port=port, specs=specs)
     app = web.Application()
     layer.hub.attach(app)
     runner = web.AppRunner(app, shutdown_timeout=0.5)

@@ -106,9 +106,6 @@ TOOLS = [
      "risk": "auto", "availability": "always", "informative": True, "job": True, "fallback": True, "announce": True,
      "core_fills": ["context"],
      "keywords": ["файл", "код", "команда", "найди", "интернет", "проект", "скрипт", "поиск", "папка", "почини", "исправь"]},
-    {"name": "claude_task", "description": "Устаревшее имя задачи модуля кода; используйте code_task.",
-     "params": {"task": {"type": "string"}, "context": {"type": "string", "required": False}},
-     "risk": "auto", "availability": "always", "job": True, "fallback": True, "core_fills": ["context"]},
     {"name": "menu_click",
      "description": "Нажать кнопку главного меню RimWorld без агента кода и без вопроса (OCR по окну игры). Только надписи из "
                     "белого списка («Быстрый запуск», «Продолжить», «Загрузить») и только когда пользователь не за компьютером.",
@@ -139,7 +136,7 @@ MANIFEST = {
     "version": "1.0.0",
     "capabilities": ["screen.observe"],
     "subscribe": ["settings", "module", "character"],
-    "shared_settings": ["vision", "dnd", "quiet_until", "auto_accept", "agent_runtime", "pi_model", "pi_model_heavy", "pi_thinking"],
+    "shared_settings": ["vision", "dnd", "quiet_until", "auto_accept", "pi_model", "pi_model_heavy", "pi_thinking"],
     "tools": TOOLS,
     "emits": EMITS,
     "state": True,

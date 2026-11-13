@@ -41,7 +41,7 @@ def test_every_protocol_message_is_described():
 
 def test_acceptance_counts():
     assert len(contract.CORE_REQUESTS) >= 12 and len(contract.MODULE_REQUESTS) == 11
-    base12 = {"core.ask", "core.tts", "core.tool.call", "core.persona", "core.privacy_terms", "core.claude_usage",
+    base12 = {"core.ask", "core.tts", "core.tool.call", "core.persona", "core.privacy_terms",
               "core.web_search", "core.memory.recall", "core.memory.remember"}
     assert base12 <= set(contract.CORE_REQUESTS)
 
@@ -255,7 +255,6 @@ async def test_typed_client_methods_use_the_contract():
             assert (await client.llm_ask("s", "u")).text
             assert await client.events_tail(kinds={"game"}) == []
             assert (await client.call_tool("echo.repeat", {"text": "а"})).text
-            await client.claude_usage(10, "t")
             with pytest.raises(ValueError):
                 await client.tts("")                                          # неверное исходящее тело
         finally:

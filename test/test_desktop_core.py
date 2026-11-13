@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 from hub_helpers import FakeCompanion
 
-import claude_quota
 import core_service
 import dashboard
 import peer_registry
@@ -106,39 +105,6 @@ def make_companion(tmp_path):
     return Companion(str(tmp_path / "memory"), rel=None)
 
 
-async def test_run_claude_waits_for_the_desktop_job(tmp_path, monkeypatch):
-    monkeypatch.setattr(claude_quota, "blocked", lambda: False)
-    comp = make_companion(tmp_path)
-    router, waited = _Router(), []
-
-    async def job_wait(peer_id, job_id, timeout):
-        waited.append((peer_id, job_id, timeout))
-        return {"state": "done", "text": "В проекте порт 8766."}
-    comp.router, comp.job_wait = router, job_wait
-    assert await comp.run_claude("найди порт") == "В проекте порт 8766."
-    assert router.calls == [("desktop.claude_task", {"task": "найди порт"})] and waited == [("desktop", JOB, 600)]
-
-
-async def test_run_claude_without_module_or_on_failure_returns_none(tmp_path, monkeypatch):
-    monkeypatch.setattr(claude_quota, "blocked", lambda: False)
-    comp = make_companion(tmp_path)
-    assert await comp.run_claude("x") is None                                 # маршрутизатора и модуля нет
-    comp.router = _Router(ok=False, text="модуль не подключён", code="unavailable")
-    comp.job_wait = None
-    assert await comp.run_claude("x") is None
-    comp.router, comp.job_wait = _Router(), (lambda *a: asyncio.sleep(0, {"state": "failed"}))
-    assert await comp.run_claude("x") is None                                 # задача сорвалась: сбой для компаньона
-
-
-async def test_run_claude_respects_the_claude_limit(tmp_path, monkeypatch):
-    monkeypatch.setattr(claude_quota, "blocked", lambda: True)
-    monkeypatch.setattr(claude_quota, "until_text", lambda: "18:00")
-    comp = make_companion(tmp_path)
-    router = _Router()
-    comp.router = router
-    assert "18:00" in await comp.run_claude("x") and router.calls == []       # лимит: задачу не запускаем
-
-
 def make_layer(tmp_path):
     from speech_out import PresenceTracker
     comp = FakeCompanion()
@@ -147,7 +113,7 @@ def make_layer(tmp_path):
     comp.profile_hint = lambda: ""
     comp._mem = UserMemory(str(tmp_path / "memory"))
     comp._context = lambda include_hearing=True, query="": f"ctx:{query}"
-    return core_service.wire_modules(comp, Registry(), battery=lambda: {"level": 1.0, "sleeping": False}, specs=[], port=1)
+    return core_service.wire_modules(comp, Registry(), specs=[], port=1)
 
 
 def test_profile_idle_and_activity_come_from_the_desktop_state(tmp_path):

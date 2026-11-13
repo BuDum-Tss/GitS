@@ -14,7 +14,6 @@ sys.path[:0] = [str(HERE)]
 from gits_sdk import WorkspaceClient  # noqa: E402
 
 import approval_panel as ap  # noqa: E402
-from claude_runner import SdkRunner  # noqa: E402
 from core_api import ClientCore  # noqa: E402
 from jobs import JobStore  # noqa: E402
 from layout import DEFAULT, Layout  # noqa: E402
@@ -84,10 +83,6 @@ def wire(client: WorkspaceClient, manager: Manager) -> None:
     async def job_cancel(job_id):
         await manager.cancel(str(job_id))
 
-    @client.on_topic("battery")
-    async def battery(data):
-        manager.pipeline.set_sleeping(bool(data.get("sleeping")))
-
     @client.on_topic("settings")
     async def settings(_data):
         await manager.publish_state()
@@ -113,9 +108,8 @@ def build(layout: Layout = DEFAULT, *, client: WorkspaceClient | None = None, ru
         from render import RemotionRenderer
         renderer = RemotionRenderer()
     if runner is None:
-        from pi_runner import PiRunner, RuntimeRunner
-        shared = lambda: getattr(core, "runtime_settings", None) or {}  # noqa: E731
-        runner = RuntimeRunner(SdkRunner(layout), PiRunner(layout, settings=shared), shared)
+        from pi_runner import PiRunner
+        runner = PiRunner(layout, settings=lambda: getattr(core, "runtime_settings", None) or {})
     pipeline = Pipeline(store, core, runner, layout, renderer, qa)
     manager = Manager(store, core, pipeline, layout)
     wire(client, manager)
@@ -129,7 +123,6 @@ async def run(client: WorkspaceClient, manager: Manager) -> int:
 
     async def after_connect():
         await client.wait_connected()
-        manager.pipeline.set_sleeping(bool((client.battery or {}).get("sleeping")))
         await manager.recover()
         await manager.publish_state()
     background.append(asyncio.create_task(after_connect()))

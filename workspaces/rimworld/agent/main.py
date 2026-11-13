@@ -48,7 +48,6 @@ import game_panel  # noqa: E402
 import module_manifest  # noqa: E402
 import workspace_module  # noqa: E402
 import settings  # noqa: E402
-import usage_report  # noqa: E402
 from camera_director import CameraDirector  # noqa: E402
 from controller import Controller  # noqa: E402
 from core_link import CoreLink  # noqa: E402
@@ -79,7 +78,6 @@ async def amain(config: dict) -> int:
     tools = [t for t in manifest["tools"] if t["name"] != "launch_game"]
     client = WorkspaceClient(manifest)
     link = CoreLink(client)
-    usage_report.attach(client, loop)
 
     def _announce_launch(text: str) -> bool:
         """Объявление о запуске игры идёт через ядро (`say`, факт); вызывается из любого потока, ответа не ждёт."""
@@ -145,7 +143,6 @@ def main():
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    # Agent SDK использует либо ANTHROPIC_API_KEY либо OAuth из ~/.claude/.credentials.json
     config = {
         "rimworld_api": os.getenv("RIMWORLD_API", "http://localhost:8765"),
         "memory_dir":   os.environ["MEMORY_DIR"],

@@ -22,7 +22,7 @@ from .envcompat import env
 
 # ---------------------------------------------------------------- транспорт (MOD-1…MOD-7)
 
-PROTOCOL = 2
+PROTOCOL = 3
 WS_PATH = "/ws"                        # единственный адрес входа
 DEFAULT_CORE_URL = "ws://127.0.0.1:8766" + WS_PATH
 ENV_CORE_URL = "GITS_CORE_URL"
@@ -144,10 +144,10 @@ MODULE_TO_CORE_NOTES = ("hello", "event", "say", "emotion", "state", "job.update
                         "log")                 # log: ТЗ 31, запись в журнал ядра вместо прямого events_log
 CORE_REQUESTS = (
     "core.ask", "core.tts", "core.tool.call", "core.memory.recall", "core.memory.remember",
-    "core.persona", "core.privacy_terms", "core.claude_usage",
+    "core.persona", "core.privacy_terms",
     "core.web_search",
-    # ТЗ 31 (контракт 1.1): локальная модель, чтение журнала, путь к Claude
-    "core.llm.ask", "core.events.tail", "core.claude.locate",
+    # ТЗ 31 (контракт 1.1): быстрая модель, чтение журнала
+    "core.llm.ask", "core.events.tail",
     # ТЗ 27 (контракт 1.2): эпизоды памяти
     "core.memory.episodes",
     # ТЗ 32 (контракт 1.9): цель и задачи среды
@@ -171,7 +171,7 @@ def is_request(msg_type: str) -> bool:
     return msg_type in REQUEST_TYPES
 
 
-TOPICS = ("presence", "settings", "profile", "module", "battery", "character")   # character: ТЗ 05, CHR-6
+TOPICS = ("presence", "settings", "profile", "module", "character")   # character: ТЗ 05, CHR-6
 CAPABILITIES = ("voice.output", "voice.input", "presence.view", "screen.observe", "chat.channel", "game")
 RISKS = ("auto", "ask", "public")
 AVAILABILITIES = ("always", "profile")

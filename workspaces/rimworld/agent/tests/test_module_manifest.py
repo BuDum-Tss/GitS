@@ -30,7 +30,7 @@ async def test_manifest_is_valid_and_built_from_the_workspace_tree():
 
 async def test_shared_settings_emits_and_settings_schema():
     manifest = await module_manifest.build()
-    assert manifest["shared_settings"] == ["streamer", "dnd", "quiet_until", "game_model", "claude_usage", "voice_muted",
+    assert manifest["shared_settings"] == ["streamer", "dnd", "quiet_until", "voice_muted",
                                            "telegram_after_run", "record_runs"]
     emits = {e["kind"]: e["default_urgency"] for e in manifest["emits"]}
     assert emits == {"rimworld.colonists": 0, "rimworld.run_ended": 3, "rimworld.raid": 5, "rimworld.death": 4,

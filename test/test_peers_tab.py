@@ -26,7 +26,7 @@ class WiredCompanion(FakeCompanion):
 
 def wire():
     """Ядро с настоящим peers.yaml, но без запуска: процессы не нужны, проверяется то, что видит дашборд."""
-    layer = core_service.wire_modules(WiredCompanion(), Registry(), port=1, battery=lambda: {"level": 1.0, "sleeping": False})
+    layer = core_service.wire_modules(WiredCompanion(), Registry(), port=1)
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     return layer
 

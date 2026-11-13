@@ -1,8 +1,7 @@
 """Песочница агента-монтажёра: политика `can_use_tool` (ТЗ 20, раздел 8.3, MON-17, MON-18).
 
 Решения автоматические, пользователю политика вопросов не задаёт: агент получает причину отказа и ищет другой путь. Политика
-работает только потому, что инструменты не добавлены в `allowed_tools` (иначе SDK пропускает их мимо `can_use_tool`):
-`claude_runner` перечисляет их в `tools`, а `allowed_tools` оставляет пустым.
+вызывается для каждого встроенного инструмента агента (`PiAgent.can_use_tool` через `Sandbox.check`).
 
 Правила:
   - Read, Glob, Grep: путь внутри папки задачи, template/, assets/, docs/, .claude/skills/ модуля;
@@ -359,15 +358,8 @@ class Sandbox:
                 pass
 
     async def check(self, name: str, tool_input: dict | None) -> tuple[bool, str]:
-        """Решение и запись в журнал без типов Claude SDK: так зовёт песочницу ветка pi (`PiAgent.can_use_tool`)."""
+        """Решение и запись в журнал: так зовёт песочницу `PiAgent.can_use_tool`."""
         tool_input = tool_input or {}
         allowed, reason = self.decide(name, tool_input)
         self._record(name, tool_input, allowed, reason)
         return allowed, reason
-
-    async def can_use_tool(self, name, tool_input, _ctx=None):
-        from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
-        allowed, reason = await self.check(name, tool_input)
-        if allowed:
-            return PermissionResultAllow()
-        return PermissionResultDeny(message=reason)

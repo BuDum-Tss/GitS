@@ -1,5 +1,5 @@
 """Запросы модулей к ядру (ТЗ 02, раздел 10): `core.ask`, `core.tts`, `core.tool.call`, `core.persona`,
-`core.claude_usage`, `core.web_search`, `core.privacy_terms` (ТЗ 10), `core.memory.recall` / `core.memory.remember` (поверх
+`core.web_search`, `core.privacy_terms` (ТЗ 10), `core.memory.recall` / `core.memory.remember` (поверх
 контрактов `MemoryReader` и `MemoryWriter`).
 
 Тело каждого запроса проверяется по контракту `gits_sdk.contract` (CORE-32, ТЗ 31 MC-2): обязательные поля и типы; ошибка -
@@ -69,9 +69,9 @@ class CoreRequests:
     async def handle(self, conn: PeerConnection, msg_type: str, body: Any) -> Any:
         handler = {
             "core.ask": self._ask, "core.tts": self._tts, "core.tool.call": self._tool_call,
-            "core.persona": self._persona, "core.claude_usage": self._claude_usage, "core.web_search": self._web_search,
+            "core.persona": self._persona, "core.web_search": self._web_search,
             "core.privacy_terms": self._privacy_terms, "core.llm.ask": self._llm_ask,
-            "core.events.tail": self._events_tail, "core.claude.locate": self._claude_locate,
+            "core.events.tail": self._events_tail,
             "core.memory.episodes": self._episodes, "core.tasks": self._tasks,
             "core.memory.recall": self._memory_recall, "core.memory.remember": self._memory_remember,
         }.get(msg_type)
@@ -177,25 +177,14 @@ class CoreRequests:
             logger.warning(f"core.privacy_terms: {e}")
             raise PeerError("internal", "не удалось собрать список личных слов") from e
 
-    async def _claude_usage(self, conn: PeerConnection, body: Any) -> dict:
-        import claude_battery
-        import claude_quota
-        import llm_gate
-        if llm_gate.is_pi():                                     # расход модуля на pi не тратит «батарейку» Claude
-            return {}
-        if body.get("limit_text"):
-            claude_quota.note(body["limit_text"])                # лимит исчерпан: батарейка обнуляется сразу
-        await asyncio.to_thread(claude_battery.record, body["tokens"], str(body.get("source") or conn.id))
-        return {}
-
     async def _web_search(self, conn: PeerConnection, body: Any) -> dict:
         import web_search
         return {"text": await web_search.search(body["query"])}
 
-    # ── ТЗ 31: локальная модель, журнал, путь к Claude ─────────────────────────
+    # ── ТЗ 31: быстрая модель, журнал ─────────────────────────
 
     async def _llm_ask(self, conn: PeerConnection, body: dict) -> dict:
-        """Один вызов быстрой модели ядра (Claude без инструментов, `fast_brain._ask`)."""
+        """Один вызов быстрой модели ядра (без инструментов, `fast_brain._ask`)."""
         import fast_brain
         try:
             text = await fast_brain._ask(
@@ -251,8 +240,3 @@ class CoreRequests:
         if snap.get("active"):
             out["active"] = snap["active"]
         return out
-
-    async def _claude_locate(self, conn: PeerConnection, body: Any) -> dict:
-        from gits_sdk import claude_path
-        path = await asyncio.to_thread(claude_path.locate)
-        return {"path": path} if path else {}

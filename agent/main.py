@@ -25,7 +25,6 @@ logging.basicConfig(
 
 
 def main():
-    # Agent SDK использует либо ANTHROPIC_API_KEY либо OAuth из ~/.claude/.credentials.json
     config = {
         "rimworld_api": os.getenv("RIMWORLD_API", "http://localhost:8765"),
         "memory_dir":   settings.default_memory_dir(),

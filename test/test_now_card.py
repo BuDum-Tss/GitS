@@ -12,8 +12,7 @@ def test_profile_graph_is_gone():
 
 def test_state_card_only_shows_the_state():
     for kept in ('id="now-box"', 'id="st-env"', 'id="st-profile"', 'id="st-speech"', 'id="st-game"', 'id="now-goal"',
-                 'id="now-meta"', 'id="now-last"', 'id="modes-battery"', 'id="badge-battery"', "function renderNow",
-                 "function batteryHtml", "function batteryWhen"):
+                 'id="now-meta"', 'id="now-last"', "function renderNow"):
         assert kept in HTML, kept
     for gone in ('id="modes-select"', 'id="now-assistant-btn"', 'id="modes-streamer"', "/api/mode'", "Выбирает сама",
                  'id="g-prio"', 'id="g-sched"', 'id="g-appr"'):

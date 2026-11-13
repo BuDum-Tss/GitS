@@ -1,8 +1,7 @@
-"""Общий поиск в интернете: в реестре как инструмент ядра, без Claude отвечает по правилам."""
+"""Общий поиск в интернете: в реестре как инструмент ядра, отвечает по правилам."""
 import asyncio
 import tempfile
 
-import claude_quota
 import settings
 import web_search
 from environments import builtin
@@ -26,8 +25,5 @@ def test_web_tool_is_registered_in_core_module(monkeypatch):
     assert reg.get("web.search").risk == "auto"
 
 
-def test_short_query_and_quota(monkeypatch):
+def test_short_query_is_rejected():
     assert "короткий" in asyncio.run(web_search.search("ab"))
-    monkeypatch.setattr(claude_quota, "blocked", lambda: True)
-    monkeypatch.setattr(claude_quota, "until_text", lambda: "19:40")
-    assert "19:40" in asyncio.run(web_search.search("rimworld roof support"))

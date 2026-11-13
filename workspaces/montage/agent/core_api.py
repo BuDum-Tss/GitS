@@ -5,7 +5,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Protocol
 
@@ -19,13 +18,8 @@ TTS_TIMEOUT_S = 120.0
 class CoreAPI(Protocol):
     @property
     def settings(self) -> dict: ...
-    @property
-    def sleeping(self) -> bool: ...
-    @property
-    def runtime_settings(self) -> dict: ...
     async def tts(self, text: str, emotion: str = "neutral") -> dict: ...
     async def persona(self) -> dict: ...
-    async def claude_usage(self, tokens: int, source: str, limit_text: str | None = None) -> None: ...
     async def job_update(self, job_id: str, **fields) -> bool: ...
     async def event(self, kind: str, text: str, **fields) -> bool: ...
     async def resend_jobs(self) -> int: ...
@@ -43,7 +37,7 @@ class ClientCore:
 
     @property
     def runtime_settings(self) -> dict:
-        """Общие настройки ядра (`shared_settings` манифеста): `agent_runtime`, `pi_model_heavy`, `pi_thinking`."""
+        """Общие настройки ядра (`shared_settings` манифеста): `pi_model_heavy`, `pi_thinking`."""
         return self.client.settings
 
     @property
@@ -62,12 +56,6 @@ class ClientCore:
 
     async def persona(self) -> dict:
         return (await self.client.persona()).raw
-
-    async def claude_usage(self, tokens: int, source: str, limit_text: str | None = None) -> None:
-        try:
-            await self.client.claude_usage(tokens, source, limit_text[:500] if limit_text else None)
-        except (ToolError, asyncio.TimeoutError) as e:
-            log.info("расход Claude не учтён ядром: %s", getattr(e, "message", None) or type(e).__name__)
 
     async def job_update(self, job_id: str, **fields) -> bool:
         return await self.client.job_update(job_id, **fields)

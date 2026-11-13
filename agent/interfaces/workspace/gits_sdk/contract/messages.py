@@ -114,17 +114,6 @@ _privacy = Message(
     response_invalid=({}, {"terms": [1]}),
 )
 
-_claude_usage = Message(
-    "core.claude_usage", M2C, REQUEST, "Учесть расход токенов Claude участником шины и, если лимит исчерпан, сообщить его текст.",
-    request=(F("tokens", "integer", True, "расход токенов", min=0), F("source", "string", False, "кто потратил"),
-             F("limit_text", "string", False, "текст исчерпанного лимита")),
-    response=(),
-    errors=("bad_request",),
-    valid=({"tokens": 0}, {"tokens": 1500, "source": "montage", "limit_text": "лимит"}),
-    invalid=({}, {"tokens": -1}, {"tokens": "много"}, {"tokens": True}),
-    response_valid=({},),
-)
-
 _web_search = Message(
     "core.web_search", M2C, REQUEST, "Поиск в интернете средствами ядра.",
     request=(F("query", "string", True, "запрос", nonempty=True),),
@@ -171,17 +160,6 @@ _events_tail = Message(
     invalid=({"limit": 0}, {"limit": 1000}, {"kinds": "game"}, {"since": "вчера"}),
     response_valid=({"events": []}, {"events": [{"ts": 1.0, "kind": "game", "text": "x"}]}),
     response_invalid=({}, {"events": "нет"}),
-)
-
-_claude_locate = Message(
-    "core.claude.locate", M2C, REQUEST, "Путь к claude.exe для Claude Agent SDK (или null, если не найден).",
-    since="1.1",
-    request=(),
-    response=(F("path", "string", False, "путь к claude.exe или отсутствует"),),
-    errors=("unavailable",),
-    valid=({},), invalid=("не объект",),
-    response_valid=({"path": "C:/claude.exe"}, {}),
-    response_invalid=({"path": 5},),
 )
 
 # ── сообщения участника шины к ядру без ответа ────────────────────────────────────────
@@ -409,12 +387,11 @@ _shutdown = Message(
     request=(F("reason", "string", False, "причина"),), valid=({"reason": "выход"}, {}), invalid=({"reason": 5},),
 )
 _welcome = Message(
-    "welcome", C2M, NOTE, "Ответ на hello: версия, включённость, настройки, профиль, батарейка.",
+    "welcome", C2M, NOTE, "Ответ на hello: версия, включённость, настройки, профиль.",
     request=(F("protocol", "integer", True, "версия протокола"), F("core_version", "string", False, "версия ядра"),
              F("enabled", "boolean", True, "включён ли участник шины"), F("settings", "object", False, "общие настройки"),
-             F("module_settings", "object", False, "настройки участника шины"), F("profile", "object", False, "активный профиль"),
-             F("battery", "object", False, "батарейка Claude")),
-    valid=({"protocol": 1, "enabled": True, "settings": {}, "module_settings": {}, "profile": {}, "battery": {}},),
+             F("module_settings", "object", False, "настройки участника шины"), F("profile", "object", False, "активный профиль")),
+    valid=({"protocol": 1, "enabled": True, "settings": {}, "module_settings": {}, "profile": {}},),
     invalid=({}, {"protocol": 1}),
 )
 _reject = Message(
@@ -447,11 +424,6 @@ _t_profile = Message(
     request=(F("id", "string", True, "id профиля", nonempty=True), F("title", "string", False, "название"),
              F("focus_modules", "array", False, "участники шины фокуса", items="string")),
     valid=({"id": "assistant", "title": "Ассистент", "focus_modules": []},), invalid=({}, {"id": "a", "focus_modules": "x"}),
-)
-_t_battery = Message(
-    "battery", C2M, TOPIC, "Батарейка Claude: процент и сон.",
-    request=(F("percent", "integer", True, "процент", min=0, max=100), F("sleeping", "boolean", True, "спит ли")),
-    valid=({"percent": 80, "sleeping": False},), invalid=({}, {"percent": 120, "sleeping": False}, {"percent": 1}),
 )
 _t_character = Message(
     "character", C2M, TOPIC, "Карточка активного персонажа при смене (ТЗ 05, CHR-6).",
@@ -497,13 +469,13 @@ _tasks = Message(
 )
 
 CORE_REQUEST_MESSAGES = (_ask, _tts, _tool_call, _recall, _remember, _persona, _privacy,
-                         _claude_usage, _web_search, _llm_ask, _events_tail, _claude_locate, _episodes, _tasks)
+                         _web_search, _llm_ask, _events_tail, _episodes, _tasks)
 MODULE_NOTE_MESSAGES = (_hello, _event, _say, _emotion, _state, _job_update, _panel_set, _log)
 MODULE_REQUEST_MESSAGES = (_c_tool_call, _c_tool_check, _c_job_cancel, _c_job_list, _c_graph_get, _c_deliver, _c_tts,
                            _c_panel_action,
                            _c_ws_enter, _c_ws_exit, _c_ws_resume)
 CORE_NOTE_MESSAGES = (_welcome, _reject, _job_answer, _speak, _speak_stop, _shutdown)
-TOPIC_MESSAGES = (_t_presence, _t_settings, _t_profile, _t_battery, _t_character, _t_module)
+TOPIC_MESSAGES = (_t_presence, _t_settings, _t_profile, _t_character, _t_module)
 
 # `core.tts` и `tts.synthesize`, `tool.call` и `core.tool.call` носят разные имена, поэтому ключ реестра - (направление, имя)
 ALL_MESSAGES = (CORE_REQUEST_MESSAGES + MODULE_NOTE_MESSAGES + MODULE_REQUEST_MESSAGES + CORE_NOTE_MESSAGES + TOPIC_MESSAGES)

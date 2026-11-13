@@ -1,7 +1,6 @@
 """Модуль целиком против FakeCore из SDK (MON-5, MON-7, MON-8, MON-10, MON-12, MON-31, MON-33): настоящий WorkspaceClient, настоящий
 WebSocket; агент, Remotion и контроль качества — заглушки."""
 import asyncio
-import json
 import types
 
 import pytest
@@ -11,7 +10,7 @@ from gits_sdk.testing import FakeCore
 import main as main_mod
 from layout import DEFAULT
 from manifest import build_manifest
-from tests.stubs import STORY, FakeRenderer, FakeRunner, StubQA, layout_for, write_silence_wav
+from tests.stubs import FakeRenderer, FakeRunner, StubQA, layout_for, write_silence_wav
 
 pytestmark = pytest.mark.usefixtures("fast")
 
@@ -58,9 +57,6 @@ def core_with_handlers(tmp, **kw):
         write_silence_wav(path, seconds)
         return {"path": str(path), "duration_ms": int(seconds * 1000)}
 
-    @core.on_request("core.claude_usage")
-    def usage(body):
-        return {}
     return core
 
 
@@ -140,14 +136,6 @@ async def test_start_checks(tmp_path, monkeypatch):
         assert not await core.job_list()                                                   # ни одна задача не поставлена
 
 
-async def test_start_is_refused_when_claude_is_asleep(tmp_path):
-    core = core_with_handlers(tmp_path, battery={"percent": 0, "sleeping": True})
-    async with core, Env(tmp_path, core):
-        with pytest.raises(ToolError) as e:
-            await core.call_tool("start", START)
-        assert e.value.code == "unavailable" and e.value.message == "нет заряда Claude"
-
-
 async def test_cancel_stops_the_running_job_and_queue_goes_on(tmp_path):
     core = core_with_handlers(tmp_path)
     renderer = FakeRenderer()
@@ -197,27 +185,6 @@ async def test_revise_during_review_and_after_done(tmp_path):
         with pytest.raises(ToolError) as e:
             await core.call_tool("revise", {"job_id": "j-00000000", "notes": "х"})
         assert e.value.code == "unknown"
-
-
-async def test_battery_topic_pauses_between_claude_calls(tmp_path):
-    core = core_with_handlers(tmp_path)
-    async with core, Env(tmp_path, core) as env:
-        async def slow_story(e, prompt, n):
-            await asyncio.sleep(0.6)                                          # тема battery придёт во время вызова Claude
-            (e.job.plan_dir / "story.json").write_text(json.dumps(STORY, ensure_ascii=False), encoding="utf-8")
-        env.runner.override["story"] = slow_story
-        job_id = (await core.call_tool("start", START))["job_id"]
-        await core.wait_for(lambda: last_update(core, job_id).get("stage") == "story", 30)
-        await core.topic("battery", {"percent": 0, "sleeping": True})
-        await core.wait_for(lambda: last_update(core, job_id).get("stage") == "paused_battery", 60)
-        paused = last_update(core, job_id)
-        assert paused["state"] == "queued" and paused["text"] == "пауза: нет заряда Claude"
-        calls_at_pause = len(env.runner.calls)
-        await asyncio.sleep(0.3)
-        assert len(env.runner.calls) == calls_at_pause                       # пока Claude спит, вызовов нет
-        await core.topic("battery", {"percent": 70, "sleeping": False})
-        await answer_when_asked(core, job_id, ["утвердить", "готово"])
-        await core.wait_for(lambda: last_update(core, job_id)["state"] == "done", 120)
 
 
 async def test_unfinished_jobs_are_recovered_on_start(tmp_path):

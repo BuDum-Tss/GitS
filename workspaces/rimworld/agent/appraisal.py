@@ -3,7 +3,7 @@
 
 Зачем. Раньше эмоцию и рефлекс выбирала сама Gemma по одному событию: медленно и без памяти о том, что только что было.
 Теперь на каждое событие за ~0.2-0.5 с приходит оценка: насколько важно, какая эмоция, нужен ли рефлекс (draft/undraft),
-стоит ли комментировать и как развёрнуто, новизна (повтор ли), нарастает ли напряжение, нужен ли Claude. Оценка видит
+стоит ли комментировать и как развёрнуто, новизна (повтор ли), нарастает ли напряжение, нужен ли тяжёлый ход. Оценка видит
 контекст (последние события, серия однотипных, напряжение), а Gemma получает её как подсказку тона: она реагирует по
 ситуации, а не шаблонно, молчит на рутине и меняет интонацию при нарастании.
 
@@ -23,7 +23,7 @@ ACTIONS = ["none", "draft_colonists", "undraft"]
 COMMENT = ["silent", "brief", "full"]
 NOVELTY = ["new", "related_to_recent", "repeated"]
 TREND = ["calming", "steady", "escalating"]
-CLAUDE = ["no", "next_turn", "urgent"]
+HEAVY = ["no", "next_turn", "urgent"]
 
 HALF_LIFE = 150.0        # секунд: за столько напряжение уменьшается вдвое
 STREAK_WINDOW = 600.0    # серия однотипных событий считается в этом окне
@@ -69,7 +69,7 @@ class Appraisal:
     comment: str = "brief"
     novelty: str = "new"
     trend: str = "steady"
-    claude: str = "no"
+    heavy: str = "no"
     confidence: float = 0.0
     source: str = "decider"
     ms: int = 0
@@ -192,7 +192,7 @@ def derive(answers: dict, kind: str, text: str, aff: "Affect", now: float | None
     ap.comment = "silent" if imp <= 1 and ap.novelty != "new" else "full" if imp >= 3 and ap.novelty != "repeated" else "brief"
     if imp <= 1 and ap.novelty == "repeated":
         ap.comment = "silent"
-    ap.claude = "urgent" if imp >= 4 or (imp >= 3 and ek in ("combat", "fire") and ap.trend == "escalating") else "next_turn" if imp >= 3 else "no"
+    ap.heavy = "urgent" if imp >= 4 or (imp >= 3 and ek in ("combat", "fire") and ap.trend == "escalating") else "next_turn" if imp >= 3 else "no"
     return ap
 
 
@@ -209,7 +209,7 @@ async def appraise(kind: str, text: str, now: float | None = None) -> Appraisal 
     import appraisal_log
     ap.log_id = appraisal_log.append(kind, text, answers, {
         "importance": ap.importance, "action": ap.action, "comment": ap.comment, "novelty": ap.novelty,
-        "trend": ap.trend, "claude": ap.claude, "valence": ap.valence, "ms": ap.ms})
+        "trend": ap.trend, "heavy": ap.heavy, "valence": ap.valence, "ms": ap.ms})
     AFFECT.update(ap, text, now)
     return ap
 

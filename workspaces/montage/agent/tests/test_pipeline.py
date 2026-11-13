@@ -6,8 +6,7 @@ import json
 import pytest
 
 import qa as qa_mod
-from claude_runner import StageResult
-from jobs import PAUSED_STAGE
+from stage_runner import StageResult
 from tests.rig import Rig
 from tests.stubs import STORY, make_plan
 
@@ -39,7 +38,7 @@ async def test_full_run_with_human_approvals(tmp_path):
     assert all(v["duration_ms"] for v in plan["voiceover"])
     verdicts = rig.store.verdicts()
     assert [(v["stage"], v["answer"]) for v in verdicts] == [("plan_approval", "утвердить"), ("review", "готово")]
-    assert job.data["claude"]["tokens"] > 0 and job.data["claude"]["session_id"] == "sess-1"
+    assert job.data["agent"]["tokens"] > 0 and job.data["agent"]["session_id"] == "sess-1"
     models = {c["stage"]: c["model"] for c in rig.runner.calls}
     assert models["story"] == "opus" and models["plan"] == "opus" and models["build"] == "sonnet"
     log = [r["kind"] for r in rig.store.read_log(job)]
@@ -150,19 +149,6 @@ async def test_stage_failure_is_retried_once_then_job_fails(tmp_path):
     assert len([c for c in rig2.runner.calls if c["stage"] == "story"]) == 2
 
 
-async def test_claude_limit_does_not_retry(tmp_path):
-    from claude_runner import ClaudeLimitError
-    rig = Rig(tmp_path)
-
-    def limit(env, prompt, n):
-        raise ClaudeLimitError("You've hit your session limit")
-    rig.runner.override["story"] = limit
-    job = rig.new_job()
-    await rig.run(job)
-    j = rig.reload(job)
-    assert j.state == "failed" and j.data["error"]["code"] == "unavailable" and len(rig.runner.calls) == 1
-
-
 async def test_talking_head_fails_with_unavailable_transcription(tmp_path):
     rig = Rig(tmp_path)
     src = tmp_path / "clip.mp4"
@@ -254,40 +240,6 @@ async def test_recovery_asks_a_pending_review_question_again(tmp_path):
     await t2
     first_q = [u for u in rig2.core.updates if u.get("state") == "waiting_user"][0]["question"]
     assert first_q["question_id"] == qid                                                          # тот же question_id: ядро не спросит дважды
-
-
-async def test_battery_pause_and_resume(tmp_path):
-    rig = Rig(tmp_path, {"approve_plan": False, "auto_final": True})
-    job = rig.new_job()
-    rig.pipeline.set_sleeping(True)
-    task = asyncio.create_task(rig.run(job))
-    await rig._wait(lambda: (PAUSED_STAGE in [s for _, s in rig.core.states(job.job_id)]))
-    paused = [u for u in rig.core.updates if u.get("stage") == PAUSED_STAGE][0]
-    assert paused["state"] == "queued" and paused["text"] == "пауза: нет заряда Claude"
-    assert not rig.runner.calls                                                                   # Claude не вызывался
-    rig.pipeline.set_sleeping(False)
-    await task
-    assert rig.reload(job).state == "done"
-    assert ("running", "story") in rig.core.states(job.job_id)
-
-
-async def test_battery_sleeping_in_core_state_pauses_before_next_claude_call(tmp_path):
-    rig = Rig(tmp_path, {"approve_plan": False, "auto_final": True})
-    job = rig.new_job()
-
-    def sleep_after_story(env, prompt, n):
-        rig.core.sleeping = True
-        rig.pipeline.set_sleeping(True)
-        (env.job.plan_dir / "story.json").write_text(json.dumps(STORY), encoding="utf-8")
-    rig.runner.override["story"] = sleep_after_story
-    task = asyncio.create_task(rig.run(job))
-    await rig._wait(lambda: PAUSED_STAGE in [s for _, s in rig.core.states(job.job_id)])
-    assert [c["stage"] for c in rig.runner.calls] == ["story"]                                    # текущий вызов дошёл до конца
-    assert rig.reload(job).stage == PAUSED_STAGE
-    rig.core.sleeping = False
-    rig.pipeline.set_sleeping(False)
-    await task
-    assert rig.reload(job).state == "done"
 
 
 async def test_voiceover_overlaps_are_shifted_and_extended(tmp_path):

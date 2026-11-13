@@ -1,8 +1,8 @@
-"""LanguageModel поверх быстрой модели (Claude без инструментов): `fast_brain._ask`; потоком: `fast_brain._ask_stream`."""
+"""LanguageModel поверх быстрой модели (без инструментов): `fast_brain._ask`; потоком: `fast_brain._ask_stream`."""
 import fast_brain
 
 
-class ClaudeLLM:
+class FastLLM:
     async def ask(self, system: str, user: str, *, timeout: float, max_tokens: int = 40, temperature: float = 0.3,
                   background: bool = False, image_b64: str | None = None, parallel: bool = False) -> str:
         return await fast_brain._ask(system, user, timeout=timeout, max_tokens=max_tokens, image_b64=image_b64,

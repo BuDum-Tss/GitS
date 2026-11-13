@@ -387,7 +387,7 @@ async def test_wire_modules_connects_attention_everywhere(tmp_path):
     import core_service
     from test_core_wiring import WiredCompanion
     companion = WiredCompanion()
-    layer = core_service.wire_modules(companion, Registry(), specs=[], battery=lambda: {"level": 1.0, "sleeping": False})
+    layer = core_service.wire_modules(companion, Registry(), specs=[])
     att = layer.attention
     assert companion.attention is att and att.hub is layer.hub and att.modules is layer.modules and att.profiles is layer.profiles
     assert layer.hub.attention is att and layer.requests.attention is att

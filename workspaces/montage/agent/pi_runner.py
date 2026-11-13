@@ -1,15 +1,13 @@
-"""Исполнитель стадии на рабочем агенте pi (`services/agent-runtime`, клиент `gits_sdk.pi_agent`): вторая реализация `AgentRunner`.
+"""Исполнитель стадии на рабочем агенте pi (`services/agent-runtime`, клиент `gits_sdk.pi_agent`): реализация `AgentRunner`.
 
-Тот же интерфейс и тот же итог (`StageResult`, запись `agent_done`), что у `SdkRunner`. Отличия среды:
-  - песочница видит КАЖДЫЙ вызов встроенного инструмента: `PiAgent` присылает имя и поля уже в виде Claude, решение
+Особенности среды:
+  - песочница видит КАЖДЫЙ вызов встроенного инструмента: `PiAgent` присылает имя и поля в общем виде (Read, Bash, ...), решение
     принимает `Sandbox.check` (то же `decide`, тот же журнал `sandbox`); отказ уходит модели причиной;
   - свои инструменты монтажа (`ask_user`, `progress`, `synthesize_voice`, `transcript_words`) это `CustomTool`, и каждый вызов тоже
-    проходит `Sandbox.check` под именем `mcp__montage__<имя>` (как у Claude), поэтому правило «ask_user только на clarify и build» то же;
-  - сессия это файл `pi_session*.jsonl` в папке задачи; его путь хранится там же, где у Claude id сессии (`job.data["claude"]["session_id"]`);
-  - названия моделей Claude (`opus`, `sonnet`) на pi не действуют: берётся настройка ядра `pi_model_heavy` для всех стадий;
+    проходит `Sandbox.check` под именем `mcp__montage__<имя>`, поэтому правило «ask_user только на clarify и build» то же;
+  - сессия это файл `pi_session*.jsonl` в папке задачи; его путь хранится в `job.data["agent"]["session_id"]`;
+  - названия моделей стадий (`opus`, `sonnet`) не действуют: берётся настройка ядра `pi_model_heavy` для всех стадий;
   - `Skill` и `TodoWrite` у pi нет; скиллы из `work/.claude/skills` подключаются через `skills_dir`;
-  - лимита Claude здесь нет: `core.claude_usage` не зовётся, `ClaudeLimitError` не бросается.
-`claude_agent_sdk` не нужен.
 """
 from __future__ import annotations
 
@@ -21,8 +19,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from agent_tools import AgentTools, JobEnv
-from claude_runner import (OWN_TOOL_DESCRIPTIONS, STAGE_TIMEOUT_S, AgentRunner, StageFailed, StageResult, _short,
-                           build_system_prompt, recap_from_log)
+from stage_runner import (OWN_TOOL_DESCRIPTIONS, STAGE_TIMEOUT_S, StageFailed, StageResult, _short,
+                          build_system_prompt, recap_from_log)
 from gits_sdk import ToolError
 from layout import Layout
 from sandbox import MCP_PREFIX, Sandbox
@@ -34,7 +32,7 @@ PI_READONLY_TOOLS = ["read", "find"]
 DEFAULT_MODEL = "gpt-6-sol"
 SESSION_PREFIX = "pi_session"
 
-# JSON-схемы своих инструментов (поля те же, что у ветки Claude)
+# JSON-схемы своих инструментов
 OWN_TOOL_PARAMETERS = {
     "ask_user": {"type": "object", "properties": {"question": {"type": "string"}, "kind": {"type": "string", "enum": ["choice", "text"]},
                                                    "options": {"type": "array", "items": {"type": "string"}}},
@@ -48,12 +46,8 @@ OWN_TOOL_PARAMETERS = {
 }
 
 
-def use_pi(settings: dict | None) -> bool:
-    return (settings or {}).get("agent_runtime") == "pi"
-
-
 def is_pi_session(value: object) -> bool:
-    """Значение `session_id` из job.json: путь к файлу сессии pi (id сессии Claude не годится)."""
+    """Значение `session_id` из job.json: путь к файлу сессии pi (другой формат не годится)."""
     return isinstance(value, str) and Path(value).name.startswith(SESSION_PREFIX) and value.endswith(".jsonl")
 
 
@@ -98,7 +92,7 @@ class PiRunner:
     async def run(self, env: JobEnv, stage: str, prompt: str, *, model: str, max_turns: int, readonly: bool = False,
                   fresh: bool = False) -> StageResult:
         job = env.job
-        stored = (job.data.get("claude") or {}).get("session_id")
+        stored = (job.data.get("agent") or {}).get("session_id")
         resumed = stored if (not fresh and not readonly and is_pi_session(stored)) else None
         session = resumed or (None if readonly else self._new_session(job.folder))
         try:
@@ -182,16 +176,3 @@ class PiRunner:
         if failed:
             raise _PiError(f"агент вернул ошибку: {str(end.error or '')[:200]}")
         return StageResult(text=text, tokens=tokens, session_id=session, turns=end.turns, hit_turn_limit=hit)
-
-
-class RuntimeRunner:
-    """Выбор исполнителя на каждую стадию по настройке ядра `agent_runtime` (claude | pi): смена действует со следующей стадии."""
-
-    def __init__(self, claude: AgentRunner, pi: AgentRunner, settings: Callable[[], dict]):
-        self.claude, self.pi, self.settings = claude, pi, settings
-
-    def pick(self) -> AgentRunner:
-        return self.pi if use_pi(self.settings()) else self.claude
-
-    async def run(self, env: JobEnv, stage: str, prompt: str, **kw) -> StageResult:
-        return await self.pick().run(env, stage, prompt, **kw)

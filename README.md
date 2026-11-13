@@ -42,8 +42,8 @@
 | Питомец | `services/pet` | окно на рабочем столе: стикер и облачко по состоянию (`presence`) |
 | Компьютер | `workspaces/desktop` | зрение и экран, мышь и клавиатура, приложения, Участник шины кода как задача |
 | Telegram | `workspaces/telegram` | канал-дневник, бот, её собственный аккаунт |
-| RimWorld | `workspaces/rimworld` | мод, MCP-сервер, игровые контуры на Claude, комментатор |
-| Монтаж | `workspaces/montage` | конвейер роликов (Remotion, ffmpeg, агент Claude) |
+| RimWorld | `workspaces/rimworld` | мод, MCP-сервер, игровые контуры, комментатор |
+| Монтаж | `workspaces/montage` | конвейер роликов (Remotion, ffmpeg, агент pi) |
 
 Включаются во вкладках «Окружения» и «Сервисы» дашборда (там же настройки, задачи и вопросы участников шины). Профили поведения: `agent/profiles/*.yaml`.
 Игровые и прочие специальные вещи живут только в своём участнике шины, в ядре их нет.
@@ -125,7 +125,7 @@ python -m pytest -q test agent/interfaces/workspace/tests            # ядро 
 python -m pytest -q agent/interfaces/workspace/template/tests               # шаблон участника шины
 python -m pytest -q workspaces/telegram/tests           # то же для voice, pet, desktop; у каждого участника шины отдельный запуск
 ```
-Тесты не ходят в сеть, к микрофону, игре и Claude: модель и внешние службы заменены заглушками. Тесты `rimworld` и `montage` запускай
+Тесты не ходят в сеть, к микрофону, игре и подписке: модель и внешние службы заменены заглушками. Тесты `rimworld` и `montage` запускай
 из их папок с `PYTHONPATH=agent/interfaces/workspace`. После правки контракта запусти `python agent/interfaces/workspace/tools/gen_contract_doc.py`, после правки схемы
 `python -m tools.architecture.build` .
 

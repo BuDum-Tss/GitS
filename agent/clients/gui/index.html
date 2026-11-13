@@ -36,7 +36,6 @@
       <span class="text-lg font-semibold">Ассистент</span>
       <span id="badge-core" class="badge badge-outline">ядро…</span>
       <span id="badge-game" class="badge badge-ghost">игра не запущена</span>
-      <span id="badge-battery" class="badge badge-outline gap-1" title="Заряд токенов Claude"></span>
       <span id="badge-quiet" class="badge badge-ghost hidden" title="Она сама не заговаривает">не отвлекать</span>
       <span id="badge-auto" class="badge badge-warning hidden" title="Все действия выполняются без вопросов, кроме опасных">авто-разрешение</span>
     </div>
@@ -101,7 +100,6 @@
               <span id="st-speech" class="badge badge-ghost badge-sm"></span>
               <span id="st-game" class="badge badge-ghost badge-sm"></span>
               <span class="ml-auto flex items-center gap-2">
-                <span id="modes-battery" title="Заряд Claude"></span>
                 <select id="character-pick" class="select select-xs select-bordered" title="Персонаж" onchange="switchCharacter(this.value)"></select>
                 <span id="character-msg" class="text-xs opacity-70"></span>
               </span>
@@ -525,26 +523,8 @@ function showArch() {
   else setTimeout(() => ARCHV.api.fit(), 0);
 }
 
-// ── профили и батарейка ──
+// ── профили ──
 const MD = {data: null, caps: [], bound: false};
-function batteryHtml(b, big) {
-  if (!b) return '';
-  const pct = Math.round((b.level || 0) * 100), color = pct > 40 ? '#16a34a' : pct > 15 ? '#f59e0b' : '#dc2626';
-  const w = big ? 34 : 22, h = big ? 16 : 11;
-  const t = ts => new Date(ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-  const tip = `Токены Claude: потрачено ${(b.used / 1000).toFixed(0)} тыс. из ${(b.capacity / 1000).toFixed(0)} тыс. за окно 5 часов.` +
-    (b.blocked ? ' Лимит исчерпан.' : '') + batteryWhen(b);
-  return `<span class="inline-flex items-center gap-1" title="${esc(tip)}"><span style="display:inline-flex;align-items:center">
-    <span style="width:${w}px;height:${h}px;border:2px solid currentColor;border-radius:3px;padding:1px;display:inline-block;box-sizing:content-box">
-      <span style="display:block;height:100%;width:${pct}%;background:${color};border-radius:1px"></span></span>
-    <span style="width:3px;height:${h / 2}px;background:currentColor;border-radius:0 2px 2px 0"></span></span><span class="text-xs">${pct}%</span></span>`;
-}
-function batteryWhen(b) {
-  const t = ts => new Date(ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-  if (b.sleeping && b.wake_at) return ` Проснётся около ${t(b.wake_at)}.`;
-  if (b.full_at) return ` Ближайшие ${(b.next_release_tokens / 1000).toFixed(0)} тыс. вернутся в ${t(b.next_release_at)}, полностью зарядится к ${t(b.full_at)}.`;
-  return ' Расхода за окно нет: заряд полный.';
-}
 // модули текущего режима: по ним фильтруются окружения в «Возможностях»
 function viewModules() {
   const n = MD.data && MD.data.nodes.find(x => x.id === MD.data.current);
@@ -554,7 +534,7 @@ function stateLine(g) {
   const sub = g.subgraphs && g.subgraphs[g.current];
   const live = sub && sub.nodes.find(n => n.current && !n.root);
   if (live) return live.label + (live.title ? ': ' + live.title : '');
-  return g.current === 'sleep' ? 'Токены кончились, жду, пока освободится окно лимита' : '';
+  return g.current === 'sleep' ? 'Идёт разбор памяти' : '';
 }
 const agoText = ts => { const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60)); return m < 1 ? 'только что' : m < 90 ? `${m} мин назад` : `${Math.round(m / 60)} ч назад`; };
 // карточка «Состояние»: только чтение (среда, профиль, речь, игра, цель, последняя смена среды)
@@ -563,7 +543,7 @@ function renderNow() {
   const g = MD.data, st = ST.last, w = WS.last;
   if (!g) return;
   const cur = g.nodes.find(n => n.id === g.current) || {};
-  const sleeping = !!(g.battery && g.battery.sleeping);
+  const sleeping = g.current === 'sleep';
   $('st-env').textContent = w ? w.title : 'Ассистент';
   $('st-profile').textContent = 'профиль: ' + (cur.label || g.current || '—');
   const pr = (st && st.presence) || {};
@@ -571,7 +551,7 @@ function renderNow() {
   $('st-game').textContent = st && st.connected ? `игра: ${st.colony_name || 'онлайн'}${st.mode && st.mode.label ? ', ' + st.mode.label : ''}` : 'игра не запущена';
   $('now-goal').textContent = w && w.current !== 'assistant'
     ? `Цель: ${w.goal || '—'}${w.since ? ` (с ${new Date(w.since * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})})` : ''}`
-    : (sleeping ? 'Спит: токены Claude кончились.' : 'Наблюдает за компьютером, на связи.');
+    : (sleeping ? 'Спит: идёт разбор памяти.' : 'Наблюдает за компьютером, на связи.');
   $('now-meta').textContent = stateLine(g) || cur.title || '';
   const last = w && (w.history || []).slice(-1)[0];
   $('now-last').textContent = last ? `Последняя смена среды: ${last.from} → ${last.to} (${last.reason}), ${agoText(last.ts)}` : '';
@@ -579,10 +559,7 @@ function renderNow() {
 async function loadModes() {
   const g = await (await fetch('/api/modes')).json();
   MD.data = g;
-  $('badge-battery').innerHTML = batteryHtml(g.battery, false);
-  $('badge-battery').style.cursor = 'pointer'; $('badge-battery').onclick = () => loadModes().catch(() => {});
   if ($('tab-status').classList.contains('hidden')) return;
-  $('modes-battery').innerHTML = batteryHtml(g.battery, true);
   renderNow();
   await loadCaps().catch(() => {});
 }
@@ -764,7 +741,7 @@ $('chat').addEventListener('scroll', () => {
 });
 let chatMsgs = [];
 // кто запустил инструмент: быстрый контур (планировщик на локальной модели), медленный (Модуль кода), вызов со стороны
-const TOOL_WHO = {fast: 'быстрый контур · Claude', claude: 'Модуль кода', external: 'единый агент и модули'};
+const TOOL_WHO = {fast: 'быстрый контур', code: 'Модуль кода', external: 'единый агент и модули'};
 const TOOL_MARK = {running: '…', done: '✓', failed: '✗'};
 function toolRow(e) {
   const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
@@ -840,8 +817,6 @@ const SETTINGS_CATALOG = [
   {title: 'Восприятие', items: [
     {key: 'vision', type: 'toggle', label: 'Зрение', hint: 'Смотреть на активное окно. Всё обрабатывается локально, окна с паролями и банками пропускаются.'},
     {key: 'autoplay', type: 'toggle', label: 'Играть самой', hint: 'Пока она в среде игры или мира и свободна, раз в несколько минут сама решает, что делать дальше (темп задаёт модуль). Выключено: действует только по событиям, просьбам и своим напоминаниям.'},
-    {key: 'fast_claude_model', type: 'select', label: 'Какой Claude отвечает быстро', options: [['haiku', 'Haiku: быстро'], ['sonnet', 'Sonnet: думает глубже, дороже по лимиту']]},
-    {key: 'agent_runtime', type: 'select', label: 'Среда единого агента', options: [['claude', 'Claude: Agent SDK'], ['pi', 'pi: подписка ChatGPT, принимает сообщения посреди хода']], hint: 'Применяется со следующего обращения. Для pi нужен вход: services/agent-runtime/README.md.'},
     {key: 'pi_model', type: 'select', label: 'Модель среды pi', options: [['gpt-6-luna', 'gpt-6-luna']], hint: 'Другое имя модели: ключ pi_model в settings.json.'},
     {key: 'pi_thinking', type: 'select', label: 'Размышление среды pi', options: [['minimal', 'Минимальное'], ['low', 'Малое'], ['medium', 'Среднее'], ['high', 'Глубокое']]},
     {key: 'pi_model_heavy', type: 'select', label: 'Модель среды pi для кода (помощник на ПК, монтаж)', options: [['gpt-6-sol', 'gpt-6-sol'], ['gpt-6-luna', 'gpt-6-luna']], hint: 'Другое имя модели: ключ pi_model_heavy в settings.json.'},
@@ -853,10 +828,6 @@ const SETTINGS_CATALOG = [
     {key: 'chattiness', type: 'select', label: 'Разговорчивость', hint: 'Как часто она сама начинает разговор.',
      options: [['quiet', 'Редко'], ['normal', 'Обычно'], ['chatty', 'Часто']]},
     {key: 'graph_memory', type: 'toggle', label: 'Память: факты', hint: 'Запоминает факты о людях и жизни из разговора (локально: Gemma и EmbeddingGemma в LM Studio, база SQLite в папке памяти, Docker не нужен). Без моделей отключается сама.'},
-    {key: 'claude_usage', type: 'select', label: 'Расход Claude', hint: 'Как часто работают игровые контуры на подписке Claude. Срочное (налёт, приказ) идёт сразу в любом режиме.',
-     options: [['frugal', 'Экономный'], ['normal', 'Обычный'], ['generous', 'Щедрый (как раньше)']]},
-    {key: 'claude_token_budget', type: 'select', label: 'Ёмкость батарейки Claude', hint: 'Сколько токенов Claude агент может потратить за окно лимита (5 часов). Когда заряд кончается, он уходит в сон. Подбери по опыту: точного числа подписка не отдаёт.',
-     options: [[1000000, '1 млн'], [3000000, '3 млн'], [10000000, '10 млн'], [30000000, '30 млн']]},
     {key: 'dnd', type: 'quiet', label: 'Не отвлекать', hint: 'Она сама не заговаривает и не комментирует игру, пока включено. Включается и сама, если сказать «буду смотреть сериал».'}]},
   {title: 'Telegram', items: [
     {key: 'telegram', type: 'toggle', label: 'Публиковать мысли в канал', hint: 'Токен бота и канал задаются в .env.'},
@@ -1176,7 +1147,7 @@ function flowBuild(t) {
     FLOW.cy.nodes().forEach(n => n.style('display', FLOW.hidden.has(n.data('layer')) ? 'none' : 'element'));
   });
 }
-// Ошибки узла (GLiNER, Claude, выходы) показываются отдельно от обычных записей: причины и время последней
+// Ошибки узла (GLiNER, долгие задачи, выходы) показываются отдельно от обычных записей: причины и время последней
 function flowErrorBlock(e) {
   if (!e || !e.total) return '';
   const reasons = Object.entries(e.reasons || {}).map(([k, v]) => `${esc(k)}: ${v}`).join(', ');

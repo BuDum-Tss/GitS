@@ -17,8 +17,6 @@ import events_log
 DEFAULTS = {
     "voice_muted": False,       # глушилка: не озвучивать реплики (текст остаётся)
     "vision": True,             # смотреть на экран (локально)
-    "fast_claude_model": "haiku",   # какой Claude отвечает вместо локальной модели: haiku (быстро) / sonnet (думает глубже)
-    "agent_runtime": "claude",  # среда единого агента: claude (Claude Agent SDK) / pi (pi по подписке ChatGPT, мост services/agent-runtime); смена со следующего обращения
     "pi_model": "gpt-6-luna",   # модель среды pi
     "pi_thinking": "minimal",   # глубина размышления среды pi: minimal / low / medium / high
     "pi_model_heavy": "gpt-6-sol",   # модель среды pi для тяжёлой работы с кодом (помощник на ПК, монтаж)
@@ -36,8 +34,6 @@ DEFAULTS = {
     "telegram_voice": False,       # посты в канал голосовым сообщением (текст идёт подписью)
     "telegram_confirm": False,  # спрашивать разрешение перед каждым постом (False: публикует сама)
     "graph_memory": True,        # память-граф (SQLite graph.db): факты из разговора; без моделей LM Studio тихо отключается
-    "claude_usage": "normal",   # расход Claude: frugal / normal / generous (темп игровых контуров, см. claude_budget.py)
-    "claude_token_budget": 3000000,   # ёмкость «батарейки»: токенов Claude за окно лимита (5 часов), см. claude_battery.py
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
     # размышление (ТЗ 30, IMP-7): шагов и токенов на мысль, размышлений в час, глубина цепочки напоминаний
     "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3},

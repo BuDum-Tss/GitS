@@ -1,14 +1,14 @@
-"""Модуль desktop (ТЗ 14): экран, приложения, мышь и клавиатура, Claude-помощник на этом компьютере.
+"""Модуль desktop (ТЗ 14): экран, приложения, мышь и клавиатура, помощник по коду на этом компьютере.
 
 Модуль владеет зрением и вводом; ядро получает от него события «чем занят пользователь» (desktop.*) и состояние
 (`state`: активное приложение, простой, текущий вывод анализа) для выбора профиля и проактивности.
 
 Разрешения: опасное и «ask»-инструменты спрашиваются через ядро (`client.ask`); при `auto_accept` обычные действия
-разрешаются сразу (как раньше в approvals.request). Claude-помощник (`claude_task`) - задача (job): ответ сразу, итог
-приходит `job.update`. Расход Claude уходит ядру (`core.claude_usage`), лимит ядро проверяет до запуска.
+разрешаются сразу (как раньше в approvals.request). Помощник по коду (`code_task`) - задача (job): ответ сразу, итог
+приходит `job.update`. Лимит подписки ядро проверяет до запуска.
 
 Тестовый режим `GITS_DESKTOP_FAKE=1` (проверка запуска без экрана): опрос окна и ввода выключен, инструменты, которые
-трогают экран, компьютер или Claude, отвечают `unavailable`. Манифест, состояние и подключение работают как обычно.
+трогают экран, компьютер или помощника, отвечают `unavailable`. Манифест, состояние и подключение работают как обычно.
 """
 import asyncio
 import json
@@ -37,11 +37,10 @@ STATE_EVERY_S = 30.0          # состояние без изменений ш�
 STATE_MIN_GAP_S = 2.0         # при изменении - не чаще раза в 2 с
 IDLE_BUCKET_S = 10            # простой в состоянии округляется до 10 с: иначе оно менялось бы каждый тик
 APPROVAL_TIMEOUT_S = 300
-CLAUDE_TEXT_MAX = 1500        # итог задачи для её реплики (ТЗ 14, DESK-8)
-USAGE_TIMEOUT_S = 20
+TASK_TEXT_MAX = 1500        # итог задачи для её реплики (ТЗ 14, DESK-8)
 MENU_BUTTONS = ("быстрый запуск", "quick start", "продолжить", "continue", "загрузить", "load")   # кнопки главного меню
 MENU_IDLE_MIN_S = 120         # меню жмём только когда пользователь отошёл (как раньше в дашборде)
-FAKE_MSG = "тестовый режим (GITS_DESKTOP_FAKE): экран, ввод и Claude не трогаются"
+FAKE_MSG = "тестовый режим (GITS_DESKTOP_FAKE): экран, ввод и помощник не трогаются"
 
 
 def fake_mode() -> bool:
@@ -60,7 +59,7 @@ class DesktopModule:
         self.watch = FocusWatch()
         self.screen = perception.ScreenWatcher(self._on_activity, analyze_fn=analyze_fn, clock=clock)
         self._tasks: list[asyncio.Task] = []
-        self._jobs: dict[str, asyncio.Task] = {}     # job_id -> задача claude_task (для job.cancel)
+        self._jobs: dict[str, asyncio.Task] = {}     # job_id -> задача code_task (для job.cancel)
         self._last_key = None
         self._last_state_at = 0.0
         self._obs: tuple = (None, 0.0, False)        # последнее наблюдение опроса: (окно, простой, чувствительное)
@@ -88,7 +87,7 @@ class DesktopModule:
         return bool(self.client.settings.get("vision")) and self.client.enabled and not self.fake
 
     def _live(self) -> None:
-        """Тестовый режим: действия с экраном, вводом, запуском программ и Claude запрещены."""
+        """Тестовый режим: действия с экраном, вводом, запуском программ и помощником запрещены."""
         if self.fake:
             raise ToolError(FAKE_MSG, code="unavailable")
 
@@ -108,13 +107,6 @@ class DesktopModule:
             log.warning(f"разрешение не получено: {e}")
             return False
         return answer is True
-
-    async def _usage(self, tokens: int, limit_text: str | None) -> None:
-        """DESK-10: расход Claude ядру (батарейка и исчерпанный лимит). Сбой учёта не ломает задачу."""
-        try:
-            await self.client.claude_usage(tokens, "desktop", limit_text or None, timeout=USAGE_TIMEOUT_S)
-        except Exception as e:
-            log.warning(f"расход Claude не учтён: {e}")
 
     async def _say_fact(self, text: str, announce: bool = False) -> None:
         """Факт для её реплики (правило 14: объявления о долгом запуске - announce)."""
@@ -177,7 +169,7 @@ class DesktopModule:
 
     def _panel_blocks(self) -> list[dict]:
         """Блоки вкладки «Компьютер»: активное окно (заголовок скрыт у чувствительных окон), разрешения, задачи помощника
-        Claude с кнопками остановки, последний вывод анализа экрана. Текст короткий: лимиты panel.set."""
+        помощник с кнопками остановки, последний вывод анализа экрана. Текст короткий: лимиты panel.set."""
         win, idle, sensitive = self._obs
         vision = bool(self.client.settings.get("vision"))
         auto = bool(self.client.settings.get("auto_accept"))
@@ -198,7 +190,7 @@ class DesktopModule:
                  "badge": "вкл" if auto else "выкл"}]},
         ]
         if self.fake:
-            blocks.append({"type": "text", "text": "Тестовый режим: экран, ввод и Claude не трогаются."})
+            blocks.append({"type": "text", "text": "Тестовый режим: экран, ввод и помощник не трогаются."})
         rows = []
         for job_id in self._jobs:
             job = self.client.jobs.get(job_id) or {}
@@ -206,12 +198,12 @@ class DesktopModule:
             rows.append({"cells": [title, str(job.get("state") or "running")],
                          "actions": [{"id": "cancel_task", "label": "Остановить", "args": {"job_id": job_id}}]})
         if rows:
-            blocks.append({"type": "table", "title": "Задачи помощника Claude", "columns": ["Задача", "Состояние"],
+            blocks.append({"type": "table", "title": "Задачи помощника", "columns": ["Задача", "Состояние"],
                            "rows": rows[:20]})
             blocks.append({"type": "buttons", "items": [{"label": "Остановить все задачи", "action": "cancel_all",
                                                          "style": "danger"}]})
         else:
-            blocks.append({"type": "text", "title": "Задачи помощника Claude", "text": "Сейчас задач нет."})
+            blocks.append({"type": "text", "title": "Задачи помощника", "text": "Сейчас задач нет."})
         activity = self.screen.current if vision else None
         if activity:
             blocks.append({"type": "text", "title": "Чем занят", "text": f"{activity['app']}: {activity['summary']}"[:900]})
@@ -424,26 +416,25 @@ class DesktopModule:
             except ValueError as e:
                 raise ToolError(str(e), code="bad_request")
 
-        # ── Claude-помощник (задача) ────────────────────────────────────────
+        # ── помощник по коду (задача) ────────────────────────────────────────
 
         @c.tool("code_task")
-        @c.tool("claude_task")
-        async def claude_task(args):
+        async def code_task(args):
             self._live()
             task = str(args.get("task") or "").strip()
             if not task:
                 raise ToolError("нужна просьба", code="bad_request")
             job_id = new_job_id()
             self._jobs[job_id] = asyncio.get_running_loop().create_task(
-                self._run_claude(job_id, task, str(args.get("context") or "")))
+                self._run_task(job_id, task, str(args.get("context") or "")))
             return {"job_id": job_id}
 
-    async def _run_claude(self, job_id: str, task: str, context: str) -> None:
-        """Задача claude_task (DESK-8): running → done (text - итог) или failed (error)."""
+    async def _run_task(self, job_id: str, task: str, context: str) -> None:
+        """Задача code_task (DESK-8): running → done (text - итог) или failed (error)."""
         c = self.client
         try:
             await c.job_update(job_id, title=f"Задача на компьютере: {task[:60]}", state="running",
-                               text="Claude взялся за задачу.")
+                               text="Помощник взялся за задачу.")
             calls = 0
 
             async def on_tool(name: str, summary: str) -> None:
@@ -453,18 +444,17 @@ class DesktopModule:
                 await c.job_update(job_id, stage=f"tool:{name}:{calls}", text=summary or None)
 
             assistant_agent.configure(getattr(c, "settings", None), c.web_search)   # среда и поиск через ядро
-            answer = await assistant_agent.run_task(task, context, lambda q, d: self._ask(q, d, job_id), self._usage,
-                                                    on_tool)
+            answer = await assistant_agent.run_task(task, context, lambda q, d: self._ask(q, d, job_id), on_tool)
             if answer is None:
                 await c.job_update(job_id, state="failed", text="Агент-помощник не смог выполнить задачу.",
                                    error={"code": "internal", "message": "сбой агента-помощника"})
             else:
-                await c.job_update(job_id, state="done", text=answer[:CLAUDE_TEXT_MAX])
+                await c.job_update(job_id, state="done", text=answer[:TASK_TEXT_MAX])
         except asyncio.CancelledError:
             await c.job_update(job_id, state="cancelled", text="Задачу отменили.")
             raise
         except Exception as e:
-            log.exception("claude_task")
+            log.exception("code_task")
             await c.job_update(job_id, state="failed", text="Задача сорвалась.",
                                error={"code": "internal", "message": str(e)[:200]})
         finally:

@@ -122,7 +122,6 @@ class PeerClient:
         self.module_settings: dict = {}
         self.enabled: bool = True
         self.profile: dict = {}
-        self.battery: dict = {}
         self.core_version: str | None = None
 
         # настраиваемые параметры (для тестов)
@@ -450,7 +449,6 @@ class PeerClient:
         self.settings = dict(body.get("settings") or {})
         self.module_settings = dict(body.get("module_settings") or {})
         self.profile = dict(body.get("profile") or {})
-        self.battery = dict(body.get("battery") or {})
 
     async def _read(self, ws: aiohttp.ClientWebSocketResponse) -> Envelope | None:
         """Следующее сообщение; None, если соединение закрыто. Битые кадры пропускаются."""
@@ -536,8 +534,6 @@ class PeerClient:
             self.profile = dict(data)
         elif topic == "module":
             self.enabled = bool(data.get("enabled", True))
-        elif topic == "battery":
-            self.battery = dict(data)
         for handler in self._topics.get(topic, ()):
             self._spawn(self._run_hook(handler, data, name=f"on_topic({topic})"))
 
@@ -867,16 +863,6 @@ class PeerClient:
         value = await self._core("core.privacy_terms", {}, timeout=timeout)
         return [str(t) for t in R.as_dict(value).get("terms", [])]
 
-    async def claude_usage(self, tokens: int, source: str | None = None, limit_text: str | None = None, *,
-                           timeout: float = 15.0) -> None:
-        """`core.claude_usage`: учесть расход токенов Claude; `limit_text` - текст исчерпанного лимита."""
-        body: dict = {"tokens": int(tokens)}
-        if source:
-            body["source"] = source
-        if limit_text:
-            body["limit_text"] = limit_text
-        await self._core("core.claude_usage", body, timeout=timeout)
-
     async def web_search(self, query: str, *, timeout: float = 60.0) -> str:
         """`core.web_search`: поиск в интернете средствами ядра."""
         value = await self._core("core.web_search", {"query": query}, timeout=timeout)
@@ -906,10 +892,6 @@ class PeerClient:
             body["since"] = float(since)
         value = await self._core("core.events.tail", body, timeout=timeout)
         return [R.JournalEvent.from_wire(e) for e in R.as_dict(value).get("events", []) if isinstance(e, dict)]
-
-    async def claude_locate(self, *, timeout: float = 15.0) -> str | None:
-        """`core.claude.locate`: путь к claude.exe, найденный ядром (или None)."""
-        return R.as_dict(await self._core("core.claude.locate", {}, timeout=timeout)).get("path")
 
     async def memory_recall(self, query: str, limit: int | None = None) -> list[dict]:
         """`core.memory.recall`: вспомнить факты из личной памяти ядра (`[{text, kind, importance}]`)."""

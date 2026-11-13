@@ -2,7 +2,7 @@
 
 Стадии идут по порядку (`jobs.STAGES`); назад можно только на `story` и `plan` из `plan_approval` и на `build` из `review`.
 Каждая стадия идемпотентна: её выход перезаписывается, поэтому после падения процесса задача продолжается с начала текущей
-стадии (MON-8). Сбой стадии даёт одну повторную попытку, затем `failed` (MON-9). Зависимости (ядро, агент Claude, Remotion,
+стадии (MON-8). Сбой стадии даёт одну повторную попытку, затем `failed` (MON-9). Зависимости (ядро, агент, Remotion,
 контроль качества) передаются в конструктор: тесты подставляют заглушки.
 """
 from __future__ import annotations
@@ -22,10 +22,10 @@ import review_mode as rm
 import srt as srt_mod
 import transcribe
 from agent_tools import JobEnv, load_voice_cache, synthesize_to
-from claude_runner import AgentRunner, ClaudeLimitError, StageFailed, StageResult
+from stage_runner import AgentRunner, StageFailed, StageResult
 from core_api import CoreAPI
 from gits_sdk import ToolError
-from jobs import PAUSED_STAGE, STAGE_PROGRESS, STAGES, Job, JobStore
+from jobs import STAGE_PROGRESS, STAGES, Job, JobStore
 from layout import Layout
 from manifest import MANIFEST, normalize_voiceover, resolve_output_dir
 from plan_schema import PlanContext, story_beat_ids, validate_plan, validate_story
@@ -102,8 +102,6 @@ class Pipeline:
         self.renderer = renderer
         self.qa = qa if qa is not None else qa_mod.QAService(layout, renderer)
         self._waiters: dict[str, tuple[str, asyncio.Future]] = {}
-        self._awake = asyncio.Event()
-        self._awake.set()
         self._last_saved: dict[str, float] = {}
         self.state_hook = None                         # async (): менеджер обновляет `state` для ядра при смене стадии или состояния
         self.handlers = {
@@ -117,13 +115,6 @@ class Pipeline:
 
     def setting(self, name: str):
         return {**DEFAULTS, **(self.core.settings or {})}.get(name, DEFAULTS.get(name))
-
-    def set_sleeping(self, sleeping: bool) -> None:
-        """Тема battery (MON-10): `sleeping: true` ставит задачи на паузу перед следующим вызовом Claude."""
-        if sleeping:
-            self._awake.clear()
-        else:
-            self._awake.set()
 
     async def _save(self, job: Job) -> None:
         await asyncio.to_thread(self.store.save, job)
@@ -244,24 +235,7 @@ class Pipeline:
             job.data["carry_answer"] = answer
         await self._set(job, state="running")
 
-    # ================================================================================================ батарейка и агент
-
-    async def _wait_awake(self, job: Job) -> None:
-        """MON-10: пока Claude спит (тема battery), задача ждёт в `queued` со стадией `paused_battery`."""
-        if self._awake.is_set() and not self.core.sleeping:
-            return
-        if self.core.sleeping:
-            self._awake.clear()
-        if self._awake.is_set():
-            return
-        prev = job.stage
-        job.data["paused_from"] = prev
-        await self._log(job, "pause", reason="battery", stage=prev)
-        await self._set(job, state="queued", stage=PAUSED_STAGE, text="пауза: нет заряда Claude")
-        await self._awake.wait()
-        job.data.pop("paused_from", None)
-        await self._log(job, "resume", reason="battery", stage=prev)
-        await self._set(job, state="running", stage=prev, text="заряд Claude вернулся, продолжаю")
+    # ================================================================================================ агент
 
     def _env(self, job: Job, stage: str) -> JobEnv:
         async def ask(q, kind, options):
@@ -276,14 +250,13 @@ class Pipeline:
 
     async def _agent(self, job: Job, stage: str, prompt: str, *, model: str, readonly: bool = False,
                      fresh: bool = False) -> StageResult:
-        await self._wait_awake(job)
         env = self._env(job, stage)
         res = await self.runner.run(env, stage, prompt, model=model, max_turns=int(self.setting("max_turns_stage")),
                                     readonly=readonly, fresh=fresh)
-        claude = job.data.setdefault("claude", {"session_id": None, "tokens": 0})
-        claude["tokens"] = int(claude.get("tokens") or 0) + res.tokens
+        agent = job.data.setdefault("agent", {"session_id": None, "tokens": 0})
+        agent["tokens"] = int(agent.get("tokens") or 0) + res.tokens
         if res.session_id and not readonly and not fresh:
-            claude["session_id"] = res.session_id
+            agent["session_id"] = res.session_id
         await self._save(job)
         return res
 
@@ -397,8 +370,6 @@ class Pipeline:
     async def run_job(self, job: Job) -> None:
         """Выполнить задачу с её текущей стадии до `done`. Отмену задачи (CancelledError) пробрасывает наружу."""
         try:
-            if job.stage == PAUSED_STAGE:
-                job.data["stage"] = job.data.pop("paused_from", "intake")
             if job.stage not in STAGES:
                 job.data["stage"] = "intake"
             await self._set(job, state="running", text="продолжаю" if job.data.get("answers") or job.stage != "intake" else None)
@@ -426,8 +397,6 @@ class Pipeline:
                 return await handler(job)
             except asyncio.CancelledError:
                 raise
-            except ClaudeLimitError as e:
-                raise StageError("unavailable", f"стадия {stage}: лимит Claude исчерпан ({str(e)[:120]})")
             except StageError as e:
                 if e.code in NON_RETRYABLE or attempt == 2:
                     raise StageError(e.code, f"стадия {stage}: {e.message}")

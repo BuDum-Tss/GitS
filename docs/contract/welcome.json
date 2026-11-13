@@ -32,10 +32,6 @@
       "profile": {
         "type": "object",
         "description": "активный профиль"
-      },
-      "battery": {
-        "type": "object",
-        "description": "батарейка Claude"
       }
     },
     "additionalProperties": true,
@@ -44,6 +40,6 @@
       "enabled"
     ],
     "title": "welcome",
-    "description": "Ответ на hello: версия, включённость, настройки, профиль, батарейка."
+    "description": "Ответ на hello: версия, включённость, настройки, профиль."
   }
 }

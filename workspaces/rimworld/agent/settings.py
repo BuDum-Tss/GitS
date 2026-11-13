@@ -15,8 +15,6 @@ import events_log
 DEFAULTS = {
     "voice_muted": False,       # глушилка: не озвучивать реплики (текст остаётся)
     "vision": True,             # смотреть на экран (локально)
-    "game_model": "haiku",      # модель игровых ходов и планирования: haiku (быстро, дёшево) / sonnet (думает глубже, дороже)
-    "commentator_model": "claude",   # модель реплик комментатора: claude (по умолчанию, запасная Gemma) / local (только Gemma)
     "profile": "auto",          # режим поведения: auto (по активному окну) / game / work / stream / general
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (распознавание локальное, GigaAM)
@@ -28,7 +26,6 @@ DEFAULTS = {
     "telegram_voice": False,       # посты в канал голосовым сообщением (текст идёт подписью)
     "telegram_confirm": False,  # спрашивать разрешение перед каждым постом (False: публикует сама)
     "graph_memory": True,        # память-граф (SQLite graph.db): факты из разговора; без моделей LM Studio тихо отключается
-    "claude_usage": "normal",   # расход Claude: frugal / normal / generous (темп игровых контуров, см. claude_budget.py)
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
     "volume": 100,              # громкость озвучки, 0-100
     "dnd": False,               # «не отвлекать» до выключения (включает пользователь)

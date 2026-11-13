@@ -27,7 +27,7 @@ _DESKTOP_NAMES = ("take_screenshot", "describe_screen", "read_screen", "operate_
                   "click_text", "click", "type_text", "press_key", "scroll", "launch_app", "list_apps", "add_app")
 LEGACY_TOOL_IDS = {f"system.{n}": f"desktop.{n}" for n in _DESKTOP_NAMES if n not in ("launch_app", "list_apps", "add_app")}
 LEGACY_TOOL_IDS.update({f"assistant.{n}": f"desktop.{n}" for n in ("launch_app", "list_apps", "add_app")})
-LEGACY_TOOL_IDS["system.ask_claude"] = "desktop.claude_task"
+LEGACY_TOOL_IDS["system.ask_claude"] = "desktop.code_task"
 _LEGACY_WARNED: set[str] = set()
 
 

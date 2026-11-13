@@ -84,8 +84,7 @@ async def test_real_pet_process_started_by_the_supervisor_gets_presence_and_stop
     spec = [s for s in load_specs() if s.id == "pet"][0]
     companion = WiredCompanion()
     port = free_port()
-    layer = core_service.wire_modules(companion, Registry(), port=port, specs=[spec],
-                                      battery=lambda: {"level": 1.0, "sleeping": False})
+    layer = core_service.wire_modules(companion, Registry(), port=port, specs=[spec])
     dashboard._MEMORY_DIR = tmp_path / "memory"
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
     app = web.Application()

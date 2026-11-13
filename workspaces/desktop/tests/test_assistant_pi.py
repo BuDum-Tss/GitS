@@ -1,5 +1,5 @@
-"""Помощник на компьютере: общая политика разрешений для Claude и pi, ветка pi (подделка PiAgent и настоящий worker.mjs
-с поддельным поставщиком). Без сети, без Claude."""
+"""Помощник на компьютере: политика разрешений, ветка pi (подделка PiAgent и настоящий worker.mjs
+с поддельным поставщиком). Без сети."""
 import shutil
 
 import pytest
@@ -29,7 +29,7 @@ def _reset():
     aa.configure(None, None)
 
 
-# ── общая политика (имена в виде Claude, из обеих веток) ───────────
+# ── общая политика (имена в общем виде) ───────────
 
 @pytest.mark.parametrize("tool,inp", [
     ("Read", {"file_path": str(ROOT / "workspaces" / "desktop" / "manifest.py")}),
@@ -96,33 +96,24 @@ class FakeAgent:
 def fake(monkeypatch):
     FakeAgent.instances = []
     monkeypatch.setattr(pi_agent, "PiAgent", FakeAgent)
-    aa.configure({"agent_runtime": "pi", "pi_model_heavy": "тяжёлая", "pi_thinking": "low"}, None)
+    aa.configure({"pi_model_heavy": "тяжёлая", "pi_thinking": "low"}, None)
     return FakeAgent
 
 
-async def _usage_log():
-    log = []
-
-    async def usage(tokens, text):
-        log.append((tokens, text))
-    return log, usage
-
-
-async def test_pi_branch_ok_usage_and_on_tool(fake):
+async def test_pi_branch_ok_and_on_tool(fake):
     async def script(self):
         yield pi_agent.ToolUse("read", {"path": "x"}, "Read", {"file_path": "a.py"})
         yield pi_agent.TextEvent("готово")
         yield pi_agent.EndEvent("ok", None, {"requests": 2, "input": 100, "output": 20}, 2)
     fake.script = script
-    log, usage = await _usage_log()
     tools = []
 
     async def on_tool(name, summary):
         tools.append((name, summary))
 
-    out = await aa.run_task("сделай", "контекст", Asker(), usage, on_tool)
+    out = await aa.run_task("сделай", "контекст", Asker(), on_tool)
     ag = fake.instances[0]
-    assert out == "готово" and log == [(120, "готово")] and tools == [("Read", "a.py")]
+    assert out == "готово" and tools == [("Read", "a.py")]
     assert ag.kw["model"] == "тяжёлая" and ag.kw["thinking"] == "low" and ag.kw["max_turns"] == aa.PI_MAX_TURNS
     assert ag.kw["tools"] == ["read", "find", "grep", "bash", "write", "edit"]
     assert [t.name for t in ag.kw["custom_tools"]] == ["web_search"]
@@ -140,8 +131,7 @@ async def test_pi_branch_policy_and_user_refusal(fake, tmp_path):
         yield pi_agent.EndEvent("ok", None, {}, 1)
     fake.script = script
     ask = Asker(False)
-    log, usage = await _usage_log()
-    await aa.run_task("t", "", ask, usage)
+    await aa.run_task("t", "", ask)
     assert [r[0] for r in results] == [True, False, False]
     assert len(ask.calls) == 2                       # чтение внутри проекта без вопроса, остальное спросили
     assert "команду" in ask.calls[1][0]
@@ -153,9 +143,8 @@ async def test_pi_branch_limits(fake, status, needle):
         yield pi_agent.TextEvent("частично")
         yield pi_agent.EndEvent(status, None, {"input": 5, "output": 1}, 40)
     fake.script = script
-    log, usage = await _usage_log()
-    out = await aa.run_task("t", "", Asker(), usage)
-    assert out.startswith("частично") and needle in out and log[0][0] == 6
+    out = await aa.run_task("t", "", Asker())
+    assert out.startswith("частично") and needle in out
     assert "Claude" not in out
 
 
@@ -163,9 +152,8 @@ async def test_pi_branch_error_returns_none(fake):
     async def script(self):
         yield pi_agent.EndEvent("error", "нет входа", {}, 0)
     fake.script = script
-    log, usage = await _usage_log()
-    assert await aa.run_task("t", "", Asker(), usage) is None
-    assert log == [(0, None)] and fake.instances[0].closed
+    assert await aa.run_task("t", "", Asker()) is None
+    assert fake.instances[0].closed
 
 
 async def test_pi_branch_client_exception_returns_none(fake):
@@ -173,8 +161,7 @@ async def test_pi_branch_client_exception_returns_none(fake):
         raise pi_agent.PiAgentError("нет node")
         yield
     fake.script = script
-    log, usage = await _usage_log()
-    assert await aa.run_task("t", "", Asker(), usage) is None and log == [(0, None)]
+    assert await aa.run_task("t", "", Asker()) is None
 
 
 async def test_web_search_goes_to_core_after_consent(fake):
@@ -193,16 +180,15 @@ async def test_web_search_goes_to_core_after_consent(fake):
             self.out.append("отказ:" + str(e))
         yield pi_agent.EndEvent("ok", None, {}, 1)
     fake.script = script
-    aa.configure({"agent_runtime": "pi"}, core_search)
-    log, usage = await _usage_log()
-    await aa.run_task("t", "", Asker(False), usage)
+    aa.configure({}, core_search)
+    await aa.run_task("t", "", Asker(False))
     assert queries == [] and fake.instances[0].out[0].startswith("отказ:")      # без «да» ядро не зовут
     fake.instances.clear()
-    await aa.run_task("t", "", Asker(True), usage)
+    await aa.run_task("t", "", Asker(True))
     assert queries == ["погода"] and fake.instances[0].out == ["результат"]
 
 
-async def test_code_task_ignores_legacy_runtime_setting(monkeypatch):
+async def test_code_task_always_runs_on_pi(monkeypatch):
     called = []
 
     async def fake_pi(*args, **kwargs):
@@ -210,7 +196,7 @@ async def test_code_task_ignores_legacy_runtime_setting(monkeypatch):
         return "ответ"
 
     monkeypatch.setattr(aa, "_run_pi", fake_pi)
-    for cfg in (None, {}, {"agent_runtime": "claude"}):
+    for cfg in (None, {}, {"pi_thinking": "low"}):
         aa.configure(cfg, None)
         assert await aa.run_task("t", "", Asker(), None) == "ответ"
     assert called == ["code"] * 3
@@ -239,11 +225,9 @@ async def test_real_worker_policy_end_to_end(monkeypatch, tmp_path):
     async def core_search(q):
         searched.append(q)
         return "r"
-    aa.configure({"agent_runtime": "pi"}, core_search)
+    aa.configure({}, core_search)
     ask = Asker(False)
-    log, usage = await _usage_log()
-    out = await aa.run_task("задача", "", ask, usage)
+    out = await aa.run_task("задача", "", ask)
     assert out == "остановилась"
     assert not mark.exists() and searched == []
     assert len(ask.calls) == 3                       # чтение вне проекта, команда, поиск; чтение в проекте без вопроса
-    assert log and log[0][0] >= 0

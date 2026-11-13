@@ -108,7 +108,7 @@ def edge_stats(now: float | None = None) -> dict:
 
 
 def node_errors(node: str, now: float | None = None) -> dict:
-    """Ошибки узла отдельно (ТЗ 17: GLiNER, Claude, выходы): число за 10 минут и всего, причина и время последней."""
+    """Ошибки узла отдельно (ТЗ 17: GLiNER, долгие задачи, выходы): число за 10 минут и всего, причина и время последней."""
     now = time.time() if now is None else now
     errs = [r for r in records() if (r["node"] == node or r["to"] == node) and is_error(r)]
     last = errs[-1] if errs else None
@@ -117,11 +117,11 @@ def node_errors(node: str, now: float | None = None) -> dict:
             "reasons": {lab: sum(1 for r in errs if r["label"] == lab) for lab in sorted({r["label"] for r in errs})}}
 
 
-ERROR_NODES = ("gliner", "claude", "out_voice", "out_presence", "out_telegram")
+ERROR_NODES = ("gliner", "deep", "out_voice", "out_presence", "out_telegram")
 
 
 def error_nodes(now: float | None = None) -> dict:
-    """Узлы с ошибками за последние 10 минут (для красной рамки на схеме): GLiNER, Claude и выходы. Узлы без ошибок не входят."""
+    """Узлы с ошибками за последние 10 минут (для красной рамки на схеме): GLiNER, долгие задачи и выходы. Узлы без ошибок не входят."""
     out = {}
     for n in ERROR_NODES:
         info = node_errors(n, now)

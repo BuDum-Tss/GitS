@@ -269,7 +269,7 @@ class RawModule:
 def manifest(peer_id="raw", **extra) -> dict:
     """Минимальный верный манифест для сырых модулей."""
     base = {"id": peer_id, "role": "workspace", "ownership": "owned", "title": peer_id.title(), "description": "Тестовый модуль.", "version": "1.0.0",
-            "subscribe": ["presence", "settings", "profile", "module", "battery"],
+            "subscribe": ["presence", "settings", "profile", "module"],
             "emits": [{"kind": f"{peer_id}.ping", "description": "пинг", "default_urgency": 2}]}
     base.update(extra)
     if base.get("ownership") is None:

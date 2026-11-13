@@ -240,7 +240,7 @@ class Soak:
         want = set(self.real_modules)
         specs = [s for s in load_specs() if s.id in want]
         self.layer = core_service.wire_modules(self.companion, registry, port=self.port,
-                                               battery=lambda: {"level": 1.0, "sleeping": False}, specs=specs)
+                                               specs=specs)
         dashboard._MEMORY_DIR = Path(self.memory_dir)
         dashboard.set_modules(self.layer.modules, self.layer.hub, self.layer.supervisor)
         dashboard.set_attention(self.layer.attention)

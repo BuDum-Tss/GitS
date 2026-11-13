@@ -20,7 +20,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import character
-import claude_battery
 import dashboard
 import events_log
 import tool_trace
@@ -103,7 +102,7 @@ def wire_workspace_nodes(companion, registry, attention, modules, workspaces) ->
     return panel
 
 
-def wire_modules(companion, registry, *, battery=claude_battery.status, specs=None,
+def wire_modules(companion, registry, *, specs=None,
                  port: int = DASHBOARD_PORT) -> SimpleNamespace:
     """Слой модулей (ТЗ 02): каналы разговора, заглушка внимания, реестр и шина модулей, профили, супервизор.
 
@@ -118,7 +117,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                             memory_writer=getattr(companion, "memory_writer", None))
     holder: dict = {}                                    # profiles появится ниже, а реестру и шине он нужен уже при создании
     modules = PeerRegistry(registry, on_state=lambda: (holder["profiles"].poke(), holder["workspaces"].check()))
-    hub = PeerHub(modules, sink=AttentionEventSink(attention, presence, recorder=_module_event_recorder(modules, attention)), requests=requests, battery_source=battery,
+    hub = PeerHub(modules, sink=AttentionEventSink(attention, presence, recorder=_module_event_recorder(modules, attention)), requests=requests,
                     presence=presence, profile_source=lambda: holder["profiles"].info())
     hub.attention = attention                            # только для диагностики и тестов: шина работает через sink (ARC-7)
     io.hub = hub
@@ -183,7 +182,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         events_log.log("profile", f"{old} -> {new}", old=old, new=new)                # CORE-20
         hub.notify("profile", holder["profiles"].info())
 
-    profiles = profile_manager.ProfileManager(battery=battery, foreground_app=foreground, module_state=modules.state_data,
+    profiles = profile_manager.ProfileManager(foreground_app=foreground, module_state=modules.state_data,
                                               workspace_of=lambda: workspaces.current,
                                               on_change=on_profile_change, subgraph=live_subgraph)
     holder["profiles"] = profiles

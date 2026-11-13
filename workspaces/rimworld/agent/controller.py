@@ -61,7 +61,7 @@ SELF_IMPROVEMENT_INTERVAL_SECS = 2 * 60 * 60  # правки собственн�
 _ASSISTANT_URL = env("GITS_CORE_HTTP_URL", "http://127.0.0.1:8766")
 QUICK_START_ATTEMPTS = 3                  # сколько раз нажимать «Быстрый запуск», прежде чем идти другим путём
 QUICK_START_WAIT_POLLS = 15               # после нажатия ждём загрузку поселения столько опросов по 2 с
-NAVIGATION_TIMEOUT_SECS = 240               # сам проход меню через Claude по экрану: один снимок занимает 40+ с
+NAVIGATION_TIMEOUT_SECS = 240               # сам проход меню через LLM по экрану: один снимок занимает 40+ с
 MENU_STUCK_THRESHOLD_SECS = 90             # торчим в главном меню дольше — проходим сами через UI
 _BASE                     = gamenet.base_url(8765)   # http://localhost:8765 (мод отвечает только на это имя)
 _GAME_PORT                = 8765
@@ -480,7 +480,7 @@ class Controller:
     async def _new_colony(self):
         """Создать поселение из главного меню. Сначала быстро и точно: нажать кнопку «Быстрый запуск (Dev)» (до трёх попыток:
         окно может ещё не отрисоваться, а после лишнего клика экран другой), потом нажатие по тексту кнопки через OCR, и только
-        затем навигация через Claude по скриншотам (она долгая и часто упирается в таймаут)."""
+        затем навигация через LLM по скриншотам (она долгая и часто упирается в таймаут)."""
         if self._navigating:
             return
         import game_watchdog
@@ -503,7 +503,7 @@ class Controller:
                     await asyncio.sleep(3)
         finally:
             self._navigating = False
-        await self._menu_autostart()                     # кнопка по тексту (OCR), без Claude
+        await self._menu_autostart()                     # кнопка по тексту (OCR), без LLM
         for _ in range(QUICK_START_WAIT_POLLS):
             await asyncio.sleep(2)
             if _state_ready(await asyncio.to_thread(_get_state)):
@@ -564,7 +564,7 @@ class Controller:
                 elif (self.watchdog is None and not self._navigating and self._menu_since and self.policies.in_focus and
                       time.time() - self._menu_since > MENU_STUCK_THRESHOLD_SECS):   # с наблюдателем меню проходит он; вне фокуса не трогаем игру (POL-11)
                     self._menu_since = time.time()
-                    asyncio.create_task(self._menu_autostart())          # кнопка по тексту (OCR), без Claude
+                    asyncio.create_task(self._menu_autostart())          # кнопка по тексту (OCR), без LLM
                     return
             return
 
@@ -710,7 +710,7 @@ class Controller:
 
     async def _check_goals(self):
         """Цель игры закрыта (достигнута или заброшена) -> событие rimworld.goal. Статусы пишет MCP-сервер в memory/goals.json
-        (отдельный процесс Claude), поэтому файл сверяется по времени изменения."""
+        (отдельный процесс LLM), поэтому файл сверяется по времени изменения."""
         changes = await asyncio.to_thread(self._goal_changes)
         for goal in changes:
             done = goal.get("status") == "completed"
@@ -835,7 +835,7 @@ class Controller:
     # ── Контур 6: навигация по UI (разовые вызовы, не периодический цикл) ────
 
     async def _menu_autostart(self):
-        """Игра стоит в главном меню, а Claude недоступен: нажать кнопки меню без него (OCR по окну игры через ассистентку).
+        """Игра стоит в главном меню, а LLM недоступен: нажать кнопки меню без него (OCR по окну игры через ассистентку).
         Сначала «Быстрый запуск» (режим разработчика), иначе «Продолжить»."""
         if self._navigating:
             return

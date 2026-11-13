@@ -226,9 +226,7 @@ async def test_pi_search_runs_tools_and_closes(monkeypatch):
     assert rt.results[1][0] is False and "закрытую сеть" in rt.results[1][1]      # дашборд ядра модели недоступен
 
 
-async def test_pi_search_does_not_use_claude_or_its_quota(monkeypatch):
-    import claude_quota
-    monkeypatch.setattr(claude_quota, "blocked", lambda: True)
+async def test_pi_search_returns_the_answer(monkeypatch):
     _use(monkeypatch, [("text", "Ответ."), ("end", "ok")])
     assert await web_search.search("rimworld roof support") == "Ответ."
 

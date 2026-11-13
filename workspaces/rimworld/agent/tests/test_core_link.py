@@ -53,9 +53,8 @@ async def test_online_requires_enabled(tmp_path):
 
 
 async def test_shared_settings_from_welcome_and_topic_reach_the_settings_file(tmp_path):
-    async with Rig(tmp_path, shared={"streamer": True, "game_model": "sonnet"}) as rig:
+    async with Rig(tmp_path, shared={"streamer": True}) as rig:
         await rig.core.wait_for(lambda: settings.load()["streamer"] is True)           # из welcome
-        assert settings.load()["game_model"] == "sonnet"
         await rig.core.update_settings({"dnd": True, "quiet_until": 99.0, "record_runs": True})
         await rig.core.wait_for(lambda: settings.load()["dnd"] is True)               # из темы settings
         cfg = settings.load()

@@ -15,7 +15,7 @@ from environments.registry import Registry
 async def serve(tmp_path, specs=()):
     port = free_port()
     companion, registry = WiredCompanion(), Registry()
-    layer = core_service.wire_modules(companion, registry, port=port, battery=lambda: {"level": 1.0, "sleeping": False},
+    layer = core_service.wire_modules(companion, registry, port=port,
                                       specs=list(specs))
     dashboard._MEMORY_DIR = tmp_path / "memory"
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)

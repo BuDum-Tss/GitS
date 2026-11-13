@@ -44,7 +44,7 @@ def test_facade_keeps_components_and_public_interface(tmp_path):
     for name in ("conversation", "context_builder", "reply_generator", "memory_capture"):
         assert getattr(c, name) is not None
     for name in ("on_voice", "on_user_message", "on_input", "say", "remember_text", "speak_about",
-                 "run_claude", "note_heard", "recent_heard", "rebind_memory", "is_speaking"):
+                 "note_heard", "recent_heard", "rebind_memory", "is_speaking"):
         assert callable(getattr(c, name))
     for name in ("_mem", "_rel", "graph", "router", "attention", "presence", "speech", "io"):
         assert hasattr(c, name)

@@ -1,20 +1,20 @@
 """Исполнитель стадии на pi: подделка PiAgent (журнал, предел ходов, продолжение, readonly, песочница, свои инструменты),
-выбор исполнителя по настройке и настоящий worker.mjs с поддельным поставщиком (пропуск без node). Без сети и Claude."""
+настоящий worker.mjs с поддельным поставщиком (пропуск без node). Без сети."""
 import shutil
 
 import pytest
 
 from agent_tools import JobEnv
-from claude_runner import SdkRunner, StageFailed
+from stage_runner import StageFailed
 from gits_sdk import pi_agent
 from gits_sdk.pi_agent import EndEvent, PiAgentError, TextEvent, ToolUse
-from pi_runner import PiRunner, RuntimeRunner, is_pi_session, use_pi
+from pi_runner import PiRunner, is_pi_session
 from tests.rig import Rig
 
 RUNTIME = pi_agent.default_runtime_dir()
 needs_node = pytest.mark.skipif(not shutil.which("node") or not (RUNTIME / "node_modules").is_dir(),
                                 reason="нет node или зависимостей worker.mjs")
-CFG = {"agent_runtime": "pi", "pi_model_heavy": "heavy-model", "pi_thinking": "low"}
+CFG = {"pi_model_heavy": "heavy-model", "pi_thinking": "low"}
 
 
 class FakeAgent:
@@ -86,7 +86,6 @@ async def test_result_and_agent_done_log(tmp_path):
     assert kw["tools"] == ["read", "write", "edit", "find", "grep", "bash"] and kw["cwd"] == str(job.work)
     assert (job.folder / "system_prompt.md").is_file() and kw["system_file"].endswith("system_prompt.md")
     assert FakeAgent.made[0].closed
-    assert rig.core.usage == []                       # лимит Claude на pi не учитывается
 
 
 async def test_turn_limit_and_errors(tmp_path):
@@ -105,14 +104,14 @@ async def test_turn_limit_and_errors(tmp_path):
 async def test_resume_fresh_and_readonly_sessions(tmp_path):
     rig, job, env, runner = make(tmp_path)
     first = await runner.run(env, "story", "p", model="x", max_turns=5)
-    job.data["claude"]["session_id"] = first.session_id
+    job.data["agent"]["session_id"] = first.session_id
     again = await runner.run(env, "plan", "p", model="x", max_turns=5)
     assert again.session_id == first.session_id and FakeAgent.made[-1].kw["session_file"] == first.session_id
     fresh = await runner.run(env, "plan", "p", model="x", max_turns=5, fresh=True)
     assert fresh.session_id != first.session_id
     ro = await runner.run(env, "review", "p", model="x", max_turns=5, readonly=True)
     assert FakeAgent.made[-1].kw["session_file"] is None and ro.session_id is None
-    job.data["claude"]["session_id"] = "6f1d2c3e-claude-session-id"        # id сессии Claude не годится для pi
+    job.data["agent"]["session_id"] = "6f1d2c3e-foreign-session-id"        # чужой формат id сессии не годится
     other = await runner.run(env, "plan", "p", model="x", max_turns=5)
     assert is_pi_session(other.session_id)
 
@@ -120,7 +119,7 @@ async def test_resume_fresh_and_readonly_sessions(tmp_path):
 async def test_lost_session_retries_with_recap(tmp_path):
     rig, job, env, runner = make(tmp_path)
     first = await runner.run(env, "story", "p", model="x", max_turns=5)
-    job.data["claude"]["session_id"] = first.session_id
+    job.data["agent"]["session_id"] = first.session_id
     FakeAgent.made.clear()
     FakeAgent.raise_first_with = PiAgentError("нет сессии")
     res = await runner.run(env, "plan", "исходный запрос", model="x", max_turns=5)
@@ -129,7 +128,7 @@ async def test_lost_session_retries_with_recap(tmp_path):
     assert FakeAgent.made[1].kw["session_file"] != first.session_id
     assert logged(rig, job, "session_lost")
     FakeAgent.made.clear()
-    job.data["claude"]["session_id"] = None
+    job.data["agent"]["session_id"] = None
     with pytest.raises(StageFailed):
         await runner.run(env, "plan", "p", model="x", max_turns=5)      # без продолжения повтора нет
 
@@ -191,29 +190,13 @@ async def test_ask_user_denied_by_sandbox_outside_clarify_and_build(tmp_path):
     assert logged(rig, job, "sandbox")[0]["allowed"] is False
 
 
-def test_runtime_selection():
-    class R:
-        def __init__(self, n):
-            self.n = n
-
-        async def run(self, *a, **k):
-            return self.n
-    cfg = {}
-    rr = RuntimeRunner(R("claude"), R("pi"), lambda: cfg)
-    assert rr.pick().n == "claude"
-    cfg["agent_runtime"] = "pi"
-    assert rr.pick().n == "pi" and use_pi(cfg) and not use_pi({"agent_runtime": "claude"}) and not use_pi(None)
-
-
-def test_main_build_wires_runtime_runner():
+def test_main_build_wires_pi_runner():
     import main
     client, manager = main.build()
-    runner = manager.pipeline.runner
-    assert isinstance(runner, RuntimeRunner) and isinstance(runner.claude, SdkRunner) and isinstance(runner.pi, PiRunner)
-    assert runner.pick() is runner.claude                          # настройки ядра ещё не пришли: прежняя ветка Claude
+    assert isinstance(manager.pipeline.runner, PiRunner)
 
 
-async def test_sandbox_check_has_no_claude_sdk_dependency(tmp_path, monkeypatch):
+async def test_sandbox_check_needs_no_sdk(tmp_path, monkeypatch):
     import sys
     monkeypatch.setitem(sys.modules, "claude_agent_sdk", None)       # импорт упал бы с ImportError
     rig, job, env, runner = make(tmp_path)

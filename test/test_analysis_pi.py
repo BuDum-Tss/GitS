@@ -20,9 +20,9 @@ ROOT = analysis._PROJECT_ROOT
     ("Grep", {"pattern": "x", "path": str(ROOT), "glob": "../*"}, True),
     ("Bash", {"command": "ls"}, True),
     ("Write", {"file_path": str(ROOT / "a.txt")}, True),
-    ("LS", {"path": str(ROOT)}, True),                 # для Claude LS не в списке
+    ("LS", {"path": str(ROOT)}, True),
 ])
-def test_check_read_claude(tool, inp, denied):
+def test_check_read(tool, inp, denied):
     assert (analysis.check_read(tool, inp) is not None) is denied
 
 
@@ -57,7 +57,7 @@ class FakeAgent:
 @pytest.fixture
 def pi_env(tmp_path, monkeypatch):
     monkeypatch.setenv("MEMORY_DIR", str(tmp_path))
-    monkeypatch.setattr(settings, "load", lambda: {"agent_runtime": "pi", "pi_model": "m", "pi_thinking": "low"})
+    monkeypatch.setattr(settings, "load", lambda: {"pi_model": "m", "pi_thinking": "low"})
     monkeypatch.setattr(analysis.events_log, "tail", lambda **kw: [])
     monkeypatch.setattr(analysis.events_log, "export_jsonl", lambda path, since=None: Path(path).write_text("", encoding="utf-8"))
     monkeypatch.setattr(pi_agent, "PiAgent", FakeAgent)

@@ -19,7 +19,7 @@ def _fresh(monkeypatch):
 def test_combat_emergency_drafts_and_goes_full():
     a = ap.derive(_answers(), "incident", "налёт 5 бандитов", ap.Affect(), now=1000.0)
     assert a.importance == 4 and a.action == "draft_colonists" and a.comment == "full"
-    assert a.claude == "urgent" and a.valence == "negative"
+    assert a.heavy == "urgent" and a.valence == "negative"
 
 
 def test_routine_construction_is_quiet_after_a_repeat():

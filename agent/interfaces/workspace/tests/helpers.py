@@ -12,7 +12,7 @@ MANIFEST = {
     "description": "Тестовый модуль для проверки SDK.",
     "version": "1.0.0",
     "capabilities": [],
-    "subscribe": ["presence", "settings", "profile", "battery"],
+    "subscribe": ["presence", "settings", "profile"],
     "shared_settings": ["streamer", "dnd"],
     "settings_schema": {"poll_seconds": {"type": "integer", "title": "Опрос", "default": 5, "min": 1, "max": 60}},
     "tools": [

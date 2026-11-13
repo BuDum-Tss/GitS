@@ -162,7 +162,7 @@ def test_profile_is_in_context_even_off_topic(tmp_path):
         def _capabilities(self):
             return ""
 
-        def _claude_note(self):
+        def _model_note(self):
             return ""
 
     text = ContextBuilder(Host()).build(query="погода в Казани", needs_memory="no")
@@ -183,7 +183,7 @@ def test_owner_profile_is_not_shown_to_another_speaker(tmp_path):
         def _capabilities(self):
             return ""
 
-        def _claude_note(self):
+        def _model_note(self):
             return ""
 
     for query in ("[говорит Вася] привет", "[незнакомый голос] кто ты"):

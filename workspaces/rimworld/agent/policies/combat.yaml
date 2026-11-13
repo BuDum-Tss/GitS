@@ -1,5 +1,5 @@
 # Боевая (ТЗ 11e, раздел 3.3). Пауза, мобилизация, короткий срез игры, снова пауза и оценка. Быстрые решения локальная модель,
-# крупные пересмотры Claude (каждый claude_every-й ход). Выход, когда угроза ушла на quiet_s.
+# крупные пересмотры LLM (каждый claude_every-й ход). Выход, когда угроза ушла на quiet_s.
 id: combat
 title: "Бой"
 purpose: "Угроза на карте: пауза, приказы, короткие срезы игры, пока угроза не уйдёт. Не может быть запрошена самой моделью."
@@ -18,7 +18,7 @@ switch_to: [observe]
 min_dwell_s: 0
 loop: iterative
 think:
-  model: claude
+  model: remote
   max_steps: 10
   timeout_s: 150
 modes: [combat, health, observe]

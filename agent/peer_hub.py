@@ -2,7 +2,7 @@
 
 Участник шины (peer: окружение workspace или сервис service) подключается сам (клиент SDK `gits_sdk`), проходит рукопожатие по ТЗ 01 §5 и дальше шлёт события, речь,
 состояние, задачи и запросы к ядру, а ядро вызывает его инструменты и рассылает темы (`presence`, `settings`, `profile`,
-`module`, `battery`). Поведение сервера повторяет эталон `gits_sdk.testing.FakeCore`.
+`module`, `character`). Поведение сервера повторяет эталон `gits_sdk.testing.FakeCore`.
 
 Защита: только петля (`127.0.0.1`, `::1`; в контейнере ещё сети из `GITS_HUB_ALLOW`; иначе HTTP 403) и токен `Authorization: Bearer ...` (иначе 401) до апгрейда до
 WebSocket. Токен ядро создаёт при каждом старте и пишет в `%LOCALAPPDATA%\\GitS\\module_token`; в журналы он не попадает,
@@ -35,9 +35,7 @@ logger = logging.getLogger("hub")
 CORE_VERSION = "2026.10.0"
 HELLO_TIMEOUT_S = 10.0
 INBOX_LIMIT = 1000                     # очередь уведомлений одного модуля; дальше отбрасываются
-WATCH_INTERVAL_S = 1.0                 # как часто сверяются настройки, включённость и батарейка
-BATTERY_EVERY = 5                      # батарейка проверяется раз в столько тиков
-BATTERY_STEP = 5                       # процентов: тема battery при изменении на столько и более
+WATCH_INTERVAL_S = 1.0                 # как часто сверяются настройки и включённость
 RESERVED_IDS = ("core",)               # id модулей, которые модули занять не могут
 RESERVED_SETTINGS = ("enabled",)       # имя в peers.<id>.*: включённость участника
 
@@ -193,12 +191,11 @@ class PeerHub:
     def __init__(self, modules, *, sink=None, requests=None, token: str | None = None, token_file: Path | None = None,
                  settings_source: Callable[[], dict] = settings.load,
                  profile_source: Callable[[], dict] = lambda: {"id": "assistant", "title": "Ассистент", "focus_modules": []},
-                 battery_source: Callable[[], dict] = lambda: {},
                  presence=None, hello_timeout: float = HELLO_TIMEOUT_S, monotonic: Callable[[], float] = time.monotonic,
                  allow: list | None = None, environ=None):
         """modules - PeerRegistry; sink - приёмник событий модулей (контракт `contracts.EventSink`, ТЗ 29 ARC-7: шина
         не знает ни менеджера внимания, ни модели); requests - обработчик core.* (`contracts.RequestHandler`, в ядре
-        core_requests.CoreRequests); *_source - откуда брать настройки, профиль и батарейку (в тестах подменяются);
+        core_requests.CoreRequests); *_source - откуда брать настройки и профиль (в тестах подменяются);
         presence - PresenceTracker (снимок для новых модулей); allow - сети, которым шина открыта помимо петли (по
         умолчанию `GITS_HUB_ALLOW`); environ - переменные окружения (в тестах подменяются). В контейнере
         (`GITS_CONTAINER=1`) токен берётся из `GITS_TOKEN` (файл не пишется), а без неё создаётся и пишется в
@@ -220,7 +217,6 @@ class PeerHub:
         self.token_file = token_file
         self._settings_source = settings_source
         self._profile_source = profile_source
-        self._battery_source = battery_source
         self.presence = presence
         self.hello_timeout = hello_timeout
         self._monotonic = monotonic
@@ -228,7 +224,6 @@ class PeerHub:
         self._job_questions: dict[tuple[str, str, str], _JobQuestion] = {}
         self._tasks: set[asyncio.Task] = set()
         self._watch_task: asyncio.Task | None = None
-        self._battery_sent: dict | None = None
         self._outbound: Outbound | None = None
         modules.hub = self
 
@@ -239,7 +234,7 @@ class PeerHub:
         app.router.add_get(P.WS_PATH, self.handle)
 
     async def start(self) -> None:
-        """Токен в файл (атомарно) и фоновая сверка настроек, включённости и батарейки."""
+        """Токен в файл (атомарно) и фоновая сверка настроек, и включённости."""
         if self._token_from_env:
             logger.info("Шина модулей: токен задан переменной окружения, файл не пишется")
         else:
@@ -387,7 +382,7 @@ class PeerHub:
         enabled = self.modules.is_enabled(mid, cfg)
         welcome = {"protocol": P.PROTOCOL, "core_version": CORE_VERSION, "enabled": enabled,
                    "settings": self._shared(spec, cfg), "module_settings": self._module_settings(mid, spec, cfg),
-                   "profile": self._profile_source(), "battery": self._battery_payload(self._battery_source())}
+                   "profile": self._profile_source()}
         self._conns[mid] = conn
         conn.last_settings = {"settings": welcome["settings"], "module_settings": welcome["module_settings"]}
         conn.last_enabled = enabled
@@ -410,10 +405,6 @@ class PeerHub:
         schema = spec.settings_schema
         stored = settings.peer_entry(cfg, peer_id) or {}
         return {name: stored.get(name, s["default"]) for name, s in schema.items()}
-
-    @staticmethod
-    def _battery_payload(status: dict) -> dict:
-        return {"percent": round(float(status.get("level", 1.0)) * 100), "sleeping": bool(status.get("sleeping", False))}
 
     # ── приём сообщений ─────────────────────────────────────────────────────────
 
@@ -678,24 +669,12 @@ class PeerHub:
                     await self.outbound.safe_send_topic(conn, "settings", payload)
 
     async def _watch(self) -> None:
-        tick = 0
         while True:
             await asyncio.sleep(WATCH_INTERVAL_S)
-            tick += 1
             try:
                 await self.refresh()
-                if tick % BATTERY_EVERY == 0:
-                    await self._check_battery()
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logger.warning(f"Сверка настроек модулей: {e}")
-
-    async def _check_battery(self) -> None:
-        now = self._battery_payload(await asyncio.to_thread(self._battery_source))
-        last = self._battery_sent
-        if last is None or now["sleeping"] != last["sleeping"] or abs(now["percent"] - last["percent"]) >= BATTERY_STEP:
-            self._battery_sent = now
-            if last is not None:
-                await self.broadcast("battery", now)
 

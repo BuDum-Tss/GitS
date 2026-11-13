@@ -10,7 +10,6 @@ import pytest
 
 import fast_brain
 import pi_llm
-import settings
 from adapters.runtime_pi import BRIDGE_DIR
 
 FAKE = Path(__file__).with_name("fake_pi_llm.py")
@@ -42,7 +41,7 @@ async def test_parallel_requests(fake):
     assert answers == [f"эхо: вопрос {i}" for i in range(5)]
 
 
-async def test_errors_like_claude_llm(fake):
+async def test_errors_are_runtime_errors(fake):
     with pytest.raises(RuntimeError, match="лимит исчерпан"):
         await pi_llm.ask("с", "fail", 10)
     with pytest.raises(RuntimeError, match="пустой"):
@@ -98,40 +97,23 @@ def test_image_ok():
     assert pi_llm.image_ok(GOOD_IMAGE) and not pi_llm.image_ok(None) and not pi_llm.image_ok("***")
 
 
-# ── выбор поставщика в fast_brain ─────────────────────────────────
+# ── fast_brain идёт в pi ──────────────────────────────────────────
 
-async def test_fast_brain_picks_provider(monkeypatch):
-    import claude_llm
-    calls = []
-
-    async def fake_claude(system, user, timeout, image_b64=None, contour="fast"):
-        calls.append("claude")
-        return "от claude"
-
+async def test_fast_brain_goes_to_pi(monkeypatch):
     async def fake_pi(system, user, timeout, image_b64=None, contour="fast"):
-        calls.append("pi")
         return "от pi"
 
     async def stream_pi(system, user, timeout):
         yield "ку"
         yield "ку"
 
-    async def stream_claude(system, user, timeout):
-        yield "мяу"
-
     labels = []
-    monkeypatch.setattr(claude_llm, "ask", fake_claude)
-    monkeypatch.setattr(claude_llm, "ask_stream", stream_claude)
     monkeypatch.setattr(pi_llm, "ask", fake_pi)
     monkeypatch.setattr(pi_llm, "ask_stream", stream_pi)
     monkeypatch.setattr(fast_brain.flow_trace, "step", lambda *a, **k: labels.append(k.get("label")))
-
-    assert await fast_brain._ask("с", "п", 5) == "от claude"
-    assert ["".join([p async for p in fast_brain._ask_stream("с", "п", 5)])] == ["мяу"]
-    settings.update(agent_runtime="pi")
     assert await fast_brain._ask("с", "п", 5) == "от pi"
     assert ["".join([p async for p in fast_brain._ask_stream("с", "п", 5)])] == ["куку"]
-    assert calls == ["claude", "pi"] and labels == ["claude", "pi"]
+    assert labels == ["pi"]
 
 
 # ── настоящий llm.mjs на faux ─────────────────────────────────────

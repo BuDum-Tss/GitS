@@ -18,13 +18,13 @@ async def test_handshake(core):
     client = make_client(core)
     async with running(client, core):
         hello = core.hellos[0]
-        assert hello["id"] == "demo" and hello["role"] == "workspace" and "module_id" not in hello and hello["protocol"] == 2
+        assert hello["id"] == "demo" and hello["role"] == "workspace" and "module_id" not in hello and hello["protocol"] == 3
         assert len(hello["instance"]) == 8 and isinstance(hello["pid"], int)
         assert hello["manifest"]["id"] == "demo" and hello["manifest"]["tools"][0]["name"] == "ping"
         assert client.connected and client.enabled and client.instance == hello["instance"]
         assert client.settings == {"streamer": False, "dnd": False}      # только shared_settings модуля
         assert client.module_settings == {"poll_seconds": 5}              # значения по умолчанию из схемы
-        assert client.profile["id"] == "assistant" and client.battery["percent"] == 100
+        assert client.profile["id"] == "assistant"
         assert client.core_version == "fake"
     assert core.violations == [] and core.bad_messages == []              # MOD-12: до welcome только hello
 
@@ -294,8 +294,7 @@ async def test_topics_update_state_and_call_handlers(core):
         await core.wait_for(lambda: client.settings.get("streamer") is True)
         assert client.settings == {"streamer": True, "dnd": False} and client.module_settings == {"poll_seconds": 7}
         await core.topic("profile", {"id": "rimworld", "title": "RimWorld", "focus_modules": ["rimworld"]})
-        await core.topic("battery", {"percent": 40, "sleeping": False})
-        await core.wait_for(lambda: client.profile.get("id") == "rimworld" and client.battery.get("percent") == 40)
+        await core.wait_for(lambda: client.profile.get("id") == "rimworld")
 
 
 async def test_failing_topic_handler_does_not_break_connection(core):
