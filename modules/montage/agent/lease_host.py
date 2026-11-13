@@ -3,7 +3,10 @@
 Без `GITS_CORE_URL` и с `GITS_CONTROL_TOKEN` (или `GITS_LEASE_MODE=1`) модуль при старте к ядру НЕ подключается: поднимает сервер
 управления (`gits_sdk.control.ControlServer`, порт `GITS_CONTROL_PORT`, по умолчанию 8780) и ждёт аренды.
 `acquire` приносит адрес и токен ядра хозяина: модуль строит клиента и подключается к нему; `release` или обрыв WebSocket
-(у аренды нет срока и продления): идущие задачи отменяются, клиент отключается, состояние хозяина забывается.
+(у аренды нет срока и продления). `release` при незаконченных задачах НЕ отменяет их: аренда переходит в `releasing`
+(`on_release` возвращает `False`), связь с ядром остаётся, задачи доделываются, и когда активных не осталось, модуль сам
+завершает освобождение (`finish_release`): клиент отключается, состояние хозяина забывается. Хозяин может вернуться
+(`acquire` тем же персонажем). Обрыв связи с ядром отменяет задачи и освобождает аренду сразу.
 Ресурсы хозяина: при `GITS_CHARACTERS_ROOT` берутся из `<root>/<персонаж>/montage` (`Layout.for_owner`), других персонажей
 модуль не видит. Без токена управления модуль работает как раньше: подключается к ядру при старте (хостовый запуск, тесты).
 """
@@ -73,21 +76,37 @@ class LeaseHost:
             raise RuntimeError("не удалось подключиться к ядру хозяина") from e
         log.info("аренда: подключён к ядру хозяина %s", lease.character)
 
-    async def release(self, lease: Lease) -> None:
-        await self._teardown()
+    def active_jobs(self) -> int:
+        return self.manager.active_jobs() if self.manager is not None else 0
+
+    async def release(self, lease: Lease) -> bool | None:
+        """`release`: есть активные задачи: False (аренда ждёт). Конец задач (`finished`), обрыв связи и остановка: сразу
+        (при обрыве и остановке задачи отменяются)."""
+        if lease.why in ("release", "finished") and self.active_jobs() > 0:
+            self.manager.on_idle = self._on_idle
+            log.info("аренда: хозяин %s вышел, задач в работе %d: жду конца", lease.character, self.active_jobs())
+            return False
+        await self._teardown(cancel=lease.why not in ("release", "finished"))
         log.info("аренда отпущена (хозяин %s)", lease.character)
+        return None
+
+    def _on_idle(self) -> None:
+        lease = self.lease
+        if self.server is not None and lease is not None and lease.releasing and not self._closing:
+            asyncio.get_running_loop().create_task(self.server.finish_release(lease.lease_id))
 
     def _spawn_lost(self, lease: Lease) -> None:
         if self.server is not None and not self._closing:
             asyncio.get_running_loop().create_task(self.server.connection_lost(lease.lease_id))
 
-    async def _teardown(self) -> None:
-        """Отменить идущие задачи, отключить клиента, забыть состояние хозяина."""
+    async def _teardown(self, cancel: bool = True) -> None:
+        """Отменить идущие задачи (если cancel), отключить клиента, забыть состояние хозяина."""
         self._closing = True
         client, manager, task = self.client, self.manager, self.task
         self.client = self.manager = self.task = self.lease = None
         if manager is not None:
-            for job_id in [*manager.queue, *([manager.current] if manager.current else [])]:
+            manager.on_idle = None
+            for job_id in ([*manager.queue, *([manager.current] if manager.current else [])] if cancel else []):
                 try:
                     await manager.cancel(job_id)
                 except Exception:
@@ -114,7 +133,7 @@ async def serve(build_fn, run_fn, *, env=None) -> int:
     env = os.environ if env is None else env
     host = LeaseHost(build_fn, run_fn, characters_root=env.get(ENV_CHARACTERS_ROOT) or None)
     server = ControlServer(id="montage", token=env[ENV_CONTROL_TOKEN], ownership="shared", manifest=MANIFEST,
-                           on_acquire=host.acquire, on_release=host.release)
+                           on_acquire=host.acquire, on_release=host.release, jobs=host.active_jobs)
     host.server = server
     await server.start("0.0.0.0", int(env.get(ENV_CONTROL_PORT) or DEFAULT_PORT))
     stop = asyncio.Event()

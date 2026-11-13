@@ -322,3 +322,67 @@ async def test_examples_in_contract_are_accepted_by_server(lc, server):
     assert check_fields(C.STATUS.response, await lc.status()) == []
     assert check_fields(C.INFO.response, await lc.info()) == []
     assert check_fields(C.RELEASE.response, await lc.release(got["lease_id"])) == []
+
+
+# ---------------------------------------------------------------- выход с незаконченной работой
+
+async def test_release_with_jobs_keeps_lease_until_finished(clock):
+    state = {"jobs": 2, "released": []}
+
+    def on_release(lease):
+        if lease.why in ("release", "finished") and state["jobs"] > 0:
+            return False                                             # не готов: есть работа
+        state["released"].append(lease.why)
+
+    async with ControlServer(id="montage", token=TOKEN, clock=clock, on_release=on_release, jobs=lambda: state["jobs"]) as s:
+        lc = LeaseClient(s.url, TOKEN)
+        got = await acquire(lc)
+        assert await lc.release(got["lease_id"]) == {"ok": True, "released": False, "pending": "jobs"}
+        st = await lc.status()
+        assert st["state"] == "busy" and st["holder"]["releasing"] is True and st["holder"]["jobs"] == 2
+        assert (await lc.info())["holder"]["releasing"] is True and state["released"] == []
+        with pytest.raises(LeaseBusy) as busy:                      # другой персонаж не может взять
+            await acquire(lc, character="other")
+        assert busy.value.holder["releasing"] is True and busy.value.holder["jobs"] == 2
+        assert await s.finish_release(got["lease_id"]) is False      # работа ещё идёт
+        state["jobs"] = 0
+        assert await s.finish_release("l-чужая") is False
+        assert await s.finish_release(got["lease_id"]) is True
+        assert state["released"] == ["finished"] and (await lc.status())["state"] == "free"
+        assert (await acquire(lc, character="other"))["ok"]
+
+
+async def test_same_character_returns_to_releasing_lease(clock):
+    jobs = {"n": 1}
+    released = []
+
+    def on_release(lease):
+        if lease.why == "release" and jobs["n"]:
+            return False
+        released.append(lease.why)
+
+    async with ControlServer(id="montage", token=TOKEN, clock=clock, on_release=on_release, jobs=lambda: jobs["n"]) as s:
+        lc = LeaseClient(s.url, TOKEN)
+        got = await acquire(lc, purpose="montage")
+        await lc.release(got["lease_id"])
+        back = await acquire(lc, purpose="другая цель")              # тот же персонаж: аренда возвращается
+        assert back["lease_id"] == got["lease_id"]
+        st = await lc.status()
+        assert "releasing" not in st["holder"] and st["holder"]["purpose"] == "другая цель" and released == []
+        assert await s.finish_release(got["lease_id"]) is False       # не releasing: ничего не закрывает
+
+
+async def test_connection_lost_cancels_even_while_releasing(clock):
+    released = []
+
+    def on_release(lease):
+        if lease.why == "release":
+            return False
+        released.append(lease.why)
+
+    async with ControlServer(id="montage", token=TOKEN, clock=clock, on_release=on_release) as s:
+        lc = LeaseClient(s.url, TOKEN)
+        got = await acquire(lc)
+        await lc.release(got["lease_id"])
+        assert await s.connection_lost(got["lease_id"]) is True
+        assert released == ["disconnect"] and (await lc.status())["state"] == "free"

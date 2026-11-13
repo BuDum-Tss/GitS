@@ -43,7 +43,7 @@ async def make_host(tmp_path, root=None):
 
     host = lease_host.LeaseHost(build_fn, main_mod.run, layout=base, characters_root=root)
     server = ControlServer(id="montage", token=TOKEN, ownership="shared", manifest=MANIFEST,
-                           on_acquire=host.acquire, on_release=host.release)
+                           on_acquire=host.acquire, on_release=host.release, jobs=host.active_jobs)
     host.server = server
     await server.start()
     return host, server, built
@@ -66,14 +66,8 @@ async def test_idle_without_core_then_acquire_release(tmp_path):
             with pytest.raises(LeaseBusy):
                 await lc.acquire(character="other", core_url=core.url, token="core-token")
 
-            manager.queue.append("j-fake")                                    # идущая работа отменяется при возврате
-            cancelled = []
-
-            async def fake_cancel(job_id):
-                cancelled.append(job_id)
-            manager.cancel = fake_cancel
-            assert (await lc.release(got["lease_id"]))["released"] is True
-            assert cancelled == ["j-fake"] and not client.connected
+            assert (await lc.release(got["lease_id"]))["released"] is True       # задач нет: освобождается сразу
+            assert not client.connected
             assert (await lc.status())["state"] == "free"
         finally:
             await server.stop()
@@ -111,3 +105,82 @@ async def test_acquire_fails_when_core_unreachable(tmp_path, monkeypatch):
         assert (await lc.status())["state"] == "free"
     finally:
         await server.stop()
+
+
+async def _wait(pred, n=200):
+    for _ in range(n):
+        if pred():
+            return True
+        await asyncio.sleep(0.02)
+    return False
+
+
+async def test_release_with_active_job_keeps_lease_then_finishes(tmp_path):
+    async with FakeCore(token="core-token") as core:
+        host, server, built = await make_host(tmp_path)
+        try:
+            lc = LeaseClient(server.url, TOKEN)
+            got = await lc.acquire(character="glados", core_url=core.url, token="core-token", purpose="montage")
+            _, client, manager = built[0]
+            manager.queue.append("j-fake")                                       # идёт задача
+            cancelled = []
+
+            async def fake_cancel(job_id):
+                cancelled.append(job_id)
+            manager.cancel = fake_cancel
+            res = await lc.release(got["lease_id"])
+            assert res == {"ok": True, "released": False, "pending": "jobs"}
+            st = await lc.status()
+            assert st["state"] == "busy" and st["holder"]["releasing"] and st["holder"]["jobs"] == 1
+            assert client.connected and cancelled == []                          # связь осталась, задачи не отменены
+            with pytest.raises(LeaseBusy):
+                await lc.acquire(character="other", core_url=core.url, token="core-token")
+            manager.queue.clear()                                                # задача кончилась
+            manager.on_idle()
+            assert await _wait(lambda: not client.connected)
+            assert await _wait(lambda: server.lease is None)
+            assert (await lc.status())["state"] == "free" and cancelled == []
+        finally:
+            await server.stop()
+
+
+async def test_same_character_returns_while_releasing(tmp_path):
+    async with FakeCore(token="core-token") as core:
+        host, server, built = await make_host(tmp_path)
+        try:
+            lc = LeaseClient(server.url, TOKEN)
+            got = await lc.acquire(character="glados", core_url=core.url, token="core-token", purpose="montage")
+            _, client, manager = built[0]
+            manager.queue.append("j-fake")
+            await lc.release(got["lease_id"])
+            back = await lc.acquire(character="glados", core_url=core.url, token="core-token", purpose="montage")
+            assert back["lease_id"] == got["lease_id"] and "releasing" not in (await lc.status())["holder"]
+            manager.queue.clear()
+            manager.on_idle()                                                    # возврат отменил выход: освобождения нет
+            await asyncio.sleep(0.2)
+            assert client.connected and (await lc.status())["state"] == "busy"
+        finally:
+            await server.stop()
+
+
+async def test_core_drop_cancels_active_jobs_even_while_releasing(tmp_path):
+    async with FakeCore(token="core-token") as core:
+        host, server, built = await make_host(tmp_path)
+        try:
+            lc = LeaseClient(server.url, TOKEN)
+            got = await lc.acquire(character="glados", core_url=core.url, token="core-token")
+            await core.wait_connected()
+            _, client, manager = built[0]
+            manager.queue.append("j-fake")
+            cancelled = []
+
+            async def fake_cancel(job_id):
+                cancelled.append(job_id)
+            manager.cancel = fake_cancel
+            await lc.release(got["lease_id"])
+            for conn in list(core._conns):
+                await conn.ws.close()
+            assert await _wait(lambda: server.lease is None)
+            assert cancelled == ["j-fake"]
+        finally:
+            await server.stop()

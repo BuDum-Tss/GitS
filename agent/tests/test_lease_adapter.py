@@ -41,14 +41,17 @@ class Service:
     def __init__(self, conns: dict, mod: Module):
         self.conns, self.mod = conns, mod
         self.server = ControlServer(id="montage", token=TOKEN, ownership="shared", manifest=MANIFEST,
-                                    on_acquire=self.on_acquire, on_release=self.on_release)
+                                    on_acquire=self.on_acquire, on_release=self.on_release, jobs=lambda: self.jobs)
         self.acquired = []
+        self.jobs = 0                                                   # активные задачи сервиса
 
     async def on_acquire(self, lease):
         self.acquired.append(lease)
         self.conns["montage"] = self.mod
 
     async def on_release(self, lease):
+        if lease.why in ("release", "finished") and self.jobs:
+            return False                                                # доделывает задачи
         self.conns.pop("montage", None)
 
 
@@ -282,3 +285,54 @@ def test_load_specs_reads_external_shared_entry(tmp_path):
     assert m.unmanaged and m.control_url == "http://montage:8780" and m.control_token_env == "GITS_CONTROL_TOKEN"
     sup = Supervisor([m], token="t", core_url="ws://x/ws")
     assert not sup.should_run("montage") and sup.status("montage")["status"] == "manual"
+
+
+async def test_exit_with_active_jobs_keeps_lease_mine_then_finishes(space):
+    ad, conns = adapter_for(space), space.conns
+    other = adapter_for(space, "other")
+    link = link_for(ad, conns)
+    await link.activate("montage", "ролик")
+    space.jobs = 2
+    res = await link.release("user")                                    # выход не ждёт задач и не считает это ошибкой
+    assert res["ok"] and link.holder is None and "montage" in conns
+    assert space.server.lease is not None and space.server.lease.releasing
+    assert ad.holds("montage") and (await ad.release("montage"))["pending"] == "jobs"
+    await ad.refresh()
+    view = ad.view("montage")
+    assert view["state"] == "mine" and view["releasing"] and view["jobs"] == 2
+    await other.refresh()
+    assert other.view("montage")["state"] == "busy"
+    busy = await other.acquire("montage", "чужое")
+    assert busy["busy"] and busy["holder"]["releasing"] and "доделывает" in other.busy_reason("montage", busy["holder"])
+    space.jobs = 0                                                      # задача кончилась: сервис освобождает сам
+    assert await space.server.finish_release(space.server.lease.lease_id)
+    await ad.refresh()
+    assert ad.view("montage")["state"] == "free" and not ad.holds("montage") and "montage" not in conns
+
+
+async def test_switch_back_into_releasing_space_and_status_text(space):
+    ad, conns = adapter_for(space), space.conns
+    await ad.refresh()
+    mgr = manager_for(ad, conns)
+    assert (await mgr.enter("montage", dom.Reason.USER, "ролик"))["ok"]
+    space.jobs = 1
+    assert (await mgr.leave(dom.Reason.USER))["ok"]
+    tools = {t.name: t for t in _workspace_tools(mgr)}
+    assert "моё, дорабатывает задачи (1)" in await tools["status"].call({})
+    lease_id = space.server.lease.lease_id
+    res = await mgr.enter("montage", dom.Reason.USER, "ролик")           # тот же персонаж возвращается
+    assert res["ok"] and mgr.current == "montage"
+    assert space.server.lease.lease_id == lease_id and not space.server.lease.releasing
+    assert space.mod.names.count("workspace.enter") == 2
+
+
+async def test_dashboard_shows_releasing_badge_data(space):
+    ad = adapter_for(space)
+    await ad.refresh()
+    link = link_for(ad, space.conns)
+    await link.activate("montage", "ролик")
+    space.jobs = 3
+    await link.release("user")
+    await ad.refresh()
+    v = ad.view("montage")
+    assert (v["state"], v["releasing"], v["jobs"]) == ("mine", True, 3)

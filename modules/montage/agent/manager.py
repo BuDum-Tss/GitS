@@ -65,6 +65,11 @@ class Manager:
         self._panel: asyncio.Task | None = None
         pipeline.state_hook = self.publish_state
         self.env = WorkspaceState()                     # среда агента «Монтаж» (ТЗ 32)
+        self.on_idle = None                             # () -> None: активных задач не осталось (аренда ждёт этого, lease_host)
+
+    def active_jobs(self) -> int:
+        """Сколько задач ещё не закончено: очередь и текущая."""
+        return len(self.queue) + (1 if self.current else 0)
 
     # ================================================================================================ среда агента (ТЗ 32)
 
@@ -208,6 +213,8 @@ class Manager:
                 if job.finished:
                     await self.studios.stop(job_id)              # Studio гаснет вместе с задачей (TZ 15)
                 await self.publish_state()
+                if self.on_idle is not None and not self.queue:
+                    self.on_idle()
 
     async def stop(self, *, kill: bool = True) -> None:
         """Остановить работу при выключении модуля. Задача остаётся в своём состоянии и продолжится при следующем запуске."""

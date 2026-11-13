@@ -1,6 +1,8 @@
 """Аренда общих пространств (`ownership: shared`, внешний контейнер с интерфейсом управления): адаптер ядра над `LeaseClient`.
 
-Пространство это целый контейнер, который агент берёт и возвращает как семафор. Состояние аренды хранит сам сервис пространства;
+Пространство это целый контейнер, который агент берёт и возвращает как семафор. Выход агента не отменяет задачи: пока у
+сервиса есть активные, аренда остаётся за хозяином (`mine`, `releasing: true`, `jobs`), он может вернуться (`acquire`), а
+по окончании задач сервис освобождает её сам. Состояние аренды хранит сам сервис пространства;
 ядро его не дублирует, а читает (`GET /info`, он же отдаёт описание: для чего пространство и когда в него переходить, и это
 известно ДО аренды, пока сервис не подключён к шине). У аренды нет срока и нет продления: она держится до `release` (выход
 агента из пространства) или до обрыва WebSocket участника (тогда сервис отпускает её сам). Таймеров здесь нет: кэш сведений
@@ -21,7 +23,7 @@ from gits_sdk.control import LeaseBusy, LeaseClient, LeaseError
 logger = logging.getLogger("lease")
 
 REFRESH_TIMEOUT_S = 3.0                               # сведения для карточки не должны подвешивать вкладку
-HOLDER_PUBLIC = ("character", "since", "purpose")      # что дашборд и агент узнают о хозяине (без адреса ядра и токенов)
+HOLDER_PUBLIC = ("character", "since", "purpose", "releasing", "jobs")      # что дашборд и агент узнают о хозяине (без адреса ядра и токенов)
 
 
 @dataclass
@@ -102,12 +104,19 @@ class LeaseAdapter:
         sp = self.spaces.get(workspace)
         if sp is None or sp.lease_id is None or sp.client is None:
             return {"ok": True, "released": False}
-        lease_id, sp.lease_id, sp.purpose = sp.lease_id, None, ""
+        lease_id = sp.lease_id
         try:
             res = await sp.client.release(lease_id)
         except LeaseError as e:
             logger.warning("аренда «%s»: release не дошёл: %s", workspace, e)
             res = {"released": False}
+        if res.get("pending"):
+            # у пространства остались задачи: аренда моя, пока они не кончатся (сервис закроет её сам); вернуться можно acquire
+            holder = {**((sp.info or {}).get("holder") or {}), "releasing": True}
+            sp.info = {**(sp.info or {}), "state": "busy", "holder": holder}
+            self._event("releasing", workspace=workspace)
+            return {"ok": True, "released": False, "pending": res["pending"]}
+        sp.lease_id, sp.purpose = None, ""
         sp.info = {**(sp.info or {}), "state": "free", "holder": None}
         self._event("released", workspace=workspace)
         return {"ok": True, "released": bool(res.get("released"))}
@@ -167,7 +176,8 @@ class LeaseAdapter:
         if state == "offline" and not sp.error and sp.info is None:
             sp.error = "сервис пространства ещё не отвечал"
         return {"state": state, "holder": holder, "since": (holder or {}).get("since"),
-                "purpose": (holder or {}).get("purpose", ""), "reason": sp.error if state == "offline" else ""}
+                "purpose": (holder or {}).get("purpose", ""), "reason": sp.error if state == "offline" else "",
+                "releasing": bool((holder or {}).get("releasing")), "jobs": int((holder or {}).get("jobs") or 0)}
 
     def catalog(self) -> list[dict]:
         """Каталог пространств: что это, когда переходить, свободно ли (из `/info`; пусто у ещё не отвечавших)."""
@@ -203,5 +213,7 @@ class LeaseAdapter:
         since = holder.get("since")
         when = time.strftime("%H:%M %d.%m", time.localtime(since)) if isinstance(since, (int, float)) else "неизвестно когда"
         goal = holder.get("purpose") or "не указана"
+        if holder.get("releasing"):
+            goal += f" (вышла, доделывает задачи: {holder.get('jobs', 0)})"
         return (f"пространство «{title}» занято: персонаж {holder.get('character') or 'неизвестен'} с {when}, цель: {goal}; "
                 "попробуй позже или займись другим")

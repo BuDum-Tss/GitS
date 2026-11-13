@@ -22,6 +22,8 @@ HOLDER_FIELDS = (
     F("core_url", "string", True, "адрес ядра хозяина, к которому подключён workspace (ws:// или wss://)", nonempty=True),
     F("since", "number", True, "когда аренда началась, unix-время в секундах"),
     F("purpose", "string", False, "зачем взято (например `play`, `montage`); пусто, если не указано"),
+    F("releasing", "boolean", False, "агент вышел, но у workspace ещё есть работа: аренда держится до её конца (только при true)"),
+    F("jobs", "integer", False, "сколько активных задач осталось (есть при `releasing`)"),
 )
 
 
@@ -117,7 +119,9 @@ RELEASE = Endpoint(
     "кончается при обрыве WebSocket участника. Идемпотентно: "
     "если аренды уже нет, ответ 200 с `released: false`.",
     request=(F("lease_id", "string", True, "id аренды", nonempty=True),),
-    response=(F("ok", "boolean", True, "true"), F("released", "boolean", True, "была ли аренда закрыта этим вызовом")),
+    response=(F("ok", "boolean", True, "true"), F("released", "boolean", True, "была ли аренда закрыта этим вызовом"),
+              F("pending", "string", False, "`jobs`: аренда не закрыта, у workspace есть незаконченные задачи (`holder.releasing`); "
+                "она закроется сама, когда они кончатся")),
     errors=(_BAD, _UNAUTH),
     example_request={"lease_id": "l-0123456789ab"},
     example_response={"ok": True, "released": True},
@@ -126,6 +130,11 @@ RELEASE = Endpoint(
 ENDPOINTS = (STATUS, INFO, ACQUIRE, RELEASE)
 
 RULES = (
+    "Выход с незаконченной работой: `on_release` может вернуть `False`, тогда `POST /release` отвечает "
+    "`{\"ok\": true, \"released\": false, \"pending\": \"jobs\"}`, аренда остаётся (`state: busy`, `holder.releasing: true`, "
+    "`holder.jobs`), другой `character` получает 409 с этим `holder`, тот же `character` возвращает аренду запросом `acquire` "
+    "(тот же `lease_id`, `releasing` снимается). Когда работа кончилась, workspace сам закрывает аренду (`finish_release`: "
+    "`on_release`, `state: free`). Связь с ядром хозяина в это время остаётся. Обрыв WebSocket закрывает аренду сразу.",
     "У аренды нет срока и нет продления: она держится, пока хозяин не вызовет `release` или пока не оборвётся WebSocket участника "
     "с ядром хозяина (ядро упало или отключило участника): тогда workspace сам отпускает аренду и вызывает `on_release`.",
     "Один хозяин за раз; другой `character` получает 409 с описанием хозяина (без токена).",

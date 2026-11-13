@@ -1346,7 +1346,7 @@ function renderModule(m) {
   let lease = '', space = '';
   if (m.lease) {            // общее пространство в контейнере: состояние аренды хранит сам сервис пространства
     const L = m.lease, who = L.holder && L.holder.character ? L.holder.character : '?';
-    const [t, c] = L.state === 'free' ? ['свободно', 'badge-success'] : L.state === 'mine' ? ['моё', 'badge-info']
+    const [t, c] = L.state === 'free' ? ['свободно', 'badge-success'] : L.state === 'mine' ? [L.releasing ? `моё, дорабатывает задачи (${L.jobs || 0})` : 'моё', 'badge-info']
       : L.state === 'busy' ? [`занято: ${who}`, 'badge-warning'] : ['недоступно', 'badge-ghost'];
     const hint = L.state === 'busy' ? `с ${L.since ? new Date(L.since * 1000).toLocaleString() : '?'}${L.purpose ? ', цель: ' + L.purpose : ''}` : (L.reason || '');
     lease = `<span class="badge ${c} badge-sm" title="${esc(hint)}">${esc(t)}</span>`;

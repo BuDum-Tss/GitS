@@ -65,6 +65,10 @@ await leases.release(lease["lease_id"])
 
 - `GET /status`: `{id, role, ownership, state: offline|free|busy, holder, active}`; `POST /acquire`, `/release`. Один хозяин за раз
   (другому 409 с описанием хозяина), повторный `acquire` того же `character` и `purpose` идемпотентен.
+- Выход с работой: если при `release` у workspace есть незаконченные задачи, `on_release(lease)` возвращает `False` (`lease.why` даёт причину:
+  `release`, `finished`, `disconnect`, `stop`). Тогда `POST /release` отвечает `{"ok": true, "released": false, "pending": "jobs"}`, аренда
+  остаётся (`holder.releasing: true`, `holder.jobs`), связь с ядром не рвётся, другой персонаж получает 409, тот же `acquire` возвращает аренду
+  (тот же `lease_id`). Когда задачи кончились, workspace зовёт `server.finish_release(lease_id)`. Обрыв WebSocket закрывает аренду сразу.
 - `GET /info`: описание пространства из манифеста (`title`, `purpose`, `when_to_use`, `keywords`, `entry`, `interruptible`,
   `safe_points`, `done_when`, `tools`) и состояние аренды. Состояние аренды хранит сам workspace, ядро его не дублирует.
 - Участники без аренды (`ownership: owned` и services) отвечают на `GET /status` и `GET /info`, остальное 404.

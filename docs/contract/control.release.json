@@ -40,6 +40,10 @@
       "released": {
         "type": "boolean",
         "description": "была ли аренда закрыта этим вызовом"
+      },
+      "pending": {
+        "type": "string",
+        "description": "`jobs`: аренда не закрыта, у workspace есть незаконченные задачи (`holder.releasing`); она закроется сама, когда они кончатся"
       }
     },
     "additionalProperties": true,

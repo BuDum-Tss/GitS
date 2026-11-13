@@ -446,7 +446,7 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
         if state == "free":
             return "свободно"
         if state == "mine":
-            return "занято мной"
+            return f"моё, дорабатывает задачи ({lease.get('jobs', 0)})" if lease.get("releasing") else "занято мной"
         if state == "busy":
             goal = f", цель: {holder['purpose']}" if holder.get("purpose") else ""
             return f"занято персонажем {holder.get('character') or '?'}{goal}"

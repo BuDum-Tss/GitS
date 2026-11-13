@@ -17,7 +17,8 @@ Workspace с `ownership: shared` (montage, rimworld, minecraft, desktop) зан�
     await leases.release(lease["lease_id"])
 
 Описание форматов: `sdk/gits_sdk/contract/control.py` и раздел «Интерфейс управления» в `docs/MODULE_CONTRACT.md`.
-У аренды нет срока и продления: она держится до `release` или до обрыва WebSocket участника (`connection_lost`).
+У аренды нет срока и продления: она держится до `release` или до обрыва WebSocket участника (`connection_lost`). Если после `release`
+у workspace есть незаконченные задачи, аренда остаётся в `releasing` (`on_release` вернул `False`) до `finish_release`.
 Для участников без аренды (`ownership: owned`, service) сервер отвечает на `GET /status` (state `free` или `offline`, счётчик
 `active`) и `GET /info`, а `acquire` и `release` отвечают 404. Токены (управления и ядра хозяина) в журнал не попадают.
 """
@@ -58,10 +59,15 @@ class Lease:
     token: str
     purpose: str
     since: float
+    releasing: bool = False        # агент вышел, но у workspace ещё есть работа: аренда держится до `finish_release`
+    jobs: int = 0                  # сколько активных задач осталось (при releasing)
+    why: str = ""                  # причина вызова `on_release`: release, finished (работа кончилась), disconnect, stop, replaced
 
     def holder(self) -> dict:
-        return {"character": self.character, "core_url": self.core_url, "since": self.since,
-                "purpose": self.purpose}
+        body = {"character": self.character, "core_url": self.core_url, "since": self.since, "purpose": self.purpose}
+        if self.releasing:
+            body.update(releasing=True, jobs=self.jobs)
+        return body
 
     def __repr__(self) -> str:
         return f"Lease({self.lease_id}, {self.character!r}, {self.purpose!r})"
@@ -92,14 +98,17 @@ class ControlServer:
     id, role, ownership: что сообщает `GET /status`. Аренда включена только при `ownership == "shared"` (и роли workspace);
     иначе доступен лишь `GET /status`, остальное отвечает 404. `on_acquire(lease)` и `on_release(lease)` (функции или
     корутины) подключают и отключают workspace от ядра хозяина; аренда кончается по `POST /release` или по
-    `connection_lost()` (workspace зовёт его, когда оборвалась связь с ядром хозяина). `manifest` даёт `GET /info`.
+    `connection_lost()` (workspace зовёт его, когда оборвалась связь с ядром хозяина). Если при `release` у workspace есть незаконченная
+    работа, `on_release` возвращает `False`: аренда переходит в `releasing` (`holder.releasing`, `holder.jobs` из `jobs()`), другой
+    хозяин получает 409, тот же `character` возвращает аренду запросом `acquire`, а когда работа кончилась, workspace зовёт
+    `finish_release(lease_id)`. `manifest` даёт `GET /info`.
     `available()` сообщает, доступно ли окружение (иначе state `offline`, acquire отвечает 503). `active()` даёт счётчик
     подключений для участников без аренды. `clock` подменяется в тестах. Без токена управления (параметр или `GITS_CONTROL_TOKEN`) сервер не создаётся: `ControlError`."""
 
     def __init__(self, *, id: str, token: str | None = None, role: str = P.ROLE_WORKSPACE,
                  ownership: str | None = P.OWNERSHIP_SHARED, on_acquire: Hook | None = None, on_release: Hook | None = None,
                  available: Callable[[], bool] | None = None, active: Callable[[], int] | None = None,
-                 manifest: dict | None = None, clock: Callable[[], float] = time.time):
+                 manifest: dict | None = None, jobs: Callable[[], int] | None = None, clock: Callable[[], float] = time.time):
         token = token or os.environ.get(P.ENV_CONTROL_TOKEN) or ""
         if not token:
             raise ControlError(f"нет токена управления: задайте параметр token или переменную {P.ENV_CONTROL_TOKEN}")
@@ -113,6 +122,7 @@ class ControlServer:
         self.role = role
         self.ownership = ownership
         self.manifest = manifest or {}
+        self._jobs = jobs
         self._token = token
         self._on_acquire = on_acquire
         self._on_release = on_release
@@ -184,17 +194,39 @@ class ControlServer:
             await self._close_lease("disconnect")
             return True
 
-    async def _close_lease(self, why: str) -> Lease | None:
-        """Забыть хозяина и вызвать `on_release`. Состояние сбрасывается до вызова: сбой обработчика аренду не удерживает."""
-        lease, self.lease = self.lease, None
-        if lease is not None and self._on_release is not None:
+    async def _close_lease(self, why: str, *, may_wait: bool = False) -> Lease | None:
+        """Забыть хозяина и вызвать `on_release`. Состояние сбрасывается до вызова: сбой обработчика аренду не удерживает.
+        `may_wait`: обработчик может ответить `False` (есть работа): тогда аренда остаётся в `releasing` и возвращается None."""
+        lease = self.lease
+        if lease is None:
+            return None
+        res: Any = None
+        lease.why = why
+        if self._on_release is not None:
             try:
                 res = self._on_release(lease)
                 if inspect.isawaitable(res):
-                    await res
+                    res = await res
             except Exception:
                 log.exception("on_release для «%s» упал (%s)", self.id, why)
+                res = None
+        if may_wait and res is False:
+            lease.releasing = True
+            log.info("аренда «%s» (хозяин %s) ждёт конца задач", self.id, lease.character)
+            return None
+        self.lease = None
         return lease
+
+    async def finish_release(self, lease_id: str | None = None) -> bool:
+        """Работа кончилась: довести отложенное освобождение (`on_release` вызывается снова). True, если аренда закрыта."""
+        async with self._lock:
+            cur = self.lease
+            if cur is None or not cur.releasing or (lease_id is not None and cur.lease_id != lease_id):
+                return False
+            closed = await self._close_lease("finished", may_wait=True)
+            if closed is not None:
+                log.info("аренда «%s» (хозяин %s) завершена после задач", self.id, closed.character)
+            return closed is not None
 
     # ------------------------------------------------------------ HTTP
 
@@ -205,6 +237,13 @@ class ControlServer:
         if not given or not hmac.compare_digest(given.encode(), self._token.encode()):
             return _err(401, "unauthorized")
         return await handler(request)
+
+    def _holder(self) -> dict | None:
+        if self.lease is None:
+            return None
+        if self.lease.releasing and self._jobs is not None:
+            self.lease.jobs = int(self._jobs())
+        return self.lease.holder()
 
     def _state(self) -> str:
         if self.lease is not None:
@@ -219,7 +258,7 @@ class ControlServer:
         if self.ownership is not None:
             body["ownership"] = self.ownership
         active = int(self._active()) if self._active is not None else (1 if self.lease is not None else 0)
-        body.update(state=self._state(), holder=self.lease.holder() if self.lease else None, active=active)
+        body.update(state=self._state(), holder=self._holder(), active=active)
         return body
 
     def info(self) -> dict:
@@ -237,7 +276,7 @@ class ControlServer:
         body["tools"] = [{"name": t.get("name"), "description": t.get("description", "")} for t in m.get("tools") or []
                          if isinstance(t, dict)]
         body["state"] = self._state()
-        body["holder"] = self.lease.holder() if self.lease else None
+        body["holder"] = self._holder()
         return body
 
     async def _status(self, request: web.Request) -> web.Response:
@@ -269,9 +308,11 @@ class ControlServer:
             now = self._clock()
             cur = self.lease
             if cur is not None:
-                if cur.character != body["character"] or cur.purpose != purpose:
-                    return _json(409, {"ok": False, "state": C.STATE_BUSY, "holder": cur.holder()})
+                if cur.character != body["character"] or (cur.purpose != purpose and not cur.releasing):
+                    return _json(409, {"ok": False, "state": C.STATE_BUSY, "holder": self._holder()})
                 if cur.core_url == body["core_url"] and cur.token == body["token"]:     # повторный запрос: та же аренда
+                    if cur.releasing:                                                   # хозяин вернулся: выход отменён
+                        cur.releasing, cur.jobs, cur.purpose = False, 0, purpose
                     return _json(200, {"ok": True, "lease_id": cur.lease_id})
                 await self._close_lease("replaced")                                     # ядро хозяина сменилось
             elif self._available is not None and not self._available():
@@ -300,7 +341,8 @@ class ControlServer:
             cur = self.lease
             if cur is None or cur.lease_id != body["lease_id"]:
                 return _json(200, {"ok": True, "released": False})
-            await self._close_lease("release")
+            if await self._close_lease("release", may_wait=True) is None:
+                return _json(200, {"ok": True, "released": False, "pending": "jobs"})
             return _json(200, {"ok": True, "released": True})
 
 

@@ -1327,6 +1327,7 @@
 
 Workspace с `ownership: shared` занимает один хозяин за раз. Хозяин (ядро персонажа) берёт окружение в аренду по HTTP, а workspace подключается к его ядру по WebSocket. Это не сообщения шины, поэтому они описаны отдельно от `Message`. Сервер: `gits_sdk.control.ControlServer`, клиент ядра: `gits_sdk.control.LeaseClient`. Авторизация: заголовок `Authorization: Bearer <GITS_CONTROL_TOKEN>` у каждого запроса. Состояния: `offline`, `free`, `busy`.
 
+- Выход с незаконченной работой: `on_release` может вернуть `False`, тогда `POST /release` отвечает `{"ok": true, "released": false, "pending": "jobs"}`, аренда остаётся (`state: busy`, `holder.releasing: true`, `holder.jobs`), другой `character` получает 409 с этим `holder`, тот же `character` возвращает аренду запросом `acquire` (тот же `lease_id`, `releasing` снимается). Когда работа кончилась, workspace сам закрывает аренду (`finish_release`: `on_release`, `state: free`). Связь с ядром хозяина в это время остаётся. Обрыв WebSocket закрывает аренду сразу.
 - У аренды нет срока и нет продления: она держится, пока хозяин не вызовет `release` или пока не оборвётся WebSocket участника с ядром хозяина (ядро упало или отключило участника): тогда workspace сам отпускает аренду и вызывает `on_release`.
 - Один хозяин за раз; другой `character` получает 409 с описанием хозяина (без токена).
 - Состояние аренды хранит сам workspace; ядро его не дублирует и читает запросом `GET /status`.
@@ -1343,6 +1344,8 @@ Workspace с `ownership: shared` занимает один хозяин за р�
 | `core_url` | string | да | непустая | адрес ядра хозяина, к которому подключён workspace (ws:// или wss://) |
 | `since` | number | да | - | когда аренда началась, unix-время в секундах |
 | `purpose` | string | нет | - | зачем взято (например `play`, `montage`); пусто, если не указано |
+| `releasing` | boolean | нет | - | агент вышел, но у workspace ещё есть работа: аренда держится до её конца (только при true) |
+| `jobs` | integer | нет | - | сколько активных задач осталось (есть при `releasing`) |
 
 ### `GET /status`
 
@@ -1362,7 +1365,7 @@ Workspace с `ownership: shared` занимает один хозяин за р�
 | `role` | string | да | одно из `workspace`, `service` | роль |
 | `ownership` | string | нет | одно из `shared`, `owned` | режим владения (у workspace) |
 | `state` | string | да | одно из `offline`, `free`, `busy` | состояние |
-| `holder` | object | да | - | хозяин аренды (поля: character, core_url, since, purpose) или null, если свободно |
+| `holder` | object | да | - | хозяин аренды (поля: character, core_url, since, purpose, releasing, jobs) или null, если свободно |
 | `active` | integer | да | - | сколько хозяев или подключений сейчас (для shared 0 или 1) |
 
 Пример ответа:
@@ -1517,6 +1520,7 @@ Workspace с `ownership: shared` занимает один хозяин за р�
 |---|---|---|---|---|
 | `ok` | boolean | да | - | true |
 | `released` | boolean | да | - | была ли аренда закрыта этим вызовом |
+| `pending` | string | нет | - | `jobs`: аренда не закрыта, у workspace есть незаконченные задачи (`holder.releasing`); она закроется сама, когда они кончатся |
 
 Пример запроса:
 

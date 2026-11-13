@@ -51,7 +51,7 @@
       },
       "holder": {
         "type": "object",
-        "description": "хозяин аренды (поля: character, core_url, since, purpose) или null, если свободно"
+        "description": "хозяин аренды (поля: character, core_url, since, purpose, releasing, jobs) или null, если свободно"
       },
       "active": {
         "type": "integer",
