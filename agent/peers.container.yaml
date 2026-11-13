@@ -1,7 +1,7 @@
 # Участники ядра в контейнере (GITS_CONTAINER=1, GITS_PEERS_FILE=agent/peers.container.yaml): только то, что не требует железа
 # ПК. Голос, питомец, «Компьютер» и RimWorld запускаются на хосте и подключаются к ядру по WebSocket (/ws) на опубликованный
 # порт (GITS_CORE_URL, GITS_TOKEN). Монтаж это отдельный контейнер-пространство (compose, профиль montage): ядро его не запускает,
-# а берёт в аренду (поля `external: true`, `control_url`, `control_token_env`; адрес шины для сервиса: GITS_CORE_PUBLIC_URL). Сервисов decider и espeech здесь нет: они внешние, ядро ходит к ним по адресам из
+# а берёт в аренду (поля `external: true`, `control_url`, `control_token_env`; адрес шины для сервиса: GITS_CORE_PUBLIC_URL). Сервисов decider и espeech здесь нет: они внешние (decider это общий контейнер `decider`, http://decider:8768), ядро ходит к ним по адресам из
 # переменных окружения (GITS_DECIDER_URL и др.). {GITS} в контейнере это /app, {PYTHON} интерпретатор образа.
 # Формат записей тот же, что у agent/peers.yaml (разделы workspaces и services); здесь только окружения со своим владением (owned). Секреты модули читают из окружения контейнера (env_file compose).
 workspaces:

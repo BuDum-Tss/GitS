@@ -118,6 +118,7 @@ services:
     command: "{GITS}/services/decider/.venv/Scripts/python.exe"      # Python 3.12 с torch CPU, см. services/decider/README.md
     args: ["decider_server.py"]
     health_url: "http://127.0.0.1:8768/health"
+    skip_when_env: {DECIDER_EXTERNAL: ["1"]}      # DECIDER_EXTERNAL=1: сервис уже в контейнере (docker compose up -d decider)
     autostart: true
     restart: on-failure
 

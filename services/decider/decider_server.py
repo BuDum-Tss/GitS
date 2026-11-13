@@ -31,6 +31,7 @@ from aiohttp import web  # noqa: E402
 from envcompat import env  # noqa: E402
 
 MODEL_ID = env("GITS_DECIDER_MODEL", "fastino/GLiNER2.5-multi-Decide")
+HOST = env("GITS_DECIDER_HOST", "127.0.0.1")         # в контейнере 0.0.0.0 (образ задаёт переменную)
 PORT = int(env("GITS_DECIDER_PORT", "8768"))
 MAX_STATE_CHARS = 6000
 
@@ -107,8 +108,8 @@ def main():
     app = web.Application()
     app.router.add_post("/v1/systemone", handle_decide)
     app.router.add_get("/health", handle_health)
-    print(f"[decider] слушаю http://127.0.0.1:{PORT}", flush=True)
-    web.run_app(app, host="127.0.0.1", port=PORT, print=None)
+    print(f"[decider] слушаю http://{HOST}:{PORT}", flush=True)
+    web.run_app(app, host=HOST, port=PORT, print=None)
 
 
 if __name__ == "__main__":

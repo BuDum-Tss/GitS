@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Added
+- Классификатор `decider` работает общим контейнером `decider` (`docker/decider`, сервис в корневом `docker-compose.yml`, веса `services/decider/hf` монтируются только на чтение, образ без GPU); ядро в контейнере ходит к нему по `http://decider:8768`; `DECIDER_EXTERNAL=1` отключает запуск второго процесса супервизором. Схема архитектуры актуальна: состав компонентов ядра не менялся.
 - Фаза 3b: `twitch` и `obs` слиты в одно окружение `streamer` (`workspaces/streamer`, `owned`): один процесс и манифест, подпакеты `twitch/` и `obs/`, инструменты `streamer.twitch_*` и `streamer.obs_*`, виды событий прежние (`twitch.*`, `obs.*`; новое поле манифеста `event_prefixes`). Настройки `peers.twitch` и `peers.obs` мигрируют в `peers.streamer`, токены Twitch читаются под прежним именем файла.
 - Фаза 3a: папки `modules/` перенесены: `pet` и `voice` в `services/`, `desktop`, `montage`, `obs`, `rimworld`, `telegram`, `twitch` в новую `workspaces/`; пути обновлены в `peers.yaml`, `check.ps1`, Dockerfile и compose, тестах, документах и схеме архитектуры. Виртуальное окружение `workspaces/montage/.venv` после переноса надо пересоздать (в нём прописан старый путь).
 - Монтаж один общий контейнер `montage` на всех персонажей (корневой `docker-compose.yml`, группа `gits`, том `gits-montage-work`, папка каждого персонажа монтируется в `/characters/<id>`); в compose ядра остался только `<id>-core`. Задачи монтажа, ждущие ответа пользователя, не удерживают аренду: паркуются на диске и возвращаются при повторном входе.

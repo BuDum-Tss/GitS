@@ -58,6 +58,27 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # Классификатор обращений decider (GLiNER2.5-multi-Decide, процессор, без GPU): ОДИН общий контейнер для всех ядер. Ядро ходит к нему по
+  # имени decider в сети gits_default (GITS_DECIDER_URL=http://decider:8768); процессы хоста видят порт на 127.0.0.1. Веса (около 1,1 ГБ)
+  # лежат на хосте в services/decider/hf, том только для чтения. Чтобы супервизор ядра на хосте не поднимал второй процесс: DECIDER_EXTERNAL=1 в .env.
+  decider:
+    build:
+      context: .
+      dockerfile: docker/decider/Dockerfile
+    image: gits-decider:latest
+    container_name: decider
+    restart: "no"
+    ports:
+      - "${DECIDER_HOST:-127.0.0.1}:${DECIDER_PORT:-8768}:8768"
+    volumes:
+      - ${DECIDER_WEIGHTS:-./services/decider/hf}:/opt/decider/hf:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8768/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
   whisperx:
     build:
       context: .

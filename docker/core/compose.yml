@@ -31,8 +31,9 @@ services:
       GITS_CORE_PUBLIC_URL: ws://${CHARACTER_ID:-glados}-core:8766/ws
       # токен управления пространствами GITS_CONTROL_TOKEN приходит из .env хоста (env_file выше): им ядро берёт монтаж в аренду;
       # не задан: аренда отключена, монтаж недоступен
+      # decider: общий контейнер из корневого docker-compose.yml (та же сеть gits_default, имя decider)
+      GITS_DECIDER_URL: ${GITS_DECIDER_URL:-http://decider:8768}
       # сервисы на хосте
-      GITS_DECIDER_URL: ${GITS_DECIDER_URL:-http://host.docker.internal:8768}
       GITS_LM_URL: ${GITS_LM_URL:-http://host.docker.internal:1234/v1}
       OBS_WEBSOCKET_URL: ${OBS_WEBSOCKET_URL:-ws://host.docker.internal:4455}
       RIMWORLD_API: ${RIMWORLD_API:-http://host.docker.internal:8765}

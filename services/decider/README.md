@@ -36,6 +36,21 @@ cd services\decider
 
 Загрузка модели около 15 секунд, потом `GET /health` отвечает `{"ok": true}`.
 
+## Запуск в контейнере
+
+Общий контейнер `decider` (группа gits, как `espeech-tts`; образ `gits-decider:latest`, `docker/decider/Dockerfile`, без GPU):
+
+```powershell
+docker build -f docker/decider/Dockerfile -t gits-decider:latest .
+docker compose up -d --no-build decider
+```
+
+Веса в образ не входят: каталог `services/decider/hf` монтируется только для чтения в `/opt/decider/hf` (`DECIDER_WEIGHTS` меняет
+путь). Сервер слушает `GITS_DECIDER_HOST` (в образе 0.0.0.0, вне контейнера по умолчанию 127.0.0.1). На хосте порт `127.0.0.1:8768`
+(`DECIDER_HOST`, `DECIDER_PORT`), для ядра в контейнере адрес `http://decider:8768` (`GITS_DECIDER_URL`, сеть `gits_default`).
+Чтобы супервизор ядра на хосте не поднимал второй процесс из `.venv`, поставь в `.env` `DECIDER_EXTERNAL=1`. Контейнер становится
+healthy после загрузки модели (до минуты).
+
 ## Протокол
 
 ```

@@ -26,7 +26,10 @@ resources
 services/agent-runtime/auth.json
 services/agent-runtime/memory
 services/agent-runtime/test
-services/decider
+services/decider/*
+!services/decider/decider_server.py
+!services/decider/envcompat.py
+!services/decider/requirements.lock.txt
 services/f5-tts/*
 !services/f5-tts/f5_server.py
 workspaces/desktop
