@@ -86,7 +86,16 @@ DEFAULTS = {
 }
 # словари, которые update() сливает на один уровень вглубь (modules.<id> и attention.<ключ> целиком не затираются)
 _DEEP_KEYS = ("modules", "attention", "context", "reflection", "episodes", "fast_contour", "latency_budget")
-_dir = Path(os.getenv("MEMORY_DIR", "./memory"))
+def default_memory_dir() -> str:
+    """MEMORY_DIR главнее; иначе CHARACTER_HOME/memory (том персонажа); иначе ./memory."""
+    env = os.getenv("MEMORY_DIR")
+    if env:
+        return env
+    home = os.getenv("CHARACTER_HOME", "").strip()
+    return str(Path(home) / "memory") if home else "./memory"
+
+
+_dir = Path(default_memory_dir())
 
 
 def quiet_active(cfg: dict | None = None) -> bool:

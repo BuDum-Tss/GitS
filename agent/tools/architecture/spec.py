@@ -110,7 +110,7 @@ GROUPS = [
         N("elog", "EventLog", "I", "SQLite events.db: журнал событий, трасса, решения", "контракт журнала", "events_log.py: глобальные функции, 16 импортов"),
         N("stores", "Диалог, задачи, люди", "I", "JSON: диалог и активность; планы и напоминания это задачи (tasks.db); отношения", "репозитории", "user_memory.py, adapters/task_store.py, relationships.py"),
         N("graph", "FactGraph (контракт)", "I", "SQLite graph.db (fact_store.py, поиск через HybridIndex): факты с интервалами валидности; области global и <id>:<область> по профилю (graph_scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов", "контракт графа", "graph_memory.py: 701 строка"),
-        N("char", "CharacterRepo", "I", "resources/<Имя>: конституция, prompt, канон, голос", "Character", "character.py + resources/"),
+        N("char", "CharacterRepo", "I", "resources/<Имя>: конституция, prompt, канон, голос; в контейнере вся папка персонажа это том CHARACTER_HOME (ресурсы и memory/)", "Character", "character.py + resources/"),
     ]),
     dict(id="g_ext", col="BOTTOM2", title="Внешний слой и сборка", tag="X",
          summary="Модели и службы: LM Studio, GLiNER, ESpeech, Fish Speech, WhisperX, Claude. Сборка: core_service.", out="", nodes=[

@@ -64,6 +64,15 @@ class Character:
                 "language": self.language, "world": self.world, "voice": {k: v for k, v in self.voice.items()}}
 
 
+def in_container() -> bool:
+    """Задан ли том персонажа (`CHARACTER_HOME`): один персонаж, память в `CHARACTER_HOME/memory`."""
+    return resources.character_home() is not None
+
+
+def _folders() -> dict[str, Path]:
+    return resources.character_folders() if in_container() else resources.character_folders(CHARACTERS_DIR)
+
+
 def _str_list(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
@@ -76,7 +85,7 @@ def load(char_id: str = DEFAULT_ID) -> Character:
     """Читает character.yaml персонажа; бросает CharacterError, если папки нет или данные неверны."""
     if not isinstance(char_id, str) or not ID_RE.match(char_id):
         raise CharacterError(f"недопустимый идентификатор персонажа «{char_id}»: строчные латинские буквы, цифры, _")
-    folder = resources.character_folders(CHARACTERS_DIR).get(char_id)
+    folder = _folders().get(char_id)
     if folder is None:
         raise CharacterError(f"нет папки персонажа с id «{char_id}» в {CHARACTERS_DIR}: создайте её (шаблон: resources/_template)")
     card_path = folder / CARD_FILE
@@ -105,12 +114,14 @@ def load(char_id: str = DEFAULT_ID) -> Character:
 
 def list_ids() -> list[str]:
     """Персонажи, у которых есть character.yaml. Папки с подчёркиванием (шаблон `_template`) не считаются."""
-    return sorted(resources.character_folders(CHARACTERS_DIR))
+    return sorted(_folders())
 
 
 def memory_dir(char_id: str = DEFAULT_ID, base: Path | None = None) -> Path:
     """Папка памяти персонажа (CHR-10): для персонажа по умолчанию — корень памяти ядра, для других — memory/characters/<id>/."""
     root = Path(base) if base is not None else settings.memory_dir()
+    if in_container():                  # том: один персонаж, его память это сама папка памяти ядра (CHARACTER_HOME/memory)
+        return root
     return root if char_id == DEFAULT_ID else root / "characters" / char_id
 
 
@@ -163,7 +174,7 @@ def fill(text: str) -> str:
 
 def sections(char_id: str) -> dict[str, str]:
     """Тексты персоны: ключи из `<модуль>/persona.yaml` всех папок персонажа (ключ -> текст). Нет файлов - пустой словарь."""
-    folder = resources.character_folders(CHARACTERS_DIR).get(char_id)
+    folder = _folders().get(char_id)
     out: dict[str, str] = {}
     if folder is None:
         return out

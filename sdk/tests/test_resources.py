@@ -29,3 +29,20 @@ def test_default_character_comes_from_the_environment(tmp_path, monkeypatch):
     assert resources.character_dir(root=tmp_path) == tmp_path / "B"
     monkeypatch.setenv("GITS_RESOURCES_DIR", str(tmp_path))
     assert resources.resources_root() == tmp_path
+
+
+def test_character_home_overrides_root(tmp_path, monkeypatch):
+    from gits_sdk import resources
+    home = tmp_path / "vol"
+    (home / "core").mkdir(parents=True)
+    (home / "core" / "character.yaml").write_text("id: tester\nname: T\n", encoding="utf-8")
+    monkeypatch.setenv("CHARACTER_HOME", str(home))
+    assert resources.character_folders() == {"tester": home}
+    assert resources.character_dir() == home
+    assert resources.character_dir("tester") == home
+    assert resources.module_dir("pet") == home / "pet"
+    assert resources.home_memory_dir() == home / "memory"
+    with pytest.raises(FileNotFoundError):
+        resources.character_dir("other")
+    monkeypatch.delenv("CHARACTER_HOME")
+    assert resources.character_home() is None

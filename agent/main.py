@@ -14,6 +14,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")   # секреты 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sdk"))
 
 import core_service
+import settings
 import tray_launch
 
 logging.basicConfig(
@@ -27,7 +28,7 @@ def main():
     # Agent SDK использует либо ANTHROPIC_API_KEY либо OAuth из ~/.claude/.credentials.json
     config = {
         "rimworld_api": os.getenv("RIMWORLD_API", "http://localhost:8765"),
-        "memory_dir":   os.getenv("MEMORY_DIR", "./memory"),
+        "memory_dir":   settings.default_memory_dir(),
     }
 
     tray_launch.ensure_tray()        # трей всегда стартует вместе с ядром (повторный запуск тихо выходит по мьютексу)

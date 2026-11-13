@@ -40,3 +40,6 @@ services/agent-runtime/auth.json
 
 # история моста pi, если его запускали вручную из services/agent-runtime без MEMORY_DIR
 services/agent-runtime/memory/
+
+# память персонажа в томе контейнера (CHARACTER_HOME/memory), в репозиторий не входит
+resources/*/memory/

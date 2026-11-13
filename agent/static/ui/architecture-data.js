@@ -600,7 +600,7 @@ window.ARCH_DATA = {
      "t": "CharacterRepo",
      "tag": "I",
      "new": false,
-     "do": "resources/<Имя>: конституция, prompt, канон, голос",
+     "do": "resources/<Имя>: конституция, prompt, канон, голос; в контейнере вся папка персонажа это том CHARACTER_HOME (ресурсы и memory/)",
      "out": "Character",
      "now": "character.py + resources/"
     }

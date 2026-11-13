@@ -315,6 +315,8 @@ class Supervisor:
                    PYTHONUNBUFFERED="1")
         if self.memory_dir is not None:
             env["MEMORY_DIR"] = str(self.memory_dir)
+        if os.environ.get("CHARACTER_HOME"):          # том персонажа: модули берут ресурсы из него (gits_sdk.resources)
+            env["CHARACTER_HOME"] = os.environ["CHARACTER_HOME"]
         if "GITS_CHARACTER_ID" not in env:         # ресурсы модуля: resources/<Имя>/<модуль>/ активного персонажа (gits_sdk.resources)
             try:
                 import character

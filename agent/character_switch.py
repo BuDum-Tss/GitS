@@ -20,6 +20,7 @@ from attention_rules import FILE_NAME as RULES_FILE
 log = logging.getLogger("character_switch")
 
 SPEECH_WAIT_S = 15.0
+CONTAINER_MSG = "в контейнере один персонаж; для другого подними другой контейнер"
 
 
 class CharacterSwitch:
@@ -35,6 +36,8 @@ class CharacterSwitch:
 
     async def switch(self, char_id: str) -> dict:
         """Сменить персонажа. Неизвестный id или битая папка — character.CharacterError до каких-либо изменений."""
+        if character.in_container():
+            raise character.CharacterError(CONTAINER_MSG)
         async with self._lock:
             new = character.load(char_id)
             old = character.active()
