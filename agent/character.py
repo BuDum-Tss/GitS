@@ -130,7 +130,12 @@ _active: Character | None = None
 
 
 def configured_id() -> str:
-    """Id из настройки `character` (memory/settings.json); без неё или при битом значении — DEFAULT_ID."""
+    """Id из настройки `character` (memory/settings.json); без неё или при битом значении — DEFAULT_ID. В томе
+    (`CHARACTER_HOME`) персонаж один, и это тот, что лежит в томе, каким бы ни был его id."""
+    if in_container():
+        ids = list(_folders())
+        if len(ids) == 1:
+            return ids[0]
     value = settings.load().get("character") or DEFAULT_ID
     return str(value) if ID_RE.match(str(value)) else DEFAULT_ID
 

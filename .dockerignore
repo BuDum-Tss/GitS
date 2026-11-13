@@ -1,0 +1,39 @@
+# Контекст сборки образов GitS (docker/core, docker/fish-speech, docker/whisperx; у всех контекст "."). Секреты, память, веса и
+# окружения хоста в образы не попадают. Нужны другим образам и не исключаются: docker/fish-speech, docker/whisperx, docker/espeech,
+# services/f5-tts/f5_server.py (у них контекст ".").
+.git
+.claude
+.venv
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.env
+.env.*
+!.env.example
+**/.env
+agent/secrets.env
+agent/memory
+agent/logs
+agent/models
+agent/resources
+agent/tests
+agent/debug_screenshot.png
+agent/_*.log
+resources
+services/agent-runtime/auth.json
+services/agent-runtime/memory
+services/agent-runtime/test
+services/decider
+services/f5-tts/*
+!services/f5-tts/f5_server.py
+modules/desktop
+modules/montage
+modules/pet
+modules/rimworld
+modules/voice
+**/tests
+docs
+docker/core/*.env

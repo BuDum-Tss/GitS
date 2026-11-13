@@ -11,7 +11,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 import shutil
 import time
 from pathlib import Path
@@ -28,7 +27,7 @@ from core_api import CoreAPI
 from gits_sdk import ToolError
 from jobs import PAUSED_STAGE, STAGE_PROGRESS, STAGES, Job, JobStore
 from layout import Layout
-from manifest import MANIFEST, normalize_voiceover
+from manifest import MANIFEST, normalize_voiceover, resolve_output_dir
 from plan_schema import PlanContext, story_beat_ids, validate_plan, validate_story
 from render import RenderError, Renderer
 from workspace import custom_components, prepare_work, sync_media
@@ -906,7 +905,7 @@ class Pipeline:
                                                     scale=1.0, platform=platform)
         outcome = qa_mod.QAOutcome(findings=findings, checked=checked)
         _, mp = await asyncio.to_thread(qa_mod.write_report, job.qa, job.job_id, outcome, draft=False, fixed=[], stem="report_final")
-        out_dir = Path(os.path.expandvars(str(self.setting("output_dir"))))
+        out_dir = Path(resolve_output_dir(self.setting("output_dir")))
         copy = await asyncio.to_thread(self._copy_out, final, out_dir, platform, job.job_id)
         fmt = plan.get("format") or {}
         burned = bool((plan.get("captions") or {}).get("enabled")) and fmt.get("height", 0) > fmt.get("width", 0)   # ТЗ 23 SC-4: только вертикаль

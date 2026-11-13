@@ -26,6 +26,8 @@ PROTOCOL = 1
 DEFAULT_CORE_URL = "ws://127.0.0.1:8766/module/ws"
 ENV_CORE_URL = "GITS_CORE_URL"
 ENV_TOKEN = "GITS_MODULE_TOKEN"
+ENV_CONTAINER = "GITS_CONTAINER"       # 1: ядро работает в Docker-контейнере (том персонажа, токен из переменной, без трея)
+ENV_HUB_ALLOW = "GITS_HUB_ALLOW"       # сети CIDR через запятую, которым шина модулей открыта помимо петли (контейнер: шлюз Docker)
 MAX_MESSAGE_BYTES = 1024 * 1024        # MOD-6: файлы передаются путями, не внутри сообщений
 HEARTBEAT_S = 10                       # MOD-5: встроенный пинг WebSocket (aiohttp heartbeat)
 PEER_TIMEOUT_S = 30                    # нет ответа столько секунд: соединение разорвано
@@ -33,6 +35,12 @@ RECONNECT_DELAYS = (1, 2, 4, 8, 16, 30)  # MOD-7: дальше без конца
 CLOSE_REPLACED = 4000                  # MOD-13: код закрытия «вытеснен новым подключением»
 EXIT_REJECTED = 2                      # MOD-12: код завершения процесса модуля после reject про протокол/манифест
 CORE_HOST_ALLOWED = ("127.0.0.1", "::1")   # MOD-3: ядро принимает только петлю
+
+
+def is_container(environ=None) -> bool:
+    """Ядро запущено в контейнере (`GITS_CONTAINER=1`)."""
+    value = (os.environ if environ is None else environ).get(ENV_CONTAINER, "")
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
 def core_url() -> str:

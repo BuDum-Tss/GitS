@@ -4,7 +4,7 @@
 состояние, задачи и запросы к ядру, а ядро вызывает его инструменты и рассылает темы (`presence`, `settings`, `profile`,
 `module`, `battery`). Поведение сервера повторяет эталон `gits_sdk.testing.FakeCore`.
 
-Защита: только петля (`127.0.0.1`, `::1`, иначе HTTP 403) и токен `Authorization: Bearer ...` (иначе 401) до апгрейда до
+Защита: только петля (`127.0.0.1`, `::1`; в контейнере ещё сети из `GITS_HUB_ALLOW`; иначе HTTP 403) и токен `Authorization: Bearer ...` (иначе 401) до апгрейда до
 WebSocket. Токен ядро создаёт при каждом старте и пишет в `%LOCALAPPDATA%\\GitS\\module_token`; в журналы он не попадает,
 как и содержимое сообщений (в журнал идут тип и размер).
 
@@ -13,6 +13,7 @@ WebSocket. Токен ядро создаёт при каждом старте �
 """
 import asyncio
 import hmac
+import ipaddress
 import logging
 import os
 import time
@@ -64,6 +65,34 @@ def _normalize_remote(remote: str | None) -> str | None:
     if remote and remote.lower().startswith("::ffff:"):
         return remote[7:]              # IPv4 в двойном стеке: ::ffff:127.0.0.1
     return remote
+
+
+def parse_allow(raw: str | None) -> list:
+    """`GITS_HUB_ALLOW`: сети CIDR (или адреса) через запятую. Неверная запись пропускается с предупреждением."""
+    nets: list = []
+    for part in str(raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            logger.warning(f"GITS_HUB_ALLOW: запись {part!r} не сеть и не адрес, пропущена")
+    return nets
+
+
+def remote_allowed(remote: str | None, extra: list | tuple = ()) -> bool:
+    """Пускать ли адрес на шину: петля всегда, остальное только из `extra` (список сетей)."""
+    remote = _normalize_remote(remote)
+    if remote in P.CORE_HOST_ALLOWED:
+        return True
+    if not remote or not extra:
+        return False
+    try:
+        addr = ipaddress.ip_address(remote.split("%", 1)[0])
+    except ValueError:
+        return False
+    return any(addr.version == net.version and addr in net for net in extra)
 
 
 class ModuleConnection:
@@ -165,11 +194,22 @@ class ModuleHub:
                  settings_source: Callable[[], dict] = settings.load,
                  profile_source: Callable[[], dict] = lambda: {"id": "assistant", "title": "Ассистент", "focus_modules": []},
                  battery_source: Callable[[], dict] = lambda: {},
-                 presence=None, hello_timeout: float = HELLO_TIMEOUT_S, monotonic: Callable[[], float] = time.monotonic):
+                 presence=None, hello_timeout: float = HELLO_TIMEOUT_S, monotonic: Callable[[], float] = time.monotonic,
+                 allow: list | None = None, environ=None):
         """modules - ModuleRegistry; sink - приёмник событий модулей (контракт `contracts.EventSink`, ТЗ 29 ARC-7: шина
         не знает ни менеджера внимания, ни модели); requests - обработчик core.* (`contracts.RequestHandler`, в ядре
         core_requests.CoreRequests); *_source - откуда брать настройки, профиль и батарейку (в тестах подменяются);
-        presence - PresenceTracker (снимок для новых модулей)."""
+        presence - PresenceTracker (снимок для новых модулей); allow - сети, которым шина открыта помимо петли (по
+        умолчанию `GITS_HUB_ALLOW`); environ - переменные окружения (в тестах подменяются). В контейнере
+        (`GITS_CONTAINER=1`) токен берётся из `GITS_MODULE_TOKEN` (файл не пишется), а без неё создаётся и пишется в
+        `MEMORY_DIR/module_token`, не в LOCALAPPDATA."""
+        environ = os.environ if environ is None else environ
+        self.allow = list(allow) if allow is not None else parse_allow(environ.get(P.ENV_HUB_ALLOW))
+        env_token = str(environ.get(P.ENV_TOKEN) or "").strip() if P.is_container(environ) else ""
+        if P.is_container(environ) and token_file is None and not (token or env_token):
+            token_file = Path(settings.memory_dir()) / "module_token"
+        token = token or env_token or None
+        self._token_from_env = bool(env_token) and token == env_token
         self.modules = modules
         self.sink = sink
         self.requests = requests
@@ -199,8 +239,11 @@ class ModuleHub:
 
     async def start(self) -> None:
         """Токен в файл (атомарно) и фоновая сверка настроек, включённости и батарейки."""
-        path = await asyncio.to_thread(write_token_atomic, self.token, self.token_file)
-        logger.info(f"Шина модулей: токен записан в {path}")
+        if self._token_from_env:
+            logger.info("Шина модулей: токен задан переменной окружения, файл не пишется")
+        else:
+            path = await asyncio.to_thread(write_token_atomic, self.token, self.token_file)
+            logger.info(f"Шина модулей: токен записан в {path}")
         self._watch_task = asyncio.get_running_loop().create_task(self._watch())
 
     async def stop(self) -> None:
@@ -241,8 +284,7 @@ class ModuleHub:
     # ── рукопожатие ─────────────────────────────────────────────────────────────
 
     async def handle(self, request: web.Request) -> web.StreamResponse:
-        remote = _normalize_remote(request.remote)
-        if remote not in P.CORE_HOST_ALLOWED:                                    # MOD-3
+        if not remote_allowed(request.remote, self.allow):                       # MOD-3
             logger.warning("Подключение модуля не с петлевого адреса отклонено")
             raise web.HTTPForbidden()
         given = request.headers.get("Authorization", "")

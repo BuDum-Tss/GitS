@@ -25,7 +25,7 @@ sys.path.insert(0, str(HERE.parents[2] / "sdk"))
 from gits_sdk import resources  # noqa: E402
 
 MEMORY_SKIP_DIRS = {"logs", "__pycache__"}
-MEMORY_SKIP_FILES = ("*.log", "*.tmp", "*-wal", "*-shm", "tool_embeddings.json", ".env")
+MEMORY_SKIP_FILES = ("*.log", "*.tmp", "*-wal", "*-shm", "tool_embeddings.json", ".env", "module_token")
 RESOURCE_SKIP_DIRS = {"__pycache__"}
 RESOURCE_SKIP_FILES = (".env", "*.tmp")
 DB_SUFFIXES = (".db", ".sqlite", ".sqlite3")

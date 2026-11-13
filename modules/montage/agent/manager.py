@@ -21,7 +21,7 @@ from env_state import WorkspaceState
 from gits_sdk import ToolError
 from jobs import FINISHED, Job, JobStore
 from layout import Layout
-from manifest import FORMATS, PLATFORMS, SOURCE_KINDS, VOICEOVERS
+from manifest import FORMATS, PLATFORMS, SOURCE_KINDS, VOICEOVERS, resolve_output_dir
 from pipeline import EDITS, Pipeline
 from studio import StudioError, StudioPool
 
@@ -438,7 +438,7 @@ class Manager:
                 # папки для ссылок пространства «Монтаж» (path_from в манифесте, TZ 15)
                 "status": self.env.status(cur.stage if cur is not None else None),       # ТЗ 18, 32: статус среды для ядра
                 "jobs_dir": os.path.abspath(str(self.layout.jobs)),
-                "output_dir": os.path.expandvars(str(self.pipeline.setting("output_dir")))}
+                "output_dir": resolve_output_dir(self.pipeline.setting("output_dir"))}
         client = getattr(self.core, "client", None)
         if client is not None:
             try:

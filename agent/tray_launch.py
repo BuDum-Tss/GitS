@@ -16,7 +16,9 @@ _DETACHED = 0x00000008 | 0x00000200 | 0x08000000     # DETACHED_PROCESS | CREATE
 
 
 def wanted(env: Mapping[str, str], platform: str) -> bool:
-    """Нужен ли трей: Windows и не выключен переменной окружения."""
+    """Нужен ли трей: Windows, не контейнер (`GITS_CONTAINER=1`) и не выключен переменной окружения."""
+    if str(env.get("GITS_CONTAINER", "")).strip().lower() in ("1", "true", "yes", "on"):
+        return False
     return platform == "win32" and str(env.get(NO_TRAY_ENV, "")).strip().lower() not in ("1", "true", "yes", "on")
 
 

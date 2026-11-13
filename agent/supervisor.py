@@ -39,6 +39,7 @@ logger = logging.getLogger("supervisor")
 AGENT_DIR = Path(__file__).resolve().parent
 GITS_ROOT = AGENT_DIR.parent
 MODULES_YAML = AGENT_DIR / "modules.yaml"
+ENV_MODULES_FILE = "GITS_MODULES_FILE"       # другой файл модулей (контейнер: agent/modules.container.yaml); относительный путь от корня репозитория
 LOGS_DIR = AGENT_DIR / "logs" / "modules"
 
 RESTART_DELAYS = (2, 5, 15, 60)       # CORE-15
@@ -83,8 +84,18 @@ class PlannedModule:
     tz: str = ""
 
 
-def load_planned(path: Path | str = MODULES_YAML) -> list[PlannedModule]:
+def modules_file(env: dict | None = None, gits_root: Path = GITS_ROOT) -> Path:
+    """Файл модулей: `GITS_MODULES_FILE` (относительный путь считается от корня репозитория) или `agent/modules.yaml`."""
+    raw = str((os.environ if env is None else env).get(ENV_MODULES_FILE) or "").strip()
+    if not raw:
+        return MODULES_YAML
+    path = Path(raw)
+    return path if path.is_absolute() else Path(gits_root) / path
+
+
+def load_planned(path: Path | str | None = None) -> list[PlannedModule]:
     """Запланированные модули из modules.yaml. Неверная запись пропускается с предупреждением."""
+    path = modules_file() if path is None else path
     try:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as e:
@@ -108,8 +119,9 @@ def _skip_when_env(raw) -> dict[str, list[str]]:
     return {str(k): [str(x).strip().lower() for x in v] for k, v in raw.items()}
 
 
-def load_specs(path: Path | str = MODULES_YAML) -> list[ModuleSpec]:
+def load_specs(path: Path | str | None = None) -> list[ModuleSpec]:
     """Модули из modules.yaml. Неверная запись пропускается с предупреждением."""
+    path = modules_file() if path is None else path
     try:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as e:

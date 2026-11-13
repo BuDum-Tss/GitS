@@ -365,7 +365,7 @@ def test_skip_when_env_keeps_the_module_from_starting(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         _skip_when_env({"TTS_ENGINE": "fish"})
     espeech = next(s for s in load_specs() if s.id == "espeech")
-    assert espeech.skip_when_env == {"TTS_ENGINE": ["fish", "edge"]}
+    assert espeech.skip_when_env == {"TTS_ENGINE": ["fish", "edge"], "ESPEECH_EXTERNAL": ["1"]}
 
 
 def test_espeech_does_not_start_when_another_tts_engine_is_chosen(monkeypatch):

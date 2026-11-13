@@ -825,3 +825,14 @@ async def test_stop_during_handshake_returns_run_quickly():
         assert await asyncio.wait_for(task, 3) == 0
     finally:
         await runner.cleanup()
+
+
+async def test_env_token_wins_over_file(core, monkeypatch, tmp_path):
+    """Контейнер: GITS_MODULE_TOKEN главнее файла токена (файл ядра на хосте может быть чужим или старым)."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    P.write_token_file("старый-токен-из-файла")
+    monkeypatch.setenv("GITS_MODULE_TOKEN", core.token)
+    client = make_client(core, token=None)
+    assert await client._resolve_token() == core.token
+    async with running(client, core):
+        assert len(core.hellos) == 1

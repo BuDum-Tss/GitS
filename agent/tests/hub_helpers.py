@@ -90,7 +90,7 @@ class FakeIO:
 class Core:
     """Шина, реестры, маршрутизатор и заглушка внимания на настоящем HTTP-сервере 127.0.0.1."""
 
-    def __init__(self, tmp_path: Path, settings_state: dict, spoof_remote: str | None = None):
+    def __init__(self, tmp_path: Path, settings_state: dict, spoof_remote: str | None = None, allow=None):
         self.settings_state = settings_state          # то, что «лежит в settings.json» (подменяется в тестах)
         self.envs = Registry()
         self.modules = ModuleRegistry(self.envs, settings_source=lambda: self.settings_state)
@@ -102,7 +102,7 @@ class Core:
         self.said: list[str] = []
         self.hub = ModuleHub(self.modules, sink=AttentionEventSink(self.attention), requests=self.requests,
                              settings_source=lambda: self.settings_state, token_file=tmp_path / "module_token",
-                             hello_timeout=0.5)
+                             hello_timeout=0.5, allow=allow, environ={})
         self.router = Router(self.envs, self._say)
         self.requests.router = self.router
         self.modules.supervisor = None
@@ -157,8 +157,8 @@ class Core:
 
 
 @contextlib.asynccontextmanager
-async def running_core(tmp_path, settings_state=None, spoof_remote=None):
-    core = Core(tmp_path, {"modules": {}} if settings_state is None else settings_state, spoof_remote)
+async def running_core(tmp_path, settings_state=None, spoof_remote=None, allow=None):
+    core = Core(tmp_path, {"modules": {}} if settings_state is None else settings_state, spoof_remote, allow=allow)
     await core.start()
     try:
         yield core

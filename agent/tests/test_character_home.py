@@ -31,6 +31,13 @@ def test_home_layout(tmp_path, monkeypatch):
     assert settings.default_memory_dir() == str(tmp_path / "explicit")
 
 
+def test_home_character_is_the_active_one_whatever_its_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHARACTER_HOME", str(_make_home(tmp_path)))
+    assert character.configured_id() == "tester"                  # настройки character нет, а в томе один персонаж
+    monkeypatch.delenv("CHARACTER_HOME")
+    assert character.configured_id() == character.DEFAULT_ID     # без тома как раньше
+
+
 async def test_switch_refused_in_container(tmp_path, monkeypatch):
     monkeypatch.setenv("CHARACTER_HOME", str(_make_home(tmp_path)))
     sw = CharacterSwitch(companion=None, rel=None, graph=None, attention=None, hub=None, mem_root=tmp_path)

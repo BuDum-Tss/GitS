@@ -1,0 +1,87 @@
+# Ядро GitS в контейнере: шаблон на одного персонажа (контейнер <CHARACTER_ID>-core в группе gits, том памяти gits-<CHARACTER_ID>-memory).
+# Запуск: docker compose -f docker/core/compose.yml --env-file docker/core/glados.env up -d
+# Образ собирается автоматически (или заранее: docker build -f docker/core/Dockerfile -t gits-core:dev .).
+# Монтаж (необязательно): отдельный контейнер gits-<id>-montage, профиль montage:
+#   docker compose --env-file .env --env-file docker/core/glados.env -f docker/core/compose.yml --profile montage up -d
+# (первым --env-file из корня берётся GITS_MODULE_TOKEN; подробности в docker/core/README.md, раздел «Монтаж»).
+# Переменные (docker/core/glados.env): CHARACTER_ID, CHARACTER_DIR, CORE_PORT; GITS_MODULE_TOKEN берётся из .env хоста.
+# Весь стек в одной группе gits (Docker Desktop): ядро персонажа, общие сервисы (espeech, whisperx, fish-speech, монтаж). Имя ядра: <id>-core.
+name: gits
+
+services:
+  core:
+    build:
+      context: ../..
+      dockerfile: docker/core/Dockerfile
+    image: ${CORE_IMAGE:-gits-core:dev}
+    container_name: ${CHARACTER_ID:-glados}-core
+    restart: unless-stopped
+    # секреты хоста (TELEGRAM_*, TWITCH_*, OBS_WEBSOCKET_PASSWORD, ключи): в образ не копируются
+    env_file:
+      - ../../.env
+    environment:
+      CHARACTER_HOME: /data
+      MEMORY_DIR: /data/memory
+      GITS_CHARACTER_ID: ${CHARACTER_ID:-glados}
+      # токен модулей GITS_MODULE_TOKEN приходит из .env хоста (env_file выше; его же читают модули на хосте). Без него ядро
+      # создаёт токен само и пишет в /data/memory/module_token (тогда модулям на хосте его надо передать вручную)
+      # шина модулей открыта петле и сетям Docker: хостовые модули приходят с адреса шлюза сети (порт опубликован только на 127.0.0.1)
+      GITS_HUB_ALLOW: ${GITS_HUB_ALLOW:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
+      # сервисы на хосте
+      GITS_DECIDER_URL: ${GITS_DECIDER_URL:-http://host.docker.internal:8768}
+      GITS_LM_URL: ${GITS_LM_URL:-http://host.docker.internal:1234/v1}
+      OBS_WEBSOCKET_URL: ${OBS_WEBSOCKET_URL:-ws://host.docker.internal:4455}
+      RIMWORLD_API: ${RIMWORLD_API:-http://host.docker.internal:8765}
+      GITS_RIMWORLD_URL: ${GITS_RIMWORLD_URL:-http://host.docker.internal:8765}
+      # вход pi по подписке (среда исполнения агента): файл auth.json с хоста, не в образе
+      GITS_PI_AUTH: /run/secrets/pi_auth.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:${CORE_PORT:-8766}:8766"
+    volumes:
+      # папка персонажа с хоста (core/, voice/, pet/, ...), а память в именованном томе поверх: SQLite WAL на bind-mount Windows ненадёжен
+      - ${CHARACTER_DIR:-../../resources/GlaDOS}:/data
+      - memory:/data/memory
+      # auth.json pi с хоста (запись нужна: pi обновляет токены входа); путь меняет GITS_PI_AUTH_FILE
+      - ${GITS_PI_AUTH_FILE:-../../services/agent-runtime/auth.json}:/run/secrets/pi_auth.json
+
+  # Модуль монтажа: свой контейнер, подключается к ядру по WebSocket (сеть compose, адрес ядра core:8766), только по профилю montage
+  montage:
+    profiles: ["montage"]
+    build:
+      context: ../..
+      dockerfile: docker/montage/Dockerfile
+    image: ${MONTAGE_IMAGE:-gits-montage:dev}
+    container_name: gits-${CHARACTER_ID:-glados}-montage
+    restart: unless-stopped
+    depends_on:
+      core:
+        condition: service_healthy
+    # env_file не подключается: секреты хоста (.env) модулю монтажа не нужны, токен шины идёт переменной GITS_MODULE_TOKEN
+    environment:
+      GITS_CORE_URL: ws://core:8766/module/ws
+      GITS_MODULE_TOKEN: ${GITS_MODULE_TOKEN:-}
+      GITS_MODULE_ID: montage
+      GITS_CHARACTER_ID: ${CHARACTER_ID:-glados}
+      CHARACTER_HOME: /data
+      # рабочая память модуля (папки задач, обучающий журнал) в томе, а не в слое контейнера
+      MEMORY_DIR: /work
+      MONTAGE_JOBS_DIR: /work/jobs
+      # готовые ролики: в папке персонажа на хосте (resources/<Имя>/montage/out)
+      MONTAGE_OUT_DIR: /data/montage/out
+      # вход pi по подписке (секрет): путь внутри контейнера; сам файл монтируется ниже, в образ он не копируется
+      # GITS_PI_AUTH: /run/secrets/pi_auth.json
+    volumes:
+      - ${CHARACTER_DIR:-../../resources/GlaDOS}:/data
+      - montage-work:/work
+      # auth.json pi с хоста, только чтение (задать GITS_PI_AUTH_FILE, значения по умолчанию нет):
+      # - ${GITS_PI_AUTH_FILE}:/run/secrets/pi_auth.json:ro
+      # исходники для монтажа: пути в запросе start должны быть путями контейнера, поэтому кладите файлы в /inbox:
+      # - ${MONTAGE_INBOX_DIR}:/inbox:ro
+
+volumes:
+  memory:
+    name: gits-${CHARACTER_ID:-glados}-memory
+  montage-work:
+    name: gits-${CHARACTER_ID:-glados}-montage-work

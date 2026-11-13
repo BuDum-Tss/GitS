@@ -14,6 +14,25 @@ def normalize_voiceover(value) -> str:
     v = str(value or "")
     return VOICEOVER_ALIASES.get(v, v)
 
+WINDOWS_OUTPUT_DIR = r"%USERPROFILE%\Videos\GLaDOS"
+ENV_OUT_DIR = "MONTAGE_OUT_DIR"          # папка готовых роликов; в контейнере /data/montage/out (том персонажа)
+
+
+def default_output_dir() -> str:
+    """Папка готовых роликов по умолчанию: `MONTAGE_OUT_DIR`, иначе Видео пользователя (Windows)."""
+    return os.environ.get(ENV_OUT_DIR, "").strip() or WINDOWS_OUTPUT_DIR
+
+
+def resolve_output_dir(value: str | None = None) -> str:
+    """Настройка `output_dir` с подстановкой переменных. Если задан `MONTAGE_OUT_DIR`, а в настройке осталось
+    прежнее значение по умолчанию (путь Windows, в контейнере он бессмыслен), берётся `MONTAGE_OUT_DIR`."""
+    value = str(value or "").strip()
+    env_dir = os.environ.get(ENV_OUT_DIR, "").strip()
+    if env_dir and (not value or value == WINDOWS_OUTPUT_DIR):
+        return env_dir
+    return os.path.expandvars(value or default_output_dir())
+
+
 _KEYWORDS = ("монтаж", "смонтируй", "ролик", "видео", "шортс", "рилс", "клип", "субтитры", "нарезка")
 
 MANIFEST = {
@@ -31,7 +50,7 @@ MANIFEST = {
                        "enum": ["opus", "sonnet"]},
         "build_model": {"type": "string", "title": "Модель для сборки проекта Remotion", "default": "sonnet",
                         "enum": ["opus", "sonnet"]},
-        "output_dir": {"type": "string", "title": "Папка готовых роликов", "default": r"%USERPROFILE%\Videos\GLaDOS"},
+        "output_dir": {"type": "string", "title": "Папка готовых роликов", "default": default_output_dir()},
         "keep_jobs": {"type": "integer", "title": "Сколько завершённых задач хранить", "default": 10, "min": 1,
                       "max": 100},
         "max_turns_stage": {"type": "integer", "title": "Лимит шагов агента на стадию", "default": 80, "min": 10,
@@ -131,13 +150,10 @@ MANIFEST = {
     },
 }
 
-DEFAULT_OUTPUT_DIR = r"%USERPROFILE%\Videos\GLaDOS"
-
-
 def serve_dirs(jobs_dir, output_dir: str | None = None) -> list[str]:
     """Каталоги, из которых ядро раздаёт файлы задач и открывает папки (panel.serve_dirs, TZ 15). Выбираются при
     запуске: если пользователь потом сменит `output_dir`, модуль перезапускают (манифест принимается один раз)."""
-    out = os.path.expandvars(output_dir or DEFAULT_OUTPUT_DIR)
+    out = resolve_output_dir(output_dir)
     return [os.path.abspath(str(jobs_dir)), os.path.abspath(out)]
 
 
