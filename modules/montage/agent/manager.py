@@ -67,9 +67,19 @@ class Manager:
         self.env = WorkspaceState()                     # среда агента «Монтаж» (ТЗ 32)
         self.on_idle = None                             # () -> None: активных задач не осталось (аренда ждёт этого, lease_host)
 
+    def _waiting(self, job_id: str) -> bool:
+        job = self._jobs.get(job_id)
+        return job is not None and job.data.get("state") == "waiting_user"
+
+    def running_job_ids(self) -> list[str]:
+        """Выполняющаяся и стоящие в очереди задачи. Ждущие ответа (`waiting_user`) сюда не входят: они припаркованы (лежат на
+        диске в папке хозяина, при повторном входе `recover` вернёт их и вопрос задастся снова)."""
+        ids = [*self.queue, *([self.current] if self.current else [])]
+        return [i for i in ids if not self._waiting(i)]
+
     def active_jobs(self) -> int:
-        """Сколько задач ещё не закончено: очередь и текущая."""
-        return len(self.queue) + (1 if self.current else 0)
+        """Сколько задач работает или ждёт очереди (ждущие ответа не считаются: аренду они не держат)."""
+        return len(self.running_job_ids())
 
     # ================================================================================================ среда агента (ТЗ 32)
 
@@ -213,8 +223,6 @@ class Manager:
                 if job.finished:
                     await self.studios.stop(job_id)              # Studio гаснет вместе с задачей (TZ 15)
                 await self.publish_state()
-                if self.on_idle is not None and not self.queue:
-                    self.on_idle()
 
     async def stop(self, *, kill: bool = True) -> None:
         """Остановить работу при выключении модуля. Задача остаётся в своём состоянии и продолжится при следующем запуске."""
@@ -452,6 +460,8 @@ class Manager:
                 await client.state(summary, data)
             except Exception as e:
                 log.debug("state не отправлен: %s", e)
+        if self.on_idle is not None and self.active_jobs() == 0:      # работающих нет: аренда, ждавшая конца задач, освобождается
+            self.on_idle()
 
     async def _panel_loop(self) -> None:
         """Пространство «Монтаж» обновляется отдельным циклом, а не из пути состояния: публикация не задерживает стадии

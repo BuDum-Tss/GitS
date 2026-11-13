@@ -1,4 +1,4 @@
-# Голосовые сервисы ГЛаДОС (локально, на GPU). Голос по умолчанию ESpeech: `docker compose up -d` поднимает espeech (и whisperx);
+# Общие сервисы GitS: голос ГЛаДОС (локально, на GPU) и монтаж видео (общий контейнер montage, см. его описание ниже). Голос по умолчанию ESpeech: `docker compose up -d` поднимает espeech (и whisperx);
 # Fish Speech запасной и стоит за профилем fish: `docker compose --profile fish up -d fish-speech`.
 # Все три сервиса необязательны: без ESpeech и Fish Speech модуль voice говорит запасным голосом edge-tts, без WhisperX слух
 # использует встроенный локальный Whisper (веса Fish Speech в agent/resources/tts/checkpoints, веса ESpeech в
@@ -86,6 +86,47 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # Монтаж видео: ОДИН общий контейнер на всех персонажей (пространство, которое ядро берёт в аренду как семафор). К ядру при старте
+  # не подключается: ждёт аренды на порту управления 8780 (только сеть compose gits_default, на хост не публикуется; ядро
+  # персонажа видит его по имени montage, control_url в agent/peers.container.yaml). Запуск:
+  #   docker compose --env-file .env up -d montage        (--env-file .env нужен, чтобы подставился GITS_CONTROL_TOKEN из .env)
+  # Секреты .env монтажу не передаются (env_file нет): только токен управления. Папка каждого персонажа монтируется отдельной строкой
+  # ниже в /characters/<id>: новому персонажу добавь свою (например ./resources/Aperture:/characters/aperture); хозяин аренды видит
+  # только свою папку. Токен шины ядра приходит в acquire (GITS_CORE_URL и GITS_TOKEN не задаются). Образ: gits-montage:dev.
+  montage:
+    build:
+      context: .
+      dockerfile: docker/montage/Dockerfile
+    image: ${MONTAGE_IMAGE:-gits-montage:dev}
+    container_name: montage
+    restart: unless-stopped
+    environment:
+      GITS_CONTROL_TOKEN: ${GITS_CONTROL_TOKEN:-}
+      GITS_CONTROL_PORT: "8780"
+      # папки персонажей: ресурсы хозяина аренды из <root>/<персонаж>/montage, готовые ролики в <root>/<персонаж>/montage/out
+      GITS_CHARACTERS_ROOT: /characters
+      # рабочая память (папки задач jobs/<персонаж>, обучающий журнал) в общем томе, а не в слое контейнера
+      MEMORY_DIR: /work
+      MONTAGE_JOBS_DIR: /work/jobs
+      # вход pi по подписке (секрет): путь внутри контейнера; сам файл монтируется ниже, в образ он не копируется
+      # GITS_PI_AUTH: /run/secrets/pi_auth.json
+    expose:
+      - "8780"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:8780/status', headers={'Authorization': 'Bearer ' + os.environ['GITS_CONTROL_TOKEN']}), timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - ./resources/GlaDOS:/characters/glados
+      - montage_work:/work
+      # auth.json pi с хоста, только чтение (задать GITS_PI_AUTH_FILE, значения по умолчанию нет):
+      # - ${GITS_PI_AUTH_FILE}:/run/secrets/pi_auth.json:ro
+      # исходники для монтажа: пути в запросе start должны быть путями контейнера, поэтому кладите файлы в /inbox:
+      # - ${MONTAGE_INBOX_DIR}:/inbox:ro
+
 volumes:
   whisper_cache:
   espeech_cache:
+  montage_work:
+    name: gits-montage-work

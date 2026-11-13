@@ -1,11 +1,12 @@
-"""Контейнер монтажа: сервис `montage` в docker/core/compose.yml, Dockerfile и .gitignore (разбор файлов, Docker не нужен)."""
+"""Контейнер монтажа: ОДИН общий сервис `montage` в корневом docker-compose.yml (не в compose ядра), Dockerfile и .gitignore (разбор файлов, Docker не нужен)."""
 import ipaddress
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-COMPOSE = ROOT / "docker" / "core" / "compose.yml"
+COMPOSE = ROOT / "docker-compose.yml"                                       # монтаж: общий контейнер, корневой compose
+CORE_COMPOSE = ROOT / "docker" / "core" / "compose.yml"
 DOCKERFILE = ROOT / "docker" / "montage" / "Dockerfile"
 IGNORE = ROOT / "docker" / "montage" / "Dockerfile.dockerignore"
 
@@ -19,15 +20,20 @@ def _env(service: dict) -> dict:
     return env if isinstance(env, dict) else dict(item.split("=", 1) for item in env)
 
 
-def test_montage_service_is_optional_profile_and_waits_for_lease():
+def test_montage_is_one_shared_container_in_root_compose_and_waits_for_lease():
     compose = _compose()
     svc = compose["services"]["montage"]
-    assert svc["profiles"] == ["montage"]
-    assert "profiles" not in compose["services"]["core"]                      # ядро поднимается без профиля
+    assert "profiles" not in svc and svc["container_name"] == "montage"       # один контейнер на всех персонажей
+    assert svc["image"].startswith("${MONTAGE_IMAGE:-gits-montage:dev")
+    assert svc["build"]["context"] == "." and "espeech" in compose["services"]
+    core = yaml.safe_load(CORE_COMPOSE.read_text(encoding="utf-8"))
+    assert set(core["services"]) == {"core"} and set(core["volumes"]) == {"memory"}      # в compose ядра монтажа нет
+    assert compose["name"] == core["name"] == "gits"                          # один проект: общая сеть gits_default, имя montage резолвится из ядра
+    assert "networks" not in compose and "networks" not in core and "network_mode" not in svc
+    peers = yaml.safe_load((ROOT / "agent" / "peers.container.yaml").read_text(encoding="utf-8"))
+    assert next(w for w in peers["workspaces"] if w["id"] == "montage")["control_url"] == "http://montage:8780"
     assert "depends_on" not in svc                                             # к ядру при старте не подключается: ждёт аренды
     assert svc["build"]["dockerfile"] == "docker/montage/Dockerfile"
-    assert svc["container_name"] == "gits-${CHARACTER_ID:-glados}-montage"
-    assert compose["name"] == "gits"                                           # вся группа контейнеров в проекте gits
 
 
 def test_montage_service_environment_and_volumes():
@@ -41,17 +47,17 @@ def test_montage_service_environment_and_volumes():
     assert env["MEMORY_DIR"] == "/work" and env["MONTAGE_JOBS_DIR"].startswith("/work/")
     assert "8780" in [str(p) for p in svc["expose"]] and "ports" not in svc   # порт управления не публикуется на хост
     assert "/status" in " ".join(svc["healthcheck"]["test"])
-    core_env = _env(compose["services"]["core"])
+    core_env = _env(yaml.safe_load(CORE_COMPOSE.read_text(encoding="utf-8"))["services"]["core"])
     assert core_env["GITS_CORE_PUBLIC_URL"] == "ws://${CHARACTER_ID:-glados}-core:8766/ws"
     volumes = svc["volumes"]
-    assert any(v.startswith("${CHARACTER_DIR") and v.endswith(":/characters/${CHARACTER_ID:-glados}") for v in volumes)
-    assert "montage-work:/work" in volumes
-    assert "montage-work" in compose["volumes"]
+    assert "./resources/GlaDOS:/characters/glados" in volumes                 # папка каждого персонажа отдельной строкой
+    assert "montage_work:/work" in volumes
+    assert compose["volumes"]["montage_work"]["name"] == "gits-montage-work"       # общий том, внутри по персонажам
     assert "env_file" not in svc                                              # секреты хоста монтажу не передаются
 
 
 def test_hub_allow_covers_compose_network():
-    allow = _env(_compose()["services"]["core"])["GITS_HUB_ALLOW"]
+    allow = _env(yaml.safe_load(CORE_COMPOSE.read_text(encoding="utf-8"))["services"]["core"])["GITS_HUB_ALLOW"]
     default = allow.split(":-", 1)[1].rstrip("}").split(",")
     nets = [ipaddress.ip_network(n) for n in default]
     assert any(ipaddress.ip_address("172.20.0.3") in n for n in nets)         # типовая подсеть compose

@@ -1,9 +1,9 @@
 # Ядро GitS в контейнере: шаблон на одного персонажа (контейнер <CHARACTER_ID>-core в группе gits, том памяти gits-<CHARACTER_ID>-memory).
 # Запуск: docker compose -f docker/core/compose.yml --env-file docker/core/glados.env up -d
 # Образ собирается автоматически (или заранее: docker build -f docker/core/Dockerfile -t gits-core:dev .).
-# Монтаж (необязательно): пространство в отдельном контейнере gits-<id>-montage, профиль montage (ядро берёт его в аренду):
-#   docker compose --env-file .env --env-file docker/core/glados.env -f docker/core/compose.yml --profile montage up -d
-# (первым --env-file из корня берётся GITS_TOKEN (прежнее имя GITS_MODULE_TOKEN тоже читается); подробности в docker/core/README.md, раздел «Монтаж»).
+# Монтаж: ОДИН общий контейнер `montage` на всех персонажей, он описан в корневом docker-compose.yml (проект gits, та же сеть
+# gits_default, поэтому ядро видит его по имени montage). Ядро берёт его в аренду (agent/peers.container.yaml, control_url);
+# подробности в docker/core/README.md, раздел «Монтаж».
 # Переменные (docker/core/glados.env): CHARACTER_ID, CHARACTER_DIR, CORE_PORT; GITS_TOKEN берётся из .env хоста.
 # Весь стек в одной группе gits (Docker Desktop): ядро персонажа, общие сервисы (espeech, whisperx, fish-speech, монтаж). Имя ядра: <id>-core.
 name: gits
@@ -50,46 +50,6 @@ services:
       # auth.json pi с хоста (запись нужна: pi обновляет токены входа); путь меняет GITS_PI_AUTH_FILE
       - ${GITS_PI_AUTH_FILE:-../../services/agent-runtime/auth.json}:/run/secrets/pi_auth.json
 
-  # Пространство монтажа: свой контейнер, ждёт аренды (GET /status, /info, POST /acquire, /release на порту 8780 в сети compose,
-  # на хост не публикуется). Ядро берёт его в аренду по GITS_CONTROL_TOKEN и отдаёт адрес и токен своей шины: монтаж подключается
-  # к ядру хозяина, пока агент в его окружении (у аренды нет срока; кончается выходом агента или обрывом связи). Только профиль montage.
-  montage:
-    profiles: ["montage"]
-    build:
-      context: ../..
-      dockerfile: docker/montage/Dockerfile
-    image: ${MONTAGE_IMAGE:-gits-montage:dev}
-    container_name: gits-${CHARACTER_ID:-glados}-montage
-    restart: unless-stopped
-    # env_file не подключается: секреты хоста (.env) модулю монтажа не нужны; токен управления идёт переменной,
-    # токен шины ядра приходит в acquire (GITS_CORE_URL и GITS_TOKEN не задаются: к ядру при старте модуль не подключается)
-    environment:
-      GITS_CONTROL_TOKEN: ${GITS_CONTROL_TOKEN:-}
-      GITS_CONTROL_PORT: "8780"
-      # папки персонажей: ресурсы хозяина аренды берутся из <root>/<персонаж>/montage, готовые ролики в <root>/<персонаж>/montage/out
-      GITS_CHARACTERS_ROOT: /characters
-      # рабочая память модуля (папки задач по персонажам, обучающий журнал) в томе, а не в слое контейнера
-      MEMORY_DIR: /work
-      MONTAGE_JOBS_DIR: /work/jobs
-      # вход pi по подписке (секрет): путь внутри контейнера; сам файл монтируется ниже, в образ он не копируется
-      # GITS_PI_AUTH: /run/secrets/pi_auth.json
-    expose:
-      - "8780"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import os,urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:8780/status', headers={'Authorization': 'Bearer ' + os.environ['GITS_CONTROL_TOKEN']}), timeout=3)"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-    volumes:
-      - ${CHARACTER_DIR:-../../resources/GlaDOS}:/characters/${CHARACTER_ID:-glados}
-      - montage-work:/work
-      # auth.json pi с хоста, только чтение (задать GITS_PI_AUTH_FILE, значения по умолчанию нет):
-      # - ${GITS_PI_AUTH_FILE}:/run/secrets/pi_auth.json:ro
-      # исходники для монтажа: пути в запросе start должны быть путями контейнера, поэтому кладите файлы в /inbox:
-      # - ${MONTAGE_INBOX_DIR}:/inbox:ro
-
 volumes:
   memory:
     name: gits-${CHARACTER_ID:-glados}-memory
-  montage-work:
-    name: gits-${CHARACTER_ID:-glados}-montage-work
