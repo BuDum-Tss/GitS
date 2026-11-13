@@ -17,7 +17,7 @@
 
 | Род | Что это | Примеры | Клиент SDK |
 |---|---|---|---|
-| **workspace** (окружение) | инструменты, события и рабочее место агента (`workspace`, `nodes` в манифесте) | `montage`, `rimworld`, `minecraft`, `desktop`, `telegram`, `streamer` (будущее объединение twitch и obs) | `WorkspaceClient` |
+| **workspace** (окружение) | инструменты, события и рабочее место агента (`workspace`, `nodes` в манифесте) | `montage`, `rimworld`, `minecraft`, `desktop`, `telegram`, `streamer` (Twitch и OBS одним окружением) | `WorkspaceClient` |
 | **service** | подключается к ядру по WebSocket; окружения и аренды нет, инструменты допустимы | `pet`, `voice` | `ServiceClient` |
 
 Внешние сервисы без WebSocket (decider, espeech и т. п.) тоже сервисы, но к SDK не относятся.

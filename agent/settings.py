@@ -149,12 +149,36 @@ def _migrate_modules_key(data: dict) -> bool:
     return True
 
 
+_STREAMER_LEGACY = ("twitch", "obs")
+
+
+def _migrate_streamer_peers(data: dict) -> bool:
+    """Одноразовая миграция фазы 3b: записи `peers.twitch` и `peers.obs` -> одна `peers.streamer` (окружения слиты). Если есть
+    старые записи, а `streamer` нет: `enabled` = включён любой из них (нет поля - по умолчанию включён), значения настроек из
+    обоих (у twitch первыми, затем obs), старые ключи удаляются. Если `streamer` уже есть, старые ключи просто удаляются.
+    True, если файл надо переписать."""
+    peers = data.get("peers")
+    if not isinstance(peers, dict) or not any(k in peers for k in _STREAMER_LEGACY):
+        return False
+    old = {k: peers.pop(k) for k in _STREAMER_LEGACY if k in peers}
+    if "streamer" not in peers:
+        entries = [e for e in old.values() if isinstance(e, dict)]
+        merged: dict = {}
+        for entry in entries:
+            merged.update({k: v for k, v in entry.items() if k != "enabled"})
+        if any("enabled" in e for e in entries):
+            merged["enabled"] = any(bool(e.get("enabled", True)) for e in entries)
+        if merged:
+            peers["streamer"] = merged
+    return True
+
+
 def load() -> dict:
     try:
         data = json.loads(_file().read_text(encoding="utf-8"))
     except Exception:
         data = {}
-    if isinstance(data, dict) and _migrate_modules_key(data):
+    if isinstance(data, dict) and (_migrate_modules_key(data) | _migrate_streamer_peers(data)):
         _write(data)
     elif not isinstance(data, dict):
         data = {}

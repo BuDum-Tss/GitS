@@ -1,7 +1,8 @@
-"""Модуль Twitch: сборка клиента, события чата и канала, инструменты, доставка ответов (`deliver`), состояние.
+"""Подсистема Twitch окружения «Стример»: сборка клиента, события чата и канала, инструменты, доставка ответов (`deliver`), состояние.
 
-`TwitchModule(client, memory_dir)` вешает обработчики на `ModuleClient` и создаёт фоновые задачи (`start()`): личные слова от
-ядра (privacy), сессии EventSub (бот: чат; владелец: события канала, если он вошёл), состояние раз в 5 минут. Тесты собирают
+`TwitchModule(client, memory_dir)` вешает обработчики на общий клиент окружения (инструменты с префиксом `twitch_`) и создаёт
+фоновые задачи (`start()`): личные слова от ядра (privacy), сессии EventSub (бот: чат; владелец: события канала, если он вошёл).
+Состояние отправляет `StreamerModule` (общее на обе подсистемы); `snapshot()` отдаёт сводку подсистемы. Тесты собирают
 модуль против `gits_sdk.testing.FakeCore`, а сеть Twitch подменяют (`Helix._request`, `EventSubSession._open`).
 Тексты зрителей это данные: в событие они идут как факт «сообщение от X: «...»», инструкций оттуда никто не выполняет.
 """
@@ -11,16 +12,15 @@ import os
 import time
 from collections import deque
 
-from common import chunks, message_fact, quiet_active, scrub, sender_info
-from eventsub import EventSubSession
+from .common import chunks, message_fact, quiet_active, scrub, sender_info
+from .eventsub import EventSubSession
 from gits_sdk import ModuleClient, ToolError
-from privacy import Privacy
-from twitch_api import Helix, Tokens, TwitchError
+from .privacy import Privacy
+from .twitch_api import Helix, Tokens, TwitchError
 
 log = logging.getLogger("twitch.app")
 
-STATE_EVERY_S = 300.0
-STATE_POLL_S = 5.0
+PREFIX = "twitch_"                    # имена инструментов: streamer.twitch_<имя>
 RECENT_MAX = 50
 
 
@@ -124,7 +124,7 @@ class TwitchModule:
 
     def start(self) -> list[asyncio.Task]:
         loop = asyncio.get_running_loop()
-        for coro in (self._privacy_loop(), self._eventsub_loop(), self.run_state()):
+        for coro in (self._privacy_loop(), self._eventsub_loop()):
             self.tasks.append(loop.create_task(coro))
         return self.tasks
 
@@ -211,7 +211,7 @@ class TwitchModule:
         return bool(await self.client.event(
             "twitch.mention" if mention else "twitch.chat", message_fact(name, text),
             addressed_to_me=mention or owner, sender=sender_info(str(ev.get("chatter_user_id") or ""), name, owner),
-            reply_channel={"module": "twitch", "target": f"chat:{mid}"}, dedupe_key=f"tw:chat:{mid}",
+            reply_channel={"module": self.client.module_id, "target": f"chat:{mid}"}, dedupe_key=f"tw:chat:{mid}",
             memorable=mention or owner, data={"message_id": mid, "login": login}))
 
     # ── инструменты ──────────────────────────────────────────────────────────
@@ -239,16 +239,16 @@ class TwitchModule:
         c = self.client
         privacy = self.privacy
 
-        @c.tool("chat_say")
+        @c.tool(PREFIX + "chat_say")
         async def chat_say(args):
             await self._say(_text_arg(args, "text"))
             return {"sent": True}
 
-        @c.check("chat_say")
+        @c.check(PREFIX + "chat_say")
         async def chat_say_check(args):
             return privacy.reason(str(args.get("text") or "")) if privacy.ready else None
 
-        @c.tool("announce")
+        @c.tool(PREFIX + "announce")
         async def announce(args):
             text = _text_arg(args, "text")
             self._need_ready()
@@ -261,9 +261,9 @@ class TwitchModule:
                 raise self._api_error(e) from e
             return {"sent": True}
 
-        c.check("announce")(chat_say_check)
+        c.check(PREFIX + "announce")(chat_say_check)
 
-        @c.tool("stream_status")
+        @c.tool(PREFIX + "stream_status")
         async def stream_status(args):
             self._need_ready()
             try:
@@ -276,7 +276,7 @@ class TwitchModule:
                     "game": (stream or info).get("game_name") or info.get("game_name", ""),
                     "viewers": (stream or {}).get("viewer_count", 0)}
 
-        @c.tool("set_stream")
+        @c.tool(PREFIX + "set_stream")
         async def set_stream(args):
             self._need_ready()
             title, game = _text_arg(args, "title", False), _text_arg(args, "game", False)
@@ -291,9 +291,9 @@ class TwitchModule:
             except TwitchError as e:
                 raise self._api_error(e) from e
 
-        c.check("set_stream")(chat_say_check_for("title", privacy))
+        c.check(PREFIX + "set_stream")(chat_say_check_for("title", privacy))
 
-        @c.tool("clip")
+        @c.tool(PREFIX + "clip")
         async def clip(args):
             self._need_ready()
             try:
@@ -302,20 +302,20 @@ class TwitchModule:
                 raise self._api_error(e) from e
             return {"clip_id": made.get("id"), "edit_url": made.get("edit_url")}
 
-        @c.tool("recent_events")
+        @c.tool(PREFIX + "recent_events")
         async def recent_events(args):
             limit = max(1, min(_int_arg(args, "limit", 15), RECENT_MAX))
             return {"events": list(self.recent)[-limit:]}
 
-        @c.tool("timeout_user")
+        @c.tool(PREFIX + "timeout_user")
         async def timeout_user(args):
             return await self._moderate(args, seconds=max(1, min(_int_arg(args, "seconds", 300), 1209600)))
 
-        @c.tool("ban_user")
+        @c.tool(PREFIX + "ban_user")
         async def ban_user(args):
             return await self._moderate(args, seconds=0)
 
-        @c.tool("delete_message")
+        @c.tool(PREFIX + "delete_message")
         async def delete_message(args):
             self._need_ready()
             try:
@@ -369,21 +369,6 @@ class TwitchModule:
         live = {True: "в эфире", False: "не в эфире", None: "эфир неизвестен"}[self.live]
         failed = sorted({t for s in self.sessions for t in s.failed})
         return f"Twitch: {word}, {live}", {"ready": word == "подключён", "live": self.live, "failed_subscriptions": failed}
-
-    async def run_state(self) -> None:
-        last_key, sent_at = None, 0.0
-        while True:
-            try:
-                summary, data = self.snapshot()
-                key = (summary, tuple(data["failed_subscriptions"]))
-                if key != last_key or time.time() - sent_at >= STATE_EVERY_S:
-                    await self.client.state(summary, data)
-                    last_key, sent_at = key, time.time()
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                log.warning("состояние не отправлено: %s", scrub(str(e)))
-            await asyncio.sleep(STATE_POLL_S)
 
 
 def chat_say_check_for(field: str, privacy):

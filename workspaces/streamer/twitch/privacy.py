@@ -12,7 +12,7 @@ import logging
 import re
 import time
 
-from common import scrub
+from .common import scrub
 from gits_sdk import ToolError
 
 from gits_sdk import host

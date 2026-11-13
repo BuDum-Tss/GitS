@@ -6,7 +6,7 @@ from pathlib import Path
 
 CHAT_MAX = 500                    # предел длины одного сообщения чата Twitch
 TEXT_MAX = 300                    # сколько символов сообщения идёт в факт события
-GITS_ROOT = Path(__file__).resolve().parent.parent.parent
+GITS_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 def default_memory_dir() -> str:

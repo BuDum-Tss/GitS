@@ -7,9 +7,9 @@ from aiohttp import web
 from gits_sdk import ModuleClient, ToolError
 from gits_sdk.testing import FakeCore
 
-import obs_client
+from obs import obs_client
 from manifest import build_manifest
-from obs_module import ObsModule, pick_scene
+from obs.obs_module import ObsModule, pick_scene
 
 PASSWORD = "секрет-пароль"
 
@@ -94,7 +94,7 @@ class Rig:
     async def __aenter__(self):
         await self.fake.start()
         await self.core.start()
-        self.client = ModuleClient(build_manifest(), url=self.core.url, token=self.core.token)
+        self.client = ModuleClient(build_manifest(("obs",)), url=self.core.url, token=self.core.token)
         self.client.reconnect_delays = (0.05, 0.05, 0.1)
         self.mod = ObsModule(self.client, self.fake.url, PASSWORD if self.give_password else "")
         obs_client.RECONNECT_S = 0.1
@@ -115,7 +115,7 @@ class Rig:
         await self.fake.stop()
 
     async def call(self, tool, args=None):
-        return await self.core.call_tool(tool, args or {})
+        return await self.core.call_tool("obs_" + tool, args or {})
 
 
 def test_auth_string_follows_the_documented_scheme():
@@ -132,7 +132,7 @@ def test_manifest_has_the_tools_and_valid_risks():
     m = build_manifest()
     assert validate_manifest(m) == []
     risks = {t["name"]: t["risk"] for t in m["tools"]}
-    assert risks["start_stream"] == "public" and risks["stop_stream"] == "ask" and risks["switch_scene"] == "auto"
+    assert risks["obs_start_stream"] == "public" and risks["obs_stop_stream"] == "ask" and risks["obs_switch_scene"] == "auto"
 
 
 def test_pick_scene_is_case_insensitive_and_lists_options_on_miss():
@@ -186,7 +186,7 @@ async def test_wrong_password_keeps_module_disconnected_with_a_reason():
     rig = Rig(give_password=False)
     await rig.fake.start()
     await rig.core.start()
-    client = ModuleClient(build_manifest(), url=rig.core.url, token=rig.core.token)
+    client = ModuleClient(build_manifest(("obs",)), url=rig.core.url, token=rig.core.token)
     mod = ObsModule(client, rig.fake.url, "")
     obs_client.RECONNECT_S = 0.1
     task = asyncio.create_task(mod.obs.run())

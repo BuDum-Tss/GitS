@@ -505,7 +505,7 @@ class PeerHub:
                 logger.warning(f"Модуль {mid}: event неверный: {'; '.join(problems)}")
                 return
             kind = body["kind"]
-            if not kind.startswith(mid + "."):
+            if not P.kind_allowed(kind, mid, conn.spec.event_prefixes):
                 logger.warning(f"Модуль {mid}: событие «{kind}» с чужим видом отброшено")
                 return
             if kind not in {e.kind for e in conn.spec.emits} and kind not in conn.warned_kinds:

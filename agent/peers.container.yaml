@@ -14,20 +14,11 @@ workspaces:
     autostart: true
     restart: on-failure
 
-  - id: twitch
+  # Стример (Twitch и OBS одним окружением). OBS на хосте: адрес OBS_WEBSOCKET_URL в окружении контейнера (compose: ws://host.docker.internal:4455)
+  - id: streamer
     ownership: owned
-    title: Twitch
-    cwd: "{GITS}/workspaces/twitch"
-    command: "{PYTHON}"
-    args: ["-u", "main.py"]
-    autostart: true
-    restart: on-failure
-
-  # OBS на хосте: адрес OBS_WEBSOCKET_URL в окружении контейнера (compose: ws://host.docker.internal:4455)
-  - id: obs
-    ownership: owned
-    title: OBS
-    cwd: "{GITS}/workspaces/obs"
+    title: Стример
+    cwd: "{GITS}/workspaces/streamer"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true

@@ -9,8 +9,8 @@ import logging
 
 import aiohttp
 
-from common import scrub
-from twitch_api import TwitchError
+from .common import scrub
+from .twitch_api import TwitchError
 
 log = logging.getLogger("twitch.eventsub")
 

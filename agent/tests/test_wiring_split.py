@@ -64,7 +64,7 @@ class FakeSink:
 
 def _hub(sink):
     hub = PeerHub(SimpleNamespace(hub=None, is_enabled=lambda *a, **k: True), sink=sink)
-    conn = SimpleNamespace(id="echo", spec=SimpleNamespace(emits=[]), warned_kinds=set())
+    conn = SimpleNamespace(id="echo", spec=SimpleNamespace(emits=[], event_prefixes=[]), warned_kinds=set())
     return hub, conn
 
 

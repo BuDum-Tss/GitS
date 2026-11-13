@@ -1,4 +1,4 @@
-"""Модуль Twitch против FakeCore: события чата и канала, инструменты, доставка, токены, EventSub. Сеть Twitch подменена."""
+"""Подсистема Twitch окружения «Стример» против FakeCore: события чата и канала, инструменты, доставка, токены, EventSub. Сеть Twitch подменена."""
 import asyncio
 import time
 
@@ -6,10 +6,10 @@ import pytest
 from gits_sdk import ModuleClient, ToolError
 from gits_sdk.testing import FakeCore
 
-from eventsub import EventSubSession
+from twitch.eventsub import EventSubSession
 from manifest import build_manifest
-from twitch_api import Helix, Tokens, TwitchError
-from twitch_module import TwitchModule
+from twitch.twitch_api import Helix, Tokens, TwitchError
+from twitch.twitch_module import TwitchModule
 
 CHANNEL_ID, BOT_ID = "100", "200"
 
@@ -42,7 +42,7 @@ class Rig:
         def privacy(body):
             return {"terms": rig.terms}
 
-        self.client = ModuleClient(build_manifest(), url=self.core.url, token=self.core.token)
+        self.client = ModuleClient(build_manifest(("twitch",)), url=self.core.url, token=self.core.token)
         self.client.reconnect_delays = (0.05, 0.05, 0.1)
         self.mod = TwitchModule(self.client, str(self.mem))
 
@@ -84,7 +84,7 @@ async def test_chat_message_becomes_event(tmp_path, monkeypatch):
         ev = (await rig.core.wait_message("event")).body
     assert ev["kind"] == "twitch.chat" and ev["text"] == "Сообщение от Viewer в чате Twitch: «как играется?»"
     assert ev["sender"] == {"id": "tw:300", "name": "Viewer", "is_owner": False}
-    assert ev["reply_channel"] == {"module": "twitch", "target": "chat:msg1"} and ev["dedupe_key"] == "tw:chat:msg1"
+    assert ev["reply_channel"] == {"module": "streamer", "target": "chat:msg1"} and ev["dedupe_key"] == "tw:chat:msg1"
     assert not ev.get("addressed_to_me")
 
 
@@ -121,7 +121,7 @@ async def test_channel_events(tmp_path, monkeypatch):
 
 async def test_chat_say_sends_and_splits(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch) as rig:
-        res = await rig.core.call_tool("chat_say", {"text": "слово " * 200})
+        res = await rig.core.call_tool("twitch_chat_say", {"text": "слово " * 200})
         assert res == {"sent": True}
         msgs = rig.sent("/chat/messages")
         assert len(msgs) == 3 and all(len(m[3]["message"]) <= 500 for m in msgs)
@@ -131,7 +131,7 @@ async def test_chat_say_sends_and_splits(tmp_path, monkeypatch):
 async def test_privacy_blocks_personal_words(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch) as rig:
         with pytest.raises(ToolError) as e:
-            await rig.core.call_tool("chat_say", {"text": "Привет, Анна!"})
+            await rig.core.call_tool("twitch_chat_say", {"text": "Привет, Анна!"})
         assert e.value.code == "denied" and not rig.sent("/chat/messages")
 
 
@@ -146,7 +146,7 @@ async def test_deliver_replies_to_message(tmp_path, monkeypatch):
 async def test_not_configured_is_honest(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, configured=False) as rig:
         with pytest.raises(ToolError) as e:
-            await rig.core.call_tool("chat_say", {"text": "привет"})
+            await rig.core.call_tool("twitch_chat_say", {"text": "привет"})
         assert e.value.code == "unavailable"
         assert rig.mod.snapshot()[0].startswith("Twitch: не настроен")
 
@@ -154,18 +154,18 @@ async def test_not_configured_is_honest(tmp_path, monkeypatch):
 async def test_moderation_refuses_owner_and_sends_ban(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch) as rig:
         rig.responses[("GET", "/users")] = 200, {"data": [{"id": "300", "login": "bad"}]}
-        out = await rig.core.call_tool("timeout_user", {"user": "@Bad", "seconds": 60, "reason": "спам"})
+        out = await rig.core.call_tool("twitch_timeout_user", {"user": "@Bad", "seconds": 60, "reason": "спам"})
         assert out["done"] and rig.sent("/moderation/bans")[0][3] == {"data": {"user_id": "300", "reason": "спам", "duration": 60}}
         rig.responses[("GET", "/users")] = 200, {"data": [{"id": CHANNEL_ID, "login": "streamer"}]}
         with pytest.raises(ToolError) as e:
-            await rig.core.call_tool("ban_user", {"user": "streamer"})
+            await rig.core.call_tool("twitch_ban_user", {"user": "streamer"})
         assert e.value.code == "denied"
 
 
 async def test_set_stream_needs_broadcaster_login(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, broadcaster=False) as rig:
         with pytest.raises(ToolError) as e:
-            await rig.core.call_tool("set_stream", {"title": "новый стрим"})
+            await rig.core.call_tool("twitch_set_stream", {"title": "новый стрим"})
         assert e.value.code == "unavailable"
 
 
@@ -228,7 +228,7 @@ async def test_eventsub_welcome_subscribes_and_dispatches():
 
 
 async def test_eventsub_retries_subscriptions_rejected_for_the_connection_limit(monkeypatch):
-    import eventsub
+    from twitch import eventsub
 
     class FakeHelix:
         def __init__(self):

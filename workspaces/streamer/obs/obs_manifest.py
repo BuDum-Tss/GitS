@@ -1,13 +1,13 @@
-"""Манифест модуля OBS: переключение сцен, трансляция, запись, субтитры в потоке (CEA-608) через obs-websocket.
+"""Манифест подсистемы OBS (часть окружения «Стример»): переключение сцен, трансляция, запись, субтитры в потоке (CEA-608) через obs-websocket.
 
 Начало трансляции публичное (`risk="public"`), остановка с вопросом (`ask`), сцены и запись без вопросов."""
-import copy
+PREFIX = "obs_"                       # имена инструментов подсистемы: streamer.obs_<имя>
 
 _GENERIC = ("obs", "обс", "стрим", "трансляция", "сцена", "эфир")
 
 
 def _tool(name, description, params, *, risk="auto", keywords=(), informative=False, timeout_s=30):
-    tool = {"name": name, "description": description, "params": params, "risk": risk, "availability": "always",
+    tool = {"name": PREFIX + name, "description": description, "params": params, "risk": risk, "availability": "always",
             "timeout_s": timeout_s, "keywords": list(dict.fromkeys([*keywords, *_GENERIC]))}
     if informative:
         tool["informative"] = True
@@ -19,7 +19,7 @@ TOOLS = [
           keywords=("идёт ли стрим", "что в obs")),
     _tool("scenes", "Список сцен OBS и текущая сцена.", {}, informative=True, keywords=("какие сцены",)),
     _tool("switch_scene", "Переключить сцену OBS по названию (например кабинет, AFK, игра).",
-          {"scene": {"type": "string", "description": "название сцены из списка scenes"}}, keywords=("переключи", "включи сцену")),
+          {"scene": {"type": "string", "description": "название сцены из списка obs_scenes"}}, keywords=("переключи", "включи сцену")),
     _tool("start_stream", "Начать трансляцию из OBS (идёт в эфир на площадку, которая настроена в OBS).", {}, risk="public",
           keywords=("начни стрим", "выйди в эфир", "запусти трансляцию")),
     _tool("stop_stream", "Закончить трансляцию из OBS.", {}, risk="ask", keywords=("останови стрим", "закончи стрим")),
@@ -29,27 +29,8 @@ TOOLS = [
           {"text": {"type": "string", "description": "текст субтитра, до 200 символов"}}, keywords=("субтитры",)),
 ]
 
-MANIFEST = {
-    "id": "obs",
-    "title": "OBS",
-    "description": "OBS Studio: переключает сцены, начинает и заканчивает трансляцию и запись, шлёт субтитры в поток "
-                   "(obs-websocket, адрес и пароль в .env: OBS_WEBSOCKET_URL, OBS_WEBSOCKET_PASSWORD).",
-    "version": "0.1.0",
-    "capabilities": [],
-    "subscribe": ["settings", "module", "character"],
-    "shared_settings": [],
-    "settings_schema": {},
-    "tools": TOOLS,
-    "emits": [
-        {"kind": "obs.stream_state", "description": "Трансляция в OBS началась или закончилась", "default_urgency": 3},
-        {"kind": "obs.record_state", "description": "Запись в OBS началась или закончилась", "default_urgency": 2},
-        {"kind": "obs.scene", "description": "Сцена OBS сменилась", "default_urgency": 1},
-    ],
-    "state": True,
-    "panel": {"title": "OBS", "icon": "video", "order": 63},
-}
-
-
-def build_manifest() -> dict:
-    """Свежая копия манифеста."""
-    return copy.deepcopy(MANIFEST)
+EMITS = [
+    {"kind": "obs.stream_state", "description": "Трансляция в OBS началась или закончилась", "default_urgency": 3},
+    {"kind": "obs.record_state", "description": "Запись в OBS началась или закончилась", "default_urgency": 2},
+    {"kind": "obs.scene", "description": "Сцена OBS сменилась", "default_urgency": 1},
+]

@@ -1,7 +1,7 @@
 """Один раз войти в Twitch. Запускается ВРУЧНУЮ в терминале, в браузере входишь сам, ассистентка пароля и кода не видит:
 
-    python workspaces/twitch/tw_login.py bot            # под аккаунтом ГЛаДОС (чат, модерация)
-    python workspaces/twitch/tw_login.py broadcaster    # под аккаунтом владельца канала (события канала, название, клипы)
+    python workspaces/streamer/twitch/tw_login.py bot            # под аккаунтом ГЛаДОС (чат, модерация)
+    python workspaces/streamer/twitch/tw_login.py broadcaster    # под аккаунтом владельца канала (события канала, название, клипы)
 
 Если бот и канал один аккаунт, достаточно `broadcaster` (бот возьмёт его токен). Нужны TWITCH_CLIENT_ID и TWITCH_CLIENT_SECRET
 в .env (dev.twitch.tv/console, Redirect URL приложения: http://localhost:3000). Токены сохраняются в папке памяти
@@ -16,9 +16,9 @@ import webbrowser
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path[:0] = [str(HERE), str(HERE.parent.parent / "sdk")]
+sys.path[:0] = [str(HERE.parent), str(HERE.parent.parent.parent / "sdk")]       # пакет twitch лежит в workspaces/streamer
 
-from common import default_memory_dir, secrets_file  # noqa: E402
+from twitch.common import default_memory_dir, secrets_file  # noqa: E402
 
 try:
     from dotenv import load_dotenv
@@ -29,7 +29,7 @@ except ImportError:
 import aiohttp  # noqa: E402
 from aiohttp import web  # noqa: E402
 
-from twitch_api import Tokens  # noqa: E402
+from twitch.twitch_api import Tokens  # noqa: E402
 
 PORT = 3000
 REDIRECT = f"http://localhost:{PORT}"

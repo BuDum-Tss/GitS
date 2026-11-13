@@ -508,6 +508,12 @@ def _check_setting(name: Any, spec: Any, problems: list[str]) -> None:
             problems.append(f"{where}.default: нет среди enum")
 
 
+def kind_allowed(kind: str, module_id: str, extra_prefixes: Any = ()) -> bool:
+    """Вид события допустим, если начинается с id модуля или с одного из `event_prefixes` манифеста (окружение, слитое из
+    нескольких подсистем, сохраняет прежние виды `twitch.chat`, `obs.scene`)."""
+    return any(kind.startswith(p + ".") for p in (module_id, *(extra_prefixes or ())))
+
+
 def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[str]:
     """Проверить манифест по MOD-15/MOD-16 и разделу 6.1. Возвращает список проблем (пустой = верно).
 
@@ -563,6 +569,13 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
             for i, tool in enumerate(tools):
                 _check_tool(i, tool, problems, seen)
 
+    extra_prefixes: list[str] = []
+    if "event_prefixes" in manifest:
+        raw_prefixes = manifest["event_prefixes"]
+        if not _is_str_list(raw_prefixes) or not all(MODULE_ID_RE.match(x) for x in raw_prefixes):
+            problems.append("event_prefixes: список префиксов видов событий (как id модуля)")
+        else:
+            extra_prefixes = list(raw_prefixes)
     if "emits" in manifest:
         emits = manifest["emits"]
         if not isinstance(emits, list):
@@ -579,8 +592,9 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
                     problems.append(f"{where}.kind: вид «<модуль>.<что>» из латинских строчных букв")
                 else:
                     where = f"emits[{kind}]"
-                    if id_ok and not kind.startswith(mid + "."):
-                        problems.append(f"{where}: kind должен начинаться с «{mid}.»")
+                    if id_ok and not kind_allowed(kind, mid, extra_prefixes):
+                        problems.append(f"{where}: kind должен начинаться с «{mid}.»"
+                                        + (" или с одного из event_prefixes" if extra_prefixes else ""))
                     if kind in kinds:
                         problems.append(f"{where}: kind повторяется")
                     kinds.add(kind)
@@ -1216,6 +1230,7 @@ class Manifest:
     role: str | None = None                             # фаза 1: workspace | service; None - поля нет в манифесте (workspace)
     ownership: str | None = None                        # фаза 1: shared | owned (только workspace); None - поля нет (owned)
     nodes: list[dict] = field(default_factory=list)     # ТЗ 33: дерево узлов рабочего места (пусто: плоский список)
+    event_prefixes: list[str] = field(default_factory=list)   # фаза 3b: дополнительные префиксы видов событий (кроме id)
 
     @classmethod
     def from_dict(cls, d: Any) -> Manifest:
@@ -1234,7 +1249,7 @@ class Manifest:
             graph=bool(d.get("graph", False)), state=bool(d.get("state", False)),
             panel=panel, panel_warnings=panel_warnings,
             workspace=dict(d["workspace"]) if d.get("workspace") else None,
-            role=d.get("role"), ownership=d.get("ownership"))
+            role=d.get("role"), ownership=d.get("ownership"), event_prefixes=list(d.get("event_prefixes") or []))
 
     @property
     def effective_role(self) -> str:
@@ -1252,6 +1267,8 @@ class Manifest:
                "tools": [t.to_dict() for t in self.tools],
                "emits": [e.to_dict() for e in self.emits],
                "graph": self.graph, "state": self.state}
+        if self.event_prefixes:
+            out["event_prefixes"] = list(self.event_prefixes)
         if self.role is not None:
             out["role"] = self.role
         if self.ownership is not None:

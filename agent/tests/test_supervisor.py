@@ -420,13 +420,16 @@ def test_real_peers_yaml_roles_and_ownership():
     specs = {s.id: s for s in load_specs(supervisor.PEERS_YAML)}
     assert supervisor.PEERS_YAML.name == "peers.yaml"
     assert {i for i, s in specs.items() if s.role == "workspace"} == {
-        "telegram", "twitch", "obs", "desktop", "rimworld", "montage", "echo"}
+        "telegram", "streamer", "desktop", "rimworld", "montage", "echo"}
     assert {i for i, s in specs.items() if s.role == "service"} == {"voice", "pet", "decider", "espeech"}
     assert {i for i, s in specs.items() if s.external} == {"decider", "espeech"}
     assert {i: s.ownership for i, s in specs.items() if s.ownership} == {
-        "telegram": "owned", "twitch": "owned", "obs": "owned", "echo": "owned",
+        "telegram": "owned", "streamer": "owned", "echo": "owned",
         "desktop": "shared", "rimworld": "shared", "montage": "shared"}
     assert specs["rimworld"].cwd == "{GITS}/workspaces/rimworld/agent"                  # пути прежние: папки переносит фаза 3
+    assert "twitch" not in specs and "obs" not in specs                                 # фаза 3b: слиты в одно окружение
+    assert specs["streamer"].cwd == "{GITS}/workspaces/streamer" and specs["streamer"].autostart
+    assert specs["streamer"].restart == "on-failure"
 
 
 def test_peers_file_env_and_legacy_alias(tmp_path, monkeypatch):

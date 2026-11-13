@@ -1,4 +1,4 @@
-# Зависимости образа gits-core: ядро и модули без железа (telegram, twitch, obs).
-# httpx, aiohttp и python-dotenv (нужны twitch, obs, telegram) уже входят в requirements ядра.
+# Зависимости образа gits-core: ядро и модули без железа (telegram, streamer).
+# httpx, aiohttp и python-dotenv (нужны streamer, telegram) уже входят в requirements ядра.
 -r ../../agent/requirements.txt
 telethon>=1.36

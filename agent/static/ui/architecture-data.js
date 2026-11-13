@@ -7,7 +7,7 @@ window.ARCH_DATA = {
    "title": "Источники событий",
    "tag": "I",
    "new": false,
-   "summary": "Участники шины: окружения workspace (Telegram, Twitch, OBS, экран, игра, монтаж), сервисы service (голос, питомец) и чат дашборда. Присылают события и выполняют команды.",
+   "summary": "Участники шины: окружения workspace (Telegram, Стример (Twitch и OBS), экран, игра, монтаж), сервисы service (голос, питомец) и чат дашборда. Присылают события и выполняют команды.",
    "out": "Event",
    "nodes": [
     {
@@ -38,22 +38,13 @@ window.ARCH_DATA = {
      "now": "workspaces/telegram"
     },
     {
-     "id": "tw",
-     "t": "twitch",
+     "id": "strm",
+     "t": "streamer",
      "tag": "I",
      "new": false,
-     "do": "чат и события канала, ответы в чат, модерация",
-     "out": "Event twitch.*",
-     "now": "workspaces/twitch"
-    },
-    {
-     "id": "obs",
-     "t": "obs",
-     "tag": "I",
-     "new": false,
-     "do": "сцены, трансляция и запись OBS, субтитры в поток (obs-websocket)",
-     "out": "Event obs.*",
-     "now": "workspaces/obs"
+     "do": "ведение трансляции: чат и события Twitch, ответы, модерация; сцены, запись и субтитры OBS (obs-websocket)",
+     "out": "Event twitch.*, obs.*",
+     "now": "workspaces/streamer: подсистемы twitch/ и obs/"
     },
     {
      "id": "rim",
@@ -737,13 +728,7 @@ window.ARCH_DATA = {
    null
   ],
   [
-   "tw",
-   "hub",
-   "flow",
-   null
-  ],
-  [
-   "obs",
+   "strm",
    "hub",
    "flow",
    null

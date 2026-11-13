@@ -685,8 +685,8 @@ class PeerClient:
         body = {"kind": kind, "text": P.clip(str(text), P.EVENT_TEXT_MAX), **{k: v for k, v in fields.items()
                                                                               if v is not None}}
         problems = contract.validate("event", body)
-        if not kind.startswith(self.module_id + "."):
-            problems.append(f"kind должен начинаться с «{self.module_id}.»")
+        if not P.kind_allowed(kind, self.module_id, self.manifest.get("event_prefixes")):
+            problems.append(f"kind должен начинаться с «{self.module_id}.» или с одного из event_prefixes манифеста")
         if problems:
             raise ValueError("событие неверно: " + "; ".join(problems))
         if not self.enabled:

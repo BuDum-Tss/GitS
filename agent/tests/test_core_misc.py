@@ -55,6 +55,31 @@ def test_existing_peers_key_wins_over_legacy_modules(tmp_path):
     assert settings.load()["peers"] == {"b": {"enabled": False}}
 
 
+def test_twitch_and_obs_peers_are_merged_into_streamer_once(tmp_path):
+    import json
+    path = tmp_path / "settings.json"
+    path.write_text('{"peers": {"twitch": {"enabled": false, "owner_login": "me", "chat_events_per_min": 5}, '
+                    '"obs": {"enabled": true}, "echo": {"enabled": false}}}', encoding="utf-8")
+    settings.init(str(tmp_path))
+    peers = settings.load()["peers"]
+    assert peers == {"streamer": {"enabled": True, "owner_login": "me", "chat_events_per_min": 5}, "echo": {"enabled": False}}
+    saved = json.loads(path.read_text(encoding="utf-8"))                # файл переписан: старых ключей нет
+    assert "twitch" not in saved["peers"] and "obs" not in saved["peers"] and "streamer" in saved["peers"]
+
+
+def test_streamer_migration_both_disabled_and_existing_streamer_wins(tmp_path):
+    (tmp_path / "settings.json").write_text('{"peers": {"twitch": {"enabled": false}, "obs": {"enabled": false}}}', encoding="utf-8")
+    settings.init(str(tmp_path))
+    assert settings.load()["peers"] == {"streamer": {"enabled": False}}
+    (tmp_path / "settings.json").write_text('{"peers": {"twitch": {"enabled": false}, "streamer": {"enabled": true, "x": 1}}}',
+                                            encoding="utf-8")
+    settings.init(str(tmp_path))
+    assert settings.load()["peers"] == {"streamer": {"enabled": True, "x": 1}}
+    (tmp_path / "settings.json").write_text('{"modules": {"obs": {"enabled": false}}}', encoding="utf-8")   # через прежний ключ modules
+    settings.init(str(tmp_path))
+    assert settings.load()["peers"] == {"streamer": {"enabled": False}}
+
+
 def test_peer_entry_falls_back_to_legacy_modules_key():
     cfg = {"peers": {"a": {"enabled": False}}, "modules": {"a": {"enabled": True}, "b": {"enabled": False}}}
     assert settings.peer_entry(cfg, "a") == {"enabled": False}          # peers главнее

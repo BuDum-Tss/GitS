@@ -1,17 +1,16 @@
-"""Модуль OBS: инструменты управления трансляцией, события и состояние поверх клиента obs-websocket."""
+"""Подсистема OBS окружения «Стример»: инструменты управления трансляцией, события и состояние поверх клиента obs-websocket."""
 import asyncio
 import logging
 import os
 
 from gits_sdk import ToolError
 
-from obs_client import ObsClient, ObsError
+from .obs_client import ObsClient, ObsError
 
 log = logging.getLogger("obs")
 
 DEFAULT_URL = "ws://127.0.0.1:4455"
-STATE_EVERY_S = 30.0
-STATE_POLL_S = 2.0
+PREFIX = "obs_"                       # имена инструментов: streamer.obs_<имя>
 CAPTION_MAX = 200
 
 
@@ -41,7 +40,7 @@ class ObsModule:
 
     def start(self) -> list[asyncio.Task]:
         loop = asyncio.get_running_loop()
-        for coro in (self.obs.run(), self._state_loop()):
+        for coro in (self.obs.run(),):
             self.tasks.append(loop.create_task(coro))
         return self.tasks
 
@@ -83,24 +82,24 @@ class ObsModule:
     def _register(self) -> None:
         c = self.client
 
-        @c.tool("status")
+        @c.tool(PREFIX + "status")
         async def status(args):
             await self.refresh()
             return {"connected": True, "scene": self.scene, "streaming": self.streaming, "recording": self.recording}
 
-        @c.tool("scenes")
+        @c.tool(PREFIX + "scenes")
         async def scenes(args):
             data = await self._req("GetSceneList")
             return {"scenes": _scene_names(data), "current": data.get("currentProgramSceneName", "")}
 
-        @c.tool("switch_scene")
+        @c.tool(PREFIX + "switch_scene")
         async def switch_scene(args):
             name = pick_scene(str(args.get("scene") or ""), _scene_names(await self._req("GetSceneList")))
             await self._req("SetCurrentProgramScene", {"sceneName": name})
             self.scene = name
             return {"scene": name}
 
-        @c.tool("start_stream")
+        @c.tool(PREFIX + "start_stream")
         async def start_stream(args):
             await self.refresh()
             if self.streaming:
@@ -108,7 +107,7 @@ class ObsModule:
             await self._req("StartStream")
             return {"streaming": True}
 
-        @c.tool("stop_stream")
+        @c.tool(PREFIX + "stop_stream")
         async def stop_stream(args):
             await self.refresh()
             if not self.streaming:
@@ -116,7 +115,7 @@ class ObsModule:
             await self._req("StopStream")
             return {"streaming": False}
 
-        @c.tool("start_record")
+        @c.tool(PREFIX + "start_record")
         async def start_record(args):
             await self.refresh()
             if self.recording:
@@ -124,7 +123,7 @@ class ObsModule:
             await self._req("StartRecord")
             return {"recording": True}
 
-        @c.tool("stop_record")
+        @c.tool(PREFIX + "stop_record")
         async def stop_record(args):
             await self.refresh()
             if not self.recording:
@@ -132,7 +131,7 @@ class ObsModule:
             data = await self._req("StopRecord")
             return {"recording": False, "path": data.get("outputPath", "")}
 
-        @c.tool("caption")
+        @c.tool(PREFIX + "caption")
         async def caption(args):
             text = " ".join(str(args.get("text") or "").split())[:CAPTION_MAX]
             if not text:
@@ -150,22 +149,10 @@ class ObsModule:
         return f"OBS: сцена «{self.scene or '?'}», {live}, {rec}", {
             "connected": True, "scene": self.scene, "streaming": self.streaming, "recording": self.recording}
 
-    async def _state_loop(self) -> None:
-        last_key, sent_at, loop = None, 0.0, asyncio.get_running_loop()
-        while True:
+    async def prepare_state(self) -> None:
+        """Перед сводкой: если OBS на связи, а состояние ещё неизвестно, подтянуть его (зовёт общий цикл состояния)."""
+        if self.obs.connected and self.streaming is None:
             try:
-                if self.obs.connected and self.streaming is None:
-                    try:
-                        await self.refresh()
-                    except ToolError:
-                        pass
-                summary, data = self.snapshot()
-                key = (summary,)
-                if key != last_key or loop.time() - sent_at >= STATE_EVERY_S:
-                    await self.client.state(summary, data)
-                    last_key, sent_at = key, loop.time()
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                log.warning("состояние не отправлено: %s", e)
-            await asyncio.sleep(STATE_POLL_S)
+                await self.refresh()
+            except ToolError:
+                pass

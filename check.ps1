@@ -16,8 +16,8 @@ if ($LASTEXITCODE -ne 0) { $sdktests = $LASTEXITCODE }
 Write-Host "== pytest workspaces/telegram (модуль Telegram) ==" -ForegroundColor Cyan
 python -m pytest -q workspaces/telegram/tests
 $modtests = $LASTEXITCODE
-Write-Host "== pytest workspaces/twitch (модуль Twitch) ==" -ForegroundColor Cyan
-python -m pytest -q workspaces/twitch/tests
+Write-Host "== pytest workspaces/streamer (окружение «Стример»: Twitch и OBS) ==" -ForegroundColor Cyan
+python -m pytest -q workspaces/streamer/tests
 $twitchtests = $LASTEXITCODE
 Write-Host "== pytest services/voice (модуль голоса) ==" -ForegroundColor Cyan
 python -m pytest -q services/voice/tests

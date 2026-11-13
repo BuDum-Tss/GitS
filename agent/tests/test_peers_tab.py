@@ -43,7 +43,7 @@ async def test_peers_are_grouped_by_role_and_carry_titles():
     assert roles["telegram"] == roles["rimworld"] == roles["desktop"] == roles["montage"] == "workspace"
     assert roles["voice"] == roles["pet"] == roles["decider"] == roles["espeech"] == "service"
     assert by_id["minecraft"]["kind"] == "planned"
-    assert [by_id[i]["ownership"] for i in ("telegram", "twitch", "obs")] == ["owned"] * 3
+    assert [by_id[i]["ownership"] for i in ("telegram", "streamer")] == ["owned"] * 2
     assert [by_id[i]["ownership"] for i in ("desktop", "rimworld", "montage")] == ["shared"] * 3
     assert by_id["voice"]["ownership"] is None and by_id["decider"]["external"] and not by_id["voice"]["external"]
     for row in by_id.values():
@@ -111,7 +111,7 @@ async def test_workspaces_and_services_endpoints_split_by_role():
     settings.update(dev_mode=True)
     workspaces, services = await _by_role("workspace"), await _by_role("service")
     ws_real = {r["id"] for r in workspaces if r.get("kind") != "planned"}
-    assert {"telegram", "twitch", "obs", "desktop", "rimworld", "montage", "echo"} == ws_real
+    assert {"telegram", "streamer", "desktop", "rimworld", "montage", "echo"} == ws_real
     assert [r["id"] for r in workspaces if r.get("kind") == "planned"] == ["minecraft"]      # серые карточки идут к окружениям
     assert {r["id"] for r in services} == {"voice", "pet", "decider", "espeech"}
     assert all(r["role"] == "workspace" for r in workspaces if r.get("kind") != "planned")

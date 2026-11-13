@@ -13,7 +13,7 @@ from pathlib import Path
 
 import aiohttp
 
-from common import scrub
+from .common import scrub
 
 log = logging.getLogger("twitch.api")
 

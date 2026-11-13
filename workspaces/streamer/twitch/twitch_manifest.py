@@ -1,15 +1,15 @@
-"""Манифест модуля Twitch: чат и события канала (EventSub), ответы в чат, управление каналом и модерация.
+"""Манифест подсистемы Twitch (часть окружения «Стример»): чат и события канала (EventSub), ответы в чат, управление каналом и модерация.
 
 Публичные действия (написать в чат, сменить название, объявление) идут с разрешением (`risk="public"`), модерация с
 вопросом (`risk="ask"`). Ответы ядра на сообщения зрителей доставляет `deliver` (так же, как у Telegram)."""
-import copy
+PREFIX = "twitch_"                    # имена инструментов подсистемы: streamer.twitch_<имя>
 
 _GENERIC = ("твич", "twitch", "стрим", "чат", "зрители", "трансляция")
 
 
 def _tool(name, description, params, *, risk="auto", keywords=(), informative=False, self_confirming=False,
           danger_check=False, timeout_s=30):
-    tool = {"name": name, "description": description, "params": params, "risk": risk, "availability": "always",
+    tool = {"name": PREFIX + name, "description": description, "params": params, "risk": risk, "availability": "always",
             "timeout_s": timeout_s, "keywords": list(dict.fromkeys([*keywords, *_GENERIC]))}
     if informative:
         tool["informative"] = True
@@ -52,39 +52,22 @@ TOOLS = [
           risk="ask", informative=True, keywords=("удали сообщение", "модерация")),
 ]
 
-MANIFEST = {
-    "id": "twitch",
-    "title": "Twitch",
-    "description": "Twitch: читает чат и события канала (фолловы, подписки, рейды, награды, начало и конец трансляции), "
-                   "отвечает в чат, управляет названием трансляции, клипами и модерацией.",
-    "version": "0.1.0",
-    "capabilities": ["chat.channel"],
-    "subscribe": ["settings", "presence", "module", "character"],
-    "shared_settings": ["quiet_until", "dnd"],
-    "settings_schema": {
-        "chat_events_per_min": {"type": "integer", "title": "Сколько обычных сообщений чата в минуту отдавать вниманию "
-                                                            "(обращения к ней и сообщения владельца идут всегда)",
-                                "default": 20, "min": 0, "max": 120},
-        "owner_login": {"type": "string", "title": "Ник владельца на Twitch (его сообщения помечаются как от владельца)",
-                        "default": ""},
-    },
-    "tools": TOOLS,
-    "emits": [
-        {"kind": "twitch.chat", "description": "Сообщение в чате канала", "default_urgency": 1},
-        {"kind": "twitch.mention", "description": "К ней обратились в чате канала", "default_urgency": 2},
-        {"kind": "twitch.follow", "description": "Новый фолловер", "default_urgency": 2},
-        {"kind": "twitch.subscribe", "description": "Подписка или подарочные подписки", "default_urgency": 3},
-        {"kind": "twitch.cheer", "description": "Биты", "default_urgency": 3},
-        {"kind": "twitch.raid", "description": "Рейд на канал", "default_urgency": 3},
-        {"kind": "twitch.redemption", "description": "Награда за баллы канала", "default_urgency": 3},
-        {"kind": "twitch.stream_online", "description": "Трансляция началась", "default_urgency": 3},
-        {"kind": "twitch.stream_offline", "description": "Трансляция закончилась", "default_urgency": 2},
-    ],
-    "state": True,
-    "panel": {"title": "Twitch", "icon": "video", "order": 62},
+SETTINGS_SCHEMA = {
+    "chat_events_per_min": {"type": "integer", "title": "Сколько обычных сообщений чата в минуту отдавать вниманию "
+                                                        "(обращения к ней и сообщения владельца идут всегда)",
+                            "default": 20, "min": 0, "max": 120},
+    "owner_login": {"type": "string", "title": "Ник владельца на Twitch (его сообщения помечаются как от владельца)",
+                    "default": ""},
 }
 
-
-def build_manifest() -> dict:
-    """Свежая копия манифеста."""
-    return copy.deepcopy(MANIFEST)
+EMITS = [
+    {"kind": "twitch.chat", "description": "Сообщение в чате канала", "default_urgency": 1},
+    {"kind": "twitch.mention", "description": "К ней обратились в чате канала", "default_urgency": 2},
+    {"kind": "twitch.follow", "description": "Новый фолловер", "default_urgency": 2},
+    {"kind": "twitch.subscribe", "description": "Подписка или подарочные подписки", "default_urgency": 3},
+    {"kind": "twitch.cheer", "description": "Биты", "default_urgency": 3},
+    {"kind": "twitch.raid", "description": "Рейд на канал", "default_urgency": 3},
+    {"kind": "twitch.redemption", "description": "Награда за баллы канала", "default_urgency": 3},
+    {"kind": "twitch.stream_online", "description": "Трансляция началась", "default_urgency": 3},
+    {"kind": "twitch.stream_offline", "description": "Трансляция закончилась", "default_urgency": 2},
+]
