@@ -95,8 +95,8 @@ def stub_turns(c, monkeypatch):
 
 async def test_release_twice_and_core_cannot_activate_combat(ctrl):
     assert (await ctrl.release({"reason": "x"}))["already"] is True                 # уже вне фокуса
-    res = await ctrl.activate({"policy": "combat"})                                 # бой включают только события игры
-    assert res["ok"] is False and ctrl.policies.current == "afk"
+    res = await ctrl.activate({})                                                   # вход всегда в политику по умолчанию (observe), не в бой
+    assert res["ok"] is True and ctrl.policies.current == "observe"
 
 
 def test_launch_plan_is_pure_and_default_off():

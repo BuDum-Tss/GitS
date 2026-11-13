@@ -156,39 +156,6 @@ asyncio.run(main())
   Белый список сейчас: `telegram`, `telegram_after_run`, `telegram_voice`, `telegram_confirm`, `pet_visible`. Новая настройка в
   список добавляется решением владельца и тестом в `agent/tests/test_telegram_core.py`.
 
-## Политики фокуса (ТЗ 18)
-
-Фокус агента держит один модуль в политике `active`; остальные работают в фоновых политиках. Модуль объявляет свои
-политики в манифесте, ядро переводит его между ними.
-
-```python
-MANIFEST = {
-    # ... id, title, description, version, tools, emits, state: True ...
-    "policies": [
-        {"id": "idle", "title": "Простой", "focus": "background", "transitions": ["working"],
-         "interruptible": True, "purpose": "фон, фокус не держит"},
-        {"id": "working", "title": "Монтаж", "focus": "active", "transitions": ["idle", "waiting_for_materials"],
-         "interruptible": True, "safe_points": ["кадр записан"], "resources": {"cpu": 1}},
-        {"id": "waiting_for_materials", "title": "Нет исходников", "focus": "background", "transitions": ["working"]},
-    ],
-    "default_policy": "idle",
-}
-```
-
-- `policies` - список; у каждой политики `id` (как у модулей: `^[a-z][a-z0-9_]{1,31}$`), `title`, `focus` (`active` или
-  `background`), необязательные `transitions` (пустой - без ограничений), `interruptible` (bool), `safe_points`,
-  `resources` (`gpu`, `cpu`, `tokens`, числа от 0), `quiet` (true - обычные события не переключают фокус: режим
-  «не беспокоить»), `purpose`. Лишние поля игнорируются.
-- Обязательно: минимум одна политика с `focus: "background"`, и `default_policy` - её id (фоновая). Проверяет SDK и ядро
-  при `hello`; неверный манифест отклоняется с перечнем проблем.
-- Без `policies` модуль работает как раньше: в ядре он без фокуса, его события идут только во внимание.
-- Статус для ядра: в `state` поле `data.status` с `active_policy`, `interruptible`, при блокировке `blocked` (строка
-  с причиной). Ядро освобождает фокус, когда модуль вернулся в фоновую политику или сообщил блокировку.
-- Запросы ядра модулю, если модуль объявил активную политику: `policy.activate` (`{policy, goal, task_id, ...}`),
-  `focus.release` (модуль сохраняет checkpoint и отвечает `{ok: true, checkpoint: {...}}`), `focus.resume`
-  (`{task_id, policy, goal, checkpoint, subgoals}`). На `unknown` от `focus.resume` ядро вызовет `policy.activate` с
-  `restored: true`. SDK: `@client.on_request("policy.activate")`, `"focus.release"`, `"focus.resume"`.
-
 ### Среда агента (ТЗ 32)
 
 Модуль, в который агент может «зайти» (игра, монтаж), объявляет среду полем `workspace`:
@@ -204,15 +171,16 @@ MANIFEST = {
 - `signals_in` - какие чужие события (шаблоны видов) среда принимает уведомлениями; остальные копятся в сводке. Критическое
   событие (срочность 5) переключает среду по правилам без LLM, если среда его модуля разрешает `critical`; текущая среда вправе
   отказать в небезопасной точке (`status.interruptible: false`).
-- Модулю нужна активная политика (`focus: active`): вход в среду это её включение. Запросы ядра: `workspace.enter`,
-  `workspace.exit` (checkpoint), `workspace.resume`. Прежние `policy.activate`, `focus.release`, `focus.resume` остаются алиасами на
-  один релиз: SDK ведёт оба имени к одному обработчику (`@client.on_request("workspace.enter")` принимает и `policy.activate`), а ядро,
-  получив `unknown` на новое имя, повторяет запрос под прежним. В тестах: `FakeCore.workspace("enter" | "exit" | "resume", legacy=...)`.
-- Среда кончается, когда модуль вернулся в фоновую политику (задача готова), сообщил `blocked` или отключился: агент возвращается
-  в `assistant`. Поэтому после входа модуль переходит в активную политику, а по концу работы возвращается в фон.
+- Вход в среду не требует отдельного состояния модуля: достаточно подключённого модуля. Запросы ядра: `workspace.enter`
+  (`{workspace, goal, task_id, reason}`; модуль может отказать ответом `{ok: false, error}`), `workspace.exit` (модуль
+  сохраняет checkpoint и отвечает `{ok: true, checkpoint: {...}}`), `workspace.resume` (`{task_id, goal, checkpoint, subgoals}`).
+  SDK: `@client.on_request("workspace.enter")` и так далее; в тестах `FakeCore.workspace("enter" | "exit" | "resume")`.
+- Статус для ядра: в `state` поле `data.status` с `interruptible` и флагами окончания: `done: true` (задача кончилась) и
+  `blocked` (строка с причиной). Среда кончается, когда модуль сообщил `done` или `blocked` либо отключился: агент
+  возвращается в `assistant`.
+- Устаревшие поля манифеста о политиках игнорируются как неизвестное (MOD-10), регистрацию не ломает.
 
-Текущие политики модулей этого репозитория: `telegram` (`available`, `do_not_disturb`), `voice` и `pet` (`ambient`),
-`desktop` (`idle`) - все фоновые, фокус не берут. Среды объявляют `rimworld` (политики `afk`, `observe`, ...) и `montage` (`idle`, `working`).
+Среды объявляют `rimworld` и `montage`; `telegram`, `voice`, `pet` и `desktop` среды не объявляют.
 
 ## Рабочее место: контентные модули (ТЗ 33)
 

@@ -1,5 +1,5 @@
 """ТЗ 18 (FOC-1, FOC-4, MOD-32, MOD-33) на модуле RimWorld: блок `status` в `state` по политикам, прерываемость в бою и при
-критическом ремонте, блокировка на исследовании, соответствие манифеста проверке SDK, `focus.resume` по checkpoint.
+критическом ремонте, блокировка на исследовании, соответствие манифеста проверке SDK, `workspace.resume` по checkpoint.
 
 Игра, ядро и Claude не нужны: команды мода и состояние подменены, пути памяти перенаправлены в tmp."""
 import json
@@ -54,8 +54,9 @@ def write_tasks(tmp_path, tasks):
 def test_manifest_policies_pass_the_sdk_check_and_default_is_background():
     manifest = module_manifest.build_manifest([])
     assert P.validate_manifest(manifest) == []                     # проверка SDK ТЗ 18: фоновая по умолчанию и т.д.
-    assert manifest["default_policy"] == "afk"
-    by_id = {p["id"]: p for p in manifest["policies"]}
+    assert "policies" not in manifest and "default_policy" not in manifest   # политики это кухня движка, не контракт
+    by_id = {p["id"]: p for p in policies.get().manifest()}
+    assert policies.get().default == "afk"
     assert by_id["afk"]["focus"] == "background" and by_id["combat"]["interruptible"] is False
 
 
@@ -82,7 +83,7 @@ def test_policy_urgency_and_resources_are_declared_per_policy():
 def test_status_in_each_policy_pure():
     reg = policies.get()
     afk = focus_status.build(reg.policy("afk"), goal="Цель", tasks=[], buildings=[])
-    assert afk == {"active_policy": "afk", "active_goal": "Цель", "urgency": 0.0, "interruptible": True,
+    assert afk == {"done": True, "active_goal": "Цель", "urgency": 0.0, "interruptible": True,
                    "estimated_remaining_s": None, "blocked": None, "resources": {}}
     observe = focus_status.build(reg.policy("observe"), goal="", tasks=[], buildings=[])
     assert observe["interruptible"] is True and observe["urgency"] == 0.1 and observe["resources"] == {"tokens": 1}
@@ -123,13 +124,13 @@ def test_blocked_reason_names_the_research_or_the_blocked_step():
 # ── статус на контроллере и в сообщении state ─────────────────────────────────────────────────
 
 async def test_controller_status_follows_the_policy(ctrl):
-    assert ctrl.policy_state()["status"]["active_policy"] == "afk"
+    assert ctrl.policy_state()["status"]["done"] is True              # фоновая политика: задача кончилась
     ctrl.policies.leave_afk("observe", "")
     st = ctrl.policy_state()["status"]
-    assert st["active_policy"] == "observe" and st["interruptible"] is True
+    assert st["done"] is False and st["interruptible"] is True
     ctrl.policies.on_event("raid", 5, "набег")
     st = ctrl.policy_state()["status"]
-    assert st["active_policy"] == "combat" and st["interruptible"] is False and st["urgency"] == 1.0
+    assert st["done"] is False and st["interruptible"] is False and st["urgency"] == 1.0
 
 
 async def test_controller_status_sees_critical_repair_from_the_last_tick(ctrl):
@@ -166,12 +167,12 @@ async def test_state_message_carries_status_as_data_status(ctrl, monkeypatch):
     reporter = state_reporter.StateReporter(client, policy=ctrl.policy_state)
     await reporter.send_once()
     _, data = client.sent[-1]
-    assert data["status"]["active_policy"] == "observe"
-    assert set(data["status"]) == {"active_policy", "active_goal", "urgency", "interruptible", "estimated_remaining_s",
+    assert data["status"]["done"] is False
+    assert set(data["status"]) == {"done", "active_goal", "urgency", "interruptible", "estimated_remaining_s",
                                    "blocked", "resources"}
 
 
-# ── focus.release возвращает checkpoint, focus.resume восстанавливает (FOC-4, MOD-32) ───────────
+# ── workspace.exit возвращает checkpoint, workspace.resume восстанавливает (FOC-4, MOD-32) ───────────
 
 
 
@@ -180,28 +181,33 @@ async def test_resume_restores_from_the_core_checkpoint(ctrl, monkeypatch):
     monkeypatch.setattr(controller, "_get_state", lambda: state(paused=False))
     rel = await ctrl.release({"reason": "фокус у монтажа"})
     focus_checkpoint.clear()                                  # ядро помнит checkpoint сам, файл модуля может пропасть
-    res = await ctrl.resume({"task_id": "t1", "policy": "observe", "goal": "Выжить на берегу",
+    res = await ctrl.resume({"task_id": "t1", "goal": "Выжить на берегу",
                              "checkpoint": rel["checkpoint"], "subgoals": ["построить стену", 7]})
-    assert res["ok"] is True and res["policy"] == "observe" and res["restored"] is True
+    assert res["ok"] is True and "policy" not in res and res["restored"] is True
     assert ctrl.policies.current == "observe"
     assert ctrl.sent[-1] == {"type": "resume"}                # игру, которую поставил модуль, снова запускаем
     assert "подцель: построить стену" in ctrl._recent_changes and len(ctrl._recent_changes) == 1
 
 
 async def test_resume_without_checkpoint_still_takes_focus(ctrl):
-    res = await ctrl.resume({"task_id": "t2", "policy": "plan", "goal": ""})
-    assert res == {"ok": True, "policy": "plan", "restored": False, "goal": ""}
-    assert ctrl.policies.current == "plan"
+    res = await ctrl.resume({"task_id": "t2", "goal": ""})
+    assert res == {"ok": True, "restored": False, "goal": ""}
+    assert ctrl.policies.current == "observe"                 # без checkpoint: политика по умолчанию (observe)
+
+
+async def test_resume_takes_the_policy_from_the_checkpoint(ctrl):
+    res = await ctrl.resume({"task_id": "t3", "goal": "", "checkpoint": {"policy": "plan", "goal": "строить"}})
+    assert res["ok"] is True and ctrl.policies.current == "plan"
 
 
 async def test_resume_when_already_in_focus_and_refusals(ctrl, monkeypatch):
     ctrl.policies.leave_afk("observe", "")
-    assert (await ctrl.resume({"policy": "observe"}))["already"] is True
+    assert (await ctrl.resume({}))["already"] is True
     ctrl.policies.enter_afk("сброс")
-    bad = await ctrl.resume({"policy": "combat"})            # бой ядро не включает
+    bad = await ctrl.resume({"checkpoint": {"policy": "combat"}})       # бой ядро не включает
     assert bad["ok"] is False and ctrl.policies.current == "afk"
     monkeypatch.setattr(ctrl, "_focus_mode", lambda: "manual")
-    refused = await ctrl.resume({"policy": "observe"})
+    refused = await ctrl.resume({})
     assert refused["ok"] is False and ctrl.policies.current == "afk"
 
 
@@ -229,7 +235,7 @@ def test_attach_registers_focus_resume_handler():
             return {"ok": True}
 
         async def resume(self, body):
-            return {"ok": True, "policy": "observe"}
+            return {"ok": True}
 
         async def panel_take_focus(self, args):
             return {"ok": True}

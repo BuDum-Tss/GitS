@@ -380,7 +380,7 @@ window.ARCH_DATA = {
      "t": "ModuleLink",
      "tag": "A",
      "new": false,
-     "do": "вход, выход и возобновление среды модуля по протоколу workspace.enter / exit / resume (прежние policy.activate / focus.release / focus.resume как откат); один слот, checkpoint в памяти; очереди событий, закрепления и второго эшелона решений нет",
+     "do": "вход, выход и возобновление среды модуля по протоколу workspace.enter / exit / resume; конец задачи модуль сообщает флагом done в статусе; один слот, checkpoint в памяти; очереди событий, закрепления и второго эшелона решений нет",
      "out": "Workspace",
      "now": "app/module_link.py (вместо менеджера фокуса ТЗ 18)"
     },
@@ -508,7 +508,7 @@ window.ARCH_DATA = {
      "t": "ModuleHub (исходящие)",
      "tag": "I",
      "new": false,
-     "do": "доставка команд модулям: tool.call, speak, policy.activate, job.answer",
+     "do": "доставка команд модулям: tool.call, speak, workspace.enter, job.answer",
      "out": "ToolResult, события",
      "now": "module_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как ModuleHub.outbound"
     }
@@ -555,7 +555,7 @@ window.ARCH_DATA = {
      "t": "Режим сна (SleepScheduler + SleepRunner)",
      "tag": "A",
      "new": false,
-     "do": "фоновая политика памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами",
+     "do": "фоновый режим памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами",
      "out": "episode.summary, дневник",
      "now": "есть (ТЗ 27): app/sleep.py, app/sleep_scheduler.py, app/episode_summary.py, app/diary.py"
     },

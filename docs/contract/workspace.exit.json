@@ -36,7 +36,7 @@
     },
     "additionalProperties": true,
     "title": "workspace.exit",
-    "description": "Ядро выводит агента из среды модуля и просит checkpoint (ТЗ 32, раньше `focus.release`)."
+    "description": "Ядро выводит агента из среды модуля и просит checkpoint (ТЗ 32)."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

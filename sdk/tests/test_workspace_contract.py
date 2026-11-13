@@ -1,4 +1,4 @@
-"""Среда агента в контракте модулей (ТЗ 32, WS-4): поле манифеста `workspace`, запросы `workspace.*` и старые имена-алиасы."""
+"""Среда агента в контракте модулей (ТЗ 32, WS-4): поле манифеста `workspace`, запросы `workspace.*`."""
 import copy
 
 import pytest
@@ -42,47 +42,45 @@ def test_workspace_needs_a_title_and_an_object():
     assert any("workspace" in p for p in P.validate_manifest(with_ws("rimworld")))
 
 
-def test_aliases_are_symmetric():
-    for new, old in (("workspace.enter", "policy.activate"), ("workspace.exit", "focus.release"),
-                     ("workspace.resume", "focus.resume")):
-        assert P.WORKSPACE_ALIASES[new] == old and P.WORKSPACE_ALIASES[old] == new
-        assert P.is_request(new) and P.is_request(old)
+def test_workspace_requests_are_the_only_environment_names():
+    for name in ("workspace.enter", "workspace.exit", "workspace.resume"):
+        assert P.is_request(name)
+    for old in ("policy.activate", "focus.release", "focus.resume"):
+        assert not P.is_request(old)
+    assert not hasattr(P, "WORKSPACE_ALIASES") and not hasattr(P, "PolicySpec")
 
 
-@pytest.mark.parametrize("registered, sent", [("workspace.enter", "policy.activate"), ("policy.activate", "workspace.enter"),
-                                              ("workspace.enter", "workspace.enter")])
-async def test_one_handler_serves_both_names(core, registered, sent):
+async def test_enter_without_policy_and_helper_sends_new_names(core):
     client = make_client(core)
     got = []
 
-    @client.on_request(registered)
+    @client.on_request("workspace.enter")
     async def enter(body):
         got.append(body)
-        return {"ok": True, "policy": "working"}
+        return {"ok": True}
 
-    async with running(client, core):
-        res = await core.request(sent, {"policy": "working", "goal": "g"})
-        assert res == {"ok": True, "policy": "working"} and got == [{"policy": "working", "goal": "g"}]
-
-
-async def test_fakecore_helper_sends_new_and_legacy_names(core):
-    client = make_client(core)
     seen = []
-
-    for name in ("workspace.exit", "focus.resume"):
+    for name in ("workspace.exit", "workspace.resume"):
         @client.on_request(name)
         async def handler(body, _n=name):
             seen.append(_n)
             return {"ok": True}
 
     async with running(client, core):
+        assert await core.request("workspace.enter", {"workspace": "demo", "goal": "g"}) == {"ok": True}
+        assert got == [{"workspace": "demo", "goal": "g"}]
         await core.workspace("exit", {"checkpoint": True})
-        await core.workspace("exit", {"checkpoint": True}, legacy=True)
-        await core.workspace("resume", {"task_id": "t1"}, legacy=True)
         await core.workspace("resume", {"task_id": "t1"})
-        assert seen == ["workspace.exit"] * 2 + ["focus.resume"] * 2
+        assert seen == ["workspace.exit", "workspace.resume"]
         with pytest.raises(ValueError):
             await core.workspace("sleep")
+
+
+def test_legacy_policies_in_manifest_are_ignored():
+    legacy = {**copy.deepcopy(MANIFEST), "policies": [{"id": "x"}], "default_policy": "nope"}
+    assert P.validate_manifest(legacy) == []
+    m = Manifest.from_dict(legacy)
+    assert "policies" not in m.to_dict() and not hasattr(m, "policies")
 
 
 async def test_module_without_handler_answers_unknown(core):

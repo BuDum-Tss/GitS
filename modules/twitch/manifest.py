@@ -81,14 +81,6 @@ MANIFEST = {
         {"kind": "twitch.stream_offline", "description": "Трансляция закончилась", "default_urgency": 2},
     ],
     "state": True,
-    "policies": [
-        {"id": "available", "title": "Доступна", "focus": "background", "transitions": ["do_not_disturb"],
-         "interruptible": True, "purpose": "обычная обработка чата и событий в фоне"},
-        {"id": "do_not_disturb", "title": "Не беспокоить", "focus": "background", "quiet": True,
-         "transitions": ["available"], "interruptible": True,
-         "purpose": "события накапливаются и не инициируют переключение фокуса"},
-    ],
-    "default_policy": "available",
     "panel": {"title": "Twitch", "icon": "video", "order": 62},
 }
 

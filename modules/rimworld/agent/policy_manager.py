@@ -1,7 +1,7 @@
 """Машина состояний политик игрового агента (ТЗ 11e, POL-4, POL-5, POL-11, POL-14).
 
-Что решает. Вход: событие (вид, важность) от мира, просьба модели (`switch_policy`), просьба ядра (`policy.activate`,
-`focus.release`), условие выхода (`exit`). Выход: действующая политика с причиной. Правила:
+Что решает. Вход: событие (вид, важность) от мира, просьба модели (`switch_policy`), просьба ядра (`workspace.enter`,
+`workspace.exit`), условие выхода (`exit`). Выход: действующая политика с причиной. Правила:
   - приоритет: политика с большим приоритетом прерывает меньший (бой 4 > ручное 3 > планирование 2 > наблюдение 1 > вне игры 0);
   - дребезг: политика с меньшим или равным приоритетом сменяется, только когда прошло `min_dwell_s` с её начала;
   - просьба модели идёт только по `switch_to` исходной политики; просьба ядра выводит из `afk` в любую активную политику;
@@ -109,7 +109,7 @@ class PolicyManager:
         return True
 
     def leave_afk(self, to: str, reason: str, source: str = "core") -> bool:
-        """Фокус выдан модулю (`source`: core - policy.activate от ядра; auto и button - правка fix/focus-bootstrap):
+        """Фокус выдан модулю (`source`: core - workspace.enter от ядра; auto и button - правка fix/focus-bootstrap):
         из afk в активную политику `to`. Бой по просьбе не включают."""
         target = self.reg.policy(to)
         if target is None or to not in self.reg.requestable() or to == self.current:
@@ -118,7 +118,7 @@ class PolicyManager:
         return True
 
     def enter_afk(self, reason: str, source: str = "core") -> bool:
-        """Фокус забран (`source`: core - focus.release от ядра; auto, button - игра закрыта или кнопка «Отпустить»):
+        """Фокус забран (`source`: core - workspace.exit от ядра; auto, button - игра закрыта или кнопка «Отпустить»):
         в afk, игровые контуры не держим."""
         if not self.in_focus:
             return False

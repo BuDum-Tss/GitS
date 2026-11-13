@@ -180,7 +180,6 @@ def launch_spec() -> dict:
 
 def build_manifest(tools: list[dict], nodes: list[dict] | None = None) -> dict:
     from game_panel import panel_spec
-    import policies
     names = {t["name"] for t in tools}
     emits = json.loads(json.dumps(EMITS))
     for emit in emits:                                   # follow_up только на существующие инструменты (без них, как в тестах, пусто)
@@ -193,9 +192,6 @@ def build_manifest(tools: list[dict], nodes: list[dict] | None = None) -> dict:
             "shared_settings": list(SHARED_SETTINGS), "settings_schema": json.loads(json.dumps(SETTINGS_SCHEMA)),
             "tools": [launch_spec(), *tools], "emits": emits, "graph": True, "state": True,
             "panel": panel_spec(),                       # пространство в дашборде (TZ 15, TAB-5, TAB-9)
-            # политики (ТЗ 18, FOC-1; ТЗ 11e, POL-11/13): минимум одна с focus background (афк), она по умолчанию;
-            # переходы в формате ядра (из фоновой только запрашиваемые, см. policies.Registry.transitions)
-            "policies": policies.get().manifest(), "default_policy": policies.get().default,
             "workspace": dict(WORKSPACE), **({"nodes": nodes} if nodes else {})}
 
 
@@ -261,7 +257,7 @@ def attach(client, tools: list[dict], graph, module=None, launch=None, focus=Non
     """Зарегистрировать у клиента обработчики всех инструментов манифеста, `launch_game`, `graph.get` и запросы фокуса.
     graph: () -> dict (game_api.graph_data);
     launch: async (reason) -> str (запуск игры с объявлением, ТЗ 11e POL-12); focus: объект с async activate(body) и
-    release(body) для запросов ядра policy.activate и focus.release (ТЗ 11e POL-14)."""
+    release(body) для запросов ядра workspace.enter и workspace.exit (ТЗ 11e POL-14)."""
     import workspace_module as wm
     state = node_state if node_state is not None else wm.NodeState()
     nav = wm.make_nav_handlers(state, module)
@@ -288,8 +284,7 @@ def attach(client, tools: list[dict], graph, module=None, launch=None, focus=Non
         return graph()
 
     if focus is not None:
-        # ТЗ 32, WS-4: новые имена запросов среды; прежние (policy.activate, focus.release, focus.resume) SDK ведёт к тем же
-        # обработчикам как алиасы
+        # ТЗ 32, WS-4: запросы среды
         @client.on_request("workspace.enter")
         async def _activate(body):                                       # POL-14
             return await focus.activate(body or {})

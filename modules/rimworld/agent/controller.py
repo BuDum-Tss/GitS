@@ -231,7 +231,7 @@ class Controller:
         self._paused_by_focus     = False
         self._game_seen_running   = False                  # игра работала при фокусе модуля (сторож поднимет, если упала)
         # правка fix/focus-bootstrap (focus_mode): кто держит фокус и почему модуль вне игры
-        self._core_focus_seen     = False                  # ядро присылало policy.activate или focus.release: менеджер фокуса есть
+        self._core_focus_seen     = False                  # ядро присылало workspace.*: среду выдаёт ядро
         self._focus_source        = "none"                 # auto (сам), button (кнопка), core (ядро), none
         self._tick_state: dict    = {}                     # состояние игры с последнего тика (постройки для статуса ТЗ 18)
         self._held_off            = False                  # фокус отпущен кнопкой: сам не берём, пока игра не закроется
@@ -348,8 +348,8 @@ class Controller:
             pass                                         # вне цикла событий (тесты, разовый вызов): сигнал не нужен
 
     async def _take_focus(self, target: str, reason: str, source: str, cp: dict | None = None) -> dict:
-        """Вернуть фокус в `target` и восстановить контур по checkpoint (POL-14). Общая часть policy.activate, focus.resume
-        и кнопки. `cp`: checkpoint, который ядро вернуло нам при focus.release; без него берётся файл модуля."""
+        """Вернуть фокус в `target` и восстановить контур по checkpoint (POL-14). Общая часть workspace.enter, workspace.resume
+        и кнопки. `cp`: checkpoint, который ядро вернуло нам при workspace.exit; без него берётся файл модуля."""
         if cp is None:
             cp = await asyncio.to_thread(focus_checkpoint.load)
         if not self.policies.leave_afk(target, reason, source=source):
@@ -362,12 +362,12 @@ class Controller:
             if cp.get("paused_by_module"):
                 await asyncio.to_thread(_game_command, {"type": "resume"})
             await asyncio.to_thread(focus_checkpoint.clear)
-        return {"ok": True, "policy": target, "restored": bool(cp), "goal": (cp or {}).get("goal", "")}
+        return {"ok": True, "restored": bool(cp), "goal": (cp or {}).get("goal", "")}
 
     async def _drop_focus(self, reason: str, source: str) -> dict:
-        """Забрать фокус (POL-14): checkpoint, пауза, если игра идёт, уход в afk. Общая часть focus.release и кнопки."""
+        """Забрать фокус (POL-14): checkpoint, пауза, если игра идёт, уход в afk. Общая часть workspace.exit и кнопки."""
         if not self.policies.in_focus:
-            return {"ok": True, "already": True, "policy": self.policies.current}
+            return {"ok": True, "already": True}
         st = await asyncio.to_thread(_get_state)
         paused = False
         if _state_ready(st) and not st.get("paused"):
@@ -383,39 +383,39 @@ class Controller:
         self._focus_source = "none"
         self._fight.reset()
         self._pending_events.clear()
-        # ТЗ 18, MOD-32: ответ focus.release несёт сам checkpoint (ядро хранит его и вернёт в focus.resume)
-        return {"ok": True, "checkpoint": cp if saved else None, "paused": paused, "policy": self.policies.current}
+        # ТЗ 18, MOD-32: ответ workspace.exit несёт сам checkpoint (ядро хранит его и вернёт в workspace.resume)
+        return {"ok": True, "checkpoint": cp if saved else None, "paused": paused}
 
     async def activate(self, body: dict) -> dict:
-        """Запрос ядра policy.activate (POL-14): вернуть фокус, восстановить контур по checkpoint."""
-        self._core_focus_seen = True                 # менеджер фокуса в ядре есть: модуль больше сам фокус не берёт
-        policy = str(body.get("policy") or "observe")
+        """Запрос ядра workspace.enter (POL-14): вернуть фокус (политика движка `observe`), восстановить контур по checkpoint."""
+        self._core_focus_seen = True                 # ядро выдаёт среду: модуль больше сам фокус не берёт
         goal = str(body.get("goal") or "")
         if self._focus_mode() == "manual":
             reason = "режим фокуса «вручную»: ядро фокус не получает"
-            events_log.log("game", f"запрос ядра policy.activate отклонён: {reason}")
+            events_log.log("game", f"запрос ядра workspace.enter отклонён: {reason}")
             return {"ok": False, "error": reason + "; фокус даёт кнопка «Взять фокус» на панели RimWorld"}
         if self.policies.in_focus:
             self._focus_source = "core"
-            return {"ok": True, "already": True, "policy": self.policies.current}
-        target = "observe" if policy == "afk" else policy
-        return await self._take_focus(target, f"фокус возвращён: {goal[:100]}".strip(), source="core")
+            return {"ok": True, "already": True}
+        return await self._take_focus("observe", f"фокус возвращён: {goal[:100]}".strip(), source="core")
 
     async def resume(self, body: dict) -> dict:
-        """Запрос ядра focus.resume (ТЗ 18, FOC-4): возобновить задачу по checkpoint ядра (или по файлу модуля). Подцели
-        попадают в подсказку хода. Режим «вручную» отказывает, как policy.activate."""
+        """Запрос ядра workspace.resume (ТЗ 18, FOC-4): возобновить задачу по checkpoint ядра (или по файлу модуля). Подцели
+        попадают в подсказку хода; политика движка берётся из checkpoint. Режим «вручную» отказывает, как workspace.enter."""
         self._core_focus_seen = True                 # менеджер фокуса в ядре есть
         if self._focus_mode() == "manual":
             reason = "режим фокуса «вручную»: ядро фокус не получает"
-            events_log.log("game", f"запрос ядра focus.resume отклонён: {reason}")
+            events_log.log("game", f"запрос ядра workspace.resume отклонён: {reason}")
             return {"ok": False, "error": reason + "; фокус даёт кнопка «Взять фокус» на панели RimWorld"}
         if self.policies.in_focus:
             self._focus_source = "core"
-            return {"ok": True, "already": True, "policy": self.policies.current}
-        policy = str(body.get("policy") or "observe")
-        target = "observe" if policy == "afk" else policy
+            return {"ok": True, "already": True}
         goal = str(body.get("goal") or "")
         cp = body.get("checkpoint") if isinstance(body.get("checkpoint"), dict) else None
+        if cp is None:
+            cp = await asyncio.to_thread(focus_checkpoint.load)
+        policy = str((cp or {}).get("policy") or "observe")
+        target = "observe" if policy == "afk" else policy
         subgoals = [f"подцель: {s}"[:200] for s in _as_list(body.get("subgoals")) if isinstance(s, str)][:5]
         res = await self._take_focus(target, f"задача возобновлена: {goal[:100]}".strip(), source="core", cp=cp)
         if res.get("ok") and subgoals:
@@ -423,13 +423,13 @@ class Controller:
         return res
 
     async def release(self, body: dict) -> dict:
-        """Запрос ядра focus.release (POL-14): сохранить checkpoint, поставить игру на паузу, если она идёт, уйти в afk."""
+        """Запрос ядра workspace.exit (POL-14): сохранить checkpoint, поставить игру на паузу, если она идёт, уйти в afk."""
         self._core_focus_seen = True                 # менеджер фокуса в ядре есть
         reason = str(body.get("reason") or "фокус у другой задачи")
         return await self._drop_focus(reason, source="core")
 
     async def panel_take_focus(self, args: dict) -> dict:
-        """Кнопка «Взять фокус» на панели RimWorld: то же, что policy.activate, без запроса ядра."""
+        """Кнопка «Взять фокус» на панели RimWorld: то же, что workspace.enter, без запроса ядра."""
         if self.policies.in_focus:
             return {"ok": True, "message": "фокус уже у модуля"}
         if not await asyncio.to_thread(_ping):
@@ -440,7 +440,7 @@ class Controller:
         return {"ok": True, "message": "фокус взят: модуль ведёт игру"}
 
     async def panel_release_focus(self, args: dict) -> dict:
-        """Кнопка «Отпустить фокус»: checkpoint и пауза, как у focus.release. Сам фокус до закрытия игры не берётся."""
+        """Кнопка «Отпустить фокус»: checkpoint и пауза, как у workspace.exit. Сам фокус до закрытия игры не берётся."""
         res = await self._drop_focus("фокус отпущен кнопкой на панели", source="button")
         if res.get("already"):
             return {"ok": True, "message": "фокуса и так нет"}

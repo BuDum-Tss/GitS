@@ -3,7 +3,7 @@
 Корень сборки только соединяет готовые части (как `impulse_service`): логика лежит в `domain/episodes.py` и `app/episode_*.py`,
 `app/sleep*.py`, `app/diary.py`. Хранилище и поиск у каждого персонажа свои (папка памяти персонажа, ТЗ 05); при переключении
 персонажа части создаются заново для его папки, а нарезка нового персонажа начинается с текущего конца журнала (чужую историю
-он не нарезает). Модуль памяти объявляет менеджеру фокуса фоновую политику `sleep` (`policies_of` / `status_of` для id `memory`).
+он не нарезает).
 Событие `episode.summary` уходит во внимание как событие модуля `memory` и по правилу ТЗ 30 попадает в маршрут think.
 """
 import time
@@ -126,15 +126,7 @@ class EpisodeService:
         if self.scheduler is not None:
             await self.scheduler.stop()
 
-    # ── политика фокуса и дашборд ────────────────────────────────────────────
-
-    def policies_of(self, module_id: str) -> dict | None:
-        return SleepScheduler.policies() if module_id == dom.MEMORY_MODULE else None
-
-    def status_of(self, module_id: str) -> dict | None:
-        if module_id != dom.MEMORY_MODULE or self.scheduler is None:
-            return None
-        return self.scheduler.focus_status()
+    # ── дашборд ──────────────────────────────────────────────────────────────
 
     async def snapshot(self, limit: int = 30) -> dict:
         """Данные вкладки «Память»: статус сна, эпизоды, дневник, сводки."""

@@ -3,11 +3,10 @@
 
 Что проверяется: запуск игры не меняет среду, а лишь сигнал; вход по сообщению пользователя и по самоимпульсу (инструмент
 `workspace.switch`); возврат в assistant по `done`, `blocked` и отключению; критический сигнал во время монтажа (и отказ в
-небезопасной точке); старые имена запросов."""
+небезопасной точке)."""
 import asyncio
 
 import pytest
-from workspace_rigs import GAME_POLICIES, MONTAGE_POLICIES
 from test_dashboard_endpoints import serve
 
 from app import impulse_origin
@@ -17,11 +16,10 @@ from environments.base import ToolError
 from gits_sdk import ModuleClient
 
 
-def manifest(module_id: str, policies: dict, workspace: bool = True, emits: tuple = ()) -> dict:
+def manifest(module_id: str, workspace: bool = True, emits: tuple = ()) -> dict:
     m = {"id": module_id, "title": module_id.title(), "description": "Заглушка модуля.", "version": "1.0.0",
          "capabilities": ["game"] if module_id == "rimworld" else [], "subscribe": ["module"], "state": True,
-         "emits": [{"kind": k, "description": "событие", "default_urgency": u} for k, u in emits],
-         "policies": policies["policies"], "default_policy": policies["default_policy"]}
+         "emits": [{"kind": k, "description": "событие", "default_urgency": u} for k, u in emits]}
     if workspace:
         m["workspace"] = {"id": module_id, "title": module_id.title(), "purpose": "тест",
                           "entry": ["user_message", "self_impulse", "critical"], "signals_in": ["telegram.*"]}
@@ -31,11 +29,11 @@ def manifest(module_id: str, policies: dict, workspace: bool = True, emits: tupl
 class Stub:
     """Модуль-заглушка: журнал запросов среды и статус, который он присылает ядру."""
 
-    def __init__(self, port, layer, module_id, policies, active_policy, **kw):
-        self.client = ModuleClient(manifest(module_id, policies, **kw), url=f"ws://127.0.0.1:{port}/module/ws",
+    def __init__(self, port, layer, module_id, **kw):
+        self.client = ModuleClient(manifest(module_id, **kw), url=f"ws://127.0.0.1:{port}/module/ws",
                                    token=layer.hub.token)
-        self.id, self.active_policy, self.calls = module_id, active_policy, []
-        self.interruptible, self.blocked = True, None
+        self.id, self.calls = module_id, []
+        self.interruptible, self.blocked, self.done = True, None, False
         for name in ("workspace.enter", "workspace.exit", "workspace.resume"):
             self.client.on_request(name)(self._handler(name))
         self.task = None
@@ -45,7 +43,7 @@ class Stub:
             self.calls.append(name)
             if name == "workspace.exit":
                 return {"ok": True, "checkpoint": {"goal": body.get("reason", "")}}
-            return {"ok": True, "policy": body.get("policy") or self.active_policy}
+            return {"ok": True}
         return handler
 
     async def start(self):
@@ -54,7 +52,9 @@ class Stub:
         await self.report()
 
     async def report(self, **status):
-        status = {"active_policy": self.active_policy, "interruptible": self.interruptible, **status}
+        status = {"interruptible": self.interruptible, **status}
+        if self.done:
+            status["done"] = True
         if self.blocked:
             status["blocked"] = self.blocked
         await self.client.state("заглушка", {"status": status})
@@ -74,8 +74,8 @@ async def world(tmp_path, monkeypatch):
     port, layer, runner = await serve(tmp_path)
     stubs: list[Stub] = []
 
-    async def add(module_id, policies, active, **kw):
-        stub = Stub(port, layer, module_id, policies, active, **kw)
+    async def add(module_id, **kw):
+        stub = Stub(port, layer, module_id, **kw)
         stubs.append(stub)
         await stub.start()
         return stub
@@ -98,10 +98,8 @@ async def wait(pred, timeout=5.0):
 
 
 async def enter_montage(layer, mont, **args):
-    """Войти в монтаж по просьбе пользователя; модуль, приняв среду, переходит в активную политику (иначе статус «в фоне»
-    означал бы «задача кончилась»)."""
+    """Войти в монтаж по просьбе пользователя."""
     await tool(layer, "workspace.switch").call({"workspace": "montage", **args})
-    mont.active_policy = "working"
     await mont.report()
 
 
@@ -118,8 +116,8 @@ def layer_tools(layer):
 
 async def test_workspaces_come_from_manifests_not_from_a_fixed_list(world):
     assert {s["id"] for s in world.workspaces.snapshot()["available"]} == {ASSISTANT, "sleep"}
-    await world.add("rimworld", GAME_POLICIES, "afk")
-    await world.add("plain", GAME_POLICIES, "afk", workspace=False)               # модуль без поля workspace средой не является
+    await world.add("rimworld")
+    await world.add("plain", workspace=False)               # модуль без поля workspace средой не является
     ids = {s["id"] for s in world.workspaces.snapshot()["available"]}
     assert ids == {ASSISTANT, "sleep", "rimworld"}
 
@@ -127,8 +125,8 @@ async def test_workspaces_come_from_manifests_not_from_a_fixed_list(world):
 # ── WS-5: вход только по импульсу ────────────────────────────────────────────
 
 async def test_game_start_does_not_change_the_workspace(world):
-    game = await world.add("rimworld", GAME_POLICIES, "afk", emits=(("rimworld.game_started", 1),))
-    await game.client.state("игра запущена", {"game_running": True, "status": {"active_policy": "afk", "interruptible": True}})
+    game = await world.add("rimworld", emits=(("rimworld.game_started", 1),))
+    await game.client.state("игра запущена", {"game_running": True, "status": {"interruptible": True}})
     await game.client.event("rimworld.game_started", "Игра RimWorld запущена.", urgency_hint=1)
     await asyncio.sleep(0.4)
     assert world.workspaces.current == ASSISTANT and game.calls == []
@@ -136,7 +134,7 @@ async def test_game_start_does_not_change_the_workspace(world):
 
 
 async def test_user_message_enters_the_module_workspace_and_the_profile_follows(world):
-    game = await world.add("rimworld", GAME_POLICIES, "afk")
+    game = await world.add("rimworld")
     res = await tool(world, "workspace.switch").call({"workspace": "rimworld", "goal": "зайти в колонию"})
     assert "Rimworld" in res
     assert (world.workspaces.current, world.workspaces.reason) == ("rimworld", Reason.USER)
@@ -148,7 +146,7 @@ async def test_user_message_enters_the_module_workspace_and_the_profile_follows(
 
 
 async def test_self_impulse_enters_with_reason_self_and_an_ordinary_permission(world):
-    await world.add("montage", MONTAGE_POLICIES, "idle")
+    await world.add("montage")
     switch = tool(world, "workspace.switch")
     args = {"workspace": "montage", "goal": "собрать ролик"}
     assert switch.danger(args) is None                                           # по просьбе пользователя разрешение не нужно
@@ -183,18 +181,18 @@ async def test_switch_to_a_declared_but_unconnected_module_explains_why(world):
 # ── возврат в assistant ──────────────────────────────────────────────────────
 
 async def test_done_returns_to_assistant(world):
-    mont = await world.add("montage", MONTAGE_POLICIES, "idle")
+    mont = await world.add("montage")
     await enter_montage(world, mont)
     await asyncio.sleep(0.2)
     assert world.workspaces.current == "montage"
-    mont.active_policy = "idle"                                                  # задача кончилась: модуль вернулся в фон
+    mont.done = True                                                             # задача кончилась: модуль сообщил done в статусе
     await mont.report()
     await wait(lambda: world.workspaces.current == ASSISTANT)
     assert world.workspaces.reason == Reason.DONE
 
 
 async def test_blocked_returns_to_assistant(world):
-    mont = await world.add("montage", MONTAGE_POLICIES, "idle")
+    mont = await world.add("montage")
     await enter_montage(world, mont)
     mont.blocked = "нет исходников"
     await mont.report()
@@ -203,7 +201,7 @@ async def test_blocked_returns_to_assistant(world):
 
 
 async def test_module_disconnect_returns_to_assistant(world):
-    game = await world.add("rimworld", GAME_POLICIES, "afk")
+    game = await world.add("rimworld")
     await tool(world, "workspace.switch").call({"workspace": "rimworld"})
     await game.stop()
     await wait(lambda: world.workspaces.current == ASSISTANT, 8)
@@ -213,8 +211,8 @@ async def test_module_disconnect_returns_to_assistant(world):
 # ── события чужих сред среду не переключают ──────────────────────────────────
 
 async def test_foreign_events_do_not_move_the_workspace_even_when_critical(world):
-    mont = await world.add("montage", MONTAGE_POLICIES, "idle")
-    game = await world.add("rimworld", GAME_POLICIES, "afk", emits=(("rimworld.letter", 2), ("rimworld.raid", 5)))
+    mont = await world.add("montage")
+    game = await world.add("rimworld", emits=(("rimworld.letter", 2), ("rimworld.raid", 5)))
     await enter_montage(world, mont)
     await game.client.event("rimworld.letter", "Письмо: торговцы прибыли", urgency_hint=4)
     await game.client.event("rimworld.raid", "Набег: трое рейдеров у ворот", urgency_hint=5)

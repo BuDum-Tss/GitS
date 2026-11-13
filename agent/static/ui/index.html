@@ -1324,14 +1324,6 @@ function modSettingControl(m, key, spec) {
   return `<div class="flex items-center justify-between gap-3"><span class="text-xs">${esc(spec.title || key)}</span>${control}</div>`;
 }
 
-// ТЗ 18, FOC-9: активная политика модуля и допустимые переходы из её описания
-function policyLine(m) {
-  const cur = m.active_policy || m.default_policy || '';
-  const pol = (m.policies || []).find(p => p.id === cur) || {};
-  const takes = (m.policies || []).some(p => p.focus === 'active');
-  const moves = (pol.transitions || []).length ? `, переходы: ${pol.transitions.map(esc).join(', ')}` : '';
-  return `<div class="text-xs mt-1">Политика: <span class="font-mono">${esc(cur || '—')}</span> ${pol.focus === 'active' ? '(держит фокус)' : '(фон)'}${moves}${takes ? '' : ', фокус не берёт'}</div>`;
-}
 function renderModule(m) {
   let [label, cls] = MOD_STATUS[m.status] || [m.status_text || m.status, 'badge-ghost'];
   const service = m.kind === 'service';
@@ -1355,7 +1347,6 @@ function renderModule(m) {
     ${m.restarts ? `<div class="text-xs opacity-60">Перезапусков: ${esc(m.restarts)}</div>` : ''}
     ${m.last_error ? `<pre class="text-xs bg-base-200 rounded p-2 mt-2 whitespace-pre-wrap" style="max-height:8rem;overflow:auto">${esc(m.last_error)}</pre>` : ''}
     ${(m.capabilities || []).length ? `<div class="flex flex-wrap gap-1 mt-2">${m.capabilities.map(c => `<span class="badge badge-outline badge-xs">${esc(c)}</span>`).join('')}</div>` : ''}
-    ${(m.policies || []).length ? policyLine(m) : ''}
     ${tools ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Инструменты (${m.tools.length})</summary><ul class="space-y-1 mt-1">${tools}</ul></details>` : ''}
     ${schema.length ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Настройки</summary><div class="space-y-2 mt-2">${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></details>` : ''}
   </div>`;

@@ -1,7 +1,6 @@
-"""Режим сна как фоновая политика модуля памяти (ТЗ 27, EPI-4; ТЗ 18).
+"""Режим сна модуля памяти (ТЗ 27, EPI-4).
 
-Модуль памяти (в ядре) объявляет менеджеру фокуса политику `sleep` (`domain.episodes.SLEEP_POLICY`: фон, прерываемая) и показывает
-статус `active_policy = sleep`, пока идёт сон. Сон запускается, когда:
+Сон запускается, когда:
   - простой дольше `idle_min` минут (`idle`),
   - наступил час расписания (`scheduled`),
   - давно не спала и простоя нет (`catchup`, малый бюджет токенов).
@@ -43,18 +42,6 @@ class SleepScheduler:
         self._asked_at: float | None = None
         self._started_at = 0.0
         self.on_change: Callable[[], None] | None = None      # сон начался или закончился (состояние ассистента пересчитывается)
-
-    # ── политика для менеджера фокуса ────────────────────────────────────────
-
-    @staticmethod
-    def policies() -> dict:
-        """Манифест политик модуля памяти для FocusManager.policies_of."""
-        return {"default_policy": None, "policies": [dict(dom.SLEEP_POLICY)]}
-
-    def focus_status(self) -> dict:
-        """Статус для FocusManager.status_of: сон идёт, фокус не занят, прерывать можно."""
-        return {"active_policy": dom.SLEEP_POLICY["id"] if self.state == "sleeping" else None, "interruptible": True,
-                "blocked": False}
 
     # ── решение ──────────────────────────────────────────────────────────────
 

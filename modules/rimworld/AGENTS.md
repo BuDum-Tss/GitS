@@ -40,12 +40,12 @@ Claude. Разговор, голос, питомец, Telegram и память-�
 | Модуль | Назначение |
 |---|---|
 | `main.py` | точка входа модуля: контуры игры, API :8767, комментатор, подключение к ядру |
-| `controller.py` | инфраструктура игры без агента: опрос состояния и событий мода, события ядру (`raid`, `death`, `fire`, `letter`, `goal`, `run_ended`, `colonists`), запись забега и монтаж, камера, сторож окна, запуск игры, меню по OCR, фокус (`activate` / `resume` / `release`); ходов, планирования и реплик в модуле нет, игрой управляет единый агент ядра инструментами рабочего места. Хвосты прежнего агента (`policy_*`, `game_modes`, `watch_rules`, `appraisal`, `decider`) ждут чистки |
-| `policies/` (`__init__.py`, `events.yaml`, `afk|observe|plan|combat|manual.yaml`) | политики игрового агента (ТЗ 11e): каталог событий и описания политик; реестр проверяет схему |
+| `controller.py` | инфраструктура игры без агента: опрос состояния и событий мода, события ядру (`raid`, `death`, `fire`, `letter`, `goal`, `run_ended`, `colonists`), запись забега и монтаж, камера, сторож окна, запуск игры, меню по OCR, фокус (`activate` / `resume` / `release` на запросы `workspace.enter` / `workspace.resume` / `workspace.exit`); ходов, планирования и реплик в модуле нет, игрой управляет единый агент ядра инструментами рабочего места. Хвосты прежнего агента (`policy_*`, `game_modes`, `watch_rules`, `appraisal`, `decider`) ждут чистки |
+| `policies/` (`__init__.py`, `events.yaml`, `afk|observe|plan|combat|manual.yaml`) | внутренний движок политик модуля (не часть контракта ядра, ТЗ 11e): каталог событий и описания политик; реестр проверяет схему |
 | `focus_mode.py` | режим фокуса `focus_mode` (`auto` берёт фокус сам, пока нет менеджера фокуса в ядре; `core`; `manual`), чистые решения и объяснение «почему afk» |
 | `policy_manager.py`, `policy_events.py`, `policy_actions.py`, `policy_context.py` | машина состояний политик (приоритет, дребезг, просьбы), события игры по каталогу, чистые решения (скорость, бой, принуждение, запуск), подсказка хода без снимка мира |
 | `watch_rules.py`, `focus_checkpoint.py` | правила наблюдения, которые пишет модель (строгая проверка, срок по тику), checkpoint при потере фокуса |
-| `focus_status.py`, `focus_mode.py` | блок `status` для ядра (ТЗ 18: политика, срочность, прерываемость, блокировка, ресурсы; чистые функции); режим фокуса `auto`/`core`/`manual` |
+| `focus_status.py`, `focus_mode.py` | блок `status` для ядра (`done` для ядра, срочность, прерываемость, блокировка, ресурсы; чистые функции); режим фокуса `auto`/`core`/`manual` |
 | `research_unlock.py` | разблокировка исследованиями: признак закрытого объекта (`ЗАКРЫТО ИССЛЕДОВАНИЕМ`), цепочка до нужного исследования, очередь `memory/research_queue.json`, шаги дерева задач в ожидании исследования (`waiting_research`, `blocked`) |
 | `rimworld_mcp.py`, `run_mcp.py`, `mod/AgentBridge` | MCP-сервер и мод RimWorld |
 | `statediff.py` | разница состояний игры: что изменилось и что важно |
@@ -54,7 +54,7 @@ Claude. Разговор, голос, питомец, Telegram и память-�
 | `module_manifest.py` | манифест модуля: `order`, `launch_game`, `graph.get`, обработчики; инструменты и узлы строит `workspace_module.py` |
 | `workspace_tree.py`, `workspace_module.py` | рабочее место (контракт 1.8, `GitS/docs/WORKSPACE_MODULES.md`): `workspace_tree.py` дерево узлов по вкладкам игры и судьба каждой функции MCP-сервера (действие узла, запрос, навык, ядро, удаление); `workspace_module.py` строит по нему инструменты манифеста (`<узел>_<действие>`, запросы `colony_resources`), навигацию `open`/`back`/`where`, хранит текущий узел (`NodeState`) и отклоняет действие вне узла; тесты `test_workspace_tree.py`, `test_workspace_module.py` |
 | `tools/build_tool_scheme.py`, `docs/TOOLS_SCHEME.html` | схема инструментов из манифеста со снимками интерфейса игры (`docs/gui`): после смены дерева или инструментов запусти `python modules/rimworld/tools/build_tool_scheme.py` (тест `test_tool_scheme.py`) |
-| `state_reporter.py` | `state` для ядра раз в 5 с: `game_running`, сводка, данные для дашборда, блок `status` (ТЗ 18, MOD-33: `active_policy`, `urgency`, `interruptible`, `blocked`) |
+| `state_reporter.py` | `state` для ядра раз в 5 с: `game_running`, сводка, данные для дашборда, блок `status` (ТЗ 18, MOD-33: `done`, `urgency`, `interruptible`, `blocked`) |
 | `game_panel.py` | пространство «RimWorld» в дашборде ядра (TZ 15): ссылки на оверлей OBS и пульт оценок, блоки состояния игры, колонистов, решений, оценок и записи забега (`panel.set`, чистая функция `panel_blocks`) |
 | `game_api.py`, `core_bridge.py`, `static/overlay.html` | HTTP-API (:8767): оверлей для OBS, `/api/game`, `/api/graph`, отметки оценок (пульт), мостики MCP-сервера к ядру (экран и поиск) |
 | `run_recorder.py`, `audio_capture.py`, `scenario.py`, `tools/produce_run.py` | запись забега на видео (ffmpeg), звук кусками по 30 минут, сценарий, монтаж и клипы; `produce_run.py` собирает уже записанный забег заново |
@@ -81,7 +81,7 @@ text=факт)` там, где событие происходит (`controller.
 
 ## Фокус модуля
 Модуль вне фокуса (`afk`) ничего не делает с игрой. До появления менеджера фокуса в ядре (ТЗ 18) фокус берёт сам режим `auto`, когда игра
-запущена, поэтому не добавляй к `focus_mode` правил, которые ждут `policy.activate`. Игру запускает только `game_launcher.launch`
+запущена, поэтому не добавляй к `focus_mode` правил, которые ждут `workspace.enter`. Игру запускает только `game_launcher.launch`
 по явной просьбе или инструментом `launch_game`, не фокус и не сторож при старте (POL-12).
 
 ## Как добавить настройку

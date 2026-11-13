@@ -108,16 +108,6 @@ MANIFEST = {
         {"kind": "montage.failed", "description": "Задача монтажа не удалась", "default_urgency": 3},
     ],
     "state": True,
-    # политики фокуса (ТЗ 18, FOC-1; ТЗ 11e, POL-13; ТЗ 32): вне среды монтаж идёт в фоне (idle), в среде политика working.
-    # Переходы запросами workspace.enter / workspace.exit / workspace.resume (прежние policy.activate, focus.release, focus.resume
-    # SDK ведёт к тем же обработчикам)
-    "policies": [
-        {"id": "idle", "title": "Простой", "focus": "background", "interruptible": True, "transitions": ["working"],
-         "purpose": "монтаж в фоне, фокус не держит"},
-        {"id": "working", "title": "Монтаж", "focus": "active", "interruptible": True, "transitions": ["idle"],
-         "safe_points": ["между стадиями задачи"], "purpose": "агент занят монтажом: ведёт задачи, отвечает по ним, не отвлекается"},
-    ],
-    "default_policy": "idle",
     # среда агента (ТЗ 32, WS-4): в неё входят по сообщению пользователя («давай монтировать»), по самоимпульсу или по
     # критическому сигналу; закончена, когда задачи, начатые при ней, готовы
     "workspace": {"id": "montage", "title": "Монтаж", "purpose": "монтаж роликов: нарезка, склейка, озвучка, выгрузка, правки",

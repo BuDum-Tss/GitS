@@ -1,10 +1,10 @@
 """Статус модуля для ядра (ТЗ 18, FOC-1; docs/MODULE_CONTRACT.md, раздел 14, MOD-33): блок `data.status` в теме `state`.
 
 Ядро по нему видит, что происходит: какая политика действует, можно ли безопасно её прервать, не ждёт ли она чего-то. По
-`active_policy` фоновая политика (`afk`) означает, что задача кончилась и фокус свободен.
+фоновая политика движка (`afk`) означает, что задача кончилась и фокус свободен: модуль ставит `done: true`.
 
 Поля:
-  - `active_policy` - id текущей политики;
+  - `done` - true, когда действует фоновая политика движка (`afk`): задача кончилась, фокус свободен;
   - `active_goal` - главная цель игры (название) или пусто;
   - `urgency` - 0..1, срочность текущей политики (поле `urgency` в описании политики: бой 1, ручное 0.5, планирование 0.4);
   - `interruptible` - можно ли сейчас прервать: в бою нет и при критическом ремонте (постройка с HP ниже порога) нет;
@@ -62,7 +62,7 @@ def blocked_reason(policy, tasks: list) -> str | None:
 def build(policy, *, goal: str, tasks: list, buildings: list) -> dict:
     """Блок `status` для сообщения `state` (ТЗ 18, MOD-33)."""
     return {
-        "active_policy": policy.id,
+        "done": policy.focus != "active",
         "active_goal": goal or "",
         "urgency": round(float(policy.urgency), 2),
         "interruptible": interruptible(policy, buildings),

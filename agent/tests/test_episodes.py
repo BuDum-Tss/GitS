@@ -608,9 +608,9 @@ async def test_scheduler_sleeps_at_idle_and_reports(tmp_path):
     chat_day(j, T0)
     r = make_runner(tmp_path, j, LLM(text_or_summary), Clock(T0 + 86400), cfg={"idle_min": 15})
     sch = make_scheduler(r, idle_seconds=lambda: 20 * MIN)
-    assert sch.focus_status()["active_policy"] is None and sch.policies()["policies"][0]["focus"] == "background"
+    assert sch.state == "awake"
     assert await sch.tick()
-    assert sch.state == "sleeping" and sch.focus_status()["active_policy"] == "sleep"
+    assert sch.state == "sleeping"
     await sch._task
     assert sch.state == "awake" and sch.last_report["summarized"] == 1 and sch.status()["last_sleep"]
     assert not await sch.tick()                                                    # слишком рано для следующего
@@ -733,7 +733,7 @@ def fake_companion(folder, llm):
     return comp
 
 
-async def test_service_keeps_episodes_per_character_and_registers_policy(tmp_path):
+async def test_service_keeps_episodes_per_character(tmp_path):
     folder_a, folder_b = tmp_path / "a", tmp_path / "b"
     comp = fake_companion(folder_a, LLM(text_or_summary))
     submitted = []
@@ -747,14 +747,13 @@ async def test_service_keeps_episodes_per_character_and_registers_policy(tmp_pat
     svc = EpisodeService(comp, Att(), clock=Clock(T0 + 5000), embedder=HashEmbedder(), source=j)
     p1 = svc.parts()
     await p1.cutter.run()
-    assert svc.store.select() and svc.policies_of("memory")["policies"][0]["id"] == "sleep" and svc.policies_of("voice") is None
+    assert svc.store.select()
     comp._dir = folder_b                                   # переключение персонажа: своя папка и свои эпизоды
     p2 = svc.parts()
     assert p2 is not p1 and svc.store.select() == []
     comp._dir = folder_a
     assert svc.parts() is p1 and svc.store.select()
     svc.attach_scheduler()
-    assert svc.status_of("memory")["active_policy"] is None
     snap = await svc.snapshot()
     assert snap["episodes"] and snap["sleep"]["state"] == "awake"
     await p1.runner.run(dom.SleepPlan("idle", None))

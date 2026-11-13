@@ -106,7 +106,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     attention.hub, attention.modules = hub, modules
     # среды агента: среду модуля объявляет его манифест и включает только импульс (сообщение пользователя, самоимпульс);
     # обмен с модулем (вход, выход, возобновление) делает ModuleLink
-    link = ModuleLink(connection_of=hub.connection, policies_of=lambda mid: _module_policies(modules, mid))
+    link = ModuleLink(connection_of=hub.connection)
 
     async def enter_module(ws: str, goal: str) -> dict:
         if not goal:                                     # вход без новой цели: вернуть приостановленную задачу, если она есть
@@ -125,7 +125,6 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         release=lambda ws, reason, force: link.release(reason=reason, force=force),
         interruptible=lambda ws: bool((_module_status(modules, ws) or {}).get("interruptible", True)),
         connected=hub.is_connected, status_of=lambda ws: _module_status(modules, ws),
-        is_background=link.is_background,
         modules_of=lambda: [(rec.id, rec.manifest, rec.title) for rec in modules.records.values() if rec.manifest],
         on_change=on_workspace_change,
         log=lambda kind, **data: _log_workspace(kind, data))
@@ -278,15 +277,6 @@ def _module_status(modules, module_id: str) -> dict | None:
     data = (rec.state or {}).get("data") if rec is not None and rec.state else None
     status = (data or {}).get("status") if isinstance(data, dict) else None
     return status if isinstance(status, dict) else None
-
-
-def _module_policies(modules, module_id: str) -> dict | None:
-    """Политики модуля из манифеста; None - модуль без policies (режим совместимости: без фокуса)."""
-    rec = modules.get(module_id)
-    manifest = (rec.manifest if rec is not None else None) or {}
-    if "policies" not in manifest:
-        return None
-    return {"default_policy": manifest.get("default_policy"), "policies": manifest.get("policies") or []}
 
 
 async def _run(config: dict):

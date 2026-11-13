@@ -1,13 +1,12 @@
 """Среда агента «Монтаж» (ТЗ 32, WS-4): входит ли агент в монтаж сейчас. Чистое состояние без ввода-вывода.
 
-Ядро вводит агента в среду запросом `workspace.enter` (прежнее `policy.activate`), только по сообщению пользователя, по
+Ядро вводит агента в среду запросом `workspace.enter`, только по сообщению пользователя, по
 самоимпульсу или по критическому сигналу. Рендер идёт и без среды: фоновая задача модуля фокуса не требует. Статус для ядра
-(`state.data.status`): активная политика (`working` или `idle`), можно ли выйти сейчас, нет ли блокировки. Среда кончается
-сама (`idle`), когда задачи, начатые при ней, закончились: ядро видит возврат в фон и возвращает агента в assistant.
+(`state.data.status`): `done` (среда не занята: не входили или задачи кончились) и можно ли выйти сейчас. Среда кончается
+сама, когда задачи, начатые при ней, закончились: ядро видит `done` и возвращает агента в assistant.
 """
 from __future__ import annotations
 
-ACTIVE, IDLE = "working", "idle"
 # стадии, в которых выходить небезопасно: идёт сборка или рендер, пользователь ждёт результат
 UNSAFE_STAGES = ("build", "final")
 
@@ -22,13 +21,13 @@ class WorkspaceState:
     def enter(self, goal: str = "", task_id: str = "", busy: bool = False, restored: bool = False) -> dict:
         self.active, self.goal, self.task_id = True, goal, task_id
         self.had_work = busy
-        return {"ok": True, "policy": ACTIVE, "restored": restored}
+        return {"ok": True, "restored": restored}
 
     def exit(self, checkpoint: dict | None = None) -> dict:
         was = self.active
         self.active = False
         self.had_work = False
-        return {"ok": True, "checkpoint": checkpoint or {"goal": self.goal, "was_active": was}, "policy": IDLE}
+        return {"ok": True, "checkpoint": checkpoint or {"goal": self.goal, "was_active": was}}
 
     def note_job(self) -> None:
         """Задача поставлена или идёт, пока агент в среде."""
@@ -43,5 +42,5 @@ class WorkspaceState:
         return False
 
     def status(self, stage: str | None = None) -> dict:
-        return {"active_policy": ACTIVE if self.active else IDLE,
+        return {"done": not self.active,
                 "interruptible": not (self.active and stage in UNSAFE_STAGES)}

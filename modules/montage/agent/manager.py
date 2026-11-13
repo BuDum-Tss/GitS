@@ -72,14 +72,14 @@ class Manager:
         return bool(self.queue) or self.current is not None
 
     async def enter_workspace(self, body: dict) -> dict:
-        """workspace.enter (прежнее policy.activate): агент входит в монтаж. Задачи, уже стоящие в очереди, становятся делом среды."""
+        """workspace.enter: агент входит в монтаж. Задачи, уже стоящие в очереди, становятся делом среды."""
         res = self.env.enter(str(body.get("goal") or "")[:200], str(body.get("task_id") or ""), busy=self._busy(),
                              restored=bool(body.get("restored")))
         await self.publish_state()
         return res
 
     async def exit_workspace(self, body: dict) -> dict:
-        """workspace.exit (прежнее focus.release): монтаж в фон; задачи идут дальше, checkpoint хранит цель и очередь."""
+        """workspace.exit: монтаж в фон; задачи идут дальше, checkpoint хранит цель и очередь."""
         res = self.env.exit({"goal": self.env.goal, "was_active": self.env.active, "queue": list(self.queue),
                              "current": self.current})
         await self.publish_state()

@@ -1,9 +1,9 @@
 """Связь со средой модуля: вход, выход и возобновление по протоколу модулей (вместо менеджера фокуса ТЗ 18).
 
-Слот один: модуль, в чью среду агент сейчас вошёл. `activate` отправляет модулю `workspace.enter` (модулю без этого запроса
-прежний `policy.activate`), `release` просит `workspace.exit` (прежний `focus.release`) и забирает checkpoint, `resume` возвращает
-приостановленную задачу (`workspace.resume`, прежний `focus.resume`). Очереди событий, дребезга, закрепления и второго эшелона
-решений нет: среду выбирает только `WorkspaceManager` по просьбе пользователя или по самоимпульсу. Checkpoint живёт в памяти.
+Слот один: модуль, в чью среду агент сейчас вошёл. `activate` отправляет модулю `workspace.enter`, `release` просит
+`workspace.exit` и забирает checkpoint, `resume` возвращает приостановленную задачу (`workspace.resume`). Войти можно в среду
+любого подключённого модуля. Очереди событий, дребезга, закрепления и второго эшелона решений нет: среду выбирает только
+`WorkspaceManager` по просьбе пользователя или по самоимпульсу. Checkpoint живёт в памяти.
 """
 import itertools
 import logging
@@ -18,63 +18,41 @@ RELEASE_TIMEOUT_S = 15.0
 ACTIVATE_TIMEOUT_S = 20.0
 RESUME_TIMEOUT_S = 20.0
 
-RPC_NAMES = {"activate": ("workspace.enter", "policy.activate"), "release": ("workspace.exit", "focus.release"),
-             "resume": ("workspace.resume", "focus.resume")}
+RPC_NAMES = {"activate": "workspace.enter", "release": "workspace.exit", "resume": "workspace.resume"}
 
 _ids = itertools.count(1)
 
 
-def _confirmed(value: Any, policy: str | None) -> bool:
-    """Модуль подтвердил переход: ok true и, если назвал политику, то именно запрошенную."""
-    return isinstance(value, dict) and value.get("ok") is True and value.get("policy") in (None, policy)
+def _confirmed(value: Any) -> bool:
+    """Модуль подтвердил переход: ok true."""
+    return isinstance(value, dict) and value.get("ok") is True
 
 
 class ModuleLink:
-    def __init__(self, *, connection_of: Callable[[str], Any], policies_of: Callable[[str], dict | None],
-                 clock: Callable[[], float] = time.time):
-        """connection_of(id) - соединение модуля или None; policies_of(id) - политики из манифеста или None."""
-        self.connection_of, self.policies_of, self.clock = connection_of, policies_of, clock
-        self.holder: dict | None = None             # {"module", "task_id", "policy", "goal", "since"}
+    def __init__(self, *, connection_of: Callable[[str], Any], clock: Callable[[], float] = time.time):
+        """connection_of(id) - соединение модуля или None."""
+        self.connection_of, self.clock = connection_of, clock
+        self.holder: dict | None = None             # {"module", "task_id", "goal", "since"}
         self.checkpoints: dict[str, dict] = {}      # модуль -> приостановленная задача
 
-    def _table(self, module: str) -> dict[str, dict]:
-        spec = self.policies_of(module) or {}
-        return {p["id"]: p for p in spec.get("policies") or [] if isinstance(p, dict) and "id" in p}
-
-    def default_active(self, module: str) -> str | None:
-        return next((pid for pid, p in self._table(module).items() if p.get("focus") == "active"), None)
-
-    def is_background(self, module: str, policy: str | None) -> bool:
-        """Фоновая ли политика модуля (возврат в неё значит, что задача кончилась)."""
-        return policy in self._table(module) and self._table(module)[policy].get("focus") == "background"
-
     async def _rpc(self, conn: Any, action: str, body: dict, timeout: float) -> Any:
-        new, old = RPC_NAMES[action]
-        try:
-            return await conn.request(new, body, timeout=timeout)
-        except ModuleError as e:
-            if e.code != "unknown":
-                raise
-            return await conn.request(old, body, timeout=timeout)
+        return await conn.request(RPC_NAMES[action], body, timeout=timeout)
 
     async def activate(self, module: str, goal: str = "") -> dict:
-        """Войти в среду модуля с новой целью. {"ok": True, "policy": ...} или {"ok": False, "reason": ...}."""
+        """Войти в среду модуля с новой целью. {"ok": True} или {"ok": False, "reason": ...}."""
         conn = self.connection_of(module)
         if conn is None:
             return {"ok": False, "reason": f"модуль «{module}» не подключён"}
-        policy = self.default_active(module)
-        if policy is None:
-            return {"ok": False, "reason": f"у модуля «{module}» нет активной политики"}
         task_id = f"t{next(_ids)}"
         try:
-            value = await self._rpc(conn, "activate", {"policy": policy, "goal": goal[:200], "task_id": task_id,
+            value = await self._rpc(conn, "activate", {"goal": goal[:200], "task_id": task_id,
                                                        "workspace": module, "reason": "вход в среду"}, ACTIVATE_TIMEOUT_S)
         except ModuleError as e:
             return {"ok": False, "reason": f"{e.code}: {e.message}"}
-        if not _confirmed(value, policy):
-            return {"ok": False, "reason": f"модуль не подтвердил политику «{policy}»"}
-        self.holder = {"module": module, "task_id": task_id, "policy": policy, "goal": goal[:200], "since": self.clock()}
-        return {"ok": True, "policy": policy}
+        if not _confirmed(value):
+            return {"ok": False, "reason": "модуль не принял среду"}
+        self.holder = {"module": module, "task_id": task_id, "goal": goal[:200], "since": self.clock()}
+        return {"ok": True}
 
     async def release(self, reason: str = "user", force: bool = False) -> dict:
         """Выйти из среды текущего модуля: он отдаёт checkpoint. Отказ модуля оставляет среду за ним (кроме force)."""
@@ -107,17 +85,17 @@ class ModuleLink:
         conn = self.connection_of(module)
         if cp is None or conn is None:
             return {"ok": False, "reason": "нет приостановленной задачи"}
-        body = {"task_id": cp["task_id"], "policy": cp["policy"], "goal": cp["goal"], "checkpoint": cp["payload"], "subgoals": []}
+        body = {"task_id": cp["task_id"], "goal": cp["goal"], "checkpoint": cp["payload"], "subgoals": []}
         try:
             value = await self._rpc(conn, "resume", body, RESUME_TIMEOUT_S)
         except ModuleError as e:
             return {"ok": False, "reason": f"{e.code}: {e.message}"}
-        if not _confirmed(value, cp["policy"]):
+        if not _confirmed(value):
             return {"ok": False, "reason": "модуль не вернул задачу"}
-        self.holder = {"module": module, "task_id": cp["task_id"], "policy": cp["policy"], "goal": cp["goal"],
+        self.holder = {"module": module, "task_id": cp["task_id"], "goal": cp["goal"],
                        "since": self.clock()}
         del self.checkpoints[module]
-        return {"ok": True, "resumed": True, "policy": cp["policy"], "goal": cp["goal"]}
+        return {"ok": True, "resumed": True, "goal": cp["goal"]}
 
     def forget(self, module: str) -> None:
         """Модуль ушёл: слот освобождён (checkpoint остаётся)."""

@@ -47,17 +47,14 @@ OLD_BODIES = {
     "job.cancel": [{"job_id": "j-0123abcd"}],
     "job.list": [{}],
     "graph.get": [{}],
-    "policy.activate": [{"policy": "working", "goal": "g", "task_id": "t-1", "event_id": "e-1", "priority": 2.0, "reason": "r"}],
-    "focus.release": [{"reason": "r", "task_id": "t-1", "force": False, "event_id": "e-1", "checkpoint": True}],
-    "focus.resume": [{"task_id": "t-1", "policy": "working", "goal": "g", "checkpoint": {}, "subgoals": []}],
 }
 
-# имена сообщений версии 1.0: удалять нельзя без повышения PROTOCOL (исключение: справочник удалён в контракте 1.6 по решению владельца)
+# имена сообщений версии 1.0: удалять нельзя без повышения PROTOCOL (исключения по решению владельца: справочник удалён в 1.6, политики в 1.10)
 NAMES_1_0 = {"hello", "event", "say", "emotion", "state", "job.update", "panel.set", "core.ask", "core.tts", "core.tool.call",
              "core.memory.recall", "core.memory.remember",
              "core.persona", "core.privacy_terms", "core.claude_usage", "core.web_search", "tool.call", "tool.check",
-             "job.cancel", "job.list", "graph.get", "deliver", "tts.synthesize", "panel.action", "policy.activate",
-             "focus.release", "focus.resume", "welcome", "reject", "job.answer", "speak", "speak.stop", "shutdown",
+             "job.cancel", "job.list", "graph.get", "deliver", "tts.synthesize", "panel.action",
+             "welcome", "reject", "job.answer", "speak", "speak.stop", "shutdown",
              "presence", "settings", "profile", "battery", "character", "module"}
 
 

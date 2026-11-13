@@ -327,13 +327,11 @@ class FakeCore:
             conn.pending.pop(env.id, None)
         return P.unwrap_result(reply)
 
-    async def workspace(self, action: str, body: dict | None = None, *, legacy: bool = False, timeout: float = 5.0) -> Any:
-        """Запрос среды модулю (ТЗ 32): action `enter`, `exit` или `resume`; `legacy=True` шлёт прежнее имя
-        (`policy.activate`, `focus.release`, `focus.resume`), которое модуль обрабатывает тем же обработчиком."""
-        new = f"workspace.{action}"
-        if new not in P.WORKSPACE_ALIASES:
+    async def workspace(self, action: str, body: dict | None = None, *, timeout: float = 5.0) -> Any:
+        """Запрос среды модулю (ТЗ 32): action `enter`, `exit` или `resume`."""
+        if action not in ("enter", "exit", "resume"):
             raise ValueError(f"неизвестное действие среды «{action}»: enter, exit или resume")
-        return await self.request(P.WORKSPACE_ALIASES[new] if legacy else new, body, timeout=timeout)
+        return await self.request(f"workspace.{action}", body, timeout=timeout)
 
     async def call_tool(self, name: str, args: dict | None = None, *, timeout: float = 5.0) -> Any:
         """`tool.call`; `name` с модулем или без («echo.repeat» и «repeat» равны)."""

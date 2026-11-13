@@ -46,11 +46,6 @@ MANIFEST = {
         {"kind": "obs.scene", "description": "Сцена OBS сменилась", "default_urgency": 1},
     ],
     "state": True,
-    "policies": [
-        {"id": "available", "title": "Доступен", "focus": "background", "transitions": [], "interruptible": True,
-         "purpose": "управление OBS по просьбе"},
-    ],
-    "default_policy": "available",
     "panel": {"title": "OBS", "icon": "video", "order": 63},
 }
 

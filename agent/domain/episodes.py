@@ -18,9 +18,6 @@ from dataclasses import dataclass, field
 PENDING, SUMMARIZED, EMBEDDED, FAILED = "pending", "summarized", "embedded", "failed"
 STATUSES = (PENDING, SUMMARIZED, EMBEDDED, FAILED)
 
-# Фоновая политика модуля памяти (ТЗ 18): сон не занимает фокус, прерывается безопасно между эпизодами.
-SLEEP_POLICY = {"id": "sleep", "title": "Сон", "focus": "background", "interruptible": True,
-                "description": "Фоновая работа с памятью: эпизоды, резюме, дневник. Прерывается между эпизодами."}
 MEMORY_MODULE = "memory"            # id внутреннего модуля памяти в менеджере фокуса и в журнале внимания
 
 # Какие виды журнала попадают в эпизоды и в какой поток (разговор, экран, звук, модуль).

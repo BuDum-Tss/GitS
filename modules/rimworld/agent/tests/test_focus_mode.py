@@ -86,7 +86,7 @@ def test_auto_grab_rule():
 def test_afk_explanation_names_the_real_reason():
     assert "не запущена" in focus_mode.afk_explanation(mode="auto", core_seen=False, game_up=False, held_off=False)
     assert "вручную" in focus_mode.afk_explanation(mode="manual", core_seen=False, game_up=True, held_off=False)
-    assert "policy.activate" in focus_mode.afk_explanation(mode="auto", core_seen=True, game_up=True, held_off=False)
+    assert "workspace.enter" in focus_mode.afk_explanation(mode="auto", core_seen=True, game_up=True, held_off=False)
     assert "отпущен" in focus_mode.afk_explanation(mode="auto", core_seen=False, game_up=True, held_off=True)
 
 
@@ -142,14 +142,14 @@ async def test_first_core_request_hands_focus_over_to_the_core(ctrl, monkeypatch
     await ctrl._tick()
     await ctrl._tick()
     assert ctrl.policies.current == "afk"    # игра идёт, но модуль подчиняется только ядру: сам не берёт фокус
-    act = await ctrl.activate({"policy": "observe", "goal": "вернулась"})
+    act = await ctrl.activate({"goal": "вернулась"})
     assert act["ok"] and ctrl.policies.current == "observe" and ctrl._focus_source == "core"
 
 
 async def test_first_core_activate_in_afk_also_disables_auto(ctrl, monkeypatch):
     use_mode(ctrl, monkeypatch, "auto")
     game_up(ctrl, monkeypatch)
-    act = await ctrl.activate({"policy": "observe"})
+    act = await ctrl.activate({})
     assert act["ok"] and ctrl.policies.current == "observe"
     await ctrl._tick()
     assert ctrl._focus_source == "core" and ctrl.policies.current == "observe"
@@ -164,7 +164,7 @@ async def test_core_mode_never_grabs_focus_by_itself(ctrl, monkeypatch):
     for _ in range(3):
         await ctrl._tick()
     assert ctrl.policies.current == "afk"
-    assert (await ctrl.activate({"policy": "observe"}))["ok"] is True              # ядро по-прежнему отдаёт фокус
+    assert (await ctrl.activate({}))["ok"] is True              # ядро по-прежнему отдаёт фокус
 
 
 async def test_manual_mode_never_grabs_and_refuses_core_requests(ctrl, monkeypatch):
@@ -174,7 +174,7 @@ async def test_manual_mode_never_grabs_and_refuses_core_requests(ctrl, monkeypat
     for _ in range(3):
         await ctrl._tick()
     assert ctrl.policies.current == "afk"
-    res = await ctrl.activate({"policy": "observe"})
+    res = await ctrl.activate({})
     assert res["ok"] is False and "вручную" in res["error"] and ctrl.policies.current == "afk"
     assert "вручную" in ctrl.policy_state()["focus"]["why_afk"]
 
@@ -201,7 +201,7 @@ async def test_release_button_checkpoints_pauses_and_holds_auto_off(ctrl, monkey
     assert ctrl.policies.in_focus
     res = await ctrl.panel_release_focus({})
     assert res["ok"] and ctrl.policies.current == "afk"
-    assert ctrl.sent == [{"type": "pause"}]                                    # игра на паузе, как у focus.release
+    assert ctrl.sent == [{"type": "pause"}]                                    # игра на паузе, как у workspace.exit
     assert focus_checkpoint.load()["paused_by_module"] is True
     await ctrl._tick()
     await ctrl._tick()

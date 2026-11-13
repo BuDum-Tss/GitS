@@ -137,14 +137,8 @@ MODULE_TO_CORE = frozenset(MODULE_TO_CORE_NOTES) | frozenset(CORE_REQUESTS)
 # ядро -> модуль
 CORE_TO_MODULE_REQUESTS = ("tool.call", "tool.check", "job.cancel", "job.list", "graph.get", "deliver",
                            "tts.synthesize", "panel.action",
-                           # менеджер фокуса (ТЗ 18, FOC-4): переходы между политиками модуля
-                           "policy.activate", "focus.release", "focus.resume",
-                           # среды агента (ТЗ 32, WS-4): новые имена тех же запросов, старые остаются алиасами на один релиз
+                           # среды агента (ТЗ 32, WS-4)
                            "workspace.enter", "workspace.exit", "workspace.resume")
-# запрос среды -> прежнее имя того же запроса (и наоборот): модуль может обработать любое из двух, ядро шлёт новое
-WORKSPACE_ALIASES = {"workspace.enter": "policy.activate", "workspace.exit": "focus.release",
-                     "workspace.resume": "focus.resume"}
-WORKSPACE_ALIASES = {**WORKSPACE_ALIASES, **{old: new for new, old in WORKSPACE_ALIASES.items()}}
 CORE_TO_MODULE_NOTES = ("welcome", "reject", "job.answer", "speak", "speak.stop", "topic", "shutdown", "result")
 CORE_TO_MODULE = frozenset(CORE_TO_MODULE_REQUESTS) | frozenset(CORE_TO_MODULE_NOTES)
 
@@ -179,8 +173,6 @@ SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?
 KIND_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}\.[a-z0-9_][a-z0-9_.]*$")
 WORKSPACE_ENTRIES = ("user_message", "self_impulse", "schedule", "critical", "fallback")   # ТЗ 32, 4.1: как можно войти в среду
 WORKSPACE_ENTRY_DEFAULT = ("user_message", "self_impulse", "critical")
-POLICY_FOCUS = ("active", "background")        # ТЗ 18, FOC-1: active держит фокус, background - фон (вне фокуса)
-POLICY_RESOURCES = ("gpu", "cpu", "tokens")    # ресурсы политики (необязательные числа >= 0)
 
 DESCRIPTION_MAX = 300
 EVENT_TEXT_MAX = 1000
@@ -559,7 +551,6 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
     for flag in ("graph", "state"):
         if flag in manifest and not isinstance(manifest[flag], bool):
             problems.append(f"{flag}: должно быть true или false")
-    _check_policies(manifest, problems)
     _check_workspace(manifest, problems)
     _check_nodes(manifest, problems)
     if "panel" in manifest and warnings is not None:
@@ -678,63 +669,6 @@ def _check_workspace(manifest: dict, problems: list[str]) -> None:
         problems.append(f"workspace: неизвестные поля {sorted(extra)}")
 
 
-def _check_policies(manifest: dict, problems: list[str]) -> None:
-    """ТЗ 18, FOC-1: политики модуля. Без `policies` модуль работает как раньше (режим совместимости, без фокуса).
-    С `policies` обязательны `default_policy` (фоновая политика) и минимум одна политика с focus background."""
-    if "policies" not in manifest:
-        if "default_policy" in manifest:
-            problems.append("default_policy: задано без policies")
-        return
-    policies = manifest["policies"]
-    if not isinstance(policies, list) or not policies:
-        problems.append("policies: непустой список политик")
-        return
-    ids: list[str] = []
-    for i, pol in enumerate(policies):
-        where = f"policies[{i}]"
-        if not isinstance(pol, dict):
-            problems.append(f"{where}: должна быть объектом")
-            continue
-        pid = pol.get("id")
-        if not isinstance(pid, str) or not MODULE_ID_RE.match(pid):
-            problems.append(f"{where}.id: строка по шаблону {MODULE_ID_RE.pattern}")
-        elif pid in ids:
-            problems.append(f"{where}.id: «{pid}» повторяется")
-        else:
-            ids.append(pid)
-        if not isinstance(pol.get("title"), str) or not pol["title"].strip():
-            problems.append(f"{where}.title: обязательная непустая строка")
-        if pol.get("focus") not in POLICY_FOCUS:
-            problems.append(f"{where}.focus: одно из {list(POLICY_FOCUS)}")
-        for key in ("transitions", "safe_points"):
-            if key in pol and not _is_str_list(pol[key]):
-                problems.append(f"{where}.{key}: список строк")
-        for key in ("interruptible", "quiet"):
-            if key in pol and not isinstance(pol[key], bool):
-                problems.append(f"{where}.{key}: true или false")
-        resources = pol.get("resources", {})
-        if not isinstance(resources, dict):
-            problems.append(f"{where}.resources: объект")
-        else:
-            for key, val in resources.items():
-                if key not in POLICY_RESOURCES or not _is_num(val) or val < 0:
-                    problems.append(f"{where}.resources.{key}: допустимы {list(POLICY_RESOURCES)} с числом от 0")
-    for i, pol in enumerate(policies):
-        if isinstance(pol, dict) and _is_str_list(pol.get("transitions", [])):
-            for target in pol.get("transitions", []):
-                if target not in ids:
-                    problems.append(f"policies[{i}].transitions: политики «{target}» нет в policies")
-    if not any(isinstance(p, dict) and p.get("focus") == "background" for p in policies):
-        problems.append("policies: нужна минимум одна политика с focus background (ТЗ 18, FOC-1)")
-    default = manifest.get("default_policy")
-    if not isinstance(default, str) or default not in ids:
-        problems.append("default_policy: id одной из политик в policies")
-    else:
-        spec = next(p for p in policies if isinstance(p, dict) and p.get("id") == default)
-        if spec.get("focus") != "background":
-            problems.append("default_policy: политика по умолчанию должна быть фоновой (focus background)")
-
-
 @dataclass
 class ToolSpec:
     """Инструмент из манифеста (раздел 6.1)."""
@@ -802,38 +736,6 @@ class EmitSpec:
             out["topics"] = list(self.topics)
         if self.follow_up:
             out["follow_up"] = list(self.follow_up)
-        return out
-
-
-@dataclass
-class PolicySpec:
-    """Политика модуля (ТЗ 18, FOC-1). `quiet` - в политике обычные события не переключают фокус (режим «не беспокоить»);
-    `transitions` пустой - переходы не ограничены."""
-
-    id: str
-    title: str
-    focus: str
-    purpose: str = ""
-    transitions: list[str] = field(default_factory=list)
-    interruptible: bool = False
-    safe_points: list[str] = field(default_factory=list)
-    resources: dict = field(default_factory=dict)
-    quiet: bool = False
-
-    @classmethod
-    def from_dict(cls, d: dict) -> PolicySpec:
-        return cls(id=d["id"], title=d["title"], focus=d["focus"], purpose=str(d.get("purpose") or ""),
-                   transitions=list(d.get("transitions") or []), interruptible=bool(d.get("interruptible", False)),
-                   safe_points=list(d.get("safe_points") or []), resources=dict(d.get("resources") or {}),
-                   quiet=bool(d.get("quiet", False)))
-
-    def to_dict(self) -> dict:
-        out = {"id": self.id, "title": self.title, "focus": self.focus, "transitions": self.transitions,
-               "interruptible": self.interruptible, "safe_points": self.safe_points, "resources": self.resources}
-        if self.purpose:
-            out["purpose"] = self.purpose
-        if self.quiet:
-            out["quiet"] = True
         return out
 
 
@@ -1242,8 +1144,6 @@ class Manifest:
     state: bool = False
     panel: PanelSpec | None = None                      # пространство модуля (TZ 15); None - вкладки нет
     panel_warnings: list[str] = field(default_factory=list)   # почему panel отброшен (для журнала ядра)
-    policies: list[PolicySpec] = field(default_factory=list)  # ТЗ 18, FOC-1; пусто - режим совместимости (без фокуса)
-    default_policy: str | None = None
     workspace: dict | None = None                       # ТЗ 32, WS-4: среда агента, которую объявляет модуль
     nodes: list[dict] = field(default_factory=list)     # ТЗ 33: дерево узлов рабочего места (пусто: плоский список)
 
@@ -1263,8 +1163,7 @@ class Manifest:
             nodes=[dict(n) for n in d.get("nodes") or []],
             graph=bool(d.get("graph", False)), state=bool(d.get("state", False)),
             panel=panel, panel_warnings=panel_warnings,
-            policies=[PolicySpec.from_dict(p) for p in d.get("policies") or []],
-            default_policy=d.get("default_policy"), workspace=dict(d["workspace"]) if d.get("workspace") else None)
+            workspace=dict(d["workspace"]) if d.get("workspace") else None)
 
     def to_dict(self) -> dict:
         out = {"id": self.id, "title": self.title, "description": self.description, "version": self.version,
@@ -1275,9 +1174,6 @@ class Manifest:
                "graph": self.graph, "state": self.state}
         if self.panel is not None:
             out["panel"] = self.panel.to_dict()
-        if self.policies:
-            out["policies"] = [p.to_dict() for p in self.policies]
-            out["default_policy"] = self.default_policy
         if self.workspace:
             out["workspace"] = dict(self.workspace)
         if self.nodes:
@@ -1286,9 +1182,6 @@ class Manifest:
 
     def tool(self, name: str) -> ToolSpec | None:
         return next((t for t in self.tools if t.name == name), None)
-
-    def policy(self, pid: str) -> PolicySpec | None:
-        return next((p for p in self.policies if p.id == pid), None)
 
     def setting_defaults(self) -> dict:
         """Значения собственных настроек по умолчанию (для ядра: `modules.<id>.<имя>`)."""

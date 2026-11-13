@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .. import protocol as P
 
-CONTRACT_VERSION = "1.9"
+CONTRACT_VERSION = "1.10"
 PROTOCOL = P.PROTOCOL
 
 # версия контракта, в которой появился элемент (поле `since` у Message): "1.0" - исходный состав ТЗ 01
@@ -25,7 +25,7 @@ HISTORY = (
     ("1.3", "core.memory.recall и core.memory.remember реализованы (были planned)"),
     ("1.4", "ТЗ 04: core.lookup, core.experience.add, core.kb.ingest реализованы (были planned)"),
     ("1.5", "ТЗ 32: поле манифеста workspace, запросы workspace.enter / workspace.exit / workspace.resume "
-            "(policy.activate, focus.release, focus.resume остаются алиасами на один релиз)"),
+            "(старые имена были алиасами, удалены в 1.10)"),
     ("1.6", "удалены справочник и уроки ядра: запросы core.lookup, core.experience.add, core.kb.ingest и поле манифеста knowledge"),
     ("1.7", "эмоций в ядре нет: стикер питомца выбирает тег в тексте ответа; presence.sticker и sticker_ts вместо emotion и emotion_ts, "
             "из speak убрано emotion, сообщение emotion и поля emotion в say, core.tts, tts.synthesize устарели (ядро их игнорирует)"),
@@ -33,6 +33,9 @@ HISTORY = (
             "urgency_unfocused, topics, follow_up; поле node в сообщении state; поля среды workspace.autonomous и work_interval_s "
             "(рабочий цикл агента). Правила: docs/WORKSPACE_MODULES.md"),
     ("1.9", "ТЗ 32: core.tasks (цель и открытые задачи среды для панели или оверлея модуля)"),
+    ("1.10", "удалены политики модуля: поля policies и default_policy, запросы policy.activate, focus.release, focus.resume, "
+             "параметр policy у workspace.*, active_policy в статусе; конец состояния «задача кончилась» сообщает модуль "
+             "флагом done в статусе"),
 )
 
 # Устаревшее: (элемент, дата удаления, чем заменить)

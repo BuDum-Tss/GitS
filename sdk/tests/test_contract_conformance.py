@@ -40,7 +40,7 @@ def test_every_protocol_message_is_described():
 
 
 def test_acceptance_counts():
-    assert len(contract.CORE_REQUESTS) >= 12 and len(contract.MODULE_REQUESTS) == 14
+    assert len(contract.CORE_REQUESTS) >= 12 and len(contract.MODULE_REQUESTS) == 11
     base12 = {"core.ask", "core.tts", "core.tool.call", "core.persona", "core.privacy_terms", "core.claude_usage",
               "core.web_search", "core.memory.recall", "core.memory.remember"}
     assert base12 <= set(contract.CORE_REQUESTS)

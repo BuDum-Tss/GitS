@@ -34,17 +34,16 @@ class WorkspaceManager:
                  connected: Callable[[str], bool] = lambda ws: True,
                  modules_of: Callable[[], Any] = lambda: (),
                  status_of: Callable[[str], dict | None] = lambda ws: None,
-                 is_background: Callable[[str, str | None], bool] = lambda ws, policy: False,
                  now: Callable[[], float] = time.time,
                  on_change: Callable[[dict], None] | None = None,
                  log: Callable[..., None] | None = None):
         """activate/release - обмен с модулем среды; interruptible(ws) - безопасная ли точка у среды модуля;
-        modules_of() - (id, манифест, название) модулей, чьи среды объявлены; connected(ws) - подключён ли модуль; status_of(ws) - status из state модуля (active_policy, blocked);
-        is_background(ws, policy) - фоновая ли политика (возврат в неё значит «задача кончилась»); on_change(запись) - после смены среды; log(тип, **поля) - журнал."""
+        modules_of() - (id, манифест, название) модулей, чьи среды объявлены; connected(ws) - подключён ли модуль; status_of(ws) - status из state модуля (blocked, done);
+        on_change(запись) - после смены среды; log(тип, **поля) - журнал."""
         self.specs: dict[str, dom.WorkspaceSpec] = dict(dom.BUILTIN)
         self._activate, self._release = activate, release
         self._interruptible, self._connected = interruptible, connected
-        self._status_of, self._is_background = status_of, is_background
+        self._status_of = status_of
         self._modules_of = modules_of
         self._now, self.on_change, self._log = now, on_change, log
         self.current = dom.ASSISTANT
@@ -158,8 +157,7 @@ class WorkspaceManager:
             self._set(dom.exit_target(dom.Reason.DISCONNECT), dom.Reason.DISCONNECT, "", note=module_id)
 
     def check(self) -> None:
-        """Состояние модулей изменилось: модуль текущей среды отключился, сообщил блокировку или вернулся в фоновую политику
-        (задача кончилась) - вернуться в базовую среду. Checkpoint при этом ведёт менеджер фокуса."""
+        """Состояние модулей изменилось: модуль текущей среды отключился, сообщил блокировку или конец задачи (`done`) - вернуться в базовую среду. Checkpoint при этом ведёт менеджер фокуса."""
         if self.spec().kind != dom.KIND_MODULE:
             return
         if not self._connected(self.current):
@@ -170,7 +168,7 @@ class WorkspaceManager:
         st = self._status_of(self.current) or {}
         if st.get("blocked"):
             self._set(dom.exit_target(dom.Reason.BLOCKED), dom.Reason.BLOCKED, "", note=str(st["blocked"])[:160])
-        elif st.get("active_policy") is not None and self._is_background(self.current, st["active_policy"]):
+        elif st.get("done"):
             self._set(dom.exit_target(dom.Reason.DONE), dom.Reason.DONE, "", note=self.current)
 
     async def run(self, interval: float = 2.0) -> None:
