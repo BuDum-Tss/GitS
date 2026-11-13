@@ -6,12 +6,12 @@ from test_impulses import ev as make_event
 
 from types import SimpleNamespace
 
-from adapters.impulse_store import JsonReminders
-from app.impulse_timer import ImpulseTimer
-from app.plan_nudge import PlanNudger
-from app.reflection import ReflectionService
-from domain import rules
-from domain.event import KIND_AFTER_CONVERSATION
+from services.reflection.store import JsonReminders
+from services.reflection.timer import ImpulseTimer
+from services.reflection.plan_nudge import PlanNudger
+from services.reflection.reflection import ReflectionService
+from kernel import hard_rules as rules
+from kernel.event import KIND_AFTER_CONVERSATION
 
 NOW = 100_000.0
 

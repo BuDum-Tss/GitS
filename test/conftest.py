@@ -6,7 +6,7 @@ import character
 import decide
 import events_log
 import prompts
-from app import resident
+from services.conversation import resident
 import settings
 from interfaces.contracts import EndEvent
 

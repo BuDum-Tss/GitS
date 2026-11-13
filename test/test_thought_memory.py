@@ -3,10 +3,10 @@ import json
 
 from test_impulses import Clock, ev, js, service, ScriptedLLM
 
-from adapters.impulse_store import JsonThoughts
+from services.reflection.store import JsonThoughts
 from interfaces.contracts import ThoughtJournal
-from domain import thoughts as dom
-from domain.event import KIND_AFTER_CONVERSATION
+from services.reflection import thoughts as dom
+from kernel.event import KIND_AFTER_CONVERSATION
 
 
 def t(id, ts, importance, stage="short", text="мысль", intents=()):

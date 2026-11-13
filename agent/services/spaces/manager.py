@@ -1,6 +1,6 @@
 """Менеджер сред (ТЗ 32, WS-2): в какой среде агент находится сейчас, почему и что было до этого.
 
-Фокус это имя текущей среды плюс причина, цель и время входа. Правила входа и выхода живут в `domain/workspace.py`; сам обмен с
+Фокус это имя текущей среды плюс причина, цель и время входа. Правила входа и выхода живут в `services/spaces/model.py`; сам обмен с
 модулем (освобождение, активация, checkpoint) делает менеджер фокуса ТЗ 18, его вызовы передаются сюда функциями
 `activate(module, goal)` и `release(module, reason, force)`, поэтому менеджер проверяется тестами без модулей.
 
@@ -17,7 +17,7 @@ import time
 from collections import deque
 from typing import Any, Awaitable, Callable
 
-from domain import workspace as dom
+from services.spaces import model as dom
 
 logger = logging.getLogger("workspace")
 

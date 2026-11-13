@@ -1,19 +1,19 @@
-"""Общие задачи (ТЗ 32, WS-8): домен `domain/tasks.py`, TaskStore, TaskService, Planner, напоминания и планы как задачи, перенос
+"""Общие задачи (ТЗ 32, WS-8): домен `services/tasks/model.py`, TaskStore, TaskService, Planner, напоминания и планы как задачи, перенос
 `reminders.json`, инструменты `assistant.tasks|create_task|close_task`. Без сети и моделей: модель, часы и журнал заглушены."""
 import json
 from types import SimpleNamespace
 
 import pytest
 
-from adapters.task_migration import migrate_reminders
-from adapters.task_reminders import TaskReminders
-from adapters.task_store import TaskStore
-from app.impulse_timer import ImpulseTimer
-from app.plan_nudge import PlanNudger
-from app.planner import LlmPlanner, parse_steps
-from app.task_service import TaskError, TaskService
+from services.tasks.migration import migrate_reminders
+from services.tasks.reminders import TaskReminders
+from services.tasks.store import TaskStore
+from services.reflection.timer import ImpulseTimer
+from services.reflection.plan_nudge import PlanNudger
+from services.tasks.planner import LlmPlanner, parse_steps
+from services.tasks.service import TaskError, TaskService
 from interfaces.contracts import Planner, ReminderRepository, TaskRepository
-from domain import tasks as T
+from services.tasks import model as T
 from environments import builtin
 from environments.base import ToolError
 from environments.registry import Registry
@@ -193,7 +193,7 @@ def test_store_survives_reopen_and_follows_path(tmp_path):
 
 
 def test_store_keeps_limited_history_of_closed(monkeypatch):
-    import adapters.task_store as ts
+    import services.tasks.store as ts
     monkeypatch.setattr(ts, "KEEP_CLOSED", 3)
     s = TaskStore(":memory:")
     for i in range(6):

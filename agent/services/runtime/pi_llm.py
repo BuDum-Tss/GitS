@@ -16,7 +16,7 @@ import subprocess
 import sys
 import uuid
 
-from adapters.runtime_pi import BRIDGE_DIR
+from services.runtime.pi_runtime import BRIDGE_DIR
 
 logger = logging.getLogger("pi_llm")
 

@@ -1,8 +1,8 @@
 """Быстрая модель: один вызов `_ask` и потоковый `_ask_stream` (pi через `pi_llm`).
 
 Отдельного локального слоя нет: реплика по факту, зрение, размышление и запросы модулей (`core.llm.ask`) вызывают здесь
-пи без инструментов. Разговор с владельцем ведёт единый агент (`app/resident.py`). Теги
-стикеров ставит сама модель в тексте ответа (`domain/stickers.py`).
+пи без инструментов. Разговор с владельцем ведёт единый агент (`services/conversation/resident.py`). Теги
+стикеров ставит сама модель в тексте ответа (`services/conversation/stickers.py`).
 """
 import json
 import logging
@@ -10,7 +10,7 @@ import re
 import time
 
 import flow_trace
-import pi_llm
+from services.runtime import pi_llm
 
 logger = logging.getLogger("fast_brain")
 

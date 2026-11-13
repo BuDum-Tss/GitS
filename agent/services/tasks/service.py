@@ -2,7 +2,7 @@
 
 Создание задач и подзадач, разбиение цели на шаги через `Planner`, выбор активной задачи среды, checkpoint при уходе из среды и
 возобновление, закрытие. Среда сама не планирует: она поставляет инструменты, `done_when` и безопасные точки. Правила (статусы,
-выбор, срок) в `domain/tasks.py`; хранилище это `TaskRepository` (блокирующее, зовётся через `asyncio.to_thread`); события `task.*`
+выбор, срок) в `services/tasks/model.py`; хранилище это `TaskRepository` (блокирующее, зовётся через `asyncio.to_thread`); события `task.*`
 идут в журнал через `log(kind, text, **data)` (`events_log.log_nowait`). Напоминания себе и планы пользователя тоже задачи
 (`kind`), у них есть срок: `ImpulseTimer` и `PlanNudger` берут сроки отсюда.
 """
@@ -14,7 +14,7 @@ from dataclasses import replace
 from typing import Any, Callable
 
 from interfaces.contracts import Planner, TaskRepository
-from domain import tasks as dom
+from services.tasks import model as dom
 
 logger = logging.getLogger("tasks")
 
@@ -33,7 +33,7 @@ class TaskService:
         инструменты); log(kind, text, **данные) - журнал (`events_log.log_nowait`)."""
         self.repo, self.planner, self._workspace_of, self._context_of = repo, planner, workspace_of, context_of
         self.clock, self._log = clock, log
-        self.reminders: Any = None                       # ReminderRepository поверх тех же задач (adapters/task_reminders.py)
+        self.reminders: Any = None                       # ReminderRepository поверх тех же задач (services/tasks/reminders.py)
 
     # ── служебное ────────────────────────────────────────────────────────────
 

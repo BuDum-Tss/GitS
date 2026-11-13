@@ -9,13 +9,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import prompts
-from adapters.impulse_store import JsonReminders, JsonThoughts
-from app import impulse_origin
-from app.impulse_timer import ImpulseTimer
+from services.reflection.store import JsonReminders, JsonThoughts
+from services.reflection import origin as impulse_origin
+from services.reflection.timer import ImpulseTimer
 from services.attention import event_of
-from app.plan_nudge import PlanNudger
-from app.reflection import ReflectionService
-from domain.event import KIND_AFTER_CONVERSATION
+from services.reflection.plan_nudge import PlanNudger
+from services.reflection.reflection import ReflectionService
+from kernel.event import KIND_AFTER_CONVERSATION
 
 logger = logging.getLogger("impulses")
 

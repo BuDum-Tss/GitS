@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from services.memory_service.adapters import MIN_PLAN_IMPORTANCE
-from domain import plan_due
+from services.memory_service import plan_due
 
 logger = logging.getLogger("memory_migration")
 

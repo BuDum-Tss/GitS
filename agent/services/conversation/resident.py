@@ -14,10 +14,10 @@ import logging
 import time
 
 import latency_trace
-import llm_gate
+from services.runtime import llm_gate
 import prompts
 from interfaces.contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
-from domain.stickers import first_sticker, plain as strip_tags
+from services.conversation.stickers import first_sticker, plain as strip_tags
 
 logger = logging.getLogger("resident")
 
@@ -67,7 +67,7 @@ def _schema_args(args) -> dict:
 
 
 def _default_runtime() -> AgentRuntime:
-    from adapters.runtime_pi import PiRuntime
+    from services.runtime.pi_runtime import PiRuntime
     return PiRuntime()
 
 

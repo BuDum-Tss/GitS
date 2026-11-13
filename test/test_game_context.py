@@ -5,8 +5,9 @@ import pytest
 from test_app_attention import Rig, _item
 
 import tool_trace
-from app.context_builder import ContextBuilder
-from domain import repeat, scoring
+from services.conversation.context_builder import ContextBuilder
+from services.conversation import repeat
+from kernel import scoring
 
 
 def test_assistant_noise_is_dropped_only_while_she_is_in_a_module_environment():

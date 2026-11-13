@@ -4,7 +4,7 @@ import pytest
 from hub_helpers import RawModule, manifest, running_core
 
 import events_log
-import fast_brain
+from services.runtime import fast_brain
 from gits_sdk import contract, testing
 from gits_sdk import protocol as P
 from gits_sdk.contract import messages as M

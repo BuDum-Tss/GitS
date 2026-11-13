@@ -3,7 +3,8 @@ import logging
 
 import flow_trace
 import routes
-from domain import rules, scoring
+from kernel import hard_rules as rules
+from kernel import scoring
 
 from .core import TEXT_MAX, AttentionContext, Item
 from .decision_log import DecisionLog
@@ -40,7 +41,7 @@ class Dispatcher:
             self.ctx.on_think(item)
 
     def think_route(self, item: Item, decision: str) -> bool:
-        """ТЗ 30, IMP-4: направить ли событие в размышление (правило в domain/rules.py). Без размышления маршрута нет."""
+        """ТЗ 30, IMP-4: направить ли событие в размышление (правило в kernel/hard_rules.py). Без размышления маршрута нет."""
         if self.ctx.on_think is None:
             return False
         return rules.think_route(origin=item.origin, kind=item.kind, decision=decision, urgency=item.urgency,

@@ -91,7 +91,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "напоминания, назначенные самим агентом: срок, текст, откуда пришла мысль; это задачи вида reminder со сроком",
      "out": "срок наступил",
-     "now": "есть (ТЗ 30, ТЗ 32): adapters/task_reminders.py (TaskReminders поверх общих задач, tasks.db), контракт ReminderRepository; прежний reminders.json переносится один раз (adapters/task_migration.py); инструмент assistant.remind_self"
+     "now": "есть (ТЗ 30, ТЗ 32): services/tasks/reminders.py (TaskReminders поверх общих задач, tasks.db), контракт ReminderRepository; прежний reminders.json переносится один раз (services/tasks/migration.py); инструмент assistant.remind_self"
     },
     {
      "id": "timer",
@@ -100,7 +100,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "следит только за сроками напоминаний; когда срок пришёл, шлёт событие. Не тик болтовни",
      "out": "Event self.reminder",
-     "now": "есть (ТЗ 30): app/impulse_timer.py, один таймер на ближайший срок, восстановление и склейка просроченного; прежний опрос proactive_loop удалён"
+     "now": "есть (ТЗ 30): services/reflection/timer.py, один таймер на ближайший срок, восстановление и склейка просроченного; прежний опрос proactive_loop удалён"
     },
     {
      "id": "plans",
@@ -109,7 +109,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "планы пользователя со сроком в ближайшие сутки превращает в напоминания себе (без модели)",
      "out": "напоминание за полчаса до срока",
-     "now": "есть (ТЗ 30): app/plan_nudge.py, просмотр раз в час и при старте; стимул недоверенный"
+     "now": "есть (ТЗ 30): services/reflection/plan_nudge.py, просмотр раз в час и при старте; стимул недоверенный"
     }
    ]
   },
@@ -147,7 +147,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "единый конверт: kind, text, sender, hint, data, trace, ts; источник внешний или внутренний (self)",
      "out": "сущность",
-     "now": "частично (ТЗ 30): domain/event.py (Event с origin external/self) для импульсов и размышления; внутри внимания остаётся Item (поле origin)"
+     "now": "частично (ТЗ 30): kernel/event.py (Event с origin external/self) для импульсов и размышления; внутри внимания остаётся Item (поле origin)"
     },
     {
      "id": "norm",
@@ -156,7 +156,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "нормализация, дедупликация за 60 с, склейка повторов, TTL",
      "out": "Event",
-     "now": "выделен (ТЗ 29, R3): services/attention/normalizer.py, services/attention/items.py (хранилище и склейка), domain/dedupe.py"
+     "now": "выделен (ТЗ 29, R3): services/attention/normalizer.py, services/attention/items.py (хранилище и склейка), services/attention/dedupe.py"
     },
     {
      "id": "people",
@@ -185,7 +185,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»",
      "out": "RuleResult",
-     "now": "выделен (R3): services/attention/pipeline.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py; жёсткие правила обращений владельца (ТЗ 25): routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
+     "now": "выделен (R3): services/attention/pipeline.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в kernel/hard_rules.py; жёсткие правила обращений владельца (ТЗ 25): routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
     },
     {
      "id": "cls",
@@ -212,7 +212,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "решение по срочности участника шины: 0 выбросить (D0); ниже 4 во входящую очередь (D1); 4 сказать (D3); 5 сказать и поставить реакцию (D4). «Не отвлекать» и «пользователь отошёл» уводят в очередь; обращение к ней поднимает до 4",
      "out": "Decision",
-     "now": "services/attention/dispatcher.py (finish, act), domain/scoring.py (decide: чистая функция), services/attention/decision_log.py; Normalizer.assign_urgency ставит срочность по подсказке участника шины; правила boost/only меняют её (RuleStore.stance)"
+     "now": "services/attention/dispatcher.py (finish, act), kernel/scoring.py (decide: чистая функция), services/attention/decision_log.py; Normalizer.assign_urgency ставит срочность по подсказке участника шины; правила boost/only меняют её (RuleStore.stance)"
     },
     {
      "id": "routes",
@@ -241,7 +241,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "обращение владельца: жёсткие правила → запись реплики → ответ на вопрос о разрешении или передача единому агенту",
      "out": "Обращение агенту",
-     "now": "app/conversation_service.py (фасад Companion); жёсткие правила до моделей, запись реплики в потоке (не задерживает ответ), затем ResidentAgent.handle_user"
+     "now": "services/conversation/service.py (фасад Companion); жёсткие правила до моделей, запись реплики в потоке (не задерживает ответ), затем ResidentAgent.handle_user"
     },
     {
      "id": "ctx",
@@ -250,7 +250,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "собирает контекст: характер, память, диалог, состояние; бюджет токенов на роль",
      "out": "Context",
-     "now": "app/context_builder.py: склейка 6 источников; бюджет токенов на роль и блок и режимы push (needs_memory) / pull (recall) в настройке context, по умолчанию прежнее поведение"
+     "now": "services/conversation/context_builder.py: склейка 6 источников; бюджет токенов на роль и блок и режимы push (needs_memory) / pull (recall) в настройке context, по умолчанию прежнее поведение"
     },
     {
      "id": "reply",
@@ -259,7 +259,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "реплика по факту для очереди речи (объявление, итог, вопрос участника шины): LanguageModel(fast) → быстрая модель (Claude без инструментов); страховки стиля declutter",
      "out": "ReplyCandidate",
-     "now": "app/reply_generator.py: speak_about (факт → реплика), declutter; разговор с владельцем ведёт ResidentAgent"
+     "now": "services/conversation/reply_generator.py: speak_about (факт → реплика), declutter; разговор с владельцем ведёт ResidentAgent"
     },
     {
      "id": "resident",
@@ -268,7 +268,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "единый агент: сообщение владельца, событие, тревога и самоимпульс идут в одну постоянную сессию через контракт AgentRuntime (Claude SDK или pi, настройка agent_runtime); инструменты find_tools и call_tool описаны один раз (ToolSpec) поверх реестра и маршрутизатора (разрешения те же); текст агента звучит по мере появления; на среде, которая умеет steer (pi), новое сообщение владельца и событие подмешиваются в идущий ход",
      "out": "Reply и ToolResult",
-     "now": "app/resident.py: больше не знает про SDK; сброс после сбоя; тревога обрывает ход (preempt), на pi без сброса истории"
+     "now": "services/conversation/resident.py: больше не знает про SDK; сброс после сбоя; тревога обрывает ход (preempt), на pi без сброса истории"
     },
     {
      "id": "rtc",
@@ -286,7 +286,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "pi по подписке ChatGPT: запускает мост Node, говорит с ним строками JSON, исполняет tool_call обработчиками ToolSpec, steer и abort посреди хода, история в resident_pi_session.json; процесс умер: ход кончается ошибкой, следующий поднимает мост заново",
      "out": "RuntimeEvent",
-     "now": "adapters/runtime_pi.py"
+     "now": "services/runtime/pi_runtime.py"
     }
    ]
   },
@@ -306,7 +306,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "внутренний диалог в несколько шагов; запускают напоминание себе, итог разговора и эпизода и пачка из входящей очереди (inbox.batch); читает память; лимиты шагов и токенов; сам переносит созревшие мысли в память (consolidate)",
      "out": "Intent: сказать, сделать, напомнить, записать, ничего",
-     "now": "есть (ТЗ 30): app/reflection.py; маршрут think из Dispatcher (domain/rules.think_route) для self-событий и итогов эпизодов, пачку шлёт Inbox.tick; отдельного размышления в простое и ThoughtConsolidator больше нет (перенос мыслей внутри сервиса); лимиты шагов, токенов, часа, глубины; после разговора (self.after_conversation) и эпизода подводит итог: настроение и вывод (IMP-10)"
+     "now": "есть (ТЗ 30): services/reflection/reflection.py; маршрут think из Dispatcher (domain/rules.think_route) для self-событий и итогов эпизодов, пачку шлёт Inbox.tick; отдельного размышления в простое и ThoughtConsolidator больше нет (перенос мыслей внутри сервиса); лимиты шагов, токенов, часа, глубины; после разговора (self.after_conversation) и эпизода подводит итог: настроение и вывод (IMP-10)"
     },
     {
      "id": "thoughts",
@@ -315,7 +315,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "краткосрочная память: значимые рассуждения с оценкой важности 1-5 (пустые и оборванные не пишутся), важные переносятся в долговременную память, мелкие забываются через сутки; не озвучиваются",
      "out": "Thought",
-     "now": "есть (ТЗ 30): adapters/impulse_store.py (JsonThoughts, thoughts.json), domain/thoughts.py, GET /api/thoughts, вкладка «Мысли» дашборда"
+     "now": "есть (ТЗ 30): services/reflection/store.py (JsonThoughts, thoughts.json), services/reflection/thoughts.py, GET /api/thoughts, вкладка «Мысли» дашборда"
     }
    ]
   },
@@ -382,7 +382,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "вход, выход и возобновление среды окружения (workspace) по протоколу workspace.enter / exit / resume; конец задачи окружение сообщает флагом done в статусе; один слот, checkpoint в памяти; очереди событий, закрепления и второго эшелона решений нет",
      "out": "Workspace",
-     "now": "app/workspace_link.py (вместо менеджера фокуса ТЗ 18)"
+     "now": "services/spaces/link.py (вместо менеджера фокуса ТЗ 18)"
     },
     {
      "id": "lease",
@@ -391,7 +391,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "аренда общих пространств (контейнер с интерфейсом управления, например монтаж): acquire при входе агента, release при выходе, занято: кто держит и зачем; без срока и продления, сервис сам отпускает при обрыве WebSocket; состояние и описание (для чего и когда переходить, GET /info) хранит сам сервис, ядро читает их по запросу без таймеров",
      "out": "Workspace",
-     "now": "app/lease_adapter.py (gits_sdk.control.LeaseClient)"
+     "now": "services/spaces/lease.py (gits_sdk.control.LeaseClient)"
     },
     {
      "id": "wsm",
@@ -400,7 +400,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "в какой среде агент сейчас: assistant, sleep и среды окружений из их манифестов (rimworld, montage); причина, цель, история. В среду окружения входят только по импульсу (сообщение, самоимпульс); события чужих сред среду не переключают, они идут в очередь речи и сводку",
      "out": "Workspace",
-     "now": "app/workspace_manager.py (ТЗ 32): поверх WorkspaceLink, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"
+     "now": "services/spaces/manager.py (ТЗ 32): поверх WorkspaceLink, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса services/reflection/origin.py"
     },
     {
      "id": "wsdom",
@@ -409,7 +409,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "чистые правила: кто и по какой причине может войти в среду и выйти из неё",
      "out": "Workspace",
-     "now": "domain/workspace.py (ТЗ 32)"
+     "now": "services/spaces/model.py (ТЗ 32)"
     },
     {
      "id": "tsvc",
@@ -418,7 +418,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "общие задачи всех сред: создание, подзадачи, активная задача среды, checkpoint при уходе и возобновление, закрытие; события task.* в журнал",
      "out": "Task",
-     "now": "app/task_service.py (ТЗ 32, WS-8); сборка task_wiring.py; инструменты assistant.tasks, create_task, close_task"
+     "now": "services/tasks/service.py (ТЗ 32, WS-8); сборка services/tasks/wiring.py; инструменты assistant.tasks, create_task, close_task"
     },
     {
      "id": "tdom",
@@ -427,7 +427,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "чистые правила задач: статусы, следующий шаг, статус родителя по подзадачам, можно ли прервать, какие пора напомнить",
      "out": "Task",
-     "now": "domain/tasks.py (ТЗ 32)"
+     "now": "services/tasks/model.py (ТЗ 32)"
     },
     {
      "id": "tplan",
@@ -436,7 +436,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "цель → шаги через LanguageModel; одинаков для всех сред, сама среда не планирует",
      "out": "Step[]",
-     "now": "app/planner.py (LlmPlanner), контракт Planner; промпт planner в prompt.yaml"
+     "now": "services/tasks/planner.py (LlmPlanner), контракт Planner; промпт planner в prompt.yaml"
     },
     {
      "id": "npanel",
@@ -445,7 +445,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "панель узла рабочего места: пока агент в среде окружения с деревом узлов, ядро вызывает запросы nodes[].context и кладёт ответ в контекст агента блоком «Рабочее место» (без модели: факты даёт окружение, ядро укладывает в бюджет и показывает изменения); узел берётся из state.node, видимость инструментов по tools[].node, срочность по nodes[].watch",
      "out": "Context block",
-     "now": "app/node_panel.py (ТЗ 33), core_service.wire_workspace_nodes; правила: docs/WORKSPACE_MODULES.md"
+     "now": "services/spaces/node_panel.py (ТЗ 33), core_service.wire_workspace_nodes; правила: docs/WORKSPACE_MODULES.md"
     },
     {
      "id": "wloop",
@@ -454,7 +454,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "автономная работа единого агента в среде контентного окружения (workspace.autonomous): пока агент свободен, раз в work_interval_s шлёт ему самоимпульс self.work_tick (маршрут think); молчит при «не отвлекать», выключенной настройке autoplay, занятом агенте и лимите Claude",
      "out": "self.work_tick",
-     "now": "app/work_loop.py (ТЗ 33), core_service"
+     "now": "services/reflection/work_loop.py (ТЗ 33), core_service"
     },
     {
      "id": "tstore",
@@ -463,7 +463,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "SQLite tasks.db в папке памяти персонажа: дерево задач, напоминания и планы как задачи",
      "out": "Task",
-     "now": "adapters/task_store.py (ТЗ 32), контракт TaskRepository"
+     "now": "services/tasks/store.py (ТЗ 32), контракт TaskRepository"
     }
    ]
   },
@@ -510,7 +510,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "говорит ли, стикер, присутствие; эмоций нет: стикер питомца выбирает тег в тексте ответа (`[question]` перед предложением), текст режется по тегам на куски, каждый звучит со своим стикером",
      "out": "PresenceState",
-     "now": "domain/stickers.py (теги, разбор потока), app/reply_generator.py (куски ответа), speech_out.PresenceTracker (sticker, sticker_ts); GLiNER эмоции не распознаёт, только решения"
+     "now": "services/conversation/stickers.py (теги, разбор потока), services/conversation/reply_generator.py (куски ответа), speech_out.PresenceTracker (sticker, sticker_ts); GLiNER эмоции не распознаёт, только решения"
     },
     {
      "id": "hubout",
@@ -602,7 +602,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "JSON: диалог и активность; планы и напоминания это задачи (tasks.db); отношения",
      "out": "репозитории",
-     "now": "services/memory_service/user.py, adapters/task_store.py, relationships.py"
+     "now": "services/memory_service/user.py, services/tasks/store.py, relationships.py"
     },
     {
      "id": "graph",

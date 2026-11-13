@@ -9,7 +9,7 @@ import time
 from typing import Callable
 
 from interfaces.contracts import TaskRepository
-from domain import tasks as dom
+from services.tasks import model as dom
 
 _TO_TASK = {"pending": dom.PENDING, "fired": dom.DONE, "cancelled": dom.CANCELLED}
 _FROM_TASK = {dom.PENDING: "pending", dom.DONE: "fired", dom.CANCELLED: "cancelled"}

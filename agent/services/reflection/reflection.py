@@ -7,7 +7,7 @@
 
 Ограничения: шагов и токенов на размышление, глубина цепочки импульсов, размышлений в час; «не отвлекать» запрещает речь, а не
 размышление; действие не исполняется по недоверенному стимулу (чужие тексты это данные). Значимое размышление пишется в журнал мыслей
-(`Thought`) краткосрочной памятью с оценкой важности (`domain/thoughts.py`), не озвучивается; пустое, оборванное лимитом или
+(`Thought`) краткосрочной памятью с оценкой важности (`services/reflection/thoughts.py`), не озвучивается; пустое, оборванное лимитом или
 ничего не решившее в журнал не попадает. Созревшие мысли тем же сервисом переносятся в долговременную память (`consolidate`, после размышления не чаще раза в
 `CONSOLIDATE_GAP_S`), мелкие забываются. Событие с `data.silent` говорить не может. Модель подставляется снаружи (контракт `LanguageModel`), в тестах это заглушка.
 """
@@ -19,13 +19,13 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from interfaces.contracts import LanguageModel, MemoryReader, MemoryWriter, ThoughtJournal
-from domain import impulses
-from domain import thoughts as thought_dom
-from domain.event import KIND_AFTER_CONVERSATION, Event
-from domain.rules import EPISODE_KINDS
+from kernel import impulses
+from services.reflection import thoughts as thought_dom
+from kernel.event import KIND_AFTER_CONVERSATION, Event
+from kernel.hard_rules import EPISODE_KINDS
 
 from services.attention import BATCH_KIND
-from domain.model_json import parse_step  # noqa: F401  (прежнее имя: его импортируют тесты)
+from kernel.model_json import parse_step  # noqa: F401  (прежнее имя: его импортируют тесты)
 
 logger = logging.getLogger("reflection")
 

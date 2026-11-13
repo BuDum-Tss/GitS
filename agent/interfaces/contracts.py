@@ -197,7 +197,7 @@ class ReminderRepository(Protocol):
 
 @runtime_checkable
 class TaskRepository(Protocol):
-    """Хранилище общих задач (ТЗ 32, WS-8). Задача это dict в виде `Task.to_dict()` (домен `domain/tasks.py`): id, workspace, goal,
+    """Хранилище общих задач (ТЗ 32, WS-8). Задача это dict в виде `Task.to_dict()` (домен `services/tasks/model.py`): id, workspace, goal,
     parent, steps, status, origin, priority, due, created, updated, checkpoint, kind, meta. Методы блокирующие; зовите их
     через `asyncio.to_thread`."""
 

@@ -5,7 +5,7 @@ import approvals
 import reply_trace
 import tool_trace
 from aiohttp import web
-from domain import tasks as task_dom
+from services.tasks import model as task_dom
 
 from . import presenters
 from .context import ctx, raw_json_body

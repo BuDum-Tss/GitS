@@ -134,7 +134,7 @@ async def test_owner_id_zero_makes_owner_delivery_unavailable(tmp_path, monkeypa
 
 
 async def test_post_tool_through_the_router_with_confirmation_asked_via_core(tmp_path, monkeypatch):
-    import fast_brain
+    from services.runtime import fast_brain
 
     async def model(system, user, **kw):
         return '{"post": true, "text": "Объявление: кофе закончился, эксперименты отменяются."}'

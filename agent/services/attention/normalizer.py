@@ -3,7 +3,7 @@ import logging
 import secrets
 
 import latency_trace
-from domain.event import ORIGIN_EXTERNAL, ORIGIN_SELF, SELF_MODULE
+from kernel.event import ORIGIN_EXTERNAL, ORIGIN_SELF, SELF_MODULE
 
 from .core import SPEECH_DEFAULT_URGENCY, TEXT_MAX, AttentionContext, Item
 
@@ -18,7 +18,7 @@ class Normalizer:
     def assign_urgency(item: Item, declared: int | None, env: str | None = None) -> None:
         """Срочность события 0..5 без классификатора: подсказка модуля, иначе срочность из его манифеста, иначе 1. Обращение к ней
         (`addressed_to_me`) поднимает срочность до «сказать сразу» и означает, что ответа ждут."""
-        from domain import scoring
+        from kernel import scoring
         if item.urgency is not None:
             return
         if scoring.is_assistant_noise(env, item.module, item.kind):

@@ -15,7 +15,7 @@ from pathlib import Path
 import character
 import events_log
 import flow_trace
-import llm_gate
+from services.runtime import llm_gate
 import safety
 
 logger = logging.getLogger("analysis")

@@ -1,10 +1,10 @@
-"""Теги реакций в тексте ответа (domain/stickers.py): разбор потока, разбивка на куски, подсказка в промпте. Эмоций как
+"""Теги реакций в тексте ответа (services/conversation/stickers.py): разбор потока, разбивка на куски, подсказка в промпте. Эмоций как
 состояния нет: стикер выбирает только текст ответа."""
 import pytest
 
 import decide
 import prompts
-from domain import stickers as st
+from services.conversation import stickers as st
 
 
 def feed_all(chunks):

@@ -1,5 +1,5 @@
 """Доступность модели единого агента: после ошибки лимита подписки агент отдыхает."""
-import llm_gate
+from services.runtime import llm_gate
 
 
 def test_available_by_default():

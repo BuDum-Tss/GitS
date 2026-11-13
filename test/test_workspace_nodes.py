@@ -3,7 +3,7 @@ import asyncio
 from types import SimpleNamespace
 
 from services.attention.core import Item
-from app.node_panel import NodePanel
+from services.spaces.node_panel import NodePanel
 from services.attention.normalizer import Normalizer
 from environments.base import Environment, Tool
 from environments.registry import Registry
@@ -167,7 +167,7 @@ class _Agent:
 
 
 def _loop(env, manifest, agent, now, sent, *, settings=None, quiet=False, blocked=False):
-    from app.work_loop import WorkLoop
+    from services.reflection.work_loop import WorkLoop
 
     async def emit(body):
         sent.append(body)
@@ -213,7 +213,7 @@ def test_work_loop_is_silent_outside_autonomous_environments_and_when_switched_o
 
 
 def test_work_tick_goes_to_the_agent_through_the_think_route():
-    from domain import rules
+    from kernel import hard_rules as rules
     assert rules.think_route(origin="self", kind="self.work_tick") is True
     assert rules.think_route(origin="external", kind="self.work_tick") is False
 
@@ -229,8 +229,8 @@ def test_manifest_workspace_accepts_autonomous_fields_and_rejects_bad_ones():
 # ── цель автономной среды ─────────────────────────────────────────────────────
 
 async def _sqlite_tasks(tmp_path):
-    from adapters.task_store import TaskStore
-    from app.task_service import TaskService
+    from services.tasks.store import TaskStore
+    from services.tasks.service import TaskService
 
     class Planner:
         async def plan(self, goal, ctx):

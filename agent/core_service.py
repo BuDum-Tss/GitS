@@ -26,19 +26,19 @@ import tool_trace
 from services.memory_service import episode_routes
 from services.memory_service import episode_service
 from services.memory_service import scope as graph_scope
-import impulse_service
+from services.reflection import service as impulse_service
 from services.memory_service import migration as memory_migration
-import task_wiring
+from services.tasks import wiring as task_wiring
 import profile_manager
 import settings
 from gits_sdk import protocol as P
 import speech_out
 import supervisor as supervisor_mod
 import tool_search
-from app.workspace_manager import WorkspaceManager
+from services.spaces.manager import WorkspaceManager
 from services.attention import Attention, AttentionEventSink
-from app.workspace_link import WorkspaceLink
-from app.lease_adapter import LeaseAdapter
+from services.spaces.link import WorkspaceLink
+from services.spaces.lease import LeaseAdapter
 from character_switch import CharacterSwitch
 from companion import Companion
 from conversation_io import ConversationIO
@@ -46,13 +46,13 @@ import core_requests
 from core_requests import CoreRequests
 from environments import builtin
 from environments.registry import Registry
-from app.handlers.desktop import desktop_state, make_activity_hook
-import llm_gate
-from domain import scoring
-from app.node_panel import NodePanel
-from app.work_loop import WorkLoop
-from app.handlers.game import make_colonists_handler, make_run_lost_hook
-from app.handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
+from services.event_handlers.desktop import desktop_state, make_activity_hook
+from services.runtime import llm_gate
+from kernel import scoring
+from services.spaces.node_panel import NodePanel
+from services.reflection.work_loop import WorkLoop
+from services.event_handlers.game import make_colonists_handler, make_run_lost_hook
+from services.event_handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
 from peer_hub import PeerHub
 from peer_registry import PeerRegistry
 from services.memory_service import GraphMemory
@@ -367,7 +367,7 @@ async def _run(config: dict):
     async def enter_after_launch(tool, args, ok, result) -> None:
         """Игру запустили по просьбе пользователя: заходим в среду её модуля (цели, камера, комментарии и ход идут только в
         фокусе). По самоимпульсу сюда не входим: там вход решает размышление (ТЗ 32)."""
-        from app import impulse_origin
+        from services.reflection import origin as impulse_origin
         if not ok or impulse_origin.current() == impulse_origin.SELF:
             return
         layer.workspaces.sync()

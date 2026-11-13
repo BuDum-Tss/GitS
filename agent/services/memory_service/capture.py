@@ -4,7 +4,7 @@ import logging
 import re
 import time
 
-import fast_brain
+from services.runtime import fast_brain
 
 logger = logging.getLogger("companion")
 

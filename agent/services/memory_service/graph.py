@@ -114,7 +114,7 @@ class FactExtractor:
 
     @staticmethod
     async def _fast(system: str, user: str) -> str:
-        import fast_brain
+        from services.runtime import fast_brain
         return await fast_brain._ask(system, user, timeout=60, max_tokens=700, temperature=0.1, background=True)
 
     async def extract(self, speaker: str, text: str) -> list[Fact]:

@@ -10,8 +10,8 @@ import time
 from typing import Awaitable, Callable
 
 from interfaces.contracts import ReminderRepository
-from domain import impulses
-from domain.event import KIND_REMINDER
+from kernel import impulses
+from kernel.event import KIND_REMINDER
 
 logger = logging.getLogger("impulses")
 

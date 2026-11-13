@@ -1,7 +1,7 @@
 """Домен: правила по тексту (ТЗ 29, ARC-2): «замолчи» и «похоже на просьбу». Одна точка истины для attention и router."""
 import pytest
 
-from domain import rules
+from kernel import hard_rules as rules
 
 
 @pytest.mark.parametrize("text", ["замолчи", "Пожалуйста, стоп!", "стоп", "хватит болтать", "тихо", "shut up"])

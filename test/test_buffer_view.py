@@ -3,7 +3,7 @@ import pytest
 from test_attention import Rig
 from test_impulses import Spy
 
-from app.context_builder import ContextBuilder
+from services.conversation.context_builder import ContextBuilder
 
 
 @pytest.fixture

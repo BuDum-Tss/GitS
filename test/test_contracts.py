@@ -11,12 +11,12 @@ import character
 from interfaces import contracts
 import approvals
 import decide
-from fast_brain import FastLLM
+from services.runtime.fast_brain import FastLLM
 import events_log
 import settings
 from services.memory_service.adapters import UserMemoryAdapter
 from relationships import RelationshipsAdapter
-from adapters.runtime_pi import PiRuntime
+from services.runtime.pi_runtime import PiRuntime
 from services.attention import Attention
 from companion import Companion
 from services.memory_service.graph import GraphMemory

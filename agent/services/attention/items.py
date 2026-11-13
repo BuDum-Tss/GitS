@@ -1,9 +1,9 @@
 """Хранилище событий внимания и склейка повторов (ТЗ 29, ARC-4; ТЗ 03, ATT-6).
 
-Решение «можно ли склеить» чистое и лежит в `domain/dedupe.py`; здесь только состояние и обновление очереди речи и сводки.
+Решение «можно ли склеить» чистое и лежит в `services/attention/dedupe.py`; здесь только состояние и обновление очереди речи и сводки.
 """
-from domain import dedupe
-from domain.event import Event
+from services.attention import dedupe
+from kernel.event import Event
 
 from .core import TEXT_LOG, AttentionContext, Item
 

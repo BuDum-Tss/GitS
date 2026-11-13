@@ -54,7 +54,7 @@ def _pi_tools() -> list[ToolSpec]:
 
 
 def _pi_runtime():
-    from adapters.runtime_pi import PiRuntime
+    from services.runtime.pi_runtime import PiRuntime
     return PiRuntime(persist=False)
 
 

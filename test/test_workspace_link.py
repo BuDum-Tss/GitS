@@ -1,5 +1,5 @@
 """WorkspaceLink: вход, выход и возобновление среды модуля (запросы workspace.*, без политик)."""
-from app.workspace_link import WorkspaceLink
+from services.spaces.link import WorkspaceLink
 
 
 class Module:

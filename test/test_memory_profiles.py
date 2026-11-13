@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from services.memory_service.adapters import UserMemoryAdapter
-from domain import plan_due
+from services.memory_service import plan_due
 from services.memory_service.fact_store import FactStore
 from services.memory_service.graph import GraphMemory
 from services.memory_service.migration import BACKUP, FILE, migrate
@@ -148,7 +148,7 @@ async def test_migration_ignores_unreadable_file(tmp_path):
 # ── контекст ответа ───────────────────────────────────────────────────────────
 
 def test_profile_is_in_context_even_off_topic(tmp_path):
-    from app.context_builder import ContextBuilder
+    from services.conversation.context_builder import ContextBuilder
     g = _graph(tmp_path)
     g.remember("Пользователь любит зелёный чай по утрам", 5)
     ad = UserMemoryAdapter(lambda: None, lambda: g)
@@ -170,7 +170,7 @@ def test_profile_is_in_context_even_off_topic(tmp_path):
 
 
 def test_owner_profile_is_not_shown_to_another_speaker(tmp_path):
-    from app.context_builder import ContextBuilder
+    from services.conversation.context_builder import ContextBuilder
     g = _graph(tmp_path)
     g.remember("Пользователь любит зелёный чай по утрам", 5)
 

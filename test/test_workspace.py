@@ -4,9 +4,9 @@ from aiohttp import web
 from test_core_wiring import JSON, free_port
 
 import dashboard
-from app.workspace_manager import WorkspaceManager
-from domain import workspace as dom
-from domain.workspace import ASSISTANT, SLEEP, Reason
+from services.spaces.manager import WorkspaceManager
+from services.spaces import model as dom
+from services.spaces.model import ASSISTANT, SLEEP, Reason
 
 
 def make(**kw):

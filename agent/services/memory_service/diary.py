@@ -8,7 +8,7 @@ import asyncio
 import logging
 from typing import Callable
 
-from domain.model_json import parse_step
+from kernel.model_json import parse_step
 from interfaces.contracts import LanguageModel
 import services.memory_service.episodes as dom
 

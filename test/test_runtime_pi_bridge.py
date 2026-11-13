@@ -8,7 +8,7 @@ import shutil
 
 import pytest
 
-from adapters.runtime_pi import BRIDGE_DIR, PiRuntime
+from services.runtime.pi_runtime import BRIDGE_DIR, PiRuntime
 from interfaces.contracts import EndEvent, TextEvent, ToolEvent, ToolSpec
 
 pytestmark = pytest.mark.skipif(not shutil.which("node") or not (BRIDGE_DIR / "node_modules").is_dir(),

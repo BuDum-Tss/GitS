@@ -1,4 +1,4 @@
-"""Компоненты менеджера внимания (ТЗ 29, ARC-4, шаг R3): `agent/app/*` и `domain/dedupe.py` по отдельности, плюс проверка,
+"""Компоненты менеджера внимания (ТЗ 29, ARC-4, шаг R3): `agent/app/*` и `services/attention/dedupe.py` по отдельности, плюс проверка,
 что фасад `Attention` и компоненты делят одно состояние. Классификатор подменён заглушкой, часы фиктивные, без сети."""
 import pytest
 from test_attention import Rig
@@ -6,7 +6,7 @@ from test_attention import Rig
 from services.attention.core import Item
 from services.attention import Attention, Question
 from interfaces.contracts import MemoryWriter, PeopleDirectory
-from domain import dedupe
+from services.attention import dedupe
 
 
 def _item(**kw) -> Item:
@@ -17,7 +17,7 @@ def _item(**kw) -> Item:
     return Item(**base)
 
 
-# ── domain/dedupe.py ─────────────────────────────────────────────────────────
+# ── services/attention/dedupe.py ─────────────────────────────────────────────────────────
 
 def test_can_merge_window_and_spoken():
     assert dedupe.can_merge(True, False, 100.0, 150.0)
@@ -158,11 +158,14 @@ async def test_submit_speech_goes_through_dispatcher(tmp_path, mode):
     assert rig.candidates() and rig.candidates()[0].mode == mode
 
 
-def test_app_package_is_small_and_clean():
-    """ARC-4: ни один класс в `app/` не длиннее 400 строк; компоненты не лезут в приватные поля компаньона."""
+def test_service_packages_are_small_and_clean():
+    """ARC-4: ни один класс в пакетах сервисов (разговор, задачи, размышление, рабочие места) не длиннее 400 строк; компоненты не лезут в приватные поля компаньона."""
     import ast
     from pathlib import Path
-    for path in sorted((Path(__file__).resolve().parents[1] / "agent" / "app").glob("*.py")):
+    services = Path(__file__).resolve().parents[1] / "agent" / "services"
+    files = [f for pkg in ("conversation", "tasks", "reflection", "spaces") for f in sorted((services / pkg).glob("*.py")) if f.name != "wiring.py" and f.parent.name + "/" + f.name != "reflection/service.py"]
+    assert files
+    for path in files:
         src = path.read_text(encoding="utf-8")
         for node in ast.parse(src).body:
             if isinstance(node, ast.ClassDef):

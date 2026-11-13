@@ -1,6 +1,6 @@
 """Гибридный поиск (ТЗ 04): FTS5 + векторы + фильтры + свежесть, нормализация, переписывание запроса, бюджет контекста,
 стенд memory_bakeoff. Эмбеддер и модель: детерминированные заглушки, сеть не нужна."""
-from app.context_builder import ContextBuilder
+from services.conversation.context_builder import ContextBuilder
 from interfaces.contracts import Embedder
 from search import HybridIndex, HybridSearch, SearchConfig
 from search.embedder import HashEmbedder

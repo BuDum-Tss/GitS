@@ -12,10 +12,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Awaitable, Callable
 
-from domain.model_json import parse_step
+from kernel.model_json import parse_step
 from interfaces.contracts import LanguageModel
 import services.memory_service.episodes as dom
-from domain import impulses
+from kernel import impulses
 
 logger = logging.getLogger("episodes")
 

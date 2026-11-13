@@ -9,9 +9,9 @@ import asyncio
 import pytest
 from test_dashboard_endpoints import serve
 
-from app import impulse_origin
-from app import workspace_manager as wm
-from domain.workspace import ASSISTANT, Reason
+from services.reflection import origin as impulse_origin
+from services.spaces import manager as wm
+from services.spaces.model import ASSISTANT, Reason
 from environments.base import ToolError
 from gits_sdk import WorkspaceClient
 
@@ -226,7 +226,7 @@ async def test_reflection_do_intent_hands_the_task_to_the_agent_as_a_self_impuls
     """Intent `do` размышления (ТЗ 30) отдаёт текст единому агенту; всё, что тот вызовет, идёт с признаком самоимпульса."""
     from types import SimpleNamespace
 
-    import impulse_service
+    from services.reflection import service as impulse_service
     seen = []
 
     class FakeResident:

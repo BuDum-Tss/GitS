@@ -7,7 +7,7 @@ import json
 import logging
 from pathlib import Path
 
-from domain import tasks as dom
+from services.tasks import model as dom
 
 logger = logging.getLogger("tasks")
 

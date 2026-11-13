@@ -8,7 +8,7 @@
      канале; R3 временное правило mute -> в сводку; R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
   2. срочность 0-5 (ATT-8, `app/event_classifier.py`): подсказка модуля и категория от классификатора (`decide.py`);
   3. приоритет 0-100 = срочность * 20 * вес профиля * вес отправителя * вес правил * вес состояния пользователя * свежесть
-     (ATT-9, `app/scorer.py`, `domain/scoring.py`) и решение D0-D4 по порогам (ATT-10, `services/attention/dispatcher.py`);
+     (ATT-9, `app/scorer.py`, `kernel/scoring.py`) и решение D0-D4 по порогам (ATT-10, `services/attention/dispatcher.py`);
   4. очередь речи (`services/attention/speech_queue.py`, `services/attention/speech_coordinator.py`) и стек фокуса (`services/attention/focus_stack.py`): ATT-13-ATT-23;
   5. временные правила, сводка (`services/attention/digest.py`), быстрый путь «замолчи», классификация обращений пользователя (ATT-24-ATT-28);
   6. объявления о долгих запусках (`services/attention/announce.py`, AN-1-AN-3): события `<модуль>.launch`, речь и `/api/notify` с пометкой
@@ -68,8 +68,8 @@ from services.attention.questions import QuestionService
 from services.attention.speech_coordinator import SpeechCoordinator
 from services.attention.rules import FILE_NAME as RULES_FILE
 from services.attention.rules import RuleStore
-from domain import rules
-from domain.event import KIND_THOUGHT, SELF_MODULE, Event
+from kernel import hard_rules as rules
+from kernel.event import KIND_THOUGHT, SELF_MODULE, Event
 from services.attention.speech_queue import INTERRUPT_P, SpeechCandidate
 
 import settings
@@ -406,7 +406,7 @@ class Attention:
 
     @staticmethod
     def looks_like_stop(text: str) -> bool:
-        """Короткая просьба замолчать: быстрый путь без модели (ATT-18). Правило в domain/rules.py."""
+        """Короткая просьба замолчать: быстрый путь без модели (ATT-18). Правило в kernel/hard_rules.py."""
         return rules.looks_like_stop(text)
 
     async def reset_for_character(self) -> int:

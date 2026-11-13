@@ -1,5 +1,5 @@
 """ConversationService: путь одного обращения владельца (ТЗ 29, ARC-5): вход, жёсткие правила, запись реплики, ответ на
-вопрос о разрешении, затем реплика уходит единому агенту (`app/resident.py`). Память пишет MemoryCapture, остальное зовётся
+вопрос о разрешении, затем реплика уходит единому агенту (`services/conversation/resident.py`). Память пишет MemoryCapture, остальное зовётся
 через фасад `Companion`."""
 import asyncio
 import contextvars

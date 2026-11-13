@@ -1,7 +1,7 @@
 """Приём события: Normalizer -> HardRules -> Dispatcher (ТЗ 29, ARC-4; ТЗ 25, FAST-1).
 
   1. Normalizer (`normalizer.py`): тело события -> Item, отправитель -> человек и память;
-  2. дедупликация (`items.py`, решение в `domain/dedupe.py`);
+  2. дедупликация (`items.py`, решение в `services/attention/dedupe.py`);
   3. HardRules (здесь): правила до классификатора (ATT-7) R1 обращение владельца -> разговор; R2 ответ на вопрос в том же
      канале; R3 временное правило mute -> в сводку; R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
   4. срочность без классификатора (`Normalizer.assign_urgency`): подсказка модуля, обращение к ней поднимает до «сказать»;
@@ -9,7 +9,7 @@
 """
 import logging
 
-from domain import scoring
+from kernel import scoring
 
 from .announce import Announcer, is_announce_event
 from .core import TEXT_LOG, AttentionContext, Item

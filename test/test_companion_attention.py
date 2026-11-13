@@ -11,7 +11,7 @@ from hub_helpers import FakeIO, FakeSpeech
 from test_attention import StubDecider, ans
 
 import approvals
-import fast_brain
+from services.runtime import fast_brain
 import settings
 import speech_out
 from services.attention import Attention

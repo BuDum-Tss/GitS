@@ -454,7 +454,7 @@ on_error: stop
 | `state.node`: окружение сообщает узел | есть | `PeerClient.state(..., node=)`, `PeerHub._on_note`, сообщение `state` в контракте |
 | Расширенные события `urgency_unfocused`, `topics`, `follow_up` | есть | `EmitSpec`, `Normalizer.shift_urgency`, `EventPipeline.submit` |
 | Сдвиг срочности по теме узла (`watch`), критичное не ниже 4 | есть | `Normalizer.shift_urgency`, `AttentionContext.node_watch` |
-| Панель узла в контексте агента (`nodes[].context`) | есть | `app/node_panel.py` (`NodePanel`), блок «Рабочее место» в `ContextBuilder`, `ResidentAgent._refresh_node` |
+| Панель узла в контексте агента (`nodes[].context`) | есть | `services/spaces/node_panel.py` (`NodePanel`), блок «Рабочее место» в `ContextBuilder`, `ResidentAgent._refresh_node` |
 | Вес записей входящей очереди по узлу и теме | план | `services/attention/digest.py` |
 | `subscribe` и `coalesce` в объявлении событий, таблица подписок ядра | план | раздел 5 |
 | Инструмент агента `watch` (ожидание события с условием) | план | `attention.*` |
@@ -463,5 +463,5 @@ on_error: stop
 | Манифест RimWorld по дереву: `nodes`, `tools[].node`, навигация `open`/`back`/`where`, запросы без узла, события с `topics` | есть | `workspaces/rimworld/agent/workspace_module.py`, `module_manifest.py`; ядро видит ~32-39 инструментов вместо 74 |
 | Игровой агент окружения убран: ходы, планирование, рефлексия, комментатор, `order`, `glados_agent.py` | есть | `workspaces/rimworld/agent/controller.py` остался инфраструктурой (состояние, события ядру, запись, камера, фокус) |
 | Хвосты игрового агента в окружении: политики и режимы (`policy_*`, `game_modes`), правила наблюдения, оценка событий (`appraisal`, `decider`), цели и задачи игры в MCP-сервере | план | чистка следующим проходом |
-| Автономная игра единого агента: рабочий цикл `self.work_tick` раз в `workspace.work_interval_s`, пока агент в среде и свободен (`workspace.autonomous`, настройка `autoplay`) | есть | `app/work_loop.py`, `domain/rules.think_route` |
+| Автономная игра единого агента: рабочий цикл `self.work_tick` раз в `workspace.work_interval_s`, пока агент в среде и свободен (`workspace.autonomous`, настройка `autoplay`) | есть | `services/reflection/work_loop.py`, `domain/rules.think_route` |
 | Шаблон окружения (`agent/interfaces/workspace/template`) с узлами | есть | `agent/interfaces/workspace/template/` |

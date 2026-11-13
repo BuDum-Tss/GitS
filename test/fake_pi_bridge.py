@@ -1,4 +1,4 @@
-"""Поддельный мост среды pi для тестов `adapters/runtime_pi.py`: говорит по протоколу `services/agent-runtime` (строки JSON),
+"""Поддельный мост среды pi для тестов `services/runtime/pi_runtime.py`: говорит по протоколу `services/agent-runtime` (строки JSON),
 поведение задаёт текст запроса. Без сети, Node и моделей.
 
 Запросы: `hello` (текст и конец), `tool` (вызов find_tools, ждёт tool_result), `slowtool` (вызов и ожидание), `wait` (ждёт

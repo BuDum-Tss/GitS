@@ -244,7 +244,7 @@ async def test_pi_search_errors(monkeypatch):
 
 
 def test_pi_runtime_without_history(monkeypatch):
-    from adapters.runtime_pi import PiRuntime
+    from services.runtime.pi_runtime import PiRuntime
     rt = PiRuntime(persist=False)
     rt._system, rt._tools = "с", {}
     assert rt._init_message()["session_file"] is None

@@ -22,7 +22,7 @@ from interfaces.contracts import EndEvent, RuntimeEvent, TextEvent, ToolEvent, T
 
 logger = logging.getLogger("resident")
 
-BRIDGE_DIR = Path(__file__).resolve().parents[2] / "services" / "agent-runtime"
+BRIDGE_DIR = Path(__file__).resolve().parents[3] / "services" / "agent-runtime"
 READY_TIMEOUT_S = 40.0
 SHUTDOWN_TIMEOUT_S = 6.0
 STEER_ACK_S = 0.2           # мост на удачный steer молчит, на «нет хода» отвечает ошибкой idle: ждём её столько

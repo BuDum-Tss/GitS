@@ -2,7 +2,7 @@
 import asyncio
 
 from interfaces import contracts
-from app import resident
+from services.conversation import resident
 from interfaces.contracts import EndEvent
 from resident_helpers import FakeHost, FakeRuntime
 

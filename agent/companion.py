@@ -18,7 +18,7 @@
 
 Companion теперь тонкий фасад (ТЗ 29, ARC-5): состояние и публичный интерфейс здесь, логика в `agent/app/`:
 ConversationService (путь обращения), ContextBuilder (контекст), ReplyGenerator (ответ), MemoryCapture (запоминание).
-Проактивности по таймеру нет (ТЗ 30): её заменили внутренние импульсы, `impulse_service.py`.
+Проактивности по таймеру нет (ТЗ 30): её заменили внутренние импульсы, `services/reflection/service.py`.
 """
 import asyncio
 import collections
@@ -32,14 +32,14 @@ import events_log
 import prompts
 import reply_trace
 import settings
-from fast_brain import FastLLM
+from services.runtime.fast_brain import FastLLM
 from relationships import RelationshipsAdapter
 from services.memory_service import UserMemoryAdapter
-from app.context_builder import ContextBuilder
-from app.conversation_service import ConversationService, _sender_ctx  # noqa: F401  (_sender_ctx: прежнее имя)
+from services.conversation.context_builder import ContextBuilder
+from services.conversation.service import ConversationService, _sender_ctx  # noqa: F401  (_sender_ctx: прежнее имя)
 from services.memory_service import MemoryCapture
-from app.reply_generator import ReplyGenerator
-from app.resident import ResidentAgent
+from services.conversation.reply_generator import ReplyGenerator
+from services.conversation.resident import ResidentAgent
 from conversation_io import UserInput, current_channel
 from speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
 from services.memory_service import UserMemory

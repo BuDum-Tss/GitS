@@ -9,11 +9,11 @@ from pathlib import Path
 
 import events_log
 import prompts
-from adapters.task_migration import migrate_reminders
-from adapters.task_reminders import TaskReminders
-from adapters.task_store import FILE, TaskStore
-from app.planner import LlmPlanner
-from app.task_service import TaskService
+from services.tasks.migration import migrate_reminders
+from services.tasks.reminders import TaskReminders
+from services.tasks.store import FILE, TaskStore
+from services.tasks.planner import LlmPlanner
+from services.tasks.service import TaskService
 
 
 def build(companion, workspaces=None, *, clock=None) -> TaskService:

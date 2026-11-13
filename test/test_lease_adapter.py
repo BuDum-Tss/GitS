@@ -9,10 +9,10 @@ from gits_sdk.control import ControlServer
 
 import dashboard
 import settings
-from app.lease_adapter import LeaseAdapter
-from app.workspace_link import WorkspaceLink
-from app.workspace_manager import WorkspaceManager
-from domain import workspace as dom
+from services.spaces.lease import LeaseAdapter
+from services.spaces.link import WorkspaceLink
+from services.spaces.manager import WorkspaceManager
+from services.spaces import model as dom
 from environments.builtin import _workspace_tools
 from supervisor import PeerSpec, Supervisor, load_specs
 

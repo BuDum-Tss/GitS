@@ -185,7 +185,7 @@ class CoreRequests:
 
     async def _llm_ask(self, conn: PeerConnection, body: dict) -> dict:
         """Один вызов быстрой модели ядра (без инструментов, `fast_brain._ask`)."""
-        import fast_brain
+        from services.runtime import fast_brain
         try:
             text = await fast_brain._ask(
                 body["system"], body["user"], timeout=float(body.get("timeout_s", 60)),

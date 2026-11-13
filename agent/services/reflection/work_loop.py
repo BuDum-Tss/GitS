@@ -11,7 +11,7 @@ import logging
 import time
 from typing import Awaitable, Callable
 
-from domain.event import KIND_WORK_TICK
+from kernel.event import KIND_WORK_TICK
 
 logger = logging.getLogger("work_loop")
 
@@ -74,12 +74,12 @@ class WorkLoop:
             task = await svc.active(module)
             goal = str(ws.get("default_goal") or "").strip()
             if task is None and goal:
-                from domain import tasks as dom
+                from services.tasks import model as dom
                 task = await svc.create(goal, workspace=module, origin=dom.SELF, plan=True)
                 task = await svc.activate(task.id)
             if task is None:
                 return "Открытых задач у среды нет. "
-            from domain import tasks as dom
+            from services.tasks import model as dom
             step = dom.next_step(task)
             done, total = dom.progress(task)
             line = f"Активная задача: «{task.goal}» (шагов выполнено {done} из {total}). "

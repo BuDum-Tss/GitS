@@ -1,7 +1,7 @@
 """Объявления о долгих запусках (ТЗ 29, ARC-4; ТЗ 03, AN-1-AN-3): мимо формулы важности, каждое должно прозвучать."""
 import secrets
 
-from domain import dedupe
+from services.attention import dedupe
 from services.attention.speech_queue import ANNOUNCE_P
 
 from .core import ANNOUNCE_DEFAULT_URGENCY, TEXT_LOG, TEXT_MAX, AttentionContext, Item

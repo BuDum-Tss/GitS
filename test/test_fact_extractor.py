@@ -16,7 +16,7 @@ def test_extractor_asks_the_fast_model_with_the_schema_and_parses_json_in_text()
 
 
 def test_extractor_default_backend_is_the_claude_fast_model(monkeypatch):
-    import fast_brain
+    from services.runtime import fast_brain
     calls = []
 
     async def fake(system, user, timeout, max_tokens=40, image_b64=None, temperature=0.3, background=False, parallel=False):

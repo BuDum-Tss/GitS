@@ -2,7 +2,7 @@
 
 Внешние события приходят от модулей (`origin = external`), внутренние создаёт сам агент (`origin = self`): напоминание,
 которое он назначил себе (`self.reminder`), мысль (`self.thought`). Внутри внимания событие по-прежнему `Item`; в размышление
-оно передаётся как `Event` (`app/reflection.py`).
+оно передаётся как `Event` (`services/reflection/reflection.py`).
 """
 from dataclasses import dataclass, field
 

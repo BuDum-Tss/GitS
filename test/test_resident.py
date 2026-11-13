@@ -1,7 +1,7 @@
 """Единый агент: сообщение пользователя идёт в одну сессию, а не в классификатор, планировщик и быструю модель."""
 import asyncio
 
-from app import resident
+from services.conversation import resident
 from interfaces.contracts import TextEvent
 from resident_helpers import FakeHost, FakeRuntime
 
@@ -108,7 +108,7 @@ def test_turn_timeout_leaves_a_note_for_the_next_turn(monkeypatch):
 
 def test_actions_block_names_the_agents_own_calls_as_hers():
     import tool_trace
-    from app.context_builder import ContextBuilder
+    from services.conversation.context_builder import ContextBuilder
     tool_trace.note("external", "rimworld.colony_overview")
     block = ContextBuilder.actions_block()
     assert "ты сама" in block and "colony_overview" in block and "вне планировщика" not in block

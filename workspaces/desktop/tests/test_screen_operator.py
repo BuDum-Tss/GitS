@@ -3,7 +3,7 @@
 import asyncio
 import json
 
-import fast_brain  # только _json_of: разбор ответа, который в проде делает ядро (core.llm.ask)
+from services.runtime import fast_brain  # только _json_of: разбор ответа, который в проде делает ядро (core.llm.ask)
 import pc_control
 from gits_sdk import host
 import screen_operator as so

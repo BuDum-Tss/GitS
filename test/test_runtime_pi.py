@@ -1,4 +1,4 @@
-"""Среда pi (`adapters/runtime_pi.py`) против поддельного моста на Python (`fake_pi_bridge.py`): без Node, сети и моделей."""
+"""Среда pi (`services/runtime/pi_runtime.py`) против поддельного моста на Python (`fake_pi_bridge.py`): без Node, сети и моделей."""
 import asyncio
 import logging
 import sys
@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from interfaces import contracts
-from adapters.runtime_pi import PiRuntime
+from services.runtime.pi_runtime import PiRuntime
 from interfaces.contracts import EndEvent, TextEvent, ToolEvent, ToolSpec
 
 BRIDGE = Path(__file__).with_name("fake_pi_bridge.py")
@@ -172,7 +172,7 @@ async def test_missing_login_is_an_error_event_not_an_exception(tmp_path):
 
 
 async def test_missing_node_is_an_error_event(tmp_path, monkeypatch):
-    import adapters.runtime_pi as mod
+    import services.runtime.pi_runtime as mod
     monkeypatch.setattr(mod.shutil, "which", lambda name: None)
     rt = PiRuntime(auth_file=str(tmp_path / "a.json"), session_file=tmp_path / "s.txt")
     await rt.start("s", [SPEC])

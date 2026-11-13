@@ -12,8 +12,8 @@ import time
 import events_log
 import settings
 from stems import stems
-from app.task_service import TaskError
-from domain import tasks as task_dom
+from services.tasks.service import TaskError
+from services.tasks import model as task_dom
 from .base import Environment, Tool, ToolError
 
 
@@ -413,8 +413,8 @@ def _why_no_workspace(workspaces, modules, ws: str) -> str:
 def _workspace_tools(workspaces, modules=None) -> list[Tool]:
     """ТЗ 32, WS-5/WS-10: сменить среду агента и узнать текущую. Вход в среду модуля идёт только по импульсу: по просьбе
     пользователя (риск auto, причина `user`) или по самоимпульсу из размышления (причина `self`, перед входом обычное разрешение)."""
-    from app import impulse_origin
-    from domain import workspace as dom
+    from services.reflection import origin as impulse_origin
+    from services.spaces import model as dom
 
     def reason() -> str:
         return dom.Reason.SELF if impulse_origin.current() == impulse_origin.SELF else dom.Reason.USER

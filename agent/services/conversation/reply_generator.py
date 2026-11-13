@@ -1,13 +1,13 @@
 """ReplyGenerator: реплика по факту и страховки стиля (ТЗ 29, ARC-5).
 
-Разговор с владельцем ведёт единый агент (`app/resident.py`). Здесь остаётся то, что нужно очереди речи: `speak_about`
+Разговор с владельцем ведёт единый агент (`services/conversation/resident.py`). Здесь остаётся то, что нужно очереди речи: `speak_about`
 формулирует реплику по факту (объявление, итог, вопрос модуля) и `declutter` убирает навязчивый хвост («Хочешь, чтобы я…?»,
 третий вопрос подряд).
 """
 import logging
 import re
 
-import fast_brain
+from services.runtime import fast_brain
 import prompts
 import reply_trace
 
@@ -36,7 +36,7 @@ class ReplyGenerator:
 
     def _is_repeat(self, text: str) -> bool:
         """Новая реплика по факту почти повторяет одну из её последних шести реплик."""
-        from domain import repeat
+        from services.conversation import repeat
         try:
             own = [d["text"] for d in self._h._memory_reader.recent_dialogue(12) if d.get("role") != "user"][-6:]
         except Exception:

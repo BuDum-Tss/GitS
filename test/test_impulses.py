@@ -8,13 +8,14 @@ import pytest
 from test_attention import Rig
 from test_companion_split import make as make_companion
 
-from adapters.impulse_store import JsonReminders, JsonThoughts
-from app.impulse_timer import ImpulseTimer
+from services.reflection.store import JsonReminders, JsonThoughts
+from services.reflection.timer import ImpulseTimer
 from services.attention.items import event_of
-from app.reflection import Intent, ReflectionService, parse_intents, parse_step
+from services.reflection.reflection import Intent, ReflectionService, parse_intents, parse_step
 from interfaces.contracts import ReminderRepository, ThoughtJournal
-from domain import impulses, rules
-from domain.event import Event
+from kernel import impulses
+from kernel import hard_rules as rules
+from kernel.event import Event
 from environments import builtin
 from environments.base import ToolError
 from environments.registry import Registry
@@ -359,7 +360,7 @@ async def test_no_speech_without_stimulus(tmp_path):
     import importlib.util
     c, llm = make_companion(tmp_path)
     from settings import DEFAULTS
-    assert importlib.util.find_spec("app.proactive_legacy") is None and "proactive_tick" not in DEFAULTS
+    assert importlib.util.find_spec("services.reflection.proactive_legacy") is None and "proactive_tick" not in DEFAULTS
     assert not hasattr(c, "proactive_loop")
     await asyncio.sleep(0.05)
     assert llm.calls == [] and c.speech.spoken == []                            # ни вызова модели, ни слова

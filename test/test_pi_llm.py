@@ -1,4 +1,4 @@
-"""Быстрая модель pi (`pi_llm.py`): против подделки процесса на Python и против настоящего `llm.mjs` на поддельном поставщике.
+"""Быстрая модель pi (`services/runtime/pi_llm.py`): против подделки процесса на Python и против настоящего `llm.mjs` на поддельном поставщике.
 Без сети и без входа. Тесты с настоящим процессом пропускаются без node или `npm ci` в `services/agent-runtime`."""
 import asyncio
 import logging
@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-import fast_brain
-import pi_llm
-from adapters.runtime_pi import BRIDGE_DIR
+from services.runtime import fast_brain
+from services.runtime import pi_llm
+from services.runtime.pi_runtime import BRIDGE_DIR
 
 FAKE = Path(__file__).with_name("fake_pi_llm.py")
 HAVE_NODE = bool(shutil.which("node")) and (BRIDGE_DIR / "node_modules").is_dir()
@@ -83,7 +83,7 @@ async def test_respawn_after_death(fake):
 
 
 async def test_missing_runtime_is_a_clear_error(tmp_path, monkeypatch):
-    monkeypatch.setattr("pi_llm.BRIDGE_DIR", tmp_path)              # нет llm.mjs
+    monkeypatch.setattr("services.runtime.pi_llm.BRIDGE_DIR", tmp_path)              # нет llm.mjs
     monkeypatch.setattr("shutil.which", lambda name: "node")
     c = pi_llm.PiLlmClient()
     with pytest.raises(RuntimeError, match="llm.mjs"):

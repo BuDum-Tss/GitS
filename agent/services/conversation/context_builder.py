@@ -18,7 +18,7 @@ class ContextBuilder:
         self._h = host
 
     def model_note(self) -> str:
-        import llm_gate
+        from services.runtime import llm_gate
         why = llm_gate.note()
         return (f"Модель для тяжёлых задач (игровые ходы, глубокий анализ, помощник) сейчас недоступна: {why}. "
                 f"Если просят то, что её требует, честно скажи это.") if why else ""
