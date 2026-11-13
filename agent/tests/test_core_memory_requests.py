@@ -2,7 +2,7 @@
 import pytest
 
 from core_requests import CoreRequests
-from module_hub import ModuleError
+from peer_hub import PeerError
 
 
 class FakeMemory:
@@ -37,9 +37,9 @@ async def test_remember_then_recall_and_duplicate():
 async def test_without_memory_unavailable_and_bad_body():
     req = CoreRequests()
     for t, body in (("core.memory.recall", {"query": "x"}), ("core.memory.remember", {"text": "x"})):
-        with pytest.raises(ModuleError) as e:
+        with pytest.raises(PeerError) as e:
             await req.handle(None, t, body)
         assert e.value.code == "unavailable"
-    with pytest.raises(ModuleError) as e:
+    with pytest.raises(PeerError) as e:
         await req.handle(None, "core.memory.remember", {"text": ""})
     assert e.value.code == "bad_request"

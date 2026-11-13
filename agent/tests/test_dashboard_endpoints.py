@@ -62,7 +62,7 @@ async def test_dashboard_module_settings_mode_approval_and_job_endpoints(tmp_pat
             await post("/api/modules/cfg/settings", {"key": "mode", "value": "c"}, 400)           # не из enum
             await post("/api/modules/cfg/settings", {"key": "nope", "value": 1}, 400)
             await post("/api/modules/cfg/settings", {"key": "loud", "value": True})
-            assert settings.load()["modules"]["cfg"] == {"poll": 20, "loud": True}                # слияние: ключи не затёрты
+            assert settings.load()["peers"]["cfg"] == {"poll": 20, "loud": True}                # слияние: ключи не затёрты
             mods = {m["id"]: m for m in await get("/api/modules")}
             assert mods["cfg"]["module_settings"] == {"poll": 20, "mode": "a", "loud": True}
             assert mods["cfg"]["settings_schema"]["poll"]["max"] == 60

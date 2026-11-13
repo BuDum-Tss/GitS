@@ -338,7 +338,7 @@ def register(registry, companion, memory, profiles=None):
 
 
 class _ModuleIds(list):
-    """Допустимые значения параметра «модуль»: подключённые и объявленные в modules.yaml модули на момент вызова.
+    """Допустимые значения параметра «модуль»: подключённые и объявленные в peers.yaml модули на момент вызова.
     Список динамический: модули приходят и уходят, а описание инструмента строится один раз."""
 
     def __init__(self, modules):
@@ -378,7 +378,7 @@ class _WorkspaceIds(list):
         self._ws.sync()
         ids = [s.id for s in self._ws.specs.values() if s.id != "sleep"]        # сон включает только планировщик сна
         for rec in (getattr(self._modules, "records", None) or {}).values():    # заявленные модули без подключения: ошибка скажет причину
-            if rec.kind == "module" and rec.id not in ids and rec.id != "sleep":
+            if rec.role == "workspace" and not rec.external and rec.id not in ids and rec.id != "sleep":
                 ids.append(rec.id)
         return ids
 
@@ -465,7 +465,7 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
 
 def register_core_tools(registry, modules, attention=None, switch=None, workspaces=None):
     """Инструменты ядра про задачи модулей (окружение core, всегда видны, ТЗ 02 раздел 11) и про внимание (ТЗ 03, ATT-24).
-    modules - ModuleRegistry: jobs_all() и async cancel_job(module, job_id); attention - менеджер внимания (attention.py)."""
+    modules - PeerRegistry: jobs_all() и async cancel_job(module, job_id); attention - менеджер внимания (attention.py)."""
 
     async def jobs(a):
         rows = modules.jobs_all()

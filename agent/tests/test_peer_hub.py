@@ -662,3 +662,112 @@ async def test_pending_requests_fail_with_unavailable_on_disconnect(tmp_path):
         with pytest.raises(Exception) as e:
             await task
         assert getattr(e.value, "code", None) == "unavailable"
+
+
+# ── фаза 2a: /ws, hello с id и role, роль и ownership ───────────────────────────────
+
+async def test_hello_with_id_and_role_is_accepted_on_new_path(tmp_path):
+    async with running_core(tmp_path) as core:
+        raw = RawModule(core, manifest("newone"), url=core.url_ws, hello_drop=("module_id",))
+        try:
+            assert (await raw.hello()).type == "welcome"            # только id и role, прежнего module_id нет
+            conn = core.hub.connection("newone")
+            assert conn is not None and conn.id == "newone" and conn.module_id == "newone"
+            assert core.modules.get("newone").role == "workspace"
+        finally:
+            await raw.close()
+
+
+async def test_hello_with_legacy_module_id_only_is_accepted_on_both_paths(tmp_path):
+    async with running_core(tmp_path) as core:
+        for path_url, mid in ((core.url, "oldone"), (core.url_ws, "oldtwo")):
+            raw = RawModule(core, manifest(mid), url=path_url, hello_drop=("id", "role"))
+            try:
+                assert (await raw.hello()).type == "welcome"
+                assert core.hub.connection(mid) is not None and core.modules.get(mid).connected
+            finally:
+                await raw.close()
+
+
+async def test_hello_with_conflicting_id_and_module_id_is_rejected(tmp_path):
+    async with running_core(tmp_path) as core:
+        raw = RawModule(core, manifest("one"), hello_extra={"module_id": "two"})
+        try:
+            reply = await raw.hello()
+            assert reply.type == "reject" and "module_id" in reply.body["reason"]
+        finally:
+            await raw.close()
+
+
+async def test_hello_role_must_match_manifest_role(tmp_path):
+    async with running_core(tmp_path) as core:
+        raw = RawModule(core, manifest("one", role="service"), hello_extra={"role": "workspace"})
+        try:
+            reply = await raw.hello()
+            assert reply.type == "reject" and "role" in reply.body["reason"]
+        finally:
+            await raw.close()
+
+
+async def test_both_paths_check_the_token(tmp_path):
+    async with running_core(tmp_path) as core:
+        async with aiohttp.ClientSession() as s:
+            for url in (core.url, core.url_ws):
+                with pytest.raises(aiohttp.WSServerHandshakeError) as e:
+                    await s.ws_connect(url, headers={"Authorization": "Bearer nope"})
+                assert e.value.status == 401
+
+
+async def test_sdk_client_connects_by_new_path(tmp_path):
+    async with running_core(tmp_path) as core:
+        client = build_client(interval=0.01, url=core.url_ws, token=core.token)
+        async with running_client(client, core):
+            assert core.modules.get("echo").connected
+
+
+async def test_role_and_ownership_come_from_declaration_and_manifest_wins(tmp_path):
+    async with running_core(tmp_path) as core:
+        core.modules.declare("decl_ws", role="workspace", ownership="shared")
+        core.modules.declare("decl_svc", role="service")
+        core.modules.declare("decl_mix", role="workspace", ownership="shared")
+        core.modules.declare("ext", role="service", external=True)
+        assert (core.modules.get("decl_ws").role, core.modules.get("decl_ws").ownership) == ("workspace", "shared")
+        assert (core.modules.get("decl_svc").role, core.modules.get("decl_svc").ownership) == ("service", None)
+        raws = [RawModule(core, manifest("decl_ws")),                                         # манифест молчит: из файла
+                RawModule(core, manifest("decl_svc")),
+                RawModule(core, manifest("decl_mix", ownership="owned")),                      # манифест главнее файла
+                RawModule(core, manifest("undeclared", role="service"))]                       # записи нет, манифест задаёт роль
+        try:
+            for raw in raws:
+                assert (await raw.hello()).type == "welcome"
+            by = {r.id: r for r in core.modules.records.values()}
+            assert (by["decl_ws"].role, by["decl_ws"].ownership) == ("workspace", "shared")
+            assert (by["decl_svc"].role, by["decl_svc"].ownership) == ("service", None)        # файл: service, манифест не спорит
+            assert (by["decl_mix"].role, by["decl_mix"].ownership) == ("workspace", "owned")
+            assert (by["undeclared"].role, by["undeclared"].ownership) == ("service", None)
+            snap = {row["id"]: row for row in core.modules.snapshot()}
+            assert snap["decl_mix"]["ownership"] == "owned" and snap["decl_svc"]["role"] == "service"
+        finally:
+            for raw in raws:
+                await raw.close()
+
+
+async def test_manifest_role_overrides_declared_role(tmp_path):
+    async with running_core(tmp_path) as core:
+        core.modules.declare("flip", role="workspace", ownership="shared")
+        raw = RawModule(core, manifest("flip", role="service"))
+        try:
+            assert (await raw.hello()).type == "welcome"
+            rec = core.modules.get("flip")
+            assert (rec.role, rec.ownership) == ("service", None)
+        finally:
+            await raw.close()
+
+
+async def test_external_service_is_a_service_that_is_never_connected(tmp_path):
+    async with running_core(tmp_path) as core:
+        core.modules.declare("ext", title="Внешний", role="service", external=True)
+        row = next(r for r in core.modules.snapshot() if r["id"] == "ext")
+        assert row["role"] == "service" and row["external"] is True and row["ownership"] is None
+        assert row["connected"] is False and row["status"] == "offline" and row["status_text"] == "не отвечает"
+        assert core.hub.connection("ext") is None

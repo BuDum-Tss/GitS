@@ -1,4 +1,4 @@
-"""Мелочи ТЗ 02: настройки modules (CORE-40), инструмент set_profile, видимость старых манифестов, планировщик и задачи."""
+"""Мелочи ТЗ 02: настройки peers (CORE-40, прежний ключ modules переносится), инструмент set_profile, видимость старых манифестов, планировщик и задачи."""
 import asyncio
 
 import pytest
@@ -13,27 +13,53 @@ from router import Router
 from user_memory import UserMemory
 
 
-def test_modules_setting_merges_one_level_deep():
-    assert settings.load()["modules"] == {}
-    settings.update(modules={"echo": {"enabled": True}})
-    settings.update(modules={"echo": {"poll_seconds": 9}, "voice": {"enabled": False}})
-    assert settings.load()["modules"] == {"echo": {"enabled": True, "poll_seconds": 9}, "voice": {"enabled": False}}
-    settings.update(modules={"echo": {"enabled": False}})
-    assert settings.load()["modules"]["echo"] == {"enabled": False, "poll_seconds": 9}
-    settings.update(volume=50)                                  # прочие настройки не трогают modules
-    assert settings.load()["modules"]["voice"] == {"enabled": False}
+def test_peers_setting_merges_one_level_deep():
+    assert settings.load()["peers"] == {}
+    settings.update(peers={"echo": {"enabled": True}})
+    settings.update(peers={"echo": {"poll_seconds": 9}, "voice": {"enabled": False}})
+    assert settings.load()["peers"] == {"echo": {"enabled": True, "poll_seconds": 9}, "voice": {"enabled": False}}
+    settings.update(peers={"echo": {"enabled": False}})
+    assert settings.load()["peers"]["echo"] == {"enabled": False, "poll_seconds": 9}
+    settings.update(volume=50)                                  # прочие настройки не трогают peers
+    assert settings.load()["peers"]["voice"] == {"enabled": False}
 
 
 def test_defaults_are_not_shared_between_loads():
     a = settings.load()
-    a["modules"]["x"] = {"enabled": True}
-    assert settings.load()["modules"] == {} and settings.DEFAULTS["modules"] == {}
+    a["peers"]["x"] = {"enabled": True}
+    assert settings.load()["peers"] == {} and settings.DEFAULTS["peers"] == {}
 
 
-def test_modules_setting_survives_broken_value(tmp_path):
-    (tmp_path / "settings.json").write_text('{"modules": 5, "volume": 10}', encoding="utf-8")
+def test_peers_setting_survives_broken_value(tmp_path):
+    (tmp_path / "settings.json").write_text('{"peers": 5, "volume": 10}', encoding="utf-8")
     settings.init(str(tmp_path))
-    assert settings.load()["modules"] == {} and settings.load()["volume"] == 10
+    assert settings.load()["peers"] == {} and settings.load()["volume"] == 10
+
+
+def test_legacy_modules_key_is_migrated_to_peers_once(tmp_path):
+    import json
+    path = tmp_path / "settings.json"
+    path.write_text('{"modules": {"echo": {"enabled": false, "poll": 3}}, "volume": 10}', encoding="utf-8")
+    settings.init(str(tmp_path))
+    assert settings.load()["peers"] == {"echo": {"enabled": False, "poll": 3}} and settings.load()["volume"] == 10
+    saved = json.loads(path.read_text(encoding="utf-8"))                # файл переписан: старого ключа нет
+    assert "modules" not in saved and saved["peers"]["echo"]["poll"] == 3
+    settings.update(peers={"echo": {"enabled": True}})
+    assert settings.load()["peers"]["echo"] == {"enabled": True, "poll": 3}
+
+
+def test_existing_peers_key_wins_over_legacy_modules(tmp_path):
+    (tmp_path / "settings.json").write_text('{"modules": {"a": {"enabled": false}}, "peers": {"b": {"enabled": false}}}',
+                                            encoding="utf-8")
+    settings.init(str(tmp_path))
+    assert settings.load()["peers"] == {"b": {"enabled": False}}
+
+
+def test_peer_entry_falls_back_to_legacy_modules_key():
+    cfg = {"peers": {"a": {"enabled": False}}, "modules": {"a": {"enabled": True}, "b": {"enabled": False}}}
+    assert settings.peer_entry(cfg, "a") == {"enabled": False}          # peers главнее
+    assert settings.peer_entry(cfg, "b") == {"enabled": False}          # нет в peers: старый ключ
+    assert settings.peer_entry(cfg, "c") is None
 
 
 def test_profile_setting_default_is_auto():

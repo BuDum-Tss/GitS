@@ -5,7 +5,7 @@
   - компаньон (companion): разговор, память, проактивность, граф памяти;
   - дашборд (порт 8766, только localhost): состояние, чат, настройки;
   - шина модулей (ТЗ 02): модули подключаются сами по WebSocket (/module/ws в том же приложении), супервизор запускает и
-    перезапускает их процессы из agent/modules.yaml, профили в agent/profiles/ решают, какие инструменты видны. Telegram
+    перезапускает их процессы из agent/peers.yaml, профили в agent/profiles/ решают, какие инструменты видны. Telegram
     (канал, бот, её аккаунт) это модуль modules/telegram (ТЗ 10): в процессе ядра его кода нет. Игра RimWorld это модуль rimworld
     из отдельного репозитория rimworld-module (ТЗ 11): приказы идут его инструментом order, состояние и события приходят по шине.
     Весь звук (микрофон, распознавание, узнавание голосов, синтез, воспроизведение, слух системного звука) это модуль voice
@@ -32,12 +32,13 @@ import memory_migration
 import task_wiring
 import profile_manager
 import settings
+from gits_sdk import protocol as P
 import speech_out
 import supervisor as supervisor_mod
 import tool_search
 from app.workspace_manager import WorkspaceManager
 from attention import Attention
-from app.module_link import ModuleLink
+from app.workspace_link import WorkspaceLink
 from character_switch import CharacterSwitch
 from companion import Companion
 from conversation_io import ConversationIO
@@ -53,8 +54,8 @@ from app.node_panel import NodePanel
 from app.work_loop import WorkLoop
 from app.handlers.game import make_colonists_handler, make_run_lost_hook
 from app.handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
-from module_hub import ModuleHub
-from module_registry import ModuleRegistry
+from peer_hub import PeerHub
+from peer_registry import PeerRegistry
 from graph_memory import GraphMemory
 from relationships import Relationships
 from router import Router
@@ -98,15 +99,15 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     requests = CoreRequests(attention=attention, memory_reader=getattr(companion, "memory_reader", None),
                             memory_writer=getattr(companion, "memory_writer", None))
     holder: dict = {}                                    # profiles появится ниже, а реестру и шине он нужен уже при создании
-    modules = ModuleRegistry(registry, on_state=lambda: (holder["profiles"].poke(), holder["workspaces"].check()))
-    hub = ModuleHub(modules, sink=AttentionEventSink(attention, presence, recorder=_module_event_recorder(modules, attention)), requests=requests, battery_source=battery,
+    modules = PeerRegistry(registry, on_state=lambda: (holder["profiles"].poke(), holder["workspaces"].check()))
+    hub = PeerHub(modules, sink=AttentionEventSink(attention, presence, recorder=_module_event_recorder(modules, attention)), requests=requests, battery_source=battery,
                     presence=presence, profile_source=lambda: holder["profiles"].info())
     hub.attention = attention                            # только для диагностики и тестов: шина работает через sink (ARC-7)
     io.hub = hub
     attention.hub, attention.modules = hub, modules
     # среды агента: среду модуля объявляет его манифест и включает только импульс (сообщение пользователя, самоимпульс);
-    # обмен с модулем (вход, выход, возобновление) делает ModuleLink
-    link = ModuleLink(connection_of=hub.connection)
+    # обмен с модулем (вход, выход, возобновление) делает WorkspaceLink
+    link = WorkspaceLink(connection_of=hub.connection)
 
     async def enter_module(ws: str, goal: str) -> dict:
         if not goal:                                     # вход без новой цели: вернуть приостановленную задачу, если она есть
@@ -188,8 +189,8 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
 
     specs = supervisor_mod.load_specs() if specs is None else specs
     for spec in specs:
-        modules.declare(spec.id, title=spec.title, default_enabled=spec.enabled, kind=spec.kind,
-                        description=spec.description, dev=spec.dev)
+        modules.declare(spec.id, title=spec.title, default_enabled=spec.enabled, role=spec.role, ownership=spec.ownership,
+                        external=spec.external, description=spec.description, dev=spec.dev)
     for planned in supervisor_mod.load_planned():
         modules.declare_planned(planned.id, title=planned.title, tz=planned.tz)
 
@@ -204,7 +205,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         """Запуск процесса модуля супервизором (правило 14): объявление идёт через очередь внимания, как у инструментов."""
         await attention.submit_announce(module_id, text, data={"source": "supervisor"})
 
-    sup = supervisor_mod.Supervisor(specs, token=hub.token, core_url=f"ws://127.0.0.1:{port}/module/ws",
+    sup = supervisor_mod.Supervisor(specs, token=hub.token, core_url=f"ws://127.0.0.1:{port}{P.WS_PATH_NEW}",
                                     enabled=modules.is_enabled, is_connected=hub.is_connected,
                                     send_shutdown=send_shutdown, memory_dir=settings.memory_dir(),
                                     announce=announce_launch,

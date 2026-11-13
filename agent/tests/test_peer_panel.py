@@ -13,7 +13,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from hub_helpers import RawModule, manifest, running_core, tool
 
 import dashboard
-import module_panel
+import peer_panel
 from gits_sdk import protocol as P
 
 PANEL = {
@@ -52,9 +52,9 @@ async def panel_http(core):
     """Дашборд на тестовом сервере: только маршруты пространства и раздачи файлов."""
     dashboard.set_modules(core.modules, core.hub, None)
     app = web.Application()
-    app.router.add_get("/api/modules/{id}/panel", dashboard.handle_api_module_panel)
-    app.router.add_post("/api/modules/{id}/panel/action", dashboard.handle_api_module_panel_action)
-    app.router.add_post("/api/modules/{id}/panel/link", dashboard.handle_api_module_panel_link)
+    app.router.add_get("/api/modules/{id}/panel", dashboard.handle_api_peer_panel)
+    app.router.add_post("/api/modules/{id}/panel/action", dashboard.handle_api_peer_panel_action)
+    app.router.add_post("/api/modules/{id}/panel/link", dashboard.handle_api_peer_panel_link)
     app.router.add_get("/api/artifact", dashboard.handle_api_artifact)
     client = TestClient(TestServer(app))
     await client.start_server()
@@ -275,7 +275,7 @@ async def test_reveal_link_only_inside_serve_dirs(tmp_path, monkeypatch):
     outside = tmp_path / "outside"
     outside.mkdir()
     opened: list[Path] = []
-    monkeypatch.setattr(module_panel, "reveal", lambda path: opened.append(path))
+    monkeypatch.setattr(peer_panel, "reveal", lambda path: opened.append(path))
     panel = {"serve_dirs": [str(jobs)], "links": [
         {"id": "folder", "label": "Папка", "kind": "reveal_path", "path": str(jobs)},
         {"id": "outside", "label": "Чужая", "kind": "reveal_path", "path": str(outside)},
@@ -379,21 +379,21 @@ async def test_artifact_symlink_to_outside_is_refused(tmp_path):
 
 def test_served_file_helpers(tmp_path):
     jobs, video, secret = _video(tmp_path)
-    assert module_panel.served_file([str(jobs)], str(video)) == video.resolve()
-    assert module_panel.served_file([str(jobs)], str(secret)) is None
-    assert module_panel.served_file([str(jobs)], "relative.mp4") is None
-    assert module_panel.served_file([], str(video)) is None
-    assert module_panel.served_dir([str(jobs)], str(jobs)) == jobs.resolve()
-    assert module_panel.served_dir([str(jobs)], str(tmp_path)) is None
-    assert module_panel.bad_name("a/b") and module_panel.bad_name("..") and not module_panel.bad_name("a.mp4")
+    assert peer_panel.served_file([str(jobs)], str(video)) == video.resolve()
+    assert peer_panel.served_file([str(jobs)], str(secret)) is None
+    assert peer_panel.served_file([str(jobs)], "relative.mp4") is None
+    assert peer_panel.served_file([], str(video)) is None
+    assert peer_panel.served_dir([str(jobs)], str(jobs)) == jobs.resolve()
+    assert peer_panel.served_dir([str(jobs)], str(tmp_path)) is None
+    assert peer_panel.bad_name("a/b") and peer_panel.bad_name("..") and not peer_panel.bad_name("a.mp4")
 
 
 def test_action_result_rules():
     hosts = ["example.com"]
-    assert module_panel.action_result({"ok": True, "open_url": "http://localhost:3000"}, hosts)["open_url"]
-    assert module_panel.action_result({"ok": True, "open_url": "https://example.com/a"}, hosts)["open_url"]
-    assert "open_url" not in module_panel.action_result({"ok": True, "open_url": "file:///C:/x"}, hosts)
-    assert module_panel.action_result("не объект", hosts) == {"ok": False, "message": "модуль вернул ответ не по форме"}
+    assert peer_panel.action_result({"ok": True, "open_url": "http://localhost:3000"}, hosts)["open_url"]
+    assert peer_panel.action_result({"ok": True, "open_url": "https://example.com/a"}, hosts)["open_url"]
+    assert "open_url" not in peer_panel.action_result({"ok": True, "open_url": "file:///C:/x"}, hosts)
+    assert peer_panel.action_result("не объект", hosts) == {"ok": False, "message": "модуль вернул ответ не по форме"}
 
 
 def test_panel_spec_has_serve_dirs_for_core():

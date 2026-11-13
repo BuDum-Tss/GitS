@@ -61,7 +61,7 @@ class ConversationIO:
 
     def __init__(self, companion, hub=None):
         self.companion = companion
-        self.hub = hub                       # ModuleHub: для deliver; ставится ядром после создания шины
+        self.hub = hub                       # PeerHub: для deliver; ставится ядром после создания шины
 
     async def submit(self, ui: UserInput) -> None:
         """Обращение пользователя: обычный путь компаньона, ответ уйдёт в канал обращения."""

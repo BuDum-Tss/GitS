@@ -650,7 +650,7 @@ async def test_answer_before_the_question_was_voiced_removes_it_from_the_queue(r
 
 
 async def test_question_goes_to_telegram_when_user_is_away(rig):
-    conn = SimpleNamespace(module_id="telegram", manifest={"capabilities": ["chat.channel"]})
+    conn = SimpleNamespace(id="telegram", manifest={"capabilities": ["chat.channel"]})
     rig.att.hub = SimpleNamespace(connections=lambda: [conn])
     rig.modules.declare("telegram")
     rig.idle = 700
@@ -667,7 +667,7 @@ async def test_question_goes_to_telegram_when_user_is_away(rig):
 
 
 async def test_question_stays_in_voice_when_user_is_near_or_no_channel_module(rig):
-    conn = SimpleNamespace(module_id="telegram", manifest={"capabilities": ["chat.channel"]})
+    conn = SimpleNamespace(id="telegram", manifest={"capabilities": ["chat.channel"]})
     rig.att.hub = SimpleNamespace(connections=lambda: [conn])
     for idle, hub in ((599, rig.att.hub), (700, SimpleNamespace(connections=lambda: []))):
         rig.idle, rig.att.hub = idle, hub

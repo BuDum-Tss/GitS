@@ -84,7 +84,8 @@
         <a role="tab" class="tab tab-active" data-tab="status">Состояние</a>
         <a role="tab" class="tab" data-tab="memory">Память</a>
         <a role="tab" class="tab" data-tab="thoughts" title="Журнал мыслей и напоминания себе">Мысли</a>
-        <a role="tab" class="tab" data-tab="modules">Модули</a>
+        <a role="tab" class="tab" data-tab="workspaces" title="Окружения: рабочие места агента (игры, мессенджеры, монтаж, компьютер)">Окружения</a>
+        <a role="tab" class="tab" data-tab="services" title="Сервисы: голос, питомец, классификатор, синтез речи">Сервисы</a>
         <a role="tab" class="tab" data-tab="events">События</a>
         <a role="tab" class="tab" data-tab="arch" title="Схема архитектуры ядра">Схема</a>
         <a role="tab" class="tab" data-tab="settings" title="Настройки" aria-label="Настройки" style="flex:0 0 auto;width:2rem;padding:0;margin-left:auto"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
@@ -148,7 +149,7 @@
           <div id="flow-box" class="mt-3">
             <div class="flex flex-wrap items-center gap-3">
               <div class="font-medium">Поток данных</div>
-              <span id="flow-only-core" class="badge badge-sm badge-warning hidden" title="Модули не запускаются (настройка «Только ядро» или GITS_NO_MODULES=1)">только ядро</span>
+              <span id="flow-only-core" class="badge badge-sm badge-warning hidden" title="Окружения и сервисы не запускаются (настройка «Только ядро» или GITS_NO_MODULES=1)">только ядро</span>
               <span id="flow-layers" class="flex flex-wrap gap-2 text-xs"></span>
               <button id="flow-pause-btn" class="btn btn-xs btn-outline ml-auto" title="Остановить обновление схемы">пауза</button>
               <button id="flow-play-btn" class="btn btn-xs btn-outline" title="Проиграть выбранный ход по шагам">проиграть ход</button>
@@ -331,14 +332,13 @@
         </div>
       </div>
 
-      <!-- Модули и задачи -->
-      <div id="tab-modules" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
+      <!-- Окружения и сервисы (один набор карточек, две вкладки по роли участника шины) и задачи -->
+      <div id="tab-peers" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-4">
-          <!-- Подвкладки модулей (TZ 15): «Обзор» и по одной на модуль с пространством; основной ряд вкладок не меняется -->
-          <div id="mod-subtabs" role="tablist" aria-label="Вкладки модулей" class="tabs tabs-bordered flex-nowrap overflow-x-auto whitespace-nowrap w-full"></div>
+          <!-- Подвкладки (TZ 15): «Обзор» и по одной на участника с пространством; основной ряд вкладок не меняется -->
+          <div id="mod-subtabs" role="tablist" aria-label="Вкладки окружений и сервисов" class="tabs tabs-bordered flex-nowrap overflow-x-auto whitespace-nowrap w-full"></div>
           <div id="mod-overview" class="space-y-4">
-            <section><h3 class="font-semibold mb-2">Модули</h3><div id="mod-list" class="space-y-3"></div></section>
-            <section id="core-section" class="hidden"><h3 class="font-semibold mb-2">Ядро</h3><div id="core-list" class="space-y-3"></div></section>
+            <section><h3 id="mod-list-title" class="font-semibold mb-2">Окружения</h3><div id="mod-list" class="space-y-3"></div></section>
             <section><h3 class="font-semibold mb-2">Задачи</h3><ul id="job-list" class="space-y-2 text-sm"></ul></section>
           </div>
           <div id="mod-page" class="hidden"></div>
@@ -459,9 +459,10 @@ showMemPane(['user', 'plan', 'eps', 'facts'].includes(savedPane) ? savedPane : '
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('tab-active', t === tab));
-  ['status', 'memory', 'thoughts', 'modules', 'events', 'arch', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
+  const paneOf = n => (n === 'workspaces' || n === 'services') ? 'peers' : n;
+  ['status', 'memory', 'thoughts', 'peers', 'events', 'arch', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== paneOf(tab.dataset.tab)));
   if (tab.dataset.tab === 'status') { loadModes().catch(() => {}); loadWorkspace().catch(() => {}); loadBuffer().catch(() => {}); }
-  if (tab.dataset.tab === 'modules') { loadModules().catch(() => {}); }
+  if (paneOf(tab.dataset.tab) === 'peers') { setPeerRole(tab.dataset.tab === 'services' ? 'service' : 'workspace'); loadModules().catch(() => {}); }
   if (tab.dataset.tab === 'thoughts') { loadThoughts().catch(() => {}); }
   if (tab.dataset.tab === 'memory') { loadFacts().catch(() => {}); }
   if (tab.dataset.tab === 'arch') { showArch(); }
@@ -829,7 +830,7 @@ $('approval-no').onclick = async () => { await post('/api/approval', {allow: fal
 // ── настройки: описаны схемой, форма строится и обновляется из неё ──
 const HOTKEYS = ['Ctrl+Shift+Space', 'Alt+Shift+Space', 'Ctrl+Alt+A', 'Ctrl+Alt+Q'];
 // Каталог всех общих настроек. Настройки модулей (голос, питомец, компьютер, Telegram, RimWorld) показываются на странице
-// самого модуля (вкладка «Модули»), здесь, в общих, остаётся только то, что принадлежит ядру.
+// самого модуля (вкладки «Окружения» и «Сервисы»), здесь, в общих, остаётся только то, что принадлежит ядру.
 const SETTINGS_CATALOG = [
   {title: 'Голос и питомец', items: [
     {key: 'voice_muted', type: 'toggle', invert: true, label: 'Озвучка', hint: 'Выключает голос, текст остаётся в чате и в облачке. Горячая клавиша Ctrl+Alt+M.'},
@@ -870,8 +871,8 @@ const SETTINGS_CATALOG = [
     {key: 'telegram_voice', type: 'toggle', label: 'Посты голосом', hint: 'Пост уходит голосовым сообщением её голосом, текст остаётся подписью.'},
     {key: 'telegram_confirm', type: 'toggle', label: 'Спрашивать перед публикацией', hint: 'Если выключено, она публикует сама.'}]},
   {title: 'Для разработчиков', items: [
-    {key: 'only_core', type: 'toggle', label: 'Только ядро (без модулей)', hint: 'Супервизор не запускает модули (голос, Telegram, питомец, игры), службы вроде классификатора остаются. Применяется при следующем запуске ядра. То же делает переменная GITS_NO_MODULES=1.'},
-    {key: 'dev_mode', type: 'toggle', label: 'Режим разработчика', hint: 'Во вкладке «Модули» показывает примеры для разработчиков (пример модуля на SDK).'}]},
+    {key: 'only_core', type: 'toggle', label: 'Только ядро (без окружений и сервисов)', hint: 'Супервизор не запускает окружения и сервисы (голос, Telegram, питомец, игры), службы вроде классификатора остаются. Применяется при следующем запуске ядра. То же делает переменная GITS_NO_MODULES=1.'},
+    {key: 'dev_mode', type: 'toggle', label: 'Режим разработчика', hint: 'Во вкладке «Окружения» показывает примеры для разработчиков (пример окружения на SDK).'}]},
   {title: 'Безопасность', danger: true, items: [
     {key: 'auto_accept', type: 'toggle', label: 'Авто-разрешать все действия',
      hint: 'Она будет выполнять действия без вопросов: команды, запись файлов, игровые команды. Всё равно спрашивается: удаление данных, файлы с секретами, установка программ, запись вне проекта. Включай, только если доверяешь всему, что она читает (страницы, файлы): такой текст может пытаться ею управлять. Включается только здесь и в трее, не из чата.'}]},
@@ -1303,7 +1304,14 @@ const MOD_STATUS = {connected: ['подключён', 'badge-success'], disabled
 const JOB_STATE = {queued: ['в очереди', 'badge-ghost'], running: ['идёт', 'badge-info'], waiting_user: ['ждёт ответа', 'badge-warning'],
   done: ['готово', 'badge-success'], failed: ['сбой', 'badge-error'], cancelled: ['отменена', 'badge-ghost']};
 const JOB_FINISHED = ['done', 'failed', 'cancelled'];
-const MD2 = {sig: '', jobSig: '', coreSig: ''};
+const MD2 = {sig: '', jobSig: ''};
+// Вкладки «Окружения» и «Сервисы» показывают один и тот же набор карточек, разделённый по роли участника шины (role)
+const PEERS = {role: 'workspace'};
+function setPeerRole(role) {
+  if (PEERS.role === role) return;
+  PEERS.role = role; MD2.sig = MD2.jobSig = ''; MODTAB.selected = 'overview'; MODTAB.sig = ''; MODTAB.pageSig = '';
+  $('mod-list-title').textContent = role === 'service' ? 'Сервисы' : 'Окружения';
+}
 
 // Общая настройка (ядра), которую показывает страница модуля: те же значения, что раньше были во вкладке настроек
 function sharedSettingControl(it) {
@@ -1326,7 +1334,8 @@ function modSettingControl(m, key, spec) {
 
 function renderModule(m) {
   let [label, cls] = MOD_STATUS[m.status] || [m.status_text || m.status, 'badge-ghost'];
-  const service = m.kind === 'service';
+  const service = !!m.external;
+  const own = m.role === 'workspace' && m.ownership ? `<span class="badge badge-outline badge-xs" title="${m.ownership === 'shared' ? 'общее окружение: берётся в аренду' : 'своё окружение: живёт внутри ядра персонажа'}">${m.ownership === 'shared' ? 'общее' : 'своё'}</span>` : '';
   if (service && m.status === 'running') [label, cls] = ['работает', 'badge-success'];        // сервис: «запущен» значит отвечает на health
   if (service && m.status === 'offline') [label, cls] = ['не отвечает', 'badge-ghost'];
   const tools = (m.tools || []).map(t => `<li class="flex items-start gap-2"><span class="badge ${(RISK[t.risk] || RISK.ask)[1]} badge-xs shrink-0 mt-1">${esc((RISK[t.risk] || RISK.ask)[0])}</span>
@@ -1336,11 +1345,11 @@ function renderModule(m) {
   const canRestart = m.status !== 'offline' || m.pid;
   return `<div class="border border-base-300 rounded-lg p-3" data-module="${esc(m.id)}">
     <div class="flex items-center justify-between gap-2">
-      <span class="font-medium min-w-0">${esc(m.title)} <span class="opacity-50 text-xs font-mono">${esc(m.id)} ${esc(m.version || '')}</span></span>
+      <span class="font-medium min-w-0">${esc(m.title)} <span class="opacity-50 text-xs font-mono">${esc(m.id)} ${esc(m.version || '')}</span> ${own}</span>
       <span class="flex items-center gap-2 shrink-0">
         <span class="badge ${cls} badge-sm" title="${esc(m.status_text || '')}">${esc(label)}</span>
         <button class="btn btn-ghost btn-xs" data-act="restart" data-id="${esc(m.id)}" title="Перезапустить процесс" ${canRestart ? '' : 'disabled'}>↻</button>
-        ${service ? '' : `<input type="checkbox" class="toggle toggle-sm" data-act="enable" data-id="${esc(m.id)}" ${m.enabled ? 'checked' : ''} title="Включить или выключить модуль">`}
+        ${service ? '' : `<input type="checkbox" class="toggle toggle-sm" data-act="enable" data-id="${esc(m.id)}" ${m.enabled ? 'checked' : ''} title="Включить или выключить">`}
       </span></div>
     <div class="text-xs opacity-70 bubble-text">${esc(m.description || '')}</div>
     ${m.state_summary ? `<div class="text-xs mt-1">Сейчас: ${esc(m.state_summary)}</div>` : ''}
@@ -1397,7 +1406,7 @@ const STYLE_CLS = {primary: 'btn-neutral', danger: 'btn-error', default: ''};
 function modTabStored() { try { return localStorage.getItem('gits.modulesTab') || 'overview'; } catch (_) { return 'overview'; } }
 function modTabSave(key) { try { localStorage.setItem('gits.modulesTab', key); } catch (_) { /* хранилище закрыто: выбор только на эту сессию */ } }
 MODTAB.selected = modTabStored();
-const panelModules = mods => mods.filter(m => m.kind === 'module' && m.panel && (m.enabled || m.connected));
+const panelModules = mods => mods.filter(m => !m.external && m.panel && (m.enabled || m.connected));
 const safeHttp = url => /^https?:\/\//i.test(String(url || '')) ? esc(url) : '#';
 const artifactUrl = (module, job, name) => `/api/artifact?module=${encodeURIComponent(module)}&job=${encodeURIComponent(job)}&name=${encodeURIComponent(name)}`;
 const dotCls = m => m.connected ? 'bg-success' : (m.status === 'crashed' || m.status === 'backoff' || m.last_error) ? 'bg-error' : 'bg-base-300';
@@ -1507,10 +1516,10 @@ function modPageHtml(m, data, jobs, events) {
     <details class="rounded-box border border-base-300 p-3" data-svc="${esc(m.id)}" ${svcOpen ? 'open' : ''}>
       <summary class="cursor-pointer text-sm font-medium">Служебное</summary>
       <div class="space-y-4 mt-3">
-        <section><div class="text-sm font-medium mb-2">Задачи модуля</div><ul class="space-y-2 text-sm">${jobs.map(renderJob).join('') || '<li class="opacity-60">Задач нет.</li>'}</ul></section>
+        <section><div class="text-sm font-medium mb-2">Задачи</div><ul class="space-y-2 text-sm">${jobs.map(renderJob).join('') || '<li class="opacity-60">Задач нет.</li>'}</ul></section>
 
         ${tools ? `<section><div class="text-sm font-medium mb-2">Инструменты (${m.tools.length})</div><ul class="space-y-1">${tools}</ul></section>` : ''}
-        <section><div class="text-sm font-medium mb-2">События модуля</div><ul class="space-y-1">${modEventRows(events)}</ul></section>
+        <section><div class="text-sm font-medium mb-2">События</div><ul class="space-y-1">${modEventRows(events)}</ul></section>
       </div>
     </details>
   </div>`;
@@ -1527,20 +1536,18 @@ async function renderModPage(mods, jobs) {
 }
 
 async function loadModules() {
-  if ($('tab-modules').classList.contains('hidden')) return;
-  const [mods, jobs] = await Promise.all([fetch('/api/modules').then(r => r.json()), fetch('/api/jobs').then(r => r.json())]);
-  const typing = $('tab-modules').contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
-  const real = mods.filter(m => m.kind !== 'service' && m.kind !== 'planned'), core = mods.filter(m => m.kind === 'service'),
-    planned = mods.filter(m => m.kind === 'planned');
+  if ($('tab-peers').classList.contains('hidden')) return;
+  const svc = PEERS.role === 'service';
+  const [mods, alljobs] = await Promise.all([fetch(svc ? '/api/services' : '/api/workspaces').then(r => r.json()), fetch('/api/jobs').then(r => r.json())]);
+  const ids = new Set(mods.map(m => m.id)), jobs = alljobs.filter(j => ids.has(j.module));
+  const typing = $('tab-peers').contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
+  const real = mods.filter(m => m.kind !== 'planned'), planned = mods.filter(m => m.kind === 'planned');
   const html = real.map(renderModule).join('') + planned.map(renderPlanned).join('')
-    || '<p class="opacity-60 text-sm">Модулей пока нет. Они подключаются сами или запускаются ядром (agent/modules.yaml).</p>';
-  const chtml = core.map(renderModule).join('');
-  $('core-section').classList.toggle('hidden', !core.length);
+    || `<p class="opacity-60 text-sm">${svc ? 'Сервисов' : 'Окружений'} пока нет. Они подключаются сами или запускаются ядром (agent/peers.yaml).</p>`;
   MODTAB.serve = new Set(mods.filter(m => m.panel && (m.panel.serve_dirs || []).length).map(m => m.id));
   MODTAB.links = Object.fromEntries(mods.filter(m => m.panel).map(m => [m.id, m.panel.links || []]));
   const jhtml = jobs.map(renderJob).join('') || '<li class="opacity-60">Задач нет.</li>';
   if (!typing && MD2.sig !== html) { MD2.sig = html; $('mod-list').innerHTML = html; }
-  if (!typing && MD2.coreSig !== chtml) { MD2.coreSig = chtml; $('core-list').innerHTML = chtml; }
   if (!typing && MD2.jobSig !== jhtml) { MD2.jobSig = jhtml; $('job-list').innerHTML = jhtml; }
   // выбранный модуль исчез (выключен, отключён или снят panel): возвращаемся на «Обзор»
   if (MODTAB.selected !== 'overview' && !panelModules(mods).some(m => m.id === MODTAB.selected)) setModTab('overview');
@@ -1583,7 +1590,7 @@ $('mod-page').addEventListener('click', async e => {
     await showPanelReply(link.dataset.module, r);
   }
 });
-$('tab-modules').addEventListener('change', async e => {
+$('tab-peers').addEventListener('change', async e => {
   const el = e.target, id = el.dataset.id;
   if (el.dataset.act === 'enable') await post(`/api/modules/${encodeURIComponent(id)}/enabled`, {enabled: el.checked});
   else if (el.dataset.act === 'gset') {
@@ -1599,9 +1606,9 @@ $('tab-modules').addEventListener('change', async e => {
     const box = document.querySelector(`[data-err="${CSS.escape(id)}"]`);
     if (box) box.textContent = r.ok ? '' : (await r.json()).error;
   } else return;
-  MD2.sig = MD2.coreSig = ''; loadModules().catch(() => {});
+  MD2.sig = ''; loadModules().catch(() => {});
 });
-$('tab-modules').addEventListener('click', async e => {
+$('tab-peers').addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
   if (act === 'restart') await post(`/api/modules/${encodeURIComponent(el.dataset.id)}/restart`, {});
@@ -1612,7 +1619,7 @@ $('tab-modules').addEventListener('click', async e => {
     else if (answer === 'true') answer = true; else if (answer === 'false') answer = false;
     await post(`/api/jobs/${encodeURIComponent(el.dataset.module)}/${encodeURIComponent(el.dataset.job)}/answer`, {question_id: el.dataset.q, answer});
   } else return;
-  MD2.sig = MD2.jobSig = MD2.coreSig = ''; setTimeout(() => loadModules().catch(() => {}), 300);
+  MD2.sig = MD2.jobSig = ''; setTimeout(() => loadModules().catch(() => {}), 300);
 });
 setInterval(() => loadModules().catch(() => {}), 2000);
 

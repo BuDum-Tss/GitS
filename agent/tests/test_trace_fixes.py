@@ -10,7 +10,7 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 import dashboard
-from module_hub import ModuleHub
+from peer_hub import PeerHub
 from test_companion_attention import Rig
 
 
@@ -89,7 +89,7 @@ async def test_rating_with_a_list_body_is_a_bad_request():
 
 def test_notify_without_event_loop_does_not_leave_a_coroutine_unawaited():
     # синхронный вызов без цикла событий (старт, тесты): корутина рассылки закрывается, а не теряется с предупреждением
-    hub = object.__new__(ModuleHub)
+    hub = object.__new__(PeerHub)
     hub._tasks = set()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")

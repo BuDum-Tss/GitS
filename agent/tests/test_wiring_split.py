@@ -9,8 +9,8 @@ import dashboard
 from adapters.module_events import AttentionEventSink
 from contracts import EventSink, RequestHandler
 from core_requests import CoreRequests
-from module_hub import ModuleHub
-from module_outbound import Outbound
+from peer_hub import PeerHub
+from peer_outbound import Outbound
 
 AGENT = Path(__file__).resolve().parents[1]
 
@@ -29,7 +29,7 @@ def _imports(path: Path) -> set[str]:
 # ── R6 ────────────────────────────────────────────────────────────────────────────────────────
 
 def test_hub_does_not_import_attention_or_fast_brain():
-    for name in ("module_hub.py", "module_outbound.py"):
+    for name in ("peer_hub.py", "peer_outbound.py"):
         assert not ({"attention", "fast_brain", "companion"} & _imports(AGENT / name)), name
 
 
@@ -63,8 +63,8 @@ class FakeSink:
 
 
 def _hub(sink):
-    hub = ModuleHub(SimpleNamespace(hub=None, is_enabled=lambda *a, **k: True), sink=sink)
-    conn = SimpleNamespace(module_id="echo", spec=SimpleNamespace(emits=[]), warned_kinds=set())
+    hub = PeerHub(SimpleNamespace(hub=None, is_enabled=lambda *a, **k: True), sink=sink)
+    conn = SimpleNamespace(id="echo", spec=SimpleNamespace(emits=[]), warned_kinds=set())
     return hub, conn
 
 
@@ -108,7 +108,7 @@ PUBLIC_ROUTES = {
     ("GET", "/api/core"), ("GET", "/api/events"), ("GET", "/api/latency"), ("GET", "/api/flow"), ("GET", "/api/flow/stream"), ("GET", "/api/flow/node/{node}"), ("GET", "/api/flow/turn/{turn}"), ("POST", "/api/rating"),
     ("GET", "/api/decisions"), ("GET", "/api/capabilities"), ("GET", "/api/modes"), ("POST", "/api/appraisal_label"),
     ("POST", "/api/menu_click"), ("POST", "/api/mode"), ("POST", "/api/approval"), ("POST", "/api/memory/forget"),
-    ("GET", "/api/graph"), ("GET", "/api/graph/search"), ("POST", "/api/graph/forget"), ("GET", "/api/chat"), ("GET", "/api/modules"),
+    ("GET", "/api/graph"), ("GET", "/api/graph/search"), ("POST", "/api/graph/forget"), ("GET", "/api/chat"), ("GET", "/api/modules"), ("GET", "/api/workspaces"), ("GET", "/api/services"),
     ("POST", "/api/modules/{id}/enabled"), ("POST", "/api/modules/{id}/restart"), ("POST", "/api/modules/{id}/settings"),
     ("GET", "/api/modules/{id}/panel"), ("POST", "/api/modules/{id}/panel/action"),
     ("POST", "/api/modules/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"), ("GET", "/api/buffer"),
@@ -122,7 +122,7 @@ PUBLIC_ROUTES = {
 def test_public_urls_do_not_change():
     app = dashboard.build_app()
     got = {(r.method, r.resource.canonical) for r in app.router.routes() if r.method != "HEAD"}
-    got = {(m, p) for m, p in got if not p.startswith("/static") and p != "/module/ws"}
+    got = {(m, p) for m, p in got if not p.startswith("/static") and p not in ("/module/ws", "/ws")}
     assert got == PUBLIC_ROUTES
 
 
@@ -147,7 +147,7 @@ def test_presenters_are_pure():
         {"invalid_at": 1}]
 
 
-@pytest.mark.parametrize("module", ["context", "presenters", "routes_system", "routes_memory", "routes_modules", "routes_attention"])
+@pytest.mark.parametrize("module", ["context", "presenters", "routes_system", "routes_memory", "routes_peers", "routes_attention"])
 def test_dashboard_files_are_small(module):
     path = AGENT / "dashboard" / f"{module}.py"
     assert len(path.read_text(encoding="utf-8").splitlines()) < 320

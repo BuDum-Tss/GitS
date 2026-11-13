@@ -54,6 +54,7 @@ class PiRuntime:
         self._tasks: list[asyncio.Task] = []
         self._handlers: dict[str, asyncio.Task] = {}
         self._events: asyncio.Queue | None = None
+        self._run_id: str | None = None          # id текущего хода: конец брошенного хода (после abort) к новому не относится
         self._ready: asyncio.Future | None = None
         self._reset_fut: asyncio.Future | None = None
         self._idle_fut: asyncio.Future | None = None
@@ -222,6 +223,9 @@ class PiRuntime:
             self._put(ToolEvent(name, args))
             self._handlers[call_id] = asyncio.get_running_loop().create_task(self._exec_tool(call_id, name, args))
         elif kind == "end":
+            rid = msg.get("id")
+            if rid and self._run_id and rid != self._run_id:
+                return                                  # конец брошенного хода (после abort): к новому ходу не относится
             usage = msg.get("usage")
             self._put(EndEvent(str(msg.get("status") or "ok"), msg.get("error") or None,
                                dict(usage) if isinstance(usage, dict) else {}))
@@ -291,9 +295,10 @@ class PiRuntime:
                 self._sent_system = self._system
         queue: asyncio.Queue = asyncio.Queue()
         self._events = queue
+        self._run_id = uuid.uuid4().hex
         started = ended = False
         try:
-            if not await self._send({"type": "prompt", "id": uuid.uuid4().hex, "text": prompt}):
+            if not await self._send({"type": "prompt", "id": self._run_id, "text": prompt}):
                 ended = True
                 yield EndEvent("error", "мост среды pi не принимает запись")
                 return

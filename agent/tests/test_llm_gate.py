@@ -38,7 +38,7 @@ def test_module_usage_on_pi_does_not_drain_claude_battery(monkeypatch):
     from core_requests import CoreRequests
     recorded = []
     monkeypatch.setattr(claude_battery, "record", lambda tokens, source: recorded.append((tokens, source)))
-    conn = type("C", (), {"module_id": "desktop"})()
+    conn = type("C", (), {"id": "desktop"})()
     _runtime(monkeypatch, "pi")
     assert asyncio.run(CoreRequests._claude_usage(None, conn, {"tokens": 500})) == {} and recorded == []
     _runtime(monkeypatch, "claude")

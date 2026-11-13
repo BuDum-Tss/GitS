@@ -26,8 +26,8 @@ class DashboardContext:
     memory_dir: Path = Path("./memory")
     settings: Any = field(default_factory=SettingsModule)        # SettingsProvider
     is_local_json: Callable[[web.Request], bool] = default_is_local_json
-    modules: Any = None            # ModuleRegistry
-    hub: Any = None                # ModuleHub
+    modules: Any = None            # PeerRegistry
+    hub: Any = None                # PeerHub
     supervisor: Any = None         # Supervisor
     presence: Any = None           # PresenceTracker
     registry: Any = None           # реестр окружений

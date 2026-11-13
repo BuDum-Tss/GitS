@@ -12,7 +12,7 @@ PRESENCE_MIN_INTERVAL_S = 0.1          # CORE-5: тема presence не чаще
 
 class Outbound:
     def __init__(self, hub):
-        """hub - ModuleHub: connection/connections, _enabled, _spawn, _monotonic."""
+        """hub - PeerHub: connection/connections, _enabled, _spawn, _monotonic."""
         self._hub = hub
         self._presence_latest: dict | None = None
         self._presence_last = float("-inf")
@@ -23,10 +23,10 @@ class Outbound:
             self._presence_timer.cancel()
 
     async def safe_send_topic(self, conn, topic: str, data: dict) -> None:
-        from module_hub import ModuleError
+        from peer_hub import PeerError
         try:
             await conn.send("topic", {"topic": topic, "data": data})
-        except ModuleError:
+        except PeerError:
             pass
 
     async def send_topic(self, module_id: str, topic: str, data: dict) -> None:
@@ -77,13 +77,13 @@ class Outbound:
     async def send_job_answer(self, module_id: str, job_id: str, question_id: str, answer) -> bool:
         """Ответ на вопрос задачи (MOD-20) уходит модулю как job.answer. False: модуль не подключён (отправим при
         следующем job.update этой задачи после переподключения) или отправка не удалась."""
-        from module_hub import ModuleError
+        from peer_hub import PeerError
         conn = self._hub.connection(module_id)
         if conn is None:
             return False
         try:
             await conn.send("job.answer", {"job_id": job_id, "question_id": question_id, "answer": answer})
             return True
-        except ModuleError as e:
+        except PeerError as e:
             logger.warning(f"job.answer для {module_id}/{job_id} не отправлен: {e.message}")
             return False

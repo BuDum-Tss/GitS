@@ -396,7 +396,7 @@ def test_presence_has_the_sticker_time_field():
 
 
 async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tmp_path, monkeypatch):
-    """Настоящий процесс modules/voice (GITS_VOICE_FAKE=1: звука нет), запущенный супервизором из настоящего modules.yaml:
+    """Настоящий процесс modules/voice (GITS_VOICE_FAKE=1: звука нет), запущенный супервизором из настоящего peers.yaml:
     речь ядра -> speak -> события voice.speech -> presence -> конец; выключение модуля возвращает речь в текст."""
     import psutil
 
@@ -445,7 +445,7 @@ async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tm
         value = await layer.hub.connection("voice").request("tts.synthesize", {"text": "Проверка", "format": "wav"}, timeout=20)
         assert value["duration_ms"] > 0
         # выключение модуля: процесс завершается, речь только текстом
-        settings.update(modules={"voice": {"enabled": False}})
+        settings.update(peers={"voice": {"enabled": False}})
         layer.modules.invalidate()
         await layer.supervisor.apply("voice")
         await wait(lambda: not psutil.pid_exists(pid), 15)

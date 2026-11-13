@@ -257,7 +257,7 @@ class EventSink(Protocol):
 
 @runtime_checkable
 class RequestHandler(Protocol):
-    """Обработчик запросов модуля к ядру `core.*` (шина зовёт его для каждого запроса). Ошибки: `ModuleError`."""
+    """Обработчик запросов модуля к ядру `core.*` (шина зовёт его для каждого запроса). Ошибки: `PeerError`."""
 
     async def handle(self, conn: Any, msg_type: str, body: dict) -> Any: ...
 

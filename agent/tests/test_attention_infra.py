@@ -15,12 +15,12 @@ from test_supervisor import wait_for
 
 import dashboard
 import events_log
-import module_registry
+import peer_registry
 import settings
 from environments import builtin
 from environments.base import ToolError, validate_args
 from environments.registry import Registry
-from supervisor import ModuleSpec, Supervisor, load_specs
+from supervisor import PeerSpec, Supervisor, load_specs
 
 # ── сервис в супервизоре (ATT-2) ──────────────────────────────────────────────────────────────────
 
@@ -47,15 +47,15 @@ def make_service(tmp_path, script, health, *, command="{PYTHON}", restart="on-fa
     mod = tmp_path / "svc"
     mod.mkdir(exist_ok=True)
     (mod / "main.py").write_text(script, encoding="utf-8")
-    spec = ModuleSpec(id="decider", cwd=str(mod), command=command, args=["-u", "main.py"], restart=restart,
-                      kind="service", health_url="http://127.0.0.1:8768/health")
+    spec = PeerSpec(id="decider", cwd=str(mod), command=command, args=["-u", "main.py"], restart=restart,
+                      role="service", external=True, health_url="http://127.0.0.1:8768/health")
     sup = Supervisor([spec], token="ab" * 32, core_url="ws://127.0.0.1:1/module/ws", gits_root=tmp_path, agent_dir=tmp_path,
                      logs_dir=tmp_path / "logs", probe=health, health_interval=0.03, **kw)
     return sup
 
 
 def test_load_specs_reads_kind_and_health_url_and_validates(tmp_path):
-    path = tmp_path / "modules.yaml"
+    path = tmp_path / "peers.yaml"
     path.write_text(textwrap.dedent('''
         modules:
           - {id: plain, command: x}
@@ -65,13 +65,14 @@ def test_load_specs_reads_kind_and_health_url_and_validates(tmp_path):
     '''), encoding="utf-8")
     specs = {s.id: s for s in load_specs(path)}
     assert set(specs) == {"plain", "svc"}                                # неверные записи пропущены
-    assert specs["plain"].kind == "module" and specs["plain"].health_url == ""
-    assert specs["svc"].kind == "service" and specs["svc"].health_url.endswith("/health")
+    assert not specs["plain"].external and specs["plain"].health_url == ""
+    assert specs["svc"].external and specs["svc"].health_url.endswith("/health")
 
 
 def test_shipped_modules_yaml_declares_the_decider_service():
     spec = next(s for s in load_specs() if s.id == "decider")
-    assert (spec.kind, spec.health_url, spec.autostart, spec.restart) == ("service", "http://127.0.0.1:8768/health", True, "on-failure")
+    assert (spec.role, spec.external, spec.health_url, spec.autostart, spec.restart) == (
+        "service", True, "http://127.0.0.1:8768/health", True, "on-failure")
     assert spec.command == "{GITS}/services/decider/.venv/Scripts/python.exe" and spec.cwd == "{GITS}/services/decider"
     assert spec.args == ["decider_server.py"]
 
@@ -83,7 +84,7 @@ async def test_service_is_running_only_when_health_answers_and_gets_no_core_toke
     await wait_for(lambda: sup.status("decider")["pid"] and "сервис запущен" in (
         sup.log_path("decider").read_text(encoding="utf-8") if sup.log_path("decider").exists() else ""))
     st = sup.status("decider")
-    assert st["status"] == "starting" and st["kind"] == "service" and st["healthy"] is False
+    assert st["status"] == "starting" and st["role"] == "service" and st["external"] and st["healthy"] is False
     await wait_for(lambda: health.calls >= 2)                            # опрос идёт, пока процесс жив
     health.ok = True
     await wait_for(lambda: sup.status("decider")["status"] == "running")
@@ -134,15 +135,16 @@ async def test_service_without_its_own_python_is_not_configured_not_run_with_cor
 
 async def test_service_declared_in_registry_and_shown_with_kind(tmp_path):
     envs = Registry()
-    modules = module_registry.ModuleRegistry(envs, settings_source=lambda: {"modules": {}})
-    modules.declare("decider", title="Классификатор", kind="service")
+    modules = peer_registry.PeerRegistry(envs, settings_source=lambda: {"modules": {}})
+    modules.declare("decider", title="Классификатор", role="service", external=True)
     health = Health(True)
     sup = make_service(tmp_path, SERVICE, health)
     modules.supervisor = sup
     await sup.start()
     await wait_for(lambda: sup.status("decider")["status"] == "running")
     row = modules.snapshot()[0]
-    assert (row["id"], row["kind"], row["status"], row["connected"], row["enabled"]) == ("decider", "service", "running", True, True)
+    assert (row["id"], row["role"], row["external"], row["status"], row["connected"], row["enabled"]) == (
+        "decider", "service", True, "running", True, True)
     health.ok = False
     await sup.stop_all()
     assert modules.snapshot()[0]["connected"] is False

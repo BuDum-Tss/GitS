@@ -134,8 +134,8 @@ class AttentionContext:
         self.autopump = autopump
         self.rules = rules
         self.presence = presence
-        self.hub = None                          # ModuleHub: соединения для доставки вопросов, ставит ядро
-        self.modules = None                      # ModuleRegistry: манифесты, включённость
+        self.hub = None                          # PeerHub: соединения для доставки вопросов, ставит ядро
+        self.modules = None                      # PeerRegistry: манифесты, включённость
         self.profiles = None                     # ProfileManager: веса профиля
         # служебные события модулей, которые ядро обрабатывает само и не озвучивает: kind -> async (Item) -> None
         self.kind_handlers: dict[str, Callable] = {}

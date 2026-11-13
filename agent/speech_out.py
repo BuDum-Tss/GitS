@@ -135,7 +135,7 @@ class VoiceModuleSpeech:
     def __init__(self, presence: PresenceTracker | None = None, clock: Callable[[], float] = time.monotonic):
         self.presence = presence or PresenceTracker()
         self._clock = clock
-        self.hub = None                              # ModuleHub и ModuleRegistry: ставит ядро (attach)
+        self.hub = None                              # PeerHub и PeerRegistry: ставит ядро (attach)
         self.modules = None
         self._live: dict[str, dict] = {}             # utterance_id -> {sent, started, segment, stopping, sticker}
         self._audible_cbs: dict[str, list[Callable[[], None]]] = {}   # ждут начала звука реплики (синхронизация текста и звука)
@@ -149,7 +149,7 @@ class VoiceModuleSpeech:
             return None
         for conn in self.hub.connections():
             if "voice.output" in (conn.manifest or {}).get("capabilities", []) and (
-                    self.modules is None or self.modules.is_enabled(conn.module_id)):
+                    self.modules is None or self.modules.is_enabled(conn.id)):
                 return conn
         return None
 

@@ -1,4 +1,4 @@
-"""Режим контейнера (`GITS_CONTAINER=1`): файл модулей, допуск шины по сети, токен из окружения, без трея. Docker не нужен."""
+"""Режим контейнера (`GITS_CONTAINER=1`): файл участников, допуск шины по сети, токен из окружения, без трея. Docker не нужен."""
 from pathlib import Path
 
 import aiohttp
@@ -10,53 +10,56 @@ import supervisor
 import tray_launch
 from environments.registry import Registry
 from gits_sdk import protocol as P
-from module_hub import ModuleHub, parse_allow, remote_allowed
-from module_registry import ModuleRegistry
+from peer_hub import PeerHub, parse_allow, remote_allowed
+from peer_registry import PeerRegistry
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTAINER_FILE = ROOT / "agent" / "modules.container.yaml"
+CONTAINER_FILE = ROOT / "agent" / "peers.container.yaml"
 HARDWARE = {"voice", "pet", "desktop"}
 
 
 # ── файл модулей ────────────────────────────────────────────────────────────────
 
-def test_modules_file_default_and_override(tmp_path):
-    assert supervisor.modules_file({}) == supervisor.MODULES_YAML
-    assert supervisor.modules_file({"GITS_MODULES_FILE": "  "}) == supervisor.MODULES_YAML
-    assert supervisor.modules_file({"GITS_MODULES_FILE": "agent/x.yaml"}, tmp_path) == tmp_path / "agent" / "x.yaml"
+def test_peers_file_default_and_override(tmp_path):
+    assert supervisor.peers_file({}) == supervisor.PEERS_YAML
+    assert supervisor.peers_file({"GITS_PEERS_FILE": "  "}) == supervisor.PEERS_YAML
+    assert supervisor.peers_file({"GITS_PEERS_FILE": "agent/x.yaml"}, tmp_path) == tmp_path / "agent" / "x.yaml"
     absolute = tmp_path / "m.yaml"
-    assert supervisor.modules_file({"GITS_MODULES_FILE": str(absolute)}, tmp_path) == absolute
+    assert supervisor.peers_file({"GITS_PEERS_FILE": str(absolute)}, tmp_path) == absolute
+    assert supervisor.peers_file({"GITS_MODULES_FILE": "agent/old.yaml"}, tmp_path) == tmp_path / "agent" / "old.yaml"     # алиас
+    assert supervisor.peers_file({"GITS_PEERS_FILE": "agent/new.yaml", "GITS_MODULES_FILE": "agent/old.yaml"},
+                                 tmp_path) == tmp_path / "agent" / "new.yaml"                                          # новое имя главнее
 
 
 def test_load_specs_follows_env_file(tmp_path, monkeypatch):
     other = tmp_path / "other.yaml"
-    other.write_text("modules:\n  - id: solo\n    cwd: .\n    command: python\n", encoding="utf-8")
-    monkeypatch.setenv("GITS_MODULES_FILE", str(other))
+    other.write_text("workspaces:\n  - id: solo\n    cwd: .\n    command: python\n", encoding="utf-8")
+    monkeypatch.setenv("GITS_PEERS_FILE", str(other))
     assert [s.id for s in supervisor.load_specs()] == ["solo"]
-    monkeypatch.delenv("GITS_MODULES_FILE")
-    assert "telegram" in [s.id for s in supervisor.load_specs()]          # без переменной прежний agent/modules.yaml
+    monkeypatch.delenv("GITS_PEERS_FILE")
+    assert "telegram" in [s.id for s in supervisor.load_specs()]          # без переменной прежний agent/peers.yaml
     assert [s.id for s in supervisor.load_specs(other)] == ["solo"]       # явный путь главнее
 
 
-def test_container_modules_file_is_valid_and_hardware_free(monkeypatch):
-    monkeypatch.setenv("GITS_MODULES_FILE", "agent/modules.container.yaml")
-    assert supervisor.modules_file() == CONTAINER_FILE
+def test_container_peers_file_is_valid_and_hardware_free(monkeypatch):
+    monkeypatch.setenv("GITS_PEERS_FILE", "agent/peers.container.yaml")
+    assert supervisor.peers_file() == CONTAINER_FILE
     specs = {s.id: s for s in supervisor.load_specs()}
     assert set(specs) == {"telegram", "twitch", "obs"}
-    main = {s.id: s for s in supervisor.load_specs(ROOT / "agent" / "modules.yaml")}
+    main = {s.id: s for s in supervisor.load_specs(ROOT / "agent" / "peers.yaml")}
     for module_id, spec in specs.items():
-        assert spec.kind == "module" and spec.autostart == main[module_id].autostart and spec.restart == main[module_id].restart
+        assert spec.role == "workspace" and spec.ownership == "owned" and spec.autostart == main[module_id].autostart and spec.restart == main[module_id].restart
         assert spec.cwd == main[module_id].cwd and spec.args == main[module_id].args
     assert not set(specs) & HARDWARE
-    assert not any(s.kind == "service" for s in specs.values())            # decider и espeech внешние
+    assert not any(s.external for s in specs.values())            # decider и espeech внешние
     assert supervisor.load_planned(CONTAINER_FILE) == []
 
 
-def test_container_modules_file_has_no_hardware_modules_in_text():
+def test_container_peers_file_has_no_hardware_modules_in_text():
     data = yaml.safe_load(CONTAINER_FILE.read_text(encoding="utf-8"))
-    ids = {m["id"] for m in data["modules"]}
+    ids = {m["id"] for m in data["workspaces"]}
     assert not ids & (HARDWARE | {"decider", "espeech", "rimworld", "montage"})
-    for m in data["modules"]:
+    for m in data["workspaces"]:
         for hw in HARDWARE:
             assert f"modules/{hw}" not in m["cwd"]
 
@@ -101,9 +104,9 @@ async def test_hub_lets_allowed_network_in_and_refuses_stranger(tmp_path):
 
 
 def test_hub_reads_allow_from_environment():
-    hub = ModuleHub(ModuleRegistry(Registry()), environ={P.ENV_HUB_ALLOW: "192.168.0.0/16"})
+    hub = PeerHub(PeerRegistry(Registry()), environ={P.ENV_HUB_ALLOW: "192.168.0.0/16"})
     assert [str(n) for n in hub.allow] == ["192.168.0.0/16"]
-    assert ModuleHub(ModuleRegistry(Registry()), environ={}).allow == []        # по умолчанию только петля
+    assert PeerHub(PeerRegistry(Registry()), environ={}).allow == []        # по умолчанию только петля
 
 
 # ── токен ───────────────────────────────────────────────────────────────────────
@@ -111,18 +114,28 @@ def test_hub_reads_allow_from_environment():
 async def test_container_token_from_environment_and_no_file(tmp_path, monkeypatch):
     import settings
     monkeypatch.setattr(settings, "_dir", tmp_path)
-    hub = ModuleHub(ModuleRegistry(Registry()), environ={"GITS_CONTAINER": "1", P.ENV_TOKEN: "test-token"})
+    hub = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1", P.ENV_TOKEN: "test-token"})
     assert hub.token == "test-token"
     await hub.start()
     await hub.stop()
     assert not (tmp_path / "module_token").exists()
 
 
+async def test_container_token_legacy_alias_and_new_name_priority(tmp_path, monkeypatch):
+    import settings
+    monkeypatch.setattr(settings, "_dir", tmp_path)
+    legacy = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1", P.ENV_MODULE_TOKEN: "old-token"})
+    assert legacy.token == "old-token"                                         # прежнее имя GITS_MODULE_TOKEN читается как алиас
+    both = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1", P.ENV_MODULE_TOKEN: "old-token",
+                                                      P.ENV_TOKEN: "new-token"})
+    assert both.token == "new-token"                                           # GITS_TOKEN главнее
+
+
 async def test_container_without_token_writes_file_to_memory_dir(tmp_path, monkeypatch):
     import settings
     monkeypatch.setattr(settings, "_dir", tmp_path)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    hub = ModuleHub(ModuleRegistry(Registry()), environ={"GITS_CONTAINER": "1"})
+    hub = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1"})
     await hub.start()
     await hub.stop()
     assert (tmp_path / "module_token").read_text(encoding="utf-8") == hub.token and len(hub.token) == 64
@@ -130,7 +143,7 @@ async def test_container_without_token_writes_file_to_memory_dir(tmp_path, monke
 
 
 def test_token_from_environment_is_ignored_outside_container():
-    hub = ModuleHub(ModuleRegistry(Registry()), environ={P.ENV_TOKEN: "из .env хоста"})
+    hub = PeerHub(PeerRegistry(Registry()), environ={P.ENV_TOKEN: "из .env хоста"})
     assert hub.token != "из .env хоста" and len(hub.token) == 64               # хост: токен создаётся при каждом старте, как раньше
 
 

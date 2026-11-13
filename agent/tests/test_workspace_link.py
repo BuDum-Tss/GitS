@@ -1,5 +1,5 @@
-"""ModuleLink: вход, выход и возобновление среды модуля (запросы workspace.*, без политик)."""
-from app.module_link import ModuleLink
+"""WorkspaceLink: вход, выход и возобновление среды модуля (запросы workspace.*, без политик)."""
+from app.workspace_link import WorkspaceLink
 
 
 class Module:
@@ -17,7 +17,7 @@ class Module:
 
 
 def link_for(mod):
-    return ModuleLink(connection_of=lambda m: mod if m == "rimworld" else None)
+    return WorkspaceLink(connection_of=lambda m: mod if m == "rimworld" else None)
 
 
 async def test_activate_release_resume_cycle():

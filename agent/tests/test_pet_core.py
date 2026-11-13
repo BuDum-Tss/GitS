@@ -1,4 +1,4 @@
-"""Ядро и питомец-модуль (ТЗ 13: PET-9, PET-10, PET-11): запись в modules.yaml, {PYTHONW}, трей не запускает питомца,
+"""Ядро и питомец-модуль (ТЗ 13: PET-9, PET-10, PET-11): запись в peers.yaml, {PYTHONW}, трей не запускает питомца,
 дашборд без say.json и поля say, presence с emotion_ts, настоящий процесс питомца (без окна) под супервизором."""
 import asyncio
 import re
@@ -25,7 +25,7 @@ GITS = AGENT.parent
 def test_modules_yaml_has_the_pet_started_with_pythonw():
     pet = {s.id: s for s in load_specs()}["pet"]
     assert (pet.command, pet.args, pet.autostart, pet.restart) == ("{PYTHONW}", ["main.py"], True, "on-failure")
-    assert pet.cwd == "{GITS}/modules/pet" and pet.kind == "module"
+    assert pet.cwd == "{GITS}/modules/pet" and pet.role == "service" and not pet.external
     sup = Supervisor([pet], token="t" * 64, core_url="ws://x")
     command, cwd = sup.resolve("pet")
     assert Path(command[0]).name.lower() in ("pythonw.exe", "python.exe") and command[1:] == ["main.py"]
@@ -110,7 +110,7 @@ async def test_real_pet_process_started_by_the_supervisor_gets_presence_and_stop
         companion.presence.update(sticker="angry", sticker_ts=time.time())             # presence доходит до процесса без ошибок
         await asyncio.sleep(0.5)
         assert layer.hub.is_connected("pet") and psutil.pid_exists(pid)
-        settings.update(modules={"pet": {"enabled": False}})
+        settings.update(peers={"pet": {"enabled": False}})
         layer.modules.invalidate()
         t0 = time.monotonic()
         await layer.supervisor.apply("pet")

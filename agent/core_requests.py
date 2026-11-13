@@ -4,7 +4,7 @@
 
 Тело каждого запроса проверяется по контракту `gits_sdk.contract` (CORE-32, ТЗ 31 MC-2): обязательные поля и типы; ошибка -
 `bad_request`. Запросы со статусом planned отвечают `unavailable` с версией контракта. Ответ ядра
-всегда значение для `result.value` или `ModuleError(code, message)`; сообщения по-русски, без секретов.
+всегда значение для `result.value` или `PeerError(code, message)`; сообщения по-русски, без секретов.
 """
 import asyncio
 import logging
@@ -14,7 +14,7 @@ from typing import Any, Callable
 from gits_sdk import contract
 from gits_sdk import protocol as P
 
-from module_hub import ModuleConnection, ModuleError
+from peer_hub import PeerConnection, PeerError
 
 logger = logging.getLogger("core_requests")
 
@@ -48,25 +48,25 @@ def collect_privacy_terms(owner_name: str, people: list[str], facts: list[str]) 
     return terms
 
 
-def _bad(message: str) -> ModuleError:
-    return ModuleError("bad_request", message)
+def _bad(message: str) -> PeerError:
+    return PeerError("bad_request", message)
 
 
 class CoreRequests:
     def __init__(self, *, attention=None, router=None, privacy_terms: Callable[[], list[str]] | None = None,
                  memory_reader=None, memory_writer=None):
         """attention - менеджер внимания (submit_question); router - Router (run_tool_ex); privacy_terms - () -> личные слова
-        (core.privacy_terms; ядро ставит после создания памяти). Шина модулей (hub) нужна для core.tts: ставит ModuleHub."""
+        (core.privacy_terms; ядро ставит после создания памяти). Шина модулей (hub) нужна для core.tts: ставит PeerHub."""
         self.attention = attention
         self.router = router                      # ставится ядром после создания маршрутизатора
         self.privacy_terms = privacy_terms
         self.memory_reader = memory_reader        # MemoryReader / MemoryWriter ядра (core.memory.*); None: unavailable
         self.memory_writer = memory_writer
-        self.hub = None                           # ModuleHub: core.tts передаёт запрос модулю голоса
+        self.hub = None                           # PeerHub: core.tts передаёт запрос модулю голоса
         self.tasks = None                         # TaskService (ТЗ 32): ставит ядро; без него core.tasks недоступен
         self.episodes = None                      # EpisodeService (ТЗ 27): ставит ядро; без него core.memory.episodes недоступен
 
-    async def handle(self, conn: ModuleConnection, msg_type: str, body: Any) -> Any:
+    async def handle(self, conn: PeerConnection, msg_type: str, body: Any) -> Any:
         handler = {
             "core.ask": self._ask, "core.tts": self._tts, "core.tool.call": self._tool_call,
             "core.persona": self._persona, "core.claude_usage": self._claude_usage, "core.web_search": self._web_search,
@@ -76,9 +76,9 @@ class CoreRequests:
             "core.memory.recall": self._memory_recall, "core.memory.remember": self._memory_remember,
         }.get(msg_type)
         if contract.is_planned(msg_type):                      # MC-5: запрос описан, реализации пока нет
-            raise ModuleError("unavailable", contract.planned_message(msg_type))
+            raise PeerError("unavailable", contract.planned_message(msg_type))
         if handler is None:
-            raise ModuleError("unknown", f"ядро не знает запрос «{msg_type}»")
+            raise PeerError("unknown", f"ядро не знает запрос «{msg_type}»")
         problems = contract.validate(msg_type, body)           # MC-2: одна проверка контракта вместо вшитых схем
         if problems:
             raise _bad("; ".join(problems))
@@ -86,12 +86,12 @@ class CoreRequests:
 
     # ── core.ask ────────────────────────────────────────────────────────────
 
-    async def _ask(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _ask(self, conn: PeerConnection, body: Any) -> dict:
         if self.attention is None:
-            raise ModuleError("unavailable", "менеджер внимания не подключён")
+            raise PeerError("unavailable", "менеджер внимания не подключён")
         from attention import Question
         q = Question(kind=body["kind"], question=body["question"], options=body.get("options"),
-                     timeout_s=body.get("timeout_s", P.ASK_TIMEOUT_DEFAULT), source=conn.module_id,
+                     timeout_s=body.get("timeout_s", P.ASK_TIMEOUT_DEFAULT), source=conn.id,
                      context=body.get("context") or {}, urgency_hint=body.get("urgency_hint"))
         answer, by = await self.attention.submit_question(q)
         return {"answer": answer, "by": by}
@@ -104,61 +104,61 @@ class CoreRequests:
         if hub is None:
             return None
         for conn in hub.connections():
-            if "voice.output" in (conn.manifest or {}).get("capabilities", []) and hub.modules.is_enabled(conn.module_id):
+            if "voice.output" in (conn.manifest or {}).get("capabilities", []) and hub.modules.is_enabled(conn.id):
                 return conn
         return None
 
-    async def _tts(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _tts(self, conn: PeerConnection, body: Any) -> dict:
         """VOICE-16: синтез её голосом делает модуль голоса (запрос tts.synthesize); ядро только передаёт запрос и ответ
         {path, duration_ms}. Нет модуля голоса: unavailable."""
         voice = self._voice_connection()
         if voice is None:
-            raise ModuleError("unavailable", "модуль голоса не подключён или выключен")
+            raise PeerError("unavailable", "модуль голоса не подключён или выключен")
         value = await voice.request("tts.synthesize", {"text": body["text"],
                                                        "format": body.get("format", "wav")}, timeout=TTS_TIMEOUT_S)
         if contract.validate_response("tts.synthesize", value):
-            raise ModuleError("internal", "модуль голоса вернул неверный ответ на tts.synthesize")
+            raise PeerError("internal", "модуль голоса вернул неверный ответ на tts.synthesize")
         return {"path": value["path"], "duration_ms": value["duration_ms"]}
     # ── core.tool.call ───────────────────────────────────────────────────────
 
-    async def _tool_call(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _tool_call(self, conn: PeerConnection, body: Any) -> dict:
         if self.router is None:
-            raise ModuleError("unavailable", "маршрутизатор не подключён")
+            raise PeerError("unavailable", "маршрутизатор не подключён")
         tool = self.router.registry.get(body["tool"])
         if tool is None:
-            raise ModuleError("unknown", f"инструмента «{body['tool']}» нет")
+            raise PeerError("unknown", f"инструмента «{body['tool']}» нет")
         env = self.router.registry.envs.get(tool.env)
         if env is not None:
             ok, why = env.state()
             if not ok:
-                raise ModuleError("unavailable", f"инструмент недоступен: {why}")
+                raise PeerError("unavailable", f"инструмент недоступен: {why}")
         ok, text, code = await self.router.run_tool_ex(body["tool"], body.get("args") or {})
         if not ok:
-            raise ModuleError(code or "internal", text)
+            raise PeerError(code or "internal", text)
         return {"text": text}
 
     # ── core.memory.* ───────────────────────────────────────────────────────
 
-    async def _memory_recall(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _memory_recall(self, conn: PeerConnection, body: Any) -> dict:
         """Поиск по памяти (MemoryReader.recall): только реально совпавшие факты и эпизоды."""
         reader = self.memory_reader
         if reader is None:
-            raise ModuleError("unavailable", "память ядра не подключена")
+            raise PeerError("unavailable", "память ядра не подключена")
         items = await reader.recall(body["query"], body.get("limit") or 6)
         return {"facts": [{"text": str(i.get("text", "")), "kind": i.get("kind", "fact"),
                            "importance": int(i.get("importance", 3))} for i in items]}
 
-    async def _memory_remember(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _memory_remember(self, conn: PeerConnection, body: Any) -> dict:
         """Запись факта в личную память (MemoryWriter.add_fact); дубль сливается и даёт stored=false."""
         writer = self.memory_writer
         if writer is None:
-            raise ModuleError("unavailable", "память ядра не подключена")
+            raise PeerError("unavailable", "память ядра не подключена")
         stored = await asyncio.to_thread(writer.add_fact, body["text"].strip(), "user", 4)
         return {"stored": bool(stored)}
 
     # ── прочее ──────────────────────────────────────────────────────────────
 
-    async def _persona(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _persona(self, conn: PeerConnection, body: Any) -> dict:
         """ТЗ 05, CHR-6: карточка активного персонажа (имя, алиасы, голос), карточка характера и разделы persona.md."""
         import character
         import prompts
@@ -167,17 +167,17 @@ class CoreRequests:
         sections = await asyncio.to_thread(character.sections, ch.id)
         return {**ch.card(), "name": ch.name, "card": card, "sections": sections}
 
-    async def _privacy_terms(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _privacy_terms(self, conn: PeerConnection, body: Any) -> dict:
         """TG-12: личные слова (имя владельца, имена знакомых, имена из фактов о владельце) для фильтров публикации."""
         if self.privacy_terms is None:
-            raise ModuleError("unavailable", "список личных слов ещё не готов")
+            raise PeerError("unavailable", "список личных слов ещё не готов")
         try:
             return {"terms": await asyncio.to_thread(self.privacy_terms)}
         except Exception as e:
             logger.warning(f"core.privacy_terms: {e}")
-            raise ModuleError("internal", "не удалось собрать список личных слов") from e
+            raise PeerError("internal", "не удалось собрать список личных слов") from e
 
-    async def _claude_usage(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _claude_usage(self, conn: PeerConnection, body: Any) -> dict:
         import claude_battery
         import claude_quota
         import llm_gate
@@ -185,16 +185,16 @@ class CoreRequests:
             return {}
         if body.get("limit_text"):
             claude_quota.note(body["limit_text"])                # лимит исчерпан: батарейка обнуляется сразу
-        await asyncio.to_thread(claude_battery.record, body["tokens"], str(body.get("source") or conn.module_id))
+        await asyncio.to_thread(claude_battery.record, body["tokens"], str(body.get("source") or conn.id))
         return {}
 
-    async def _web_search(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _web_search(self, conn: PeerConnection, body: Any) -> dict:
         import web_search
         return {"text": await web_search.search(body["query"])}
 
     # ── ТЗ 31: локальная модель, журнал, путь к Claude ─────────────────────────
 
-    async def _llm_ask(self, conn: ModuleConnection, body: dict) -> dict:
+    async def _llm_ask(self, conn: PeerConnection, body: dict) -> dict:
         """Один вызов быстрой модели ядра (Claude без инструментов, `fast_brain._ask`)."""
         import fast_brain
         try:
@@ -203,10 +203,10 @@ class CoreRequests:
                 max_tokens=int(body.get("max_tokens", 40)), image_b64=body.get("image_b64"),
                 temperature=float(body.get("temperature", 0.3)), background=bool(body.get("background", False)))
         except asyncio.TimeoutError as e:
-            raise ModuleError("timeout", "модель не ответила вовремя") from e
+            raise PeerError("timeout", "модель не ответила вовремя") from e
         except Exception as e:
-            logger.warning(f"core.llm.ask от {conn.module_id}: {type(e).__name__}: {e}")
-            raise ModuleError("unavailable", "модель недоступна") from e
+            logger.warning(f"core.llm.ask от {conn.id}: {type(e).__name__}: {e}")
+            raise PeerError("unavailable", "модель недоступна") from e
         out: dict = {"text": text}
         if body.get("json"):
             data = fast_brain._json_of(text)
@@ -214,7 +214,7 @@ class CoreRequests:
                 out["data"] = data
         return out
 
-    async def _events_tail(self, conn: ModuleConnection, body: dict) -> dict:
+    async def _events_tail(self, conn: PeerConnection, body: dict) -> dict:
         import events_log
         kinds = body.get("kinds")
         if kinds:
@@ -226,11 +226,11 @@ class CoreRequests:
         rows = await asyncio.to_thread(events_log.tail, int(body.get("limit", 20)), set(kinds), float(body.get("since", 0)))
         return {"events": rows}
 
-    async def _episodes(self, conn: ModuleConnection, body: dict) -> dict:
+    async def _episodes(self, conn: PeerConnection, body: dict) -> dict:
         """ТЗ 27, EPI-9: эпизод по id (с источниками), список за сутки или поиск по смыслу."""
         svc = self.episodes
         if svc is None:
-            raise ModuleError("unavailable", "эпизоды памяти не подключены")
+            raise PeerError("unavailable", "эпизоды памяти не подключены")
         limit = int(body.get("limit", 5))
         if body.get("id"):
             ep = await svc.recall.expand(str(body["id"]))
@@ -242,17 +242,17 @@ class CoreRequests:
             return {"episodes": found}
         return {"episodes": await svc.recall.listing(limit=limit)}
 
-    async def _tasks(self, conn: ModuleConnection, body: dict) -> dict:
+    async def _tasks(self, conn: PeerConnection, body: dict) -> dict:
         """ТЗ 32: снимок задач среды (по умолчанию текущей) для панели модуля."""
         if self.tasks is None:
-            raise ModuleError("unavailable", "общие задачи не подключены")
+            raise PeerError("unavailable", "общие задачи не подключены")
         snap = await self.tasks.snapshot(body.get("workspace") or None)
         out = {"workspace": snap["workspace"], "tasks": snap["tasks"]}
         if snap.get("active"):
             out["active"] = snap["active"]
         return out
 
-    async def _claude_locate(self, conn: ModuleConnection, body: Any) -> dict:
+    async def _claude_locate(self, conn: PeerConnection, body: Any) -> dict:
         from gits_sdk import claude_path
         path = await asyncio.to_thread(claude_path.locate)
         return {"path": path} if path else {}

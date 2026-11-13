@@ -34,9 +34,10 @@ def test_montage_service_environment_and_volumes():
     compose = _compose()
     svc = compose["services"]["montage"]
     env = _env(svc)
-    assert env["GITS_CORE_URL"] == "ws://core:8766/module/ws"
-    assert env["GITS_MODULE_ID"] == "montage"
-    assert env["GITS_MODULE_TOKEN"].startswith("${GITS_MODULE_TOKEN")
+    assert env["GITS_CORE_URL"] == "ws://core:8766/ws"
+    assert env["GITS_ID"] == "montage"
+    assert env["GITS_TOKEN"].startswith("${GITS_TOKEN")
+    assert "GITS_MODULE_ID" not in env and "GITS_MODULE_TOKEN" not in env
     assert env["GITS_CHARACTER_ID"] == "${CHARACTER_ID:-glados}"
     assert env["CHARACTER_HOME"] == "/data"
     assert env["MONTAGE_OUT_DIR"] == "/data/montage/out"

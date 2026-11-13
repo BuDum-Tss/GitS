@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from test_attention import Rig, evt_log
 
-import module_registry
+import peer_registry
 from attention import Attention
 from environments.registry import Registry
 from gits_sdk import protocol as P
@@ -233,7 +233,7 @@ class FakeAttention:
 
 
 def make_registry(order, attention):
-    reg = module_registry.ModuleRegistry(Registry(), settings_source=lambda: {})
+    reg = peer_registry.PeerRegistry(Registry(), settings_source=lambda: {})
     reg.hub = SimpleNamespace(connection=lambda mid: FakeConn(order), attention=attention)
     manifest = {"id": "montage", "title": "Монтаж", "description": "Монтаж видео", "version": "0.1.0", "tools": TOOLS}
     reg._build_environment(reg.declare("montage"), P.Manifest.from_dict(manifest))

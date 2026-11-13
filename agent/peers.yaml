@@ -1,13 +1,20 @@
-# Модули, которые ядро запускает само (ТЗ 02, раздел 7). Пути: абсолютные или относительно папки agent/.
+# Участники шины, которые ядро запускает само (ТЗ 02, раздел 7). Пути: абсолютные или относительно папки agent/.
 # {GITS} (корень репозитория GitS), {PYTHON} (интерпретатор ядра), {PYTHONW} (pythonw.exe рядом с ним) и любые переменные окружения ядра в фигурных
-# скобках (после загрузки .env) подставляются. Нет переменной: модуль помечается «не настроен» и не запускается.
-# Поля: id; cwd; command; args; autostart (запускать вместе с ядром, если модуль включён); restart (always | on-failure |
-# never); enabled (включён ли, пока пользователь не выбрал сам: настройка modules.<id>.enabled в дашборде); title и description
-# (как запись называется и описывается во вкладке «Модули»; перекрывают манифест); dev: true (запись видна во вкладке только при настройке dev_mode).
-# Реальные модули: telegram - ТЗ 10, rimworld - ТЗ 11, voice - ТЗ 12, desktop - ТЗ 14, montage - ТЗ 20 (ниже).
-# Модулям передаются GITS_MODULE_TOKEN, GITS_CORE_URL, GITS_MODULE_ID и MEMORY_DIR (абсолютный путь к папке памяти ядра).
-modules:
+# скобках (после загрузки .env) подставляются. Нет переменной: запись помечается «не настроен» и не запускается.
+# Разделы: workspaces (окружения: инструменты, события, рабочее место; поле ownership: shared - общее, берётся в аренду, или
+# owned - живёт внутри ядра персонажа), services (сервисы: голос, питомец, а также внешние процессы без WebSocket: `kind: service`
+# с `health_url`) и planned (запланированные, серые карточки). Если манифест подключившегося участника содержит `role` или
+# `ownership`, они главнее записи здесь. Пути cwd пока прежние (`{GITS}/modules/...`): перенос папок делает фаза 3.
+# Поля записи: id; cwd; command; args; autostart (запускать вместе с ядром, если участник включён); restart (always | on-failure |
+# never); enabled (включён ли, пока пользователь не выбрал сам: настройка peers.<id>.enabled в дашборде); title и description
+# (как запись называется и описывается во вкладках «Окружения» и «Сервисы»; перекрывают манифест); dev: true (запись видна во вкладках
+# только при настройке dev_mode); health_url и skip_when_env (у внешних сервисов).
+# Реальные записи: telegram - ТЗ 10, rimworld - ТЗ 11, voice - ТЗ 12, desktop - ТЗ 14, montage - ТЗ 20 (ниже).
+# Участникам передаются GITS_TOKEN, GITS_CORE_URL, GITS_ID и MEMORY_DIR (абсолютный путь к папке памяти ядра); на время перехода
+# ещё и прежние GITS_MODULE_TOKEN и GITS_MODULE_ID.
+workspaces:
   - id: telegram
+    ownership: owned
     title: Telegram
     cwd: "{GITS}/modules/telegram"
     command: "{PYTHON}"
@@ -18,6 +25,7 @@ modules:
   # Twitch: чат и события канала, ответы, модерация, название трансляции. Секреты TWITCH_* модуль читает сам из .env,
   # токены входа создаёт modules/twitch/tw_login.py; без них модуль работает и пишет «не настроен».
   - id: twitch
+    ownership: owned
     title: Twitch
     cwd: "{GITS}/modules/twitch"
     command: "{PYTHON}"
@@ -28,18 +36,9 @@ modules:
   # OBS: сцены, трансляция, запись, субтитры в поток через obs-websocket. Пароль OBS_WEBSOCKET_PASSWORD (и адрес OBS_WEBSOCKET_URL)
   # модуль читает сам из .env; без OBS работает и пишет «не на связи».
   - id: obs
+    ownership: owned
     title: OBS
     cwd: "{GITS}/modules/obs"
-    command: "{PYTHON}"
-    args: ["-u", "main.py"]
-    autostart: true
-    restart: on-failure
-
-  # Голос (ТЗ 12): весь звук - микрофон, распознавание, узнавание голосов, синтез, воспроизведение, слух системного звука.
-  # Зависимости модуля: modules/voice/requirements.txt (в окружение ядра); Fish Speech и WhisperX в docker необязательны.
-  - id: voice
-    title: Голос
-    cwd: "{GITS}/modules/voice"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
@@ -48,8 +47,55 @@ modules:
   # Компьютер (ТЗ 14): экран, приложения, мышь и клавиатура, Claude-помощник для задач на ПК. Зависимости модуля:
   # modules/desktop/requirements.txt (в окружение ядра). Экран и ввод работают только в Windows.
   - id: desktop
+    ownership: shared
     title: Компьютер
     cwd: "{GITS}/modules/desktop"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
+
+  # RimWorld (ТЗ 11): модуль лежит в этом репозитории (modules/rimworld). Интерпретатор общий ({PYTHON}): зависимости игрового
+  # агента и пакет gits-sdk стоят в нём же, отдельного .venv у модуля нет. Данные модуля лежат в его папке agent/memory
+  # (RIMWORLD_MEMORY_DIR), а не в MEMORY_DIR ядра, который супервизор передаёт всем модулям.
+  - id: rimworld
+    ownership: shared
+    title: RimWorld
+    cwd: "{GITS}/modules/rimworld/agent"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
+
+  # Монтаж видео (ТЗ 20-22): модуль лежит в этом репозитории (modules/montage). Окружение у модуля своё: modules/montage/.venv
+  # (Python 3.12, claude-agent-sdk, gits-sdk), поэтому интерпретатор не {PYTHON}. Нужны Node.js и ffmpeg.
+  - id: montage
+    ownership: shared
+    title: Монтаж видео
+    cwd: "{GITS}/modules/montage/agent"
+    command: "{GITS}/modules/montage/.venv/Scripts/python.exe"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
+
+  - id: echo
+    ownership: owned
+    title: Пример модуля (для разработчиков)
+    description: повторяет текст; проверка протокола модулей
+    dev: true            # во вкладке «Модули» виден только при настройке dev_mode
+    cwd: "{GITS}/sdk/examples"
+    command: "{PYTHON}"
+    args: ["-u", "echo_module.py"]
+    autostart: true
+    restart: on-failure
+    enabled: false       # тестовый модуль: выключен по умолчанию, включается в дашборде (вкладка «Окружения»)
+
+services:
+  # Голос (ТЗ 12): весь звук - микрофон, распознавание, узнавание голосов, синтез, воспроизведение, слух системного звука.
+  # Зависимости модуля: modules/voice/requirements.txt (в окружение ядра); Fish Speech и WhisperX в docker необязательны.
+  - id: voice
+    title: Голос
+    cwd: "{GITS}/modules/voice"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
@@ -66,39 +112,7 @@ modules:
     autostart: true
     restart: on-failure
 
-  # RimWorld (ТЗ 11): модуль лежит в этом репозитории (modules/rimworld). Интерпретатор общий ({PYTHON}): зависимости игрового
-  # агента и пакет gits-sdk стоят в нём же, отдельного .venv у модуля нет. Данные модуля лежат в его папке agent/memory
-  # (RIMWORLD_MEMORY_DIR), а не в MEMORY_DIR ядра, который супервизор передаёт всем модулям.
-  - id: rimworld
-    title: RimWorld
-    cwd: "{GITS}/modules/rimworld/agent"
-    command: "{PYTHON}"
-    args: ["-u", "main.py"]
-    autostart: true
-    restart: on-failure
-
-  # Монтаж видео (ТЗ 20-22): модуль лежит в этом репозитории (modules/montage). Окружение у модуля своё: modules/montage/.venv
-  # (Python 3.12, claude-agent-sdk, gits-sdk), поэтому интерпретатор не {PYTHON}. Нужны Node.js и ffmpeg.
-  - id: montage
-    title: Монтаж видео
-    cwd: "{GITS}/modules/montage/agent"
-    command: "{GITS}/modules/montage/.venv/Scripts/python.exe"
-    args: ["-u", "main.py"]
-    autostart: true
-    restart: on-failure
-
-  - id: echo
-    title: Пример модуля (для разработчиков)
-    description: повторяет текст; проверка протокола модулей
-    dev: true            # во вкладке «Модули» виден только при настройке dev_mode
-    cwd: "{GITS}/sdk/examples"
-    command: "{PYTHON}"
-    args: ["-u", "echo_module.py"]
-    autostart: true
-    restart: on-failure
-    enabled: false       # тестовый модуль: выключен по умолчанию, включается в дашборде (вкладка «Модули»)
-
-  # Сервисы (kind: service, ТЗ 03, ATT-2): процесс без связи по WebSocket; супервизор считает его работающим, пока health_url
+  # Внешние сервисы (kind: service, ТЗ 03, ATT-2): процесс без связи по WebSocket; супервизор считает его работающим, пока health_url
   # отвечает 200 (опрос раз в 10 с), и перезапускает по restart. Если порт занят уже работающим сервисом (запущен не
   # супервизором), второй экземпляр не запускается, идёт только слежение за здоровьем.
   - id: decider
@@ -127,8 +141,8 @@ modules:
     autostart: true
     restart: on-failure
 
-# Запланированные модули: ядро их не запускает, вкладка «Модули» показывает серые карточки «ещё не установлен - запланирован».
-# Поля: id, title, tz (номер ТЗ, если оно есть). Когда модуль появится, запись переезжает в modules выше.
+# Запланированные окружения: ядро их не запускает, вкладка «Окружения» показывает серые карточки «ещё не установлен - запланирован».
+# Поля: id, title, tz (номер ТЗ, если оно есть). Когда окружение появится, запись переезжает в workspaces выше.
 planned:
   - id: minecraft
     title: Minecraft

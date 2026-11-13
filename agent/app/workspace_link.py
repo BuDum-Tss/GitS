@@ -10,9 +10,9 @@ import logging
 import time
 from typing import Any, Callable
 
-from module_hub import ModuleError
+from peer_hub import PeerError
 
-logger = logging.getLogger("module_link")
+logger = logging.getLogger("workspace_link")
 
 RELEASE_TIMEOUT_S = 15.0
 ACTIVATE_TIMEOUT_S = 20.0
@@ -28,7 +28,7 @@ def _confirmed(value: Any) -> bool:
     return isinstance(value, dict) and value.get("ok") is True
 
 
-class ModuleLink:
+class WorkspaceLink:
     def __init__(self, *, connection_of: Callable[[str], Any], clock: Callable[[], float] = time.time):
         """connection_of(id) - соединение модуля или None."""
         self.connection_of, self.clock = connection_of, clock
@@ -47,7 +47,7 @@ class ModuleLink:
         try:
             value = await self._rpc(conn, "activate", {"goal": goal[:200], "task_id": task_id,
                                                        "workspace": module, "reason": "вход в среду"}, ACTIVATE_TIMEOUT_S)
-        except ModuleError as e:
+        except PeerError as e:
             return {"ok": False, "reason": f"{e.code}: {e.message}"}
         if not _confirmed(value):
             return {"ok": False, "reason": "модуль не принял среду"}
@@ -65,7 +65,7 @@ class ModuleLink:
             try:
                 value = await self._rpc(conn, "release", {"reason": reason, "task_id": slot["task_id"], "force": force,
                                                           "checkpoint": True}, RELEASE_TIMEOUT_S)
-            except ModuleError as e:
+            except PeerError as e:
                 if not force:
                     return {"ok": False, "reason": f"{e.code}: {e.message}"}
                 value = {"ok": True}
@@ -88,7 +88,7 @@ class ModuleLink:
         body = {"task_id": cp["task_id"], "goal": cp["goal"], "checkpoint": cp["payload"], "subgoals": []}
         try:
             value = await self._rpc(conn, "resume", body, RESUME_TIMEOUT_S)
-        except ModuleError as e:
+        except PeerError as e:
             return {"ok": False, "reason": f"{e.code}: {e.message}"}
         if not _confirmed(value):
             return {"ok": False, "reason": "модуль не вернул задачу"}

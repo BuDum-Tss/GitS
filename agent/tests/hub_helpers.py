@@ -15,8 +15,8 @@ from core_requests import CoreRequests
 from environments.registry import Registry
 from gits_sdk import protocol as P
 from gits_sdk.protocol import Envelope
-from module_hub import ModuleHub
-from module_registry import ModuleRegistry
+from peer_hub import PeerHub
+from peer_registry import PeerRegistry
 from router import Router
 
 
@@ -93,14 +93,14 @@ class Core:
     def __init__(self, tmp_path: Path, settings_state: dict, spoof_remote: str | None = None, allow=None):
         self.settings_state = settings_state          # то, что «лежит в settings.json» (подменяется в тестах)
         self.envs = Registry()
-        self.modules = ModuleRegistry(self.envs, settings_source=lambda: self.settings_state)
+        self.modules = PeerRegistry(self.envs, settings_source=lambda: self.settings_state)
         self.companion = FakeCompanion()
         self.io = FakeIO()
         self.attention = Attention(self.companion, self.io, idle_source=lambda: 0.0)       # не зависеть от простоя настоящего ввода
         self.attention.hub, self.attention.modules = None, self.modules
         self.requests = CoreRequests(attention=self.attention)
         self.said: list[str] = []
-        self.hub = ModuleHub(self.modules, sink=AttentionEventSink(self.attention), requests=self.requests,
+        self.hub = PeerHub(self.modules, sink=AttentionEventSink(self.attention), requests=self.requests,
                              settings_source=lambda: self.settings_state, token_file=tmp_path / "module_token",
                              hello_timeout=0.5, allow=allow, environ={})
         self.router = Router(self.envs, self._say)
@@ -116,6 +116,11 @@ class Core:
     @property
     def url(self) -> str:
         return f"ws://127.0.0.1:{self.port}/module/ws"
+
+    @property
+    def url_ws(self) -> str:
+        """Новый адрес входа `/ws` (прежний `/module/ws` остаётся в `url`: им пользуются клиенты SDK и тесты модулей)."""
+        return f"ws://127.0.0.1:{self.port}/ws"
 
     @property
     def token(self) -> str:
@@ -186,8 +191,11 @@ async def running_client(client, core):
 class RawModule:
     """Модуль без SDK: шлёт и читает кадры как есть (проверка протокола на стороне сервера)."""
 
-    def __init__(self, core: Core, manifest: dict, *, token: str | None = None, protocol: int = P.PROTOCOL):
+    def __init__(self, core: Core, manifest: dict, *, token: str | None = None, protocol: int = P.PROTOCOL,
+                 url: str | None = None, hello_extra: dict | None = None, hello_drop: tuple = ()):
+        """url - другой адрес входа (по умолчанию `core.url`); hello_extra и hello_drop меняют поля hello (id, role, module_id)."""
         self.core, self.manifest, self.token, self.protocol = core, manifest, token or core.token, protocol
+        self.url, self.hello_extra, self.hello_drop = url, hello_extra or {}, hello_drop
         self.inbox: list[Envelope] = []
         self.session: aiohttp.ClientSession | None = None
         self.ws: aiohttp.ClientWebSocketResponse | None = None
@@ -197,7 +205,7 @@ class RawModule:
 
     async def open(self):
         self.session = aiohttp.ClientSession()
-        self.ws = await self.session.ws_connect(self.core.url, headers={"Authorization": f"Bearer {self.token}"})
+        self.ws = await self.session.ws_connect(self.url or self.core.url, headers={"Authorization": f"Bearer {self.token}"})
         self._reader = asyncio.create_task(self._read())
 
     async def _read(self):
@@ -227,7 +235,8 @@ class RawModule:
     async def hello(self) -> Envelope:
         """Открыть соединение, отправить hello и вернуть welcome или reject."""
         await self.open()
-        hello = await self.send("hello", P.hello_body(self.manifest, "raw00001", 4242) | {"protocol": self.protocol})
+        body = {**P.hello_body(self.manifest, "raw00001", 4242), "protocol": self.protocol, **self.hello_extra}
+        hello = await self.send("hello", {k: v for k, v in body.items() if k not in self.hello_drop})
         reply = await self.wait("welcome", "reject")
         assert reply.re == hello.id
         return reply

@@ -7,7 +7,7 @@ window.ARCH_DATA = {
    "title": "Источники событий",
    "tag": "I",
    "new": false,
-   "summary": "Модули (голос, Telegram, Twitch, OBS, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.",
+   "summary": "Участники шины: окружения workspace (Telegram, Twitch, OBS, экран, игра, монтаж), сервисы service (голос, питомец) и чат дашборда. Присылают события и выполняют команды.",
    "out": "Event",
    "nodes": [
     {
@@ -132,13 +132,22 @@ window.ARCH_DATA = {
    "out": "Event",
    "nodes": [
     {
-     "id": "hub",
-     "t": "ModuleHub (входящие)",
+     "id": "preg",
+     "t": "PeerRegistry",
      "tag": "I",
      "new": false,
-     "do": "WebSocket :8766: рукопожатие, проверка формата, очередь входящих; запросы core.*",
+     "do": "реестр участников шины: роль workspace или service (из peers.yaml, манифест главнее), режим владения shared или owned, состояние, задачи, окружение инструментов",
+     "out": "Tool[]",
+     "now": "peer_registry.py: PeerRecord (role, ownership, external), записи объявляет agent/peers.yaml (разделы workspaces, services, planned), включённость в настройке peers"
+    },
+    {
+     "id": "hub",
+     "t": "PeerHub (входящие)",
+     "tag": "I",
+     "new": false,
+     "do": "WebSocket :8766 (/ws и прежний /module/ws): рукопожатие (id или module_id, role, ownership), проверка формата, очередь входящих; запросы core.*",
      "out": "Event",
-     "now": "module_hub.py: приёмник событий EventSink колбэком (adapters/module_events.py), без attention и fast_brain"
+     "now": "peer_hub.py: приёмник событий EventSink колбэком (adapters/module_events.py), без attention и fast_brain"
     },
     {
      "id": "event",
@@ -362,7 +371,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "долгие задачи: прогресс, вопросы, итог; Модуль кода (Agent SDK)",
      "out": "JobState",
-     "now": "выделен (R3) для внимания: app/jobs.py (JobTracker); module_registry и desktop.assistant_agent как раньше"
+     "now": "выделен (R3) для внимания: app/jobs.py (JobTracker); peer_registry и desktop.assistant_agent как раньше"
     }
    ]
   },
@@ -377,12 +386,12 @@ window.ARCH_DATA = {
    "nodes": [
     {
      "id": "fmgr",
-     "t": "ModuleLink",
+     "t": "WorkspaceLink",
      "tag": "A",
      "new": false,
-     "do": "вход, выход и возобновление среды модуля по протоколу workspace.enter / exit / resume; конец задачи модуль сообщает флагом done в статусе; один слот, checkpoint в памяти; очереди событий, закрепления и второго эшелона решений нет",
+     "do": "вход, выход и возобновление среды окружения (workspace) по протоколу workspace.enter / exit / resume; конец задачи модуль сообщает флагом done в статусе; один слот, checkpoint в памяти; очереди событий, закрепления и второго эшелона решений нет",
      "out": "Workspace",
-     "now": "app/module_link.py (вместо менеджера фокуса ТЗ 18)"
+     "now": "app/workspace_link.py (вместо менеджера фокуса ТЗ 18)"
     },
     {
      "id": "wsm",
@@ -391,7 +400,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "в какой среде агент сейчас: assistant, sleep и среды модулей из их манифестов (rimworld, montage); причина, цель, история. В среду модуля входят только по импульсу (сообщение, самоимпульс); события чужих сред среду не переключают, они идут в очередь речи и сводку",
      "out": "Workspace",
-     "now": "app/workspace_manager.py (ТЗ 32): поверх ModuleLink, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"
+     "now": "app/workspace_manager.py (ТЗ 32): поверх WorkspaceLink, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"
     },
     {
      "id": "wsdom",
@@ -505,12 +514,12 @@ window.ARCH_DATA = {
     },
     {
      "id": "hubout",
-     "t": "ModuleHub (исходящие)",
+     "t": "PeerHub (исходящие)",
      "tag": "I",
      "new": false,
-     "do": "доставка команд модулям: tool.call, speak, workspace.enter, job.answer",
+     "do": "доставка команд участникам шины: tool.call, speak, workspace.enter, job.answer",
      "out": "ToolResult, события",
-     "now": "module_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как ModuleHub.outbound"
+     "now": "peer_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как PeerHub.outbound"
     }
    ]
   },
@@ -674,7 +683,7 @@ window.ARCH_DATA = {
      "t": "Supervisor",
      "tag": "I",
      "new": false,
-     "do": "запуск и перезапуск процессов модулей",
+     "do": "запуск и перезапуск процессов участников шины (окружения и сервисы из peers.yaml)",
      "out": "",
      "now": "supervisor.py: 573 строки; режим «только ядро» (GITS_NO_MODULES=1 или настройка only_core); устойчивость ядра проверяет tools/soak_core.py"
     },
@@ -689,7 +698,7 @@ window.ARCH_DATA = {
     },
     {
      "id": "hnd",
-     "t": "Обработчики модулей",
+     "t": "Обработчики участников",
      "tag": "A",
      "new": false,
      "do": "события voice.*, rimworld.colonists и run_ended, desktop.activity, события игры как данные",
@@ -729,6 +738,12 @@ window.ARCH_DATA = {
    "hub",
    "flow",
    null
+  ],
+  [
+   "hub",
+   "preg",
+   "use",
+   "кто подключён"
   ],
   [
    "rim",

@@ -1,6 +1,6 @@
-"""Шина модулей (ТЗ 02, раздел 5): WebSocket-сервер `/module/ws` в приложении дашборда (порт 8766).
+"""Шина участников (ТЗ 02, раздел 5): WebSocket-сервер `/ws` (и прежний `/module/ws`) в приложении дашборда (порт 8766).
 
-Модуль подключается сам (клиент SDK `gits_sdk`), проходит рукопожатие по ТЗ 01 §5 и дальше шлёт события, речь,
+Участник шины (peer: окружение workspace или сервис service) подключается сам (клиент SDK `gits_sdk`), проходит рукопожатие по ТЗ 01 §5 и дальше шлёт события, речь,
 состояние, задачи и запросы к ядру, а ядро вызывает его инструменты и рассылает темы (`presence`, `settings`, `profile`,
 `module`, `battery`). Поведение сервера повторяет эталон `gits_sdk.testing.FakeCore`.
 
@@ -28,7 +28,7 @@ import settings
 from gits_sdk import contract
 from gits_sdk import protocol as P
 from gits_sdk.protocol import Envelope, Manifest, ProtocolError
-from module_outbound import Outbound
+from peer_outbound import Outbound
 
 logger = logging.getLogger("hub")
 
@@ -39,10 +39,10 @@ WATCH_INTERVAL_S = 1.0                 # как часто сверяются н
 BATTERY_EVERY = 5                      # батарейка проверяется раз в столько тиков
 BATTERY_STEP = 5                       # процентов: тема battery при изменении на столько и более
 RESERVED_IDS = ("core",)               # id модулей, которые модули занять не могут
-RESERVED_SETTINGS = ("enabled",)       # имя в modules.<id>.*: включённость модуля
+RESERVED_SETTINGS = ("enabled",)       # имя в peers.<id>.*: включённость участника
 
 
-class ModuleError(Exception):
+class PeerError(Exception):
     """Ошибка запроса к модулю (или от ядра модулю): code по MOD-9, message по-русски."""
 
     def __init__(self, code: str, message: str):
@@ -95,12 +95,12 @@ def remote_allowed(remote: str | None, extra: list | tuple = ()) -> bool:
     return any(addr.version == net.version and addr in net for net in extra)
 
 
-class ModuleConnection:
-    """Подключённый (прошедший рукопожатие) модуль."""
+class PeerConnection:
+    """Подключённый (прошедший рукопожатие) участник шины."""
 
     def __init__(self, ws: web.WebSocketResponse, hello: dict, spec: Manifest):
         self.ws = ws
-        self.module_id: str = hello["module_id"]
+        self.id: str = P.hello_id(hello)
         self.instance: str = hello["instance"]
         self.pid: int = hello["pid"]
         self.manifest: dict = hello["manifest"]
@@ -116,6 +116,11 @@ class ModuleConnection:
         self.tasks: set[asyncio.Task] = set()
         self.inbox: asyncio.Queue = asyncio.Queue(INBOX_LIMIT)
 
+    @property
+    def module_id(self) -> str:
+        """Прежнее имя `id` (устарело, читают тесты модулей)."""
+        return self.id
+
     def spawn(self, coro) -> asyncio.Task:
         task = asyncio.get_running_loop().create_task(coro)
         self.tasks.add(task)
@@ -124,24 +129,24 @@ class ModuleConnection:
 
     async def send_envelope(self, env: Envelope) -> None:
         if self.closed or self.ws.closed:
-            raise ModuleError("unavailable", "модуль отключён")
+            raise PeerError("unavailable", "модуль отключён")
         try:
             text = env.dumps()
         except ProtocolError as e:
-            raise ModuleError("internal", str(e)) from e
+            raise PeerError("internal", str(e)) from e
         async with self._send_lock:
             try:
                 await self.ws.send_str(text)
             except (ConnectionError, RuntimeError) as e:
-                raise ModuleError("unavailable", "модуль отключился") from e
-        logger.debug(f"-> {self.module_id}: {env.type} ({len(text)} Б)")
+                raise PeerError("unavailable", "модуль отключился") from e
+        logger.debug(f"-> {self.id}: {env.type} ({len(text)} Б)")
 
     async def send(self, msg_type: str, body: dict | None = None, re: str | None = None) -> None:
         """Отправить сообщение без ожидания ответа."""
         await self.send_envelope(Envelope(msg_type, dict(body or {}), re=re))
 
     async def request(self, msg_type: str, body: dict | None = None, timeout: float = 30.0) -> Any:
-        """Запрос модулю и ожидание `result`. ModuleError(code, message) при ошибке, тайм-ауте и обрыве."""
+        """Запрос модулю и ожидание `result`. PeerError(code, message) при ошибке, тайм-ауте и обрыве."""
         env = Envelope(msg_type, dict(body or {}))
         fut = asyncio.get_running_loop().create_future()
         self._pending[env.id] = fut
@@ -150,13 +155,13 @@ class ModuleConnection:
             try:
                 reply = await asyncio.wait_for(fut, timeout)
             except asyncio.TimeoutError:
-                raise ModuleError("timeout", f"модуль не ответил за {timeout:g} с") from None
+                raise PeerError("timeout", f"модуль не ответил за {timeout:g} с") from None
         finally:
             self._pending.pop(env.id, None)
         if reply.body.get("ok"):
             return reply.body.get("value")
         err = reply.body.get("error") if isinstance(reply.body.get("error"), dict) else {}
-        raise ModuleError(str(err.get("code") or "internal"), str(err.get("message") or "модуль вернул ошибку без пояснения"))
+        raise PeerError(str(err.get("code") or "internal"), str(err.get("message") or "модуль вернул ошибку без пояснения"))
 
     def resolve(self, env: Envelope) -> None:
         fut = self._pending.get(env.re or "")
@@ -167,7 +172,7 @@ class ModuleConnection:
         """Ожидающие запросы завершаются ошибкой unavailable (CORE-3)."""
         for fut in list(self._pending.values()):
             if not fut.done():
-                fut.set_exception(ModuleError("unavailable", message))
+                fut.set_exception(PeerError("unavailable", message))
 
     async def close(self, code: int = 1000, reason: str = "") -> None:
         self.closed = True
@@ -189,23 +194,24 @@ class _JobQuestion:
         self.sent = False
 
 
-class ModuleHub:
+class PeerHub:
     def __init__(self, modules, *, sink=None, requests=None, token: str | None = None, token_file: Path | None = None,
                  settings_source: Callable[[], dict] = settings.load,
                  profile_source: Callable[[], dict] = lambda: {"id": "assistant", "title": "Ассистент", "focus_modules": []},
                  battery_source: Callable[[], dict] = lambda: {},
                  presence=None, hello_timeout: float = HELLO_TIMEOUT_S, monotonic: Callable[[], float] = time.monotonic,
                  allow: list | None = None, environ=None):
-        """modules - ModuleRegistry; sink - приёмник событий модулей (контракт `contracts.EventSink`, ТЗ 29 ARC-7: шина
+        """modules - PeerRegistry; sink - приёмник событий модулей (контракт `contracts.EventSink`, ТЗ 29 ARC-7: шина
         не знает ни менеджера внимания, ни модели); requests - обработчик core.* (`contracts.RequestHandler`, в ядре
         core_requests.CoreRequests); *_source - откуда брать настройки, профиль и батарейку (в тестах подменяются);
         presence - PresenceTracker (снимок для новых модулей); allow - сети, которым шина открыта помимо петли (по
         умолчанию `GITS_HUB_ALLOW`); environ - переменные окружения (в тестах подменяются). В контейнере
-        (`GITS_CONTAINER=1`) токен берётся из `GITS_MODULE_TOKEN` (файл не пишется), а без неё создаётся и пишется в
+        (`GITS_CONTAINER=1`) токен берётся из `GITS_TOKEN`, запасное имя `GITS_MODULE_TOKEN` (файл не пишется), а без неё создаётся и пишется в
         `MEMORY_DIR/module_token`, не в LOCALAPPDATA."""
         environ = os.environ if environ is None else environ
         self.allow = list(allow) if allow is not None else parse_allow(environ.get(P.ENV_HUB_ALLOW))
-        env_token = str(environ.get(P.ENV_TOKEN) or "").strip() if P.is_container(environ) else ""
+        env_token = (str(environ.get(P.ENV_TOKEN) or environ.get(P.ENV_MODULE_TOKEN) or "").strip()
+                     if P.is_container(environ) else "")
         if P.is_container(environ) and token_file is None and not (token or env_token):
             token_file = Path(settings.memory_dir()) / "module_token"
         token = token or env_token or None
@@ -223,7 +229,7 @@ class ModuleHub:
         self.presence = presence
         self.hello_timeout = hello_timeout
         self._monotonic = monotonic
-        self._conns: dict[str, ModuleConnection] = {}
+        self._conns: dict[str, PeerConnection] = {}
         self._job_questions: dict[tuple[str, str, str], _JobQuestion] = {}
         self._tasks: set[asyncio.Task] = set()
         self._watch_task: asyncio.Task | None = None
@@ -234,8 +240,9 @@ class ModuleHub:
     # ── жизненный цикл ─────────────────────────────────────────────────────────
 
     def attach(self, app: web.Application) -> None:
-        """Маршрут GET /module/ws в приложение дашборда."""
-        app.router.add_get("/module/ws", self.handle)
+        """Маршруты GET /ws (основной) и /module/ws (прежний, пока клиенты SDK подключаются к нему) в приложение дашборда."""
+        app.router.add_get(P.WS_PATH_NEW, self.handle)
+        app.router.add_get(P.WS_PATH, self.handle)
 
     async def start(self) -> None:
         """Токен в файл (атомарно) и фоновая сверка настроек, включённости и батарейки."""
@@ -271,14 +278,14 @@ class ModuleHub:
 
     # ── доступ ──────────────────────────────────────────────────────────────
 
-    def connection(self, module_id: str) -> ModuleConnection | None:
+    def connection(self, module_id: str) -> PeerConnection | None:
         conn = self._conns.get(module_id)
         return conn if conn is not None and not conn.closed else None
 
     def is_connected(self, module_id: str) -> bool:
         return self.connection(module_id) is not None
 
-    def connections(self) -> list[ModuleConnection]:
+    def connections(self) -> list[PeerConnection]:
         return [c for c in self._conns.values() if not c.closed]
 
     # ── рукопожатие ─────────────────────────────────────────────────────────────
@@ -304,7 +311,7 @@ class ModuleHub:
                     if msg.type == WSMsgType.TEXT:
                         self._on_text(conn, msg.data)
                     elif msg.type == WSMsgType.BINARY:
-                        logger.warning(f"Модуль {conn.module_id}: двоичный кадр отброшен (протокол текстовый)")
+                        logger.warning(f"Модуль {conn.id}: двоичный кадр отброшен (протокол текстовый)")
                     elif msg.type == WSMsgType.ERROR:
                         reason = f"ошибка соединения: {ws.exception()}"
                         break
@@ -327,7 +334,7 @@ class ModuleHub:
 
     def _extra_problems(self, hello: dict) -> list[str]:
         """Проверки ядра сверх схемы: зарезервированные имена и единственность voice.output (MOD-18)."""
-        m, mid = hello["manifest"], hello["module_id"]
+        m, mid = hello["manifest"], P.hello_id(hello)
         problems = []
         if mid in RESERVED_IDS:
             problems.append(f"идентификатор «{mid}» зарезервирован ядром")
@@ -336,7 +343,7 @@ class ModuleHub:
                 problems.append(f"settings_schema.{name}: имя зарезервировано ядром")
         return problems
 
-    async def _handshake(self, ws: web.WebSocketResponse) -> ModuleConnection | None:
+    async def _handshake(self, ws: web.WebSocketResponse) -> PeerConnection | None:
         try:
             msg = await ws.receive(timeout=self.hello_timeout)
         except asyncio.TimeoutError:
@@ -356,7 +363,7 @@ class ModuleHub:
             await self._reject(ws, env.id, "?", "до welcome допустим только hello (протокол)")
             return None
         body = env.body
-        mid = str(body.get("module_id") or "?")
+        mid = str(P.hello_id(body) or "?")
         if body.get("protocol") != P.PROTOCOL:
             await self._reject(ws, env.id, mid, f"protocol {body.get('protocol')} не поддерживается")
             return None
@@ -370,14 +377,14 @@ class ModuleHub:
             return None
         if "voice.output" in (body["manifest"].get("capabilities") or []):
             for other in self.connections():
-                if other.module_id != mid and "voice.output" in (other.manifest.get("capabilities") or []):
+                if other.id != mid and "voice.output" in (other.manifest.get("capabilities") or []):
                     # без слов про протокол и манифест: модуль будет повторять попытки (MOD-12)
-                    await self._reject(ws, env.id, mid, f"голосовой вывод уже занят модулем «{other.module_id}»")
+                    await self._reject(ws, env.id, mid, f"голосовой вывод уже занят модулем «{other.id}»")
                     return None
         spec = Manifest.from_dict(body["manifest"])
         for warning in spec.panel_warnings:              # TZ 15: неверный panel не отклоняет модуль
             logger.warning(f"Модуль {mid}: {warning}")
-        conn = ModuleConnection(ws, body, spec)
+        conn = PeerConnection(ws, body, spec)
         old = self._conns.get(mid)
         if old is not None:
             old.close_reason = "вытеснен новым подключением"
@@ -407,8 +414,7 @@ class ModuleHub:
 
     def _module_settings(self, module_id: str, spec: Manifest, cfg: dict) -> dict:
         schema = spec.settings_schema
-        stored = (cfg.get("modules") or {}).get(module_id)
-        stored = stored if isinstance(stored, dict) else {}
+        stored = settings.peer_entry(cfg, module_id) or {}
         return {name: stored.get(name, s["default"]) for name, s in schema.items()}
 
     @staticmethod
@@ -419,28 +425,28 @@ class ModuleHub:
 
     _NOTES = ("event", "say", "emotion", "state", "job.update", "panel.set", "log")
 
-    def _on_text(self, conn: ModuleConnection, data: str) -> None:
+    def _on_text(self, conn: PeerConnection, data: str) -> None:
         try:
             env = Envelope.loads(data)
         except ProtocolError as e:
-            logger.warning(f"Модуль {conn.module_id}: кадр отброшен: {e}")
+            logger.warning(f"Модуль {conn.id}: кадр отброшен: {e}")
             return
-        logger.debug(f"<- {conn.module_id}: {env.type} ({len(data)} симв.)")
+        logger.debug(f"<- {conn.id}: {env.type} ({len(data)} симв.)")
         if env.type == "result":
             conn.resolve(env)
         elif env.type == "hello":
-            logger.warning(f"Модуль {conn.module_id}: повторный hello отброшен")
+            logger.warning(f"Модуль {conn.id}: повторный hello отброшен")
         elif env.type in self._NOTES:
             try:
                 conn.inbox.put_nowait(env)
             except asyncio.QueueFull:
-                logger.warning(f"Модуль {conn.module_id}: очередь сообщений переполнена, «{env.type}» отброшено")
+                logger.warning(f"Модуль {conn.id}: очередь сообщений переполнена, «{env.type}» отброшено")
         elif env.type in P.CORE_REQUESTS or env.type.startswith("core.") or P.is_request(env.type):
             conn.spawn(self._handle_request(conn, env))
         else:
-            logger.warning(f"Модуль {conn.module_id}: неизвестный тип сообщения «{env.type}» проигнорирован")      # MOD-10
+            logger.warning(f"Модуль {conn.id}: неизвестный тип сообщения «{env.type}» проигнорирован")      # MOD-10
 
-    async def _inbox_loop(self, conn: ModuleConnection) -> None:
+    async def _inbox_loop(self, conn: PeerConnection) -> None:
         while True:
             env = await conn.inbox.get()
             try:
@@ -448,13 +454,13 @@ class ModuleHub:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning(f"Модуль {conn.module_id}: сообщение «{env.type}» не обработано: {type(e).__name__}: {e}")
+                logger.warning(f"Модуль {conn.id}: сообщение «{env.type}» не обработано: {type(e).__name__}: {e}")
 
-    def _enabled(self, conn: ModuleConnection) -> bool:
-        return self.modules.is_enabled(conn.module_id)
+    def _enabled(self, conn: PeerConnection) -> bool:
+        return self.modules.is_enabled(conn.id)
 
-    async def _on_note(self, conn: ModuleConnection, env: Envelope) -> None:
-        mid, body, t = conn.module_id, env.body, env.type
+    async def _on_note(self, conn: PeerConnection, env: Envelope) -> None:
+        mid, body, t = conn.id, env.body, env.type
         if t == "state":
             summary, data = body.get("summary"), body.get("data", {})
             if not isinstance(summary, str) or len(summary) > P.STATE_SUMMARY_MAX or not isinstance(data, dict):
@@ -522,8 +528,8 @@ class ModuleHub:
 
     # ── задачи ──────────────────────────────────────────────────────────────────
 
-    async def _on_job_update(self, conn: ModuleConnection, body: dict) -> None:
-        mid, job_id = conn.module_id, body["job_id"]
+    async def _on_job_update(self, conn: PeerConnection, body: dict) -> None:
+        mid, job_id = conn.id, body["job_id"]
         self.modules.update_job(mid, body)
         if body["state"] in P.JOB_FINISHED:
             for key in [k for k in self._job_questions if k[0] == mid and k[1] == job_id]:
@@ -537,9 +543,9 @@ class ModuleHub:
         if self.sink is not None:
             await self.sink.on_job_update(mid, body)
 
-    async def _job_question(self, conn: ModuleConnection, job: dict) -> None:
+    async def _job_question(self, conn: PeerConnection, job: dict) -> None:
         """Вопрос задачи (MOD-20): один раз на question_id, ответ уходит модулю как job.answer."""
-        q, mid = job["question"], conn.module_id
+        q, mid = job["question"], conn.id
         key = (mid, job["job_id"], q["question_id"])
         entry = self._job_questions.get(key)
         if entry is not None:
@@ -554,7 +560,7 @@ class ModuleHub:
         mid, job_id, question_id = key
         try:
             if self.sink is None:
-                raise ModuleError("unavailable", "приёмник событий не подключён")
+                raise PeerError("unavailable", "приёмник событий не подключён")
             answer, _by = await self.sink.submit_question(mid, job_id, question_id, q)
         except asyncio.CancelledError:
             raise
@@ -601,46 +607,46 @@ class ModuleHub:
 
     # ── запросы модуля к ядру ───────────────────────────────────────────────────
 
-    async def _handle_request(self, conn: ModuleConnection, env: Envelope) -> None:
+    async def _handle_request(self, conn: PeerConnection, env: Envelope) -> None:
         try:
             if env.type not in P.CORE_REQUESTS:
-                raise ModuleError("unknown", f"ядро не знает запрос «{env.type}»")
+                raise PeerError("unknown", f"ядро не знает запрос «{env.type}»")
             if not self._enabled(conn):
-                raise ModuleError("unavailable", "модуль выключен")
+                raise PeerError("unavailable", "модуль выключен")
             if self.requests is None:
-                raise ModuleError("unavailable", "запросы к ядру не подключены")
+                raise PeerError("unavailable", "запросы к ядру не подключены")
             reply = P.result_ok(env.id, await self.requests.handle(conn, env.type, env.body))
-        except ModuleError as e:
+        except PeerError as e:
             reply = P.result_error(env.id, e.code, e.message)
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.exception(f"Запрос {env.type} от модуля {conn.module_id}")
+            logger.exception(f"Запрос {env.type} от модуля {conn.id}")
             reply = P.result_error(env.id, "internal", f"сбой ядра при обработке запроса: {type(e).__name__}")
         try:
             try:
                 await conn.send_envelope(reply)
-            except ModuleError as e:
+            except PeerError as e:
                 if e.code != "internal":
                     raise
                 await conn.send_envelope(P.result_error(env.id, "internal", "ответ не удалось отправить: " + e.message))
-        except ModuleError:
-            logger.debug(f"Ответ на {env.type} модулю {conn.module_id} не доставлен: модуль отключился")
+        except PeerError:
+            logger.debug(f"Ответ на {env.type} модулю {conn.id} не доставлен: модуль отключился")
 
     # ── отключение ──────────────────────────────────────────────────────────────
 
-    async def _disconnected(self, conn: ModuleConnection, reason: str) -> None:
+    async def _disconnected(self, conn: PeerConnection, reason: str) -> None:
         conn.closed = True
         conn.fail_pending()
         for task in list(conn.tasks):
             task.cancel()
-        current = self._conns.get(conn.module_id) is conn
+        current = self._conns.get(conn.id) is conn
         if current:
-            del self._conns[conn.module_id]
-            self.modules.on_disconnected(conn.module_id, reason)
-        events_log.log("module", f"модуль {conn.module_id} отключился: {reason}", module=conn.module_id,
+            del self._conns[conn.id]
+            self.modules.on_disconnected(conn.id, reason)
+        events_log.log("module", f"модуль {conn.id} отключился: {reason}", module=conn.id,
                        replaced=not current)
-        logger.info(f"Модуль {conn.module_id} отключился: {reason}")
+        logger.info(f"Модуль {conn.id} отключился: {reason}")
 
     # ── темы (исходящее лежит в Outbound; здесь короткие входы для старых вызовов) ──────────────────────────
 
@@ -665,7 +671,7 @@ class ModuleHub:
         self.modules.invalidate()
         cfg = await asyncio.to_thread(self._settings_source)
         for conn in self.connections():
-            mid = conn.module_id
+            mid = conn.id
             enabled = self.modules.is_enabled(mid, cfg)
             if enabled != conn.last_enabled:
                 conn.last_enabled = enabled

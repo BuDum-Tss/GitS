@@ -1,4 +1,4 @@
-"""Супервизор процессов модулей (ТЗ 02, CORE-12…CORE-17): запуск, перезапуск с задержками, остановка после сбоев, выключение."""
+"""Супервизор процессов участников шины (ТЗ 02, CORE-12…CORE-17): запуск, перезапуск с задержками, остановка после сбоев, выключение."""
 import asyncio
 import os
 import sys
@@ -6,9 +6,10 @@ import textwrap
 
 import psutil
 import pytest
+import yaml
 
 import supervisor
-from supervisor import ModuleSpec, Supervisor, load_specs, redact
+from supervisor import PeerSpec, Supervisor, load_specs, redact
 
 TOKEN = "ab" * 32            # 64 hex, как настоящий токен ядра
 
@@ -18,8 +19,9 @@ OK = textwrap.dedent('''
     from pathlib import Path
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
     Path("child.pid").write_text(str(child.pid))
-    print("module_id=" + os.environ["GITS_MODULE_ID"], "url=" + os.environ["GITS_CORE_URL"],
+    print("module_id=" + os.environ["GITS_MODULE_ID"], "id=" + os.environ["GITS_ID"], "url=" + os.environ["GITS_CORE_URL"],
           "token=" + ("yes" if len(os.environ.get("GITS_MODULE_TOKEN", "")) == 64 else "no"),
+          "newtoken=" + ("yes" if os.environ.get("GITS_TOKEN") == os.environ.get("GITS_MODULE_TOKEN") else "no"),
           "unbuffered=" + os.environ.get("PYTHONUNBUFFERED", ""), "sdk=" + str("sdk" in os.environ.get("PYTHONPATH", "")))
     while not Path("stop.flag").exists():
         time.sleep(0.05)
@@ -51,7 +53,7 @@ def make(tmp_path, script, *, restart="on-failure", command="{PYTHON}", cwd=None
     async def shutdown(module_id):
         (mod / "stop.flag").write_text("1")
         return True
-    spec = ModuleSpec(id="fake", cwd=cwd or str(mod), command=command, args=["-u", "main.py"], restart=restart)
+    spec = PeerSpec(id="fake", cwd=cwd or str(mod), command=command, args=["-u", "main.py"], restart=restart)
     flags = {"enabled": enabled, "connected": False}
     sup = Supervisor([spec], token=TOKEN, core_url="ws://127.0.0.1:1/module/ws", enabled=lambda i: flags["enabled"],
                      is_connected=lambda i: flags["connected"], send_shutdown=kw.pop("send_shutdown", shutdown),
@@ -227,7 +229,7 @@ async def test_relative_cwd_is_relative_to_agent_dir(tmp_path):
 
 
 def test_load_specs_and_defaults(tmp_path):
-    f = tmp_path / "modules.yaml"
+    f = tmp_path / "peers.yaml"
     f.write_text(textwrap.dedent('''
         modules:
           - id: a
@@ -251,7 +253,7 @@ def test_load_specs_and_defaults(tmp_path):
     assert specs["a"].restart == "on-failure" and specs["a"].autostart and specs["a"].enabled
     assert not specs["c"].autostart and not specs["c"].enabled and specs["c"].restart == "never"
     assert load_specs(tmp_path / "нет.yaml") == []
-    echo = {s.id: s for s in load_specs()}["echo"]                        # настоящий agent/modules.yaml
+    echo = {s.id: s for s in load_specs()}["echo"]                        # настоящий agent/peers.yaml
     assert echo.enabled is False and echo.args == ["-u", "echo_module.py"] and echo.cwd.endswith("sdk/examples")
 
 
@@ -321,10 +323,10 @@ async def test_service_restarts_and_unconfigured_modules_are_not_announced(tmp_p
     async def announce(module_id, text):
         said.append(text)
     sup, mod, _ = make(tmp_path, OK, announce=announce)
-    sup.specs["fake"].kind = "service"                      # сервис (decider) - внутренняя часть ядра
+    sup.specs["fake"].external = True                      # сервис (decider) - внутренняя часть ядра
     await sup._announce_launch("fake", "проверка")
     assert said == []
-    sup.specs["fake"].kind = "module"
+    sup.specs["fake"].external = False
     sup2, _, _ = make(tmp_path, OK, cwd="{RIMWORLD_MODULE_DIR_X}/agent", env={}, announce=announce)
     await sup2._announce_launch("fake", "проверка")         # папки и переменной нет: модуль не запустится
     assert said == []
@@ -345,6 +347,7 @@ async def test_real_echo_module_command_resolves_inside_repo():
     assert cmd == [sys.executable, "-u", "echo_module.py"] and (cwd / "echo_module.py").is_file()
     env = sup._process_env("echo")
     assert env["GITS_MODULE_ID"] == "echo" and env["GITS_MODULE_TOKEN"] == TOKEN
+    assert env["GITS_ID"] == "echo" and env["GITS_TOKEN"] == TOKEN               # основные имена и (на время перехода) прежние
     assert os.path.join(str(supervisor.GITS_ROOT), "sdk") in env["PYTHONPATH"]
 
 
@@ -374,3 +377,80 @@ def test_espeech_does_not_start_when_another_tts_engine_is_chosen(monkeypatch):
     for engine, expected in (("", True), ("auto", True), ("espeech", True), ("fish", False), (" Edge ", False)):
         monkeypatch.setenv("TTS_ENGINE", engine)
         assert sup.should_run("espeech") is expected, engine
+
+
+# ── фаза 2a: peers.yaml (workspaces, services), GITS_PEERS_FILE, переменные участника ─────────────────────────
+
+def test_load_specs_reads_workspaces_and_services_sections(tmp_path):
+    path = tmp_path / "peers.yaml"
+    path.write_text(textwrap.dedent("""
+        workspaces:
+          - {id: ws_shared, cwd: ., command: python, ownership: shared}
+          - {id: ws_owned, cwd: ., command: python, ownership: owned}
+          - {id: ws_plain, cwd: ., command: python}
+          - {id: bad_owner, cwd: ., command: python, ownership: mine}
+        services:
+          - {id: svc_ws, cwd: ., command: python}
+          - {id: svc_ext, cwd: ., command: python, kind: service, health_url: "http://127.0.0.1:1/health"}
+          - {id: svc_noown, cwd: ., command: python, ownership: shared}
+          - {id: ws_plain, cwd: ., command: python}
+        planned:
+          - {id: later, title: Позже}
+    """), encoding="utf-8")
+    specs = {s.id: s for s in load_specs(path)}
+    assert set(specs) == {"ws_shared", "ws_owned", "ws_plain", "svc_ws", "svc_ext"}                # неверные и повторные пропущены
+    assert [(specs[i].role, specs[i].ownership, specs[i].external) for i in ("ws_shared", "ws_owned", "ws_plain")] == [
+        ("workspace", "shared", False), ("workspace", "owned", False), ("workspace", None, False)]
+    assert (specs["svc_ws"].role, specs["svc_ws"].ownership, specs["svc_ws"].external) == ("service", None, False)
+    assert (specs["svc_ext"].role, specs["svc_ext"].external, specs["svc_ext"].health_url) == (
+        "service", True, "http://127.0.0.1:1/health")
+
+
+def test_legacy_modules_section_is_still_read(tmp_path):
+    path = tmp_path / "old.yaml"
+    path.write_text(yaml.safe_dump({"modules": [
+        {"id": "a", "cwd": ".", "command": "python"},
+        {"id": "b", "cwd": ".", "command": "python", "kind": "service", "health_url": "http://x/health"}]}), encoding="utf-8")
+    specs = {s.id: s for s in load_specs(path)}
+    assert specs["a"].role == "workspace" and not specs["a"].external
+    assert specs["b"].role == "service" and specs["b"].external
+
+
+def test_real_peers_yaml_roles_and_ownership():
+    specs = {s.id: s for s in load_specs(supervisor.PEERS_YAML)}
+    assert supervisor.PEERS_YAML.name == "peers.yaml"
+    assert {i for i, s in specs.items() if s.role == "workspace"} == {
+        "telegram", "twitch", "obs", "desktop", "rimworld", "montage", "echo"}
+    assert {i for i, s in specs.items() if s.role == "service"} == {"voice", "pet", "decider", "espeech"}
+    assert {i for i, s in specs.items() if s.external} == {"decider", "espeech"}
+    assert {i: s.ownership for i, s in specs.items() if s.ownership} == {
+        "telegram": "owned", "twitch": "owned", "obs": "owned", "echo": "owned",
+        "desktop": "shared", "rimworld": "shared", "montage": "shared"}
+    assert specs["rimworld"].cwd == "{GITS}/modules/rimworld/agent"                  # пути прежние: папки переносит фаза 3
+
+
+def test_peers_file_env_and_legacy_alias(tmp_path, monkeypatch):
+    new, old = tmp_path / "new.yaml", tmp_path / "old.yaml"
+    for path, pid in ((new, "from_new"), (old, "from_old")):
+        path.write_text(yaml.safe_dump({"workspaces": [{"id": pid, "cwd": ".", "command": "python"}]}), encoding="utf-8")
+    monkeypatch.delenv("GITS_PEERS_FILE", raising=False)
+    monkeypatch.setenv("GITS_MODULES_FILE", str(old))
+    assert [s.id for s in load_specs()] == ["from_old"]                                   # прежнее имя переменной читается
+    monkeypatch.setenv("GITS_PEERS_FILE", str(new))
+    assert [s.id for s in load_specs()] == ["from_new"]                                   # новое главнее
+
+
+async def test_launched_peer_gets_new_and_legacy_variables(tmp_path):
+    sup, mod, _ = make(tmp_path, OK)
+    await sup.start()
+    await wait_for(lambda: (mod / "child.pid").exists() and "token=yes" in (log_text(sup) if sup.log_path("fake").exists() else ""))
+    text = log_text(sup)
+    assert " id=fake " in text and "module_id=fake" in text         # GITS_ID и (на время перехода) GITS_MODULE_ID
+    assert "newtoken=yes" in text and "token=yes" in text           # GITS_TOKEN совпадает с GITS_MODULE_TOKEN
+    await sup.stop("fake")
+
+
+def test_external_service_gets_no_token(tmp_path):
+    spec = PeerSpec(id="svc", cwd=str(tmp_path), command="x", role="service", external=True, health_url="http://x/health")
+    env = Supervisor([spec], token=TOKEN, core_url="ws://x", env={})._process_env("svc")
+    assert "GITS_TOKEN" not in env and "GITS_MODULE_TOKEN" not in env and "GITS_ID" not in env

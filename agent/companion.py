@@ -77,7 +77,7 @@ class Companion:
         self._settings = settings_provider if settings_provider is not None else SettingsModule()
         self._approver = approver if approver is not None else ApprovalsModule()
         self.router = None    # Router, ставится ядром после создания реестра окружений
-        self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (ModuleRegistry.notes, ставит ядро)
+        self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (PeerRegistry.notes, ставит ядро)
         self.graph = None        # GraphMemory: факты о людях и жизни в графе
         self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
         self._self_block = ""     # воспоминания персонажа о себе к последней реплике (ТЗ 05, CHR-19)
@@ -324,8 +324,8 @@ class Companion:
         if self.router is None or self.job_wait is None:
             return None
         ok, text, _code = await self.router.run_tool_ex("desktop.claude_task", {"task": task})
-        from module_registry import ModuleRegistry
-        job_id = ModuleRegistry.job_id_from(text) if ok else None
+        from peer_registry import PeerRegistry
+        job_id = PeerRegistry.job_id_from(text) if ok else None
         if job_id is None:
             return None
         t0 = time.perf_counter()

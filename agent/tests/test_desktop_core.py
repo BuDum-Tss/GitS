@@ -11,7 +11,7 @@ from hub_helpers import FakeCompanion
 import claude_quota
 import core_service
 import dashboard
-import module_registry
+import peer_registry
 from companion import Companion
 from environments.base import Environment, Tool
 from environments.registry import Registry
@@ -44,7 +44,7 @@ class FakeConn:
 
 
 def make_registry():
-    reg = module_registry.ModuleRegistry(Registry(), settings_source=lambda: {})
+    reg = peer_registry.PeerRegistry(Registry(), settings_source=lambda: {})
     conn = FakeConn()
     reg.hub = SimpleNamespace(connection=lambda mid: conn, attention=None)
     reg._build_environment(reg.declare("desktop"), P.Manifest.from_dict(
@@ -70,8 +70,8 @@ def test_fallback_tool_is_always_visible_and_announce_flags_come_from_manifest()
 
 
 def test_job_id_is_read_from_the_tool_answer():
-    assert module_registry.ModuleRegistry.job_id_from(f"задача {JOB} запущена") == JOB
-    assert module_registry.ModuleRegistry.job_id_from("обычный ответ") is None
+    assert peer_registry.PeerRegistry.job_id_from(f"задача {JOB} запущена") == JOB
+    assert peer_registry.PeerRegistry.job_id_from("обычный ответ") is None
 
 
 async def test_wait_job_returns_the_finished_job_and_fails_on_timeout_or_disconnect():
@@ -156,7 +156,7 @@ def test_profile_idle_and_activity_come_from_the_desktop_state(tmp_path):
     assert layer.profiles._foreground() is None and comp.idle_seconds() == 0.0 and comp.screen_activity() is None
     manifest = {"id": "desktop", "title": "Компьютер", "description": "Экран", "version": "1.0.0", "tools": []}
     layer.modules.declare("desktop")
-    layer.modules.on_connected(SimpleNamespace(module_id="desktop", manifest=manifest, instance="i1", pid=1,
+    layer.modules.on_connected(SimpleNamespace(id="desktop", manifest=manifest, instance="i1", pid=1,
                                                connected_at=0.0, spec=P.Manifest.from_dict(manifest)))
     activity = {"app": "code", "category": "coding", "summary": "пишет код", "ts": 1.0, "since": 1.0}
     layer.modules.set_state("desktop", "код; простой 700 с", {"foreground_app": "code", "sensitive": False,

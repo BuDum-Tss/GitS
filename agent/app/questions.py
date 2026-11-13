@@ -19,9 +19,9 @@ class QuestionService:
         ctx = self.ctx
         if ctx.hub is None:
             return None
-        found = [c.module_id for c in ctx.hub.connections()
+        found = [c.id for c in ctx.hub.connections()
                  if "chat.channel" in (c.manifest or {}).get("capabilities", [])
-                 and (ctx.modules is None or ctx.modules.is_enabled(c.module_id))]
+                 and (ctx.modules is None or ctx.modules.is_enabled(c.id))]
         return "telegram" if "telegram" in found else (found[0] if found else None)
 
     async def submit(self, q: Question) -> Any:

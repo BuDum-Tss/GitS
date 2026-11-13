@@ -29,7 +29,7 @@ class CharacterSwitch:
         self.rel = rel                  # Relationships
         self.graph = graph              # GraphMemory (None, если граф не подключён)
         self.attention = attention      # Attention: очередь речи, стек фокуса, правила (None в тестах)
-        self.hub = hub                  # ModuleHub: рассылка темы character (None в тестах)
+        self.hub = hub                  # PeerHub: рассылка темы character (None в тестах)
         self.mem_root = Path(mem_root)  # корень памяти ядра: папки персонажей лежат внутри
         self.speech_wait_s = speech_wait_s
         self._lock = asyncio.Lock()

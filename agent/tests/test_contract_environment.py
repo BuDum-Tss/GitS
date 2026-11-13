@@ -11,7 +11,7 @@ from supervisor import Supervisor, load_specs
 
 
 def test_supervisor_passes_every_declared_variable(tmp_path):
-    specs = [s for s in load_specs() if s.kind != "service"][:1]
+    specs = [s for s in load_specs() if not s.external][:1]
     sup = Supervisor(specs, token="t" * 64, core_url="ws://127.0.0.1:1/module/ws", env={"GITS_CHARACTER_ID": "glados"},
                      gits_root=tmp_path, memory_dir=tmp_path / "mem")
     env = sup._process_env(specs[0].id)

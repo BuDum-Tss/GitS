@@ -1,10 +1,11 @@
 # Ядро GitS в контейнере
 
-Один контейнер на персонажа. В контейнере только ядро и модули без железа (`telegram`, `twitch`, `obs`, файл `agent/modules.container.yaml`).
+Один контейнер на персонажа. В контейнере только ядро и окружения без железа (`telegram`, `twitch`, `obs`, все со владением `owned`; файл `agent/peers.container.yaml`,
+его выбирает `GITS_PEERS_FILE`, прежнее имя `GITS_MODULES_FILE` читается как алиас).
 Голос, питомец и «Компьютер» остаются на хосте и подключаются к ядру по WebSocket на опубликованный порт.
 
 ## Запуск
-Из корня репозитория (секреты и `GITS_MODULE_TOKEN` берутся из `.env` хоста, параметры из `docker/core/glados.env`):
+Из корня репозитория (секреты и `GITS_TOKEN` берутся из `.env` хоста, параметры из `docker/core/glados.env`):
 
     docker compose -f docker/core/compose.yml --env-file docker/core/glados.env up -d
 
@@ -12,17 +13,17 @@
 память лежит в именованном томе `gits-<id>-memory` на `/data/memory` (SQLite WAL на bind-mount Windows ненадёжен). Порт опубликован
 только на `127.0.0.1:${CORE_PORT}`; дашборд: `http://127.0.0.1:8766/`.
 
-Модули на хосте: `GITS_CORE_URL=ws://127.0.0.1:<CORE_PORT>/module/ws` и тот же `GITS_MODULE_TOKEN`, что в `.env` ядра (SDK берёт переменную
-раньше файла токена). Без `GITS_MODULE_TOKEN` ядро создаст токен и положит в `/data/memory/module_token`.
+Участники на хосте: `GITS_CORE_URL=ws://127.0.0.1:<CORE_PORT>/ws` (прежний путь `/module/ws` тоже работает) и тот же `GITS_TOKEN`, что в `.env`
+ядра (SDK берёт переменную раньше файла токена; прежнее имя `GITS_MODULE_TOKEN` читается как алиас). Без `GITS_TOKEN` ядро создаст токен и положит в `/data/memory/module_token`.
 Сервисы хоста (decider, LM Studio, OBS, RimWorld) ядро находит по `host.docker.internal`; адреса меняются переменными
 `GITS_DECIDER_URL`, `GITS_LM_URL`, `OBS_WEBSOCKET_URL`, `RIMWORLD_API`.
 
 ## Монтаж (необязательно, профиль `montage`)
-Модуль монтажа (`modules/montage`) работает в отдельном контейнере `gits-<id>-montage` (образ `gits-montage`, `docker/montage/Dockerfile`):
+Окружение монтажа (`modules/montage`) работает в отдельном контейнере `gits-<id>-montage` (образ `gits-montage`, `docker/montage/Dockerfile`):
 Python 3.12, Node 20, ffmpeg/ffprobe, шрифты, chrome-headless-shell для Remotion (скачан при сборке `npx remotion browser ensure`),
-зависимости шаблона (`npm ci`) и среда агента pi. Он сам подключается к ядру по WebSocket `ws://core:8766/module/ws`
-(`GITS_CORE_URL`, имя `core` даёт сеть compose; шина пускает его по `GITS_HUB_ALLOW`: по умолчанию 172.16.0.0/12, 192.168.0.0/16 и 10.0.0.0/8
-покрывают подсеть compose). Супервизор ядра его не запускает (в `modules.container.yaml` его нет): запускает compose.
+зависимости шаблона (`npm ci`) и среда агента pi. Он сам подключается к ядру по WebSocket `ws://core:8766/ws`
+(`GITS_CORE_URL`, `GITS_ID=montage`, `GITS_TOKEN`; имя `core` даёт сеть compose; шина пускает его по `GITS_HUB_ALLOW`: по умолчанию 172.16.0.0/12, 192.168.0.0/16 и 10.0.0.0/8
+покрывают подсеть compose). Супервизор ядра его не запускает (в `peers.container.yaml` его нет): запускает compose.
 
 Запуск (токен берётся из `.env`, поэтому он первым `--env-file`; без токена ядро создаёт свой, и модуль к нему не подключится):
 

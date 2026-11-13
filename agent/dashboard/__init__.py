@@ -1,6 +1,6 @@
 """Веб-дашборд ядра GitS — оверлей для стримера и пульт. Порт 8766.
 
-ТЗ 29, ARC-8: пакет вместо одного файла. Роутеры по темам (`routes_system`, `routes_memory`, `routes_modules`,
+ТЗ 29, ARC-8: пакет вместо одного файла. Роутеры по темам (`routes_system`, `routes_memory`, `routes_peers`,
 `routes_attention`), общее состояние и защита запросов (`context`), презентеры ответов (`presenters`). Здесь только сборка
 приложения, запуск, `set_*` для ядра и прежние имена (`dashboard.handle_api_*`, `_MEMORY_DIR`, `_screen_state`), чтобы
 публичные адреса, ответы и импорты не менялись."""
@@ -16,7 +16,7 @@ import events_log
 import settings
 from envcompat import env
 
-from . import presenters, routes_attention, routes_memory, routes_modules, routes_system
+from . import presenters, routes_attention, routes_memory, routes_peers, routes_system
 from .context import ctx
 from .routes_attention import (  # noqa: F401  (прежние имена пакета)
     NOTIFY_TEXT_MAX, handle_api_attention, handle_api_attention_clear,
@@ -26,10 +26,11 @@ from .routes_attention import (  # noqa: F401  (прежние имена пак
 from .routes_memory import (  # noqa: F401
     handle_api_approval, handle_api_chat_get, handle_api_chat_post, handle_api_core, handle_api_forget, handle_api_graph,
     handle_api_graph_forget)
-from .routes_modules import (  # noqa: F401
+from .routes_peers import (  # noqa: F401
     PANEL_ACTION_TIMEOUT_S, handle_api_artifact, handle_api_job_answer, handle_api_job_cancel, handle_api_jobs,
-    handle_api_module_enabled, handle_api_module_panel, handle_api_module_panel_action, handle_api_module_panel_link,
-    handle_api_module_restart, handle_api_module_settings, handle_api_modules)
+    handle_api_module_enabled, handle_api_peer_panel, handle_api_peer_panel_action, handle_api_peer_panel_link,
+    handle_api_module_restart, handle_api_module_settings, handle_api_modules, handle_api_services,
+    handle_api_workspaces)
 from .routes_system import (  # noqa: F401
     handle_api_appraisal_label, handle_api_capabilities, handle_api_character_post, handle_api_decisions,
     handle_api_events, handle_api_latency, handle_api_menu_click, handle_api_mode_post, handle_api_modes,
@@ -37,7 +38,7 @@ from .routes_system import (  # noqa: F401
 
 logger = logging.getLogger("dashboard")
 
-_ROUTERS = (routes_system, routes_memory, routes_modules, routes_attention)
+_ROUTERS = (routes_system, routes_memory, routes_peers, routes_attention)
 
 _rimworld_url = presenters.rimworld_url
 
@@ -97,7 +98,7 @@ def set_workspace(workspace) -> None:
 # ── Server lifecycle ─────────────────────────────────────────────────────────
 
 def build_app() -> web.Application:
-    """Приложение дашборда: страницы, API и шина модулей (/module/ws)."""
+    """Приложение дашборда: страницы, API и шина участников (/ws и /module/ws)."""
     app = web.Application()
     for router in _ROUTERS:
         for method, path, handler in router.ROUTES:

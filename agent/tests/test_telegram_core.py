@@ -1,5 +1,5 @@
 """Ядро после выноса Telegram в модуль (ТЗ 10, TG-12, TG-13, TG-15, TG-16, TG-23): личные слова, настройки для модулей,
-пост-итог, запись модуля в modules.yaml, MEMORY_DIR для модулей. Кода Telegram в процессе ядра больше нет."""
+пост-итог, запись модуля в peers.yaml, MEMORY_DIR для модулей. Кода Telegram в процессе ядра больше нет."""
 import re
 import subprocess
 import sys
@@ -124,11 +124,11 @@ def test_core_no_longer_posts_run_summaries():
     assert not hasattr(core_service, "post_run_summary")
 
 
-# ── TG-16: запись в modules.yaml, MEMORY_DIR ───────────────────────────────────────────────────
+# ── TG-16: запись в peers.yaml, MEMORY_DIR ───────────────────────────────────────────────────
 
 def test_shipped_modules_yaml_declares_the_telegram_module():
     spec = {s.id: s for s in load_specs()}["telegram"]
-    assert spec.kind == "module" and spec.autostart and spec.restart == "on-failure" and spec.enabled
+    assert spec.role == "workspace" and spec.ownership == "owned" and spec.autostart and spec.restart == "on-failure" and spec.enabled
     assert spec.command == "{PYTHON}" and spec.args == ["-u", "main.py"] and spec.cwd == "{GITS}/modules/telegram"
     sup = Supervisor(load_specs(), token="t" * 64, core_url="ws://x")
     cmd, cwd = sup.resolve("telegram")
@@ -162,13 +162,13 @@ async def test_wire_modules_hands_core_memory_dir_to_modules():
 def test_module_notes_describe_connected_modules_with_tools():
     from types import SimpleNamespace
 
-    from module_registry import ModuleRecord, ModuleRegistry
-    reg = ModuleRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"modules": {}})
-    reg.records["telegram"] = ModuleRecord("telegram", title="Telegram", description="Telegram: канал и бот.", connected=True,
+    from peer_registry import PeerRecord, PeerRegistry
+    reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"modules": {}})
+    reg.records["telegram"] = PeerRecord("telegram", title="Telegram", description="Telegram: канал и бот.", connected=True,
                                            manifest={"tools": [{"name": "post"}]},
                                            state={"summary": "канал: готов, аккаунт: нет сессии", "data": {}, "ts": 1})
-    reg.records["quiet"] = ModuleRecord("quiet", title="Тихий", connected=True, manifest={"tools": []})      # без инструментов
-    reg.records["off"] = ModuleRecord("off", title="Нет", connected=False, manifest={"tools": [{"name": "x"}]})
+    reg.records["quiet"] = PeerRecord("quiet", title="Тихий", connected=True, manifest={"tools": []})      # без инструментов
+    reg.records["off"] = PeerRecord("off", title="Нет", connected=False, manifest={"tools": [{"name": "x"}]})
     assert reg.notes() == ["Модуль «Telegram»: Telegram: канал и бот."]            # состояния в контексте нет
     assert reg.notes(with_state=True) == ["Модуль «Telegram»: Telegram: канал и бот. Сейчас: канал: готов, аккаунт: нет сессии."]
     report = reg.status_report()
@@ -220,8 +220,8 @@ def test_module_events_report_and_trace_of_module_launch():
 
     import core_service
     import tool_trace
-    from module_registry import ModuleRegistry
-    reg = ModuleRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"modules": {}})
+    from peer_registry import PeerRegistry
+    reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"modules": {}})
     assert reg.events_report() == "событий модулей нет"
     tool_trace.clear()
     record = core_service._module_event_recorder(reg, SimpleNamespace(silent_kinds={"voice.heard"}))

@@ -101,8 +101,8 @@ class Attention:
     companion = _Via("ctx", "companion")
     io = _Via("ctx", "io")
     decider = _Via("ctx", "decider")
-    hub = _Via("ctx", "hub")                          # ModuleHub: соединения для доставки вопросов, ставит ядро
-    modules = _Via("ctx", "modules")                  # ModuleRegistry: манифесты, включённость
+    hub = _Via("ctx", "hub")                          # PeerHub: соединения для доставки вопросов, ставит ядро
+    modules = _Via("ctx", "modules")                  # PeerRegistry: манифесты, включённость
     profiles = _Via("ctx", "profiles")                # ProfileManager: веса профиля
     rules = _Via("ctx", "rules")
     presence = _Via("ctx", "presence")

@@ -81,7 +81,7 @@ def render_docs_html() -> str:
   app/         process_event.py conversation.py context_builder.py planner.py executor.py focus_manager.py
                memory_capture.py reflection.py impulses.py digest.py jobs.py                       (сценарии)
   contracts.py MemoryReader, MemoryWriter, PeopleDirectory, FactGraph, LanguageModel, Classifier, EventLog, SettingsProvider, ToolInvoker, Approver, Clock
-  adapters/    module_hub.py dashboard/ llm_lmstudio.py classifier_gliner.py graph_graphiti.py stores_json.py
+  adapters/    peer_hub.py dashboard/ llm_lmstudio.py classifier_gliner.py graph_graphiti.py stores_json.py
                event_log_sqlite.py speech_voice_module.py reminders_sqlite.py supervisor.py
   core_service.py   только сборка
 sdk/gits_sdk/contract/   публичные контракты для модулей (ТЗ 31)</pre>

@@ -19,7 +19,7 @@ ENV PYTHONUNBUFFERED=1 \
     CHARACTER_HOME=/data \
     MEMORY_DIR=/data/memory \
     GITS_DASHBOARD_HOST=0.0.0.0 \
-    GITS_MODULES_FILE=agent/modules.container.yaml
+    GITS_PEERS_FILE=agent/peers.container.yaml
 
 # Node 20 для среды pi: бинарник из образа node (npm в рантайме не нужен)
 COPY --from=agent-runtime /usr/local/bin/node /usr/local/bin/node

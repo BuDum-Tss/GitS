@@ -128,7 +128,7 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
         await runner.cleanup()
         if pid and psutil.pid_exists(pid):
             psutil.Process(pid).kill()
-    assert settings.load()["modules"]["echo"]["enabled"] is False
+    assert settings.load()["peers"]["echo"]["enabled"] is False
 
 
 async def test_module_launch_from_the_dashboard_is_announced_through_attention(tmp_path):

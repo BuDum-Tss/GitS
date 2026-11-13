@@ -1,5 +1,5 @@
 """Ядро после перевода RimWorld на модуль (ТЗ 11: RW-2, RW-5, RW-9, RW-11, RW-14b, RW-18, RW-19, RW-21): приказ игроку-агенту
-инструментом order модуля фокуса, подграф через graph.get, список колонистов событием, поиск папки модуля, запись в modules.yaml,
+инструментом order модуля фокуса, подграф через graph.get, список колонистов событием, поиск папки модуля, запись в peers.yaml,
 отсутствие старых каналов агента игры. Модуль игры в тестах это эхо-модуль на SDK с capabilities ["game"] и order."""
 import asyncio
 import socket
@@ -149,11 +149,11 @@ def test_modules_yaml_points_at_the_rimworld_folder_in_this_repo():
     assert (Path(__file__).resolve().parents[2] / "modules" / "rimworld" / "agent" / "main.py").is_file()
 
 
-# ── RW-5: запись в modules.yaml ─────────────────────────────────────────────────────────────────
+# ── RW-5: запись в peers.yaml ─────────────────────────────────────────────────────────────────
 
 def test_shipped_modules_yaml_declares_the_rimworld_module(tmp_path, monkeypatch):
     spec = {s.id: s for s in load_specs()}["rimworld"]
-    assert spec.kind == "module" and spec.autostart and spec.restart == "on-failure" and spec.enabled
+    assert spec.role == "workspace" and spec.ownership == "shared" and spec.autostart and spec.restart == "on-failure" and spec.enabled
     assert spec.command == "{PYTHON}" and spec.args == ["-u", "main.py"] and spec.cwd == "{GITS}/modules/rimworld/agent"
     repo = tmp_path / "modules" / "rimworld"
     (repo / "agent").mkdir(parents=True)

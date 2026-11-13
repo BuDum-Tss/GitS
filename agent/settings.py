@@ -70,9 +70,9 @@ DEFAULTS = {
     "pet_bubble_secs": 25,      # сколько секунд облачко держится после конца речи (3-120)
     "pet_x": None,              # запомненная позиция окна питомца (None — угол по умолчанию)
     "pet_y": None,
-    # модули (ТЗ 02, CORE-40): id -> {"enabled": bool, <имя собственной настройки>: значение}; нет записи — по умолчанию
-    # (включён; для модулей из modules.yaml берётся поле enabled оттуда)
-    "modules": {},
+    # участники шины (ТЗ 02, CORE-40; прежний ключ `modules` при загрузке переносится сюда): id -> {"enabled": bool,
+    # <имя собственной настройки>: значение}; нет записи — по умолчанию (включён; для записей из peers.yaml берётся поле enabled)
+    "peers": {},
     # менеджер внимания (ТЗ 03, ATT-30): классификатор обращений (decide), запас прерывания, когда пользователь считается
     # отошедшим, min_conf_input - порог уверенности классификатора; inbox - входящая очередь событий (min_interval_s: не чаще,
     # чем раз в столько секунд отдавать накопившееся ей на обдумывание)
@@ -84,8 +84,8 @@ DEFAULTS = {
         "inbox": {"min_interval_s": 60},
     },
 }
-# словари, которые update() сливает на один уровень вглубь (modules.<id> и attention.<ключ> целиком не затираются)
-_DEEP_KEYS = ("modules", "attention", "context", "reflection", "episodes", "fast_contour", "latency_budget")
+# словари, которые update() сливает на один уровень вглубь (peers.<id> и attention.<ключ> целиком не затираются)
+_DEEP_KEYS = ("peers", "attention", "context", "reflection", "episodes", "fast_contour", "latency_budget")
 def default_memory_dir() -> str:
     """MEMORY_DIR главнее; иначе CHARACTER_HOME/memory (том персонажа); иначе ./memory."""
     env = os.getenv("MEMORY_DIR")
@@ -119,10 +119,44 @@ def _file() -> Path:
     return _dir / "settings.json"
 
 
+def peer_entry(cfg: dict | None, peer_id: str) -> dict | None:
+    """Запись участника: `peers.<id>`, а если её нет, прежняя `modules.<id>` (старые файлы и источники настроек в тестах)."""
+    cfg = cfg or {}
+    for key in ("peers", "modules"):
+        entry = (cfg.get(key) or {}).get(peer_id) if isinstance(cfg.get(key), dict) else None
+        if isinstance(entry, dict):
+            return entry
+    return None
+
+
+def _write(data: dict) -> None:
+    try:
+        _dir.mkdir(parents=True, exist_ok=True)
+        tmp = _file().with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, _file())
+    except OSError:
+        pass
+
+
+def _migrate_modules_key(data: dict) -> bool:
+    """Одноразовая миграция: ключ `modules` (участники шины) -> `peers`. True, если файл надо переписать."""
+    if "modules" not in data:
+        return False
+    legacy = data.pop("modules")
+    if "peers" not in data and isinstance(legacy, dict):
+        data["peers"] = legacy
+    return True
+
+
 def load() -> dict:
     try:
         data = json.loads(_file().read_text(encoding="utf-8"))
     except Exception:
+        data = {}
+    if isinstance(data, dict) and _migrate_modules_key(data):
+        _write(data)
+    elif not isinstance(data, dict):
         data = {}
     merged = {**DEFAULTS, **{k: v for k, v in data.items() if k in DEFAULTS}}
     for k in _DEEP_KEYS:
@@ -136,7 +170,7 @@ def load() -> dict:
 
 
 def _merge_deep(old: dict, new: dict) -> dict:
-    """Слияние на один уровень: словари второго уровня (modules.<id>) дополняются, а не заменяются."""
+    """Слияние на один уровень: словари второго уровня (peers.<id>) дополняются, а не заменяются."""
     out = dict(old)
     for key, value in new.items():
         if isinstance(value, dict) and isinstance(out.get(key), dict):
@@ -159,11 +193,5 @@ def update(**changes) -> dict:
             if before.get(k) != v and k not in ("pet_x", "pet_y", "quiet_until")}
     if diff:
         events_log.log("setting", ", ".join(f"{k} = {v}" for k, v in diff.items()))
-    try:
-        _dir.mkdir(parents=True, exist_ok=True)
-        tmp = _file().with_suffix(f".{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, _file())
-    except OSError:
-        pass
+    _write(data)
     return data

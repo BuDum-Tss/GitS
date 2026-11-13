@@ -126,11 +126,11 @@ def test_core_only_mode_blocks_modules_but_keeps_services(monkeypatch):
     import supervisor
 
     class S:
-        def __init__(self, kind):
-            self.kind, self.autostart, self.skip_when_env = kind, True, {}
+        def __init__(self, external):
+            self.external, self.autostart, self.skip_when_env = external, True, {}
 
     sup = supervisor.Supervisor.__new__(supervisor.Supervisor)
-    sup.specs = {"m": S("module"), "decider": S("service")}
+    sup.specs = {"m": S(False), "decider": S(True)}
     sup._enabled = lambda mid: True
     monkeypatch.setenv("GITS_NO_MODULES", "1")
     assert not sup.should_run("m") and sup.should_run("decider")

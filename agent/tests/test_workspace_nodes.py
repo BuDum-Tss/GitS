@@ -141,10 +141,10 @@ def test_nothing_changes_without_declared_fields():
 
 # ── узел из state и поле tools[].node в окружении модуля ──────────────────────────
 
-def test_module_registry_keeps_reported_node_and_passes_tool_node_to_the_environment():
-    import module_registry
+def test_peer_registry_keeps_reported_node_and_passes_tool_node_to_the_environment():
+    import peer_registry
     from gits_sdk import protocol as P
-    reg = module_registry.ModuleRegistry(Registry(), settings_source=lambda: {})
+    reg = peer_registry.PeerRegistry(Registry(), settings_source=lambda: {})
     manifest = {"id": "game", "title": "Игра", "description": "d", "version": "1.0.0",
                 "tools": [{"name": "place", "description": "d", "params": {}, "risk": "auto", "availability": "always",
                            "node": "build"}],
@@ -286,8 +286,8 @@ def test_search_hidden_finds_actions_of_other_nodes_with_the_node_to_open():
 
 
 def test_module_events_report_hides_the_users_screen_while_she_plays():
-    import module_registry
-    reg = module_registry.ModuleRegistry(Registry(), settings_source=lambda: {})
+    import peer_registry
+    reg = peer_registry.PeerRegistry(Registry(), settings_source=lambda: {})
     reg.note_event("desktop", {"kind": "desktop.activity", "text": "claude: читает переписку про RimWorld"})
     reg.note_event("rimworld", {"kind": "rimworld.raid", "text": "набег"})
     assert "desktop.activity" in reg.events_report()                                  # вне игры отчёт прежний

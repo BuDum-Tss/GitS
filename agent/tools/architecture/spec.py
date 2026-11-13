@@ -28,7 +28,7 @@ def N(id, t, tag, do, out, now, new=False):
 # summary: что показываем, пока группа свёрнута
 GROUPS = [
     dict(id="g_src", col="A", title="Источники событий", tag="I",
-         summary="Модули (голос, Telegram, Twitch, OBS, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.", out="Event", nodes=[
+         summary="Участники шины: окружения workspace (Telegram, Twitch, OBS, экран, игра, монтаж), сервисы service (голос, питомец) и чат дашборда. Присылают события и выполняют команды.", out="Event", nodes=[
         N("voice", "voice", "I", "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (ESpeech, запасные Fish Speech и edge-tts)", "Event voice.utterance", "modules/voice"),
         N("desk", "desktop", "I", "экран, активность, мышь и клавиатура, Модуль кода", "Event desktop.*, job.update", "modules/desktop"),
         N("tg", "telegram", "I", "бот, её аккаунт, посты канала", "Event telegram.*", "modules/telegram"),
@@ -46,7 +46,8 @@ GROUPS = [
     ]),
     dict(id="g_in", col="B", title="Приём", tag="I",
          summary="Принимает событие из любого источника, проверяет, приводит к единому виду, склеивает повторы, узнаёт отправителя.", out="Event", nodes=[
-        N("hub", "ModuleHub (входящие)", "I", "WebSocket :8766: рукопожатие, проверка формата, очередь входящих; запросы core.*", "Event", "module_hub.py: приёмник событий EventSink колбэком (adapters/module_events.py), без attention и fast_brain"),
+        N("preg", "PeerRegistry", "I", "реестр участников шины: роль workspace или service (из peers.yaml, манифест главнее), режим владения shared или owned, состояние, задачи, окружение инструментов", "Tool[]", "peer_registry.py: PeerRecord (role, ownership, external), записи объявляет agent/peers.yaml (разделы workspaces, services, planned), включённость в настройке peers"),
+        N("hub", "PeerHub (входящие)", "I", "WebSocket :8766 (/ws и прежний /module/ws): рукопожатие (id или module_id, role, ownership), проверка формата, очередь входящих; запросы core.*", "Event", "peer_hub.py: приёмник событий EventSink колбэком (adapters/module_events.py), без attention и fast_brain"),
         N("event", "Event", "D", "единый конверт: kind, text, sender, hint, data, trace, ts; источник внешний или внутренний (self)", "сущность", "частично (ТЗ 30): domain/event.py (Event с origin external/self) для импульсов и размышления; внутри внимания остаётся Item (поле origin)"),
         N("norm", "Normalizer", "A", "нормализация, дедупликация за 60 с, склейка повторов, TTL", "Event", "выделен (ТЗ 29, R3): app/normalizer.py, app/items.py (хранилище и склейка), domain/dedupe.py"),
         N("people", "PeopleDirectory", "A", "sender → Person, первый контакт, заметки о человеке", "Person", "выделен (R3): Normalizer.note_sender через контракты PeopleDirectory и MemoryWriter; getattr(companion, \"_rel\") остался только в адаптере adapters/people.py"),
@@ -78,12 +79,12 @@ GROUPS = [
         N("reg", "ToolRegistry", "A", "инструменты ядра и модулей, видимость по профилю, отбор по смыслу", "Tool[]", "environments/registry.py, tool_search.py"),
         N("risk", "RiskPolicy + Approver", "D", "риск auto / ask / public / danger; вопрос пользователю, ответ да/нет", "Approval", "router._step_inner + approvals.py"),
         N("exec", "Executor (ToolInvoker)", "A", "вызов инструмента в ядре или модуле, коды ошибок, итог-факт", "ToolResult", "router.run_tool_ex и _step: проверка параметров, риск, вопрос о разрешении, вызов"),
-        N("jobs", "JobTracker", "A", "долгие задачи: прогресс, вопросы, итог; Модуль кода (Agent SDK)", "JobState", "выделен (R3) для внимания: app/jobs.py (JobTracker); module_registry и desktop.assistant_agent как раньше"),
+        N("jobs", "JobTracker", "A", "долгие задачи: прогресс, вопросы, итог; Модуль кода (Agent SDK)", "JobState", "выделен (R3) для внимания: app/jobs.py (JobTracker); peer_registry и desktop.assistant_agent как раньше"),
     ]),
     dict(id="g_foc", col="E", title="Среды", tag="A",
          summary="Решает, кому отдать главную роль (например, игре в бою), и когда её вернуть.", out="FocusDecision", nodes=[
-        N("fmgr", "ModuleLink", "A", "вход, выход и возобновление среды модуля по протоколу workspace.enter / exit / resume; конец задачи модуль сообщает флагом done в статусе; один слот, checkpoint в памяти; очереди событий, закрепления и второго эшелона решений нет", "Workspace", "app/module_link.py (вместо менеджера фокуса ТЗ 18)"),
-        N("wsm", "WorkspaceManager", "A", "в какой среде агент сейчас: assistant, sleep и среды модулей из их манифестов (rimworld, montage); причина, цель, история. В среду модуля входят только по импульсу (сообщение, самоимпульс); события чужих сред среду не переключают, они идут в очередь речи и сводку", "Workspace", "app/workspace_manager.py (ТЗ 32): поверх ModuleLink, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"),
+        N("fmgr", "WorkspaceLink", "A", "вход, выход и возобновление среды окружения (workspace) по протоколу workspace.enter / exit / resume; конец задачи модуль сообщает флагом done в статусе; один слот, checkpoint в памяти; очереди событий, закрепления и второго эшелона решений нет", "Workspace", "app/workspace_link.py (вместо менеджера фокуса ТЗ 18)"),
+        N("wsm", "WorkspaceManager", "A", "в какой среде агент сейчас: assistant, sleep и среды модулей из их манифестов (rimworld, montage); причина, цель, история. В среду модуля входят только по импульсу (сообщение, самоимпульс); события чужих сред среду не переключают, они идут в очередь речи и сводку", "Workspace", "app/workspace_manager.py (ТЗ 32): поверх WorkspaceLink, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса app/impulse_origin.py"),
         N("wsdom", "WorkspaceRules", "D", "чистые правила: кто и по какой причине может войти в среду и выйти из неё", "Workspace", "domain/workspace.py (ТЗ 32)"),
         N("tsvc", "TaskService", "A", "общие задачи всех сред: создание, подзадачи, активная задача среды, checkpoint при уходе и возобновление, закрытие; события task.* в журнал", "Task", "app/task_service.py (ТЗ 32, WS-8); сборка task_wiring.py; инструменты assistant.tasks, create_task, close_task"),
         N("tdom", "TaskRules", "D", "чистые правила задач: статусы, следующий шаг, статус родителя по подзадачам, можно ли прервать, какие пора напомнить", "Task", "domain/tasks.py (ТЗ 32)"),
@@ -98,7 +99,7 @@ GROUPS = [
         N("digest", "Inbox + Digest", "A", "одна входящая очередь на все модули: события срочности ниже 4 копятся с весом срочность × новизна (редкий вид весит больше) × среда (модуль текущей среды ×2, чужие ×0,5; полная очередь теряет самое лёгкое, а не самое старое); когда есть что-то заметное (2+) или много мелочи (в пачку идут 10 самых весомых), модель не занята, нет разговора, «не отвлекать» выключено и прошла минута, накопившееся уходит размышлению одним событием inbox.batch", "inbox.batch", "app/inbox.py (Inbox.tick из цикла внимания, Inbox.blocker: почему пачка ждёт), app/digest.py (история исходов события: ждёт, в контексте, сказано, выброшено, вытеснено; peek даёт самые весомые ждущие события в контекст ответа); вкладка «Состояние» показывает это через GET /api/buffer; настройка attention.inbox.min_interval_s; промпт inbox в prompt.yaml; пачка недоверенная: только сказать или запомнить"),
         N("out", "SpeechOutput и каналы (контракты)", "I", "голос (speak), чат, Telegram (deliver), питомец", "доставка", "speech_out.py, conversation_io.py"),
         N("aff", "Presence и стикеры", "A", "говорит ли, стикер, присутствие; эмоций нет: стикер питомца выбирает тег в тексте ответа (`[question]` перед предложением), текст режется по тегам на куски, каждый звучит со своим стикером", "PresenceState", "domain/stickers.py (теги, разбор потока), app/reply_generator.py (куски ответа), speech_out.PresenceTracker (sticker, sticker_ts); GLiNER эмоции не распознаёт, только решения"),
-        N("hubout", "ModuleHub (исходящие)", "I", "доставка команд модулям: tool.call, speak, workspace.enter, job.answer", "ToolResult, события", "module_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как ModuleHub.outbound"),
+        N("hubout", "PeerHub (исходящие)", "I", "доставка команд участникам шины: tool.call, speak, workspace.enter, job.answer", "ToolResult, события", "peer_outbound.py: Outbound (темы, presence с ограничением частоты, job.answer), доступен как PeerHub.outbound"),
     ]),
     dict(id="g_mem", col="BOTTOM", title="Память", tag="A",
          summary="Запись и чтение памяти: диалог, факты, профили, воспоминания о себе. Источник правды — журнал событий.", out="MemoryRecord, MemoryHit", nodes=[
@@ -120,9 +121,9 @@ GROUPS = [
         N("wx", "WhisperX / Whisper", "X", "распознавание речи", "", ""),
         N("cl", "Claude Agent SDK", "X", "единый агент, быстрая модель без инструментов (claude_llm.py) и долгие задачи", "", ""),
         N("bridge", "services/agent-runtime (Node)", "X", "мост к pi-agent-core: процесс Node, протокол строк JSON по stdin и stdout; модель по подписке ChatGPT (вход auth.json вручную)", "", "services/agent-runtime/bridge.mjs"),
-        N("sup", "Supervisor", "I", "запуск и перезапуск процессов модулей", "", "supervisor.py: 573 строки; режим «только ядро» (GITS_NO_MODULES=1 или настройка only_core); устойчивость ядра проверяет tools/soak_core.py"),
+        N("sup", "Supervisor", "I", "запуск и перезапуск процессов участников шины (окружения и сервисы из peers.yaml)", "", "supervisor.py: 573 строки; режим «только ядро» (GITS_NO_MODULES=1 или настройка only_core); устойчивость ядра проверяет tools/soak_core.py"),
         N("root", "Composition root", "I", "только собирает объекты и подставляет контракты; бизнес-логики быть не должно", "", "core_service.py: только сборка; обработчики voice, colonists, run_lost в app/handlers/"),
-        N("hnd", "Обработчики модулей", "A", "события voice.*, rimworld.colonists и run_ended, desktop.activity, события игры как данные", "", "app/handlers/: voice.py, game.py, desktop.py"),
+        N("hnd", "Обработчики участников", "A", "события voice.*, rimworld.colonists и run_ended, desktop.activity, события игры как данные", "", "app/handlers/: voice.py, game.py, desktop.py"),
     ]),
 ]
 
@@ -131,7 +132,7 @@ BYID = {g["id"]: g for g in GROUPS}
 
 EDGES = [
     ("voice", "hub", "flow", "Event", None), ("desk", "hub", "flow", None, None), ("tg", "hub", "flow", None, None), ("tw", "hub", "flow", None, None), ("obs", "hub", "flow", None, None),
-    ("rim", "hub", "flow", None, None), ("mont", "hub", "flow", "job.update", None), ("dash", "hub", "flow", "UserInput", None),
+    ("hub", "preg", "use", "кто подключён", None), ("rim", "hub", "flow", None, None), ("mont", "hub", "flow", "job.update", None), ("dash", "hub", "flow", "UserInput", None),
     ("reminders", "timer", "use", "срок", None), ("mr", "plans", "r", "планы пользователя", None), ("plans", "reminders", "w", "напомнить", None),
     ("conv", "reflect", "flow", "разговор затих", None), ("timer", "norm", "flow", "self.reminder", None),
     ("root", "hnd", "use", None, None), ("hub", "norm", "flow", "Event", 2), ("norm", "people", "use", "sender", None), ("norm", "rules", "flow", "Event", 3),

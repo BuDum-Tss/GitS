@@ -14,7 +14,7 @@ DOMAIN = AGENT / "domain"
 
 FORBIDDEN = {
     "settings", "events_log", "fast_brain", "character", "companion", "attention", "focus", "router", "approvals",
-    "module_hub", "aiohttp", "httpx", "sqlite3", "asyncio", "app", "adapters",
+    "peer_hub", "aiohttp", "httpx", "sqlite3", "asyncio", "app", "adapters",
 }
 WARN_LINES = 400
 WARN_METHODS = 40

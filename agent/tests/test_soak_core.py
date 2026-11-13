@@ -12,8 +12,8 @@ import dashboard
 import decide
 import settings
 from conversation_io import Channel, ConversationIO
-from module_outbound import Outbound
-from supervisor import ModuleSpec, Supervisor
+from peer_outbound import Outbound
+from supervisor import PeerSpec, Supervisor
 
 
 @pytest.fixture(autouse=True)
@@ -184,8 +184,8 @@ async def test_web_search_and_analysis_trace_claude_without_text(monkeypatch):
 def test_only_core_setting_blocks_modules_like_the_env_variable(tmp_path, monkeypatch):
     monkeypatch.delenv("GITS_NO_MODULES", raising=False)
     assert settings.DEFAULTS["only_core"] is False
-    spec = ModuleSpec(id="m", cwd=str(tmp_path), command="x", args=[])
-    svc = ModuleSpec(id="decider", cwd=str(tmp_path), command="x", args=[], kind="service")
+    spec = PeerSpec(id="m", cwd=str(tmp_path), command="x", args=[])
+    svc = PeerSpec(id="decider", cwd=str(tmp_path), command="x", args=[], external=True)
     flag = {"on": False}
     sup = Supervisor([spec, svc], token="t", core_url="ws://127.0.0.1:1/module/ws", gits_root=tmp_path, agent_dir=tmp_path,
                      logs_dir=tmp_path / "logs", only_core=lambda: flag["on"])

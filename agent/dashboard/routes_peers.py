@@ -1,9 +1,9 @@
-"""Роутер дашборда: модули, пространство модуля, артефакты и задачи (ТЗ 02, ТЗ 15, ТЗ 29 ARC-8)."""
+"""Роутер дашборда: участники шины (окружения и сервисы), пространство окружения, артефакты и задачи (ТЗ 02, ТЗ 15, ТЗ 29 ARC-8)."""
 import asyncio
 
-import module_panel
+import peer_panel
 from aiohttp import web
-from gits_sdk.protocol import JOB_ID_RE
+from gits_sdk.protocol import JOB_ID_RE, ROLE_SERVICE, ROLE_WORKSPACE
 
 from . import presenters
 from .context import background, ctx, json_body
@@ -13,20 +13,38 @@ PANEL_ACTION_TIMEOUT_S = 15.0       # panel.action: ответ модуля не
 
 def _module_or_404(request: web.Request):
     if ctx.modules is None:
-        return None, web.json_response({"error": "модули не подключены"}, status=503)
+        return None, web.json_response({"error": "участники шины не подключены"}, status=503)
     rec = ctx.modules.get(request.match_info["id"])
     if rec is None:
-        return None, web.json_response({"error": "нет такого модуля"}, status=404)
+        return None, web.json_response({"error": "нет такого участника"}, status=404)
     return rec, None
 
 
 async def handle_api_modules(request: web.Request) -> web.Response:
-    """Модули: состояние, инструменты, настройки (CORE-37). У каждой записи `kind`: module, service (компонент ядра) или
-    planned (ещё не установлен); записи для разработчиков (echo) отдаются только при настройке dev_mode."""
+    """Все участники шины: состояние, инструменты, настройки (CORE-37). У каждой записи `role` (workspace или service) и
+    `ownership` (shared или owned, у workspace); запланированные (ещё не установлены) идут с `kind: planned`. Записи для
+    разработчиков (echo) отдаются только при настройке dev_mode. Прежний адрес, оставлен алиасом."""
     if ctx.modules is None:
         return web.json_response([])
     dev_mode = bool(await asyncio.to_thread(lambda: ctx.settings.load().get("dev_mode")))
     return web.json_response(ctx.modules.dashboard_rows(dev_mode))
+
+
+async def _rows_of(role: str) -> web.Response:
+    if ctx.modules is None:
+        return web.json_response([])
+    dev_mode = bool(await asyncio.to_thread(lambda: ctx.settings.load().get("dev_mode")))
+    return web.json_response(ctx.modules.rows_by_role(role, dev_mode))
+
+
+async def handle_api_workspaces(request: web.Request) -> web.Response:
+    """Окружения (роль workspace): тот же снимок реестра, что и у `/api/modules`, плюс запланированные карточки."""
+    return await _rows_of(ROLE_WORKSPACE)
+
+
+async def handle_api_services(request: web.Request) -> web.Response:
+    """Сервисы (роль service), в том числе внешние (decider, espeech) без WebSocket."""
+    return await _rows_of(ROLE_SERVICE)
 
 
 async def handle_api_module_enabled(request: web.Request) -> web.Response:
@@ -39,7 +57,7 @@ async def handle_api_module_enabled(request: web.Request) -> web.Response:
         return err
     if not isinstance(body.get("enabled"), bool):
         return web.json_response({"error": "enabled должно быть true или false"}, status=400)
-    await asyncio.to_thread(lambda: ctx.settings.update(modules={rec.id: {"enabled": body["enabled"]}}))
+    await asyncio.to_thread(lambda: ctx.settings.update(peers={rec.id: {"enabled": body["enabled"]}}))
     ctx.modules.invalidate()
     if ctx.hub is not None:
         await ctx.hub.refresh()                               # модулю уходит тема module (MOD-14)
@@ -76,7 +94,7 @@ async def handle_api_module_settings(request: web.Request) -> web.Response:
     value, problem = presenters.check_setting_value(schema[key], body.get("value"))
     if problem:
         return web.json_response({"error": problem}, status=400)
-    await asyncio.to_thread(lambda: ctx.settings.update(modules={rec.id: {key: value}}))
+    await asyncio.to_thread(lambda: ctx.settings.update(peers={rec.id: {key: value}}))
     ctx.modules.invalidate()
     if ctx.hub is not None:
         await ctx.hub.refresh()
@@ -85,7 +103,7 @@ async def handle_api_module_settings(request: web.Request) -> web.Response:
 
 # ── Пространство модуля (TZ 15) ──────────────────────────────────────────────
 
-async def handle_api_module_panel(request: web.Request) -> web.Response:
+async def handle_api_peer_panel(request: web.Request) -> web.Response:
     """Пространство модуля: объявленное в манифесте `panel`, последние блоки `panel.set` и состояние подключения."""
     rec, err = _module_or_404(request)
     if err:
@@ -93,9 +111,9 @@ async def handle_api_module_panel(request: web.Request) -> web.Response:
     return web.json_response(presenters.panel_view(rec))
 
 
-async def handle_api_module_panel_action(request: web.Request) -> web.Response:
+async def handle_api_peer_panel_action(request: web.Request) -> web.Response:
     """{"action_id": str, "args": {}}: кнопка или строка пространства. Идентификатор должен быть в panel.actions;
-    модуль отвечает `panel.action`, адрес открытия проверяется (`module_panel.action_result`)."""
+    модуль отвечает `panel.action`, адрес открытия проверяется (`peer_panel.action_result`)."""
     body, err = await json_body(request)
     if err:
         return err
@@ -112,16 +130,16 @@ async def handle_api_module_panel_action(request: web.Request) -> web.Response:
     conn = ctx.hub.connection(rec.id)
     if conn is None:
         return web.json_response({"error": "модуль не подключён"}, status=409)
-    from module_hub import ModuleError
+    from peer_hub import PeerError
     try:
         value = await conn.request("panel.action", {"action_id": action_id, "args": args},
                                    timeout=PANEL_ACTION_TIMEOUT_S)
-    except ModuleError as e:                       # отказ модуля - обычный ответ, не ошибка дашборда
+    except PeerError as e:                       # отказ модуля - обычный ответ, не ошибка дашборда
         return web.json_response({"ok": False, "message": e.message, "code": e.code})
-    return web.json_response(module_panel.action_result(value, (rec.panel or {}).get("allowed_hosts")))
+    return web.json_response(peer_panel.action_result(value, (rec.panel or {}).get("allowed_hosts")))
 
 
-async def handle_api_module_panel_link(request: web.Request) -> web.Response:
+async def handle_api_peer_panel_link(request: web.Request) -> web.Response:
     """{"link_id": str, "job_id": str?}: нажатие ссылки пространства из `panel.links`.
     url - адрес из манифеста; reveal_path - папка проводника, только внутри serve_dirs; tool - инструмент модуля с
     риском auto (остальные идут через разговор), с аргументом job_id, если в ссылке args_from: job."""
@@ -140,11 +158,11 @@ async def handle_api_module_panel_link(request: web.Request) -> web.Response:
         return web.json_response({"ok": True, "open_url": link["url"]})
     if kind == "reveal_path":
         raw = link.get("path") or ((rec.state or {}).get("data") or {}).get(link.get("path_from"))
-        folder = module_panel.served_dir(panel.get("serve_dirs"), raw)
+        folder = peer_panel.served_dir(panel.get("serve_dirs"), raw)
         if folder is None:
             return web.json_response({"error": "папка вне разрешённых каталогов модуля"}, status=403)
         try:
-            await asyncio.to_thread(module_panel.reveal, folder)
+            await asyncio.to_thread(peer_panel.reveal, folder)
         except RuntimeError as e:
             return web.json_response({"ok": False, "message": str(e)}, status=501)
         return web.json_response({"ok": True})
@@ -168,15 +186,15 @@ async def _run_tool_link(rec, link: dict, body: dict) -> web.Response:
     conn = ctx.hub.connection(rec.id)
     if conn is None:
         return web.json_response({"error": "модуль не подключён"}, status=409)
-    from module_hub import ModuleError
+    from peer_hub import PeerError
     try:
         value = await conn.request("tool.call", {"tool": spec["name"], "args": args},
                                    timeout=float(spec.get("timeout_s", 30)))
-    except ModuleError as e:
+    except PeerError as e:
         return web.json_response({"ok": False, "message": e.message, "code": e.code})
     out: dict = {"ok": True}
     if link.get("open_result_url") and isinstance(value, dict) and isinstance(value.get("url"), str):
-        if module_panel.open_url_allowed(value["url"], (rec.panel or {}).get("allowed_hosts")):
+        if peer_panel.open_url_allowed(value["url"], (rec.panel or {}).get("allowed_hosts")):
             out["open_url"] = value["url"]
         else:
             out["message"] = "адрес не открыт: хост не разрешён"
@@ -187,22 +205,22 @@ async def handle_api_artifact(request: web.Request) -> web.Response:
     """Файл артефакта задачи: `/api/artifact?module=&job=&name=` (TZ 15, TAB-3). Путь берётся из артефактов задачи и
     раздаётся только из каталогов panel.serve_dirs; диапазоны (Range) для видео отдаёт aiohttp."""
     if ctx.modules is None:
-        return web.json_response({"error": "модули не подключены"}, status=503)
+        return web.json_response({"error": "участники шины не подключены"}, status=503)
     q = request.query
     rec = ctx.modules.get(q.get("module", ""))
     if rec is None:
-        return web.json_response({"error": "нет такого модуля"}, status=404)
+        return web.json_response({"error": "нет такого участника"}, status=404)
     job_id, name = q.get("job", ""), q.get("name", "")
-    if not JOB_ID_RE.match(job_id) or module_panel.bad_name(name):
+    if not JOB_ID_RE.match(job_id) or peer_panel.bad_name(name):
         return web.json_response({"error": "нужны job (j-xxxxxxxx) и name (имя файла)"}, status=400)
-    raw = module_panel.find_artifact(rec.jobs, job_id, name)
+    raw = peer_panel.find_artifact(rec.jobs, job_id, name)
     if raw is None:
         return web.json_response({"error": "такого артефакта у задачи нет"}, status=404)
-    path = module_panel.served_file((rec.panel or {}).get("serve_dirs"), raw)
+    path = peer_panel.served_file((rec.panel or {}).get("serve_dirs"), raw)
     if path is None:
         return web.json_response({"error": "файл вне разрешённых каталогов модуля"}, status=403)
     resp = web.FileResponse(path, headers={"Cache-Control": "no-cache"})
-    resp.content_type = module_panel.artifact_content_type(path)
+    resp.content_type = peer_panel.artifact_content_type(path)
     return resp
 
 
@@ -222,10 +240,10 @@ async def handle_api_job_cancel(request: web.Request) -> web.Response:
     conn = ctx.hub.connection(request.match_info["module"])
     if conn is None:
         return web.json_response({"error": "модуль не подключён"}, status=409)
-    from module_hub import ModuleError
+    from peer_hub import PeerError
     try:
         await conn.request("job.cancel", {"job_id": request.match_info["job_id"]}, timeout=15.0)
-    except ModuleError as e:
+    except PeerError as e:
         return web.json_response({"error": e.message, "code": e.code}, status=400)
     return web.json_response({"ok": True})
 
@@ -246,12 +264,14 @@ async def handle_api_job_answer(request: web.Request) -> web.Response:
 
 ROUTES = [
     ("GET", "/api/modules", handle_api_modules),
+    ("GET", "/api/workspaces", handle_api_workspaces),
+    ("GET", "/api/services", handle_api_services),
     ("POST", "/api/modules/{id}/enabled", handle_api_module_enabled),
     ("POST", "/api/modules/{id}/restart", handle_api_module_restart),
     ("POST", "/api/modules/{id}/settings", handle_api_module_settings),
-    ("GET", "/api/modules/{id}/panel", handle_api_module_panel),
-    ("POST", "/api/modules/{id}/panel/action", handle_api_module_panel_action),
-    ("POST", "/api/modules/{id}/panel/link", handle_api_module_panel_link),
+    ("GET", "/api/modules/{id}/panel", handle_api_peer_panel),
+    ("POST", "/api/modules/{id}/panel/action", handle_api_peer_panel_action),
+    ("POST", "/api/modules/{id}/panel/link", handle_api_peer_panel_link),
     ("GET", "/api/artifact", handle_api_artifact),
     ("GET", "/api/jobs", handle_api_jobs),
     ("POST", "/api/jobs/{module}/{job_id}/cancel", handle_api_job_cancel),

@@ -3,8 +3,8 @@
 # Образ собирается автоматически (или заранее: docker build -f docker/core/Dockerfile -t gits-core:dev .).
 # Монтаж (необязательно): отдельный контейнер gits-<id>-montage, профиль montage:
 #   docker compose --env-file .env --env-file docker/core/glados.env -f docker/core/compose.yml --profile montage up -d
-# (первым --env-file из корня берётся GITS_MODULE_TOKEN; подробности в docker/core/README.md, раздел «Монтаж»).
-# Переменные (docker/core/glados.env): CHARACTER_ID, CHARACTER_DIR, CORE_PORT; GITS_MODULE_TOKEN берётся из .env хоста.
+# (первым --env-file из корня берётся GITS_TOKEN (прежнее имя GITS_MODULE_TOKEN тоже читается); подробности в docker/core/README.md, раздел «Монтаж»).
+# Переменные (docker/core/glados.env): CHARACTER_ID, CHARACTER_DIR, CORE_PORT; GITS_TOKEN берётся из .env хоста.
 # Весь стек в одной группе gits (Docker Desktop): ядро персонажа, общие сервисы (espeech, whisperx, fish-speech, монтаж). Имя ядра: <id>-core.
 name: gits
 
@@ -23,9 +23,9 @@ services:
       CHARACTER_HOME: /data
       MEMORY_DIR: /data/memory
       GITS_CHARACTER_ID: ${CHARACTER_ID:-glados}
-      # токен модулей GITS_MODULE_TOKEN приходит из .env хоста (env_file выше; его же читают модули на хосте). Без него ядро
-      # создаёт токен само и пишет в /data/memory/module_token (тогда модулям на хосте его надо передать вручную)
-      # шина модулей открыта петле и сетям Docker: хостовые модули приходят с адреса шлюза сети (порт опубликован только на 127.0.0.1)
+      # токен шины GITS_TOKEN (прежнее имя GITS_MODULE_TOKEN тоже читается) приходит из .env хоста (env_file выше; его же читают
+      # участники на хосте). Без него ядро создаёт токен само и пишет в /data/memory/module_token (тогда его надо передать вручную)
+      # шина открыта петле и сетям Docker: хостовые модули приходят с адреса шлюза сети (порт опубликован только на 127.0.0.1)
       GITS_HUB_ALLOW: ${GITS_HUB_ALLOW:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
       # сервисы на хосте
       GITS_DECIDER_URL: ${GITS_DECIDER_URL:-http://host.docker.internal:8768}
@@ -46,7 +46,7 @@ services:
       # auth.json pi с хоста (запись нужна: pi обновляет токены входа); путь меняет GITS_PI_AUTH_FILE
       - ${GITS_PI_AUTH_FILE:-../../services/agent-runtime/auth.json}:/run/secrets/pi_auth.json
 
-  # Модуль монтажа: свой контейнер, подключается к ядру по WebSocket (сеть compose, адрес ядра core:8766), только по профилю montage
+  # Окружение монтажа: свой контейнер, подключается к ядру по WebSocket (сеть compose, адрес ядра core:8766), только по профилю montage
   montage:
     profiles: ["montage"]
     build:
@@ -58,11 +58,11 @@ services:
     depends_on:
       core:
         condition: service_healthy
-    # env_file не подключается: секреты хоста (.env) модулю монтажа не нужны, токен шины идёт переменной GITS_MODULE_TOKEN
+    # env_file не подключается: секреты хоста (.env) модулю монтажа не нужны, токен шины идёт переменной GITS_TOKEN
     environment:
-      GITS_CORE_URL: ws://core:8766/module/ws
-      GITS_MODULE_TOKEN: ${GITS_MODULE_TOKEN:-}
-      GITS_MODULE_ID: montage
+      GITS_CORE_URL: ws://core:8766/ws
+      GITS_TOKEN: ${GITS_TOKEN:-${GITS_MODULE_TOKEN:-}}
+      GITS_ID: montage
       GITS_CHARACTER_ID: ${CHARACTER_ID:-glados}
       CHARACTER_HOME: /data
       # рабочая память модуля (папки задач, обучающий журнал) в томе, а не в слое контейнера

@@ -1,4 +1,4 @@
-"""Модуль монтажа в ядре (ТЗ 20, MON-34): запись в modules.yaml, поиск папки модуля, профиль editing."""
+"""Модуль монтажа в ядре (ТЗ 20, MON-34): запись в peers.yaml, поиск папки модуля, профиль editing."""
 from pathlib import Path
 
 from profile_manager import load_profiles
@@ -11,7 +11,7 @@ def test_modules_yaml_declares_the_montage_module():
     specs = {s.id: s for s in load_specs()}
     montage = specs["montage"]
     assert montage.cwd == "{GITS}/modules/montage/agent" and montage.command == "{GITS}/modules/montage/.venv/Scripts/python.exe"
-    assert montage.autostart is True and montage.restart == "on-failure" and montage.kind == "module"
+    assert montage.autostart is True and montage.restart == "on-failure" and montage.role == "workspace" and montage.ownership == "shared" and not montage.external
     assert "montage" not in {p.id for p in load_planned()}                                   # из «запланированных» убран
 
 
