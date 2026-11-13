@@ -127,7 +127,10 @@ class Registry:
             doc = _stems(f"{t.name} {t.description} {' '.join(t.keywords)} "
                          f"{self.envs[t.env].title} {self.envs[t.env].description}")
             scored.append((len(query & doc), t))
-        scored.sort(key=lambda x: -x[0])
+        focus = self._focus_modules() or set()
+        # при равном счёте первыми идут инструменты модулей фокуса: запрос на другом языке не совпадает ни с чем (счёт 0 у всех),
+        # и без этого агент в среде игры получал первые по порядку инструменты ассистента и не видел игровых
+        scored.sort(key=lambda x: (-x[0], 0 if self.envs[x[1].env].module in focus else 1))
         picked = [t for _, t in scored[:k]]
         picked += [t for t in tools if t.always and t not in picked]   # запасной путь не должен отсеиваться
         return picked

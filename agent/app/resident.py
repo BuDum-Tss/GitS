@@ -126,7 +126,7 @@ class ResidentAgent:
 
         self._specs = [
             ToolSpec("find_tools", "Найти инструменты по смыслу запроса (все окружения и модули). Возвращает id, описание и "
-                     "параметры. Пустой запрос: перечень окружений.",
+                     "параметры. Пустой запрос: перечень окружений. Запрос пиши по-русски: описания инструментов русские.",
                      {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}, find_tools),
             ToolSpec("call_tool", "Вызвать инструмент по id с параметрами args (объект). Проверку параметров и вопрос о "
                      "разрешении делает система.",
@@ -283,7 +283,7 @@ class ResidentAgent:
                     continue                               # «не отвлекать»: событие не повод говорить
                 await h.say(h._declutter(strip_tags(event.text)), first_sticker(event.text))   # тег реакции -> стикер питомца
             elif isinstance(event, ToolEvent):
-                tool_id = str(event.args.get("tool_id") or "")
+                tool_id = str(event.args.get("tool_id") or event.args.get("query") or "")[:120]   # для find_tools в журнале виден запрос
                 logger.info(f"[агент] {event.name} {tool_id}".rstrip())
             elif isinstance(event, EndEvent) and event.status == "error":
                 import llm_gate
