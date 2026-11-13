@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 dependencies = ["aiohttp>=3.9"]
 
 [tool.setuptools.packages.find]
-include = ["gits_sdk*", "glados_module*"]   # glados_module: устаревший алиас (ТЗ 05, CHR-3)
+include = ["gits_sdk*"]
 
 # Тесты SDK: из корня репозитория `python -m pytest -q sdk/tests` (см. check.ps1).
 # pythonpath позволяет гонять тесты и без установки пакета.

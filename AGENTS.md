@@ -157,7 +157,7 @@ SDK для тяжёлых задач.
 Воспоминания о себе: `memories.yaml` -> граф (`canon: true`), защита канона в колонистах и очистке, факты о персонаже из реплик
 собеседника не пишутся. Переключение: `character_switch.CharacterSwitch` (дашборд `POST /api/character`, инструмент
 `core.set_character`). Переменные окружения: `GITS_*` (инфраструктура) и `CHARACTER_*` (персонаж), старые `GLADOS_*` читает
-`envcompat.env()` с предупреждением; все копии `envcompat.py` должны совпадать (тест). SDK: пакет `gits_sdk`, `glados_module` - алиас.
+`envcompat.env()` с предупреждением; все копии `envcompat.py` должны совпадать (тест). SDK: пакет `gits_sdk`.
 
 ## Как добавить инструмент
 1. Опиши его в `environments/builtin.py` через `_tool(env, name, описание, параметры, функция, risk=..., keywords=...)`

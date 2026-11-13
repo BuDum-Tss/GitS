@@ -20,7 +20,6 @@ agent/logs
 agent/models
 agent/resources
 test
-agent/debug_screenshot.png
 agent/_*.log
 resources
 services/agent-runtime/auth.json
