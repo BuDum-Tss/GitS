@@ -253,15 +253,7 @@ def build_menu() -> pystray.Menu:
 
 
 def _icon_image() -> Image.Image:
-    path = HERE.parent / "services" / "pet" / "static" / "stickers" / "idle.png"
-    try:
-        img = Image.open(path).convert("RGBA")
-        img.thumbnail((64, 64))
-        canvas = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-        canvas.paste(img, ((64 - img.width) // 2, (64 - img.height) // 2), img)
-        return canvas
-    except OSError:
-        return Image.new("RGBA", (64, 64), (90, 90, 90, 255))
+    return Image.new("RGBA", (64, 64), (90, 90, 90, 255))        # значок трея: простой квадрат (чужих файлов не читаем)
 
 
 _stopping = False            # трей закрыт по команде из меню: перезапускать его не надо

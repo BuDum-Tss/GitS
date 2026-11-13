@@ -19,7 +19,7 @@ LABEL_MAX = 48
 WINDOWS = (60.0, 600.0)
 
 # модуль-канал -> узел вывода на схеме (flow_spec.OUTPUT_OF_MODULE повторяет это для узлов модулей)
-OUTPUT_NODES = {"voice": "out_voice", "pet": "out_pet", "telegram": "out_telegram"}
+OUTPUT_NODES = {"voice": "out_voice", "telegram": "out_telegram"}
 
 _lock = threading.Lock()
 _buf: collections.deque = collections.deque(maxlen=CAPACITY)
@@ -117,7 +117,7 @@ def node_errors(node: str, now: float | None = None) -> dict:
             "reasons": {lab: sum(1 for r in errs if r["label"] == lab) for lab in sorted({r["label"] for r in errs})}}
 
 
-ERROR_NODES = ("gliner", "claude", "out_voice", "out_pet", "out_telegram")
+ERROR_NODES = ("gliner", "claude", "out_voice", "out_presence", "out_telegram")
 
 
 def error_nodes(now: float | None = None) -> dict:

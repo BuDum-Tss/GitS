@@ -27,7 +27,7 @@ NODES = [
     ("working_memory", "Рабочая память", "wm"),
     ("graph_memory", "Личная память (граф)", "ltm"),
     ("out_voice", "Голос", "output"),
-    ("out_pet", "Питомец", "output"),
+    ("out_presence", "Показ состояния", "output"),
     ("out_telegram", "Telegram", "output"),
     ("out_dashboard", "Дашборд", "output"),
 ]
@@ -37,7 +37,7 @@ EDGES = [
     ("attention", "planner"), ("attention", "speech_queue"), ("planner", "gemma"), ("planner", "claude"),
     ("planner", "tools"), ("planner", "graph_memory"), ("gemma", "speech_queue"), ("gemma", "working_memory"),
     ("gemma", "graph_memory"), ("working_memory", "graph_memory"),
-    ("speech_queue", "out_voice"), ("speech_queue", "out_pet"), ("speech_queue", "out_telegram"),
+    ("speech_queue", "out_voice"), ("speech_queue", "out_presence"), ("speech_queue", "out_telegram"),
     ("speech_queue", "out_dashboard"), ("claude", "speech_queue"),
 ]
 
@@ -54,7 +54,7 @@ TRANSITIONS = [
     ("llm", "answered", ""), ("decided", "answered", "готовая реплика"),
 ]
 
-OUTPUT_OF_MODULE = {"voice": "out_voice", "pet": "out_pet", "telegram": "out_telegram"}
+OUTPUT_OF_MODULE = {"voice": "out_voice", "telegram": "out_telegram"}
 
 
 def module_node(peer_id: str) -> str:

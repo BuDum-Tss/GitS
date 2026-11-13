@@ -69,8 +69,8 @@ class Outbound:
             self._presence_last = self._hub._monotonic()
             self.notify("presence", data)
             try:
-                if self._hub.is_connected("pet"):                        # ТЗ 17: питомец получает присутствие, это его «вывод»
-                    flow_trace.step(None, "out_pet", "speech_queue", "out_pet", "presence", label="presence")
+                if any("presence" in c.spec.subscribe for c in self._hub.connections()):   # ТЗ 17: подписчик присутствия (кто бы он ни был)
+                    flow_trace.step(None, "out_presence", "speech_queue", "out_presence", "presence", label="presence")
             except Exception:
                 pass
 

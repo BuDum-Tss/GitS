@@ -117,14 +117,14 @@ async def test_deliver_to_telegram_is_traced_ok_and_error_without_text():
     assert flow_trace.node_errors("out_telegram")["total"] == 1
 
 
-async def test_presence_to_connected_pet_is_traced():
+async def test_presence_to_a_subscriber_is_traced():
     sent = []
 
     class Hub:
         _monotonic = staticmethod(lambda: 1000.0)
 
-        def is_connected(self, mid):
-            return mid == "pet"
+        def connections(self):          # любой подписчик присутствия, ядро не знает его по имени
+            return [SimpleNamespace(spec=SimpleNamespace(subscribe=["presence"]))]
 
         def _spawn(self, coro):
             coro.close()
@@ -132,22 +132,22 @@ async def test_presence_to_connected_pet_is_traced():
 
     ob = Outbound(Hub())
     ob.broadcast_presence({"speaking": True})
-    recs = [r for r in flow_trace.records() if r["node"] == "out_pet"]
+    recs = [r for r in flow_trace.records() if r["node"] == "out_presence"]
     assert recs and recs[0]["from"] == "speech_queue" and sent
 
 
-async def test_presence_without_pet_is_not_traced():
+async def test_presence_without_subscriber_is_not_traced():
     class Hub:
         _monotonic = staticmethod(lambda: 1000.0)
 
-        def is_connected(self, mid):
-            return False
+        def connections(self):
+            return []
 
         def _spawn(self, coro):
             coro.close()
 
     Outbound(Hub()).broadcast_presence({"speaking": True})
-    assert not [r for r in flow_trace.records() if r["node"] == "out_pet"]
+    assert not [r for r in flow_trace.records() if r["node"] == "out_presence"]
 
 
 async def test_web_search_and_analysis_trace_claude_without_text(monkeypatch):
