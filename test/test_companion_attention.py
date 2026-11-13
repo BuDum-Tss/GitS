@@ -14,7 +14,7 @@ import approvals
 import fast_brain
 import settings
 import speech_out
-from attention import Attention
+from services.attention import Attention
 from companion import Companion
 from conversation_io import DASHBOARD, VOICE, Channel, UserInput, current_channel
 from relationships import Relationships

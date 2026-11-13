@@ -23,15 +23,15 @@ SMELLS = [
     ("ContextBuilder: бюджет есть, поиск ещё два", "<code>app/context_builder.py</code>: бюджет токенов на роль и режимы push/pull есть (настройка <code>context</code>), по умолчанию прежняя склейка; общий гибридный поиск <code>search/</code> готов, но чтение памяти ещё идёт двумя поисками.", "подключить search/ к MemoryReader"),
 ]
 MAP = [
-    ("attention/service.py (1108)", "Normalizer, PeopleDirectory, HardRules, PriorityScorer, Dispatcher, Digest, JobTracker (часть), вопросы"),
+    ("services/attention/service.py (1108)", "Normalizer, PeopleDirectory, HardRules, PriorityScorer, Dispatcher, Digest, JobTracker (часть), вопросы"),
     ("companion.py (666)", "ConversationService, ContextBuilder, ReplyGenerator, MemoryWriter (capture, consolidate); проактивность по таймеру удалена (ТЗ 30)"),
     ("focus.py (1061)", "FocusPolicy (чистая), FocusManager (очередь и переходы), CheckpointStore"),
     ("router.py (225) + approvals.py (301)", "Planner, RiskPolicy, Approver, Executor"),
     ("core_service.py", "Composition root; обработчики в <code>app/handlers/</code>"),
     ("peer_hub.py + peer_outbound.py", "PeerHub: входящие, исходящие в <code>PeerHub.outbound</code>, без импорта домена"),
     ("dashboard/", "HTTP-адаптер: роутеры <code>routes_*.py</code> и презентеры <code>presenters.py</code>"),
-    ("memory_service/graph.py, memory_service/user.py, memory_service/adapters.py", "MemoryWriter/MemoryReader + репозитории"),
-    ("attention/speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
+    ("services/memory_service/graph.py, services/memory_service/user.py, services/memory_service/adapters.py", "MemoryWriter/MemoryReader + репозитории"),
+    ("services/attention/speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
     ("events_log.py, settings.py, character.py", "контракты EventLog, SettingsProvider, CharacterRepo"),
     ("нет", "ReminderStore, ImpulseTimer, ReflectionService, журнал мыслей (ТЗ 30)"),
 ]

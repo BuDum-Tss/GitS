@@ -27,7 +27,7 @@ class UserMemoryAdapter:
     def __init__(self, get_mem: Callable[[], Any], get_graph: Callable[[], Any],
                  get_episodes: Callable[[], Any] | None = None, get_tasks: Callable[[], Any] | None = None,
                  get_owner: Callable[[], str] | None = None):
-        """get_episodes() -> сервис эпизодов (`memory_service/episode_service.py`, у него `.recall`) или None; get_tasks() -> `TaskService` или None
+        """get_episodes() -> сервис эпизодов (`services/memory_service/episode_service.py`, у него `.recall`) или None; get_tasks() -> `TaskService` или None
         (без него планы не записываются); get_owner() -> имя владельца для подписи его фактов."""
         self._get_mem = get_mem
         self._get_graph = get_graph

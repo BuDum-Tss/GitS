@@ -6,10 +6,10 @@ import pytest
 from test_attention import Rig, evt_log
 
 import peer_registry
-from attention import Attention
+from services.attention import Attention
 from environments.registry import Registry
 from gits_sdk import protocol as P
-from attention.speech_queue import ANNOUNCE_P, SpeechCandidate
+from services.attention.speech_queue import ANNOUNCE_P, SpeechCandidate
 
 
 @pytest.fixture

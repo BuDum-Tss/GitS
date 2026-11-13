@@ -89,7 +89,7 @@ class CoreRequests:
     async def _ask(self, conn: PeerConnection, body: Any) -> dict:
         if self.attention is None:
             raise PeerError("unavailable", "менеджер внимания не подключён")
-        from attention import Question
+        from services.attention import Question
         q = Question(kind=body["kind"], question=body["question"], options=body.get("options"),
                      timeout_s=body.get("timeout_s", P.ASK_TIMEOUT_DEFAULT), source=conn.id,
                      context=body.get("context") or {}, urgency_hint=body.get("urgency_hint"))

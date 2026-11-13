@@ -24,7 +24,7 @@ from domain import thoughts as thought_dom
 from domain.event import KIND_AFTER_CONVERSATION, Event
 from domain.rules import EPISODE_KINDS
 
-from attention import BATCH_KIND
+from services.attention import BATCH_KIND
 from domain.model_json import parse_step  # noqa: F401  (прежнее имя: его импортируют тесты)
 
 logger = logging.getLogger("reflection")

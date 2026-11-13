@@ -4,7 +4,7 @@ import asyncio
 
 from hub_helpers import FakeSpeech
 
-from attention.speech_queue import SpeechQueue
+from services.attention.speech_queue import SpeechQueue
 
 
 class Clock:

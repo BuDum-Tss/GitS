@@ -12,7 +12,7 @@ import prompts
 from adapters.impulse_store import JsonReminders, JsonThoughts
 from app import impulse_origin
 from app.impulse_timer import ImpulseTimer
-from attention import event_of
+from services.attention import event_of
 from app.plan_nudge import PlanNudger
 from app.reflection import ReflectionService
 from domain.event import KIND_AFTER_CONVERSATION

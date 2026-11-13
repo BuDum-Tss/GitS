@@ -13,7 +13,7 @@ from pathlib import Path
 
 import character
 import events_log
-from memory_service import migration as memory_migration
+from services.memory_service import migration as memory_migration
 import prompts
 
 log = logging.getLogger("character_switch")

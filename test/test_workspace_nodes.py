@@ -2,9 +2,9 @@
 import asyncio
 from types import SimpleNamespace
 
-from attention.core import Item
+from services.attention.core import Item
 from app.node_panel import NodePanel
-from attention.normalizer import Normalizer
+from services.attention.normalizer import Normalizer
 from environments.base import Environment, Tool
 from environments.registry import Registry
 

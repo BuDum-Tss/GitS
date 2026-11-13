@@ -13,7 +13,7 @@ import latency_trace
 import salience
 from conversation_io import DASHBOARD, VOICE, UserInput, current_channel
 
-from memory_service import SPEAKER_TAG
+from services.memory_service import SPEAKER_TAG
 
 logger = logging.getLogger("companion")
 

@@ -7,7 +7,7 @@ import settings
 import web_search
 from environments import builtin
 from environments.registry import Registry
-from memory_service.user import UserMemory
+from services.memory_service.user import UserMemory
 
 
 class _Dummy:

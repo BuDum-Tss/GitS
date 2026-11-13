@@ -11,7 +11,7 @@ import core_service
 import events_log
 import speech_out
 from companion import Companion
-from memory_service.graph import GraphMemory
+from services.memory_service.graph import GraphMemory
 from environments.registry import Registry
 from gits_sdk import ServiceClient
 from relationships import Relationships

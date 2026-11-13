@@ -1,14 +1,15 @@
-"""Граница сервиса внимания (`agent/attention/`): остальное ядро знает его только через `attention.Attention` и протокол
+"""Граница сервиса внимания (`agent/services/attention/`): остальное ядро знает его только через `attention.Attention` и протокол
 `contracts.EventAttention`, внутренних файлов папки не импортирует и обращается только к публичным методам."""
 import ast
 import inspect
 from pathlib import Path
 
 import contracts
-from attention import Attention
+from services.attention import Attention
 
 AGENT = Path(__file__).resolve().parents[1] / "agent"
-SKIP_PARTS = {"attention", "tests", ".venv", "node_modules", "logs", "tools"}
+SKIP_PARTS = {"tests", ".venv", "node_modules", "logs", "tools"}
+OWN = ("services", "attention")                                           # папка сервиса: внутри неё можно что угодно
 ALLOWED_ROOT_NAMES = {"Attention", "Question", "BATCH_KIND", "event_of"}              # имена, которые остальное ядро берёт из пакета
 ATT_NAMES = {"attention", "att"}
 
@@ -19,7 +20,8 @@ def _protocol_members() -> set[str]:
 
 def _production_files():
     for p in AGENT.rglob("*.py"):
-        if SKIP_PARTS & set(p.relative_to(AGENT).parts):
+        parts = p.relative_to(AGENT).parts
+        if SKIP_PARTS & set(parts) or parts[:2] == OWN:
             continue
         yield p, ast.parse(p.read_text(encoding="utf-8"))
 
@@ -38,12 +40,12 @@ def test_nobody_outside_imports_attention_internals():
     for p, tree in _production_files():
         for n in ast.walk(tree):
             if isinstance(n, ast.ImportFrom) and n.module:
-                if n.module.startswith("attention."):
+                if n.module.startswith("services.attention."):
                     bad.append(f"{p.relative_to(AGENT)}: from {n.module}")
-                elif n.module == "attention":
+                elif n.module == "services.attention":
                     bad += [f"{p.relative_to(AGENT)}: {a.name}" for a in n.names if a.name not in ALLOWED_ROOT_NAMES]
             elif isinstance(n, ast.Import):
-                bad += [f"{p.relative_to(AGENT)}: import {a.name}" for a in n.names if a.name.startswith("attention.")]
+                bad += [f"{p.relative_to(AGENT)}: import {a.name}" for a in n.names if a.name.startswith("services.attention.")]
     assert not bad, f"внутренние файлы внимания импортируются снаружи: {bad}"
 
 

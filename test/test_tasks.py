@@ -405,7 +405,7 @@ async def test_plan_nudger_mirrors_plans_as_tasks_and_sets_reminder():
 # ── инструменты ──────────────────────────────────────────────────────────────
 
 async def test_task_tools_list_create_close(tmp_path):
-    from memory_service.user import UserMemory
+    from services.memory_service.user import UserMemory
     svc = service(FakePlanner(["шаг один", "шаг два"]))
     companion = SimpleNamespace(tasks=svc)
     reg = Registry()
@@ -428,7 +428,7 @@ async def test_task_tools_list_create_close(tmp_path):
 
 
 async def test_task_tools_without_service(tmp_path):
-    from memory_service.user import UserMemory
+    from services.memory_service.user import UserMemory
     reg = Registry()
     builtin.register(reg, SimpleNamespace(), UserMemory(str(tmp_path)))
     with pytest.raises(ToolError):

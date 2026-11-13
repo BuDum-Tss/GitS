@@ -11,10 +11,10 @@ import time
 from datetime import datetime
 from typing import Awaitable, Callable
 
-from memory_service.diary import DayWriter
-from memory_service.episode_summary import EpisodeSummarizer
+from services.memory_service.diary import DayWriter
+from services.memory_service.episode_summary import EpisodeSummarizer
 from contracts import EventSource, MemoryWriter
-from memory_service import episodes as dom
+from services.memory_service import episodes as dom
 
 logger = logging.getLogger("episodes")
 

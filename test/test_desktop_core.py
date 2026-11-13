@@ -16,7 +16,7 @@ from companion import Companion
 from environments.base import Environment, Tool
 from environments.registry import Registry
 from gits_sdk import protocol as P
-from memory_service.user import UserMemory
+from services.memory_service.user import UserMemory
 
 AGENT = Path(__file__).resolve().parent.parent / "agent"
 JOB = "j-1a2b3c4d"
@@ -184,7 +184,7 @@ def test_legacy_screen_tool_ids_resolve_to_the_desktop_tools():
 
 
 def test_attention_idle_without_a_module_counts_as_at_the_computer():
-    from attention import Attention
+    from services.attention import Attention
     assert Attention._default_idle() == 0.0
 
 

@@ -10,7 +10,7 @@ from test_companion_split import make as make_companion
 
 from adapters.impulse_store import JsonReminders, JsonThoughts
 from app.impulse_timer import ImpulseTimer
-from attention.items import event_of
+from services.attention.items import event_of
 from app.reflection import Intent, ReflectionService, parse_intents, parse_step
 from contracts import ReminderRepository, ThoughtJournal
 from domain import impulses, rules
@@ -391,7 +391,7 @@ def test_event_of_item_keeps_origin_and_data(tmp_path):
 
 
 async def test_remind_self_tool_sets_a_reminder(tmp_path):
-    from memory_service.user import UserMemory
+    from services.memory_service.user import UserMemory
     added = []
 
     class Timer:

@@ -10,7 +10,7 @@ from typing import Callable
 
 from domain.model_json import parse_step
 from contracts import LanguageModel
-from memory_service import episodes as dom
+from services.memory_service import episodes as dom
 
 logger = logging.getLogger("episodes")
 

@@ -24,11 +24,11 @@ import claude_battery
 import dashboard
 import events_log
 import tool_trace
-from memory_service import episode_routes
-from memory_service import episode_service
-from memory_service import scope as graph_scope
+from services.memory_service import episode_routes
+from services.memory_service import episode_service
+from services.memory_service import scope as graph_scope
 import impulse_service
-from memory_service import migration as memory_migration
+from services.memory_service import migration as memory_migration
 import task_wiring
 import profile_manager
 import settings
@@ -37,7 +37,7 @@ import speech_out
 import supervisor as supervisor_mod
 import tool_search
 from app.workspace_manager import WorkspaceManager
-from attention import Attention
+from services.attention import Attention
 from app.workspace_link import WorkspaceLink
 from app.lease_adapter import LeaseAdapter
 from character_switch import CharacterSwitch
@@ -57,7 +57,7 @@ from app.handlers.game import make_colonists_handler, make_run_lost_hook
 from app.handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
 from peer_hub import PeerHub
 from peer_registry import PeerRegistry
-from memory_service import GraphMemory
+from services.memory_service import GraphMemory
 from relationships import Relationships
 from router import Router
 
@@ -265,7 +265,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
 
 
 async def _migrate_memory(companion, graph, folder: Path) -> None:
-    """Перенос старой `memories.json` в граф и задачи (`memory_service/migration.py`); сбой переноса не мешает запуску."""
+    """Перенос старой `memories.json` в граф и задачи (`services/memory_service/migration.py`); сбой переноса не мешает запуску."""
     try:
         done = await memory_migration.migrate(folder, graph, getattr(companion, "tasks", None), companion._owner_name())
         if done:

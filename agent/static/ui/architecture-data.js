@@ -156,7 +156,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "нормализация, дедупликация за 60 с, склейка повторов, TTL",
      "out": "Event",
-     "now": "выделен (ТЗ 29, R3): attention/normalizer.py, attention/items.py (хранилище и склейка), domain/dedupe.py"
+     "now": "выделен (ТЗ 29, R3): services/attention/normalizer.py, services/attention/items.py (хранилище и склейка), domain/dedupe.py"
     },
     {
      "id": "people",
@@ -185,7 +185,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»",
      "out": "RuleResult",
-     "now": "выделен (R3): attention/pipeline.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py; жёсткие правила обращений владельца (ТЗ 25): routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
+     "now": "выделен (R3): services/attention/pipeline.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py; жёсткие правила обращений владельца (ТЗ 25): routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
     },
     {
      "id": "cls",
@@ -194,7 +194,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "намерение обращения владельца (chat, action, stop...) до маршрутизатора; события участников шины не классифицирует; реализация: служба GLiNER :8768, тайм-аут 2,5 с",
      "out": "InputClass",
-     "now": "decide.py + services/decider; в Attention его зовёт attention/input_classifier.py; без сервиса обращение идёт по правилам"
+     "now": "decide.py + services/decider; в Attention его зовёт services/attention/input_classifier.py; без сервиса обращение идёт по правилам"
     },
     {
      "id": "attn",
@@ -203,7 +203,7 @@ window.ARCH_DATA = {
      "new": true,
      "do": "граница сервиса внимания: остальное ядро знает его только через `attention.Attention` и этот протокол (приём событий, речь, правила, чтение сводки, подключение при сборке: connect, register_handler, set_*); внутренние файлы папки снаружи не импортируются",
      "out": "вызовы сервиса",
-     "now": "contracts.EventAttention; attention/service.py; граница проверяется test_attention_boundary.py"
+     "now": "contracts.EventAttention; services/attention/service.py; граница проверяется test_attention_boundary.py"
     },
     {
      "id": "disp",
@@ -212,7 +212,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "решение по срочности участника шины: 0 выбросить (D0); ниже 4 во входящую очередь (D1); 4 сказать (D3); 5 сказать и поставить реакцию (D4). «Не отвлекать» и «пользователь отошёл» уводят в очередь; обращение к ней поднимает до 4",
      "out": "Decision",
-     "now": "attention/dispatcher.py (finish, act), domain/scoring.py (decide: чистая функция), attention/decision_log.py; Normalizer.assign_urgency ставит срочность по подсказке участника шины; правила boost/only меняют её (RuleStore.stance)"
+     "now": "services/attention/dispatcher.py (finish, act), domain/scoring.py (decide: чистая функция), services/attention/decision_log.py; Normalizer.assign_urgency ставит срочность по подсказке участника шины; правила boost/only меняют её (RuleStore.stance)"
     },
     {
      "id": "routes",
@@ -371,7 +371,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "долгие задачи: прогресс, вопросы, итог; Модуль кода (Agent SDK)",
      "out": "JobState",
-     "now": "выделен (R3) для внимания: attention/jobs.py (JobTracker); peer_registry и desktop.assistant_agent как раньше"
+     "now": "выделен (R3) для внимания: services/attention/jobs.py (JobTracker); peer_registry и desktop.assistant_agent как раньше"
     }
    ]
   },
@@ -492,7 +492,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "приоритеты, условия «не перебиваю», интервалы, прерывание, TTL; чистую политику выбора выделить в домен позже",
      "out": "Utterance",
-     "now": "attention/speech_queue.py: 296 строк, асинхронный координатор (asyncio-задачи), в домен целиком не переносится"
+     "now": "services/attention/speech_queue.py: 296 строк, асинхронный координатор (asyncio-задачи), в домен целиком не переносится"
     },
     {
      "id": "digest",
@@ -501,7 +501,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "одна входящая очередь на всех участников шины: события срочности ниже 4 копятся с весом срочность × новизна (редкий вид весит больше) × среда (окружение текущей среды ×2, чужие ×0,5; полная очередь теряет самое лёгкое, а не самое старое); когда есть что-то заметное (2+) или много мелочи (в пачку идут 10 самых весомых), модель не занята, нет разговора, «не отвлекать» выключено и прошла минута, накопившееся уходит размышлению одним событием inbox.batch",
      "out": "inbox.batch",
-     "now": "attention/inbox.py (Inbox.tick из цикла внимания, Inbox.blocker: почему пачка ждёт), attention/digest.py (история исходов события: ждёт, в контексте, сказано, выброшено, вытеснено; peek даёт самые весомые ждущие события в контекст ответа); вкладка «Состояние» показывает это через GET /api/buffer; настройка attention.inbox.min_interval_s; промпт inbox в prompt.yaml; пачка недоверенная: только сказать или запомнить"
+     "now": "services/attention/inbox.py (Inbox.tick из цикла внимания, Inbox.blocker: почему пачка ждёт), services/attention/digest.py (история исходов события: ждёт, в контексте, сказано, выброшено, вытеснено; peek даёт самые весомые ждущие события в контекст ответа); вкладка «Состояние» показывает это через GET /api/buffer; настройка attention.inbox.min_interval_s; промпт inbox в prompt.yaml; пачка недоверенная: только сказать или запомнить"
     },
     {
      "id": "out",
@@ -546,9 +546,9 @@ window.ARCH_DATA = {
      "t": "Сервис памяти (граница)",
      "tag": "A",
      "new": true,
-     "do": "папка `memory_service/`: граф, профиль, эпизоды, сон, дневник, «запомни»; остальное ядро берёт из неё только имена `__init__.py` (GraphMemory, UserMemory, EpisodeService, MemoryCapture, адаптеры) и контракты MemoryReader/MemoryWriter",
+     "do": "папка `services/memory_service/`: граф, профиль, эпизоды, сон, дневник, «запомни»; остальное ядро берёт из неё только имена `__init__.py` (GraphMemory, UserMemory, EpisodeService, MemoryCapture, адаптеры) и контракты MemoryReader/MemoryWriter",
      "out": "вызовы сервиса",
-     "now": "memory_service/__init__.py (__all__); граница проверяется test_memory_boundary.py"
+     "now": "services/memory_service/__init__.py (__all__); граница проверяется test_memory_boundary.py"
     },
     {
      "id": "mw",
@@ -557,7 +557,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "сразу: диалог и журнал; важное (оценка 4-5) в профиль владельца, планы в задачи; в паузе: факты с оценкой важности (Gemma + эмбеддинги); раз в 6 реплик: осмысление; во сне: факты эпизодов в граф со ссылкой на эпизод (ТЗ 27)",
      "out": "MemoryRecord",
-     "now": "memory_service/capture.py: _learn, _consolidate, remember_text + memory_service.graph.step"
+     "now": "services/memory_service/capture.py: _learn, _consolidate, remember_text + memory_service.graph.step"
     },
     {
      "id": "mr",
@@ -575,7 +575,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "журнал -> эпизоды: границы без LLM (пауза, фокус, задача, собеседник), пики яркости, окно вокруг пика; episodes.db со статусами и версиями",
      "out": "Episode",
-     "now": "есть (ТЗ 27): memory_service/episodes.py, memory_service/episode_cutter.py, memory_service/episode_store.py"
+     "now": "есть (ТЗ 27): services/memory_service/episodes.py, services/memory_service/episode_cutter.py, services/memory_service/episode_store.py"
     },
     {
      "id": "sleep",
@@ -584,7 +584,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "фоновый режим памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами",
      "out": "episode.summary, дневник",
-     "now": "есть (ТЗ 27): memory_service/sleep.py, memory_service/sleep_scheduler.py, memory_service/episode_summary.py, memory_service/diary.py"
+     "now": "есть (ТЗ 27): services/memory_service/sleep.py, services/memory_service/sleep_scheduler.py, services/memory_service/episode_summary.py, services/memory_service/diary.py"
     },
     {
      "id": "erecall",
@@ -593,7 +593,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "поиск эпизодов и дневника по смыслу, recall_episode(id) с разворотом до событий, core.memory.episodes",
      "out": "MemoryHit[]",
-     "now": "есть (ТЗ 27): memory_service/episode_recall.py, memory_service/episode_routes.py"
+     "now": "есть (ТЗ 27): services/memory_service/episode_recall.py, services/memory_service/episode_routes.py"
     },
     {
      "id": "elog",
@@ -611,16 +611,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "JSON: диалог и активность; планы и напоминания это задачи (tasks.db); отношения",
      "out": "репозитории",
-     "now": "memory_service/user.py, adapters/task_store.py, relationships.py"
+     "now": "services/memory_service/user.py, adapters/task_store.py, relationships.py"
     },
     {
      "id": "graph",
      "t": "FactGraph (контракт)",
      "tag": "I",
      "new": false,
-     "do": "SQLite graph.db (memory_service/fact_store.py, поиск через HybridIndex): факты с интервалами валидности; области global и <id>:<область> по профилю (memory_service.scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
+     "do": "SQLite graph.db (services/memory_service/fact_store.py, поиск через HybridIndex): факты с интервалами валидности; области global и <id>:<область> по профилю (memory_service.scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
      "out": "контракт графа",
-     "now": "memory_service/graph.py: 701 строка"
+     "now": "services/memory_service/graph.py: 701 строка"
     },
     {
      "id": "char",

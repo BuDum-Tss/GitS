@@ -26,7 +26,7 @@ class AttentionEventSink:
         await self.attention.on_job_update(peer_id, job)
 
     async def submit_question(self, peer_id: str, job_id: str, question_id: str, question: dict) -> tuple[Any, str]:
-        from attention import Question
+        from services.attention import Question
         q = Question(kind=question["kind"], question=question["question"], options=question.get("options"),
                      timeout_s=question.get("timeout_s", P.ASK_TIMEOUT_DEFAULT), source=peer_id,
                      context={"job_id": job_id, **(question.get("context") or {})},

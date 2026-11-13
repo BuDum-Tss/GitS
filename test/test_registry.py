@@ -4,7 +4,7 @@ import tempfile
 import settings
 from environments import builtin
 from environments.registry import Registry
-from memory_service.user import UserMemory
+from services.memory_service.user import UserMemory
 
 
 class _Dummy:

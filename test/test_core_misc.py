@@ -10,7 +10,7 @@ from environments.base import ToolError
 from environments.registry import Registry
 from profile_manager import ProfileManager
 from router import Router
-from memory_service.user import UserMemory
+from services.memory_service.user import UserMemory
 
 
 def test_peers_setting_merges_one_level_deep():

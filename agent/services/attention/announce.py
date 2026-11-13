@@ -2,7 +2,7 @@
 import secrets
 
 from domain import dedupe
-from attention.speech_queue import ANNOUNCE_P
+from services.attention.speech_queue import ANNOUNCE_P
 
 from .core import ANNOUNCE_DEFAULT_URGENCY, TEXT_LOG, TEXT_MAX, AttentionContext, Item
 from .decision_log import DecisionLog

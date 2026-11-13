@@ -3,9 +3,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from memory_service import graph as gm
-from memory_service.fact_store import FactStore
-from memory_service.graph import COLONIST_RELATIONS, Fact, SqliteBackend
+from services.memory_service import graph as gm
+from services.memory_service.fact_store import FactStore
+from services.memory_service.graph import COLONIST_RELATIONS, Fact, SqliteBackend
 from search.embedder import HashEmbedder
 
 T0 = datetime(2026, 10, 1, tzinfo=timezone.utc)

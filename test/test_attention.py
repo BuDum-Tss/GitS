@@ -10,7 +10,7 @@ from hub_helpers import FakeCompanion, FakeIO
 import approvals
 import events_log
 import settings
-from attention import Attention, Question
+from services.attention import Attention, Question
 from conversation_io import Channel
 from environments.base import ToolError
 

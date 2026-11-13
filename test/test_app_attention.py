@@ -3,8 +3,8 @@
 import pytest
 from test_attention import Rig
 
-from attention.core import Item
-from attention import Attention, Question
+from services.attention.core import Item
+from services.attention import Attention, Question
 from contracts import MemoryWriter, PeopleDirectory
 from domain import dedupe
 
@@ -172,7 +172,7 @@ def test_app_package_is_small_and_clean():
 
 def test_rules_file_name_and_flow_node_id_are_stable():
     """Имя файла временных правил и id узла очереди речи сохранены (их хранят данные и схема потока, не код)."""
-    from attention import rules as attention_rules_module
+    from services.attention import rules as attention_rules_module
     import flow_spec
     assert attention_rules_module.FILE_NAME == "attention_rules.json"
     assert "speech_queue" in {n[0] for n in flow_spec.NODES}
