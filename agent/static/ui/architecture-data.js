@@ -24,7 +24,7 @@ window.ARCH_DATA = {
      "t": "desktop",
      "tag": "I",
      "new": false,
-     "do": "экран, активность, мышь и клавиатура, Claude-помощник",
+     "do": "экран, активность, мышь и клавиатура, Модуль кода",
      "out": "Event desktop.*, job.update",
      "now": "modules/desktop"
     },
@@ -360,7 +360,7 @@ window.ARCH_DATA = {
      "t": "JobTracker",
      "tag": "A",
      "new": false,
-     "do": "долгие задачи: прогресс, вопросы, итог; Claude-помощник (Agent SDK)",
+     "do": "долгие задачи: прогресс, вопросы, итог; Модуль кода (Agent SDK)",
      "out": "JobState",
      "now": "выделен (R3) для внимания: app/jobs.py (JobTracker); module_registry и desktop.assistant_agent как раньше"
     }

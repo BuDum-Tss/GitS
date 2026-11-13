@@ -51,7 +51,7 @@ def test_actions_block_lists_what_executors_really_do_and_says_when_nothing_is_r
     eid = tool_trace.start("fast", "desktop.menu_click", "text=Продолжить")
     tool_trace.finish(eid, False, "пользователь за компьютером")
     text = ContextBuilder.actions_block()
-    assert "Claude-помощник: place_building ×2 (сделано)" in text
+    assert "Модуль кода: place_building ×2 (сделано)" in text
     assert "быстрая модель: desktop.menu_click (не удалось): пользователь за компьютером" in text
 
 

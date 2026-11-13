@@ -1,7 +1,7 @@
 """Манифест модуля desktop (ТЗ 14, разделы 4-5). Описания инструментов перенесены из прежних мест ядра
 (environments/builtin.py, environments/pc_control.py, сам tool-список app_launcher) без изменения смысла: их читает планировщик.
 
-Инструменты с `announce: true` (README, правило 14): launch_app, operate_screen, claude_task (menu_click не объявляется: нажимает
+Инструменты с `announce: true` (README, правило 14): launch_app, operate_screen, code_task (menu_click не объявляется: нажимает
 «Быстрый запуск» или «Продолжить»/«Загрузить»: запускает или загружает партию). take_screenshot объявляет
 себя сам только для target=screen (announce в манифесте не ставится: флаг относится ко всему инструменту)."""
 import copy
@@ -97,17 +97,20 @@ TOOLS = [
                 "aliases": {"type": "array", "required": False, "description": "другие названия"}},
      "risk": "ask", "availability": "always", "informative": True,
      "keywords": ["добавь", "приложение", "программу", "список"]},
-    {"name": "claude_task",
-     "description": "Сложные задачи на компьютере: работа с файлами и кодом проекта, команды, поиск в интернете, анализ. "
-                    "Выполняет Claude и сам спрашивает разрешение на каждое изменение.",
+    {"name": "code_task",
+     "description": "Модуль кода: сложные задачи на компьютере — работа с файлами и кодом проекта, команды, поиск в интернете, анализ. "
+                    "Исполняется модулем кода и спрашивает разрешение на изменения.",
      "params": {"task": {"type": "string", "description": "что нужно сделать, своими словами пользователя"},
                 "context": {"type": "string", "required": False,
                             "description": "краткий контекст разговора (заполняет ядро, планировщик его не видит)"}},
      "risk": "auto", "availability": "always", "informative": True, "job": True, "fallback": True, "announce": True,
      "core_fills": ["context"],
      "keywords": ["файл", "код", "команда", "найди", "интернет", "проект", "скрипт", "поиск", "папка", "почини", "исправь"]},
+    {"name": "claude_task", "description": "Устаревшее имя задачи модуля кода; используйте code_task.",
+     "params": {"task": {"type": "string"}, "context": {"type": "string", "required": False}},
+     "risk": "auto", "availability": "always", "job": True, "fallback": True, "core_fills": ["context"]},
     {"name": "menu_click",
-     "description": "Нажать кнопку главного меню RimWorld без Claude и без вопроса (OCR по окну игры). Только надписи из "
+     "description": "Нажать кнопку главного меню RimWorld без агента кода и без вопроса (OCR по окну игры). Только надписи из "
                     "белого списка («Быстрый запуск», «Продолжить», «Загрузить») и только когда пользователь не за компьютером.",
      "params": {"text": {"type": "string", "description": "надпись кнопки меню"}},
      "risk": "auto", "availability": "always",
@@ -130,7 +133,7 @@ MANIFEST = {
     "id": "desktop",
     "title": "Компьютер",
     "description": "Экран, приложения, мышь и клавиатура на этом компьютере: что на экране, снимки, запуск программ, "
-                   "управление по экрану и Claude-помощник для сложных задач.",
+                   "управление по экрану и Модуль кода для сложных задач.",
     "version": "1.0.0",
     "capabilities": ["screen.observe"],
     "subscribe": ["settings", "module", "character"],
@@ -144,7 +147,7 @@ MANIFEST = {
          "purpose": "наблюдение за экраном в фоне, фокус не держит"},
     ],
     "default_policy": "idle",
-    # пространство в дашборде (TZ 15, TAB-6/TAB-9): активное окно, разрешения, задачи помощника Claude и их остановка
+    # пространство в дашборде (TZ 15, TAB-6/TAB-9): активное окно, разрешения, задачи модуля кода и их остановка
     "panel": {"title": "Компьютер", "icon": "monitor", "order": 50, "actions": ["cancel_task", "cancel_all"]},
 }
 

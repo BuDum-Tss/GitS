@@ -32,7 +32,7 @@ class ContextBuilder:
                  f"- Слух (системный звук): {'включён' if cfg['hearing'] else 'выключен'}.",
                  f"- Голос: {'заглушён' if cfg['voice_muted'] else 'включён'}."]
         lines += ["- " + self._short(note) for note in h.module_notes()]
-        lines.append("- Помощник Claude (Клод): сложные задачи на компьютере (программы, файлы, код, команды, интернет, анализ); "
+        lines.append("- Модуль кода: сложные задачи на компьютере (программы, файлы, код, команды, интернет, анализ); "
                      "разрешение на изменения он спрашивает сам.")
         lines.append("- Состояние модулей в контекст не входит: узнавай инструментом core.modules_status; ждущие события "
                      "идут отдельным блоком ниже, полный журнал событий модулей это core.module_events.")
@@ -90,7 +90,7 @@ class ContextBuilder:
         import time
 
         import tool_trace
-        who = {"claude": "Claude-помощник", "fast": "быстрая модель", "external": "ты сама (и модули)"}
+        who = {"claude": "Модуль кода", "fast": "быстрая модель", "external": "ты сама (и модули)"}
         state = {"running": "идёт", "done": "сделано", "failed": "не удалось"}
         now = time.time()
         rows: list[list] = []
