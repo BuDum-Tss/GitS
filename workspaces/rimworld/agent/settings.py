@@ -27,17 +27,12 @@ DEFAULTS = {
     "telegram_after_run": False,   # писать пост-итог в канал после каждого забега (гибель колонии)
     "telegram_voice": False,       # посты в канал голосовым сообщением (текст идёт подписью)
     "telegram_confirm": False,  # спрашивать разрешение перед каждым постом (False: публикует сама)
-    "memory_service.graph": True,        # память-граф (SQLite graph.db): факты из разговора; без моделей LM Studio тихо отключается
+    "graph_memory": True,        # память-граф (SQLite graph.db): факты из разговора; без моделей LM Studio тихо отключается
     "claude_usage": "normal",   # расход Claude: frugal / normal / generous (темп игровых контуров, см. claude_budget.py)
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
-    "pet_visible": True,        # показывать окно питомца (голос при этом работает)
     "volume": 100,              # громкость озвучки, 0-100
-    "hotkey_input": "Ctrl+Shift+Space",   # глобальная клавиша строки быстрого ввода
     "dnd": False,               # «не отвлекать» до выключения (включает пользователь)
     "quiet_until": 0.0,         # режим «не отвлекать»: до какого времени (unix) молчит сама
-    "pet_pinned": False,        # закрепить питомца: нельзя сдвинуть мышью
-    "pet_x": None,              # запомненная позиция окна питомца (None — угол по умолчанию)
-    "pet_y": None,
 }
 _dir = Path(os.getenv("MEMORY_DIR", "./memory"))
 
@@ -73,7 +68,7 @@ def update(**changes) -> dict:
         if k in DEFAULTS:
             data[k] = v
     diff = {k: v for k, v in data.items()
-            if before.get(k) != v and k not in ("pet_x", "pet_y", "quiet_until")}
+            if before.get(k) != v and k != "quiet_until"}
     if diff:
         events_log.log("setting", ", ".join(f"{k} = {v}" for k, v in diff.items()))
     try:

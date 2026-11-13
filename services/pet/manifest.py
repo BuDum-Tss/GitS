@@ -10,10 +10,21 @@ MANIFEST = {
     "version": "1.0.0",
     "capabilities": ["presence.view"],
     "subscribe": ["presence", "settings", "module"],
-    "shared_settings": ["voice_muted", "pet_visible", "pet_pinned", "pet_bubble", "pet_bubble_secs", "pet_x", "pet_y", "hotkey_input", "dnd", "quiet_until"],
+    "shared_settings": ["voice_muted", "dnd", "quiet_until"],           # общие настройки ядра, которые он только показывает
+    # собственные настройки питомца (хранятся в peers.pet, ядро их не знает): окно, облачко, клавиша строки ввода
+    "settings_schema": {
+        "visible": {"type": "boolean", "title": "Показывать питомца", "default": True},
+        "pinned": {"type": "boolean", "title": "Закрепить питомца (нельзя сдвинуть мышью)", "default": False},
+        "bubble": {"type": "boolean", "title": "Облачко с текстом речи", "default": True},
+        "bubble_secs": {"type": "integer", "title": "Сколько секунд держится облачко", "default": 25, "min": 3, "max": 120},
+        "hotkey_input": {"type": "string", "title": "Клавиша строки быстрого ввода", "default": "Ctrl+Shift+Space",
+                         "enum": ["Ctrl+Shift+Space", "Alt+Shift+Space", "Ctrl+Alt+A", "Ctrl+Alt+Q"]},
+        "x": {"type": "integer", "title": "Позиция окна по горизонтали (-1: угол по умолчанию)", "default": -1},
+        "y": {"type": "integer", "title": "Позиция окна по вертикали (-1: угол по умолчанию)", "default": -1},
+    },
     "state": False,
     # пространство в дашборде (TZ 15, TAB-6/TAB-9): окно, стикер, позиция, связь и кнопки «Показать» / «Скрыть»
-    # (через core.set_setting pet_visible, TZ 15b)
+    # (меняют собственную настройку visible через дашборд, TZ 15b)
     "panel": {"title": "Питомец", "icon": "smile", "order": 80, "actions": ["show", "hide"]},
 }
 

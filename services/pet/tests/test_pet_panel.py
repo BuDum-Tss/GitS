@@ -5,7 +5,7 @@ import queue
 
 from manifest import build_manifest
 from pet_logic import panel_blocks
-from gits_sdk import ToolError
+from aiohttp import web
 from gits_sdk.testing import FakeCore
 
 import bridge
@@ -45,15 +45,38 @@ def test_manifest_declares_show_and_hide_actions_only():
     assert panel == {"title": "Питомец", "icon": "smile", "order": 80, "actions": ["show", "hide"]}
 
 
-async def test_show_and_hide_buttons_change_pet_visible_through_core_tool_call():
-    """TZ 15b: нажатие «Показать»/«Скрыть» уходит ядру как core.tool.call core.set_setting с pet_visible."""
-    calls = []
-    async with FakeCore() as core:
-        @core.on_request("core.tool.call")
-        def tool_call(body):
-            calls.append(body)
-            return {"text": "настройка pet_visible изменена"}
+class FakeDashboard:
+    """Дашборд ядра в одном запросе: `POST /api/peers/pet/settings` (собственные настройки питомца). Записывает тела запросов."""
 
+    def __init__(self, status: int = 200, error: str = ""):
+        self.calls: list[dict] = []
+        self.status, self.error = status, error
+
+    async def __aenter__(self):
+        async def handler(request):
+            self.calls.append(await request.json())
+            if self.status >= 400:
+                return web.json_response({"error": self.error}, status=self.status)
+            return web.json_response({"ok": True})
+        app = web.Application()
+        app.router.add_post("/api/peers/pet/settings", handler)
+        self.runner = web.AppRunner(app)
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, "127.0.0.1", 0)
+        await site.start()
+        port = site._server.sockets[0].getsockname()[1]
+        self.url = f"http://127.0.0.1:{port}"
+        return self
+
+    async def __aexit__(self, *exc):
+        await self.runner.cleanup()
+
+
+async def test_show_and_hide_buttons_change_own_visible_setting_through_the_dashboard(monkeypatch):
+    """TZ 15b: нажатие «Показать»/«Скрыть» меняет собственную настройку питомца visible через дашборд (`peers.pet`), общих настроек
+    ядра и инструментов ядра не трогает."""
+    async with FakeDashboard() as dash, FakeCore() as core:
+        monkeypatch.setenv("GITS_DASHBOARD_URL", dash.url)
         thread = bridge.ClientThread(build_manifest(), queue.Queue(), url=core.url, token=core.token)
         thread.client.reconnect_delays = (0.05, 0.05, 0.1)
         thread.start()
@@ -64,21 +87,16 @@ async def test_show_and_hide_buttons_change_pet_visible_through_core_tool_call()
             hidden = await core.panel_action("hide")
             assert shown == {"ok": True, "message": "питомец показан"}
             assert hidden == {"ok": True, "message": "питомец скрыт"}
-            assert [c["tool"] for c in calls] == ["core.set_setting", "core.set_setting"]
-            assert calls[0]["args"] == {"key": "pet_visible", "value": True}
-            assert calls[1]["args"] == {"key": "pet_visible", "value": False}
+            assert dash.calls == [{"key": "visible", "value": True}, {"key": "visible", "value": False}]
             assert core.violations == []
         finally:
             thread.request_stop()
             await asyncio.to_thread(thread.join, 5)
 
 
-async def test_refused_or_failed_core_call_answers_not_ok_with_reason():
-    async with FakeCore() as core:
-        @core.on_request("core.tool.call")
-        def tool_call(body):
-            raise ToolError("настройку «pet_visible» менять нельзя", code="denied")
-
+async def test_refused_dashboard_answers_not_ok_with_reason(monkeypatch):
+    async with FakeDashboard(status=400, error="у модуля нет настройки «visible»") as dash, FakeCore() as core:
+        monkeypatch.setenv("GITS_DASHBOARD_URL", dash.url)
         thread = bridge.ClientThread(build_manifest(), queue.Queue(), url=core.url, token=core.token)
         thread.client.reconnect_delays = (0.05, 0.05, 0.1)
         thread.start()
@@ -86,7 +104,7 @@ async def test_refused_or_failed_core_call_answers_not_ok_with_reason():
             await asyncio.to_thread(thread.wait_started, 5)
             await core.wait_connected(timeout=5)
             answer = await core.panel_action("hide")
-            assert answer["ok"] is False and "pet_visible" in answer["message"]
+            assert answer["ok"] is False and "visible" in answer["message"]
         finally:
             thread.request_stop()
             await asyncio.to_thread(thread.join, 5)

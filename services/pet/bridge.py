@@ -10,8 +10,9 @@ import queue
 import threading
 import time
 
-from gits_sdk import ServiceClient, ToolError
-from pet_logic import panel_blocks
+import httpx
+from gits_sdk import ServiceClient
+from pet_logic import dashboard_base, panel_blocks
 
 log = logging.getLogger("pet")
 
@@ -41,13 +42,13 @@ class ClientThread(threading.Thread):
 
         @c.on_topic("settings")
         async def on_settings(data):
-            self.q.put(("settings", dict(c.settings)))
+            self.q.put(("settings", self._all_settings()))
 
         @c.on_topic("module")
         async def on_module(data):
             self.q.put(("enabled", bool(c.enabled)))
 
-        # кнопки пространства «Питомец» (TZ 15b): общая настройка pet_visible меняется через ядро (core.set_setting, TG-13)
+        # кнопки пространства «Питомец» (TZ 15b): собственная настройка visible меняется через дашборд ядра
         @c.panel_action("show")
         async def panel_show(args):
             return await self._set_visible(True)
@@ -56,11 +57,31 @@ class ClientThread(threading.Thread):
         async def panel_hide(args):
             return await self._set_visible(False)
 
+    def _all_settings(self) -> dict:
+        """Общие настройки ядра плюс собственные (peers.pet) под прежними внутренними именами окна: `pet_<имя>`, `hotkey_input`;
+        позиция -1 значит «не задана» (None)."""
+        own = dict(self.client.module_settings)
+        merged = dict(self.client.settings)
+        for key, value in own.items():
+            merged[key if key == "hotkey_input" else f"pet_{key}"] = value
+        for key in ("pet_x", "pet_y"):
+            if merged.get(key) == -1:
+                merged[key] = None
+        return merged
+
     async def _set_visible(self, visible: bool) -> dict:
-        """Показать или спрятать окно: инструмент ядра core.set_setting с ключом pet_visible. Ответ ядра - ok / сообщение."""
+        """Показать или спрятать окно: собственная настройка visible через дашборд (`POST /api/peers/pet/settings`)."""
+        def work() -> None:
+            r = httpx.post(dashboard_base() + "/api/peers/pet/settings", json={"key": "visible", "value": visible}, timeout=5)
+            if r.status_code >= 400:
+                try:
+                    reason = str(r.json().get("error") or "")
+                except ValueError:
+                    reason = ""
+                raise RuntimeError(reason or f"дашборд ответил кодом {r.status_code}")
         try:
-            await self.client.call_tool("core.set_setting", {"key": "pet_visible", "value": visible}, timeout=10)
-        except (ToolError, asyncio.TimeoutError) as e:
+            await asyncio.to_thread(work)
+        except Exception as e:
             return {"ok": False, "message": str(e) or "ядро не ответило"}
         return {"ok": True, "message": "питомец показан" if visible else "питомец скрыт"}
 
@@ -73,8 +94,8 @@ class ClientThread(threading.Thread):
                 connected = c.connected
                 self.q.put(("connected", connected))
             if connected:
-                if dict(c.settings) != sent_settings:
-                    sent_settings = dict(c.settings)
+                if self._all_settings() != sent_settings:
+                    sent_settings = self._all_settings()
                     self.q.put(("settings", dict(sent_settings)))
                 if c.enabled != enabled:
                     enabled = c.enabled
@@ -86,7 +107,7 @@ class ClientThread(threading.Thread):
         c = self.client
         while True:
             try:
-                blocks = panel_blocks(dict(c.settings), self.last_presence, time.time(), c.connected, c.enabled)
+                blocks = panel_blocks(self._all_settings(), self.last_presence, time.time(), c.connected, c.enabled)
                 key = json.dumps(blocks, ensure_ascii=False, sort_keys=True)
                 if key != self._panel_key and await c.panel.set(blocks):
                     self._panel_key = key

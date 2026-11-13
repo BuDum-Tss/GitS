@@ -557,7 +557,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "сразу: диалог и журнал; важное (оценка 4-5) в профиль владельца, планы в задачи; в паузе: факты с оценкой важности (Gemma + эмбеддинги); раз в 6 реплик: осмысление; во сне: факты эпизодов в граф со ссылкой на эпизод (ТЗ 27)",
      "out": "MemoryRecord",
-     "now": "services/memory_service/capture.py: _learn, _consolidate, remember_text + memory_service.graph.step"
+     "now": "services/memory_service/capture.py: _learn, _consolidate, remember_text + GraphMemory.step"
     },
     {
      "id": "mr",

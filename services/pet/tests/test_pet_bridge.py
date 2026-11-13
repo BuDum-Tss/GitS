@@ -10,8 +10,7 @@ import bridge
 from manifest import MANIFEST, build_manifest
 from pet_logic import PetController
 
-SETTINGS = {"voice_muted": False, "pet_visible": True, "pet_pinned": False, "pet_x": None, "pet_y": None,
-            "hotkey_input": "Ctrl+Shift+Space", "dnd": False, "quiet_until": 0.0}
+SETTINGS = {"voice_muted": False, "dnd": False, "quiet_until": 0.0}          # общие настройки ядра; свои у питомца в settings_schema
 
 
 class Recorder:
@@ -30,8 +29,8 @@ def test_manifest_matches_the_spec():
     assert P.validate_manifest(m) == []
     assert (m["id"], m["title"], m["capabilities"], m["subscribe"]) == ("pet", "Питомец", ["presence.view"],
                                                                          ["presence", "settings", "module"])
-    assert m["shared_settings"] == ["voice_muted", "pet_visible", "pet_pinned", "pet_bubble", "pet_bubble_secs", "pet_x", "pet_y", "hotkey_input",
-                                    "dnd", "quiet_until"]
+    assert m["shared_settings"] == ["voice_muted", "dnd", "quiet_until"]
+    assert set(m["settings_schema"]) == {"visible", "pinned", "bubble", "bubble_secs", "hotkey_input", "x", "y"}
     assert not m.get("tools") and not m.get("emits") and m["state"] is False
     assert build_manifest() == MANIFEST and build_manifest() is not MANIFEST
 
@@ -71,7 +70,7 @@ async def test_client_thread_feeds_the_queue_and_the_controller():
             await core.topic("presence", {"speaking": True, "utterance_id": "u-1", "segment": "Идёт речь.", "sticker": "happy",
                                           "sticker_ts": time.time()})
             await wait(lambda: pumped(lambda: view.frames and view.frames[-1] == ("happy", "Идёт речь.", True)))
-            await core.update_settings({"pet_pinned": True, "voice_muted": True})
+            await core.update_settings({"voice_muted": True}, {"pinned": True})          # pinned: собственная настройка питомца
             await wait(lambda: pumped(lambda: c.state.pinned and c.state.muted))
             await core.set_enabled(False)
             await wait(lambda: pumped(lambda: not c.state.enabled))

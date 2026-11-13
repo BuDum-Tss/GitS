@@ -216,3 +216,20 @@ async def test_agent_playing_in_an_autonomous_environment_is_not_asking_for_ordi
     asked.clear()
     ok, *_ = await router._step({"tool": "desktop.click_text", "args": {}}, {"desktop.click_text": tool()})
     assert ok and len(asked) == 1                                      # вне игры всё как раньше
+
+
+def test_pet_settings_migrate_from_core_settings_to_peers_pet(tmp_path):
+    """Настройки питомца раньше лежали в общих настройках ядра; теперь это собственные настройки участника `peers.pet`."""
+    import json
+    import settings
+    (tmp_path / "settings.json").write_text(json.dumps({
+        "pet_visible": False, "pet_pinned": True, "pet_bubble_secs": 40, "pet_x": 120, "pet_y": None,
+        "hotkey_input": "Alt+Shift+Space", "volume": 70}), encoding="utf-8")
+    settings.init(str(tmp_path))
+    data = settings.load()
+    assert data["volume"] == 70 and not any(k.startswith("pet_") for k in data) and "hotkey_input" not in data
+    assert data["peers"]["pet"] == {"visible": False, "pinned": True, "bubble_secs": 40, "x": 120, "hotkey_input": "Alt+Shift+Space"}
+    saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
+    assert "pet_visible" not in saved and saved["peers"]["pet"]["pinned"] is True        # файл переписан
+    settings.update(peers={"pet": {"visible": True}})
+    assert settings.load()["peers"]["pet"]["visible"] is True and settings.load()["peers"]["pet"]["x"] == 120

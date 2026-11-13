@@ -7,7 +7,6 @@
 запускает: их запускает и перезапускает супервизор ядра (agent/peers.yaml), включаются они в дашборде; процессы модулей дети
 ядра, поэтому остановка и перезапуск ядра (_kill_tree) их тоже останавливают. Меню:
   - открыть дашборд;
-  - показать/скрыть питомца (настройка pet_visible; модуль питомца при этом остаётся подключённым);
   - озвучка вкл/выкл и громкость;
   - зрение, разговорчивость;
   - запуск вместе с Windows (по твоему клику, сама ничего не включает);
@@ -38,7 +37,6 @@ import tray_autostart
 HERE = Path(__file__).resolve().parent
 DASHBOARD_URL = "http://localhost:8766/"
 CORE_PORT = 8766
-HOTKEY_PRESETS = ("Ctrl+Shift+Space", "Alt+Shift+Space", "Ctrl+Alt+A", "Ctrl+Alt+Q")
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_NAME = "Assistant"
 NO_WINDOW = subprocess.CREATE_NO_WINDOW
@@ -165,11 +163,6 @@ def _toggle_quiet(icon, item):
         settings.update(dnd=True)
 
 
-def _toggle_pet(icon, item):
-    """Показать/спрятать питомца (PET-8): модуль питомца запускает супервизор ядра, он только скрывает или показывает окно."""
-    settings.update(pet_visible=not settings.load()["pet_visible"])
-
-
 def _set(key, value):
     def action(icon, item):
         settings.update(**{key: value})
@@ -217,13 +210,6 @@ def build_menu() -> pystray.Menu:
         M("Открыть дашборд", lambda i, it: webbrowser.open(DASHBOARD_URL), default=True),
         Menu.SEPARATOR,
         M("Персонаж", _character_menu()),
-        M("Показывать питомца", _toggle_pet,
-          checked=lambda it: settings.load()["pet_visible"]),
-        M("Закрепить питомца (не двигается)", _toggle("pet_pinned"),
-          checked=lambda it: settings.load()["pet_pinned"]),
-        M("Строка ввода (горячая клавиша)", Menu(*[
-            M(spec, _set("hotkey_input", spec), checked=_is("hotkey_input", spec), radio=True)
-            for spec in HOTKEY_PRESETS])),
         M("Не отвлекать", _toggle_quiet, checked=lambda it: settings.quiet_active()),
         M("Озвучка", lambda i, it: settings.update(voice_muted=not settings.load()["voice_muted"]),
           checked=lambda it: not settings.load()["voice_muted"]),

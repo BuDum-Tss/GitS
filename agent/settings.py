@@ -56,20 +56,13 @@ DEFAULTS = {
                        "llm_first_token": 2500, "first_sentence_ready": 1200, "llm_done": 6000, "tts_first_audio": 1500,
                        "play_start": 400, "end_to_sound": 4500},
     "dev_mode": False,          # режим разработчика: во вкладке «Модули» видны примеры для разработчиков (модуль echo)
-    "pet_visible": True,        # показывать окно питомца (модуль pet при этом остаётся подключённым)
     "volume": 100,              # громкость озвучки, 0-100
     "tts_speed": 100,           # скорость речи в процентах (50-150, 100 - обычная); ESpeech и edge-tts
     "tts_fx": "off",            # фильтр под голос персонажа после синтеза: off или пресет из services/voice/voice_fx.py
-    "hotkey_input": "Ctrl+Shift+Space",   # глобальная клавиша строки быстрого ввода
     "autoplay": False,          # ТЗ 33: единый агент сам продолжает работу в среде автономного модуля (игра), раз в work_interval_s модуля
     "dnd": False,               # «не отвлекать» до выключения (включает пользователь)
     "quiet_until": 0.0,         # режим «не отвлекать»: до какого времени (unix) молчит сама
     "only_core": False,         # режим «только ядро» (ТЗ 17, FLOW-1): супервизор не запускает модули (применяется при запуске ядра)
-    "pet_pinned": False,        # закрепить питомца: нельзя сдвинуть мышью
-    "pet_bubble": True,         # показывать облачко с текстом речи над питомцем
-    "pet_bubble_secs": 25,      # сколько секунд облачко держится после конца речи (3-120)
-    "pet_x": None,              # запомненная позиция окна питомца (None — угол по умолчанию)
-    "pet_y": None,
     # участники шины (ТЗ 02, CORE-40): id -> {"enabled": bool,
     # <имя собственной настройки>: значение}; нет записи — по умолчанию (включён; для записей из peers.yaml берётся поле enabled)
     "peers": {},
@@ -136,7 +129,8 @@ def _write(data: dict) -> None:
         pass
 
 
-# Миграции уже существующих settings.json (убрать после 2026-12-01): `modules` -> `peers` и `twitch`/`obs` -> `streamer`.
+# Миграции уже существующих settings.json (убрать после 2026-12-01): `modules` -> `peers`, `twitch`/`obs` -> `streamer`,
+# настройки питомца из общих в `peers.pet`.
 def _migrate_modules_key(data: dict) -> bool:
     """Миграция: ключ `modules` (участники шины) -> `peers`. True, если файл надо переписать."""
     if "modules" not in data:
@@ -171,12 +165,34 @@ def _migrate_streamer_peers(data: dict) -> bool:
     return True
 
 
+_PET_LEGACY = {"pet_visible": "visible", "pet_pinned": "pinned", "pet_bubble": "bubble", "pet_bubble_secs": "bubble_secs",
+               "pet_x": "x", "pet_y": "y", "hotkey_input": "hotkey_input"}
+
+
+def _migrate_pet_settings(data: dict) -> bool:
+    """Миграция: настройки питомца раньше лежали в общих настройках ядра (`pet_visible`, `pet_x`, `hotkey_input`...), теперь
+    это собственные настройки участника в `peers.pet` (`visible`, `x`, `hotkey_input`...). Значение из общих настроек
+    переносится, если собственное ещё не задано; пустая позиция (None) пропускается. True, если файл надо переписать."""
+    old = {k: data.pop(k) for k in _PET_LEGACY if k in data}
+    if not old:
+        return False
+    peers = data.setdefault("peers", {})
+    if not isinstance(peers, dict):
+        return True
+    entry = peers.setdefault("pet", {})
+    if isinstance(entry, dict):
+        for legacy, name in _PET_LEGACY.items():
+            if legacy in old and old[legacy] is not None and name not in entry:
+                entry[name] = old[legacy]
+    return True
+
+
 def load() -> dict:
     try:
         data = json.loads(_file().read_text(encoding="utf-8"))
     except Exception:
         data = {}
-    if isinstance(data, dict) and (_migrate_modules_key(data) | _migrate_streamer_peers(data)):
+    if isinstance(data, dict) and (_migrate_modules_key(data) | _migrate_streamer_peers(data) | _migrate_pet_settings(data)):
         _write(data)
     elif not isinstance(data, dict):
         data = {}
@@ -212,7 +228,7 @@ def update(**changes) -> dict:
             else:
                 data[k] = v
     diff = {k: v for k, v in data.items()
-            if before.get(k) != v and k not in ("pet_x", "pet_y", "quiet_until")}
+            if before.get(k) != v and k != "quiet_until"}
     if diff:
         events_log.log("setting", ", ".join(f"{k} = {v}" for k, v in diff.items()))
     _write(data)

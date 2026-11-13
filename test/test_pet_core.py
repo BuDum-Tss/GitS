@@ -1,7 +1,6 @@
 """Ядро и питомец-модуль (ТЗ 13: PET-9, PET-10, PET-11): запись в peers.yaml, {PYTHONW}, трей не запускает питомца,
 дашборд без say.json и поля say, presence с emotion_ts, настоящий процесс питомца (без окна) под супервизором."""
 import asyncio
-import re
 import time
 from pathlib import Path
 
@@ -44,7 +43,7 @@ def test_pythonw_placeholder_falls_back_to_python_without_pythonw(tmp_path):
 def test_tray_does_not_start_the_pet_any_more():
     src = (AGENT / "tray.py").read_text(encoding="utf-8")
     assert "desktop_pet" not in src and "start_pet" not in src
-    assert re.search(r"def _toggle_pet.*?settings\.update\(pet_visible", src, re.S)                    # пункт трея остался
+    assert "pet_visible" not in src and "_toggle_pet" not in src                                          # пунктов питомца в трее нет
     assert '"services" / "pet"' not in src and "services/pet" not in src                  # трей не читает файлы питомца
     assert not (AGENT / "desktop_pet.py").exists() and not (AGENT / "quick_input.py").exists()
     assert not (AGENT / "check_stickers.py").exists() and not (AGENT / "static" / "stickers").exists()

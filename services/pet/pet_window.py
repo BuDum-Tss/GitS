@@ -138,11 +138,21 @@ def render_frame(sprites, sw_s, sh_s, mood: str,
 
 # ── пульт управления: HTTP-API дашборда (PET-6) ───────────────────────────────
 
+OWN_KEYS = {"pet_visible": "visible", "pet_pinned": "pinned", "pet_bubble": "bubble", "pet_bubble_secs": "bubble_secs",
+            "pet_x": "x", "pet_y": "y", "hotkey_input": "hotkey_input"}      # внутреннее имя -> собственная настройка (peers.pet)
+
+
 def post_settings(payload: dict) -> None:
-    """Изменить общие настройки (глушилка, позиция, видимость, закрепление) через дашборд. Не блокирует окно."""
+    """Изменить настройки через дашборд: свои (позиция, видимость, закрепление) в `peers.pet`, общую глушилку голоса в ядре.
+    Не блокирует окно."""
     def work():
         try:
-            httpx.post(dashboard_base() + "/api/settings", json=payload, timeout=2)
+            core = {k: v for k, v in payload.items() if k not in OWN_KEYS}
+            if core:
+                httpx.post(dashboard_base() + "/api/settings", json=core, timeout=2)
+            for key, value in payload.items():
+                if key in OWN_KEYS:
+                    httpx.post(dashboard_base() + "/api/peers/pet/settings", json={"key": OWN_KEYS[key], "value": value}, timeout=2)
         except Exception as e:
             log.debug(f"Настройки не отправлены: {e}")
     threading.Thread(target=work, daemon=True).start()
