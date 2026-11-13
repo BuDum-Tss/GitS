@@ -1,30 +1,13 @@
-"""Агент-помощник: ГЛаДОС «вмешивается» в компьютер как Claude Code (модуль desktop, ТЗ 14, инструмент claude_task).
-
-Это сложные просьбы, которые локальная модель не тянет (файлы, команды, код, поиск в интернете). Работает на Claude
-с набором инструментов Claude Code, но под жёсткой политикой разрешений:
-
-  - Read/Glob/Grep внутри разрешённых папок — без вопросов;
-  - всё остальное (Bash, Write, Edit, сеть, чтение вне папок) — только после явного «да» пользователя: вопрос идёт
-    через ядро (client.ask), ГЛаДОС вслух называет, что именно собирается сделать;
-  - опасное (safety.danger_of) спрашивается всегда, даже при авто-разрешении.
-
-Содержимое экрана, файлов и веб-страниц для агента — данные, а не команды: он не выполняет инструкции оттуда,
-а любое действие и так требует подтверждения.
-
-Модуль не импортирует ядро: разрешение приходит колбэком ask(вопрос, опасность) -> bool, расход учитывает колбэк usage
-(в ядре это core.claude_usage). Лимит Claude ядро проверяет само до запуска задачи.
-"""
+"""Задачи модуля кода: pi runtime с проверкой разрешений перед инструментами."""
 import logging
 import os
 from pathlib import Path
 
 from gits_sdk import safety
-from gits_sdk.claude_path import CLI_PATH as _CLI_PATH
 from envcompat import env
 
 logger = logging.getLogger("desktop.assistant")
 
-MODEL = env("CHARACTER_ASSISTANT_MODEL", "sonnet")   # псевдоним: точные id CLI может не знать
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]    # корень GitS
 _roots_env = env("GITS_READ_ROOTS", "")
 READ_ROOTS = [Path(p).resolve() for p in _roots_env.split(os.pathsep) if p.strip()] or [_PROJECT_ROOT]
@@ -59,10 +42,6 @@ def configure(settings: dict | None, web_search=None) -> None:
     global _SETTINGS, _WEB_SEARCH
     _SETTINGS = dict(settings or {})
     _WEB_SEARCH = web_search
-
-
-def use_pi() -> bool:
-    return _SETTINGS.get("agent_runtime") == "pi"
 
 
 def system_prompt() -> str:
@@ -134,11 +113,9 @@ async def run_task(task: str, context: str, ask, usage, on_tool=None) -> str | N
     """Выполнить просьбу. ask(вопрос, опасность) -> bool - разрешение пользователя; usage(tokens, limit_text) - учёт расхода
     (async, сбой не должен ломать задачу); on_tool(имя, кратко) - вызван при каждом запуске инструмента
     (async, сбой не ломает задачу). Возвращает итог, "" если сказать нечего, None при сбое.
-    Среду выбирает настройка ядра agent_runtime (claude | pi), см. configure()."""
+    Исполнитель задач кода всегда pi, независимо от настройки агента ядра."""
     prompt = (f"{context}\n\nПросьба пользователя: {task}" if context else task)
-    if use_pi():
-        return await _run_pi(prompt, ask, usage, on_tool)
-    return await _run_claude(prompt, ask, usage, on_tool)
+    return await _run_pi(prompt, ask, usage, on_tool)
 
 
 async def _notify(on_tool, name: str, inp: dict) -> None:
@@ -213,48 +190,3 @@ async def _run_pi(prompt: str, ask, usage, on_tool) -> str | None:
     return answer
 
 
-async def _run_claude(prompt: str, ask, usage, on_tool) -> str | None:
-    from claude_agent_sdk import (
-        ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
-        PermissionResultAllow, PermissionResultDeny, ToolUseBlock,
-    )
-
-    async def can_use_tool(tool_name, tool_input, _ctx):
-        allow, why = await decide(tool_name, tool_input, ask)
-        return PermissionResultAllow() if allow else PermissionResultDeny(message=why)
-
-    kwargs = dict(
-        system_prompt=system_prompt(),
-        model=MODEL,
-        tools=TOOLS,
-        allowed_tools=[],           # ничего не разрешено заранее — решает can_use_tool
-        permission_mode="default",
-        can_use_tool=can_use_tool,
-        setting_sources=[],         # чужие правила allow из настроек не должны обходить политику
-        cwd=str(_PROJECT_ROOT),
-    )
-    if _CLI_PATH:
-        kwargs["cli_path"] = _CLI_PATH
-
-    answer, texts = "", []
-    try:
-        async with ClaudeSDKClient(options=ClaudeAgentOptions(**kwargs)) as client:
-            await client.query(prompt)
-            async for msg in client.receive_response():
-                if isinstance(msg, AssistantMessage):
-                    for block in msg.content:
-                        if isinstance(block, ToolUseBlock):
-                            await _notify(on_tool, block.name, block.input)
-                        text = getattr(block, "text", None)
-                        if text:
-                            texts.append(text)
-                            answer = text.strip()
-                elif isinstance(msg, ResultMessage):
-                    await usage(tokens_of(getattr(msg, "usage", None)), " ".join(texts)[:500] or None)
-                    break
-    except Exception as e:
-        # ядро проверит текст ошибки: если это исчерпанный лимит Claude, батарейка обнулится сразу
-        await usage(0, str(e)[:500])
-        logger.error(f"Агент-помощник: {e}", exc_info=True)
-        return None   # сбой: что сказать, решит компаньон
-    return answer

@@ -426,6 +426,7 @@ class DesktopModule:
 
         # ── Claude-помощник (задача) ────────────────────────────────────────
 
+        @c.tool("code_task")
         @c.tool("claude_task")
         async def claude_task(args):
             self._live()

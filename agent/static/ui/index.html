@@ -762,8 +762,8 @@ $('chat').addEventListener('scroll', () => {
   const c = $('chat'); stick = c.scrollHeight - c.scrollTop - c.clientHeight < 40;
 });
 let chatMsgs = [];
-// кто запустил инструмент: быстрый контур (планировщик на локальной модели), медленный (Claude-помощник), вызов со стороны
-const TOOL_WHO = {fast: 'быстрый контур · Claude', claude: 'Claude-помощник', external: 'единый агент и модули'};
+// кто запустил инструмент: быстрый контур (планировщик на локальной модели), медленный (Модуль кода), вызов со стороны
+const TOOL_WHO = {fast: 'быстрый контур · Claude', claude: 'Модуль кода', external: 'единый агент и модули'};
 const TOOL_MARK = {running: '…', done: '✓', failed: '✗'};
 function toolRow(e) {
   const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});

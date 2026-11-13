@@ -75,8 +75,8 @@ async def test_manifest_is_valid_and_every_tool_has_a_handler(core):
         assert names == set(client._tools)                       # обработчики есть у каждого инструмента
         assert {n for n in names if n in client._checks} == {"take_screenshot", "type_text", "press_key"}
         by = {t["name"]: t for t in m["tools"]}
-        assert by["claude_task"]["job"] and by["claude_task"]["fallback"] and by["claude_task"]["core_fills"] == ["context"]
-        assert {n for n, t in by.items() if t.get("announce")} == {"launch_app", "operate_screen", "claude_task"}      # menu_click не объявляется: механическое нажатие
+        assert by["code_task"]["job"] and by["claude_task"]["fallback"] and by["claude_task"]["core_fills"] == ["context"]
+        assert {n for n, t in by.items() if t.get("announce")} == {"launch_app", "operate_screen", "code_task"}      # menu_click не объявляется: механическое нажатие
         assert m["capabilities"] == ["screen.observe"] and m["state"] is True
     finally:
         await close(client, task)

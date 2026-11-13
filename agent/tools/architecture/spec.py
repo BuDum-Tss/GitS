@@ -30,7 +30,7 @@ GROUPS = [
     dict(id="g_src", col="A", title="Источники событий", tag="I",
          summary="Модули (голос, Telegram, Twitch, OBS, экран, игра, монтаж) и чат дашборда. Присылают события и выполняют команды.", out="Event", nodes=[
         N("voice", "voice", "I", "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (ESpeech, запасные Fish Speech и edge-tts)", "Event voice.utterance", "modules/voice"),
-        N("desk", "desktop", "I", "экран, активность, мышь и клавиатура, Claude-помощник", "Event desktop.*, job.update", "modules/desktop"),
+        N("desk", "desktop", "I", "экран, активность, мышь и клавиатура, Модуль кода", "Event desktop.*, job.update", "modules/desktop"),
         N("tg", "telegram", "I", "бот, её аккаунт, посты канала", "Event telegram.*", "modules/telegram"),
         N("tw", "twitch", "I", "чат и события канала, ответы в чат, модерация", "Event twitch.*", "modules/twitch"),
         N("obs", "obs", "I", "сцены, трансляция и запись OBS, субтитры в поток (obs-websocket)", "Event obs.*", "modules/obs"),
@@ -78,7 +78,7 @@ GROUPS = [
         N("reg", "ToolRegistry", "A", "инструменты ядра и модулей, видимость по профилю, отбор по смыслу", "Tool[]", "environments/registry.py, tool_search.py"),
         N("risk", "RiskPolicy + Approver", "D", "риск auto / ask / public / danger; вопрос пользователю, ответ да/нет", "Approval", "router._step_inner + approvals.py"),
         N("exec", "Executor (ToolInvoker)", "A", "вызов инструмента в ядре или модуле, коды ошибок, итог-факт", "ToolResult", "router.run_tool_ex и _step: проверка параметров, риск, вопрос о разрешении, вызов"),
-        N("jobs", "JobTracker", "A", "долгие задачи: прогресс, вопросы, итог; Claude-помощник (Agent SDK)", "JobState", "выделен (R3) для внимания: app/jobs.py (JobTracker); module_registry и desktop.assistant_agent как раньше"),
+        N("jobs", "JobTracker", "A", "долгие задачи: прогресс, вопросы, итог; Модуль кода (Agent SDK)", "JobState", "выделен (R3) для внимания: app/jobs.py (JobTracker); module_registry и desktop.assistant_agent как раньше"),
     ]),
     dict(id="g_foc", col="E", title="Среды", tag="A",
          summary="Решает, кому отдать главную роль (например, игре в бою), и когда её вернуть.", out="FocusDecision", nodes=[

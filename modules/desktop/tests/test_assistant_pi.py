@@ -202,21 +202,18 @@ async def test_web_search_goes_to_core_after_consent(fake):
     assert queries == ["погода"] and fake.instances[0].out == ["результат"]
 
 
-async def test_claude_branch_untouched_when_setting_is_claude(monkeypatch):
+async def test_code_task_ignores_legacy_runtime_setting(monkeypatch):
     called = []
 
-    async def fake_pi(*a, **k):
-        called.append("pi")
-
-    async def fake_claude(prompt, ask, usage, on_tool):
-        called.append("claude")
+    async def fake_pi(*args, **kwargs):
+        called.append("code")
         return "ответ"
+
     monkeypatch.setattr(aa, "_run_pi", fake_pi)
-    monkeypatch.setattr(aa, "_run_claude", fake_claude)
     for cfg in (None, {}, {"agent_runtime": "claude"}):
         aa.configure(cfg, None)
         assert await aa.run_task("t", "", Asker(), None) == "ответ"
-    assert called == ["claude"] * 3
+    assert called == ["code"] * 3
 
 
 # ── настоящий worker.mjs с поддельным поставщиком ──────────────────
