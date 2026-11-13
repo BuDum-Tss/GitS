@@ -1,4 +1,6 @@
-"""Клиент модуля ГЛаДОС: `ModuleClient` (ТЗ 01, раздел 10).
+"""Клиент участника шины ГЛаДОС (ТЗ 01, раздел 10): `PeerClient` и его роли `WorkspaceClient`, `ServiceClient`.
+
+`ModuleClient` оставлен прежним именем (устарело, уберёт фаза 4): ведёт себя как раньше, роль берётся из манифеста.
 
 Модуль создаёт клиент с манифестом, регистрирует обработчики инструментов и вызывает `await client.run()`: клиент сам
 подключается к ядру по WebSocket, проходит рукопожатие, принимает вызовы, переподключается при обрыве. Журналы идут в
@@ -23,7 +25,6 @@ from . import contract, host
 from . import protocol as P
 from .contract import results as R
 from .protocol import Envelope, ManifestError, ProtocolError, ToolError
-from .envcompat import env
 
 log = logging.getLogger("gits_sdk")
 
@@ -49,7 +50,7 @@ class PanelClient:
     последнее состояние шлётся заново.
     """
 
-    def __init__(self, client: ModuleClient):
+    def __init__(self, client: PeerClient):
         self._client = client
         self.latest: dict | None = None         # последнее принятое тело {"blocks": [...]}
         self._last_sent = float("-inf")
@@ -88,10 +89,17 @@ class PanelClient:
         return await self._send() if self.latest is not None else False
 
 
-class ModuleClient:
-    """Клиент модуля. Имена методов зафиксированы ТЗ 01, раздел 10."""
+class PeerClient:
+    """Клиент участника шины (база для `WorkspaceClient`, `ServiceClient` и прежнего `ModuleClient`).
+    Имена методов зафиксированы ТЗ 01, раздел 10.
+
+    Роль участника (`workspace` или `service`) берётся из манифеста (`role`); без поля это workspace (режим совместимости).
+    Подклассы могут закрепить роль через `ROLE`."""
+
+    ROLE: str | None = None            # None: роль из манифеста
 
     def __init__(self, manifest: dict, *, url: str | None = None, token: str | None = None):
+        manifest = self._with_role(manifest)
         panel_warnings: list[str] = []
         problems = P.validate_manifest(manifest, panel_warnings)
         for warning in panel_warnings:
@@ -104,7 +112,10 @@ class ModuleClient:
         if "module" not in subscribe:
             subscribe.append("module")
         self.manifest["subscribe"] = subscribe
-        self.module_id: str = self.manifest["id"]
+        self.module_id: str = self.manifest["id"]      # прежнее имя атрибута (уберёт фаза 4)
+        self.id: str = self.module_id
+        self.role: str = P.role_of(self.manifest)
+        self.ownership: str | None = P.ownership_of(self.manifest)
         self.instance = P.new_instance()
         self._url = url
         self._token = token
@@ -155,6 +166,18 @@ class ModuleClient:
         self._log_buffer: deque[dict] = deque(maxlen=LOG_BUFFER_MAX)
         self.strict = os.environ.get(ENV_STRICT) == "1"
         host.bind(self)
+
+    def _with_role(self, manifest: dict) -> dict:
+        """Подставить закреплённую роль класса в манифест (если поля `role` нет) и отвергнуть чужую."""
+        if self.ROLE is None or not isinstance(manifest, dict):
+            return manifest
+        have = manifest.get("role")
+        if have is not None and have != self.ROLE:
+            raise ManifestError(f"{type(self).__name__} служит роли «{self.ROLE}», а в манифесте role={have!r}",
+                                [f"role: для {type(self).__name__} нужна роль «{self.ROLE}»"])
+        if have is None and self.ROLE != P.DEFAULT_ROLE:
+            manifest = {**manifest, "role": self.ROLE}
+        return manifest
 
     # ------------------------------------------------------------ регистрация обработчиков
 
@@ -262,11 +285,11 @@ class ModuleClient:
         return self._url or P.core_url()
 
     async def _resolve_token(self) -> str | None:
-        """Токен: параметр, GITS_MODULE_TOKEN, файл ядра (MOD-4). Файл перечитывается при каждой попытке:
-        ядро меняет токен при каждом старте."""
+        """Токен: параметр, GITS_TOKEN (запасное имя GITS_MODULE_TOKEN), файл ядра (MOD-4). Файл перечитывается при
+        каждой попытке: ядро меняет токен при каждом старте."""
         if self._token:
             return self._token
-        token_env = env(P.ENV_TOKEN)
+        token_env = P.env_token()
         if token_env:
             return token_env
         return await asyncio.to_thread(P.read_token_file)
@@ -950,3 +973,22 @@ class ModuleClient:
     def _flush_log(self) -> None:
         while self._log_buffer:
             self._spawn(self._notify("log", self._log_buffer.popleft()))
+
+
+class WorkspaceClient(PeerClient):
+    """Клиент участника с ролью workspace: окружение с инструментами, событиями и рабочим местом (`workspace` в манифесте).
+    Манифест без `role` принимается (режим совместимости); с `role: service` отвергается."""
+
+    ROLE = P.ROLE_WORKSPACE
+
+
+class ServiceClient(PeerClient):
+    """Клиент участника с ролью service (например питомец, голос): подключается к ядру по WebSocket, окружения и аренды нет.
+    Если в манифесте нет `role`, клиент сам ставит `role: service`; описания `workspace` у сервиса быть не может."""
+
+    ROLE = P.ROLE_SERVICE
+
+
+class ModuleClient(PeerClient):
+    """Устарело, уберёт фаза 4: прежнее имя клиента. Ведёт себя как раньше: роль берётся из манифеста, без `role` это
+    workspace. Для нового кода: `WorkspaceClient` или `ServiceClient`."""

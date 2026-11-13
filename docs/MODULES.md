@@ -10,6 +10,62 @@
 `llm_json`, типизированные запросы `client.tts`, `persona`, `call_tool`, `claude_usage` и др.; внутренности `agent/` не
 импортируются (тест `agent/tests/test_architecture.py`).
 
+## Словарь: workspace и service (контракт 1.11, фаза 1 переименования)
+
+Участники шины делятся на два рода. Прежнее слово «модуль» ниже остаётся как общее (его заменит последняя фаза переименования),
+а в манифесте и SDK уже действуют новые имена:
+
+| Род | Что это | Примеры | Клиент SDK |
+|---|---|---|---|
+| **workspace** (окружение) | инструменты, события и рабочее место агента (`workspace`, `nodes` в манифесте) | `montage`, `rimworld`, `minecraft`, `desktop`, `telegram`, `streamer` (будущее объединение twitch и obs) | `WorkspaceClient` |
+| **service** | подключается к ядру по WebSocket; окружения и аренды нет, инструменты допустимы | `pet`, `voice` | `ServiceClient` |
+
+Внешние сервисы без WebSocket (decider, espeech и т. п.) тоже сервисы, но к SDK не относятся.
+
+Поле манифеста **`role`**: `"workspace"` или `"service"`; поля нет: `workspace` (режим совместимости, прежние манифесты работают без
+правок). Поле **`ownership`** только у workspace: `"shared"` (общий, эксклюзивный, берётся в аренду: montage, rimworld, minecraft,
+desktop) или `"owned"` (живёт внутри ядра персонажа: telegram, streamer; по умолчанию). Service с `ownership` или с описанием
+`workspace` отвергается проверкой манифеста.
+
+```python
+from gits_sdk import ServiceClient, WorkspaceClient
+client = WorkspaceClient({..., "role": "workspace", "ownership": "shared"})     # окружение в аренду
+pet = ServiceClient({"id": "pet", ..., "role": "service"})                      # у ServiceClient роль подставится сама
+```
+
+`ModuleClient` оставлен прежним именем (устарело, уберёт фаза 4): ведёт себя как раньше, роль берётся из манифеста.
+
+Что ещё изменилось в SDK (прежние имена остаются алиасами до фазы 4):
+
+- `hello` несёт `id` и `role`; прежнее `module_id` клиент шлёт рядом, ядро принимает любое из двух. Адрес входа `/ws` описан в
+  контракте как новый путь (доступен с фазы 2), пока клиент подключается к `/module/ws`.
+- Переменные окружения `GITS_ID` и `GITS_TOKEN` читаются первыми, `GITS_MODULE_ID` и `GITS_MODULE_TOKEN` остаются алиасами.
+
+### Аренда общего workspace (`ownership: shared`)
+
+Общее окружение занимает один хозяин (ядро персонажа) за раз. Хозяин берёт его в аренду по HTTP-интерфейсу управления, workspace
+подключается к ядру хозяина по WebSocket и отключается, когда аренда кончилась. Сервер и клиент живут в `gits_sdk.control`:
+
+```python
+from gits_sdk.control import ControlServer, LeaseClient
+
+# сторона workspace: токен управления из GITS_CONTROL_TOKEN (без него сервер не создаётся)
+server = ControlServer(id="rimworld", on_acquire=connect_to_owner, on_release=disconnect)   # on_*(lease): lease.core_url, lease.token
+await server.start("127.0.0.1", 8790)
+
+# сторона ядра
+leases = LeaseClient("http://127.0.0.1:8790", control_token)
+lease = await leases.acquire(character="glados", core_url=core_url, token=core_token, purpose="play", ttl_s=300)
+await leases.renew(lease["lease_id"]); await leases.release(lease["lease_id"])
+```
+
+- `GET /status`: `{id, role, ownership, state: offline|free|busy, holder, ttl_s, active}`; `POST /acquire`, `/renew`, `/release`.
+  Один хозяин за раз (другому 409 с описанием хозяина), повторный `acquire` того же `character` и `purpose` только продлевает.
+- Срок аренды истекает сам (`ttl_s` по умолчанию 300 с, наибольший 3600 с) и тогда равен `release`; хозяин продлевает его `renew`.
+- Участники без аренды (`ownership: owned` и services) отвечают только на `GET /status` (state `free` или `offline`, счётчик
+  `active`), остальное 404.
+- Поля, коды ответов и примеры: раздел «Интерфейс управления» в [docs/MODULE_CONTRACT.md](MODULE_CONTRACT.md).
+
 ## Как подключиться (5 шагов)
 
 1. **Поставь SDK** в окружение модуля: `pip install -e C:\MyProjects\GitS\sdk` (пакет `gits-sdk`, импорт
@@ -19,7 +75,7 @@
 3. **Заведи обработчики**: `@client.tool("имя")` на каждый инструмент манифеста (без обработчика `run()` не стартует).
    Отказ с понятной причиной: `raise ToolError("причина", code="unavailable")`.
 4. **Запусти** `await client.run()` (или `client.main()` для программы). Адрес ядра `ws://127.0.0.1:8766/module/ws`
-   меняется переменной `GITS_CORE_URL`; токен берётся из `GITS_MODULE_TOKEN`, а при ручном запуске из файла
+   меняется переменной `GITS_CORE_URL`; токен берётся из `GITS_TOKEN` (запасное имя `GITS_MODULE_TOKEN`), а при ручном запуске из файла
    `%LOCALAPPDATA%\GLaDOS\module_token`, который пишет ядро. Переподключение при обрыве SDK делает сам (1, 2, 4, 8, 16,
    30 секунд).
 5. **Шли факты**: `await client.event(kind, text, ...)`, `await client.say(text)`, `await client.state(summary, data)`.

@@ -1,0 +1,73 @@
+{
+  "name": "control.renew",
+  "transport": "http POST /renew",
+  "since": "1.11",
+  "errors": [
+    {
+      "status": 400,
+      "description": "тело неверно: `{\"ok\": false, \"error\": \"bad_request\", \"message\": ...}`"
+    },
+    {
+      "status": 401,
+      "description": "нет или неверен токен управления: `{\"ok\": false, \"error\": \"unauthorized\"}`"
+    },
+    {
+      "status": 404,
+      "description": "аренды нет, она истекла или закрыта: `{\"ok\": false, \"error\": \"unknown_lease\"}`"
+    }
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "lease_id": {
+        "type": "string",
+        "description": "id аренды",
+        "minLength": 1
+      },
+      "ttl_s": {
+        "type": "number",
+        "description": "новый срок, секунд",
+        "minimum": 1,
+        "maximum": 3600,
+        "default": 300
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "lease_id"
+    ],
+    "title": "POST /renew",
+    "description": "Продлить аренду: новый срок отсчитывается от текущего момента."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean",
+        "description": "true"
+      },
+      "lease_id": {
+        "type": "string",
+        "description": "id аренды"
+      },
+      "expires": {
+        "type": "number",
+        "description": "когда истекает"
+      },
+      "ttl_s": {
+        "type": "number",
+        "description": "выданный срок, секунд"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "ok",
+      "lease_id",
+      "expires",
+      "ttl_s"
+    ],
+    "title": "POST /renew (ответ 200)"
+  }
+}

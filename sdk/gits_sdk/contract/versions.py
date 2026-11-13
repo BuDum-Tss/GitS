@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .. import protocol as P
 
-CONTRACT_VERSION = "1.10"
+CONTRACT_VERSION = "1.11"
 PROTOCOL = P.PROTOCOL
 
 # версия контракта, в которой появился элемент (поле `since` у Message): "1.0" - исходный состав ТЗ 01
@@ -36,6 +36,10 @@ HISTORY = (
     ("1.10", "удалены политики модуля: поля policies и default_policy, запросы policy.activate, focus.release, focus.resume, "
              "параметр policy у workspace.*, active_policy в статусе; конец состояния «задача кончилась» сообщает модуль "
              "флагом done в статусе"),
+    ("1.11", "фаза 1 переименования «модуль -> workspace / service» (аддитивно): поля манифеста role и ownership, поля id и role "
+             "в hello (прежнее module_id шлётся рядом), адрес входа /ws рядом с /module/ws (доступен с фазы 2), переменные "
+             "GITS_ID и GITS_TOKEN (GITS_MODULE_ID и GITS_MODULE_TOKEN остаются алиасами), HTTP-интерфейс управления "
+             "workspace с ownership shared: аренда (GET /status, POST /acquire, /renew, /release)"),
 )
 
 # Устаревшее: (элемент, дата удаления, чем заменить)

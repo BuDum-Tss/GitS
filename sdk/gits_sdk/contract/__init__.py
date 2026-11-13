@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import environment, messages
+from . import control, environment, messages, roles
 from .messages import (ALL_MESSAGES, CORE_REQUEST_MESSAGES, LOG_KINDS, LOG_READ_KINDS,
                        MODULE_REQUEST_MESSAGES, TOPIC_MESSAGES)
 from .spec import (C2M, DEPRECATED, M2C, NOTE, PLANNED, REQUEST, STABLE, TOPIC, Field, Message, check_fields,
@@ -66,4 +66,4 @@ def planned_message(name: str) -> str:
 __all__ = ["ALL_MESSAGES", "CONTRACT_VERSION", "CORE_REQUESTS", "Field", "LOG_KINDS", "LOG_READ_KINDS", "M2C", "C2M",
            "MODULE_REQUESTS", "Message", "PROTOCOL", "REGISTRY", "TOPICS", "environment", "get", "is_planned",
            "messages", "planned_message", "validate", "validate_response", "validate_topic", "check_fields",
-           "schema_of", "DEPRECATED", "NOTE", "PLANNED", "REQUEST", "STABLE", "TOPIC"]
+           "schema_of", "control", "roles", "DEPRECATED", "NOTE", "PLANNED", "REQUEST", "STABLE", "TOPIC"]

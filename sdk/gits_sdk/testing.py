@@ -36,6 +36,7 @@ class _Conn:
         self.transport = transport
         self.welcomed = False
         self.module_id: str | None = None
+        self.role: str | None = None             # роль из hello (нет поля: из манифеста, по умолчанию workspace)
         self.hello: dict | None = None
         self.pending: dict[str, asyncio.Future] = {}
 
@@ -56,7 +57,7 @@ class FakeCore:
 
         self.messages: list[Envelope] = []       # всё, что прислал модуль после рукопожатия (включая result)
         self.sent: list[Envelope] = []           # всё, что отправило ядро
-        self.hellos: list[dict] = []             # тела принятых hello
+        self.hellos: list[dict] = []             # тела принятых hello (в них `id`, `role` и прежнее `module_id`)
         self.rejected: list[dict] = []           # тела hello, на которые ответили reject
         self.states: dict[str, dict] = {}        # последняя `state` каждого модуля
         self.panels: dict[str, dict] = {}        # последнее `panel.set` каждого модуля: {"blocks": [...]} (TZ 15)
@@ -252,7 +253,8 @@ class FakeCore:
             await self._send(conn, Envelope("reject", {"reason": reason}, re=env.id))
             await conn.ws.close()
             return
-        conn.module_id = body["module_id"]
+        conn.module_id = P.hello_id(body)
+        conn.role = body.get("role") or P.role_of(body.get("manifest"))
         conn.hello = body
         for old in list(self._conns):
             if old is not conn and old.welcomed and old.module_id == conn.module_id and not old.ws.closed:

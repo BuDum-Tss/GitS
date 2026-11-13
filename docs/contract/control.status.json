@@ -1,0 +1,76 @@
+{
+  "name": "control.status",
+  "transport": "http GET /status",
+  "since": "1.11",
+  "errors": [
+    {
+      "status": 401,
+      "description": "нет или неверен токен управления: `{\"ok\": false, \"error\": \"unauthorized\"}`"
+    }
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "GET /status",
+    "description": "Состояние окружения. Допустим у любого участника с интерфейсом управления: у workspace с `ownership: owned` и у service аренды нет, `state` равен `free` или `offline`, `holder` пуст, `active` считает текущие подключения."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "id участника"
+      },
+      "role": {
+        "type": "string",
+        "description": "роль",
+        "enum": [
+          "workspace",
+          "service"
+        ]
+      },
+      "ownership": {
+        "type": "string",
+        "description": "режим владения (у workspace)",
+        "enum": [
+          "shared",
+          "owned"
+        ]
+      },
+      "state": {
+        "type": "string",
+        "description": "состояние",
+        "enum": [
+          "offline",
+          "free",
+          "busy"
+        ]
+      },
+      "holder": {
+        "type": "object",
+        "description": "хозяин аренды (поля: character, core_url, since, purpose, expires) или null, если свободно"
+      },
+      "ttl_s": {
+        "type": "number",
+        "description": "срок аренды по умолчанию, секунд (300; наибольший 3600)"
+      },
+      "active": {
+        "type": "integer",
+        "description": "сколько хозяев или подключений сейчас (для shared 0 или 1)"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "id",
+      "role",
+      "state",
+      "holder",
+      "ttl_s",
+      "active"
+    ],
+    "title": "GET /status (ответ 200)"
+  }
+}

@@ -30,6 +30,12 @@ ENV_VARS = (
     EnvVar("GITS_CHARACTER_ID", SUPERVISOR, True, "id активного персонажа; от него зависит папка ресурсов модуля", "glados"),
     EnvVar("PYTHONUNBUFFERED", SUPERVISOR, False, "1: журнал процесса без буфера"),
     EnvVar("PYTHONPATH", SUPERVISOR, False, "пути к sdk/ и agent/ до установки пакета gits-sdk"),
+    EnvVar("GITS_ID", USER, False, "id участника; новое имя, читается первым (прежнее GITS_MODULE_ID пока ставит супервизор; "
+                                   "алиас уберёт фаза 4)"),
+    EnvVar("GITS_TOKEN", USER, False, "токен шины; новое имя, читается первым (прежнее GITS_MODULE_TOKEN пока ставит супервизор; "
+                                      "алиас уберёт фаза 4)"),
+    EnvVar("GITS_CONTROL_TOKEN", USER, False, "общий токен интерфейса управления workspace с ownership shared (аренда); без него "
+                                              "сервер управления не стартует"),
     EnvVar("GITS_RESOURCES_DIR", INHERITED, False, "корень ресурсов персонажей; по умолчанию resources/ рядом с sdk/"),
     EnvVar("GITS_SECRETS_FILE", INHERITED, False, "путь к .env; по умолчанию .env"),
 )

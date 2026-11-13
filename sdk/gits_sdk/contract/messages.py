@@ -188,12 +188,17 @@ _claude_locate = Message(
 
 _hello = Message(
     "hello", M2C, NOTE, "Рукопожатие: первое сообщение модуля, с манифестом.",
-    request=(F("module_id", "string", True, "id модуля"), F("instance", "string", True, "уникальный id запуска"),
+    request=(F("id", "string", False, "id участника (с 1.11; нужно `id` или прежнее `module_id`)"),
+             F("role", "string", False, "роль: workspace или service (с 1.11; нет поля: роль манифеста, по умолчанию workspace)",
+               enum=P.ROLES),
+             F("module_id", "string", False, "устарело (уберёт фаза 4): прежнее имя `id`; клиент SDK шлёт оба"),
+             F("instance", "string", True, "уникальный id запуска"),
              F("pid", "integer", True, "pid процесса"), F("protocol", "integer", True, "версия протокола"),
              F("manifest", "object", True, "манифест")),
     check=P.validate_hello,
     invalid=({}, "не объект", {"protocol": 99}),
-    note="Ядро отвечает welcome или reject.",
+    note="Ядро отвечает welcome или reject. id берётся из `id` или `module_id` (заданы оба: равны), должен совпадать с "
+         "`manifest.id`; `role`, если есть, совпадает с ролью манифеста.",
 )
 
 _event = Message(

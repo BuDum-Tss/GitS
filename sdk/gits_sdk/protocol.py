@@ -23,9 +23,15 @@ from .envcompat import env
 # ---------------------------------------------------------------- транспорт (MOD-1…MOD-7)
 
 PROTOCOL = 1
-DEFAULT_CORE_URL = "ws://127.0.0.1:8766/module/ws"
+WS_PATH = "/module/ws"                 # адрес входа, которым клиент пользуется сейчас
+WS_PATH_NEW = "/ws"                    # новый адрес входа: описан в контракте, доступен с фазы 2 (ядро в agent/ его ещё не принимает)
+DEFAULT_CORE_URL = "ws://127.0.0.1:8766" + WS_PATH
 ENV_CORE_URL = "GITS_CORE_URL"
-ENV_TOKEN = "GITS_MODULE_TOKEN"
+ENV_TOKEN = "GITS_TOKEN"               # токен подключения к ядру (с фазы 1 основное имя; GITS_MODULE_TOKEN читается как алиас)
+ENV_MODULE_TOKEN = "GITS_MODULE_TOKEN"  # устарело, уберёт фаза 4
+ENV_ID = "GITS_ID"                     # id участника (с фазы 1 основное имя; GITS_MODULE_ID читается как алиас)
+ENV_MODULE_ID = "GITS_MODULE_ID"       # устарело, уберёт фаза 4
+ENV_CONTROL_TOKEN = "GITS_CONTROL_TOKEN"   # общий токен интерфейса управления (аренда workspace, `gits_sdk.control`)
 ENV_CONTAINER = "GITS_CONTAINER"       # 1: ядро работает в Docker-контейнере (том персонажа, токен из переменной, без трея)
 ENV_HUB_ALLOW = "GITS_HUB_ALLOW"       # сети CIDR через запятую, которым шина модулей открыта помимо петли (контейнер: шлюз Docker)
 MAX_MESSAGE_BYTES = 1024 * 1024        # MOD-6: файлы передаются путями, не внутри сообщений
@@ -41,6 +47,16 @@ def is_container(environ=None) -> bool:
     """Ядро запущено в контейнере (`GITS_CONTAINER=1`)."""
     value = (os.environ if environ is None else environ).get(ENV_CONTAINER, "")
     return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def env_token() -> str | None:
+    """Токен подключения из окружения: `GITS_TOKEN`, иначе прежний `GITS_MODULE_TOKEN` (алиас, уберёт фаза 4)."""
+    return os.environ.get(ENV_TOKEN) or env(ENV_MODULE_TOKEN) or None
+
+
+def env_id() -> str | None:
+    """id участника из окружения: `GITS_ID`, иначе прежний `GITS_MODULE_ID` (алиас, уберёт фаза 4)."""
+    return os.environ.get(ENV_ID) or env(ENV_MODULE_ID) or None
 
 
 def core_url() -> str:
@@ -171,6 +187,32 @@ JOB_STATES = ("queued", "running", "waiting_user", "done", "failed", "cancelled"
 JOB_FINISHED = ("done", "failed", "cancelled")
 
 # ---------------------------------------------------------------- ограничения
+
+# роли участника шины (фаза 1 переименования): workspace (окружение с инструментами, событиями и рабочим местом) и service
+ROLE_WORKSPACE = "workspace"
+ROLE_SERVICE = "service"
+ROLES = (ROLE_WORKSPACE, ROLE_SERVICE)
+DEFAULT_ROLE = ROLE_WORKSPACE          # поля `role` в манифесте нет: режим совместимости, считается workspace
+# режим владения workspace: shared (общий, эксклюзивный, берётся в аренду) и owned (живёт внутри ядра персонажа)
+OWNERSHIP_SHARED = "shared"
+OWNERSHIP_OWNED = "owned"
+OWNERSHIPS = (OWNERSHIP_SHARED, OWNERSHIP_OWNED)
+DEFAULT_OWNERSHIP = OWNERSHIP_OWNED
+
+
+def role_of(manifest: Any) -> str:
+    """Роль по манифесту; без поля `role` это workspace."""
+    if isinstance(manifest, dict) and manifest.get("role"):
+        return manifest["role"]
+    return DEFAULT_ROLE
+
+
+def ownership_of(manifest: Any) -> str | None:
+    """Режим владения workspace (по умолчанию owned); у service None."""
+    if role_of(manifest) != ROLE_WORKSPACE:
+        return None
+    return (manifest.get("ownership") if isinstance(manifest, dict) else None) or DEFAULT_OWNERSHIP
+
 
 MODULE_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 TOOL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
@@ -559,11 +601,29 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
     for flag in ("graph", "state"):
         if flag in manifest and not isinstance(manifest[flag], bool):
             problems.append(f"{flag}: должно быть true или false")
+    _check_role(manifest, problems)
     _check_workspace(manifest, problems)
     _check_nodes(manifest, problems)
     if "panel" in manifest and warnings is not None:
         warnings.extend(parse_panel(manifest)[1])
     return problems
+
+
+def _check_role(manifest: dict, problems: list[str]) -> None:
+    """Фаза 1: поля `role` (workspace | service; нет поля: workspace) и `ownership` (только у workspace: shared | owned)."""
+    role = DEFAULT_ROLE
+    if "role" in manifest:
+        role = manifest["role"]
+        if not isinstance(role, str) or role not in ROLES:
+            problems.append(f"role: одно из {list(ROLES)}")
+            role = None
+    if "ownership" in manifest:
+        if role == ROLE_SERVICE:
+            problems.append("ownership: только у workspace")
+        elif not isinstance(manifest["ownership"], str) or manifest["ownership"] not in OWNERSHIPS:
+            problems.append(f"ownership: одно из {list(OWNERSHIPS)}")
+    if role == ROLE_SERVICE and "workspace" in manifest:
+        problems.append("workspace: у service описания среды быть не может")
 
 
 def _check_nodes(manifest: dict, problems: list[str]) -> None:
@@ -1153,6 +1213,8 @@ class Manifest:
     panel: PanelSpec | None = None                      # пространство модуля (TZ 15); None - вкладки нет
     panel_warnings: list[str] = field(default_factory=list)   # почему panel отброшен (для журнала ядра)
     workspace: dict | None = None                       # ТЗ 32, WS-4: среда агента, которую объявляет модуль
+    role: str | None = None                             # фаза 1: workspace | service; None - поля нет в манифесте (workspace)
+    ownership: str | None = None                        # фаза 1: shared | owned (только workspace); None - поля нет (owned)
     nodes: list[dict] = field(default_factory=list)     # ТЗ 33: дерево узлов рабочего места (пусто: плоский список)
 
     @classmethod
@@ -1171,7 +1233,17 @@ class Manifest:
             nodes=[dict(n) for n in d.get("nodes") or []],
             graph=bool(d.get("graph", False)), state=bool(d.get("state", False)),
             panel=panel, panel_warnings=panel_warnings,
-            workspace=dict(d["workspace"]) if d.get("workspace") else None)
+            workspace=dict(d["workspace"]) if d.get("workspace") else None,
+            role=d.get("role"), ownership=d.get("ownership"))
+
+    @property
+    def effective_role(self) -> str:
+        return self.role or DEFAULT_ROLE
+
+    @property
+    def effective_ownership(self) -> str | None:
+        """Режим владения: у workspace shared или owned (по умолчанию owned), у service None."""
+        return None if self.effective_role != ROLE_WORKSPACE else self.ownership or DEFAULT_OWNERSHIP
 
     def to_dict(self) -> dict:
         out = {"id": self.id, "title": self.title, "description": self.description, "version": self.version,
@@ -1180,6 +1252,10 @@ class Manifest:
                "tools": [t.to_dict() for t in self.tools],
                "emits": [e.to_dict() for e in self.emits],
                "graph": self.graph, "state": self.state}
+        if self.role is not None:
+            out["role"] = self.role
+        if self.ownership is not None:
+            out["ownership"] = self.ownership
         if self.panel is not None:
             out["panel"] = self.panel.to_dict()
         if self.workspace:
@@ -1199,21 +1275,30 @@ class Manifest:
 # ---------------------------------------------------------------- рукопожатие (раздел 5)
 
 def hello_body(manifest: dict, instance: str, pid: int | None = None) -> dict:
-    """Тело `hello`."""
-    return {"module_id": manifest["id"], "instance": instance, "pid": os.getpid() if pid is None else pid,
-            "protocol": PROTOCOL, "manifest": manifest}
+    """Тело `hello`. Фаза 1: новые поля `id` и `role`, прежнее `module_id` шлётся рядом (алиас, уберёт фаза 4)."""
+    return {"id": manifest["id"], "module_id": manifest["id"], "role": role_of(manifest), "instance": instance,
+            "pid": os.getpid() if pid is None else pid, "protocol": PROTOCOL, "manifest": manifest}
+
+
+def hello_id(body: dict) -> Any:
+    """id из hello: новое `id`, иначе прежнее `module_id`."""
+    return body.get("id") if body.get("id") is not None else body.get("module_id")
 
 
 def validate_hello(body: Any) -> list[str]:
-    """Проверить тело `hello` вместе с манифестом (для ядра: при проблемах отвечает `reject`)."""
+    """Проверить тело `hello` вместе с манифестом (для ядра: при проблемах отвечает `reject`).
+
+    id берётся из `id` или прежнего `module_id` (заданы оба: должны совпадать); `role`, если есть, совпадает с ролью манифеста."""
     if not isinstance(body, dict):
         return ["hello: тело должно быть объектом"]
     problems = []
     if body.get("protocol") != PROTOCOL or isinstance(body.get("protocol"), bool):
         problems.append(f"protocol {body.get('protocol')!r} не поддерживается (нужен {PROTOCOL})")
-    mid = body.get("module_id")
+    mid = hello_id(body)
     if not isinstance(mid, str) or not MODULE_ID_RE.match(mid):
-        problems.append(f"module_id: должен соответствовать {MODULE_ID_RE.pattern}")
+        problems.append(f"id: должен соответствовать {MODULE_ID_RE.pattern}")
+    elif body.get("id") is not None and body.get("module_id") is not None and body["id"] != body["module_id"]:
+        problems.append("module_id не совпадает с id")
     if not isinstance(body.get("instance"), str) or not body["instance"]:
         problems.append("instance: обязательная непустая строка")
     if not _is_int(body.get("pid")):
@@ -1221,7 +1306,9 @@ def validate_hello(body: Any) -> list[str]:
     manifest = body.get("manifest")
     problems.extend(validate_manifest(manifest))
     if isinstance(manifest, dict) and manifest.get("id") != mid:
-        problems.append("module_id не совпадает с manifest.id")
+        problems.append("id не совпадает с manifest.id")
+    if body.get("role") is not None and isinstance(manifest, dict) and body["role"] != role_of(manifest):
+        problems.append(f"role {body['role']!r} не совпадает с manifest.role")
     return problems
 
 

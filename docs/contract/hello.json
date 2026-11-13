@@ -9,9 +9,21 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "properties": {
+      "id": {
+        "type": "string",
+        "description": "id участника (с 1.11; нужно `id` или прежнее `module_id`)"
+      },
+      "role": {
+        "type": "string",
+        "description": "роль: workspace или service (с 1.11; нет поля: роль манифеста, по умолчанию workspace)",
+        "enum": [
+          "workspace",
+          "service"
+        ]
+      },
       "module_id": {
         "type": "string",
-        "description": "id модуля"
+        "description": "устарело (уберёт фаза 4): прежнее имя `id`; клиент SDK шлёт оба"
       },
       "instance": {
         "type": "string",
@@ -32,7 +44,6 @@
     },
     "additionalProperties": true,
     "required": [
-      "module_id",
       "instance",
       "pid",
       "protocol",

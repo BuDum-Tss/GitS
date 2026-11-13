@@ -12,7 +12,9 @@ sys.path.insert(0, str(ROOT / "sdk"))
 
 from gits_sdk import contract  # noqa: E402
 from gits_sdk import protocol as P  # noqa: E402
+from gits_sdk.contract import control as C  # noqa: E402
 from gits_sdk.contract import environment as E  # noqa: E402
+from gits_sdk.contract import roles as RL  # noqa: E402
 from gits_sdk.contract import messages as M  # noqa: E402
 from gits_sdk.contract import versions as V  # noqa: E402
 from gits_sdk.contract.spec import Message  # noqa: E402
@@ -72,6 +74,46 @@ def _message_section(m: Message) -> list[str]:
     return out
 
 
+def _roles_section() -> list[str]:
+    out = ["## Роли и режим владения (с 1.11)", "",
+           "Участник шины это `workspace` (окружение: инструменты, события, рабочее место; режим владения `shared` или `owned`) "
+           "или `service` (подключается к ядру по WebSocket, окружения и аренды нет; инструменты допустимы). Поля манифеста:", ""]
+    out += _fields_table(RL.MANIFEST_FIELDS) + [""]
+    out += [f"- {r}" for r in RL.MANIFEST_RULES] + [""]
+    out += ["Рукопожатие и окружение:", ""] + [f"- {r}" for r in RL.HELLO_NOTES]
+    out += [f"- Переменная `{new}` читается первой, `{old}` остаётся алиасом (уберёт фаза 4)." for new, old in RL.ENV_ALIASES] + [""]
+    return out
+
+
+def _endpoint_section(e) -> list[str]:
+    out = [f"### `{e.method} {e.path}`", "", e.doc, ""]
+    out += [f"с версии {e.since}.", ""]
+    if e.errors:
+        out += ["Ошибки (HTTP-код, тело):", ""] + [f"- `{code}`: {text}" for code, text in e.errors] + [""]
+    if e.method == "POST":
+        out += ["Тело запроса (JSON):", ""] + _fields_table(e.request) + [""]
+    out += ["Ответ 200 (JSON):", ""] + _fields_table(e.response) + [""]
+    if e.example_request is not None:
+        out += ["Пример запроса:", "", "```json", json.dumps(e.example_request, ensure_ascii=False, indent=2), "```", ""]
+    if e.example_response is not None:
+        out += ["Пример ответа:", "", "```json", json.dumps(e.example_response, ensure_ascii=False, indent=2), "```", ""]
+    return out
+
+
+def _control_section() -> list[str]:
+    out = ["## Интерфейс управления: аренда workspace (HTTP, с 1.11)", "",
+           "Workspace с `ownership: shared` занимает один хозяин за раз. Хозяин (ядро персонажа) берёт окружение в аренду по HTTP, "
+           "а workspace подключается к его ядру по WebSocket. Это не сообщения шины, поэтому они описаны отдельно от `Message`. "
+           "Сервер: `gits_sdk.control.ControlServer`, клиент ядра: `gits_sdk.control.LeaseClient`. "
+           "Авторизация: заголовок `Authorization: Bearer <GITS_CONTROL_TOKEN>` у каждого запроса. "
+           "Состояния: " + ", ".join(f"`{s}`" for s in C.STATES) + ".", ""]
+    out += [f"- {r}" for r in C.RULES] + [""]
+    out += ["Хозяин (`holder`):", ""] + _fields_table(C.HOLDER_FIELDS) + [""]
+    for e in C.ENDPOINTS:
+        out += _endpoint_section(e)
+    return out
+
+
 def _section(title: str, intro: str, msgs) -> list[str]:
     out = [f"## {title}", "", intro, ""]
     for m in msgs:
@@ -91,6 +133,7 @@ def build_markdown() -> str:
     lines += [f"- {line}" for line in (V.__doc__ or "").strip().split("\n")[3:] if line.strip()]
     lines += ["", "История:", ""] + [f"- `{v}`: {d}" for v, d in V.HISTORY] + [""]
     lines += ["Устаревшее: " + ("; ".join(f"`{i}` до {d}, заменить на {r}" for i, d, r in V.DEPRECATED) or "нет."), ""]
+    lines += _roles_section()
     lines += _section("Запросы модуля к ядру", "Модуль шлёт запрос, ядро отвечает `result`. Клиент SDK: типизированные методы "
                       "`ModuleClient` (`tts`, `persona`, `llm_ask`, ...) или универсальный `request`.", M.CORE_REQUEST_MESSAGES)
     lines += _section("Сообщения модуля к ядру без ответа", "Одностороннее. Тело проверяет ядро; неверное отбрасывается с записью в журнал.",
@@ -99,6 +142,7 @@ def build_markdown() -> str:
                       "`@client.on_request` и т. д.", M.MODULE_REQUEST_MESSAGES)
     lines += _section("Сообщения ядра к модулю без ответа", "Одностороннее.", M.CORE_NOTE_MESSAGES)
     lines += _section("Темы", "Ядро рассылает `topic` с `{topic, data}` модулям, подписанным в манифесте (`subscribe`).", M.TOPIC_MESSAGES)
+    lines += _control_section()
     lines += ["## Журнал ядра", "",
               "Запись: `client.log(kind, text, **data)` (сообщение `log`), допустимые виды: " + ", ".join(f"`{k}`" for k in M.LOG_KINDS) + ".",
               "Чтение: `core.events.tail`, допустимые виды: " + ", ".join(f"`{k}`" for k in M.LOG_READ_KINDS) + ".", ""]
@@ -121,6 +165,11 @@ def build_schemas() -> dict[str, str]:
         if m.kind == "request":
             doc["response"] = m.response_schema()
         out[f"{m.name}.json"] = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
+    for e in C.ENDPOINTS:                                  # HTTP-интерфейс аренды (не сообщения шины)
+        doc = {"name": f"control.{e.name}", "transport": f"http {e.method} {e.path}", "since": e.since,
+               "errors": [{"status": code, "description": text} for code, text in e.errors],
+               "request": e.request_schema(), "response": e.response_schema()}
+        out[f"control.{e.name}.json"] = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
     return out
 
 
