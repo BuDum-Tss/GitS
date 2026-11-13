@@ -1,7 +1,7 @@
-# Общие сервисы GitS: голос ГЛаДОС (локально, на GPU) и монтаж видео (общий контейнер montage, см. его описание ниже). Голос по умолчанию ESpeech: `docker compose up -d` поднимает espeech (и whisperx);
+# Общие сервисы GitS: голос ГЛаДОС (локально, на GPU) и монтаж видео (общий контейнер montage, см. его описание ниже). Голос по умолчанию ESpeech: `docker compose up -d` поднимает espeech;
 # Fish Speech запасной и стоит за профилем fish: `docker compose --profile fish up -d fish-speech`.
-# Все три сервиса необязательны: без ESpeech и Fish Speech модуль voice говорит запасным голосом edge-tts, без WhisperX слух
-# использует встроенный локальный Whisper (веса Fish Speech в agent/resources/tts/checkpoints, веса ESpeech в
+# Сервисы необязательны: без ESpeech и Fish Speech модуль voice говорит запасным голосом edge-tts. Распознавание речи в
+# docker не нужно: оно идёт внутри модуля voice (GigaAM на процессоре, запасной faster-whisper). Веса: Fish Speech в agent/resources/tts/checkpoints, веса ESpeech в
 # services/f5-tts/weights, референс голоса у модуля voice). ESpeech в контейнере: в .env ESPEECH_EXTERNAL=1, чтобы супервизор
 # ядра не поднимал второй процесс на том же порту. На видеокарте с 6 ГБ вместе с локальной моделью (LM Studio) и игрой видеопамяти
 # может не хватить, поэтому поднимай то, что нужно сейчас.
@@ -79,34 +79,6 @@ services:
       retries: 5
       start_period: 90s
 
-  whisperx:
-    build:
-      context: .
-      dockerfile: docker/whisperx/Dockerfile
-    image: whisperx-custom:latest
-    container_name: whisperx-stt
-    restart: "no"
-    ports:
-      - "${WHISPER_HOST:-127.0.0.1}:${WHISPER_PORT:-9000}:9000"
-    environment:
-      WHISPERX_MODEL: ${WHISPER_MODEL:-large-v3}
-      WHISPERX_LANGUAGE: ${WHISPER_LANGUAGE:-ru}
-      WHISPERX_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-float16}
-      WHISPERX_BATCH_SIZE: ${WHISPER_BATCH_SIZE:-16}
-      # HF-токен с принятыми условиями gated-моделей pyannote/speaker-diarization-3.1 и segmentation-3.0:
-      # без него диаризация (и голосовые отпечатки) не загрузится, обычная транскрипция работает.
-      HF_TOKEN: ${HF_TOKEN:-}
-      HF_HUB_DISABLE_XET: "1"
-    volumes:
-      - whisper_cache:/root/.cache/huggingface
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
   # Монтаж видео: ОДИН общий контейнер на всех персонажей (пространство, которое ядро берёт в аренду как семафор). К ядру при старте
   # не подключается: ждёт аренды на порту управления 8780 (только сеть compose gits_default, на хост не публикуется; ядро
   # персонажа видит его по имени montage, control_url в agent/peers.container.yaml). Запуск:
@@ -147,7 +119,6 @@ services:
       # - ${MONTAGE_INBOX_DIR}:/inbox:ro
 
 volumes:
-  whisper_cache:
   espeech_cache:
   montage_work:
     name: gits-montage-work

@@ -27,7 +27,7 @@ def voice_manifest(**extra) -> dict:
     base = {"id": "voice", "title": "Голос", "description": "Тестовый модуль голоса.", "version": "1.0.0",
             "capabilities": ["voice.output", "voice.input"], "subscribe": ["settings", "module"],
             "emits": [{"kind": k, "description": k, "default_urgency": 1} for k in
-                      ("voice.utterance", "voice.speech", "voice.user_speaking", "voice.heard", "voice.named")]}
+                      ("voice.utterance", "voice.speech", "voice.user_speaking", "voice.heard")]}
     base.update(extra)
     return base
 
@@ -266,9 +266,9 @@ async def test_companion_default_speech_is_text_only(tmp_path):
 async def test_voice_utterance_goes_to_on_voice_with_the_speaker_and_skips_attention(tmp_path):
     async with Wired(tmp_path) as w:
         mod = await w.module()
-        speaker = {"id": "person-ab12cd34", "name": "Аня", "new": False, "owner": True, "has_owner": True}
+        speaker = {"id": "owner", "name": None, "owner": True}
         await mod.client.event("voice.utterance", "включи свет", data={"speaker": speaker}, addressed_to_me=True,
-                               sender={"id": "voice:person-ab12cd34", "name": "Аня", "is_owner": True})
+                               sender={"id": "voice:owner", "is_owner": True})
         await w.wait(lambda: w.voiced)
         assert w.voiced == [("включи свет", speaker)]
         await w.layer.attention.settle()
@@ -278,13 +278,13 @@ async def test_voice_utterance_goes_to_on_voice_with_the_speaker_and_skips_atten
         await w.stop_module(mod)
 
 
-async def test_voice_utterance_without_speaker_data_falls_back_to_the_sender(tmp_path):
+async def test_voice_utterance_without_speaker_data_is_the_owner(tmp_path):
     async with Wired(tmp_path) as w:
         mod = await w.module()
-        await mod.client.event("voice.utterance", "привет", sender={"id": "voice:person-1", "is_owner": False})
+        await mod.client.event("voice.utterance", "привет", sender={"id": "voice:owner", "is_owner": True})
         await w.wait(lambda: w.voiced)
         text, speaker = w.voiced[0]
-        assert text == "привет" and speaker["id"] == "person-1" and speaker["owner"] is False
+        assert text == "привет" and speaker["id"] == "owner" and speaker["owner"] is True      # говорящих не различаем
         await w.stop_module(mod)
 
 
@@ -344,26 +344,11 @@ async def test_heard_event_is_written_as_activity_and_still_goes_through_attenti
         await w.stop_module(mod)
 
 
-async def test_named_voice_creates_the_person_or_the_owner_fact(tmp_path):
-    async with Wired(tmp_path) as w:
-        mod = await w.module()
-        await mod.client.event("voice.named", "назначено имя", data={"voice_id": "person-1", "name": "Вася", "is_owner": False})
-        await w.wait(lambda: w.companion._rel.get("voice:person-1"))
-        assert w.companion._rel.get("voice:person-1")["source"] == "voice"
-        await mod.client.event("voice.named", "назначено имя", data={"voice_id": "person-2", "name": "Аня", "is_owner": True})
-        await w.wait(lambda: any("Имя: Аня" in f["text"] for f in w.companion.memory_reader.facts()))
-        await w.layer.attention.settle()
-        events_log.flush()
-        assert [e for e in events_log.tail(50, {"module_event"}) if e["data"].get("event_kind") == "voice.named"]   # не тихий вид
-        await w.stop_module(mod)
-
-
 async def test_bad_voice_event_data_does_not_break_the_core(tmp_path):
     async with Wired(tmp_path) as w:
         mod = await w.module()
         await mod.speech("started", "", seq=0, segment="x")
         await mod.speech("странная-фаза", "u-1")
-        await mod.client.event("voice.named", "без данных", data={})
         await mod.client.event("voice.user_speaking", "пусто")
         await asyncio.sleep(0.1)
         assert not w.presence.state["speaking"]

@@ -21,7 +21,6 @@ from mic_listener import MicListener
 from player import default_player
 from speaker import Speaker
 from stt_client import STTClient
-from voice_id import VoiceIdentity
 
 import common
 from gits_sdk import host
@@ -36,7 +35,6 @@ STATE_EVERY_S = 60              # как часто сверять состоя�
 PANEL_EVERY_S = 2               # пространство «Голос» в дашборде (TZ 15): проверка изменений, отправка не чаще раза в секунду
 SYNTH_SAMPLES = 5               # сколько последних замеров синтеза держим для пространства
 OUTBOX_MAX = 500
-SELF_SAMPLE_TEXT = "Проверка голоса. Меня зовут ГЛаДОС. Это тест."
 
 
 class Outbox:
@@ -86,7 +84,7 @@ def _wav_ms(path: Path) -> int:
 
 
 class VoiceModule:
-    def __init__(self, client: ModuleClient, memory_dir: str, *, fake: bool | None = None, player=None, stt=None,
+    def __init__(self, client: ModuleClient, *, fake: bool | None = None, player=None, stt=None,
                  tmp_dir: Path | None = None, synth=None):
         """fake (или GITS_VOICE_FAKE=1): синтез пишет тишину, воспроизведение только ждёт, микрофон и слух не запускаются.
         player / stt / synth(текст, папка) -> путь подменяют части в тестах."""
@@ -94,8 +92,6 @@ class VoiceModule:
         self.fake = common.fake_mode() if fake is None else fake
         self.tmp = Path(tmp_dir) if tmp_dir is not None else common.temp_dir()
         self._synth_blocking = synth or (fake_synth_file if self.fake else self._synth_file)
-        self.voices = VoiceIdentity(memory_dir)
-        self._mem_root = memory_dir                      # папки личной памяти персонажей лежат внутри (ТЗ 05, CHR-12)
         self.stt = stt or STTClient(on_change=self._stt_changed)
         self.outbox = Outbox(client)
         self.player = player or (FakePlayer() if self.fake else default_player())
@@ -105,12 +101,11 @@ class VoiceModule:
                                muted=lambda: bool(self.client.settings.get("voice_muted")),
                                on_segment=self.hearing.note_own_speech)
         self.mic = MicListener(
-            self.stt, self.voices, self._on_voice, lambda: self.speaker.audible, self._own_voice_sample,
+            self.stt, self._on_voice, lambda: self.speaker.audible,
             on_speaking=self._on_user_speaking, settings_get=self._effective,
             echo_tail=lambda: max(0, int(self.client.module_settings.get("echo_tail_ms", common.ECHO_TAIL_DEFAULT_MS))) / 1000.0,
-            # перебивание и узнавание голосов нужны отпечатки голоса: только с сервером WhisperX (VOICE-10)
-            barge_enabled=lambda: bool(self.client.module_settings.get("barge_in")) and self.stt.diarized,
-            on_barge_in=self._on_barge_in, diarized=lambda: self.stt.diarized)
+            barge_enabled=lambda: bool(self.client.module_settings.get("barge_in")),
+            on_barge_in=self._on_barge_in)
         self._tasks: list[asyncio.Task] = []
         self._state_tasks: set[asyncio.Task] = set()
         self._last_state: tuple | None = None
@@ -138,7 +133,7 @@ class VoiceModule:
         self._tasks.append(loop.create_task(self._panel_loop()))
         self._tasks.append(loop.create_task(self._character_loop()))
         if not self.fake:
-            self._tasks.append(loop.create_task(self.stt.watch()))     # STT: проверка WhisperX при старте и раз в минуту
+            self._tasks.append(loop.create_task(self.stt.watch()))     # STT: проверка модели при старте и раз в минуту, пока она не загружена
             self._tasks.append(loop.create_task(self.mic.run()))
             self._tasks.append(loop.create_task(self.hearing.run()))
 
@@ -180,18 +175,13 @@ class VoiceModule:
         await self.client.state(summary, data)
 
     def _stt_changed(self, status: dict) -> None:
-        """Режим распознавания сменился (WhisperX ↔ локальный CPU, или модель открылась / не открылась): одна строка в журнал
-        и новое состояние модуля. Вызывается из STTClient внутри асинхронного кода."""
-        if status.get("mode") == "local":
-            if status.get("model_state") == "загружена":
-                line = "распознавание: WhisperX не отвечает, работаю локально (CPU), без узнавания голосов"
-            else:
-                line = (f"распознавание: WhisperX не отвечает, локальная модель {status.get('model')} не загружена "
-                        "(скачивание только с разрешения владельца): речь пока не распознаётся")
-        elif status.get("mode") == "server":
-            line = "распознавание: WhisperX отвечает, работаю через него (с узнаванием голосов)"
+        """Состояние модели распознавания сменилось (открылась, не открылась, откат GigaAM на faster-whisper): одна строка
+        в журнал и новое состояние модуля. Вызывается из STTClient внутри асинхронного кода."""
+        if status.get("model_state") == "загружена":
+            line = f"распознавание: работаю локально (CPU), модель {status.get('model')}"
         else:
-            line = f"распознавание: {status.get('label')}"
+            line = (f"распознавание: локальная модель {status.get('model')} не загружена "
+                    "(скачивание только с разрешения владельца): речь пока не распознаётся")
         host.log_nowait("hearing", line)
         try:
             task = asyncio.get_running_loop().create_task(self.report_state())
@@ -261,9 +251,7 @@ class VoiceModule:
 
     async def _on_voice(self, text: str, info: dict, trace: dict | None = None) -> None:
         """VOICE-6: распознанная реплика уходит событием, а не вызовом разговора. trace - метки трассы (ТЗ 24)."""
-        sender = {"id": "voice:" + str(info.get("id") or "unknown"), "is_owner": bool(info.get("owner"))}
-        if info.get("name"):
-            sender["name"] = str(info["name"])
+        sender = {"id": "voice:" + str(info.get("id") or "owner"), "is_owner": bool(info.get("owner"))}
         extra = {"trace": trace} if trace is not None else {}
         self.outbox.put("voice.utterance", text, data={"speaker": info}, sender=sender, addressed_to_me=True, **extra)
 
@@ -279,19 +267,6 @@ class VoiceModule:
 
     async def _on_barge_in(self) -> None:
         await self.speaker.stop(None, "now", reason="barge_in")
-
-    async def _own_voice_sample(self) -> bytes:
-        """VOICE-9: образец её голоса для записи в voice_id: синтез внутри модуля и перевод в PCM 16 кГц."""
-        if self.fake:
-            return b""
-        import opus_encoder
-        path = await asyncio.to_thread(self._synth_file, SELF_SAMPLE_TEXT, self.tmp)
-        if not path:
-            return b""
-        try:
-            return await opus_encoder.audio_file_to_pcm16k(path)
-        finally:
-            await asyncio.to_thread(self._unlink, path)
 
     @staticmethod
     def _unlink(path) -> None:
@@ -339,12 +314,6 @@ class VoiceModule:
 
     # ── обработчики ядра ─────────────────────────────────────────────────────
 
-    def _character_memory_dir(self, char_id: str) -> str:
-        """Папка памяти персонажа: для персонажа по умолчанию — корень, для остальных memory/characters/<id>/ (ТЗ 05)."""
-        if not char_id or char_id == "glados":                # id данных
-            return self._mem_root
-        return str(Path(self._mem_root) / "characters" / char_id)
-
     @staticmethod
     def _reference_path(char_id: str, ref: str) -> Path | None:
         """Референс голоса: путь из карточки относительно папки персонажа (resources/<Имя>/voice/...)."""
@@ -364,7 +333,6 @@ class VoiceModule:
         ref = voice.get("reference")
         path = self._reference_path(str(card.get("id") or ""), str(ref)) if ref else None
         tts_engine.use_character_voice(path if path and path.is_file() else None, voice.get("edge_voice"))
-        self.voices.rebind(self._character_memory_dir(str(card.get("id") or "")))
 
     async def _character_loop(self) -> None:
         await self.client.wait_connected()
@@ -429,24 +397,3 @@ class VoiceModule:
             if not text:
                 raise ToolError("за последние минуты речи в звуке не было", code="unavailable")
             return text
-
-        @c.tool("name_voice")
-        async def name_voice(args):
-            last = self.mic.last_info
-            if not last or not last.get("id") or str(last["id"]).startswith("SPEAKER"):
-                raise ToolError("голос не узнан: микрофон выключен, сервер WhisperX не запущен или голоса пока не было",
-                                code="unavailable")
-            name, voice_id = str(args.get("name") or "").strip(), str(last["id"])
-            if not name:
-                raise ToolError("имя не названо", code="bad_request")
-            if not await asyncio.to_thread(self.voices.set_name, voice_id, name):
-                raise ToolError("такого голоса нет в памяти", code="unavailable")
-            owner = bool(args.get("is_owner"))
-            if owner:
-                await asyncio.to_thread(self.voices.set_owner, voice_id)
-            # человека в памяти и отношениях заводит ядро (модуль ни памяти, ни отношений не ведёт)
-            self.outbox.put("voice.named", f"Голосу {voice_id} назначено имя {name}",
-                            data={"voice_id": voice_id, "name": name, "is_owner": owner})
-            if owner:
-                return f"запомнила: этот голос принадлежит тебе, тебя зовут {name}"
-            return f"запомнила: этот голос принадлежит человеку по имени {name}"

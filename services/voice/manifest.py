@@ -9,20 +9,12 @@ TOOLS = [
      "description": "Пересказать, что недавно звучало в колонках (речь в фильме, видео), если слух включён.",
      "params": {}, "risk": "auto", "availability": "always", "informative": True,
      "keywords": ["слышишь", "услышала", "звучит", "говорят", "серия", "фильм", "видео"]},
-    {"name": "name_voice",
-     "description": "Запомнить, чей это голос: тот, что говорил только что (через микрофон). "
-                    "is_owner=true, если это сам пользователь («запомни мой голос, я Аня»). Для просьб «запомни мой голос», "
-                    "«это голос Васи».",
-     "params": {"name": {"type": "string", "description": "имя человека"},
-                "is_owner": {"type": "boolean", "required": False, "description": "true: это сам пользователь"}},
-     "risk": "auto", "availability": "always",
-     "keywords": ["голос", "запомни", "узнавай", "это", "меня", "зовут", "микрофон"]},
 ]
 
 MANIFEST = {
     "id": "voice",
     "title": "Голос",
-    "description": "Звук целиком: микрофон и распознавание речи, узнавание голосов, синтез её голоса, воспроизведение "
+    "description": "Звук целиком: микрофон и распознавание речи (GigaAM, запасной faster-whisper), синтез её голоса, воспроизведение "
                    "с очередью реплик, перебивание, слух системного звука (что играет в колонках).",
     "version": "1.0.0",
     "capabilities": ["voice.output", "voice.input"],
@@ -37,15 +29,13 @@ MANIFEST = {
     },
     "tools": TOOLS,
     "emits": [
-        {"kind": "voice.utterance", "description": "Пользователь или другой человек что-то сказал вслух", "default_urgency": 3},
+        {"kind": "voice.utterance", "description": "Владелец что-то сказал вслух в микрофон (`speaker.owner: true`)", "default_urgency": 3},
         {"kind": "voice.speech", "description": "Начало, сегмент, конец или обрыв её речи (служебное, не озвучивается)",
          "default_urgency": 0},
         {"kind": "voice.user_speaking", "description": "Человек начал или закончил говорить (служебное, не озвучивается)",
          "default_urgency": 0},
         {"kind": "voice.heard", "description": "Сводка услышанного в колонках", "default_urgency": 1},
         {"kind": "voice.trace", "description": "Метки звука реплики для трассы задержки (служебное, ТЗ 24)",
-         "default_urgency": 0},
-        {"kind": "voice.named", "description": "Голосу назначено имя (служебное: ядро заводит человека в памяти)",
          "default_urgency": 0},
     ],
     "state": True,

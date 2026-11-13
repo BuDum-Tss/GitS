@@ -10,7 +10,7 @@ from gits_sdk.protocol import ToolError, validate_manifest
 import common
 import opus_encoder
 from manifest import MANIFEST, build_manifest
-from voice_rig import FakePlayer, FakeSTT, Rig, until, vec
+from voice_rig import FakePlayer, FakeSTT, Rig, until
 
 
 def test_manifest_is_valid_and_matches_the_spec():
@@ -22,7 +22,7 @@ def test_manifest_is_valid_and_matches_the_spec():
     assert m["settings_schema"]["barge_in"]["default"] is False
     assert m["settings_schema"]["echo_tail_ms"] == {"type": "integer", "title": m["settings_schema"]["echo_tail_ms"]["title"],
                                                       "default": 600, "min": 0, "max": 3000}
-    assert [t["name"] for t in m["tools"]] == ["recent_audio", "name_voice"]
+    assert [t["name"] for t in m["tools"]] == ["recent_audio"]
     assert all(t["risk"] == "auto" and t["availability"] == "always" for t in m["tools"])
     assert {e["kind"] for e in m["emits"]} >= {"voice.utterance", "voice.speech", "voice.user_speaking", "voice.heard"}
     assert next(e for e in m["emits"] if e["kind"] == "voice.heard")["default_urgency"] == 1
@@ -204,33 +204,26 @@ async def test_start_sweeps_the_temp_dir(tmp_path):
 
 # ── входящая речь (VOICE-6, VOICE-8, VOICE-9) ─────────────────────────────────────
 
-async def test_utterance_becomes_a_voice_utterance_event_with_the_speaker(tmp_path):
-    me, stranger = vec(1), vec(2)
-    stt = FakeSTT("включи свет", me)
+async def test_utterance_becomes_a_voice_utterance_event_from_the_owner(tmp_path):
+    stt = FakeSTT("включи свет")
     async with Rig(tmp_path, stt=stt) as rig:
-        pid, _ = rig.mod.voices.resolve(me)
-        rig.mod.voices.set_owner(pid)
-        rig.mod.voices.set_name(pid, "Аня")
         await rig.mod.mic.handle_utterance(b"\0" * 100)
         ev = await rig.core.wait_message("event", lambda b: b["kind"] == "voice.utterance")
         body = ev.body
         assert body["text"] == "включи свет" and body["addressed_to_me"] is True
-        assert body["data"]["speaker"] == {"id": pid, "name": "Аня", "new": False, "owner": True, "has_owner": True}
-        assert body["sender"] == {"id": f"voice:{pid}", "name": "Аня", "is_owner": True}
-        stt.t.text, stt.t.speaker_embedding = "кто здесь", stranger
+        assert body["data"]["speaker"] == {"id": "owner", "name": None, "owner": True}      # говорящих не различаем
+        assert body["sender"] == {"id": "voice:owner", "is_owner": True}
+        stt.t.text = "а теперь другой человек"                                            # другой голос: всё равно владелец
         await rig.mod.mic.handle_utterance(b"\0" * 100)
-        second = (await rig.core.wait_message("event", lambda b: b["data"].get("speaker", {}).get("new"), timeout=5)).body
-        assert second["sender"]["is_owner"] is False and "name" not in second["sender"]
+        second = (await rig.core.wait_message("event", lambda b: b["text"] == "а теперь другой человек", timeout=5)).body
+        assert second["data"]["speaker"]["owner"] is True and second["sender"]["is_owner"] is True
 
 
-async def test_own_voice_and_junk_give_no_events(tmp_path):
-    own = vec(3)
-    stt = FakeSTT("это мой голос из колонок", own)
+async def test_junk_gives_no_events(tmp_path):
+    stt = FakeSTT("Продолжение следует...")
     async with Rig(tmp_path, stt=stt) as rig:
-        rig.mod.voices.register_self(own)
         await rig.mod.mic.handle_utterance(b"\0" * 100)
-        stt.t.text = "Продолжение следует..."
-        stt.t.speaker_embedding = vec(4)
+        stt.t.text = "  "
         await rig.mod.mic.handle_utterance(b"\0" * 100)
         await rig.mod.outbox.drain()
         assert [e for e in rig.core.events if e["kind"] == "voice.utterance"] == []
@@ -242,22 +235,6 @@ async def test_user_speaking_events_go_out_in_order(tmp_path):
         rig.mod._on_user_speaking(False)
         await until(lambda: len([e for e in rig.core.events if e["kind"] == "voice.user_speaking"]) == 2)
         assert [e["data"]["speaking"] for e in rig.core.events if e["kind"] == "voice.user_speaking"] == [True, False]
-
-
-async def test_own_voice_sample_is_synthesized_inside_the_module(tmp_path, monkeypatch):
-    async def fake_pcm(path):
-        assert os.path.exists(path)
-        return b"PCM"
-    monkeypatch.setattr(opus_encoder, "audio_file_to_pcm16k", fake_pcm)
-    async with Rig(tmp_path) as rig:
-        rig.mod._synth_blocking = lambda t, d: None
-        import tts_engine
-        calls = []
-        monkeypatch.setattr(tts_engine, "synth_file", lambda text, directory=None: calls.append(text) or make_wav(tmp_path / "s.wav"))
-        assert await rig.mod._own_voice_sample() == b"PCM"
-        assert calls and "ГЛаДОС" in calls[0] and not (tmp_path / "s.wav").exists()
-        rig.mod.fake = True
-        assert await rig.mod._own_voice_sample() == b""
 
 
 # ── перебивание (VOICE-10) ───────────────────────────────────────────────────
@@ -275,13 +252,9 @@ def loud_listener(rig, enabled=True):
     return rig.mod.mic
 
 
-async def test_barge_in_by_the_owner_stops_speech_and_keeps_recording(tmp_path):
-    me = vec(5)
-    stt = FakeSTT("стой", me)
+async def test_barge_in_with_real_speech_stops_hers_and_keeps_recording(tmp_path):
+    stt = FakeSTT("стой")
     async with Rig(tmp_path, stt=stt, hold=True) as rig:
-        pid, _ = rig.mod.voices.resolve(me)
-        rig.mod.voices.set_owner(pid)
-        rig.mod.voices.register_self(vec(6))
         mic = loud_listener(rig)
         await rig.speak("u-1", "Длинная речь. Ещё предложение.")
         await until(lambda: rig.mod.speaker.audible)
@@ -293,11 +266,9 @@ async def test_barge_in_by_the_owner_stops_speech_and_keeps_recording(tmp_path):
         assert mic._tail_until == 0.0
 
 
-async def test_barge_in_ignores_her_own_voice(tmp_path):
-    own = vec(7)
-    stt = FakeSTT("её эхо", own)
+async def test_barge_in_ignores_empty_recognition(tmp_path):
+    stt = FakeSTT("")                                                             # шум, а не речь: распознавание пустое
     async with Rig(tmp_path, stt=stt, hold=True) as rig:
-        rig.mod.voices.register_self(own)
         loud_listener(rig)
         await rig.speak("u-1", "Говорю. Дальше.")
         await until(lambda: rig.mod.speaker.audible)
@@ -306,31 +277,8 @@ async def test_barge_in_ignores_her_own_voice(tmp_path):
         assert not rig.mod.mic._seg.active
 
 
-async def test_barge_in_by_a_stranger_is_ignored_when_the_owner_is_known(tmp_path):
-    me, stranger = vec(8), vec(9)
-    stt = FakeSTT("телевизор", stranger)
-    async with Rig(tmp_path, stt=stt, hold=True) as rig:
-        pid, _ = rig.mod.voices.resolve(me)
-        rig.mod.voices.set_owner(pid)
-        loud_listener(rig)
-        await rig.speak("u-1", "Говорю.")
-        await until(lambda: rig.mod.speaker.audible)
-        await barge(rig)
-        assert rig.speech("ended") == []
-
-
-async def test_barge_in_by_anyone_when_there_is_no_owner(tmp_path):
-    stt = FakeSTT("эй", vec(10))
-    async with Rig(tmp_path, stt=stt, hold=True) as rig:
-        loud_listener(rig)
-        await rig.speak("u-1", "Говорю.")
-        await until(lambda: rig.mod.speaker.audible)
-        await barge(rig)
-        assert (await rig.wait_ended("u-1"))["reason"] == "barge_in"
-
-
 async def test_barge_in_off_by_default_keeps_the_gate_closed(tmp_path):
-    stt = FakeSTT("эй", vec(11))
+    stt = FakeSTT("эй")
     async with Rig(tmp_path, stt=stt, hold=True) as rig:
         loud_listener(rig, enabled=False)
         await rig.speak("u-1", "Говорю.")
@@ -364,29 +312,6 @@ async def test_recent_audio_tool(tmp_path):
         assert "речи в звуке не было" in e.value.message
         rig.mod.hearing._buf.append((time.time(), "в фильме говорят про сыр"))
         assert await rig.core.call_tool("recent_audio") == "в фильме говорят про сыр"
-
-
-async def test_name_voice_tool(tmp_path):
-    me = vec(12)
-    stt = FakeSTT("привет", me)
-    async with Rig(tmp_path, stt=stt) as rig:
-        with pytest.raises(ToolError) as e:
-            await rig.core.call_tool("name_voice", {"name": "Аня"})
-        assert "голос не узнан" in e.value.message
-        await rig.mod.mic.handle_utterance(b"\0" * 100)
-        pid = rig.mod.mic.last_info["id"]
-        res = await rig.core.call_tool("name_voice", {"name": " Аня ", "is_owner": True})
-        assert "тебя зовут Аня" in res
-        assert rig.mod.voices.name_of(pid) == "Аня" and rig.mod.voices.owner() == pid
-        ev = await rig.core.wait_message("event", lambda b: b["kind"] == "voice.named")
-        assert ev.body["data"] == {"voice_id": pid, "name": "Аня", "is_owner": True}
-        res = await rig.core.call_tool("name_voice", {"name": "Вася"})
-        assert "по имени Вася" in res and rig.mod.voices.owner() == pid
-        with pytest.raises(ToolError):
-            await rig.core.call_tool("name_voice", {"name": "  "})
-        rig.mod.mic.last_info = {"id": "SPEAKER_00"}                           # метка диаризации, а не человек
-        with pytest.raises(ToolError):
-            await rig.core.call_tool("name_voice", {"name": "Кто-то"})
 
 
 async def test_gist_is_sent_as_voice_heard(tmp_path):

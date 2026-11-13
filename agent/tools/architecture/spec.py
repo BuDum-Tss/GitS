@@ -29,7 +29,7 @@ def N(id, t, tag, do, out, now, new=False):
 GROUPS = [
     dict(id="g_src", col="A", title="Источники событий", tag="I",
          summary="Участники шины: окружения workspace (Telegram, Стример (Twitch и OBS), экран, игра, монтаж), сервисы service (голос, питомец) и чат дашборда. Присылают события и выполняют команды.", out="Event", nodes=[
-        N("voice", "voice", "I", "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (ESpeech, запасные Fish Speech и edge-tts)", "Event voice.utterance", "services/voice"),
+        N("voice", "voice", "I", "микрофон, VAD, локальное распознавание речи (GigaAM, запасной faster-whisper; говорящих не различает, реплика от владельца); озвучка (ESpeech, запасные Fish Speech и edge-tts)", "Event voice.utterance", "services/voice"),
         N("desk", "desktop", "I", "экран, активность, мышь и клавиатура, Модуль кода", "Event desktop.*, job.update", "workspaces/desktop"),
         N("tg", "telegram", "I", "бот, её аккаунт, посты канала", "Event telegram.*", "workspaces/telegram"),
         N("strm", "streamer", "I", "ведение трансляции: чат и события Twitch, ответы, модерация; сцены, запись и субтитры OBS (obs-websocket)", "Event twitch.*, obs.*", "workspaces/streamer: подсистемы twitch/ и obs/"),
@@ -114,11 +114,10 @@ GROUPS = [
         N("char", "CharacterRepo", "I", "resources/<Имя>: конституция, prompt, канон, голос; в контейнере вся папка персонажа это том CHARACTER_HOME (ресурсы и memory/)", "Character", "character.py + resources/"),
     ]),
     dict(id="g_ext", col="BOTTOM2", title="Внешний слой и сборка", tag="X",
-         summary="Модели и службы: LM Studio, GLiNER, ESpeech, Fish Speech, WhisperX, Claude. Сборка: core_service.", out="", nodes=[
+         summary="Модели и службы: LM Studio, GLiNER, ESpeech, Fish Speech, Claude. Сборка: core_service.", out="", nodes=[
         N("lms", "LM Studio :1234", "X", "EmbeddingGemma (поиск) и разбор фактов графа (Gemma); ответов и планов в нём больше нет", "", ""),
         N("gli", "GLiNER decider :8768", "X", "классификатор событий и обращений", "", ""),
         N("fish", "ESpeech :8771 / Fish Speech / edge-tts", "X", "синтез речи (F5-TTS, русский)", "", ""),
-        N("wx", "WhisperX / Whisper", "X", "распознавание речи", "", ""),
         N("cl", "Claude Agent SDK", "X", "единый агент, быстрая модель без инструментов (claude_llm.py) и долгие задачи", "", ""),
         N("bridge", "services/agent-runtime (Node)", "X", "мост к pi-agent-core: процесс Node, протокол строк JSON по stdin и stdout; модель по подписке ChatGPT (вход auth.json вручную)", "", "services/agent-runtime/bridge.mjs"),
         N("sup", "Supervisor", "I", "запуск и перезапуск процессов участников шины (окружения и сервисы из peers.yaml)", "", "supervisor.py: 573 строки; режим «только ядро» (GITS_NO_MODULES=1 или настройка only_core); устойчивость ядра проверяет tools/soak_core.py"),

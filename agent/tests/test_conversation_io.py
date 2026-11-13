@@ -51,6 +51,19 @@ async def test_dashboard_and_voice_replies_are_spoken(tmp_path):
     assert current_channel.get() is None                            # контекст обращения снят
 
 
+async def test_voice_text_goes_in_as_is_without_speaker_tags(tmp_path):
+    """Говорящих различить нельзя: реплика с микрофона идёт владельцу как есть, без «[незнакомый голос]» и людей из голоса."""
+    c, _ = make_companion(tmp_path)
+    handled = []
+
+    async def fake_handle(text):
+        handled.append(text)
+    c._handle_text = fake_handle
+    await c.on_voice("включи свет", {"id": "owner", "name": None, "owner": True})
+    await c.on_voice("и ещё раз", {"id": "x", "name": None, "owner": False, "has_owner": True})    # старая форма: тоже без пометки
+    assert handled == ["включи свет", "и ещё раз"]
+
+
 async def test_self_initiated_say_goes_to_speech_and_dialogue(tmp_path):
     c, speech = make_companion(tmp_path)
     await c.say("Сама заговорила", "happy", priority=40)

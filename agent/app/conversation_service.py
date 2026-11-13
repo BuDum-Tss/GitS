@@ -29,20 +29,9 @@ class ConversationService:
         self._h = host
 
     async def on_voice(self, text: str, speaker: dict, trace=None):
-        """Реплика, сказанная голосом: узнанный владелец идёт как обычное сообщение, остальным ставится пометка,
-        кто говорит (имя или «незнакомый голос»), и заводится профиль человека."""
-        h = self._h
-        pid, name = speaker.get("id"), speaker.get("name")
-        if speaker.get("owner") or not speaker.get("has_owner"):
-            prefix = ""
-        elif name:
-            prefix = f"[говорит {name}] "
-        else:
-            prefix = "[незнакомый голос] "
-        if pid and not speaker.get("owner") and speaker.get("has_owner"):
-            h._people.ensure_person(f"voice:{pid}", name or f"голос {str(pid)[-4:]}", source="voice")
-            h._people.note(f"voice:{pid}", text)
-        await h.on_input(UserInput(prefix + text, VOICE, sender=speaker, ts=time.time(), trace=trace))
+        """Реплика, сказанная голосом: говорящих различить нельзя (нет голосовых отпечатков), поэтому это реплика владельца
+        и идёт как обычное сообщение канала `voice`; `speaker` едет отправителем обращения."""
+        await self._h.on_input(UserInput(text, VOICE, sender=speaker, ts=time.time(), trace=trace))
 
     async def on_user_message(self, text: str, channel=None):
         """Обращение текстом (чат дашборда, строка питомца); channel по умолчанию - дашборд."""

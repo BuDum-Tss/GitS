@@ -1,15 +1,15 @@
-"""Слушатель микрофона: речь пользователя → VAD → WhisperX → узнавание голоса → событие `voice.utterance` (ТЗ 12).
+"""Слушатель микрофона: речь пользователя → VAD → локальное распознавание → событие `voice.utterance` (ТЗ 12).
 
-По умолчанию выключен (общая настройка «mic»). Звук идёт только на ЛОКАЛЬНОЕ распознавание: сервер WhisperX (docker compose
-up whisperx) или, пока его нет, локальная модель на процессоре (stt_client, local_stt); в облако не уходит; ничего не пишется
-на диск. Узнавание голосов и перебивание работают только с сервером WhisperX. Пока ГЛаДОС говорит сама, звук с микрофона отбрасывается (не слушаем
-собственное эхо из колонок): «ворота» берут состояние «говорит ли она» из воспроизведения самого модуля (VOICE-7), после
-речи микрофон закрыт ещё `echo_tail_ms`. Голос «self» из voice_id служит вторым рубежом.
+По умолчанию выключен (общая настройка «mic»). Звук идёт только на ЛОКАЛЬНОЕ распознавание: GigaAM на процессоре, запасной
+faster-whisper (stt_client, local_stt); в облако не уходит; ничего не пишется на диск. Говорящих не различаем: всякая
+распознанная реплика с микрофона считается репликой владельца (`speaker.owner: true`). Пока ГЛаДОС говорит сама, звук с
+микрофона отбрасывается (не слушаем собственное эхо из колонок): «ворота» берут состояние «говорит ли она» из воспроизведения
+самого модуля (VOICE-7), после речи микрофон закрыт ещё `echo_tail_ms`.
 
 Перебивание (VOICE-10, настройка `barge_in`, по умолчанию выключено): пока она говорит, микрофон не закрывается полностью:
-кадры речи копятся отдельно, и когда непрерывная речь длится не меньше 800 мс, этот кусок идёт на WhisperX за голосом.
-Если это не её голос и это владелец (или любой человек, пока владелец не назван), речь обрывается, накопленное уходит
-в сегментатор, и реплика записывается как обычная. Если голос её, ничего не происходит.
+кадры речи копятся отдельно, и когда непрерывная речь длится не меньше 800 мс, этот кусок распознаётся. Если в нём есть
+настоящая речь (не пусто и не галлюцинация), её речь обрывается, накопленное уходит в сегментатор, и реплика записывается как
+обычная. Голоса не сравниваются, поэтому перебивание надёжно только в наушниках: колонки дадут ложные срабатывания на её эхо.
 
 Логика сегментации и фильтр галлюцинаций перенесены из GitS (src/audio/listener.py).
 """
@@ -23,7 +23,6 @@ import numpy as np
 from gits_sdk import host
 from gits_sdk import trace as latency_trace  # метки трассы задержки: SDK, не внутренности ядра (ТЗ 31)
 from local_stt import _JUNK
-from voice_id import SELF_PERSON_ID
 
 logger = logging.getLogger("mic")
 
@@ -40,6 +39,9 @@ BARGE_MIN_FRAMES = 27             # VOICE-10: ~800 мс непрерывной �
 BARGE_MAX_GAP_FRAMES = 4          # короткая пауза внутри фразы (до ~120 мс) речь не прерывает
 BARGE_MAX_FRAMES = 330            # ~10 с: дольше копить без решения незачем
 BARGE_RETRY_S = 2.0               # после «это её голос» новую проверку не раньше, чем через столько секунд
+
+# Говорящий реплики с микрофона: всегда владелец (событие voice.utterance, поле `speaker`)
+OWNER_SPEAKER = {"id": "owner", "name": None, "owner": True}
 
 _EXACT_JUNK = ("продолжение следует",)
 
@@ -158,17 +160,15 @@ def _record_thread(stop: threading.Event, push, loop):
 
 
 class MicListener:
-    def __init__(self, stt, voice_id, on_voice, is_speaking, make_self_sample=None, on_speaking=None, *,
+    def __init__(self, stt, on_voice, is_speaking, on_speaking=None, *,
                  settings_get=lambda: {}, echo_tail=lambda: ECHO_TAIL, barge_enabled=lambda: False, on_barge_in=None,
-                 vad=None, clock=time.time, diarized=lambda: True):
-        """stt - STTClient; voice_id - VoiceIdentity; on_voice(text, info) - реплика узнана; is_speaking() - звучит ли она
+                 vad=None, clock=time.time):
+        """stt - STTClient; on_voice(text, info) - реплика распознана (info: говорящий-владелец); is_speaking() - звучит ли она
         (воспроизведение модуля); on_speaking(bool) - человек начал или закончил говорить (VOICE-8, не чаще 5 раз в
         секунду); settings_get() - общие настройки ядра (`mic`); echo_tail() - секунд закрытого микрофона после её речи;
-        barge_enabled() - включено ли перебивание; on_barge_in() - обрыв её речи (async); vad(frame) - речь ли кадр;
-        diarized() - есть ли голосовые отпечатки (сервер WhisperX); без них свой голос и запись образца не распознать."""
-        self._stt, self._voices, self._on_voice, self._is_speaking = stt, voice_id, on_voice, is_speaking
+        barge_enabled() - включено ли перебивание; on_barge_in() - обрыв её речи (async); vad(frame) - речь ли кадр."""
+        self._stt, self._on_voice, self._is_speaking = stt, on_voice, is_speaking
         self._on_speaking = on_speaking
-        self._diarized = diarized
         self._settings_get = settings_get
         self._echo_tail, self._barge_enabled, self._on_barge_in = echo_tail, barge_enabled, on_barge_in
         self._vad = vad
@@ -176,7 +176,6 @@ class MicListener:
         self._user_speaking = False                    # что уже сообщено наружу
         self._want_speaking = False                    # что должно быть сообщено (ждёт паузы между сообщениями)
         self._last_speaking_ts = float("-inf")
-        self._make_self_sample = make_self_sample      # () -> PCM 16 кГц её голоса, для регистрации «self»
         self._warned = 0.0
         self._tail_until = 0.0
         self._seg: UtteranceSegmenter | None = None
@@ -184,7 +183,6 @@ class MicListener:
         self._barge_state: str | None = None           # None | "checking" | "confirmed"
         self._barge_block_until = 0.0
         self._tasks: set[asyncio.Task] = set()
-        self.last_info: dict | None = None             # последний узнанный говорящий (name_voice)
 
     def _enabled(self) -> bool:
         return bool(self._settings_get().get("mic"))
@@ -231,7 +229,6 @@ class MicListener:
 
         threading.Thread(target=_record_thread, args=(stop, push, loop), daemon=True, name="mic").start()
         self.prepare()
-        await self._ensure_self_voice()
         host.log_nowait("hearing", "микрофон включён: слушаю речь")
         try:
             while self._enabled():
@@ -294,15 +291,13 @@ class MicListener:
         task.add_done_callback(self._tasks.discard)
 
     async def _check_barge(self, audio: bytes) -> None:
-        """VOICE-10: чей голос в накопленном куске. Не её и (владелец, либо владельца ещё нет): оборвать её речь."""
-        pid = None
+        """VOICE-10: есть ли в накопленном куске настоящая речь. Есть: оборвать её речь (голоса не сравниваем)."""
+        interrupt = False
         try:
-            t = await self._stt.transcribe(audio, diarize=True)
-            pid, _new = self._voices.resolve(t.speaker_embedding)
+            text = (await self._stt.transcribe(audio)).text.strip()
+            interrupt = bool(text) and not is_hallucination(text)
         except Exception as e:
-            logger.debug(f"Проверка голоса для перебивания не удалась: {e}")
-        owner = self._voices.owner()
-        interrupt = pid is not None and pid != SELF_PERSON_ID and (owner is None or pid == owner)
+            logger.debug(f"Проверка речи для перебивания не удалась: {e}")
         if not interrupt or self._barge_state != "checking" or not self._is_speaking():
             if self._barge_state == "checking":
                 self._barge_state = None
@@ -338,20 +333,7 @@ class MicListener:
         except Exception as e:
             logger.debug(f"Признак «пользователь говорит»: {e}")
 
-    # ── голос и реплика ──────────────────────────────────────────────────────
-
-    async def _ensure_self_voice(self):
-        """Зарегистрировать голос самой ГЛаДОС по образцу синтеза (если WhisperX уже умеет эмбеддинги)."""
-        if self._voices.has_self() or self._make_self_sample is None or not self._diarized():
-            return                                   # без сервера WhisperX отпечатка голоса не получить: образец не нужен
-        try:
-            pcm = await self._make_self_sample()
-            t = await self._stt.transcribe(pcm, diarize=True) if pcm else None
-            if t and t.speaker_embedding:
-                self._voices.register_self(t.speaker_embedding)
-                host.log_nowait("hearing", "голос ГЛаДОС записан: собственное эхо игнорируется")
-        except Exception as e:
-            logger.info(f"Свой голос не записан: {e}")
+    # ── реплика ──────────────────────────────────────────────────────────────
 
     async def handle_utterance(self, audio: bytes, trace: dict | None = None):
         """Расшифровать реплику и передать наружу (вынесено для проверки без микрофона). trace - метки трассы (ТЗ 24)."""
@@ -360,7 +342,7 @@ class MicListener:
             if trace is not None:
                 trace["marks"]["stt_done"] = latency_trace.now_ms()
         except Exception as e:
-            # режим и состояние модели (WhisperX или локальный CPU) уходят в состояние модуля и журнал отдельно (VOICE, STT)
+            # состояние модели распознавания уходит в состояние модуля и журнал отдельно (VOICE, STT)
             if time.time() - self._warned > 120:
                 self._warned = time.time()
                 host.log_nowait("error", f"микрофон: распознавание не удалось ({type(e).__name__}: {str(e)[:80]})")
@@ -368,12 +350,7 @@ class MicListener:
         text = t.text.strip()
         if not text or is_hallucination(text):
             return
-        pid, new = self._voices.resolve(t.speaker_embedding)
-        if pid == SELF_PERSON_ID:
-            return                                   # это её собственный голос из колонок
-        info = {"id": pid or t.speaker, "name": self._voices.name_of(pid) if pid else None, "new": new,
-                "owner": bool(pid) and pid == self._voices.owner(), "has_owner": self._voices.owner() is not None}
-        self.last_info = info
+        info = dict(OWNER_SPEAKER)                   # говорящих не различаем: микрофон принадлежит владельцу
         if trace is not None:
             await self._on_voice(text, info, trace=trace)
         else:

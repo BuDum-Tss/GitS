@@ -26,7 +26,7 @@ DEFAULTS = {
     "profile": "auto",          # профиль: auto (сама выбирает) или id профиля из agent/profiles/ (ТЗ 02)
     "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); переключает ядро (core.set_character), не правьте вручную
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
-    "mic": False,               # слушать микрофон и разговаривать голосом (нужен docker compose up whisperx)
+    "mic": False,               # слушать микрофон и разговаривать голосом (распознавание локальное, GigaAM)
     "context": {"mode": "push", "budget_tokens": {"reply": {"dialogue": 500, "profile": 250, "capabilities": 350, "total": 1800}}},   # ТЗ 04: push/pull память; бюджет токенов на роль и блок
     "hearing": False,           # слушать системный звук (речь в колонках); по умолчанию выключено
     "auto_accept": False,       # авто-разрешать ВСЕ действия (кроме опасных, см. safety.py); включает только пользователь

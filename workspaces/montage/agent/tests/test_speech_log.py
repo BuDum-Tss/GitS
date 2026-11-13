@@ -100,4 +100,4 @@ def test_words_between_returns_only_the_window():
 def test_live_speech_transcription_is_unavailable():
     with pytest.raises(ToolError) as e:
         transcribe.transcribe_live("x.wav")
-    assert e.value.code == "unavailable" and "WhisperX" in e.value.message
+    assert e.value.code == "unavailable" and "отложено" in e.value.message

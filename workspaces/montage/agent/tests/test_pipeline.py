@@ -172,7 +172,7 @@ async def test_talking_head_fails_with_unavailable_transcription(tmp_path):
     job = rig.new_job(sources=[str(src)], source_kind="talking_head", duration_s=None)
     await rig.run(job)
     j = rig.reload(job)
-    assert j.state == "failed" and j.data["error"]["code"] == "unavailable" and "WhisperX" in j.data["error"]["message"]
+    assert j.state == "failed" and j.data["error"]["code"] == "unavailable" and "отложено" in j.data["error"]["message"]
     assert j.stage == "transcribe"
 
 

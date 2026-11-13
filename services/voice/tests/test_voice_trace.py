@@ -43,21 +43,11 @@ async def test_utterance_event_carries_trace_from_mic_to_handler():
         got.append((text, trace))
 
     class Stt:
-        async def transcribe(self, audio, diarize=False):
+        async def transcribe(self, audio):
             from types import SimpleNamespace
-            return SimpleNamespace(text="привет", speaker=None, speaker_embedding=None)
+            return SimpleNamespace(text="привет")
 
-    class Voices:
-        def resolve(self, emb):
-            return None, False
-
-        def name_of(self, pid):
-            return None
-
-        def owner(self):
-            return None
-
-    m = MicListener(Stt(), Voices(), on_voice, lambda: False, None)
+    m = MicListener(Stt(), on_voice, lambda: False)
     wire = lt.wire_new("voice", marks={"mic_end": lt.now_ms()})
     await m.handle_utterance(b"\x00\x00", wire)
     assert len(got) == 1

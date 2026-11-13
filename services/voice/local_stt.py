@@ -29,7 +29,7 @@ GIGAAM_MODEL = env("GITS_STT_GIGAAM", "gigaam-v3-e2e-rnnt")
 GIGAAM_REPO = "istupakov/gigaam-v3-onnx"         # веса onnx-asr для моделей gigaam-v3-*; кэш Hugging Face
 RETRY_S = 60.0                      # модель не нашлась: следующая проверка не раньше, чем через столько секунд
 MIN_LOGPROB = -1.0                  # сегменты с худшей уверенностью отбрасываем (как в прежнем слухе)
-LANGUAGE = env("GITS_STT_LANGUAGE", os.getenv("WHISPERX_LANGUAGE", "ru"))     # язык задан явно: автоопределение на коротких фразах выдаёт корейский и прочие выдумки
+LANGUAGE = env("GITS_STT_LANGUAGE", "ru")     # язык задан явно: автоопределение на коротких фразах выдаёт корейский и прочие выдумки
 MAX_NO_SPEECH = 0.6
 
 # Типичные «галлюцинации» Whisper на тишине и музыке (общие для микрофона и слуха)

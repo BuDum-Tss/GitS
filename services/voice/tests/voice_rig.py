@@ -3,7 +3,6 @@ import asyncio
 import contextlib
 from pathlib import Path
 
-import numpy as np
 from gits_sdk import ModuleClient
 from gits_sdk.testing import FakeCore
 
@@ -78,20 +77,19 @@ class FakePlayer:
 
 
 class FakeSTT:
-    """WhisperX в памяти: отдаёт заданный текст и эмбеддинг."""
+    """Распознавание в памяти: отдаёт заданный текст."""
 
-    mode = "server"
-    diarized = True
+    mode = "local"
 
-    def __init__(self, text="", emb=None, speaker="SPEAKER_00"):
-        self.t = Transcript(text=text, speaker=speaker, speaker_embedding=emb)
+    def __init__(self, text=""):
+        self.t = Transcript(text=text)
         self.calls = 0
 
     def label(self) -> str:
-        return "распознавание: WhisperX (сервер), с узнаванием голосов"
+        return "распознавание: локально (CPU), модель тестовая"
 
     def short(self) -> str:
-        return "WhisperX"
+        return "локально (CPU)"
 
     async def transcribe(self, *a, **k):
         self.calls += 1
@@ -99,10 +97,6 @@ class FakeSTT:
 
     async def aclose(self):
         pass
-
-
-def vec(seed: int, n: int = 64) -> list[float]:
-    return list(np.random.default_rng(seed).normal(size=n))
 
 
 class Rig:
@@ -128,7 +122,7 @@ class Rig:
         def synth(text, directory):                    # блокирующий синтез: путь к «файлу»
             raise AssertionError("в стенде синтез идёт через FakeSynth")
 
-        self.mod = VoiceModule(self.client, str(self.mem), fake=False, player=self.player, stt=self.stt,
+        self.mod = VoiceModule(self.client, fake=False, player=self.player, stt=self.stt,
                                tmp_dir=self.tmp / "voice_tmp", synth=synth)
         self.mod.speaker._synth = self.synth_calc      # синтез сегмента для озвучки
         self._task = asyncio.create_task(self.client.run())

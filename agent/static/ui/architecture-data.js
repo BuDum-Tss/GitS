@@ -15,7 +15,7 @@ window.ARCH_DATA = {
      "t": "voice",
      "tag": "I",
      "new": false,
-     "do": "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (ESpeech, запасные Fish Speech и edge-tts)",
+     "do": "микрофон, VAD, локальное распознавание речи (GigaAM, запасной faster-whisper; говорящих не различает, реплика от владельца); озвучка (ESpeech, запасные Fish Speech и edge-tts)",
      "out": "Event voice.utterance",
      "now": "services/voice"
     },
@@ -621,7 +621,7 @@ window.ARCH_DATA = {
    "title": "Внешний слой и сборка",
    "tag": "X",
    "new": false,
-   "summary": "Модели и службы: LM Studio, GLiNER, ESpeech, Fish Speech, WhisperX, Claude. Сборка: core_service.",
+   "summary": "Модели и службы: LM Studio, GLiNER, ESpeech, Fish Speech, Claude. Сборка: core_service.",
    "out": "",
    "nodes": [
     {
@@ -648,15 +648,6 @@ window.ARCH_DATA = {
      "tag": "X",
      "new": false,
      "do": "синтез речи (F5-TTS, русский)",
-     "out": "",
-     "now": ""
-    },
-    {
-     "id": "wx",
-     "t": "WhisperX / Whisper",
-     "tag": "X",
-     "new": false,
-     "do": "распознавание речи",
      "out": "",
      "now": ""
     },

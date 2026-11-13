@@ -5,7 +5,7 @@
 # gits_default, поэтому ядро видит его по имени montage). Ядро берёт его в аренду (agent/peers.container.yaml, control_url);
 # подробности в docker/core/README.md, раздел «Монтаж».
 # Переменные (docker/core/glados.env): CHARACTER_ID, CHARACTER_DIR, CORE_PORT; GITS_TOKEN берётся из .env хоста.
-# Весь стек в одной группе gits (Docker Desktop): ядро персонажа, общие сервисы (espeech, whisperx, fish-speech, монтаж). Имя ядра: <id>-core.
+# Весь стек в одной группе gits (Docker Desktop): ядро персонажа, общие сервисы (espeech, fish-speech, монтаж). Имя ядра: <id>-core.
 name: gits
 
 services:

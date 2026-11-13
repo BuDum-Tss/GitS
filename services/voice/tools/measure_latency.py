@@ -1,5 +1,5 @@
 """Замеры задержки голоса (ТЗ 12, VOICE-19). Запускает человек: нужен прогретый Fish Speech (docker compose up fish-speech)
-и, для третьего замера, WhisperX (docker compose up whisperx). Колонки и микрофон не используются: воспроизведение
+и, для третьего замера, локальное распознавание (GigaAM). Колонки и микрофон не используются: воспроизведение
 заменено ожиданием длительности файла.
 
 Три замера, по N повторов (по умолчанию 20), медиана и p95 в миллисекундах:
@@ -93,7 +93,7 @@ async def measure_module(n: int, audio: str | None, skip_utter: bool) -> dict:
                                   "dnd": False, "quiet_until": 0.0}) as core:
         client = ModuleClient(build_manifest(), url=core.url, token=core.token)
         player = SilentPlayer()
-        mod = VoiceModule(client, str(tmp), fake=False, player=player, tmp_dir=tmp)
+        mod = VoiceModule(client, fake=False, player=player, tmp_dir=tmp)
         task = asyncio.create_task(client.run())
         await core.wait_connected()
         await client.wait_connected(5)
@@ -116,10 +116,9 @@ async def measure_module(n: int, audio: str | None, skip_utter: bool) -> dict:
         if audio and not skip_utter:
             from mic_listener import MicListener
             from stt_client import STTClient
-            from voice_id import VoiceIdentity
             frames = pcm_frames(audio)
             vad = {"speech": True}
-            lis = MicListener(STTClient(), VoiceIdentity(str(tmp)), mod._on_voice, lambda: False,
+            lis = MicListener(STTClient(), mod._on_voice, lambda: False,
                               vad=lambda f: vad["speech"], clock=time.time)
             lis.prepare()
             samples = []
@@ -180,14 +179,13 @@ async def measure_legacy(n: int, audio: str | None, agent_dir: str, skip_utter: 
     if audio and not skip_utter:
         import mic_listener as ml
         from stt_client import STTClient
-        from voice_id import VoiceIdentity
         frames = pcm_frames(audio)
         got: list[float] = []
 
         async def on_voice(text, info):
             got.append(time.perf_counter())
         vad = {"speech": True}
-        lis = ml.MicListener(STTClient(), VoiceIdentity(str(Path(agent_dir) / "_measure_mem")), on_voice, lambda: False)
+        lis = ml.MicListener(STTClient(), on_voice, lambda: False)
         seg = ml.UtteranceSegmenter(lambda f: vad["speech"])
         samples = []
         for i in range(n):
@@ -216,8 +214,8 @@ def main() -> None:
     ap.add_argument("-n", type=int, default=20, help="повторов на замер (по умолчанию 20)")
     ap.add_argument("--agent-dir", help="legacy: каталог agent/ ветки master")
     ap.add_argument("--audio", default=str(resources.module_dir("voice") / "GlaDos.wav"),
-                    help="WAV 16 кГц моно с речью для замера utter (нужен WhisperX); пропустить: --skip-utter")
-    ap.add_argument("--skip-utter", action="store_true", help="не мерить распознавание (WhisperX не запущен)")
+                    help="WAV 16 кГц моно с речью для замера utter (нужна модель GigaAM или faster-whisper в кэше); пропустить: --skip-utter")
+    ap.add_argument("--skip-utter", action="store_true", help="не мерить распознавание (модель распознавания недоступна)")
     ap.add_argument("--json", help="записать результат в файл")
     args = ap.parse_args()
     if args.mode == "legacy" and not args.agent_dir:

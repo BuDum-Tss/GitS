@@ -9,14 +9,14 @@ VOICE_SILENT_KINDS = {"voice.speech", "voice.user_speaking", "voice.utterance", 
 def make_voice_handlers(companion, attention, speech) -> dict:
     """События модуля голоса, которые ядро обрабатывает само, мимо оценки внимания (ТЗ 12): voice.utterance - реплика
     пользователя в разговор с каналом voice (VOICE-6); voice.speech и voice.user_speaking - присутствие (VOICE-17, VOICE-8);
-    voice.named - голосу назначено имя, человек заводится в памяти и отношениях (раньше это делал инструмент name_voice)."""
+    Говорящих модуль голоса не различает: `speaker` всегда владелец (`owner: true`)."""
 
     async def on_utterance(item) -> None:
         speaker = (item.data or {}).get("speaker")
         if not isinstance(speaker, dict):
             sender = item.sender or {}
-            speaker = {"id": str(sender.get("id", "")).removeprefix("voice:") or None, "name": sender.get("name"),
-                       "new": False, "owner": bool(sender.get("is_owner")), "has_owner": bool(sender.get("is_owner"))}
+            speaker = {"id": str(sender.get("id", "")).removeprefix("voice:") or "owner", "name": sender.get("name"),
+                       "owner": True}
         if item.trace is not None:
             await companion.on_voice(item.text, speaker, trace=item.trace)
         else:
@@ -32,22 +32,8 @@ def make_voice_handlers(companion, attention, speech) -> dict:
     async def on_trace(item) -> None:
         latency_trace.audio_arrived((item.data or {}).get("trace"))      # метки звука (ТЗ 24, TRC-1): запись трассы
 
-    async def on_named(item) -> None:
-        data = item.data or {}
-        name, voice_id = str(data.get("name") or "").strip(), data.get("voice_id")
-        if not name or not voice_id:
-            return
-        if data.get("is_owner"):
-            writer = getattr(companion, "memory_writer", None)
-            if writer is not None:
-                await asyncio.to_thread(writer.add_fact, f"Имя: {name}", kind="user", importance=5)
-        else:
-            rel = getattr(companion, "_rel", None)
-            if rel is not None:
-                await asyncio.to_thread(rel.ensure_person, f"voice:{voice_id}", name, source="voice")
-
     return {"voice.utterance": on_utterance, "voice.speech": on_speech, "voice.user_speaking": on_user_speaking,
-            "voice.named": on_named, "voice.trace": on_trace}
+            "voice.trace": on_trace}
 
 
 def make_heard_hook(companion):

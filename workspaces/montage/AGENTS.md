@@ -17,7 +17,7 @@
 - **После каждой завершённой задачи добавь запись в `CHANGELOG.md`**, раздел `[Unreleased]`, с номерами требований
   (`MON-`, `STY-`, `CRAFT-`). Без этого задача не закончена.
 - **Перед коммитом запускай `.\check.ps1`** (ruff, pytest, `npx tsc --noEmit` и `npx remotion compositions` в
-  `template/`). Новая логика получает тест в `agent/tests/`. Тесты без Claude, сети, WhisperX, игры: подставляй заглушки.
+  `template/`). Новая логика получает тест в `agent/tests/`. Тесты без Claude, сети, распознавания речи, игры: подставляй заглушки.
 - **Всё асинхронно.** Блокирующий код (диск, subprocess, ffmpeg, Remotion) уводи в `asyncio.to_thread`.
 - **Стиль только из `resources/<Имя>/montage/APERTURE_STYLE.md`**, ремесло только из `docs/EDITING_CRAFT.md`. Цвета, шрифты и размеры в
   коде компонентов берутся из `template/src/style/tokens.ts`, который повторяет регламент и `template/design/tokens.json` дизайн-системы v2. Меняется регламент: правишь
@@ -51,7 +51,7 @@
 | `agent/intake.py`, `agent/media.py`, `agent/render.py` | проверка и перекодирование файлов, ffmpeg/ffprobe, Remotion (tsc, проверка плана, still, render) | готовы |
 | `agent/claude_runner.py`, `agent/agent_tools.py`, `agent/sandbox.py` | агент на Claude Agent SDK, свои инструменты агента, песочница `can_use_tool` | готовы |
 | `agent/plan_schema.py` | проверка `plan.json` и `story.json`; виды вставок берутся из `template/plan.schema.json` | готов |
-| `agent/transcribe.py`, `agent/srt.py` | слова из журнала речи (MON-26a), файл .srt для роликов без вжигаемых субтитров; живая речь (WhisperX) отложена | готовы |
+| `agent/transcribe.py`, `agent/srt.py` | слова из журнала речи (MON-26a), файл .srt для роликов без вжигаемых субтитров; живая речь (распознавание слов) отложена | готовы |
 | `agent/qa.py`, `agent/review_mode.py` | технические проверки и проверки ремесла, смысловая проверка, отчёт, режимы приёмки | готовы |
 | `agent/studio.py` | Remotion Studio по задаче (ТЗ 15, TAB-4): один Studio на задачу на свободном порту 127.0.0.1, гаснет с задачей и после 30 минут без обращений |
 | `agent/approval_panel.py` | одобрение по этапам в пространстве (ТЗ 15b): подпись этапа, файлы истории и плана, видео черновика, кнопки этапа; ответ идёт через `Pipeline.deliver_answer` |

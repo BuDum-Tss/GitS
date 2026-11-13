@@ -87,7 +87,7 @@ workspaces:
 
 services:
   # Голос (ТЗ 12): весь звук - микрофон, распознавание, узнавание голосов, синтез, воспроизведение, слух системного звука.
-  # Зависимости модуля: services/voice/requirements.txt (в окружение ядра); Fish Speech и WhisperX в docker необязательны.
+  # Зависимости модуля: services/voice/requirements.txt (в окружение ядра); Fish Speech в docker необязателен.
   - id: voice
     title: Голос
     cwd: "{GITS}/services/voice"

@@ -38,7 +38,7 @@
 
 | Модуль | Папка | Что делает |
 |---|---|---|
-| Голос | `services/voice` | микрофон и распознавание (WhisperX, запасной faster-whisper), узнавание голосов, синтез (Fish Speech, запасной edge-tts), воспроизведение, слух системного звука |
+| Голос | `services/voice` | микрофон и распознавание (GigaAM на процессоре, запасной faster-whisper), синтез (Fish Speech, запасной edge-tts), воспроизведение, слух системного звука |
 | Питомец | `services/pet` | окно на рабочем столе: стикер и облачко по состоянию (`presence`) |
 | Компьютер | `workspaces/desktop` | зрение и экран, мышь и клавиатура, приложения, Модуль кода как задача |
 | Telegram | `workspaces/telegram` | канал-дневник, бот, её собственный аккаунт |
@@ -67,10 +67,10 @@ copy .env.example .env     # токены Telegram и т.д. (не в git)
 python main.py                           # ядро и дашборд на http://localhost:8766; модули запускает само ядро
 pythonw tray.py                          # трей: поднимает только ядро
 ```
-- Внешние сервисы (необязательные): `docker compose up -d` поднимает Fish Speech и WhisperX (память-граф Docker не нужен). Локальная модель:
+- Внешние сервисы (необязательные): `docker compose up -d` поднимает синтез голоса (ESpeech, запасной Fish Speech; память-граф Docker не нужен). Локальная модель:
   LM Studio (`google/gemma-4-e4b` и эмбеддинги EmbeddingGemma). Классификатор внимания GLiNER: `services/decider/README.md`.
-- Без Fish Speech модуль голоса говорит запасным edge-tts (нужен интернет); без WhisperX микрофон распознаёт локально (faster-whisper,
-  веса скачивает владелец сам). Если голос выключен, она отвечает текстом в чате дашборда.
+- Без Fish Speech модуль голоса говорит запасным edge-tts (нужен интернет); микрофон всегда распознаёт локально (GigaAM, запасной faster-whisper;
+  веса скачивает владелец сам, речь двух людей не различается). Если голос выключен, она отвечает текстом в чате дашборда.
 - Без звука и без окна для проверки запуска: `GITS_VOICE_FAKE=1`, `GITS_PET_HEADLESS=1`. Выключить второй эшелон фокуса: `GITS_FOCUS_LLM=0`.
 - Вручную (при разработке, ядро должно работать): `python services/voice/main.py`, `python services/pet/main.py`.
 - Telegram: токен бота и канал (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL`) и ключи аккаунта (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`) лежат

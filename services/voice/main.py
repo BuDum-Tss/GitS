@@ -1,7 +1,7 @@
 """Точка входа модуля голоса (ТЗ 12). Запускает супервизор ядра: `python main.py` из папки модуля.
 
-Секретов у модуля нет (Fish Speech и WhisperX локальные), но файл .env читается, как у других модулей монорепо:
-в нём могут лежать адреса и пути (FISH_URL, WHISPERX_URL, GITS_STT_MODEL). GITS_VOICE_FAKE=1 подменяет синтез и
+Секретов у модуля нет (Fish Speech и распознавание речи локальные), но файл .env читается, как у других модулей монорепо:
+в нём могут лежать адреса и пути (FISH_URL, GITS_STT_ENGINE, GITS_STT_MODEL). GITS_VOICE_FAKE=1 подменяет синтез и
 воспроизведение тишиной и не запускает микрофон и слух: так проверяют запуск без звука.
 """
 import asyncio
@@ -15,7 +15,7 @@ sys.path[:0] = [str(HERE), str(HERE.parent.parent / "sdk")]
 
 from dotenv import load_dotenv  # noqa: E402
 
-from common import default_memory_dir, secrets_file  # noqa: E402
+from common import secrets_file  # noqa: E402
 
 load_dotenv(secrets_file())                       # адреса сервисов и модели; файла нет - значения по умолчанию
 
@@ -25,9 +25,8 @@ from manifest import build_manifest  # noqa: E402
 
 
 async def amain() -> int:
-    memory_dir = default_memory_dir()
     client = ModuleClient(build_manifest())
-    module = VoiceModule(client, memory_dir)
+    module = VoiceModule(client)
     module.start()
     try:
         return await client.run()

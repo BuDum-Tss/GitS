@@ -20,7 +20,7 @@
 RimWorld) ядро находит по `host.docker.internal`; адреса меняются переменными `GITS_DECIDER_URL`, `GITS_LM_URL`, `OBS_WEBSOCKET_URL`, `RIMWORLD_API`.
 
 ## Монтаж (необязательно, общий контейнер `montage`)
-Монтаж (`workspaces/montage`) это пространство: ОДИН общий контейнер `montage` на всех персонажей (образ `gits-montage:dev`, `docker/montage/Dockerfile`; описан в корневом `docker-compose.yml` рядом с espeech и whisperx, а не в compose ядра):
+Монтаж (`workspaces/montage`) это пространство: ОДИН общий контейнер `montage` на всех персонажей (образ `gits-montage:dev`, `docker/montage/Dockerfile`; описан в корневом `docker-compose.yml` рядом с espeech, а не в compose ядра):
 Python 3.12, Node 20, ffmpeg/ffprobe, шрифты, chrome-headless-shell для Remotion (скачан при сборке `npx remotion browser ensure`),
 зависимости шаблона (`npm ci`) и среда агента pi. Агент берёт его в аренду и возвращает, как семафор:
 

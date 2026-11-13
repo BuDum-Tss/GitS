@@ -4,9 +4,8 @@ import asyncio
 import numpy as np
 
 import mic_listener as ml
-import voice_id as vid
-from stt_client import Transcript, dominant_speaker
-from voice_rig import FakeSTT, vec
+from stt_client import Transcript
+from voice_rig import FakeSTT
 
 
 def frame(speech: bool) -> bytes:
@@ -54,41 +53,28 @@ def test_hallucinations():
     assert not ml.is_hallucination("поставь таймер на пять минут")
 
 
-def test_dominant_speaker():
-    segs = [{"speaker": "A", "start": 0, "end": 1}, {"speaker": "B", "start": 1, "end": 4}]
-    assert dominant_speaker(segs) == "B" and dominant_speaker([]) is None
-
-
-def test_listener_passes_known_voice_and_drops_self_and_junk(tmp_path):
-    v = vid.VoiceIdentity(str(tmp_path))
-    rng = np.random.default_rng(3)
-    me, own = list(rng.normal(size=64)), list(rng.normal(size=64))
-    pid, _ = v.resolve(me)
-    v.set_owner(pid)
-    v.register_self(own)
+def test_listener_passes_every_voice_as_the_owner_and_drops_junk():
     got = []
 
     async def on_voice(text, info, trace=None):
         got.append((text, info))
 
     class FakeSTT2:
-        def __init__(self, text, emb):
-            self.t = Transcript(text=text, speaker="SPEAKER_00", speaker_embedding=emb)
+        def __init__(self, text):
+            self.t = Transcript(text=text)
 
         async def transcribe(self, *a, **k):
             return self.t
 
-    async def run(text, emb):
-        lis = ml.MicListener(FakeSTT2(text, emb), v, on_voice, lambda: False)
+    async def run(text):
+        lis = ml.MicListener(FakeSTT2(text), on_voice, lambda: False)
         await lis.handle_utterance(b"\0" * 100)
 
-    asyncio.run(run("включи свет", me))
-    asyncio.run(run("это мой голос из колонок", own))
-    asyncio.run(run("Продолжение следует...", me))
-    stranger = list(rng.normal(size=64))
-    asyncio.run(run("кто здесь", stranger))
+    asyncio.run(run("включи свет"))
+    asyncio.run(run("Продолжение следует..."))
+    asyncio.run(run("кто здесь"))
     assert [t for t, _ in got] == ["включи свет", "кто здесь"]
-    assert got[0][1]["owner"] is True and got[1][1]["owner"] is False and got[1][1]["new"] is True
+    assert all(info == {"id": "owner", "name": None, "owner": True} for _, info in got)
 
 
 # ── ворота (VOICE-7) ─────────────────────────────────────────────────────────
@@ -96,27 +82,26 @@ def test_listener_passes_known_voice_and_drops_self_and_junk(tmp_path):
 def test_gate_follows_playback_and_echo_tail(tmp_path):
     t = [100.0]
     state = {"speaking": True}
-    lis = ml.MicListener(None, None, None, lambda: state["speaking"], echo_tail=lambda: 0.3, clock=lambda: t[0])
+    lis = ml.MicListener(None, None, lambda: state["speaking"], echo_tail=lambda: 0.3, clock=lambda: t[0])
     assert lis._gate() is True                                # она говорит: закрыто
     state["speaking"] = False
     t[0] += 0.2
     assert lis._gate() is True                                # хвост эха
     t[0] += 0.2
     assert lis._gate() is False                               # хвост прошёл
-    lis2 = ml.MicListener(None, None, None, lambda: True, echo_tail=lambda: 0.0, clock=lambda: t[0])
+    lis2 = ml.MicListener(None, None, lambda: True, echo_tail=lambda: 0.0, clock=lambda: t[0])
     lis2._gate()
     assert lis2._tail_until == t[0]
 
 
 async def test_overlapping_utterance_is_dropped_but_later_one_goes_through(tmp_path):
-    stt = FakeSTT("привет", vec(21))
+    stt = FakeSTT("привет")
     got = []
 
     async def on_voice(text, info, trace=None):
         got.append(text)
-    v = vid.VoiceIdentity(str(tmp_path))
     state = {"speaking": True}
-    lis = ml.MicListener(stt, v, on_voice, lambda: state["speaking"], echo_tail=lambda: 0.0, vad=lambda f: f[0] == 1)
+    lis = ml.MicListener(stt, on_voice, lambda: state["speaking"], echo_tail=lambda: 0.0, vad=lambda f: f[0] == 1)
     lis.prepare()
     for _ in range(15):
         await lis.handle_frame(b"\x01" * 960)
@@ -137,7 +122,7 @@ async def test_overlapping_utterance_is_dropped_but_later_one_goes_through(tmp_p
 
 def test_user_speaking_is_sent_on_change_and_at_most_five_per_second():
     seen, t = [], [10.0]
-    mic = ml.MicListener(None, None, None, lambda: False, on_speaking=seen.append, clock=lambda: t[0])
+    mic = ml.MicListener(None, None, lambda: False, on_speaking=seen.append, clock=lambda: t[0])
     mic._note_speaking(False)
     mic._note_speaking(True)
     assert seen == [True]
@@ -158,19 +143,19 @@ def test_user_speaking_is_sent_on_change_and_at_most_five_per_second():
 
 
 def test_user_speaking_survives_callback_errors_and_missing_listener():
-    broken = ml.MicListener(None, None, None, lambda: False, on_speaking=lambda v: 1 / 0)
+    broken = ml.MicListener(None, None, lambda: False, on_speaking=lambda v: 1 / 0)
     broken._note_speaking(True)
-    ml.MicListener(None, None, None, lambda: False)._note_speaking(True)
+    ml.MicListener(None, None, lambda: False)._note_speaking(True)
 
 
 async def test_gated_frames_do_not_count_as_user_speaking():
     seen = []
-    mic = ml.MicListener(None, None, None, lambda: True, on_speaking=seen.append, vad=lambda f: f[0] == 1)
+    mic = ml.MicListener(None, None, lambda: True, on_speaking=seen.append, vad=lambda f: f[0] == 1)
     mic.prepare()
     for _ in range(10):
         await mic.handle_frame(b"\x01" * 960)                 # это её собственный голос из колонок
     assert seen == []
-    quiet = ml.MicListener(None, None, None, lambda: False, on_speaking=seen.append, vad=lambda f: f[0] == 1)
+    quiet = ml.MicListener(None, None, lambda: False, on_speaking=seen.append, vad=lambda f: f[0] == 1)
     quiet.prepare()
     await quiet.handle_frame(b"\x01" * 960)
     assert seen == [True]
