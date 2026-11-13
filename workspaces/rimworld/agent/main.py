@@ -28,7 +28,7 @@ def _ensure_sdk() -> None:
         return
     except ImportError:
         pass
-    for candidate in (env("GITS_SDK_DIR"), HERE.parents[2] / "sdk"):
+    for candidate in (env("GITS_SDK_DIR"), HERE.parents[2] / "agent" / "interfaces" / "workspace"):
         if candidate and (Path(candidate) / "gits_sdk").is_dir():
             sys.path.append(str(candidate))
             return

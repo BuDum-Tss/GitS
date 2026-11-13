@@ -3,7 +3,7 @@
 Граф фактов (`graph.py`, `fact_store.py`, области `scope.py`), диалог и активность (`user.py`), эпизоды, сон и дневник
 (`episodes.py`, `episode_*.py`, `sleep*.py`, `diary.py`), явное «запомни» (`capture.py`), адаптеры контрактов `MemoryReader` и
 `MemoryWriter` (`adapters.py`) и перенос старых форматов (`migration.py`). Остальное ядро обращается к сервису через имена,
-выставленные в этом файле, и протоколы `contracts.py`; внутренние файлы наружу не импортируются.
+выставленные в этом файле, и протоколы `interfaces/contracts.py`; внутренние файлы наружу не импортируются.
 
 Имя папки `memory_service`, а не `memory`: `agent/memory/` это данные ядра (MEMORY_DIR) и пакетом быть не может.
 """

@@ -16,7 +16,7 @@ import webbrowser
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path[:0] = [str(HERE.parent), str(HERE.parent.parent.parent / "sdk")]       # пакет twitch лежит в workspaces/streamer
+sys.path[:0] = [str(HERE.parent), str(HERE.parent.parent.parent / "agent" / "interfaces" / "workspace")]       # пакет twitch лежит в workspaces/streamer
 
 from twitch.common import default_memory_dir, secrets_file  # noqa: E402
 

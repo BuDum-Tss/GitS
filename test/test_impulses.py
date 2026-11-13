@@ -12,7 +12,7 @@ from adapters.impulse_store import JsonReminders, JsonThoughts
 from app.impulse_timer import ImpulseTimer
 from services.attention.items import event_of
 from app.reflection import Intent, ReflectionService, parse_intents, parse_step
-from contracts import ReminderRepository, ThoughtJournal
+from interfaces.contracts import ReminderRepository, ThoughtJournal
 from domain import impulses, rules
 from domain.event import Event
 from environments import builtin

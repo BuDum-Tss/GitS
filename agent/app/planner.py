@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Any, Callable
 
-from contracts import LanguageModel
+from interfaces.contracts import LanguageModel
 from domain import tasks as dom
 
 logger = logging.getLogger("tasks")

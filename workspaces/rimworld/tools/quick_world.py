@@ -11,7 +11,7 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path[:0] = [os.path.join(HERE, "..", "agent"), os.path.join(HERE, "..", "..", "..", "sdk")]
+sys.path[:0] = [os.path.join(HERE, "..", "agent"), os.path.join(HERE, "..", "..", "..", "agent", "interfaces", "workspace")]
 EXE = r"C:\GOG Games\RimWorld\RimWorldWin64.exe"
 URL = "http://localhost:8765/command"
 

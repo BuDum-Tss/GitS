@@ -9,7 +9,7 @@ import shutil
 import pytest
 
 from adapters.runtime_pi import BRIDGE_DIR, PiRuntime
-from contracts import EndEvent, TextEvent, ToolEvent, ToolSpec
+from interfaces.contracts import EndEvent, TextEvent, ToolEvent, ToolSpec
 
 pytestmark = pytest.mark.skipif(not shutil.which("node") or not (BRIDGE_DIR / "node_modules").is_dir(),
                                 reason="нет node или зависимостей моста")

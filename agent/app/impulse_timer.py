@@ -9,7 +9,7 @@ import logging
 import time
 from typing import Awaitable, Callable
 
-from contracts import ReminderRepository
+from interfaces.contracts import ReminderRepository
 from domain import impulses
 from domain.event import KIND_REMINDER
 

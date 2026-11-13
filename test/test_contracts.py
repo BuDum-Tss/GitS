@@ -8,7 +8,7 @@ from hub_helpers import FakeCompanion, FakeIO
 from test_attention import Clock, StubDecider
 
 import character
-import contracts
+from interfaces import contracts
 import decide
 import events_log
 import settings

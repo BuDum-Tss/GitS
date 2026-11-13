@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import character
-import contracts
+from interfaces import contracts
 import events_log
 from services.memory_service.episode_store import EpisodeStore
 from adapters.event_source import JournalSource

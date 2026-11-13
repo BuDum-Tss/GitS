@@ -4,7 +4,7 @@ import json
 from test_impulses import Clock, ev, js, service, ScriptedLLM
 
 from adapters.impulse_store import JsonThoughts
-from contracts import ThoughtJournal
+from interfaces.contracts import ThoughtJournal
 from domain import thoughts as dom
 from domain.event import KIND_AFTER_CONVERSATION
 

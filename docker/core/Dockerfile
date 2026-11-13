@@ -36,7 +36,7 @@ COPY docker/core/requirements.txt docker/core/requirements.txt
 RUN pip install -r docker/core/requirements.txt
 
 COPY --from=agent-runtime /app/services/agent-runtime/node_modules services/agent-runtime/node_modules
-COPY sdk sdk
+COPY agent/interfaces/workspace agent/interfaces/workspace
 COPY services/agent-runtime services/agent-runtime
 COPY agent agent
 COPY workspaces/telegram workspaces/telegram

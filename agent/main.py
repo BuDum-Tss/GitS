@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")   # секреты в корне репозитория (не в git): TELEGRAM_BOT_TOKEN, TWITCH_CLIENT_ID и др.
 
 # до установки пакета gits-sdk (pip install -e ./sdk) SDK модулей берётся из репозитория
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sdk"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "interfaces" / "workspace"))
 
 import core_service
 import settings

@@ -12,7 +12,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 GITS = HERE.parent.parent
 # SDK до установки пакета gits-sdk; свои файлы модуля первыми. Внутренностей ядра (agent/) модуль не импортирует (ТЗ 31)
-sys.path[:0] = [str(HERE), str(GITS / "sdk")]
+sys.path[:0] = [str(HERE), str(GITS / "agent" / "interfaces" / "workspace")]
 
 from envcompat import env  # noqa: E402
 

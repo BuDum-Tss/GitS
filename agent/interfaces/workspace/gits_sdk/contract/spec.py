@@ -1,7 +1,7 @@
 """Описание элемента контракта (ТЗ 31, MC-1): поле, сообщение и общая проверка тела по полям.
 
 Контракт один: эти описания читают SDK (клиент, `FakeCore`), ядро (`module_hub`, `core_requests`) и генератор документа
-(`sdk/tools/gen_contract_doc.py`). Ни один из них не держит своих копий схем.
+(`agent/interfaces/workspace/tools/gen_contract_doc.py`). Ни один из них не держит своих копий схем.
 """
 from __future__ import annotations
 

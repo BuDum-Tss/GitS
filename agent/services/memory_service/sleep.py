@@ -13,7 +13,7 @@ from typing import Awaitable, Callable
 
 from services.memory_service.diary import DayWriter
 from services.memory_service.episode_summary import EpisodeSummarizer
-from contracts import EventSource, MemoryWriter
+from interfaces.contracts import EventSource, MemoryWriter
 from services.memory_service import episodes as dom
 
 logger = logging.getLogger("episodes")

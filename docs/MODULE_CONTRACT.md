@@ -1,6 +1,6 @@
 # Контракт участников шины GitS
 
-Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора участника шины: `docs/MODULES.md`, код контракта: `sdk/gits_sdk/contract/`.
+Файл создан скриптом `agent/interfaces/workspace/tools/gen_contract_doc.py` из `agent/interfaces/workspace/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `agent/interfaces/workspace/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора участника шины: `docs/MODULES.md`, код контракта: `agent/interfaces/workspace/gits_sdk/contract/`.
 
 Версия протокола `PROTOCOL = 2`, версия контракта `2.0`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
@@ -1566,7 +1566,7 @@ Workspace с `ownership: shared` занимает один хозяин за р�
 - Участник шины читает ресурсы только из своей папки `resources/<Имя>/<id участника шины>/`: `gits_sdk.resources.module_dir(<id>)`.
 - Персонаж берётся из `GITS_CHARACTER_ID`, иначе `glados`; смена персонажа перезапускает участник шины.
 - Папка участника шины не создаётся SDK и не изменяется участником шины; изменяемые данные участника шины лежат в `MEMORY_DIR`.
-- Корень ресурсов: `GITS_RESOURCES_DIR` или `resources/` рядом с `sdk/`.
+- Корень ресурсов: `GITS_RESOURCES_DIR` или `resources/` рядом с `agent/interfaces/workspace/`.
 - Секреты участник шины читает сам из `.env` (или `GITS_SECRETS_FILE`); в журнал и в события они не попадают.
 
 ## Что участнику шины запрещено

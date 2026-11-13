@@ -18,7 +18,7 @@
 | Домен | `agent/domain/` | чистые функции решений без ввода-вывода: приоритет и свежесть, правила («замолчи», «похоже на просьбу»), риск, политика фокуса, лимиты импульсов, `Event` |
 | Сценарии | `agent/app/` | нормализация события, оценка, диспетчер (маршруты `say`, `chat`, `task`, `focus`, `think`, `digest`), разговор, контекст, ответ, запоминание, размышление, таймер импульсов |
 | Адаптеры | `agent/adapters/` | локальная модель, SQLite-журнал, личная память, люди, настройки, разрешения, файлы напоминаний и мыслей |
-| Контракты | `agent/contracts.py` | интерфейсы между сценариями и адаптерами (`LanguageModel`, `MemoryReader`, `MemoryWriter`, `PeopleDirectory`, `EventLog`, ...) |
+| Контракты | `agent/interfaces/contracts.py` | интерфейсы между сценариями и адаптерами (`LanguageModel`, `MemoryReader`, `MemoryWriter`, `PeopleDirectory`, `EventLog`, ...) |
 | Корень сборки | `agent/core_service.py`, `agent/main.py` | собирает всё вместе, запускает слои |
 
 Путь события: источник (участник шины или чат дашборда) -> шина участников шины (`module_hub.py`) -> менеджер внимания (`attention.py`: правила,
@@ -49,14 +49,14 @@
 Игровые и прочие специальные вещи живут только в своём участнике шины, в ядре их нет.
 
 ### Контракты и новый участник шины
-- **Контракт «ядро - участник шины»** описан в одном месте, `sdk/gits_sdk/contract/` (запросы, сообщения, темы, окружение, версии). Из него
-  скриптом `python sdk/tools/gen_contract_doc.py` строятся [docs/MODULE_CONTRACT.md](docs/MODULE_CONTRACT.md) и схемы `docs/contract/*.json`
+- **Контракт «ядро - участник шины»** описан в одном месте, `agent/interfaces/workspace/gits_sdk/contract/` (запросы, сообщения, темы, окружение, версии). Из него
+  скриптом `python agent/interfaces/workspace/tools/gen_contract_doc.py` строятся [docs/MODULE_CONTRACT.md](docs/MODULE_CONTRACT.md) и схемы `docs/contract/*.json`
   (тест сверяет). Запросы участника шины к ядру: `core.ask`, `core.tts`, `core.tool.call`, `core.persona`, `core.llm.ask`,
   `core.memory.recall` / `core.memory.remember` и другие.
-- **SDK** (`sdk/`, пакет `gits-sdk`): типизированные `WorkspaceClient` и `ServiceClient`, `FakeCore` для тестов без ядра. Ядро берёт SDK напрямую из репозитория
+- **SDK** (`agent/interfaces/workspace/`, пакет `gits-sdk`): типизированные `WorkspaceClient` и `ServiceClient`, `FakeCore` для тестов без ядра. Ядро берёт SDK напрямую из репозитория
   (`agent/main.py` добавляет `sdk` в `sys.path`), ставить его не нужно; для участника шины в своём окружении: `pip install -e sdk`.
-- **Шаблон нового участника шины**: [sdk/template/](sdk/template/README.md) (манифест, обработчики, точка входа, тесты на `FakeCore`);
-  пример с задачей, прогрессом и вопросом пользователю: `sdk/examples/echo_module.py` (выключен по умолчанию).
+- **Шаблон нового участника шины**: [agent/interfaces/workspace/template/](agent/interfaces/workspace/template/README.md) (манифест, обработчики, точка входа, тесты на `FakeCore`);
+  пример с задачей, прогрессом и вопросом пользователю: `agent/interfaces/workspace/examples/echo_module.py` (выключен по умолчанию).
   Руководство автора: [docs/MODULES.md](docs/MODULES.md). Участники шины не импортируют файлы `agent/` (тест это ловит).
 
 ## Запуск
@@ -112,7 +112,7 @@ pythonw tray.py                          # трей: поднимает толь
 Ядро принимает участников по WebSocket (`ws://127.0.0.1:8766/ws`, токен в `%LOCALAPPDATA%\GitS\module_token`) и само
 запускает их по `agent/peers.yaml` (супервизор). Включаются и выключаются во вкладках «Окружения» (workspace; режим владения shared или
 owned) и «Сервисы» (service, включая внешние decider и espeech) дашборда (там же настройки, задачи и вопросы). Профили поведения лежат в `agent/profiles/*.yaml`. Руководство автора участника шины: [docs/MODULES.md](docs/MODULES.md),
-Первый тестовый участник шины, `echo` (`sdk/examples/echo_module.py`), выключен по умолчанию.
+Первый тестовый участник шины, `echo` (`agent/interfaces/workspace/examples/echo_module.py`), выключен по умолчанию.
 
 ## Как проверять
 ```powershell
@@ -121,12 +121,12 @@ owned) и «Сервисы» (service, включая внешние decider и 
 По частям (из корня репозитория):
 ```
 python -m ruff check agent sdk services modules
-python -m pytest -q test sdk/tests            # ядро и SDK
-python -m pytest -q sdk/template/tests               # шаблон участника шины
+python -m pytest -q test agent/interfaces/workspace/tests            # ядро и SDK
+python -m pytest -q agent/interfaces/workspace/template/tests               # шаблон участника шины
 python -m pytest -q workspaces/telegram/tests           # то же для voice, pet, desktop; у каждого участника шины отдельный запуск
 ```
 Тесты не ходят в сеть, к микрофону, игре и Claude: модель и внешние службы заменены заглушками. Тесты `rimworld` и `montage` запускай
-из их папок с `PYTHONPATH=sdk`. После правки контракта запусти `python sdk/tools/gen_contract_doc.py`, после правки схемы
+из их папок с `PYTHONPATH=agent/interfaces/workspace`. После правки контракта запусти `python agent/interfaces/workspace/tools/gen_contract_doc.py`, после правки схемы
 `python -m tools.architecture.build` .
 
 ## Для разработки

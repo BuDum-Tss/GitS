@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
-from contracts import LanguageModel, MemoryReader, MemoryWriter, ThoughtJournal
+from interfaces.contracts import LanguageModel, MemoryReader, MemoryWriter, ThoughtJournal
 from domain import impulses
 from domain import thoughts as thought_dom
 from domain.event import KIND_AFTER_CONVERSATION, Event

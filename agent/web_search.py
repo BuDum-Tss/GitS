@@ -20,7 +20,7 @@ import claude_quota
 import flow_trace
 import web_tools
 from claude_cli import _CLI_PATH
-from contracts import EndEvent, TextEvent, ToolSpec
+from interfaces.contracts import EndEvent, TextEvent, ToolSpec
 from envcompat import env
 
 logger = logging.getLogger("web_search")

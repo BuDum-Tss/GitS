@@ -13,7 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-sys.path[:0] = [str(ROOT / "agent"), str(ROOT.parent.parent / "sdk")]
+sys.path[:0] = [str(ROOT / "agent"), str(ROOT.parent.parent / "agent" / "interfaces" / "workspace")]
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 TEMPLATE = HERE / "tool_scheme_template.html"

@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 
 AGENT = Path(__file__).resolve().parents[1] / "agent"
-for _p in (AGENT, AGENT.parent / "sdk"):              # ядро и пакет gits_sdk (до установки пакета)
+for _p in (AGENT, AGENT / "interfaces" / "workspace"):              # ядро и пакет gits_sdk (до установки пакета)
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 

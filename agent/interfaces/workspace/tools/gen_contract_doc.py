@@ -1,14 +1,14 @@
 """Генератор документа контракта (ТЗ 31, MC-9): строит `docs/MODULE_CONTRACT.md` и схемы `docs/contract/*.json` из описаний
-`gits_sdk.contract`. Запуск из корня репозитория: `python sdk/tools/gen_contract_doc.py` (записать), `--check` (только сверить).
-Тест `sdk/tests/test_contract_doc.py` проверяет, что файлы в репозитории совпадают с тем, что строит этот скрипт."""
+`gits_sdk.contract`. Запуск из корня репозитория: `python agent/interfaces/workspace/tools/gen_contract_doc.py` (записать), `--check` (только сверить).
+Тест `agent/interfaces/workspace/tests/test_contract_doc.py` проверяет, что файлы в репозитории совпадают с тем, что строит этот скрипт."""
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "sdk"))
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "agent" / "interfaces" / "workspace"))
 
 from gits_sdk import contract  # noqa: E402
 from gits_sdk import protocol as P  # noqa: E402
@@ -124,9 +124,9 @@ def _section(title: str, intro: str, msgs) -> list[str]:
 def build_markdown() -> str:
     lines = [
         "# Контракт участников шины GitS", "",
-        "Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде "
-        "и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора участника шины: `docs/MODULES.md`, "
-        "код контракта: `sdk/gits_sdk/contract/`.", "",
+        "Файл создан скриптом `agent/interfaces/workspace/tools/gen_contract_doc.py` из `agent/interfaces/workspace/gits_sdk/contract/`. Руками не правится: меняйте описания в коде "
+        "и запускайте скрипт. Тест `agent/interfaces/workspace/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора участника шины: `docs/MODULES.md`, "
+        "код контракта: `agent/interfaces/workspace/gits_sdk/contract/`.", "",
         f"Версия протокола `PROTOCOL = {P.PROTOCOL}`, версия контракта `{V.CONTRACT_VERSION}`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.", "",
         "## Версии и совместимость", "",
     ]

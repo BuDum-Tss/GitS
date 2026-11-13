@@ -7,7 +7,7 @@ import pytest
 
 import dashboard
 from adapters.module_events import AttentionEventSink
-from contracts import EventSink, RequestHandler
+from interfaces.contracts import EventSink, RequestHandler
 from core_requests import CoreRequests
 from peer_hub import PeerHub
 from peer_outbound import Outbound

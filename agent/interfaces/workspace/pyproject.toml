@@ -12,7 +12,7 @@ dependencies = ["aiohttp>=3.9"]
 [tool.setuptools.packages.find]
 include = ["gits_sdk*"]
 
-# Тесты SDK: из корня репозитория `python -m pytest -q sdk/tests` (см. check.ps1).
+# Тесты SDK: из корня репозитория `python -m pytest -q agent/interfaces/workspace/tests` (см. check.ps1).
 # pythonpath позволяет гонять тесты и без установки пакета.
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

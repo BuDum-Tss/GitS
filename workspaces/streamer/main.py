@@ -13,7 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 # SDK до установки пакета gits-sdk; свои файлы окружения первыми. Внутренностей ядра (agent/) окружение не импортирует (ТЗ 31)
-sys.path[:0] = [str(HERE), str(HERE.parent.parent / "sdk")]
+sys.path[:0] = [str(HERE), str(HERE.parent.parent / "agent" / "interfaces" / "workspace")]
 
 from dotenv import load_dotenv  # noqa: E402
 

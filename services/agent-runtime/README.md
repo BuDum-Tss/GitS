@@ -66,7 +66,7 @@ npm test
 ## Рабочий агент (`worker.mjs`): файлы и команды
 
 Замена Claude Code там, где нужны встроенные инструменты: `worker.mjs` работает поверх `@earendil-works/pi-coding-agent`
-(`createAgentSession`). Клиент для ядра и модулей: `sdk/gits_sdk/pi_agent.py` (`PiAgent`). Протокол строк JSON, как у моста.
+(`createAgentSession`). Клиент для ядра и модулей: `agent/interfaces/workspace/gits_sdk/pi_agent.py` (`PiAgent`). Протокол строк JSON, как у моста.
 
 `init`: `provider` (`openai` | `faux`), `model`, `thinking`, `auth_file`, `cwd` (рабочая папка встроенных инструментов), `system` или
 `system_file`, `tools` (встроенные: `read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`), `custom_tools` (свои, исполняет

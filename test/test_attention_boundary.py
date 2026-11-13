@@ -4,7 +4,7 @@ import ast
 import inspect
 from pathlib import Path
 
-import contracts
+from interfaces import contracts
 from services.attention import Attention
 
 AGENT = Path(__file__).resolve().parents[1] / "agent"

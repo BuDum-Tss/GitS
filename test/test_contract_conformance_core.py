@@ -1,4 +1,4 @@
-"""Соответствие контракту на стороне ядра (ТЗ 31, MC-7): те же примеры, что в `sdk/tests/test_contract_conformance.py`,
+"""Соответствие контракту на стороне ядра (ТЗ 31, MC-7): те же примеры, что в `agent/interfaces/workspace/tests/test_contract_conformance.py`,
 через настоящие `peer_hub` и `core_requests`. Ядро и FakeCore обязаны отвечать одинаково."""
 import pytest
 from hub_helpers import RawModule, manifest, running_core

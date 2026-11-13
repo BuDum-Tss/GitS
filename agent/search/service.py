@@ -4,7 +4,7 @@
 import asyncio
 import logging
 
-from contracts import Embedder, LanguageModel
+from interfaces.contracts import Embedder, LanguageModel
 from search.index import Hit, HybridIndex, SearchConfig
 from search.rewrite import rewrite_query
 

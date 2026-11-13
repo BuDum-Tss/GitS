@@ -12,7 +12,7 @@ from app.impulse_timer import ImpulseTimer
 from app.plan_nudge import PlanNudger
 from app.planner import LlmPlanner, parse_steps
 from app.task_service import TaskError, TaskService
-from contracts import Planner, ReminderRepository, TaskRepository
+from interfaces.contracts import Planner, ReminderRepository, TaskRepository
 from domain import tasks as T
 from environments import builtin
 from environments.base import ToolError

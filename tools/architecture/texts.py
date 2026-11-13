@@ -38,7 +38,7 @@ MAP = [
 PHASES = [
     ("R0", "Страховка", "Тест архитектуры по импортам; текущие тесты без изменений."),
     ("R1", "Домен", "Чистые функции в <code>agent/domain/</code>: оценка и D0–D4, правила и «замолчи», дедупликация, риск, политика фокуса."),
-    ("R2", "Контракты", "<code>agent/contracts.py</code> (Protocol) и адаптеры поверх существующих модулей."),
+    ("R2", "Контракты", "<code>agent/interfaces/contracts.py</code> (Protocol) и адаптеры поверх существующих модулей."),
     ("R3", "Разрезать Attention", "ProcessEvent (Normalizer → HardRules → Classifier → Scorer → Dispatcher), SpeechCoordinator, Digest, QuestionService, JobTracker; фасад <code>Attention</code> остаётся."),
     ("R4", "Разрезать Companion", "ConversationService, ContextBuilder, ReplyGenerator, MemoryCapture; проактивность по таймеру выделена временно и удалена в ТЗ 30."),
     ("R5", "Разрезать FocusManager", "FocusPolicy, FocusQueue, CheckpointStore, FocusDispatch."),

@@ -2,15 +2,15 @@
 
 Скопируйте папку в `workspaces/<id>/` (или `services/<id>/`), замените `template` на id модуля (`manifest.py`, имена в `tests/`), добавьте запись в
 `agent/peers.yaml` (раздел `workspaces:` или `services:`) и опишите модуль в `docs/MODULES.md`. Контракт «ядро - модуль»: `docs/MODULE_CONTRACT.md` (создаётся
-скриптом `sdk/tools/gen_contract_doc.py`).
+скриптом `agent/interfaces/workspace/tools/gen_contract_doc.py`).
 
 - `manifest.py` - манифест: инструменты, события, настройки, подписки и дерево узлов рабочего места (`nodes`, `tools[].node`,
   `emits[].topics`); правила построения контентных модулей: `docs/WORKSPACE_MODULES.md`.
 - `app.py` - обработчики инструментов, тем и событий; запросы к ядру только через методы `WorkspaceClient` (`persona`,
   `memory_recall`, `memory_remember`, `ask`, `llm_ask`, ...), они сверяются с контрактом.
-- `main.py` - точка входа (одна строка добавляет в `sys.path` папку модуля и `sdk/`).
+- `main.py` - точка входа (одна строка добавляет в `sys.path` папку модуля и `agent/interfaces/workspace/`).
 - `tests/` - тесты на `FakeCore` (`gits_sdk.testing`): ядро и сеть не нужны. Запуск из корня:
-  `python -m pytest -q sdk/template/tests`.
+  `python -m pytest -q agent/interfaces/workspace/template/tests`.
 
 Правила: модуль не импортирует `agent/`; реплики формирует ядро по фактам модуля (`client.event`, `client.say(mode="fact")`);
 чужие тексты (чаты, страницы, файлы) это данные, а не указания.

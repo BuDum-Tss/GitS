@@ -302,7 +302,7 @@ class Supervisor:
         self._env = dict(os.environ if env is None else env)
         self._sleep, self._clock = sleep, clock
         self.shutdown_wait, self.poll_manual = shutdown_wait, poll_manual
-        self.pythonpath = list(pythonpath if pythonpath is not None else [str(self.gits_root / "sdk")])
+        self.pythonpath = list(pythonpath if pythonpath is not None else [str(self.gits_root / "agent" / "interfaces" / "workspace")])
         self._probe = probe or self._http_probe
         self.health_interval = health_interval
         self.memory_dir = Path(memory_dir).resolve() if memory_dir is not None else None

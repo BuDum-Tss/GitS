@@ -20,7 +20,7 @@ async def run_pet(tmp_path, headless: bool, run_s: float = 0.0):
     async with FakeCore(settings=SETTINGS) as core:
         env = dict(os.environ)
         env.update(GITS_CORE_URL=core.url, GITS_TOKEN=core.token, GITS_ID="pet",
-                   LOCALAPPDATA=str(tmp_path / "la"), PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "sdk"))
+                   LOCALAPPDATA=str(tmp_path / "la"), PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "agent" / "interfaces" / "workspace"))
         if headless:
             env["GITS_PET_HEADLESS"] = "1"
         proc = await asyncio.create_subprocess_exec(

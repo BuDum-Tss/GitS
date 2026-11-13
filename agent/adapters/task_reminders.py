@@ -8,7 +8,7 @@ import secrets
 import time
 from typing import Callable
 
-from contracts import TaskRepository
+from interfaces.contracts import TaskRepository
 from domain import tasks as dom
 
 _TO_TASK = {"pending": dom.PENDING, "fired": dom.DONE, "cancelled": dom.CANCELLED}

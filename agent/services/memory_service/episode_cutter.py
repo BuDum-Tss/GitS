@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Callable
 
 import salience
-from contracts import EventSource
+from interfaces.contracts import EventSource
 from services.memory_service import episodes as dom
 
 logger = logging.getLogger("episodes")

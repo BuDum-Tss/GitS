@@ -1,10 +1,10 @@
 """Единый агент поверх подделки `AgentRuntime`: подмешивание сообщения в идущий ход (steer), выбор среды по настройке."""
 import asyncio
 
-import contracts
+from interfaces import contracts
 import settings
 from app import resident
-from contracts import EndEvent, TextEvent
+from interfaces.contracts import EndEvent, TextEvent
 from test_resident import FakeHost
 
 

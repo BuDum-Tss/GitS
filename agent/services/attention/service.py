@@ -21,7 +21,7 @@
 факту (`companion.speak_about`); код передаёт только факты.
 
 Интерфейс для шины и запросов ядра прежний (ТЗ 02 §9.4): `submit`, `submit_speech`, `submit_question`, `on_job_update`.
-Люди и память читаются через контракты `PeopleDirectory` и `MemoryWriter` (`contracts.py`).
+Люди и память читаются через контракты `PeopleDirectory` и `MemoryWriter` (`interfaces/contracts.py`).
 """
 import asyncio
 import logging

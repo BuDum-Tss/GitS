@@ -12,7 +12,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 # SDK до установки пакета gits-sdk; свои файлы модуля первыми
-sys.path[:0] = [str(HERE), str(HERE.parent.parent / "sdk")]
+sys.path[:0] = [str(HERE), str(HERE.parent.parent / "agent" / "interfaces" / "workspace")]
 
 import os  # noqa: E402
 

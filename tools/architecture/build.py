@@ -84,7 +84,7 @@ def render_docs_html() -> str:
   adapters/    peer_hub.py dashboard/ llm_lmstudio.py classifier_gliner.py graph_graphiti.py stores_json.py
                event_log_sqlite.py speech_voice_module.py reminders_sqlite.py supervisor.py
   core_service.py   только сборка
-sdk/gits_sdk/contract/   публичные контракты для модулей (ТЗ 31)</pre>
+agent/interfaces/workspace/gits_sdk/contract/   публичные контракты для модулей (ТЗ 31)</pre>
 <h2 class="text-xl font-semibold mt-8 mb-2">План рефакторинга без остановки проекта</h2>
 <p class="opacity-70 mb-2">Каждый шаг отдельной веткой, поведение не меняется, тесты зелёные.</p>{phases}
 </div>

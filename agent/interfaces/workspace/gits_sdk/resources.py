@@ -4,7 +4,7 @@
 `core/` ядра и по папке на модуль (`voice/`, `pet/`, `telegram/`, `desktop/`, `rimworld/`, `montage/`). Модуль берёт ресурсы только
 из своей папки: `module_dir("pet")`. Папка персонажа находится по `id` в её `core/character.yaml`, имя папки произвольное.
 
-Корень ресурсов: переменная `GITS_RESOURCES_DIR` или `resources/` рядом с `sdk/` (репозиторий GitS). Персонаж по умолчанию:
+Корень ресурсов: переменная `GITS_RESOURCES_DIR` или `resources/` рядом с `agent/interfaces/workspace/` (репозиторий GitS). Персонаж по умолчанию:
 `GITS_CHARACTER_ID` (его выставляет супервизор при запуске модуля), иначе `DEFAULT_ID`. Модуль не импортирует `agent/`, поэтому
 `id` читается из core/character.yaml простым разбором строки без yaml.
 
@@ -24,7 +24,7 @@ _ID_LINE = re.compile(r"^id:\s*['\"]?([A-Za-z0-9_]+)['\"]?\s*(?:#.*)?$", re.M)
 
 def resources_root() -> Path:
     env = os.environ.get("GITS_RESOURCES_DIR")
-    return Path(env) if env else Path(__file__).resolve().parents[2] / "resources"
+    return Path(env) if env else Path(__file__).resolve().parents[4] / "resources"
 
 
 def character_home() -> Path | None:

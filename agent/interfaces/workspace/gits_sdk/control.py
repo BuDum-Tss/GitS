@@ -16,7 +16,7 @@ Workspace с `ownership: shared` (montage, rimworld, minecraft, desktop) зан�
     lease = await leases.acquire(character="glados", core_url=core_url, token=core_token, purpose="play")
     await leases.release(lease["lease_id"])
 
-Описание форматов: `sdk/gits_sdk/contract/control.py` и раздел «Интерфейс управления» в `docs/MODULE_CONTRACT.md`.
+Описание форматов: `agent/interfaces/workspace/gits_sdk/contract/control.py` и раздел «Интерфейс управления» в `docs/MODULE_CONTRACT.md`.
 У аренды нет срока и продления: она держится до `release` или до обрыва WebSocket участника (`connection_lost`). Если после `release`
 у workspace есть незаконченные задачи, аренда остаётся в `releasing` (`on_release` вернул `False`) до `finish_release`.
 Для участников без аренды (`ownership: owned`, service) сервер отвечает на `GET /status` (state `free` или `offline`, счётчик

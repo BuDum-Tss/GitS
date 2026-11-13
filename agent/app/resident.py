@@ -16,7 +16,7 @@ import time
 import claude_quota
 import latency_trace
 import prompts
-from contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
+from interfaces.contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
 from domain.stickers import first_sticker, plain as strip_tags
 
 logger = logging.getLogger("resident")

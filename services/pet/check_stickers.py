@@ -7,7 +7,7 @@ NAMES = ['idle','thinking','angry','question',
          'threat','happy','sitting',
          'sad','scared','proud','surprised']
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'sdk'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'agent', 'interfaces', 'workspace'))
 from gits_sdk import resources  # noqa: E402
 
 DIR = str(resources.module_dir('pet') / 'stickers')

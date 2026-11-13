@@ -30,7 +30,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 GITS = HERE.parent.parent
-sys.path.insert(0, str(GITS / "sdk"))
+sys.path.insert(0, str(GITS / "agent" / "interfaces" / "workspace"))
 
 from gits_sdk import resources  # noqa: E402
 
@@ -70,7 +70,7 @@ def pcm_frames(audio: str) -> list[bytes]:
 # ── режим module ─────────────────────────────────────────────────────────────
 
 async def measure_module(n: int, audio: str | None, skip_utter: bool) -> dict:
-    sys.path[:0] = [str(HERE), str(GITS / "agent"), str(GITS / "sdk")]
+    sys.path[:0] = [str(HERE), str(GITS / "agent"), str(GITS / "agent" / "interfaces" / "workspace")]
     import tts_engine
     from gits_sdk import ServiceClient
     from gits_sdk.testing import FakeCore

@@ -18,7 +18,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     HOME=/home/gits \
-    PYTHONPATH=/app/sdk \
+    PYTHONPATH=/app/agent/interfaces/workspace \
     CHARACTER_HOME=/data \
     MEMORY_DIR=/work \
     MONTAGE_JOBS_DIR=/work/jobs \
@@ -56,7 +56,7 @@ RUN npm ci --no-audit --no-fund && npm cache clean --force \
     && npx remotion browser ensure
 
 WORKDIR /app
-COPY --chown=gits:gits sdk sdk
+COPY --chown=gits:gits agent/interfaces/workspace agent/interfaces/workspace
 COPY --from=agent-runtime --chown=gits:gits /app/services/agent-runtime/node_modules services/agent-runtime/node_modules
 COPY --chown=gits:gits services/agent-runtime services/agent-runtime
 COPY --chown=gits:gits workspaces/montage workspaces/montage

@@ -22,7 +22,7 @@ OK = textwrap.dedent('''
     print("id=" + os.environ["GITS_ID"], "url=" + os.environ["GITS_CORE_URL"],
           "token=" + ("yes" if len(os.environ.get("GITS_TOKEN", "")) == 64 else "no"),
           "oldvars=" + ("yes" if os.environ.get("GITS_MODULE_ID") or os.environ.get("GITS_MODULE_TOKEN") else "no"),
-          "unbuffered=" + os.environ.get("PYTHONUNBUFFERED", ""), "sdk=" + str("sdk" in os.environ.get("PYTHONPATH", "")))
+          "unbuffered=" + os.environ.get("PYTHONUNBUFFERED", ""), "sdk=" + str("interfaces" in os.environ.get("PYTHONPATH", "")))
     while not Path("stop.flag").exists():
         time.sleep(0.05)
     child.terminate()
@@ -254,7 +254,7 @@ def test_load_specs_and_defaults(tmp_path):
     assert not specs["c"].autostart and not specs["c"].enabled and specs["c"].restart == "never"
     assert load_specs(tmp_path / "нет.yaml") == []
     echo = {s.id: s for s in load_specs()}["echo"]                        # настоящий agent/peers.yaml
-    assert echo.enabled is False and echo.args == ["-u", "echo_module.py"] and echo.cwd.endswith("sdk/examples")
+    assert echo.enabled is False and echo.args == ["-u", "echo_module.py"] and echo.cwd.endswith("agent/interfaces/workspace/examples")
 
 
 def test_redact_hides_token_like_text():
@@ -348,7 +348,7 @@ async def test_real_echo_module_command_resolves_inside_repo():
     env = sup._process_env("echo")
     assert env["GITS_ID"] == "echo" and env["GITS_TOKEN"] == TOKEN
     assert "GITS_MODULE_ID" not in env and "GITS_MODULE_TOKEN" not in env
-    assert os.path.join(str(supervisor.GITS_ROOT), "sdk") in env["PYTHONPATH"]
+    assert os.path.join(str(supervisor.GITS_ROOT), "agent", "interfaces", "workspace") in env["PYTHONPATH"]
 
 
 @pytest.fixture(autouse=True)

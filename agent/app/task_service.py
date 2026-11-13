@@ -13,7 +13,7 @@ import time
 from dataclasses import replace
 from typing import Any, Callable
 
-from contracts import Planner, TaskRepository
+from interfaces.contracts import Planner, TaskRepository
 from domain import tasks as dom
 
 logger = logging.getLogger("tasks")

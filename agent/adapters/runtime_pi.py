@@ -18,7 +18,7 @@ import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from contracts import EndEvent, RuntimeEvent, TextEvent, ToolEvent, ToolSpec
+from interfaces.contracts import EndEvent, RuntimeEvent, TextEvent, ToolEvent, ToolSpec
 
 logger = logging.getLogger("resident")
 

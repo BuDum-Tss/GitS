@@ -34,7 +34,7 @@ def default_runtime_dir() -> Path:
     env = os.environ.get("GITS_PI_RUNTIME_DIR")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parents[2] / "services" / "agent-runtime"
+    return Path(__file__).resolve().parents[4] / "services" / "agent-runtime"
 
 
 class PiAgentError(RuntimeError):

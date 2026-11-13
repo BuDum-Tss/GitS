@@ -5,7 +5,7 @@
 Полная спецификация протокола, источник правды: [docs/MODULE_CONTRACT.md](MODULE_CONTRACT.md). Схема ядра и
 схема ядра: [docs/architecture-clean.html](architecture-clean.html).
 **Все запросы, сообщения, темы, переменные окружения и ресурсы со всеми полями и кодами ошибок:
-[docs/MODULE_CONTRACT.md](MODULE_CONTRACT.md)** (создаётся из кода скриптом `python sdk/tools/gen_contract_doc.py`, схемы в
+[docs/MODULE_CONTRACT.md](MODULE_CONTRACT.md)** (создаётся из кода скриптом `python agent/interfaces/workspace/tools/gen_contract_doc.py`, схемы в
 `docs/contract/*.json`). Участник шины зависит только от SDK: журнал `client.log(...)`, локальная модель `gits_sdk.host.llm_ask` /
 `llm_json`, типизированные запросы `client.tts`, `persona`, `call_tool`, `claude_usage` и др.; внутренности `agent/` не
 импортируются (тест `test/test_architecture.py`).
@@ -163,8 +163,8 @@ asyncio.run(main())
 ```
 
 Готовый полный пример с задачей (`echo.count`: прогресс, вопрос пользователю на середине, итог) лежит в
-[`sdk/examples/echo_module.py`](../sdk/examples/echo_module.py). Заготовку нового участника шины с тестами на `FakeCore` берите из
-[`sdk/template/`](../sdk/template/README.md).
+[`agent/interfaces/workspace/examples/echo_module.py`](../sdk/examples/echo_module.py). Заготовку нового участника шины с тестами на `FakeCore` берите из
+[`agent/interfaces/workspace/template/`](../sdk/template/README.md).
 
 ## Что умеет клиент
 
@@ -265,7 +265,7 @@ asyncio.run(main())
 Окружение сообщает текущий узел при каждой смене: `await client.state("в Архитекторе", node="architect/zone")`. Ядро по нему:
 скрывает инструменты других узлов, кладёт ответы `context` в контекст агента блоком «Рабочее место» (без вызова модели) и сдвигает
 срочность событий по теме. Окружение сам отклоняет действие вне его узла и называет, какой узел открыть. Начинать новое окружение
-удобно с шаблона `sdk/template/`.
+удобно с шаблона `agent/interfaces/workspace/template/`.
 
 ## Правила
 
@@ -305,7 +305,7 @@ async with FakeCore() as core:
 
 Полезное: `core.events`, `core.messages_of("say")`, `await core.wait_message("job.update", предикат)`,
 `core.job_answer(...)`, `core.drop()` (оборвать соединение), `core.kick()` (закрыть кодом 4000), `core.set_enabled(False)`.
-Примеры использования: `sdk/tests/`.
+Примеры использования: `agent/interfaces/workspace/tests/`.
 
 ## Как ядро запускает участника шины и что с ним делает
 
@@ -361,4 +361,4 @@ async with FakeCore() as core:
 
 ## Проверка
 
-Из корня репозитория `.\check.ps1` запускает ruff и тесты ядра, SDK и участников шины. Только SDK: `python -m pytest -q sdk/tests`; участник шины Telegram: `python -m pytest -q workspaces/telegram/tests`; голос: `python -m pytest -q services/voice/tests`; питомец: `python -m pytest -q services/pet/tests` (тесты каждого участника шины идут отдельным запуском).
+Из корня репозитория `.\check.ps1` запускает ruff и тесты ядра, SDK и участников шины. Только SDK: `python -m pytest -q agent/interfaces/workspace/tests`; участник шины Telegram: `python -m pytest -q workspaces/telegram/tests`; голос: `python -m pytest -q services/voice/tests`; питомец: `python -m pytest -q services/pet/tests` (тесты каждого участника шины идут отдельным запуском).

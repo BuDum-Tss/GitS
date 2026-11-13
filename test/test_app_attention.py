@@ -5,7 +5,7 @@ from test_attention import Rig
 
 from services.attention.core import Item
 from services.attention import Attention, Question
-from contracts import MemoryWriter, PeopleDirectory
+from interfaces.contracts import MemoryWriter, PeopleDirectory
 from domain import dedupe
 
 

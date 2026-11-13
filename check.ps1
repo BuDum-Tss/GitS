@@ -1,16 +1,16 @@
 # Проверка перед коммитом: линтер и тесты.  Запуск: .\check.ps1
 $ErrorActionPreference = "Continue"
 Write-Host "== ruff ==" -ForegroundColor Cyan
-python -m ruff check agent sdk workspaces services
+python -m ruff check agent workspaces services tools test
 $lint = $LASTEXITCODE
 Write-Host "== pytest ==" -ForegroundColor Cyan
 python -m pytest -q
 $tests = $LASTEXITCODE
 Write-Host "== pytest sdk (gits_sdk) ==" -ForegroundColor Cyan
-python -m pytest -q sdk/tests
+python -m pytest -q agent/interfaces/workspace/tests
 $sdktests = $LASTEXITCODE
-Write-Host "== pytest sdk/template (шаблон модуля) ==" -ForegroundColor Cyan
-python -m pytest -q sdk/template/tests
+Write-Host "== pytest agent/interfaces/workspace/template (шаблон модуля) ==" -ForegroundColor Cyan
+python -m pytest -q agent/interfaces/workspace/template/tests
 if ($LASTEXITCODE -ne 0) { $sdktests = $LASTEXITCODE }
 # тесты каждого модуля идут отдельным запуском: у модулей одинаковые имена файлов (app.py, manifest.py, common.py)
 Write-Host "== pytest workspaces/telegram (модуль Telegram) ==" -ForegroundColor Cyan

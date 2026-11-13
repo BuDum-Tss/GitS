@@ -7,7 +7,7 @@ import pytest
 import settings
 import web_search
 import web_tools
-from contracts import EndEvent, TextEvent, ToolEvent
+from interfaces.contracts import EndEvent, TextEvent, ToolEvent
 
 PUBLIC = "93.184.216.34"
 DDG_PAGE = """

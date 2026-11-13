@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Awaitable, Callable
 
 from domain.model_json import parse_step
-from contracts import LanguageModel
+from interfaces.contracts import LanguageModel
 from services.memory_service import episodes as dom
 from domain import impulses
 

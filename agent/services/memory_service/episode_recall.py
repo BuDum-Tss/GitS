@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 from typing import Callable
 
-from contracts import EventSource
+from interfaces.contracts import EventSource
 
 
 def fmt_time(ts: float) -> str:

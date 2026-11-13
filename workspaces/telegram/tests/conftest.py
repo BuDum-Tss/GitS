@@ -6,7 +6,7 @@ import pytest
 
 HERE = Path(__file__).resolve().parent.parent
 GITS = HERE.parent.parent
-for p in (GITS / "agent" / "tests", GITS / "sdk", GITS / "agent", HERE):       # как в main.py модуля: свои файлы первыми
+for p in (GITS / "test", GITS / "agent" / "interfaces" / "workspace", GITS / "agent", HERE):       # как в main.py модуля: свои файлы первыми
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 

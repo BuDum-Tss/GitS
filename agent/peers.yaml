@@ -77,7 +77,7 @@ workspaces:
     title: Пример модуля (для разработчиков)
     description: повторяет текст; проверка протокола модулей
     dev: true            # во вкладке «Модули» виден только при настройке dev_mode
-    cwd: "{GITS}/sdk/examples"
+    cwd: "{GITS}/agent/interfaces/workspace/examples"
     command: "{PYTHON}"
     args: ["-u", "echo_module.py"]
     autostart: true

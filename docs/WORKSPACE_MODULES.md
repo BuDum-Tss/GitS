@@ -58,7 +58,7 @@ workspace», форматы: `docs/MODULE_CONTRACT.md`. Слово «окруж�
 8. **Два агента на одно рабочее место.** Единый агент ядра и игровой агент окружения со своим циклом, промптами, режимами и речью.
    Рабочее место должно быть у одного агента.
 9. **Нет общих правил.** Telegram, RimWorld, будущий Minecraft придумывают структуру и имена каждый сам. Контракт
-   (`sdk/gits_sdk/contract/`) задаёт форму сообщений, но не говорит, как делить инструменты, как называть и как объявлять события.
+   (`agent/interfaces/workspace/gits_sdk/contract/`) задаёт форму сообщений, но не говорит, как делить инструменты, как называть и как объявлять события.
 
 ## 3. Что делают в индустрии
 
@@ -449,7 +449,7 @@ on_error: stop
 
 | Что | Состояние | Где |
 |---|---|---|
-| Поле манифеста `nodes` (путь, title, tab, context, watch), проверка | есть | `sdk/gits_sdk/protocol.py` (`_check_nodes`), тесты `sdk/tests/test_workspace_nodes.py` |
+| Поле манифеста `nodes` (путь, title, tab, context, watch), проверка | есть | `agent/interfaces/workspace/gits_sdk/protocol.py` (`_check_nodes`), тесты `agent/interfaces/workspace/tests/test_workspace_nodes.py` |
 | `tools[].node`: инструмент виден, только пока окружение в этом узле | есть | `Tool.node`, `Registry.tool_visible`, `ModuleRegistry.node` |
 | `state.node`: окружение сообщает узел | есть | `PeerClient.state(..., node=)`, `PeerHub._on_note`, сообщение `state` в контракте |
 | Расширенные события `urgency_unfocused`, `topics`, `follow_up` | есть | `EmitSpec`, `Normalizer.shift_urgency`, `EventPipeline.submit` |
@@ -464,4 +464,4 @@ on_error: stop
 | Игровой агент окружения убран: ходы, планирование, рефлексия, комментатор, `order`, `glados_agent.py` | есть | `workspaces/rimworld/agent/controller.py` остался инфраструктурой (состояние, события ядру, запись, камера, фокус) |
 | Хвосты игрового агента в окружении: политики и режимы (`policy_*`, `game_modes`), правила наблюдения, оценка событий (`appraisal`, `decider`), цели и задачи игры в MCP-сервере | план | чистка следующим проходом |
 | Автономная игра единого агента: рабочий цикл `self.work_tick` раз в `workspace.work_interval_s`, пока агент в среде и свободен (`workspace.autonomous`, настройка `autoplay`) | есть | `app/work_loop.py`, `domain/rules.think_route` |
-| Шаблон окружения (`sdk/template`) с узлами | есть | `sdk/template/` |
+| Шаблон окружения (`agent/interfaces/workspace/template`) с узлами | есть | `agent/interfaces/workspace/template/` |

@@ -52,9 +52,9 @@ def test_domain_imports_nothing_impure():
 
 
 def test_contracts_import_only_the_standard_library():
-    """ТЗ 29, ARC-3 (шаг R2): `agent/contracts.py` это интерфейсы. Импортирует только стандартную библиотеку
+    """ТЗ 29, ARC-3 (шаг R2): `agent/interfaces/contracts.py` это интерфейсы. Импортирует только стандартную библиотеку
     (typing, dataclasses и т. п.) и ничего из ядра, хранилищ, сети и адаптеров."""
-    path = AGENT / "contracts.py"
+    path = AGENT / "interfaces" / "contracts.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     problems = []
     for lineno, name in _imported_names(tree):

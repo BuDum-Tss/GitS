@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-import contracts
+from interfaces import contracts
 from adapters.runtime_pi import PiRuntime
-from contracts import EndEvent, TextEvent, ToolEvent, ToolSpec
+from interfaces.contracts import EndEvent, TextEvent, ToolEvent, ToolSpec
 
 BRIDGE = Path(__file__).with_name("fake_pi_bridge.py")
 

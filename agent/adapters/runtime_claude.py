@@ -13,7 +13,7 @@ from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKCli
 
 import claude_quota
 from claude_cli import _CLI_PATH
-from contracts import EndEvent, RuntimeEvent, TextEvent, ToolEvent, ToolSpec
+from interfaces.contracts import EndEvent, RuntimeEvent, TextEvent, ToolEvent, ToolSpec
 
 logger = logging.getLogger("resident")
 

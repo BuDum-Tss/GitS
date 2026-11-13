@@ -39,5 +39,5 @@ ignore = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["test"]
-# sdk и sdk/examples: пакет gits_sdk и эхо-модуль до установки пакета (pip install -e ./sdk, см. README)
-pythonpath = [".", "agent", "sdk", "sdk/examples"]
+# sdk и agent/interfaces/workspace/examples: пакет gits_sdk и эхо-модуль до установки пакета (pip install -e ./sdk, см. README)
+pythonpath = [".", "agent", "agent/interfaces/workspace", "agent/interfaces/workspace/examples"]
