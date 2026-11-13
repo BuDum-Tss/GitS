@@ -23,11 +23,11 @@ from pathlib import Path
 import character
 import character_memory
 import events_log
-import graph_scope
+from memory_service import scope as graph_scope
 import settings
 import stems as stemlib
 from envcompat import env
-from fact_store import FactStore, iso
+from memory_service.fact_store import FactStore, iso
 from search.embedder import LmStudioEmbedder
 from search.index import HybridIndex, SearchConfig, cosine
 from search.service import HybridSearch

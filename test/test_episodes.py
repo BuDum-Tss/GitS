@@ -10,17 +10,17 @@ import pytest
 import character
 import contracts
 import events_log
-from adapters.episode_store import EpisodeStore
+from memory_service.episode_store import EpisodeStore
 from adapters.event_source import JournalSource
-from adapters.memory import UserMemoryAdapter
-from app.diary import DayWriter
-from app.episode_cutter import EpisodeCutter
-from app.episode_recall import EpisodeRecall
-from app.episode_summary import EpisodeSummarizer
-from app.sleep import SleepRunner
-from app.sleep_scheduler import SleepScheduler
-from domain import episodes as dom
-from episode_service import EpisodeService, summary_event
+from memory_service.adapters import UserMemoryAdapter
+from memory_service.diary import DayWriter
+from memory_service.episode_cutter import EpisodeCutter
+from memory_service.episode_recall import EpisodeRecall
+from memory_service.episode_summary import EpisodeSummarizer
+from memory_service.sleep import SleepRunner
+from memory_service.sleep_scheduler import SleepScheduler
+from memory_service import episodes as dom
+from memory_service.episode_service import EpisodeService, summary_event
 from search import HybridIndex, HybridSearch, SearchConfig
 from search.embedder import HashEmbedder
 
@@ -787,7 +787,7 @@ def test_events_log_after_and_delete_ids():
 
 
 async def test_enrich_gives_module_events_salience_from_hint():
-    from app.episode_cutter import enrich
+    from memory_service.episode_cutter import enrich
     row = {"id": 1, "ts": 1.0, "kind": "module_event", "text": "налёт", "data": {"module": "rimworld", "event_kind": "rimworld.raid",
                                                                               "urgency_hint": 5}}
     assert enrich(row)["data"]["salience"] >= 0.35

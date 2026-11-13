@@ -542,13 +542,22 @@ window.ARCH_DATA = {
    "out": "MemoryRecord, MemoryHit",
    "nodes": [
     {
+     "id": "memsvc",
+     "t": "Сервис памяти (граница)",
+     "tag": "A",
+     "new": true,
+     "do": "папка `memory_service/`: граф, профиль, эпизоды, сон, дневник, «запомни»; остальное ядро берёт из неё только имена `__init__.py` (GraphMemory, UserMemory, EpisodeService, MemoryCapture, адаптеры) и контракты MemoryReader/MemoryWriter",
+     "out": "вызовы сервиса",
+     "now": "memory_service/__init__.py (__all__); граница проверяется test_memory_boundary.py"
+    },
+    {
      "id": "mw",
      "t": "MemoryWriter",
      "tag": "A",
      "new": false,
      "do": "сразу: диалог и журнал; важное (оценка 4-5) в профиль владельца, планы в задачи; в паузе: факты с оценкой важности (Gemma + эмбеддинги); раз в 6 реплик: осмысление; во сне: факты эпизодов в граф со ссылкой на эпизод (ТЗ 27)",
      "out": "MemoryRecord",
-     "now": "app/memory_capture.py: _learn, _consolidate, remember_text + graph_memory.step"
+     "now": "memory_service/capture.py: _learn, _consolidate, remember_text + memory_service.graph.step"
     },
     {
      "id": "mr",
@@ -566,7 +575,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "журнал -> эпизоды: границы без LLM (пауза, фокус, задача, собеседник), пики яркости, окно вокруг пика; episodes.db со статусами и версиями",
      "out": "Episode",
-     "now": "есть (ТЗ 27): domain/episodes.py, app/episode_cutter.py, adapters/episode_store.py"
+     "now": "есть (ТЗ 27): memory_service/episodes.py, memory_service/episode_cutter.py, memory_service/episode_store.py"
     },
     {
      "id": "sleep",
@@ -575,7 +584,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "фоновый режим памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами",
      "out": "episode.summary, дневник",
-     "now": "есть (ТЗ 27): app/sleep.py, app/sleep_scheduler.py, app/episode_summary.py, app/diary.py"
+     "now": "есть (ТЗ 27): memory_service/sleep.py, memory_service/sleep_scheduler.py, memory_service/episode_summary.py, memory_service/diary.py"
     },
     {
      "id": "erecall",
@@ -584,7 +593,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "поиск эпизодов и дневника по смыслу, recall_episode(id) с разворотом до событий, core.memory.episodes",
      "out": "MemoryHit[]",
-     "now": "есть (ТЗ 27): app/episode_recall.py, episode_routes.py"
+     "now": "есть (ТЗ 27): memory_service/episode_recall.py, memory_service/episode_routes.py"
     },
     {
      "id": "elog",
@@ -602,16 +611,16 @@ window.ARCH_DATA = {
      "new": false,
      "do": "JSON: диалог и активность; планы и напоминания это задачи (tasks.db); отношения",
      "out": "репозитории",
-     "now": "user_memory.py, adapters/task_store.py, relationships.py"
+     "now": "memory_service/user.py, adapters/task_store.py, relationships.py"
     },
     {
      "id": "graph",
      "t": "FactGraph (контракт)",
      "tag": "I",
      "new": false,
-     "do": "SQLite graph.db (fact_store.py, поиск через HybridIndex): факты с интервалами валидности; области global и <id>:<область> по профилю (graph_scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
+     "do": "SQLite graph.db (memory_service/fact_store.py, поиск через HybridIndex): факты с интервалами валидности; области global и <id>:<область> по профилю (memory_service.scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
      "out": "контракт графа",
-     "now": "graph_memory.py: 701 строка"
+     "now": "memory_service/graph.py: 701 строка"
     },
     {
      "id": "char",

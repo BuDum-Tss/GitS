@@ -391,7 +391,7 @@ def test_event_of_item_keeps_origin_and_data(tmp_path):
 
 
 async def test_remind_self_tool_sets_a_reminder(tmp_path):
-    from user_memory import UserMemory
+    from memory_service.user import UserMemory
     added = []
 
     class Timer:

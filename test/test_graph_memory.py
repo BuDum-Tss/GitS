@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-import graph_memory as gm
+from memory_service import graph as gm
 import settings
-from graph_memory import Fact, GraphMemory, parse_facts
+from memory_service.graph import Fact, GraphMemory, parse_facts
 
 
 def test_parse_facts_keeps_good_and_drops_bad():

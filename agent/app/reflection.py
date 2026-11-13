@@ -12,7 +12,6 @@
 `CONSOLIDATE_GAP_S`), мелкие забываются. Событие с `data.silent` говорить не может. Модель подставляется снаружи (контракт `LanguageModel`), в тестах это заглушка.
 """
 import asyncio
-import json
 import logging
 import secrets
 import time
@@ -26,6 +25,7 @@ from domain.event import KIND_AFTER_CONVERSATION, Event
 from domain.rules import EPISODE_KINDS
 
 from attention import BATCH_KIND
+from domain.model_json import parse_step  # noqa: F401  (прежнее имя: его импортируют тесты)
 
 logger = logging.getLogger("reflection")
 
@@ -44,20 +44,6 @@ class Intent:
 
     def as_dict(self) -> dict:
         return {"kind": self.kind, "text": self.text, "in_s": self.in_s}
-
-
-def parse_step(raw: str) -> dict | None:
-    """Первый JSON-объект из ответа модели (она может обрамить его пояснением)."""
-    if not raw:
-        return None
-    start, end = raw.find("{"), raw.rfind("}")
-    if start < 0 or end <= start:
-        return None
-    try:
-        data = json.loads(raw[start:end + 1])
-    except ValueError:
-        return None
-    return data if isinstance(data, dict) else None
 
 
 def parse_intents(items: Any) -> list[Intent]:

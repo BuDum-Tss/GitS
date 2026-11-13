@@ -16,14 +16,14 @@ from adapters.approver import ApprovalsModule
 from adapters.classifier_gliner import GlinerClassifier
 from adapters.event_log_sqlite import SqliteEventLog
 from adapters.llm_claude import ClaudeLLM
-from adapters.memory import UserMemoryAdapter
+from memory_service.adapters import UserMemoryAdapter
 from adapters.people import RelationshipsAdapter
 from adapters.runtime_claude import ClaudeRuntime, _sdk_schema
 from adapters.runtime_pi import PiRuntime
 from adapters.settings_provider import SettingsModule
 from attention import Attention
 from companion import Companion
-from graph_memory import GraphMemory
+from memory_service.graph import GraphMemory
 from router import Router
 
 

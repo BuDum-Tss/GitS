@@ -14,8 +14,8 @@ import time
 from datetime import datetime
 from typing import Callable
 
-from app.sleep import SleepRunner, episodes_cfg
-from domain import episodes as dom
+from memory_service.sleep import SleepRunner, episodes_cfg
+from memory_service import episodes as dom
 
 logger = logging.getLogger("episodes")
 

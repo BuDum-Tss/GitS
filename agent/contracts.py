@@ -127,7 +127,7 @@ class PeopleDirectory(Protocol):
 
 @runtime_checkable
 class FactGraph(Protocol):
-    """Граф фактов (SQLite, fact_store.py): поиск, факты о себе, очередь записи, колонисты, состояние."""
+    """Граф фактов (SQLite, memory_service/fact_store.py): поиск, факты о себе, очередь записи, колонисты, состояние."""
 
     def search(self, query: str, limit: int = 6, include_old: bool = False) -> Any: ...
 

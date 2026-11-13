@@ -11,7 +11,7 @@ from pathlib import Path
 
 from aiohttp import web
 
-import episode_routes
+from memory_service import episode_routes
 import events_log
 import settings
 from envcompat import env

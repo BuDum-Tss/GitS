@@ -1,7 +1,7 @@
 """Извлечение фактов для графа памяти идёт через Claude без инструментов (`fast_brain._ask`), а не через локальную Gemma."""
 import asyncio
 
-import graph_memory
+from memory_service import graph as graph_memory
 
 
 def test_extractor_asks_the_fast_model_with_the_schema_and_parses_json_in_text():

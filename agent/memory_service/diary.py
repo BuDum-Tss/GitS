@@ -8,9 +8,9 @@ import asyncio
 import logging
 from typing import Callable
 
-from app.reflection import parse_step
+from domain.model_json import parse_step
 from contracts import LanguageModel
-from domain import episodes as dom
+from memory_service import episodes as dom
 
 logger = logging.getLogger("episodes")
 

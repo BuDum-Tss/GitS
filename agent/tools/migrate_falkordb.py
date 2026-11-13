@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"в графе {len(rows)} связей: " + ", ".join(f"{g} {n}" for g, n in sorted(by_group.items())))
     if args.dry_run:
         return 0
-    from graph_memory import SqliteBackend
+    from memory_service.graph import SqliteBackend
     backend = SqliteBackend(Path(args.memory_dir) / "graph.db")
     counts = asyncio.run(migrate(rows, backend, embed=not args.no_embed))
     print(f"перенесено {counts['imported']}, уже были {counts['skipped']}, векторов {counts['embedded']} -> "

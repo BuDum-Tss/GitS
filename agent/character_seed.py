@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 import character
 import character_memory
-from graph_memory import Fact
+from memory_service import Fact
 
 RELATION = "ПОМНИТ"
 
@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print(f"{char.id}: записей в memories.yaml: {len(items)}, файл в порядке")
         return 0
-    from graph_memory import SqliteBackend
+    from memory_service import SqliteBackend
     counts = asyncio.run(seed(char, SqliteBackend(Path(args.memory_dir) / "graph.db")))
     print(f"{char.id}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
     return 0

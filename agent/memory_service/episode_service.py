@@ -1,7 +1,7 @@
 """Сборка эпизодов и режима сна (ТЗ 27): хранилище `episodes.db`, нарезка, резюме, конвейер сна, планировщик, чтение.
 
-Корень сборки только соединяет готовые части (как `impulse_service`): логика лежит в `domain/episodes.py` и `app/episode_*.py`,
-`app/sleep*.py`, `app/diary.py`. Хранилище и поиск у каждого персонажа свои (папка памяти персонажа, ТЗ 05); при переключении
+Корень сборки только соединяет готовые части (как `impulse_service`): логика лежит в `memory_service/episodes.py` и `app/episode_*.py`,
+`app/sleep*.py`, `memory_service/diary.py`. Хранилище и поиск у каждого персонажа свои (папка памяти персонажа, ТЗ 05); при переключении
 персонажа части создаются заново для его папки, а нарезка нового персонажа начинается с текущего конца журнала (чужую историю
 он не нарезает).
 Событие `episode.summary` уходит во внимание как событие модуля `memory` и по правилу ТЗ 30 попадает в маршрут think.
@@ -12,15 +12,15 @@ from types import SimpleNamespace
 
 import character
 import prompts
-from adapters.episode_store import FILE, EpisodeStore
+from memory_service.episode_store import FILE, EpisodeStore
 from adapters.event_source import JournalSource
-from app.diary import DayWriter
-from app.episode_cutter import EpisodeCutter
-from app.episode_recall import EpisodeRecall
-from app.episode_summary import EpisodeSummarizer
-from app.sleep import SleepRunner
-from app.sleep_scheduler import SleepScheduler
-from domain import episodes as dom
+from memory_service.diary import DayWriter
+from memory_service.episode_cutter import EpisodeCutter
+from memory_service.episode_recall import EpisodeRecall
+from memory_service.episode_summary import EpisodeSummarizer
+from memory_service.sleep import SleepRunner
+from memory_service.sleep_scheduler import SleepScheduler
+from memory_service import episodes as dom
 from search import HybridIndex, HybridSearch, SearchConfig
 from search.embedder import LmStudioEmbedder
 

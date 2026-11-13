@@ -32,7 +32,7 @@ import decide
 from adapters.approver import ApprovalsModule
 from adapters.classifier_gliner import GlinerClassifier
 from adapters.event_log_sqlite import SqliteEventLog
-from adapters.memory import writer_for_companion
+from memory_service import writer_for_companion
 from adapters.people import people_for_companion
 from adapters.settings_provider import SettingsModule
 from attention.announce import Announcer, is_announce_event

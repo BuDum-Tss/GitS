@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 
-from app.memory_capture import SPEAKER_TAG
+from memory_service import SPEAKER_TAG
 
 logger = logging.getLogger("companion")
 

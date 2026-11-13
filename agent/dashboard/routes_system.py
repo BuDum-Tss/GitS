@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 import character
-import episode_routes
+from memory_service import episode_routes
 import events_log
 import flow_spec
 import flow_trace

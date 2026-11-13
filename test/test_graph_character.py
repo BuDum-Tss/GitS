@@ -10,7 +10,7 @@ import character
 import character_memory
 import character_seed
 import events_log
-from graph_memory import Fact, GraphMemory
+from memory_service.graph import Fact, GraphMemory
 
 REAL_CHARACTERS = Path(__file__).resolve().parents[1] / "resources"
 

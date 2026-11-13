@@ -7,11 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.memory import UserMemoryAdapter
+from memory_service.adapters import UserMemoryAdapter
 from domain import plan_due
-from fact_store import FactStore
-from graph_memory import GraphMemory
-from memory_migration import BACKUP, FILE, migrate
+from memory_service.fact_store import FactStore
+from memory_service.graph import GraphMemory
+from memory_service.migration import BACKUP, FILE, migrate
 
 NOW = 1_800_000_000.0
 

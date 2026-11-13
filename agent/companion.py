@@ -33,17 +33,17 @@ import reply_trace
 from adapters.approver import ApprovalsModule
 from adapters.event_log_sqlite import SqliteEventLog
 from adapters.llm_claude import ClaudeLLM
-from adapters.memory import UserMemoryAdapter
+from memory_service import UserMemoryAdapter
 from adapters.people import RelationshipsAdapter
 from adapters.settings_provider import SettingsModule
 from app.context_builder import ContextBuilder
 from app.conversation_service import ConversationService, _sender_ctx  # noqa: F401  (_sender_ctx: прежнее имя)
-from app.memory_capture import MemoryCapture
+from memory_service import MemoryCapture
 from app.reply_generator import ReplyGenerator
 from app.resident import ResidentAgent
 from conversation_io import UserInput, current_channel
 from speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
-from user_memory import UserMemory
+from memory_service import UserMemory
 
 logger = logging.getLogger("companion")
 IDLE_CONSOLIDATE_S = 8 * 60 + 5
