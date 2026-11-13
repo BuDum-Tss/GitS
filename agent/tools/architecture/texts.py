@@ -5,7 +5,7 @@ ENT = [
     ("Decision", "Приоритет 0–100, уровень D0–D4, маршруты (say, chat, task, focus, think, digest, ignore), причина и уверенность.", "поля <code>Item</code> и журнал; отдельной сущности нет"),
     ("Impulse (self.*)", "Внутренний стимул: срок напоминания, которое агент назначил себе, или мысль, что-то напомнившая. Становится обычным Event и проходит тот же конвейер.", "нет"),
     ("Thought / Intent", "Thought: запись внутреннего диалога (не озвучивается). Intent: вывод размышления: сказать, сделать, напомнить себе, записать, ничего.", "нет"),
-    ("SpeechCandidate / Utterance", "Что и с каким приоритетом хочет сказать агент; очередь выбирает момент, канал доставляет.", "<code>speech_queue.SpeechCandidate</code>"),
+    ("SpeechCandidate / Utterance", "Что и с каким приоритетом хочет сказать агент; очередь выбирает момент, канал доставляет.", "<code>attention.speech_queue.SpeechCandidate</code>"),
     ("Plan / ToolCall / ToolResult", "Шаги из инструментов, вызов инструмента, результат или код ошибки.", "словари в <code>router.py</code>"),
     ("Tool", "Инструмент: имя, схема параметров, риск, видимость по профилю, исполнитель.", "<code>environments/base.Tool</code>"),
     ("Slot / FocusDecision / Checkpoint", "Единственный слот фокуса, очередь событий, состояние прерванной задачи.", "<code>focus.py</code>"),
@@ -23,7 +23,7 @@ SMELLS = [
     ("ContextBuilder: бюджет есть, поиск ещё два", "<code>app/context_builder.py</code>: бюджет токенов на роль и режимы push/pull есть (настройка <code>context</code>), по умолчанию прежняя склейка; общий гибридный поиск <code>search/</code> готов, но чтение памяти ещё идёт двумя поисками.", "подключить search/ к MemoryReader"),
 ]
 MAP = [
-    ("attention.py (1108)", "Normalizer, PeopleDirectory, HardRules, PriorityScorer, Dispatcher, Digest, JobTracker (часть), вопросы"),
+    ("attention/service.py (1108)", "Normalizer, PeopleDirectory, HardRules, PriorityScorer, Dispatcher, Digest, JobTracker (часть), вопросы"),
     ("companion.py (666)", "ConversationService, ContextBuilder, ReplyGenerator, MemoryWriter (capture, consolidate); проактивность по таймеру удалена (ТЗ 30)"),
     ("focus.py (1061)", "FocusPolicy (чистая), FocusManager (очередь и переходы), CheckpointStore"),
     ("router.py (225) + approvals.py (301)", "Planner, RiskPolicy, Approver, Executor"),
@@ -31,7 +31,7 @@ MAP = [
     ("peer_hub.py + peer_outbound.py", "PeerHub: входящие, исходящие в <code>PeerHub.outbound</code>, без импорта домена"),
     ("dashboard/", "HTTP-адаптер: роутеры <code>routes_*.py</code> и презентеры <code>presenters.py</code>"),
     ("graph_memory.py, user_memory.py, adapters/memory.py", "MemoryWriter/MemoryReader + репозитории"),
-    ("speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
+    ("attention.attention/speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
     ("events_log.py, settings.py, character.py", "контракты EventLog, SettingsProvider, CharacterRepo"),
     ("нет", "ReminderStore, ImpulseTimer, ReflectionService, журнал мыслей (ТЗ 30)"),
 ]

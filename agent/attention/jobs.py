@@ -3,7 +3,7 @@ import secrets
 
 import tool_trace
 
-from .attention_core import TEXT_MAX, AttentionContext, Item
+from .core import TEXT_MAX, AttentionContext, Item
 from .dispatcher import Dispatcher
 from .items import ItemStore
 

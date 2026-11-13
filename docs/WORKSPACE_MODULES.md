@@ -455,7 +455,7 @@ on_error: stop
 | Расширенные события `urgency_unfocused`, `topics`, `follow_up` | есть | `EmitSpec`, `Normalizer.shift_urgency`, `EventPipeline.submit` |
 | Сдвиг срочности по теме узла (`watch`), критичное не ниже 4 | есть | `Normalizer.shift_urgency`, `AttentionContext.node_watch` |
 | Панель узла в контексте агента (`nodes[].context`) | есть | `app/node_panel.py` (`NodePanel`), блок «Рабочее место» в `ContextBuilder`, `ResidentAgent._refresh_node` |
-| Вес записей входящей очереди по узлу и теме | план | `app/digest.py` |
+| Вес записей входящей очереди по узлу и теме | план | `attention/digest.py` |
 | `subscribe` и `coalesce` в объявлении событий, таблица подписок ядра | план | раздел 5 |
 | Инструмент агента `watch` (ожидание события с условием) | план | `attention.*` |
 | Навыки и избранное, статистика использования | план | раздел 11 |

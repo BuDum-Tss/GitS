@@ -156,7 +156,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "нормализация, дедупликация за 60 с, склейка повторов, TTL",
      "out": "Event",
-     "now": "выделен (ТЗ 29, R3): app/normalizer.py, app/items.py (хранилище и склейка), domain/dedupe.py"
+     "now": "выделен (ТЗ 29, R3): attention/normalizer.py, attention/items.py (хранилище и склейка), domain/dedupe.py"
     },
     {
      "id": "people",
@@ -185,7 +185,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»",
      "out": "RuleResult",
-     "now": "выделен (R3): app/process_event.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py; жёсткие правила обращений владельца (ТЗ 25): routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
+     "now": "выделен (R3): attention/pipeline.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в domain/rules.py; жёсткие правила обращений владельца (ТЗ 25): routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
     },
     {
      "id": "cls",
@@ -194,7 +194,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "намерение обращения владельца (chat, action, stop...) до маршрутизатора; события участников шины не классифицирует; реализация: служба GLiNER :8768, тайм-аут 2,5 с",
      "out": "InputClass",
-     "now": "decide.py + services/decider; в Attention его зовёт app/input_classifier.py; без сервиса обращение идёт по правилам"
+     "now": "decide.py + services/decider; в Attention его зовёт attention/input_classifier.py; без сервиса обращение идёт по правилам"
     },
     {
      "id": "disp",
@@ -203,7 +203,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "решение по срочности участника шины: 0 выбросить (D0); ниже 4 во входящую очередь (D1); 4 сказать (D3); 5 сказать и поставить реакцию (D4). «Не отвлекать» и «пользователь отошёл» уводят в очередь; обращение к ней поднимает до 4",
      "out": "Decision",
-     "now": "app/dispatcher.py (finish, act), domain/scoring.py (decide: чистая функция), app/decision_log.py; Normalizer.assign_urgency ставит срочность по подсказке участника шины; правила boost/only меняют её (RuleStore.stance)"
+     "now": "attention/dispatcher.py (finish, act), domain/scoring.py (decide: чистая функция), attention/decision_log.py; Normalizer.assign_urgency ставит срочность по подсказке участника шины; правила boost/only меняют её (RuleStore.stance)"
     },
     {
      "id": "routes",
@@ -362,7 +362,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "долгие задачи: прогресс, вопросы, итог; Модуль кода (Agent SDK)",
      "out": "JobState",
-     "now": "выделен (R3) для внимания: app/jobs.py (JobTracker); peer_registry и desktop.assistant_agent как раньше"
+     "now": "выделен (R3) для внимания: attention/jobs.py (JobTracker); peer_registry и desktop.assistant_agent как раньше"
     }
    ]
   },
@@ -483,7 +483,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "приоритеты, условия «не перебиваю», интервалы, прерывание, TTL; чистую политику выбора выделить в домен позже",
      "out": "Utterance",
-     "now": "speech_queue.py: 296 строк, асинхронный координатор (asyncio-задачи), в домен целиком не переносится"
+     "now": "attention.attention/speech_queue.py: 296 строк, асинхронный координатор (asyncio-задачи), в домен целиком не переносится"
     },
     {
      "id": "digest",
@@ -492,7 +492,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "одна входящая очередь на всех участников шины: события срочности ниже 4 копятся с весом срочность × новизна (редкий вид весит больше) × среда (окружение текущей среды ×2, чужие ×0,5; полная очередь теряет самое лёгкое, а не самое старое); когда есть что-то заметное (2+) или много мелочи (в пачку идут 10 самых весомых), модель не занята, нет разговора, «не отвлекать» выключено и прошла минута, накопившееся уходит размышлению одним событием inbox.batch",
      "out": "inbox.batch",
-     "now": "app/inbox.py (Inbox.tick из цикла внимания, Inbox.blocker: почему пачка ждёт), app/digest.py (история исходов события: ждёт, в контексте, сказано, выброшено, вытеснено; peek даёт самые весомые ждущие события в контекст ответа); вкладка «Состояние» показывает это через GET /api/buffer; настройка attention.inbox.min_interval_s; промпт inbox в prompt.yaml; пачка недоверенная: только сказать или запомнить"
+     "now": "attention/inbox.py (Inbox.tick из цикла внимания, Inbox.blocker: почему пачка ждёт), attention/digest.py (история исходов события: ждёт, в контексте, сказано, выброшено, вытеснено; peek даёт самые весомые ждущие события в контекст ответа); вкладка «Состояние» показывает это через GET /api/buffer; настройка attention.inbox.min_interval_s; промпт inbox в prompt.yaml; пачка недоверенная: только сказать или запомнить"
     },
     {
      "id": "out",

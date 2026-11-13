@@ -6,7 +6,7 @@
 """
 import secrets
 
-from .attention_core import (
+from .core import (
     CONVERSATION_FOCUS_P,
     CONVERSATION_IDLE_S,
     FOCUS_DEPTH,

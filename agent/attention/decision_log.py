@@ -3,7 +3,7 @@ import journal
 import routes
 import salience
 
-from .attention_core import TEXT_LOG, AttentionContext, Item
+from .core import TEXT_LOG, AttentionContext, Item
 
 
 class DecisionLog:

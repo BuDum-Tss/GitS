@@ -9,7 +9,7 @@ import peer_registry
 from attention import Attention
 from environments.registry import Registry
 from gits_sdk import protocol as P
-from speech_queue import ANNOUNCE_P, SpeechCandidate
+from attention.speech_queue import ANNOUNCE_P, SpeechCandidate
 
 
 @pytest.fixture

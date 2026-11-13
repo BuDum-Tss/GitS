@@ -188,7 +188,7 @@ def test_important_event_interrupts_current_work_and_is_handled_first(monkeypatc
 
 
 def test_dispatcher_hands_important_module_event_to_agent():
-    from app.dispatcher import Dispatcher
+    from attention.dispatcher import Dispatcher
     got = []
     ctx = type("C", (), {"on_alert": lambda self, item: got.append(item) or True})()
     d = Dispatcher.__new__(Dispatcher)

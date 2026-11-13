@@ -15,7 +15,7 @@ import character
 import events_log
 import memory_migration
 import prompts
-from attention_rules import FILE_NAME as RULES_FILE
+from attention.rules import FILE_NAME as RULES_FILE
 
 log = logging.getLogger("character_switch")
 

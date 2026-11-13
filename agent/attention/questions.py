@@ -4,7 +4,7 @@ from typing import Any
 
 from conversation_io import Channel, current_channel
 
-from .attention_core import AttentionContext, Question, clamp
+from .core import AttentionContext, Question, clamp
 from .focus_stack import FocusStack
 from .speech_coordinator import SpeechCoordinator
 

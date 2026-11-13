@@ -5,7 +5,7 @@ import flow_trace
 import routes
 from domain import rules, scoring
 
-from .attention_core import TEXT_MAX, AttentionContext, Item
+from .core import TEXT_MAX, AttentionContext, Item
 from .decision_log import DecisionLog
 from .digest import Digest
 from .focus_stack import FocusStack

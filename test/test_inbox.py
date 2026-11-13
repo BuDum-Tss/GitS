@@ -1,4 +1,4 @@
-"""Входящая очередь (app/inbox.py): события срочности ниже 4 копятся и уходят размышлению одной пачкой."""
+"""Входящая очередь (attention/inbox.py): события срочности ниже 4 копятся и уходят размышлению одной пачкой."""
 import pytest
 from test_attention import Rig
 from test_impulses import Spy

@@ -19,7 +19,7 @@ from typing import Callable
 logger = logging.getLogger("attention.rules")
 
 EFFECTS = ("mute", "boost", "only", "normal")
-FILE_NAME = "attention_rules.json"
+FILE_NAME = "attention.rules.json"
 
 
 @dataclass

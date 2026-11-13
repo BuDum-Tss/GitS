@@ -12,7 +12,7 @@
 from collections import Counter, deque
 from typing import Callable
 
-from .attention_core import DIGEST_MAX, AttentionContext, Item
+from .core import DIGEST_MAX, AttentionContext, Item
 
 ENV_BOOST, ENV_PENALTY = 2.0, 0.5
 NO_MODULE_ENVS = ("assistant", "sleep")          # эти среды не принадлежат модулю: все модули равны

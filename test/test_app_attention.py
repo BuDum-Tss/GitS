@@ -3,7 +3,7 @@
 import pytest
 from test_attention import Rig
 
-from app.attention_core import Item
+from attention.core import Item
 from attention import Attention, Question
 from contracts import MemoryWriter, PeopleDirectory
 from domain import dedupe

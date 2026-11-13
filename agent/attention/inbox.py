@@ -6,7 +6,7 @@
 не отошёл; очередь речи свободна. Пачка это одно событие `inbox.batch` без отправителя: оно недоверенное, по нему можно
 только сказать или запомнить, но не действовать.
 """
-from .attention_core import AttentionContext, Item
+from .core import AttentionContext, Item
 
 NOTABLE_URGENCY = 2        # события этой срочности и выше сами по себе стоят пачки
 MANY_ITEMS = 8             # столько мелочи тоже стоит пачки

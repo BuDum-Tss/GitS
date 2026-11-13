@@ -12,7 +12,7 @@ import logging
 from domain import scoring
 
 from .announce import Announcer, is_announce_event
-from .attention_core import TEXT_LOG, AttentionContext, Item
+from .core import TEXT_LOG, AttentionContext, Item
 from .decision_log import DecisionLog
 from .dispatcher import Dispatcher
 from .items import ItemStore

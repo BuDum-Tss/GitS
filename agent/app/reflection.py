@@ -25,7 +25,7 @@ from domain import thoughts as thought_dom
 from domain.event import KIND_AFTER_CONVERSATION, Event
 from domain.rules import EPISODE_KINDS
 
-from .inbox import BATCH_KIND
+from attention.inbox import BATCH_KIND
 
 logger = logging.getLogger("reflection")
 

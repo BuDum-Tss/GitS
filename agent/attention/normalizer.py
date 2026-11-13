@@ -5,7 +5,7 @@ import secrets
 import latency_trace
 from domain.event import ORIGIN_EXTERNAL, ORIGIN_SELF, SELF_MODULE
 
-from .attention_core import SPEECH_DEFAULT_URGENCY, TEXT_MAX, AttentionContext, Item
+from .core import SPEECH_DEFAULT_URGENCY, TEXT_MAX, AttentionContext, Item
 
 logger = logging.getLogger("attention")
 

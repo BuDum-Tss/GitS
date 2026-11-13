@@ -10,7 +10,7 @@ from test_companion_split import make as make_companion
 
 from adapters.impulse_store import JsonReminders, JsonThoughts
 from app.impulse_timer import ImpulseTimer
-from app.items import event_of
+from attention.items import event_of
 from app.reflection import Intent, ReflectionService, parse_intents, parse_step
 from contracts import ReminderRepository, ThoughtJournal
 from domain import impulses, rules

@@ -5,7 +5,7 @@
 from domain import dedupe
 from domain.event import Event
 
-from .attention_core import TEXT_LOG, AttentionContext, Item
+from .core import TEXT_LOG, AttentionContext, Item
 
 
 def event_fact(ctx: AttentionContext, item: Item) -> str:

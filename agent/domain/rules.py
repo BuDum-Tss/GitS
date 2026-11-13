@@ -28,7 +28,7 @@ EPISODE_KINDS = ("episode.summary", "episode.ended")
 
 def think_route(*, origin: str, kind: str, **_) -> bool:
     """Маршрут `think` (ТЗ 30, IMP-4, IMP-10): напоминание себе, итог разговора, итог эпизода. Остальные события копятся во
-    входящей очереди и уходят размышлению пачкой (`app/inbox.py`). Мысль сама размышление не запускает (нет петли)."""
+    входящей очереди и уходят размышлению пачкой (`attention/inbox.py`). Мысль сама размышление не запускает (нет петли)."""
     if kind == "self.thought":
         return False
     if origin == "self":

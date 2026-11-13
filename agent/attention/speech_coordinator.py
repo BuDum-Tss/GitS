@@ -5,9 +5,9 @@
 """
 import latency_trace
 from conversation_io import current_channel
-from speech_queue import SpeechCandidate, SpeechQueue
+from attention.speech_queue import SpeechCandidate, SpeechQueue
 
-from .attention_core import (
+from .core import (
     CONVERSATION_P,
     PROACTIVE_P,
     QUESTION_ANNOUNCE_P,

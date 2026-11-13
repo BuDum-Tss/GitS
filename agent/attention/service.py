@@ -4,17 +4,17 @@
 
 Каждое событие модуля, каждая речь модуля, вопрос, задача и собственная проактивная реплика проходят здесь:
 
-  1. правила до классификатора (ATT-7, `app/process_event.py`): R1 обращение владельца -> разговор; R2 ответ на вопрос в том же
+  1. правила до классификатора (ATT-7, `attention/pipeline.py`): R1 обращение владельца -> разговор; R2 ответ на вопрос в том же
      канале; R3 временное правило mute -> в сводку; R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
   2. срочность 0-5 (ATT-8, `app/event_classifier.py`): подсказка модуля и категория от классификатора (`decide.py`);
   3. приоритет 0-100 = срочность * 20 * вес профиля * вес отправителя * вес правил * вес состояния пользователя * свежесть
-     (ATT-9, `app/scorer.py`, `domain/scoring.py`) и решение D0-D4 по порогам (ATT-10, `app/dispatcher.py`);
-  4. очередь речи (`speech_queue.py`, `app/speech_coordinator.py`) и стек фокуса (`app/focus_stack.py`): ATT-13-ATT-23;
-  5. временные правила, сводка (`app/digest.py`), быстрый путь «замолчи», классификация обращений пользователя (ATT-24-ATT-28);
-  6. объявления о долгих запусках (`app/announce.py`, AN-1-AN-3): события `<модуль>.launch`, речь и `/api/notify` с пометкой
+     (ATT-9, `app/scorer.py`, `domain/scoring.py`) и решение D0-D4 по порогам (ATT-10, `attention/dispatcher.py`);
+  4. очередь речи (`attention/speech_queue.py`, `attention/speech_coordinator.py`) и стек фокуса (`attention/focus_stack.py`): ATT-13-ATT-23;
+  5. временные правила, сводка (`attention/digest.py`), быстрый путь «замолчи», классификация обращений пользователя (ATT-24-ATT-28);
+  6. объявления о долгих запусках (`attention/announce.py`, AN-1-AN-3): события `<модуль>.launch`, речь и `/api/notify` с пометкой
      `announce`, инструменты с `announce: true` идут мимо формулы важности отдельным видом `announce` (приоритет 75, срок 180 с,
      без `min_gap`): каждое объявление должно прозвучать;
-  7. вопросы (`app/questions.py`) и ход задач модулей (`app/jobs.py`).
+  7. вопросы (`attention/questions.py`) и ход задач модулей (`attention/jobs.py`).
 
 Классификатор только подсказывает: без него (сервис не запущен, настройка выключена, ошибка) всё работает по подсказкам
 модуля. Он вызывается асинхронно с коротким тайм-аутом и не блокирует цикл событий (ATT-32). Реплики формирует модель по
@@ -35,8 +35,8 @@ from adapters.event_log_sqlite import SqliteEventLog
 from adapters.memory import writer_for_companion
 from adapters.people import people_for_companion
 from adapters.settings_provider import SettingsModule
-from app.announce import Announcer, is_announce_event
-from app.attention_core import (  # noqa: F401  (прежние имена модуля: их импортируют ядро, модули и тесты)
+from attention.announce import Announcer, is_announce_event
+from attention.core import (  # noqa: F401  (прежние имена модуля: их импортируют ядро, модули и тесты)
     ANNOUNCE_DEFAULT_URGENCY,
     CONVERSATION_FOCUS_P,
     CONVERSATION_P,
@@ -56,23 +56,23 @@ from app.attention_core import (  # noqa: F401  (прежние имена мо�
     Question,
     clamp,
 )
-from app.decision_log import DecisionLog
-from app.digest import Digest
-from app.dispatcher import Dispatcher
-from app.inbox import Inbox
-from app.input_classifier import InputClassifier
-from app.focus_stack import FocusStack
-from app.items import ItemStore, event_fact, event_of
-from app.jobs import JobTracker
-from app.normalizer import Normalizer
-from app.process_event import EventPipeline, HardRules
-from app.questions import QuestionService
-from app.speech_coordinator import SpeechCoordinator
-from attention_rules import FILE_NAME as RULES_FILE
-from attention_rules import RuleStore
+from attention.decision_log import DecisionLog
+from attention.digest import Digest
+from attention.dispatcher import Dispatcher
+from attention.inbox import Inbox
+from attention.input_classifier import InputClassifier
+from attention.focus_stack import FocusStack
+from attention.items import ItemStore, event_fact, event_of
+from attention.jobs import JobTracker
+from attention.normalizer import Normalizer
+from attention.pipeline import EventPipeline, HardRules
+from attention.questions import QuestionService
+from attention.speech_coordinator import SpeechCoordinator
+from attention.rules import FILE_NAME as RULES_FILE
+from attention.rules import RuleStore
 from domain import rules
 from domain.event import KIND_THOUGHT, SELF_MODULE, Event
-from speech_queue import INTERRUPT_P, SpeechCandidate
+from attention.speech_queue import INTERRUPT_P, SpeechCandidate
 
 import settings
 

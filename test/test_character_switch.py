@@ -91,7 +91,7 @@ async def test_switch_moves_memory_group_setting_and_prompts(world):
     assert settings.load()["character"] == "tester"
     assert ("memory", str(world.mem / "characters" / "tester")) in world.parts["companion"].calls
     assert ("rel", str(world.mem / "characters" / "tester")) in world.parts["rel"].calls
-    assert ("rules", str(world.mem / "characters" / "tester" / "attention_rules.json")) in world.parts["attention"].rules.calls
+    assert ("rules", str(world.mem / "characters" / "tester" / "attention.rules.json")) in world.parts["attention"].rules.calls
     assert ("graph", "tester") in world.parts["graph"].calls
     assert world.log == ["reset"], "очередь речи и стек фокуса сброшены"
     assert "Тестерша" in prompts.persona_card()

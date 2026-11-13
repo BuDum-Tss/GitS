@@ -5,7 +5,7 @@
 """
 import decide
 
-from .attention_core import TEXT_LOG, AttentionContext
+from .core import TEXT_LOG, AttentionContext
 
 
 class InputClassifier:

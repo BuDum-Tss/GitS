@@ -2,9 +2,9 @@
 import secrets
 
 from domain import dedupe
-from speech_queue import ANNOUNCE_P
+from attention.speech_queue import ANNOUNCE_P
 
-from .attention_core import ANNOUNCE_DEFAULT_URGENCY, TEXT_LOG, TEXT_MAX, AttentionContext, Item
+from .core import ANNOUNCE_DEFAULT_URGENCY, TEXT_LOG, TEXT_MAX, AttentionContext, Item
 from .decision_log import DecisionLog
 from .digest import Digest
 from .items import ItemStore
