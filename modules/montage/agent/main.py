@@ -102,9 +102,11 @@ def wire(client: ModuleClient, manager: Manager) -> None:
         await manager.stop()
 
 
-def build(layout: Layout = DEFAULT, *, client: ModuleClient | None = None, runner=None, renderer=None, qa=None):
-    """Собрать модуль: (клиент, менеджер). Параметры позволяют подставить заглушки (тесты, живой прогон против FakeCore)."""
-    client = client or ModuleClient(build_manifest(serve_dirs(layout.jobs)))
+def build(layout: Layout = DEFAULT, *, client: ModuleClient | None = None, runner=None, renderer=None, qa=None,
+          url: str | None = None, token: str | None = None):
+    """Собрать модуль: (клиент, менеджер). Параметры позволяют подставить заглушки (тесты, живой прогон против FakeCore);
+    url и token: адрес и токен ядра (при аренде они приходят в acquire, иначе берутся из окружения)."""
+    client = client or ModuleClient(build_manifest(serve_dirs(layout.jobs)), url=url, token=token)
     core = ClientCore(client)
     store = JobStore(layout.jobs)
     if renderer is None:
@@ -141,6 +143,12 @@ async def run(client: ModuleClient, manager: Manager) -> int:
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s", datefmt="%H:%M:%S")
+    import lease_host
+    if lease_host.enabled():                      # контейнер: сервис ждёт аренды, к ядру хозяина подключается по acquire
+        try:
+            return asyncio.run(lease_host.serve(build, run))
+        except KeyboardInterrupt:
+            return 0
     client, manager = build()
     try:
         return asyncio.run(run(client, manager))

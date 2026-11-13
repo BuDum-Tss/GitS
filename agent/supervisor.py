@@ -79,6 +79,9 @@ class PeerSpec:
     health_url: str = ""
     description: str = ""            # подпись для дашборда: перекрывает описание из манифеста подключившегося модуля
     dev: bool = False                # для разработчиков: вкладки показывают запись только при настройке dev_mode
+    unmanaged: bool = False          # workspace запускает не супервизор (compose: контейнер); `external: true` в peers.yaml
+    control_url: str = ""            # общее пространство с интерфейсом управления: адрес (http://montage:8780), аренда вместо запуска
+    control_token_env: str = "GITS_CONTROL_TOKEN"      # имя переменной окружения с токеном управления (по умолчанию GITS_CONTROL_TOKEN)
     skip_when_env: dict[str, list[str]] = field(default_factory=dict)   # не запускать, если переменная окружения равна одному из значений
 
 
@@ -151,7 +154,21 @@ def _entry(raw: dict, role_hint: str | None, section: str) -> PeerSpec:
             raise ValueError(f"ownership: одно из {list(OWNERSHIPS)}")
     elif ownership is not None:
         raise ValueError("ownership допустим только у workspace")
-    return PeerSpec(id=raw["id"], cwd=str(raw.get("cwd") or "."), command=str(raw["command"]),
+    unmanaged = False
+    control_url = str(raw.get("control_url") or "")
+    if control_url and not control_url.startswith(("http://", "https://")):
+        raise ValueError("control_url: адрес http:// или https://")
+    if role == "workspace" and raw.get("external") is True:
+        unmanaged = True
+        if ownership != "shared":
+            raise ValueError("external: true допустим только у workspace с ownership: shared")
+    if control_url and ownership != "shared":
+        raise ValueError("control_url допустим только у workspace с ownership: shared")
+    if "command" not in raw and not unmanaged:
+        raise KeyError("command")
+    return PeerSpec(id=raw["id"], cwd=str(raw.get("cwd") or "."), command=str(raw.get("command") or ""),
+                    unmanaged=unmanaged, control_url=control_url,
+                    control_token_env=str(raw.get("control_token_env") or "GITS_CONTROL_TOKEN"),
                     args=[str(a) for a in args], autostart=bool(raw.get("autostart", True)),
                     restart=restart, enabled=bool(raw.get("enabled", True)),
                     title=str(raw.get("title") or ""), role=role, ownership=ownership, external=external,
@@ -292,6 +309,9 @@ class Supervisor:
         self.health_interval = health_interval
         self.memory_dir = Path(memory_dir).resolve() if memory_dir is not None else None
         self.state = {s.id: _Proc(s) for s in specs}
+        for m in self.state.values():
+            if m.spec.unmanaged:
+                m.status, m.text = "manual", "запускается отдельно (контейнер)"
 
     @staticmethod
     async def _http_probe(url: str) -> bool:
@@ -384,6 +404,8 @@ class Supervisor:
         return self.logs_dir / f"{module_id}.log"
 
     def should_run(self, module_id: str) -> bool:
+        if getattr(self.specs[module_id], "unmanaged", False):            # контейнер запускает compose, супервизор его не трогает
+            return False
         if os.environ.get("GITS_NO_MODULES") == "1" or self._only_core():     # ТЗ 17, FLOW-1: режим «только ядро», службы ядра (decider) остаются
             spec = self.specs[module_id]
             if not spec.external or os.environ.get("GITS_NO_DECIDER") == "1":
@@ -448,7 +470,7 @@ class Supervisor:
     async def stop(self, module_id: str) -> None:
         """Остановить процесс, запущенный супервизором: shutdown, ожидание 10 с, затем убить дерево."""
         m = self.state.get(module_id)
-        if m is None:
+        if m is None or m.spec.unmanaged:
             return
         m.desired = False
         task = m.task

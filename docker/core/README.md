@@ -19,13 +19,28 @@
 `GITS_DECIDER_URL`, `GITS_LM_URL`, `OBS_WEBSOCKET_URL`, `RIMWORLD_API`.
 
 ## Монтаж (необязательно, профиль `montage`)
-Окружение монтажа (`modules/montage`) работает в отдельном контейнере `gits-<id>-montage` (образ `gits-montage`, `docker/montage/Dockerfile`):
+Монтаж (`modules/montage`) это пространство: целый контейнер `gits-<id>-montage` (образ `gits-montage`, `docker/montage/Dockerfile`):
 Python 3.12, Node 20, ffmpeg/ffprobe, шрифты, chrome-headless-shell для Remotion (скачан при сборке `npx remotion browser ensure`),
-зависимости шаблона (`npm ci`) и среда агента pi. Он сам подключается к ядру по WebSocket `ws://core:8766/ws`
-(`GITS_CORE_URL`, `GITS_ID=montage`, `GITS_TOKEN`; имя `core` даёт сеть compose; шина пускает его по `GITS_HUB_ALLOW`: по умолчанию 172.16.0.0/12, 192.168.0.0/16 и 10.0.0.0/8
-покрывают подсеть compose). Супервизор ядра его не запускает (в `peers.container.yaml` его нет): запускает compose.
+зависимости шаблона (`npm ci`) и среда агента pi. Агент берёт его в аренду и возвращает, как семафор:
 
-Запуск (токен берётся из `.env`, поэтому он первым `--env-file`; без токена ядро создаёт свой, и модуль к нему не подключится):
+- при старте контейнер к ядру НЕ подключается: поднимает интерфейс управления на порту 8780 (только сеть compose, на хост не
+  публикуется) и ждёт: `GET /status` (свободно или занято, кем), `GET /info` (для чего монтаж и когда в него переходить: ядро читает
+  его до аренды), `POST /acquire`, `POST /release`;
+- вход агента в окружение (`workspace.switch`) берёт аренду: ядро отдаёт монтажу адрес шины (`GITS_CORE_PUBLIC_URL` ядра, по
+  умолчанию `ws://<id>-core:8766/ws`) и её токен, монтаж подключается и видит только ресурсы этого персонажа
+  (`/characters/<id>/montage`, `GITS_CHARACTERS_ROOT=/characters`; готовые ролики в его `montage/out`, задачи в `/work/jobs/<id>`);
+- занято другим персонажем: агент получает «занято: кто, с какого времени, цель»;
+- у аренды нет срока и нет продления. Она кончается, когда агент выходит из окружения (`release`) или когда обрывается WebSocket
+  монтажа с ядром (ядро упало или отключило участника): тогда монтаж сам отпускает аренду, отменяет идущие задачи и отключается.
+  (Ограничение: задачи монтажа не переживают возврат аренды, они отменяются; агент ставит их, пока в окружении.)
+
+Токен управления `GITS_CONTROL_TOKEN` задаётся в `.env` хоста (в `.env.example` строка-образец, пустая; любой длинный случайный
+текст, например `python -c "import secrets; print(secrets.token_hex(32))"`). Его читают и ядро (через `env_file`), и контейнер
+монтажа (`${GITS_CONTROL_TOKEN}` в compose). Без него сервис монтажа не стартует в режиме аренды, а ядро пишет «аренда отключена»:
+монтаж недоступен. Супервизор ядра контейнер не запускает (в `peers.container.yaml` запись `montage` с `external: true` и
+`control_url: http://montage:8780`): запускает compose.
+
+Запуск (токены берутся из `.env`, поэтому он первым `--env-file`):
 
     docker compose --env-file .env --env-file docker/core/glados.env -f docker/core/compose.yml --profile montage up -d
     docker logs -f gits-glados-montage
@@ -35,10 +50,10 @@ Python 3.12, Node 20, ffmpeg/ffprobe, шрифты, chrome-headless-shell для
 `docker/montage/Dockerfile.dockerignore` (в образ идут только `sdk`, `services/agent-runtime`, `modules/montage` без `.venv`, `node_modules`,
 `jobs`, секретов).
 
-Данные: ресурсы персонажа (шрифты, звуки, стиль) модуль берёт из тома персонажа: `CHARACTER_HOME=/data`, то есть `/data/montage`
-(`resources/<Имя>/montage` на хосте). Готовые ролики `MONTAGE_OUT_DIR=/data/montage/out` (на хосте `resources/<Имя>/montage/out`, в `.gitignore`);
-настройка `output_dir` модуля по умолчанию равна этой переменной. Рабочая память модуля (папки задач `jobs/`, обучающий журнал) лежит в именованном томе
-`gits-<id>-montage-work` на `/work` (`MEMORY_DIR=/work`, `MONTAGE_JOBS_DIR=/work/jobs`), не в слое контейнера.
+Данные: ресурсы персонажа (шрифты, звуки, стиль) монтаж берёт из тома хозяина аренды: `${CHARACTER_DIR}` монтируется в
+`/characters/${CHARACTER_ID}`, значит `/characters/<id>/montage` (`resources/<Имя>/montage` на хосте); других персонажей контейнер не видит.
+Готовые ролики лежат в `montage/out` этой папки (в `.gitignore`). Рабочая память модуля (папки задач `jobs/<id>/`, обучающий журнал)
+лежит в именованном томе `gits-<id>-montage-work` на `/work` (`MEMORY_DIR=/work`, `MONTAGE_JOBS_DIR=/work/jobs`), не в слое контейнера.
 
 Вход pi по подписке: `auth.json` в образ не копируется. В `compose.yml` секция закомментирована: раскомментировать `GITS_PI_AUTH` и том
 `${GITS_PI_AUTH_FILE}:/run/secrets/pi_auth.json:ro` и задать `GITS_PI_AUTH_FILE` (путь к файлу на хосте; значения по умолчанию нет). Секреты `.env` монтажу не передаются.

@@ -1343,15 +1343,27 @@ function renderModule(m) {
     <span class="opacity-70 bubble-text text-xs block">${esc(t.description)}</span></span></li>`).join('');
   const schema = Object.entries(m.settings_schema || {});
   const canRestart = m.status !== 'offline' || m.pid;
+  let lease = '', space = '';
+  if (m.lease) {            // общее пространство в контейнере: состояние аренды хранит сам сервис пространства
+    const L = m.lease, who = L.holder && L.holder.character ? L.holder.character : '?';
+    const [t, c] = L.state === 'free' ? ['свободно', 'badge-success'] : L.state === 'mine' ? ['моё', 'badge-info']
+      : L.state === 'busy' ? [`занято: ${who}`, 'badge-warning'] : ['недоступно', 'badge-ghost'];
+    const hint = L.state === 'busy' ? `с ${L.since ? new Date(L.since * 1000).toLocaleString() : '?'}${L.purpose ? ', цель: ' + L.purpose : ''}` : (L.reason || '');
+    lease = `<span class="badge ${c} badge-sm" title="${esc(hint)}">${esc(t)}</span>`;
+  }
+  if (m.space && (m.space.purpose || m.space.when_to_use)) {
+    space = `<div class="text-xs mt-1">${m.space.purpose ? `<div><span class="opacity-60">Для чего:</span> ${esc(m.space.purpose)}</div>` : ''}${m.space.when_to_use ? `<div><span class="opacity-60">Когда переходить:</span> ${esc(m.space.when_to_use)}</div>` : ''}</div>`;
+  }
   return `<div class="border border-base-300 rounded-lg p-3" data-module="${esc(m.id)}">
     <div class="flex items-center justify-between gap-2">
       <span class="font-medium min-w-0">${esc(m.title)} <span class="opacity-50 text-xs font-mono">${esc(m.id)} ${esc(m.version || '')}</span> ${own}</span>
       <span class="flex items-center gap-2 shrink-0">
-        <span class="badge ${cls} badge-sm" title="${esc(m.status_text || '')}">${esc(label)}</span>
+        ${lease}<span class="badge ${cls} badge-sm" title="${esc(m.status_text || '')}">${esc(label)}</span>
         <button class="btn btn-ghost btn-xs" data-act="restart" data-id="${esc(m.id)}" title="Перезапустить процесс" ${canRestart ? '' : 'disabled'}>↻</button>
         ${service ? '' : `<input type="checkbox" class="toggle toggle-sm" data-act="enable" data-id="${esc(m.id)}" ${m.enabled ? 'checked' : ''} title="Включить или выключить">`}
       </span></div>
     <div class="text-xs opacity-70 bubble-text">${esc(m.description || '')}</div>
+    ${space}
     ${m.state_summary ? `<div class="text-xs mt-1">Сейчас: ${esc(m.state_summary)}</div>` : ''}
     ${m.restarts ? `<div class="text-xs opacity-60">Перезапусков: ${esc(m.restarts)}</div>` : ''}
     ${m.last_error ? `<pre class="text-xs bg-base-200 rounded p-2 mt-2 whitespace-pre-wrap" style="max-height:8rem;overflow:auto">${esc(m.last_error)}</pre>` : ''}

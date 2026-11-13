@@ -27,7 +27,7 @@
       "lease_id"
     ],
     "title": "POST /release",
-    "description": "Вернуть окружение: workspace вызывает `on_release(lease)`, отключается от ядра хозяина и забывает его. Идемпотентно: если аренды уже нет, ответ 200 с `released: false`."
+    "description": "Вернуть окружение: workspace вызывает `on_release(lease)`, отключается от ядра хозяина и забывает его. Так же аренда кончается при обрыве WebSocket участника. Идемпотентно: если аренды уже нет, ответ 200 с `released: false`."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

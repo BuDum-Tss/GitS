@@ -43,27 +43,31 @@ pet = ServiceClient({"id": "pet", ..., "role": "service"})                      
 
 ### Аренда общего workspace (`ownership: shared`)
 
-Общее окружение занимает один хозяин (ядро персонажа) за раз. Хозяин берёт его в аренду по HTTP-интерфейсу управления, workspace
-подключается к ядру хозяина по WebSocket и отключается, когда аренда кончилась. Сервер и клиент живут в `gits_sdk.control`:
+Общее окружение (пространство: целый контейнер) занимает один хозяин (ядро персонажа) за раз, как семафор. Хозяин берёт его в
+аренду по HTTP-интерфейсу управления, workspace подключается к ядру хозяина по WebSocket. У аренды нет срока и нет продления:
+она держится, пока хозяин не вызовет `release` (выход агента из окружения) или пока не оборвётся WebSocket участника (ядро упало
+или отключило его): тогда workspace сам отпускает аренду. Сервер и клиент живут в `gits_sdk.control`:
 
 ```python
 from gits_sdk.control import ControlServer, LeaseClient
 
 # сторона workspace: токен управления из GITS_CONTROL_TOKEN (без него сервер не создаётся)
-server = ControlServer(id="rimworld", on_acquire=connect_to_owner, on_release=disconnect)   # on_*(lease): lease.core_url, lease.token
-await server.start("127.0.0.1", 8790)
+server = ControlServer(id="montage", manifest=MANIFEST, on_acquire=connect_to_owner, on_release=disconnect)   # lease.core_url, lease.token
+await server.start("0.0.0.0", 8780)
+# клиент, созданный в on_acquire: client.on_disconnect(lambda: server.connection_lost(lease.lease_id))
 
 # сторона ядра
-leases = LeaseClient("http://127.0.0.1:8790", control_token)
-lease = await leases.acquire(character="glados", core_url=core_url, token=core_token, purpose="play", ttl_s=300)
-await leases.renew(lease["lease_id"]); await leases.release(lease["lease_id"])
+leases = LeaseClient("http://montage:8780", control_token)
+about = await leases.info()          # для чего пространство и когда в него переходить: до аренды и без подключения к ядру
+lease = await leases.acquire(character="glados", core_url=core_url, token=core_token, purpose="montage")
+await leases.release(lease["lease_id"])
 ```
 
-- `GET /status`: `{id, role, ownership, state: offline|free|busy, holder, ttl_s, active}`; `POST /acquire`, `/renew`, `/release`.
-  Один хозяин за раз (другому 409 с описанием хозяина), повторный `acquire` того же `character` и `purpose` только продлевает.
-- Срок аренды истекает сам (`ttl_s` по умолчанию 300 с, наибольший 3600 с) и тогда равен `release`; хозяин продлевает его `renew`.
-- Участники без аренды (`ownership: owned` и services) отвечают только на `GET /status` (state `free` или `offline`, счётчик
-  `active`), остальное 404.
+- `GET /status`: `{id, role, ownership, state: offline|free|busy, holder, active}`; `POST /acquire`, `/release`. Один хозяин за раз
+  (другому 409 с описанием хозяина), повторный `acquire` того же `character` и `purpose` идемпотентен.
+- `GET /info`: описание пространства из манифеста (`title`, `purpose`, `when_to_use`, `keywords`, `entry`, `interruptible`,
+  `safe_points`, `done_when`, `tools`) и состояние аренды. Состояние аренды хранит сам workspace, ядро его не дублирует.
+- Участники без аренды (`ownership: owned` и services) отвечают на `GET /status` и `GET /info`, остальное 404.
 - Поля, коды ответов и примеры: раздел «Интерфейс управления» в [docs/MODULE_CONTRACT.md](MODULE_CONTRACT.md).
 
 ## Как подключиться (5 шагов)
@@ -219,11 +223,13 @@ asyncio.run(main())
 ```python
 "workspace": {"id": "montage", "title": "Монтаж", "purpose": "монтаж роликов",
               "entry": ["user_message", "self_impulse", "critical"], "interruptible": True,
-              "safe_points": ["между стадиями задачи"], "signals_in": ["telegram.*"], "done_when": "задачи готовы"}
+              "safe_points": ["между стадиями задачи"], "signals_in": ["telegram.*"], "done_when": "задачи готовы",
+              "when_to_use": "когда просят смонтировать ролик из файлов", "keywords": ["монтаж", "ролик"]}
 ```
 
 - `id` равен id модуля, `title` обязателен. `entry` - как можно войти: `user_message`, `self_impulse`, `schedule`, `critical`,
   `fallback`; по умолчанию первые два и `critical`. Запуск процесса, окно и состояние модуля среду не включают.
+- `when_to_use` (строка) и `keywords` (список) необязательны: когда в пространство переходить; их отдаёт `GET /info` до аренды.
 - `signals_in` - какие чужие события (шаблоны видов) среда принимает уведомлениями; остальные копятся в сводке. Критическое
   событие (срочность 5) переключает среду по правилам без LLM, если среда его модуля разрешает `critical`; текущая среда вправе
   отказать в небезопасной точке (`status.interruptible: false`).

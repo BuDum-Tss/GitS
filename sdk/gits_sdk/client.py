@@ -143,6 +143,7 @@ class PeerClient:
         self._job_cancel: Handler | None = None
         self._on_reconnect: Handler | None = None
         self._on_shutdown: Handler | None = None
+        self._on_disconnect: Handler | None = None
 
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._connecting_ws: aiohttp.ClientWebSocketResponse | None = None    # открыто, welcome ещё не получен
@@ -253,6 +254,12 @@ class PeerClient:
         """`async () -> None`: вызывается после каждого переподключения (не после первого подключения).
         Здесь модуль пересылает незавершённые задачи: `await client.resend_jobs()` (MOD-22)."""
         self._on_reconnect = fn
+        return fn
+
+    def on_disconnect(self, fn: Handler) -> Handler:
+        """Связь с ядром оборвалась после рукопожатия (не вызывается при `stop()` и вытеснении). Для арендуемых workspace:
+        здесь вызывают `ControlServer.connection_lost`."""
+        self._on_disconnect = fn
         return fn
 
     def on_shutdown(self, fn: Handler) -> Handler:
@@ -417,6 +424,8 @@ class PeerClient:
             self._stop.set()
         elif welcomed and not self._stop.is_set():
             log.warning("соединение с ядром потеряно (код %s)", ws.close_code)
+            if self._on_disconnect is not None:
+                await self._run_hook(self._on_disconnect, name="on_disconnect")
         return welcomed
 
     async def _handshake(self, ws: aiohttp.ClientWebSocketResponse) -> tuple[str, Any]:

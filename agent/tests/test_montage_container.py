@@ -19,12 +19,12 @@ def _env(service: dict) -> dict:
     return env if isinstance(env, dict) else dict(item.split("=", 1) for item in env)
 
 
-def test_montage_service_is_optional_profile_with_healthy_core():
+def test_montage_service_is_optional_profile_and_waits_for_lease():
     compose = _compose()
     svc = compose["services"]["montage"]
     assert svc["profiles"] == ["montage"]
     assert "profiles" not in compose["services"]["core"]                      # ядро поднимается без профиля
-    assert svc["depends_on"]["core"]["condition"] == "service_healthy"
+    assert "depends_on" not in svc                                             # к ядру при старте не подключается: ждёт аренды
     assert svc["build"]["dockerfile"] == "docker/montage/Dockerfile"
     assert svc["container_name"] == "gits-${CHARACTER_ID:-glados}-montage"
     assert compose["name"] == "gits"                                           # вся группа контейнеров в проекте gits
@@ -34,18 +34,17 @@ def test_montage_service_environment_and_volumes():
     compose = _compose()
     svc = compose["services"]["montage"]
     env = _env(svc)
-    assert env["GITS_CORE_URL"] == "ws://core:8766/ws"
-    assert env["GITS_ID"] == "montage"
-    assert env["GITS_TOKEN"].startswith("${GITS_TOKEN")
-    assert "GITS_MODULE_ID" not in env and "GITS_MODULE_TOKEN" not in env
-    assert env["GITS_CHARACTER_ID"] == "${CHARACTER_ID:-glados}"
-    assert env["CHARACTER_HOME"] == "/data"
-    assert env["MONTAGE_OUT_DIR"] == "/data/montage/out"
+    assert env["GITS_CONTROL_TOKEN"].startswith("${GITS_CONTROL_TOKEN") and env["GITS_CONTROL_PORT"] == "8780"
+    for gone in ("GITS_CORE_URL", "GITS_TOKEN", "GITS_MODULE_TOKEN", "CHARACTER_HOME", "MONTAGE_OUT_DIR"):
+        assert gone not in env, gone                                          # токен шины приходит в acquire
+    assert env["GITS_CHARACTERS_ROOT"] == "/characters"
     assert env["MEMORY_DIR"] == "/work" and env["MONTAGE_JOBS_DIR"].startswith("/work/")
+    assert "8780" in [str(p) for p in svc["expose"]] and "ports" not in svc   # порт управления не публикуется на хост
+    assert "/status" in " ".join(svc["healthcheck"]["test"])
+    core_env = _env(compose["services"]["core"])
+    assert core_env["GITS_CORE_PUBLIC_URL"] == "ws://${CHARACTER_ID:-glados}-core:8766/ws"
     volumes = svc["volumes"]
-    core_bind = compose["services"]["core"]["volumes"][0]
-    assert core_bind in volumes                                               # тот же bind-том персонажа
-    assert core_bind.endswith(":/data")
+    assert any(v.startswith("${CHARACTER_DIR") and v.endswith(":/characters/${CHARACTER_ID:-glados}") for v in volumes)
     assert "montage-work:/work" in volumes
     assert "montage-work" in compose["volumes"]
     assert "env_file" not in svc                                              # секреты хоста монтажу не передаются

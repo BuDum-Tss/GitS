@@ -51,11 +51,7 @@
       },
       "holder": {
         "type": "object",
-        "description": "хозяин аренды (поля: character, core_url, since, purpose, expires) или null, если свободно"
-      },
-      "ttl_s": {
-        "type": "number",
-        "description": "срок аренды по умолчанию, секунд (300; наибольший 3600)"
+        "description": "хозяин аренды (поля: character, core_url, since, purpose) или null, если свободно"
       },
       "active": {
         "type": "integer",
@@ -68,7 +64,6 @@
       "role",
       "state",
       "holder",
-      "ttl_s",
       "active"
     ],
     "title": "GET /status (ответ 200)"

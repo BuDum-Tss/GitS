@@ -39,6 +39,7 @@ import tool_search
 from app.workspace_manager import WorkspaceManager
 from attention import Attention
 from app.workspace_link import WorkspaceLink
+from app.lease_adapter import LeaseAdapter
 from character_switch import CharacterSwitch
 from companion import Companion
 from conversation_io import ConversationIO
@@ -64,6 +65,23 @@ logger = logging.getLogger("core")
 
 DASHBOARD_PORT = 8766
 SUBGRAPH_TIMEOUT_S = 1.5       # CORE-22: подграф профиля от модуля для дашборда
+
+
+def core_public_url(port: int = DASHBOARD_PORT) -> str:
+    """Адрес шины ядра для арендованного пространства: `GITS_CORE_PUBLIC_URL` (в контейнере адрес контейнера ядра)
+    или `ws://127.0.0.1:<порт>/ws`."""
+    return os.environ.get("GITS_CORE_PUBLIC_URL", "").strip() or f"ws://127.0.0.1:{port}{P.WS_PATH_NEW}"
+
+
+def _workspace_manifests(modules, leases) -> list:
+    """Манифесты сред для менеджера: подключённых модулей, а у арендуемых пространств без подключения описание из `/info`."""
+    items = [(rec.id, rec.manifest, rec.title) for rec in modules.records.values() if rec.manifest]
+    seen = {i[0] for i in items}
+    for ws in leases.spaces:
+        manifest = None if ws in seen else leases.manifest_of(ws)
+        if manifest is not None:
+            items.append((ws, manifest, manifest["workspace"]["title"]))
+    return items
 
 
 def wire_workspace_nodes(companion, registry, attention, modules, workspaces) -> NodePanel:
@@ -107,7 +125,10 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     attention.hub, attention.modules = hub, modules
     # среды агента: среду модуля объявляет его манифест и включает только импульс (сообщение пользователя, самоимпульс);
     # обмен с модулем (вход, выход, возобновление) делает WorkspaceLink
-    link = WorkspaceLink(connection_of=hub.connection)
+    leases = LeaseAdapter(character=lambda: character.active().id, core_url=lambda: core_public_url(port),
+                          core_token=lambda: hub.token, on_event=_log_lease)
+    modules.leases = leases                              # аренда общих пространств: состояние хранит сам сервис пространства
+    link = WorkspaceLink(connection_of=hub.connection, leases=leases)
 
     async def enter_module(ws: str, goal: str) -> dict:
         if not goal:                                     # вход без новой цели: вернуть приостановленную задачу, если она есть
@@ -126,10 +147,12 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         release=lambda ws, reason, force: link.release(reason=reason, force=force),
         interruptible=lambda ws: bool((_module_status(modules, ws) or {}).get("interruptible", True)),
         connected=hub.is_connected, status_of=lambda ws: _module_status(modules, ws),
-        modules_of=lambda: [(rec.id, rec.manifest, rec.title) for rec in modules.records.values() if rec.manifest],
+        leased=leases.manages, lease_view=leases.view,
+        modules_of=lambda: _workspace_manifests(modules, leases),
         on_change=on_workspace_change,
         log=lambda kind, **data: _log_workspace(kind, data))
     holder["workspaces"] = workspaces
+    workspaces.refresh_leases = leases.refresh
     attention.ctx.env_of = lambda: workspaces.current            # среда: вес записей очереди, подавление ассистентского шума в игре
     wire_workspace_nodes(companion, registry, attention, modules, workspaces)
     modules.is_noise = lambda module, kind: scoring.is_assistant_noise(workspaces.current, module, kind)     # отчёт о событиях без экрана пользователя
@@ -190,7 +213,9 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     specs = supervisor_mod.load_specs() if specs is None else specs
     for spec in specs:
         modules.declare(spec.id, title=spec.title, default_enabled=spec.enabled, role=spec.role, ownership=spec.ownership,
-                        external=spec.external, description=spec.description, dev=spec.dev)
+                        external=spec.external, description=spec.description, dev=spec.dev, control_url=spec.control_url)
+        if spec.control_url:                             # общее пространство в контейнере: аренда, а не подключение при старте
+            leases.register(spec.id, spec.control_url, os.environ.get(spec.control_token_env, ""))
     for planned in supervisor_mod.load_planned():
         modules.declare_planned(planned.id, title=planned.title, tz=planned.tz)
 
@@ -221,6 +246,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
 
     async def start():
         await hub.start()                                # токен в файл и фоновая сверка настроек
+        await leases.refresh()                           # описание и состояние арендуемых пространств (без таймеров: дальше по запросу)
         await attention.start()                          # планировщик речи, сроки фокуса, чистка правил
         layer.tasks.append(asyncio.get_running_loop().create_task(profiles.run()))
         layer.tasks.append(asyncio.get_running_loop().create_task(workspaces.run()))
@@ -230,6 +256,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         for task in layer.tasks:
             task.cancel()
         await attention.stop()
+        await leases.release_all()                       # пространства возвращаются хозяину-семафору
         await sup.stop_all()                             # CORE-17: shutdown всем, через 10 с убить оставшихся
         await hub.stop()
 
@@ -249,6 +276,12 @@ async def _migrate_memory(companion, graph, folder: Path) -> None:
 
 
 AUTO_SWITCH_REASONS = ("schedule", "done", "blocked", "critical", "disconnect")      # смены среды не по инструменту: в чате их иначе не видно
+
+
+def _log_lease(kind: str, data: dict) -> None:
+    """Журнал аренды пространств: факт без токенов (acquired, released, busy, unavailable)."""
+    events_log.log_nowait("workspace", f"аренда {kind}: {data.get('workspace')}", type="lease", kind=kind,
+                          **{k: v for k, v in data.items() if k in ("workspace", "reason", "holder")})
 
 
 def _log_workspace(kind: str, data: dict) -> None:

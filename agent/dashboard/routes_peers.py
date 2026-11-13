@@ -34,6 +34,8 @@ async def _rows_of(role: str) -> web.Response:
     if ctx.modules is None:
         return web.json_response([])
     dev_mode = bool(await asyncio.to_thread(lambda: ctx.settings.load().get("dev_mode")))
+    if role == ROLE_WORKSPACE:
+        await ctx.modules.refresh_leases()                    # состояние аренды читается у сервисов пространств (без таймеров)
     return web.json_response(ctx.modules.rows_by_role(role, dev_mode))
 
 

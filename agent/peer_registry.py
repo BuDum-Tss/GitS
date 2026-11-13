@@ -71,6 +71,7 @@ class PeerRecord:
     description_override: str = ""                  # description из peers.yaml (пояснение для вкладок «Окружения» и «Сервисы»)
     dev: bool = False                               # для разработчиков: во вкладках только при настройке dev_mode
     panel: dict | None = None                       # пространство модуля из манифеста (TZ 15): PanelSpec.to_dict()
+    control_url: str = ""                           # общее пространство с интерфейсом управления: аренда вместо подключения при старте
     panel_blocks: dict | None = None                # последнее panel.set: {"blocks": [...], "ts": float} (TZ 15)
 
     @property
@@ -97,6 +98,7 @@ class PeerRegistry:
         self.on_state = on_state
         self.hub = None                    # PeerHub, ставит ядро
         self.supervisor = None             # Supervisor, ставит ядро
+        self.leases = None                 # LeaseAdapter (аренда общих пространств), ставит ядро
         self.records: dict[str, PeerRecord] = {}
         self.planned: dict[str, PlannedRecord] = {}
         self._settings_source = settings_source
@@ -110,13 +112,14 @@ class PeerRegistry:
 
     def declare(self, module_id: str, *, title: str = "", default_enabled: bool = True, role: str = "workspace",
                 ownership: str | None = None, external: bool = False, description: str = "",
-                dev: bool = False) -> PeerRecord:
+                dev: bool = False, control_url: str = "") -> PeerRecord:
         """Окружение или сервис, который ядро знает заранее (peers.yaml): запись есть и пока он не подключился."""
         rec = self.records.setdefault(module_id, PeerRecord(module_id))
         rec.title = rec.title or title or module_id
         rec.default_enabled = default_enabled
         rec.declared_role, rec.declared_ownership, rec.external = role, ownership, external
         rec.title_override, rec.description_override, rec.dev = title, description, dev
+        rec.control_url = control_url
         return rec
 
     def declare_planned(self, module_id: str, *, title: str, tz: str = "") -> PlannedRecord:
@@ -214,6 +217,11 @@ class PeerRegistry:
         Это факты для неё, не готовые реплики."""
         lines = []
         for rec in sorted(self.records.values(), key=lambda r: r.id):
+            if rec.control_url and not rec.connected and self.leases is not None and self.is_enabled(rec.id):
+                line = self._space_note(rec)                        # пространство не подключено, но его можно взять в аренду
+                if line:
+                    lines.append(line)
+                continue
             if rec.external or not rec.connected or not rec.manifest or not (rec.manifest.get("tools")):
                 continue
             if not self.is_enabled(rec.id):
@@ -221,6 +229,18 @@ class PeerRegistry:
             summary = ((rec.state or {}).get("summary") or "").strip() if with_state else ""
             lines.append(f"Модуль «{rec.title or rec.id}»: {rec.description}" + (f" Сейчас: {summary}." if summary else ""))
         return lines
+
+    def _space_note(self, rec: PeerRecord) -> str:
+        """Строка о пространстве, которое берётся в аренду: для чего, когда переходить, свободно ли (факты из `/info`)."""
+        info = self.leases.info(rec.id)
+        if info is None:
+            return ""
+        view = self.leases.view(rec.id) or {}
+        state = {"free": "свободно", "mine": "занято мной", "offline": "недоступно"}.get(view.get("state"), "")
+        if view.get("state") == "busy":
+            state = f"занято персонажем {(view.get('holder') or {}).get('character') or '?'}"
+        when = f" Когда переходить: {info['when_to_use']}." if info.get("when_to_use") else ""
+        return f"Пространство «{info.get('title') or rec.id}»: {info.get('purpose') or ''}.{when} Сейчас: {state}."
 
     def status_report(self) -> str:
         """Состояние модулей по запросу (инструмент `core.modules_status`): подключён ли, включён ли, сводка state."""
@@ -430,6 +450,22 @@ class PeerRegistry:
         tools = [{"id": f"{rec.id}.{t['name']}", "name": t["name"], "description": t["description"], "risk": t["risk"],
                   "availability": t["availability"]} for t in m.get("tools") or []]
         service = rec.external
+        row = self._describe(rec, m, sup, code, text, tools, service)
+        if rec.control_url and self.leases is not None and self.leases.manages(rec.id):
+            info = self.leases.info(rec.id) or {}                 # описание и состояние аренды хранит сам сервис пространства
+            row["lease"] = self.leases.view(rec.id)
+            row["space"] = {"purpose": info.get("purpose") or "", "when_to_use": info.get("when_to_use") or "",
+                            "keywords": list(info.get("keywords") or [])}
+            if not rec.manifest and info.get("title"):
+                row["title"] = rec.title_override or info["title"]
+        return row
+
+    async def refresh_leases(self) -> None:
+        """Обновить сведения об арендуемых пространствах (по запросу: открытие вкладки, `workspace.status`)."""
+        if self.leases is not None:
+            await self.leases.refresh()
+
+    def _describe(self, rec: PeerRecord, m: dict, sup: dict, code: str, text: str, tools: list, service: bool) -> dict:
         return {"id": rec.id, "title": rec.title_override or rec.title or rec.id,
                 "description": rec.description_override or rec.description, "version": rec.version,
                 "role": rec.role, "ownership": rec.ownership, "external": rec.external, "enabled": self.is_enabled(rec.id),

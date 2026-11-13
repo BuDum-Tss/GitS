@@ -438,18 +438,45 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
             return f"войти в среду «{spec.title}» по собственному импульсу"
         return None
 
+    def lease_text(lease: dict | None) -> str:
+        """Состояние аренды общего пространства фактом (его хранит сам сервис пространства)."""
+        if not lease:
+            return ""
+        state, holder = lease.get("state"), lease.get("holder") or {}
+        if state == "free":
+            return "свободно"
+        if state == "mine":
+            return "занято мной"
+        if state == "busy":
+            goal = f", цель: {holder['purpose']}" if holder.get("purpose") else ""
+            return f"занято персонажем {holder.get('character') or '?'}{goal}"
+        return "недоступно" + (f" ({lease['reason']})" if lease.get("reason") else "")
+
     async def status(a):
+        refresh = getattr(workspaces, "refresh_leases", None)
+        if refresh is not None:
+            await refresh()                                   # состояние аренды читается у сервисов, ядро его не хранит
         snap = workspaces.snapshot()
         line = f"Сейчас в среде «{snap['title']}» (причина: {snap['reason']})" + (f", цель: {snap['goal']}" if snap["goal"] else "") + "."
-        others = ", ".join(f"«{x['title']}»" + ("" if x["connected"] else " (не подключена)")
-                           for x in snap["available"] if x["id"] != snap["current"] and x["id"] != "sleep")
-        return line + (f" Другие среды: {others}." if others else "")
+        rows = []
+        for x in snap["available"]:
+            if x["id"] == snap["current"] or x["id"] == "sleep":
+                continue
+            parts = [f"«{x['title']}» ({x['id']})"]
+            if x.get("purpose"):
+                parts.append(f"для чего: {x['purpose']}")
+            if x.get("when_to_use"):
+                parts.append(f"когда переходить: {x['when_to_use']}")
+            state = lease_text(x.get("lease"))
+            parts.append(state or ("" if x["connected"] else "не подключена"))
+            rows.append("; ".join(p for p in parts if p))
+        return line + (" Другие среды:" + "".join("\n- " + r for r in rows) if rows else "")
 
     ids = _WorkspaceIds(workspaces, modules)
     return [
         Tool(id="workspace.switch", env="core", name="switch",
              description="Сменить среду агента: войти в игру («зайди в колонию», «давай поиграем»), в монтаж («давай монтировать») "
-                         "или вернуться в обычную среду assistant. В среду модуля входят только по просьбе или собственному решению, "
+                         "или вернуться в обычную среду assistant. Какие есть пространства, для чего они и свободны ли, показывает workspace.status. В среду модуля входят только по просьбе или собственному решению, "
                          "запуск игры сам её не включает. Если модуль не подключён или выключен, инструмент вернёт причину: перескажи её как есть.",
              params={"workspace": {"type": "string", "enum": ids, "description": "id среды: assistant, rimworld, montage"},
                      "goal": {"type": "string", "required": False, "description": "цель входа одной фразой"}},

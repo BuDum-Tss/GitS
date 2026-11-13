@@ -63,21 +63,19 @@ async def acquire(lc, character="glados", purpose="play", **kw):
 
 # ---------------------------------------------------------------- основной путь
 
-async def test_free_acquire_busy_renew_release(lc, server, hooks, clock):
+async def test_free_acquire_busy_release(lc, server, hooks, clock):
     st = await lc.status()
     assert st == {"id": "rimworld", "role": "workspace", "ownership": "shared", "state": "free", "holder": None,
-                  "ttl_s": 300.0, "active": 0}
+                  "active": 0}
     got = await acquire(lc)
-    assert got["ok"] and got["lease_id"].startswith("l-") and got["ttl_s"] == 300
-    assert got["expires"] == clock.now + 300
+    assert got == {"ok": True, "lease_id": got["lease_id"]} and got["lease_id"].startswith("l-")
     assert len(hooks.acquired) == 1
     lease = hooks.acquired[0]
     assert (lease.character, lease.core_url, lease.token, lease.purpose) == ("glados", CORE, "core-token", "play")
 
     st = await lc.status()
     assert st["state"] == "busy" and st["active"] == 1
-    assert st["holder"] == {"character": "glados", "core_url": CORE, "since": clock.now, "purpose": "play",
-                            "expires": clock.now + 300}
+    assert st["holder"] == {"character": "glados", "core_url": CORE, "since": clock.now, "purpose": "play"}
     assert "token" not in str(st)                                    # токен ядра хозяина наружу не отдаётся
 
     with pytest.raises(LeaseBusy) as busy:                          # другой персонаж
@@ -86,11 +84,6 @@ async def test_free_acquire_busy_renew_release(lc, server, hooks, clock):
     with pytest.raises(LeaseBusy):                                  # тот же персонаж, но другая цель
         await acquire(lc, purpose="montage")
     assert len(hooks.acquired) == 1
-
-    clock.now += 100
-    renewed = await lc.renew(got["lease_id"], ttl_s=600)
-    assert renewed["ok"] and renewed["expires"] == clock.now + 600 and renewed["ttl_s"] == 600
-    assert (await lc.status())["holder"]["expires"] == clock.now + 600
 
     assert await lc.release(got["lease_id"]) == {"ok": True, "released": True}
     assert hooks.released == [lease]
@@ -101,44 +94,69 @@ async def test_free_acquire_busy_renew_release(lc, server, hooks, clock):
     assert again["lease_id"] != got["lease_id"]
 
 
-async def test_expiry_acts_like_release(lc, server, hooks, clock):
-    got = await acquire(lc, ttl_s=60)
-    assert got["ttl_s"] == 60
-    clock.now += 59
+async def test_lease_never_expires_by_itself(lc, server, hooks, clock):
+    got = await acquire(lc)
+    clock.now += 10 * 24 * 3600                                     # сколько угодно времени: срока нет
+    await asyncio.sleep(0.05)
+    assert (await lc.status())["state"] == "busy" and hooks.released == []
+    with pytest.raises(LeaseBusy):
+        await acquire(lc, character="other")
+    assert (await lc.release(got["lease_id"]))["released"] is True
+
+
+async def test_connection_lost_releases_lease(lc, server, hooks):
+    got = await acquire(lc)
+    assert await server.connection_lost("l-старая") is False        # сигнал о чужой аренде ничего не закрывает
     assert (await lc.status())["state"] == "busy"
-    clock.now += 2
-    assert (await lc.status())["state"] == "free"
+    assert await server.connection_lost(got["lease_id"]) is True
     assert len(hooks.released) == 1 and hooks.released[0].lease_id == got["lease_id"]
-    with pytest.raises(LeaseError) as e:                            # продлить истёкшую нельзя
-        await lc.renew(got["lease_id"])
-    assert e.value.status == 404 and e.value.error == "unknown_lease"
-    await acquire(lc, character="other")                            # место свободно
+    assert (await lc.status())["state"] == "free"
+    assert await server.connection_lost() is False
+    assert (await acquire(lc, character="other"))["ok"]
 
 
-async def test_expired_lease_does_not_block_acquire(lc, hooks, clock):
-    await acquire(lc, ttl_s=10)
-    clock.now += 11
-    other = await acquire(lc, character="other")                    # без обращения к status: истечение при acquire
-    assert other["ok"] and len(hooks.released) == 1 and len(hooks.acquired) == 2
+async def test_client_websocket_drop_releases_lease(hooks):
+    """Связка SDK: клиент, созданный в on_acquire, при обрыве WebSocket отпускает аренду через on_disconnect."""
+    from gits_sdk import WorkspaceClient
+    from gits_sdk.testing import FakeCore
+    async with FakeCore(token="core-token") as core:
+        manifest = {"id": "rimworld", "title": "R", "description": "d", "version": "1.0.0", "ownership": "shared"}
+        holder = {}
+
+        async def on_acquire(lease):
+            client = WorkspaceClient(manifest, url=lease.core_url, token=lease.token)
+            holder["client"] = client
+
+            @client.on_disconnect
+            async def lost():
+                await holder["server"].connection_lost(lease.lease_id)
+            holder["task"] = asyncio.create_task(client.run())
+            await client.wait_connected(5)
+
+        async def on_release(lease):
+            hooks.released.append(lease)
+            await holder["client"].stop()
+
+        async with ControlServer(id="rimworld", token=TOKEN, on_acquire=on_acquire, on_release=on_release) as s:
+            holder["server"] = s
+            lc = LeaseClient(s.url, TOKEN)
+            await lc.acquire(character="glados", core_url=core.url, token="core-token", purpose="play")
+            assert (await lc.status())["state"] == "busy"
+            for conn in list(core._conns):                          # ядро хозяина рвёт соединение
+                await conn.ws.close()
+            for _ in range(200):
+                if hooks.released:
+                    break
+                await asyncio.sleep(0.02)
+            assert len(hooks.released) == 1
+            assert (await lc.status())["state"] == "free"
+            await asyncio.wait_for(holder["task"], 5)
 
 
-async def test_background_watcher_expires_lease(hooks, monkeypatch):
-    monkeypatch.setattr("gits_sdk.control.WATCH_INTERVAL_S", 0.02)
-    async with ControlServer(id="rimworld", token=TOKEN, on_release=hooks.on_release, default_ttl_s=1) as s:
-        lc = LeaseClient(s.url, TOKEN)
-        await acquire(lc, ttl_s=1)
-        for _ in range(200):
-            if hooks.released:
-                break
-            await asyncio.sleep(0.02)
-        assert len(hooks.released) == 1 and s.lease is None
-
-
-async def test_idempotent_acquire_same_character_and_purpose(lc, hooks, clock):
+async def test_idempotent_acquire_same_character_and_purpose(lc, hooks):
     first = await acquire(lc)
-    clock.now += 100
-    second = await acquire(lc)                                      # то же самое: продление
-    assert second["lease_id"] == first["lease_id"] and second["expires"] == clock.now + 300
+    second = await acquire(lc)                                      # то же самое: та же аренда
+    assert second["lease_id"] == first["lease_id"]
     assert len(hooks.acquired) == 1 and hooks.released == []
 
 
@@ -147,13 +165,6 @@ async def test_acquire_with_new_core_replaces_lease_of_same_holder(lc, hooks):
     second = await lc.acquire(character="glados", core_url="ws://127.0.0.1:9999/module/ws", token="new-token", purpose="play")
     assert second["lease_id"] != first["lease_id"]
     assert len(hooks.released) == 1 and len(hooks.acquired) == 2 and hooks.acquired[1].token == "new-token"
-
-
-async def test_ttl_default_and_clamp(lc, server, clock):
-    assert (await acquire(lc))["ttl_s"] == 300
-    got = await acquire(lc, ttl_s=99999)                            # то же аренда, продление с обрезкой до 3600
-    assert got["ttl_s"] == C.LEASE_TTL_MAX_S == 3600 and got["expires"] == clock.now + 3600
-    assert server.default_ttl_s == C.LEASE_TTL_DEFAULT_S
 
 
 async def test_on_acquire_failure_gives_502_and_no_lease(lc, hooks):
@@ -179,6 +190,27 @@ async def test_offline_workspace_refuses_acquire(clock):
         assert (await acquire(lc))["ok"]
 
 
+async def test_info_describes_workspace_before_lease(clock):
+    manifest = {"id": "montage", "title": "Монтаж", "description": "монтаж роликов", "version": "1",
+                "tools": [{"name": "start", "description": "смонтировать"}],
+                "workspace": {"id": "montage", "title": "Монтаж", "purpose": "делать ролики", "when_to_use": "нужен ролик",
+                              "keywords": ["ролик"], "entry": ["user_message"], "done_when": "готово"}}
+    async with ControlServer(id="montage", token=TOKEN, manifest=manifest, clock=clock) as s:
+        lc = LeaseClient(s.url, TOKEN)
+        info = await lc.info()
+        assert info["title"] == "Монтаж" and info["purpose"] == "делать ролики" and info["when_to_use"] == "нужен ролик"
+        assert info["keywords"] == ["ролик"] and info["tools"] == [{"name": "start", "description": "смонтировать"}]
+        assert info["state"] == "free" and info["holder"] is None
+        await acquire(lc)
+        assert (await lc.info())["state"] == "busy" and (await lc.info())["holder"]["character"] == "glados"
+
+
+async def test_info_without_manifest_and_for_service():
+    async with ControlServer(id="pet", token=TOKEN, role="service") as s:
+        info = await LeaseClient(s.url, TOKEN).info()
+        assert info["id"] == "pet" and info["role"] == "service" and info["title"] == "pet" and info["tools"] == []
+
+
 async def test_stop_releases_current_lease(clock, hooks):
     async with ControlServer(id="rimworld", token=TOKEN, clock=clock, on_release=hooks.on_release) as s:
         await acquire(LeaseClient(s.url, TOKEN))
@@ -189,7 +221,7 @@ async def test_stop_releases_current_lease(clock, hooks):
 
 async def test_wrong_or_missing_token_gets_401(server, hooks):
     bad = LeaseClient(server.url, "чужой")
-    for call in (bad.status, lambda: acquire(bad), lambda: bad.renew("x"), lambda: bad.release("x")):
+    for call in (bad.status, lambda: acquire(bad), lambda: bad.release("x")):
         with pytest.raises(LeaseUnauthorized) as e:
             await call()
         assert e.value.status == 401 and "чужой" not in str(e.value)
@@ -204,22 +236,14 @@ async def test_bad_bodies_get_400(server, lc):
     import aiohttp
     async with aiohttp.ClientSession(headers={"Authorization": f"Bearer {TOKEN}"}) as s:
         for path, body in (("/acquire", {}), ("/acquire", {"character": "a", "core_url": "http://x", "token": "t"}),
-                           ("/acquire", {"character": "a", "core_url": CORE, "token": "t", "ttl_s": 0}),
                            ("/acquire", {"character": "", "core_url": CORE, "token": "t"}),
-                           ("/acquire", [1]), ("/renew", {}), ("/release", {"lease_id": 5})):
+                           ("/acquire", [1]), ("/release", {"lease_id": 5})):
             async with s.post(server.url + path, json=body) as r:
                 assert r.status == 400, (path, body)
                 assert (await r.json())["error"] == "bad_request"
         async with s.post(server.url + "/acquire", data=b"not json") as r:
             assert r.status == 400
     assert (await lc.status())["state"] == "free"
-
-
-async def test_renew_unknown_lease_404(lc):
-    await acquire(lc)
-    with pytest.raises(LeaseError) as e:
-        await lc.renew("l-deadbeef0000")
-    assert e.value.status == 404
 
 
 # ---------------------------------------------------------------- без токена и без аренды
@@ -244,7 +268,7 @@ async def test_service_and_owned_have_status_only():
             st = await lc.status()
             assert st["state"] == "free" and st["holder"] is None and st["active"] == 2
             assert st["role"] == kwargs["role"] and ("ownership" in st) == (kwargs["role"] == "workspace")
-            for call in (acquire(lc), lc.renew("x"), lc.release("x")):
+            for call in (acquire(lc), lc.release("x")):
                 with pytest.raises(LeaseError) as e:
                     await call
                 assert e.value.status == 404
@@ -281,7 +305,7 @@ async def test_client_unavailable_and_timeout():
 # ---------------------------------------------------------------- контракт
 
 def test_contract_describes_every_endpoint():
-    assert [(e.method, e.path) for e in C.ENDPOINTS] == [("GET", "/status"), ("POST", "/acquire"), ("POST", "/renew"),
+    assert [(e.method, e.path) for e in C.ENDPOINTS] == [("GET", "/status"), ("GET", "/info"), ("POST", "/acquire"),
                                                          ("POST", "/release")]
     assert C.STATES == ("offline", "free", "busy")
     assert P.ENV_CONTROL_TOKEN == "GITS_CONTROL_TOKEN"
@@ -296,5 +320,5 @@ async def test_examples_in_contract_are_accepted_by_server(lc, server):
     got = await lc.acquire(**ex)
     assert check_fields(C.ACQUIRE.response, got) == []
     assert check_fields(C.STATUS.response, await lc.status()) == []
-    assert check_fields(C.RENEW.response, await lc.renew(got["lease_id"])) == []
+    assert check_fields(C.INFO.response, await lc.info()) == []
     assert check_fields(C.RELEASE.response, await lc.release(got["lease_id"])) == []

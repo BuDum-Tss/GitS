@@ -6,17 +6,20 @@ Workspace с `ownership: shared` (montage, rimworld, minecraft, desktop) зан�
     # сторона workspace
     async def on_acquire(lease):                    # lease.core_url, lease.token, lease.character, lease.purpose
         client.connect_to(lease.core_url, lease.token)
-    server = ControlServer(id="rimworld", on_acquire=on_acquire, on_release=on_release)   # токен: GITS_CONTROL_TOKEN
+    server = ControlServer(id="rimworld", manifest=MANIFEST, on_acquire=on_acquire, on_release=on_release)   # токен: GITS_CONTROL_TOKEN
     await server.start("127.0.0.1", 8790)
+    # WebSocket участника оборвался: аренда отпускается (client.on_disconnect -> server.connection_lost(lease.lease_id))
 
     # сторона ядра
     leases = LeaseClient("http://127.0.0.1:8790", token)
+    about = await leases.info()                     # для чего окружение и когда в него переходить (до аренды)
     lease = await leases.acquire(character="glados", core_url=core_url, token=core_token, purpose="play")
-    await leases.renew(lease["lease_id"]); await leases.release(lease["lease_id"])
+    await leases.release(lease["lease_id"])
 
 Описание форматов: `sdk/gits_sdk/contract/control.py` и раздел «Интерфейс управления» в `docs/MODULE_CONTRACT.md`.
+У аренды нет срока и продления: она держится до `release` или до обрыва WebSocket участника (`connection_lost`).
 Для участников без аренды (`ownership: owned`, service) сервер отвечает на `GET /status` (state `free` или `offline`, счётчик
-`active`), а `acquire`, `renew` и `release` отвечают 404. Токены (управления и ядра хозяина) в журнал не попадают.
+`active`) и `GET /info`, а `acquire` и `release` отвечают 404. Токены (управления и ядра хозяина) в журнал не попадают.
 """
 from __future__ import annotations
 
@@ -41,7 +44,6 @@ from .contract.spec import check_fields
 log = logging.getLogger("gits_sdk.control")
 
 CLIENT_TIMEOUT_S = 10.0         # тайм-аут одного запроса клиента аренды
-WATCH_INTERVAL_S = 1.0          # как часто сервер проверяет истечение срока (кроме проверки при каждом запросе)
 
 
 # ---------------------------------------------------------------- аренда
@@ -56,12 +58,10 @@ class Lease:
     token: str
     purpose: str
     since: float
-    expires: float
-    ttl_s: float
 
     def holder(self) -> dict:
         return {"character": self.character, "core_url": self.core_url, "since": self.since,
-                "purpose": self.purpose, "expires": self.expires}
+                "purpose": self.purpose}
 
     def __repr__(self) -> str:
         return f"Lease({self.lease_id}, {self.character!r}, {self.purpose!r})"
@@ -87,19 +87,19 @@ def _err(status: int, error: str, message: str = "", **extra: Any) -> web.Respon
 
 
 class ControlServer:
-    """Сервер управления (aiohttp, HTTP). Один холдер за раз, срок аренды истекает сам.
+    """Сервер управления (aiohttp, HTTP). Один холдер за раз; срока и продления нет.
 
     id, role, ownership: что сообщает `GET /status`. Аренда включена только при `ownership == "shared"` (и роли workspace);
     иначе доступен лишь `GET /status`, остальное отвечает 404. `on_acquire(lease)` и `on_release(lease)` (функции или
-    корутины) подключают и отключают workspace от ядра хозяина. `available()` сообщает, доступно ли окружение (иначе state
-    `offline`, acquire отвечает 503). `active()` даёт счётчик подключений для участников без аренды. `clock` подменяется в
-    тестах. Без токена управления (параметр или `GITS_CONTROL_TOKEN`) сервер не создаётся: `ControlError`."""
+    корутины) подключают и отключают workspace от ядра хозяина; аренда кончается по `POST /release` или по
+    `connection_lost()` (workspace зовёт его, когда оборвалась связь с ядром хозяина). `manifest` даёт `GET /info`.
+    `available()` сообщает, доступно ли окружение (иначе state `offline`, acquire отвечает 503). `active()` даёт счётчик
+    подключений для участников без аренды. `clock` подменяется в тестах. Без токена управления (параметр или `GITS_CONTROL_TOKEN`) сервер не создаётся: `ControlError`."""
 
     def __init__(self, *, id: str, token: str | None = None, role: str = P.ROLE_WORKSPACE,
                  ownership: str | None = P.OWNERSHIP_SHARED, on_acquire: Hook | None = None, on_release: Hook | None = None,
                  available: Callable[[], bool] | None = None, active: Callable[[], int] | None = None,
-                 default_ttl_s: float = C.LEASE_TTL_DEFAULT_S, max_ttl_s: float = C.LEASE_TTL_MAX_S,
-                 clock: Callable[[], float] = time.time):
+                 manifest: dict | None = None, clock: Callable[[], float] = time.time):
         token = token or os.environ.get(P.ENV_CONTROL_TOKEN) or ""
         if not token:
             raise ControlError(f"нет токена управления: задайте параметр token или переменную {P.ENV_CONTROL_TOKEN}")
@@ -109,13 +109,10 @@ class ControlServer:
             ownership = None
         elif ownership not in P.OWNERSHIPS:
             raise ControlError(f"ownership: одно из {list(P.OWNERSHIPS)}")
-        if not 0 < default_ttl_s <= max_ttl_s:
-            raise ControlError("default_ttl_s должен быть больше нуля и не больше max_ttl_s")
         self.id = id
         self.role = role
         self.ownership = ownership
-        self.default_ttl_s = float(default_ttl_s)
-        self.max_ttl_s = float(max_ttl_s)
+        self.manifest = manifest or {}
         self._token = token
         self._on_acquire = on_acquire
         self._on_release = on_release
@@ -125,7 +122,6 @@ class ControlServer:
         self.lease: Lease | None = None
         self._lock = asyncio.Lock()
         self._runner: web.AppRunner | None = None
-        self._watcher: asyncio.Task | None = None
         self._port = 0
 
     # ------------------------------------------------------------ сервер
@@ -147,8 +143,8 @@ class ControlServer:
         """aiohttp-приложение (для встраивания в чужой сервер или тестов через TestClient)."""
         app = web.Application(middlewares=[self._auth])
         app.router.add_get("/status", self._status)
+        app.router.add_get("/info", self._info)
         app.router.add_post("/acquire", self._acquire)
-        app.router.add_post("/renew", self._renew)
         app.router.add_post("/release", self._release)
         return app
 
@@ -158,18 +154,13 @@ class ControlServer:
         site = web.TCPSite(self._runner, host, port)
         await site.start()
         self._port = self._runner.addresses[0][1]
-        if self.leasing:
-            self._watcher = asyncio.create_task(self._watch())
         log.info("интерфейс управления «%s» слушает %s:%d", self.id, host, self._port)
 
     async def stop(self) -> None:
         """Остановить сервер; действующая аренда закрывается (вызывается `on_release`)."""
-        if self._watcher is not None:
-            self._watcher.cancel()
-            await asyncio.gather(self._watcher, return_exceptions=True)
-            self._watcher = None
-        if self.lease is not None:
-            await self._close_lease("stop")
+        async with self._lock:
+            if self.lease is not None:
+                await self._close_lease("stop")
         if self._runner is not None:
             await self._runner.cleanup()
             self._runner = None
@@ -181,28 +172,17 @@ class ControlServer:
     async def __aexit__(self, *exc) -> None:
         await self.stop()
 
-    # ------------------------------------------------------------ срок аренды
+    # ------------------------------------------------------------ конец аренды
 
-    async def _watch(self) -> None:
-        while True:
-            await asyncio.sleep(WATCH_INTERVAL_S)
-            try:
-                await self.expire_if_due()
-            except Exception:
-                log.exception("сбой проверки срока аренды")
-
-    async def expire_if_due(self) -> bool:
-        """Закрыть аренду, срок которой истёк (как release). True, если закрыта."""
+    async def connection_lost(self, lease_id: str | None = None) -> bool:
+        """Связь workspace с ядром хозяина оборвалась: аренда отпускается (как `release`). `lease_id`: закрыть только эту аренду
+        (опоздавший сигнал о старой аренде новую не трогает). True, если аренда была закрыта."""
         async with self._lock:
-            return await self._expire_locked()
-
-    async def _expire_locked(self) -> bool:
-        lease = self.lease
-        if lease is not None and self._clock() >= lease.expires:
-            log.info("аренда «%s» (хозяин %s) истекла", self.id, lease.character)
-            await self._close_lease("expired")
+            if self.lease is None or (lease_id is not None and self.lease.lease_id != lease_id):
+                return False
+            log.info("связь «%s» с ядром хозяина %s оборвалась, аренда отпущена", self.id, self.lease.character)
+            await self._close_lease("disconnect")
             return True
-        return False
 
     async def _close_lease(self, why: str) -> Lease | None:
         """Забыть хозяина и вызвать `on_release`. Состояние сбрасывается до вызова: сбой обработчика аренду не удерживает."""
@@ -239,31 +219,42 @@ class ControlServer:
         if self.ownership is not None:
             body["ownership"] = self.ownership
         active = int(self._active()) if self._active is not None else (1 if self.lease is not None else 0)
-        body.update(state=self._state(), holder=self.lease.holder() if self.lease else None,
-                    ttl_s=self.default_ttl_s, active=active)
+        body.update(state=self._state(), holder=self.lease.holder() if self.lease else None, active=active)
+        return body
+
+    def info(self) -> dict:
+        """Тело `GET /info`: сведения о workspace из манифеста и состояние аренды."""
+        m = self.manifest
+        ws = m.get("workspace") if isinstance(m.get("workspace"), dict) else {}
+        body: dict[str, Any] = {"id": self.id, "role": self.role, "title": ws.get("title") or m.get("title") or self.id}
+        body["purpose"] = ws.get("purpose") or m.get("description") or ""
+        body["when_to_use"] = ws.get("when_to_use") or ""
+        body["done_when"] = ws.get("done_when") or ""
+        body["keywords"] = list(ws.get("keywords") or [])
+        body["entry"] = list(ws.get("entry") or [])
+        body["interruptible"] = bool(ws.get("interruptible", True))
+        body["safe_points"] = list(ws.get("safe_points") or [])
+        body["tools"] = [{"name": t.get("name"), "description": t.get("description", "")} for t in m.get("tools") or []
+                         if isinstance(t, dict)]
+        body["state"] = self._state()
+        body["holder"] = self.lease.holder() if self.lease else None
         return body
 
     async def _status(self, request: web.Request) -> web.Response:
-        if self.leasing:
-            async with self._lock:
-                await self._expire_locked()
         return _json(200, self.status())
+
+    async def _info(self, request: web.Request) -> web.Response:
+        return _json(200, self.info())
 
     async def _body(self, request: web.Request, endpoint: C.Endpoint) -> tuple[dict | None, web.Response | None]:
         try:
             body = await request.json()
         except Exception:
             return None, _err(400, "bad_request", "тело должно быть JSON-объектом")
-        if isinstance(body, dict) and isinstance(body.get("ttl_s"), (int, float)) and not isinstance(body["ttl_s"], bool):
-            body = {**body, "ttl_s": min(body["ttl_s"], self.max_ttl_s)}              # слишком большой срок обрезается, не отвергается
         problems = check_fields(endpoint.request, body)
         if problems:
             return None, _err(400, "bad_request", "; ".join(problems))
         return body, None
-
-    def _ttl(self, body: dict) -> float:
-        ttl = body.get("ttl_s")
-        return self.default_ttl_s if ttl is None else min(float(ttl), self.max_ttl_s)
 
     async def _acquire(self, request: web.Request) -> web.Response:
         if not self.leasing:
@@ -274,22 +265,19 @@ class ControlServer:
         if not body["core_url"].startswith(("ws://", "wss://")):
             return _err(400, "bad_request", "core_url: адрес ws:// или wss://")
         purpose = body.get("purpose") or ""
-        ttl = self._ttl(body)
         async with self._lock:
-            await self._expire_locked()
             now = self._clock()
             cur = self.lease
             if cur is not None:
                 if cur.character != body["character"] or cur.purpose != purpose:
                     return _json(409, {"ok": False, "state": C.STATE_BUSY, "holder": cur.holder()})
-                if cur.core_url == body["core_url"] and cur.token == body["token"]:     # идемпотентное продление
-                    cur.expires, cur.ttl_s = now + ttl, ttl
-                    return _json(200, {"ok": True, "lease_id": cur.lease_id, "expires": cur.expires, "ttl_s": ttl})
+                if cur.core_url == body["core_url"] and cur.token == body["token"]:     # повторный запрос: та же аренда
+                    return _json(200, {"ok": True, "lease_id": cur.lease_id})
                 await self._close_lease("replaced")                                     # ядро хозяина сменилось
             elif self._available is not None and not self._available():
                 return _json(503, {"ok": False, "state": C.STATE_OFFLINE})
             lease = Lease("l-" + secrets.token_hex(6), body["character"], body["core_url"], body["token"], purpose,
-                          since=now, expires=now + ttl, ttl_s=ttl)
+                          since=now)
             if self._on_acquire is not None:
                 try:
                     res = self._on_acquire(lease)
@@ -300,22 +288,7 @@ class ControlServer:
                     return _err(502, "acquire_failed", str(e) or type(e).__name__)
             self.lease = lease
             log.info("аренда «%s» выдана: %s (%s)", self.id, lease.character, lease.purpose or "-")
-            return _json(200, {"ok": True, "lease_id": lease.lease_id, "expires": lease.expires, "ttl_s": ttl})
-
-    async def _renew(self, request: web.Request) -> web.Response:
-        if not self.leasing:
-            return _err(404, "no_lease", "у этого участника нет аренды")
-        body, bad = await self._body(request, C.RENEW)
-        if bad is not None:
-            return bad
-        async with self._lock:
-            await self._expire_locked()
-            cur = self.lease
-            if cur is None or cur.lease_id != body["lease_id"]:
-                return _err(404, "unknown_lease", "аренды нет, она истекла или закрыта")
-            ttl = self._ttl(body)
-            cur.expires, cur.ttl_s = self._clock() + ttl, ttl
-            return _json(200, {"ok": True, "lease_id": cur.lease_id, "expires": cur.expires, "ttl_s": ttl})
+            return _json(200, {"ok": True, "lease_id": lease.lease_id})
 
     async def _release(self, request: web.Request) -> web.Response:
         if not self.leasing:
@@ -324,7 +297,6 @@ class ControlServer:
         if bad is not None:
             return bad
         async with self._lock:
-            await self._expire_locked()
             cur = self.lease
             if cur is None or cur.lease_id != body["lease_id"]:
                 return _json(200, {"ok": True, "released": False})
@@ -359,7 +331,7 @@ class LeaseUnauthorized(LeaseError):
 
 
 class LeaseClient:
-    """Клиент аренды для ядра: `status`, `acquire`, `renew`, `release`. Каждый вызов с тайм-аутом; ошибки: `LeaseError`
+    """Клиент аренды для ядра: `status`, `info`, `acquire`, `release`. Каждый вызов с тайм-аутом; ошибки: `LeaseError`
     и её потомки (`LeaseUnavailable`, `LeaseBusy`, `LeaseUnauthorized`). Токен управления в сообщения об ошибках не попадает."""
 
     def __init__(self, base_url: str, token: str, *, timeout: float = CLIENT_TIMEOUT_S):
@@ -400,19 +372,14 @@ class LeaseClient:
     async def status(self) -> dict:
         return await self._call("GET", "/status")
 
-    async def acquire(self, *, character: str, core_url: str, token: str, purpose: str = "",
-                      ttl_s: float | None = None) -> dict:
-        """Взять в аренду: `{"ok", "lease_id", "expires", "ttl_s"}`. `LeaseBusy`, если занято другим."""
-        body: dict[str, Any] = {"character": character, "core_url": core_url, "token": token, "purpose": purpose}
-        if ttl_s is not None:
-            body["ttl_s"] = ttl_s
-        return await self._call("POST", "/acquire", body)
+    async def info(self) -> dict:
+        """Сведения о workspace (`GET /info`): для чего он и когда в него переходить, состояние аренды."""
+        return await self._call("GET", "/info")
 
-    async def renew(self, lease_id: str, ttl_s: float | None = None) -> dict:
-        body: dict[str, Any] = {"lease_id": lease_id}
-        if ttl_s is not None:
-            body["ttl_s"] = ttl_s
-        return await self._call("POST", "/renew", body)
+    async def acquire(self, *, character: str, core_url: str, token: str, purpose: str = "") -> dict:
+        """Взять в аренду: `{"ok", "lease_id"}`. `LeaseBusy`, если занято другим."""
+        body: dict[str, Any] = {"character": character, "core_url": core_url, "token": token, "purpose": purpose}
+        return await self._call("POST", "/acquire", body)
 
     async def release(self, lease_id: str) -> dict:
         return await self._call("POST", "/release", {"lease_id": lease_id})

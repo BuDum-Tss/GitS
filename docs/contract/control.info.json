@@ -1,0 +1,96 @@
+{
+  "name": "control.info",
+  "transport": "http GET /info",
+  "since": "1.11",
+  "errors": [
+    {
+      "status": 401,
+      "description": "нет или неверен токен управления: `{\"ok\": false, \"error\": \"unauthorized\"}`"
+    }
+  ],
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true,
+    "title": "GET /info",
+    "description": "Сведения о workspace до аренды: для чего он нужен и когда в него переходить. Источник: манифест (поле `workspace`, описания инструментов). Допустим у любого участника с интерфейсом управления; агент читает его, пока workspace не подключён к ядру."
+  },
+  "response": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "id участника"
+      },
+      "role": {
+        "type": "string",
+        "description": "роль",
+        "enum": [
+          "workspace",
+          "service"
+        ]
+      },
+      "title": {
+        "type": "string",
+        "description": "название"
+      },
+      "purpose": {
+        "type": "string",
+        "description": "для чего нужен"
+      },
+      "when_to_use": {
+        "type": "string",
+        "description": "когда в него переходить"
+      },
+      "keywords": {
+        "type": "array",
+        "description": "слова, по которым его стоит вспомнить"
+      },
+      "entry": {
+        "type": "array",
+        "description": "что включает среду (`user_message`, `self_impulse`, `critical`)"
+      },
+      "interruptible": {
+        "type": "boolean",
+        "description": "можно ли выйти в любой момент"
+      },
+      "safe_points": {
+        "type": "array",
+        "description": "когда выход безопасен"
+      },
+      "done_when": {
+        "type": "string",
+        "description": "когда дело считается законченным"
+      },
+      "tools": {
+        "type": "array",
+        "description": "инструменты: `[{name, description}]`"
+      },
+      "state": {
+        "type": "string",
+        "description": "состояние аренды",
+        "enum": [
+          "offline",
+          "free",
+          "busy"
+        ]
+      },
+      "holder": {
+        "type": "object",
+        "description": "хозяин аренды или null"
+      }
+    },
+    "additionalProperties": true,
+    "required": [
+      "id",
+      "role",
+      "title",
+      "tools",
+      "state",
+      "holder"
+    ],
+    "title": "GET /info (ответ 200)"
+  }
+}

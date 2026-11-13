@@ -39,7 +39,8 @@ HISTORY = (
     ("1.11", "фаза 1 переименования «модуль -> workspace / service» (аддитивно): поля манифеста role и ownership, поля id и role "
              "в hello (прежнее module_id шлётся рядом), адрес входа /ws рядом с /module/ws (доступен с фазы 2), переменные "
              "GITS_ID и GITS_TOKEN (GITS_MODULE_ID и GITS_MODULE_TOKEN остаются алиасами), HTTP-интерфейс управления "
-             "workspace с ownership shared: аренда (GET /status, POST /acquire, /renew, /release)"),
+             "workspace с ownership shared: аренда без срока и продления (GET /status, GET /info, POST /acquire, /release; "
+             "аренда кончается по release или при обрыве WebSocket участника), поля среды workspace.when_to_use и keywords"),
 )
 
 # Устаревшее: (элемент, дата удаления, чем заменить)

@@ -43,6 +43,8 @@ class WorkspaceSpec:
     interruptible: bool = True         # можно ли выйти, когда среда не сообщает иного
     safe_points: tuple[str, ...] = ()  # когда выход безопасен (для промпта и дашборда)
     done_when: str = ""                # когда задача среды считается законченной
+    when_to_use: str = ""              # когда в среду переходить (для агента: каталог пространств)
+    keywords: tuple[str, ...] = ()
 
 
 BUILTIN: dict[str, WorkspaceSpec] = {
@@ -66,7 +68,8 @@ def spec_from_manifest(module_id: str, ws: dict, title: str = "") -> WorkspaceSp
     return WorkspaceSpec(module_id, str(ws.get("title") or title or module_id), KIND_MODULE, str(ws.get("purpose") or ""),
                          entry=entry, interruptible=bool(ws.get("interruptible", True)),
                          safe_points=tuple(ws.get("safe_points") or ()),
-                         done_when=str(ws.get("done_when") or ""))
+                         done_when=str(ws.get("done_when") or ""), when_to_use=str(ws.get("when_to_use") or ""),
+                         keywords=tuple(ws.get("keywords") or ()))
 
 
 def can_enter(spec: WorkspaceSpec, reason: str) -> tuple[bool, str]:

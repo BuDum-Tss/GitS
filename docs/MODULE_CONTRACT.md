@@ -27,7 +27,7 @@
 - `1.8`: ТЗ 33: рабочее место. Поля манифеста nodes (дерево узлов, context узла, watch), tools[].node, у emits поля urgency_unfocused, topics, follow_up; поле node в сообщении state; поля среды workspace.autonomous и work_interval_s (рабочий цикл агента). Правила: docs/WORKSPACE_MODULES.md
 - `1.9`: ТЗ 32: core.tasks (цель и открытые задачи среды для панели или оверлея модуля)
 - `1.10`: удалены политики модуля: поля policies и default_policy, запросы policy.activate, focus.release, focus.resume, параметр policy у workspace.*, active_policy в статусе; конец состояния «задача кончилась» сообщает модуль флагом done в статусе
-- `1.11`: фаза 1 переименования «модуль -> workspace / service» (аддитивно): поля манифеста role и ownership, поля id и role в hello (прежнее module_id шлётся рядом), адрес входа /ws рядом с /module/ws (доступен с фазы 2), переменные GITS_ID и GITS_TOKEN (GITS_MODULE_ID и GITS_MODULE_TOKEN остаются алиасами), HTTP-интерфейс управления workspace с ownership shared: аренда (GET /status, POST /acquire, /renew, /release)
+- `1.11`: фаза 1 переименования «модуль -> workspace / service» (аддитивно): поля манифеста role и ownership, поля id и role в hello (прежнее module_id шлётся рядом), адрес входа /ws рядом с /module/ws (доступен с фазы 2), переменные GITS_ID и GITS_TOKEN (GITS_MODULE_ID и GITS_MODULE_TOKEN остаются алиасами), HTTP-интерфейс управления workspace с ownership shared: аренда без срока и продления (GET /status, GET /info, POST /acquire, /release; аренда кончается по release или при обрыве WebSocket участника), поля среды workspace.when_to_use и keywords
 
 Устаревшее: `emotion` до 2027-01-01, заменить на тег стикера в тексте ответа; сообщение игнорируется ядром
 
@@ -1327,11 +1327,13 @@
 
 Workspace с `ownership: shared` занимает один хозяин за раз. Хозяин (ядро персонажа) берёт окружение в аренду по HTTP, а workspace подключается к его ядру по WebSocket. Это не сообщения шины, поэтому они описаны отдельно от `Message`. Сервер: `gits_sdk.control.ControlServer`, клиент ядра: `gits_sdk.control.LeaseClient`. Авторизация: заголовок `Authorization: Bearer <GITS_CONTROL_TOKEN>` у каждого запроса. Состояния: `offline`, `free`, `busy`.
 
-- Срок аренды истекает сам: `ttl_s` по умолчанию 300 с, наибольший 3600 с; истёк срок: то же, что `release` (вызывается `on_release`). Хозяин продлевает аренду запросом `renew` (например раз в треть срока).
+- У аренды нет срока и нет продления: она держится, пока хозяин не вызовет `release` или пока не оборвётся WebSocket участника с ядром хозяина (ядро упало или отключило участника): тогда workspace сам отпускает аренду и вызывает `on_release`.
 - Один хозяин за раз; другой `character` получает 409 с описанием хозяина (без токена).
+- Состояние аренды хранит сам workspace; ядро его не дублирует и читает запросом `GET /status`.
+- `GET /info` описывает workspace до аренды и до подключения к ядру: для чего он и когда в него переходить (из манифеста: поле `workspace`).
 - Сервер управления не стартует без токена управления (`GITS_CONTROL_TOKEN`); токен общий для всех вызывающих.
 - Токен ядра хозяина из `acquire` живёт только в памяти workspace на время аренды: ни в журналы, ни в `status` он не попадает.
-- Клиентская часть для ядра: `gits_sdk.control.LeaseClient(base_url, token)` с методами `status`, `acquire`, `renew`, `release`.
+- Клиентская часть для ядра: `gits_sdk.control.LeaseClient(base_url, token)` с методами `status`, `info`, `acquire`, `release`.
 
 Хозяин (`holder`):
 
@@ -1341,7 +1343,6 @@ Workspace с `ownership: shared` занимает один хозяин за р�
 | `core_url` | string | да | непустая | адрес ядра хозяина, к которому подключён workspace (ws:// или wss://) |
 | `since` | number | да | - | когда аренда началась, unix-время в секундах |
 | `purpose` | string | нет | - | зачем взято (например `play`, `montage`); пусто, если не указано |
-| `expires` | number | да | - | когда аренда истекает, unix-время в секундах |
 
 ### `GET /status`
 
@@ -1361,8 +1362,7 @@ Workspace с `ownership: shared` занимает один хозяин за р�
 | `role` | string | да | одно из `workspace`, `service` | роль |
 | `ownership` | string | нет | одно из `shared`, `owned` | режим владения (у workspace) |
 | `state` | string | да | одно из `offline`, `free`, `busy` | состояние |
-| `holder` | object | да | - | хозяин аренды (поля: character, core_url, since, purpose, expires) или null, если свободно |
-| `ttl_s` | number | да | - | срок аренды по умолчанию, секунд (300; наибольший 3600) |
+| `holder` | object | да | - | хозяин аренды (поля: character, core_url, since, purpose) или null, если свободно |
 | `active` | integer | да | - | сколько хозяев или подключений сейчас (для shared 0 или 1) |
 
 Пример ответа:
@@ -1377,17 +1377,75 @@ Workspace с `ownership: shared` занимает один хозяин за р�
     "character": "glados",
     "core_url": "ws://127.0.0.1:8766/module/ws",
     "since": 1760000000.0,
-    "purpose": "play",
-    "expires": 1760000300.0
+    "purpose": "play"
   },
-  "ttl_s": 300,
   "active": 1
+}
+```
+
+### `GET /info`
+
+Сведения о workspace до аренды: для чего он нужен и когда в него переходить. Источник: манифест (поле `workspace`, описания инструментов). Допустим у любого участника с интерфейсом управления; агент читает его, пока workspace не подключён к ядру.
+
+с версии 1.11.
+
+Ошибки (HTTP-код, тело):
+
+- `401`: нет или неверен токен управления: `{"ok": false, "error": "unauthorized"}`
+
+Ответ 200 (JSON):
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `id` | string | да | - | id участника |
+| `role` | string | да | одно из `workspace`, `service` | роль |
+| `title` | string | да | - | название |
+| `purpose` | string | нет | - | для чего нужен |
+| `when_to_use` | string | нет | - | когда в него переходить |
+| `keywords` | array | нет | - | слова, по которым его стоит вспомнить |
+| `entry` | array | нет | - | что включает среду (`user_message`, `self_impulse`, `critical`) |
+| `interruptible` | boolean | нет | - | можно ли выйти в любой момент |
+| `safe_points` | array | нет | - | когда выход безопасен |
+| `done_when` | string | нет | - | когда дело считается законченным |
+| `tools` | array | да | - | инструменты: `[{name, description}]` |
+| `state` | string | да | одно из `offline`, `free`, `busy` | состояние аренды |
+| `holder` | object | да | - | хозяин аренды или null |
+
+Пример ответа:
+
+```json
+{
+  "id": "montage",
+  "role": "workspace",
+  "title": "Монтаж",
+  "purpose": "монтаж роликов",
+  "when_to_use": "когда нужно смонтировать ролик из файлов",
+  "keywords": [
+    "монтаж",
+    "ролик"
+  ],
+  "entry": [
+    "user_message"
+  ],
+  "interruptible": true,
+  "safe_points": [
+    "между стадиями"
+  ],
+  "done_when": "задачи готовы",
+  "tools": [
+    {
+      "name": "start",
+      "description": "смонтировать видео"
+    }
+  ],
+  "state": "free",
+  "holder": null
 }
 ```
 
 ### `POST /acquire`
 
-Взять окружение в аренду. При успехе workspace вызывает обработчик `on_acquire(lease)` и подключается к ядру хозяина (`core_url`, `token` из тела). Одна аренда за раз. Повторный запрос того же `character` с тем же `purpose` продлевает аренду (идемпотентно: тот же `lease_id`); если `core_url` или `token` изменились, прежняя аренда закрывается и открывается новая.
+Взять окружение в аренду. При успехе workspace вызывает обработчик `on_acquire(lease)` и подключается к ядру хозяина (`core_url`, `token` из тела). Одна аренда за раз, срока нет. Повторный запрос того же `character` с тем же `purpose` идемпотентен (тот же `lease_id`); если `core_url` или `token` изменились, прежняя аренда закрывается и открывается новая.
 
 с версии 1.11.
 
@@ -1408,16 +1466,13 @@ Workspace с `ownership: shared` занимает один хозяин за р�
 | `core_url` | string | да | непустая | адрес ядра хозяина |
 | `token` | string | да | непустая | токен подключения к ядру хозяина (в журнал не пишется, в `holder` не отдаётся) |
 | `purpose` | string | нет | - | зачем взято |
-| `ttl_s` | number | нет | от 1; до 3600; по умолчанию `300` | срок аренды, секунд; больше 3600 обрезается |
 
 Ответ 200 (JSON):
 
 | Поле | Тип | Обязательно | Ограничения | Описание |
 |---|---|---|---|---|
 | `ok` | boolean | да | - | true |
-| `lease_id` | string | да | - | id аренды для renew и release |
-| `expires` | number | да | - | когда истекает, unix-время в секундах |
-| `ttl_s` | number | да | - | выданный срок, секунд |
+| `lease_id` | string | да | - | id аренды для release |
 
 Пример запроса:
 
@@ -1426,8 +1481,7 @@ Workspace с `ownership: shared` занимает один хозяин за р�
   "character": "glados",
   "core_url": "ws://127.0.0.1:8766/module/ws",
   "token": "<токен ядра>",
-  "purpose": "play",
-  "ttl_s": 300
+  "purpose": "play"
 }
 ```
 
@@ -1436,63 +1490,13 @@ Workspace с `ownership: shared` занимает один хозяин за р�
 ```json
 {
   "ok": true,
-  "lease_id": "l-0123456789ab",
-  "expires": 1760000300.0,
-  "ttl_s": 300
-}
-```
-
-### `POST /renew`
-
-Продлить аренду: новый срок отсчитывается от текущего момента.
-
-с версии 1.11.
-
-Ошибки (HTTP-код, тело):
-
-- `400`: тело неверно: `{"ok": false, "error": "bad_request", "message": ...}`
-- `401`: нет или неверен токен управления: `{"ok": false, "error": "unauthorized"}`
-- `404`: аренды нет, она истекла или закрыта: `{"ok": false, "error": "unknown_lease"}`
-
-Тело запроса (JSON):
-
-| Поле | Тип | Обязательно | Ограничения | Описание |
-|---|---|---|---|---|
-| `lease_id` | string | да | непустая | id аренды |
-| `ttl_s` | number | нет | от 1; до 3600; по умолчанию `300` | новый срок, секунд |
-
-Ответ 200 (JSON):
-
-| Поле | Тип | Обязательно | Ограничения | Описание |
-|---|---|---|---|---|
-| `ok` | boolean | да | - | true |
-| `lease_id` | string | да | - | id аренды |
-| `expires` | number | да | - | когда истекает |
-| `ttl_s` | number | да | - | выданный срок, секунд |
-
-Пример запроса:
-
-```json
-{
-  "lease_id": "l-0123456789ab",
-  "ttl_s": 300
-}
-```
-
-Пример ответа:
-
-```json
-{
-  "ok": true,
-  "lease_id": "l-0123456789ab",
-  "expires": 1760000600.0,
-  "ttl_s": 300
+  "lease_id": "l-0123456789ab"
 }
 ```
 
 ### `POST /release`
 
-Вернуть окружение: workspace вызывает `on_release(lease)`, отключается от ядра хозяина и забывает его. Идемпотентно: если аренды уже нет, ответ 200 с `released: false`.
+Вернуть окружение: workspace вызывает `on_release(lease)`, отключается от ядра хозяина и забывает его. Так же аренда кончается при обрыве WebSocket участника. Идемпотентно: если аренды уже нет, ответ 200 с `released: false`.
 
 с версии 1.11.
 

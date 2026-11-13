@@ -707,7 +707,7 @@ def _check_workspace(manifest: dict, problems: list[str]) -> None:
         return
     if ws.get("id") != manifest.get("id"):
         problems.append("workspace.id: должен совпадать с id модуля")
-    for key in ("title", "purpose", "done_when"):
+    for key in ("title", "purpose", "done_when", "when_to_use"):
         if key in ws and (not isinstance(ws[key], str) or not ws[key].strip()):
             problems.append(f"workspace.{key}: непустая строка")
     if "title" not in ws:
@@ -722,7 +722,7 @@ def _check_workspace(manifest: dict, problems: list[str]) -> None:
                                 "(запуск процесса и окно среду не включают)")
     if "interruptible" in ws and not isinstance(ws["interruptible"], bool):
         problems.append("workspace.interruptible: должно быть true или false")
-    for key in ("safe_points", "signals_in"):
+    for key in ("safe_points", "signals_in", "keywords"):
         if key in ws and (not isinstance(ws[key], list) or not all(isinstance(x, str) and x.strip() for x in ws[key])):
             problems.append(f"workspace.{key}: список непустых строк")
     if "default_goal" in ws and (not isinstance(ws["default_goal"], str) or not ws["default_goal"].strip() or len(ws["default_goal"]) > 300):
@@ -732,7 +732,7 @@ def _check_workspace(manifest: dict, problems: list[str]) -> None:
     if "work_interval_s" in ws and (not _is_int(ws["work_interval_s"]) or not 30 <= ws["work_interval_s"] <= 3600):
         problems.append("workspace.work_interval_s: целое 30–3600 секунд")
     extra = set(ws) - {"id", "title", "purpose", "entry", "interruptible", "safe_points", "signals_in", "done_when",
-                       "autonomous", "work_interval_s", "default_goal"}
+                       "autonomous", "work_interval_s", "default_goal", "when_to_use", "keywords"}
     if extra:
         problems.append(f"workspace: неизвестные поля {sorted(extra)}")
 

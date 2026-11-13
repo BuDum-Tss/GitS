@@ -50,13 +50,6 @@
       "purpose": {
         "type": "string",
         "description": "зачем взято"
-      },
-      "ttl_s": {
-        "type": "number",
-        "description": "срок аренды, секунд; больше 3600 обрезается",
-        "minimum": 1,
-        "maximum": 3600,
-        "default": 300
       }
     },
     "additionalProperties": true,
@@ -66,7 +59,7 @@
       "token"
     ],
     "title": "POST /acquire",
-    "description": "Взять окружение в аренду. При успехе workspace вызывает обработчик `on_acquire(lease)` и подключается к ядру хозяина (`core_url`, `token` из тела). Одна аренда за раз. Повторный запрос того же `character` с тем же `purpose` продлевает аренду (идемпотентно: тот же `lease_id`); если `core_url` или `token` изменились, прежняя аренда закрывается и открывается новая."
+    "description": "Взять окружение в аренду. При успехе workspace вызывает обработчик `on_acquire(lease)` и подключается к ядру хозяина (`core_url`, `token` из тела). Одна аренда за раз, срока нет. Повторный запрос того же `character` с тем же `purpose` идемпотентен (тот же `lease_id`); если `core_url` или `token` изменились, прежняя аренда закрывается и открывается новая."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -78,23 +71,13 @@
       },
       "lease_id": {
         "type": "string",
-        "description": "id аренды для renew и release"
-      },
-      "expires": {
-        "type": "number",
-        "description": "когда истекает, unix-время в секундах"
-      },
-      "ttl_s": {
-        "type": "number",
-        "description": "выданный срок, секунд"
+        "description": "id аренды для release"
       }
     },
     "additionalProperties": true,
     "required": [
       "ok",
-      "lease_id",
-      "expires",
-      "ttl_s"
+      "lease_id"
     ],
     "title": "POST /acquire (ответ 200)"
   }

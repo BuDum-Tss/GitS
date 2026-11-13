@@ -34,6 +34,8 @@ class WorkspaceManager:
                  connected: Callable[[str], bool] = lambda ws: True,
                  modules_of: Callable[[], Any] = lambda: (),
                  status_of: Callable[[str], dict | None] = lambda ws: None,
+                 leased: Callable[[str], bool] = lambda ws: False,
+                 lease_view: Callable[[str], dict | None] = lambda ws: None,
                  now: Callable[[], float] = time.time,
                  on_change: Callable[[dict], None] | None = None,
                  log: Callable[..., None] | None = None):
@@ -44,6 +46,8 @@ class WorkspaceManager:
         self._activate, self._release = activate, release
         self._interruptible, self._connected = interruptible, connected
         self._status_of = status_of
+        self._leased, self._lease_view = leased, lease_view
+        self.refresh_leases: Callable[[], Awaitable] | None = None      # обновить сведения об арендуемых пространствах (ставит ядро)
         self._modules_of = modules_of
         self._now, self.on_change, self._log = now, on_change, log
         self.current = dom.ASSISTANT
@@ -126,12 +130,15 @@ class WorkspaceManager:
         if not ok:
             return {"ok": False, "error": why}
         if spec.kind == dom.KIND_MODULE:
-            if not self._connected(ws):
+            if not self._connected(ws) and not self._leased(ws):     # общее пространство подключится при аренде
                 return {"ok": False, "error": f"модуль «{spec.title}» не подключён"}
             if self._activate is not None:
                 res = await self._activate(ws, goal)
                 if not res.get("ok", False):
-                    return {"ok": False, "error": str(res.get("reason") or res.get("error") or "модуль не принял среду")}
+                    out = {"ok": False, "error": str(res.get("reason") or res.get("error") or "модуль не принял среду")}
+                    if res.get("busy"):
+                        out.update(busy=True, holder=res.get("holder"))
+                    return out
         elif cur.kind == dom.KIND_MODULE and self._release is not None:
             res = await self._release(self.current, reason, reason in dom.Reason.FORCED)
             if not res.get("ok", False) and reason not in dom.Reason.FORCED:
@@ -189,6 +196,7 @@ class WorkspaceManager:
             "current": self.current, "title": spec.title, "kind": spec.kind, "purpose": spec.purpose,
             "reason": self.reason, "goal": self.goal, "since": self.since,
             "available": [{"id": s.id, "title": s.title, "kind": s.kind, "entry": list(s.entry),
+                           "purpose": s.purpose, "when_to_use": s.when_to_use, "lease": self._lease_view(s.id),
                            "connected": s.kind == dom.KIND_BUILTIN or bool(self._connected(s.id))}
                           for s in self.specs.values()],
             "history": list(self.history)[-20:],
