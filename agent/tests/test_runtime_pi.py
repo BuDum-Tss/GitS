@@ -148,6 +148,13 @@ async def test_abort_ends_the_turn_cancels_the_waiting_tool_and_keeps_working(tm
         await rt.close()
 
 
+async def test_turn_abandoned_by_timeout_is_aborted_in_the_bridge(pi):
+    """Тайм-аут хода снаружи (resident обрывает `run`): мост получает abort и не доигрывает ход в одиночку."""
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(_collect(pi, "wait"), 0.5)
+    assert (await asyncio.wait_for(_collect(pi, "hello"), 10))[-1].status == "ok"      # мост свободен, тот же процесс
+
+
 async def test_bridge_death_ends_the_turn_with_error_and_the_next_turn_restarts_it(pi):
     events = await _collect(pi, "die")
     assert isinstance(events[-1], EndEvent) and events[-1].status == "error" and "заверш" in events[-1].error

@@ -14,6 +14,7 @@ import logging
 import time
 
 import claude_quota
+import latency_trace
 import prompts
 from contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
 from domain.stickers import first_sticker, plain as strip_tags
@@ -277,15 +278,20 @@ class ResidentAgent:
         self._source = source
         if self._note:
             prompt, self._note = f"=== ЗАМЕТКА ===\n{self._note}\n\n{prompt}", ""
+        latency_trace.mark("route")                        # запрос собран, ход ушёл в среду (трасса задержки, ТЗ 24)
         async for event in runtime.run(prompt):
             if isinstance(event, TextEvent):
+                latency_trace.mark("llm_first_token")      # среда отдаёт сообщение целиком: первый текст и есть первое предложение
+                latency_trace.mark("first_sentence_ready")
                 if self._source == "event" and self._quiet():
                     continue                               # «не отвлекать»: событие не повод говорить
                 await h.say(h._declutter(strip_tags(event.text)), first_sticker(event.text))   # тег реакции -> стикер питомца
             elif isinstance(event, ToolEvent):
                 tool_id = str(event.args.get("tool_id") or event.args.get("query") or "")[:120]   # для find_tools в журнале виден запрос
                 logger.info(f"[агент] {event.name} {tool_id}".rstrip())
-            elif isinstance(event, EndEvent) and event.status == "error":
+            elif isinstance(event, EndEvent):
+                latency_trace.mark("llm_done")
+            if isinstance(event, EndEvent) and event.status == "error":
                 import llm_gate
                 if self._kind == "pi" and llm_gate.note_pi_error(event.error):
                     logger.warning("Лимит подписки на pi: агент отдыхает")

@@ -195,6 +195,8 @@ async def test_utterance_that_never_starts_is_dropped_after_the_timeout(tmp_path
         assert w.speech.is_speaking()
         now[0] += speech_out.VoiceModuleSpeech.START_TIMEOUT_S + 1
         assert not w.speech.is_speaking()
+        await w.wait(lambda: mod.stops)                                           # модулю велено отбросить снятую реплику
+        assert mod.stops == [{"utterance_id": "u-00000001", "at": "now"}]
         await w.stop_module(mod)
 
 

@@ -117,6 +117,18 @@ def test_wait_speech_returns_when_queue_is_empty_and_gives_up_after_limit():
     assert 0.4 < asyncio.run(run(Queue([], True), 0.5)) < 1.5      # всё ещё звучит: ждём до предела
 
 
+def test_turn_stages_are_marked_in_the_latency_trace(monkeypatch):
+    import latency_trace
+    agent, host = _agent(monkeypatch)
+    t = latency_trace.start("dashboard")
+    token = latency_trace.bind(t)
+    try:
+        asyncio.run(agent.handle_user("привет"))
+    finally:
+        latency_trace.unbind(token)
+    assert {"core_in", "route", "llm_first_token", "first_sentence_ready", "llm_done"} <= set(t.marks)
+
+
 def test_session_survives_restart_of_the_core(monkeypatch):
     agent, host = _agent(monkeypatch)
     asyncio.run(agent.handle_user("раз"))

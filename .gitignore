@@ -37,3 +37,6 @@ services/f5-tts/out/
 # среда исполнения агента на pi (мост Node): зависимости и вход по подписке
 services/agent-runtime/node_modules/
 services/agent-runtime/auth.json
+
+# история моста pi, если его запускали вручную из services/agent-runtime без MEMORY_DIR
+services/agent-runtime/memory/

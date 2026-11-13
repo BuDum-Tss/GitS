@@ -231,8 +231,21 @@ class VoiceModuleSpeech:
         for uid in stale:
             logger.warning(f"Модуль голоса не начал реплику {uid} за {self.START_TIMEOUT_S:.0f} с: снимаю")
             del self._live[uid]
+            self._cancel_remote(uid)
             self._fire_audible(uid)
         return bool(self._live)
+
+    def _cancel_remote(self, utterance_id: str) -> None:
+        """Реплику сняли по тайм-ауту: модулю голоса говорим отбросить её, иначе он проиграет её позже поверх новых."""
+        conn = self.connection()
+        if conn is None:
+            return
+        try:
+            task = asyncio.get_running_loop().create_task(
+                conn.send("speak.stop", {"utterance_id": utterance_id, "at": "now"}))
+        except RuntimeError:
+            return                                    # нет цикла событий (тест без asyncio)
+        task.add_done_callback(lambda t: t.cancelled() or t.exception())      # сбой отправки не критичен
 
     def current_segment(self) -> str:
         started = [e for e in self._live.values() if e["started"]]

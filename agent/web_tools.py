@@ -51,8 +51,8 @@ def _public(addr: str) -> bool:
                                  or ip.is_reserved or ip.is_unspecified)
 
 
-async def check_url(url: str) -> None:
-    """FetchError, если адрес нельзя открывать: не http/https, локальное имя или непубличный адрес."""
+async def check_url(url: str) -> list[str]:
+    """Проверенные адреса узла; FetchError, если адрес нельзя открывать: не http/https, локальное имя или непубличный адрес."""
     parts = urlparse(url.strip())
     if parts.scheme not in ("http", "https"):
         raise FetchError("разрешены только адреса http и https")
@@ -73,6 +73,18 @@ async def check_url(url: str) -> None:
         raise FetchError("адрес не разрешился")
     if not all(_public(a) for a in addrs):
         raise FetchError("адрес ведёт в закрытую сеть: запрещено")
+    return addrs
+
+
+def _pinned(url: str, addr: str) -> tuple[str, dict, dict]:
+    """Адрес запроса по проверенному IP (иначе имя разрешится второй раз и ответ можно подменить между проверкой и
+    соединением): url с IP, заголовок Host и имя для SNI и проверки сертификата."""
+    parts = urlparse(url)
+    host = parts.hostname or ""
+    ip = f"[{addr}]" if ":" in addr else addr
+    netloc = ip + (f":{parts.port}" if parts.port else "")
+    ext = {"sni_hostname": host} if parts.scheme == "https" else {}
+    return parts._replace(netloc=netloc).geturl(), {"Host": parts.netloc.rsplit("@", 1)[-1]}, ext
 
 
 def html_to_text(raw: str) -> str:
@@ -100,9 +112,12 @@ async def _fetch(url: str) -> str:
                                  headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain,*/*;q=0.5"}) as client:
         current = url.strip()
         for hop in range(MAX_REDIRECTS + 1):
-            await check_url(current)
+            addrs = await check_url(current)
+            req_url, req_headers, req_ext = current, {}, {}
+            if TRANSPORT is None:                           # настоящая сеть: соединяемся с тем адресом, что проверили
+                req_url, req_headers, req_ext = _pinned(current, addrs[0])
             try:
-                async with client.stream("GET", current) as resp:
+                async with client.stream("GET", req_url, headers=req_headers, extensions=req_ext) as resp:
                     if resp.status_code in (301, 302, 303, 307, 308):
                         target = resp.headers.get("location")
                         if not target:

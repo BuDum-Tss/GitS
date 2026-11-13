@@ -251,3 +251,11 @@ def test_pi_runtime_without_history(monkeypatch):
     rt._system, rt._tools = "с", {}
     assert rt._init_message()["session_file"] is None
     assert PiRuntime()._init_message()["session_file"]
+
+
+def test_pinned_url_uses_checked_ip_and_keeps_host_and_sni():
+    url, headers, ext = web_tools._pinned("https://example.com:8443/a?b=1", "93.184.216.34")
+    assert url == "https://93.184.216.34:8443/a?b=1" and headers == {"Host": "example.com:8443"}
+    assert ext == {"sni_hostname": "example.com"}
+    url, headers, ext = web_tools._pinned("http://example.com/x", "2606:2800::1")
+    assert url == "http://[2606:2800::1]/x" and headers == {"Host": "example.com"} and ext == {}
