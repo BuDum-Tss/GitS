@@ -99,6 +99,6 @@ async def test_conversation_going_quiet_notifies_the_hook_once(tmp_path):
 
 def test_dashboard_page_shows_thoughts_and_latency_budget():
     from pathlib import Path
-    html = (Path(__file__).resolve().parents[1] / "agent" / "static" / "ui" / "index.html").read_text(encoding="utf-8")
+    html = (Path(__file__).resolve().parents[1] / "agent" / "clients" / "gui" / "index.html").read_text(encoding="utf-8")
     for needle in ('data-tab="thoughts"', 'id="tab-thoughts"', "/api/thoughts", 'id="latency-budget"', "L.budget"):
         assert needle in html, needle

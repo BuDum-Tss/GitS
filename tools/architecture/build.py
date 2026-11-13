@@ -2,7 +2,7 @@
 
 Запуск из корня репозитория:  python -m tools.architecture.build
 Пишет:
-  agent/static/ui/architecture-data.js        данные для вкладки «Схема» GUI и для страницы docs;
+  agent/clients/gui/architecture-data.js        данные для вкладки «Схема» GUI и для страницы docs;
   docs/architecture-clean.html                страница с той же схемой и пояснениями (сущности, проблемы кода, план);
   docs/architecture-clean.drawio              редактируемая версия для diagrams.net (всё раскрыто).
 Тест `test/test_architecture_spec.py` следит, что файлы совпадают со спецификацией.
@@ -14,7 +14,7 @@ from pathlib import Path
 from tools.architecture import spec, texts
 
 ROOT = Path(__file__).resolve().parents[2]
-DATA_JS = ROOT / "agent" / "static" / "ui" / "architecture-data.js"
+DATA_JS = ROOT / "agent" / "clients" / "gui" / "architecture-data.js"
 DOCS_HTML = ROOT / "docs" / "architecture-clean.html"
 DOCS_DRAWIO = ROOT / "docs" / "architecture-clean.drawio"
 
@@ -53,7 +53,7 @@ def render_docs_html() -> str:
     return f"""<!doctype html>
 <html lang="ru" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GitS: архитектура ядра</title>
-<!-- UI-кит как в GUI агента: Tailwind (play CDN) + daisyUI 4; граф на Cytoscape.js из agent/static/ui/vendor -->
+<!-- UI-кит как в GUI агента: Tailwind (play CDN) + daisyUI 4; граф на Cytoscape.js из agent/clients/gui/vendor -->
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{{height:auto}}code{{font-size:.85em}}</style>
@@ -88,9 +88,9 @@ sdk/gits_sdk/contract/   публичные контракты для модул
 <h2 class="text-xl font-semibold mt-8 mb-2">План рефакторинга без остановки проекта</h2>
 <p class="opacity-70 mb-2">Каждый шаг отдельной веткой, поведение не меняется, тесты зелёные.</p>{phases}
 </div>
-<script src="../agent/static/ui/vendor/cytoscape.min.js"></script>
-<script src="../agent/static/ui/architecture-data.js"></script>
-<script src="../agent/static/ui/architecture.js"></script>
+<script src="../agent/clients/gui/vendor/cytoscape.min.js"></script>
+<script src="../agent/clients/gui/architecture-data.js"></script>
+<script src="../agent/clients/gui/architecture.js"></script>
 <script>ARCH.mount(document.getElementById('arch-root'));</script>
 </body></html>
 """

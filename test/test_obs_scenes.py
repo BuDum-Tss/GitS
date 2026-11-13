@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tools import obs_scenes
 
-STATIC = Path(__file__).resolve().parents[1] / "agent" / "static" / "stream"
+STATIC = Path(__file__).resolve().parents[1] / "agent" / "clients" / "stream"
 TEMPLATE = {"sources": [{"canvas_uuid": "c-1"}], "DesktopAudioDevice1": {"name": "Звук рабочего стола"}, "modules": {"x": 1}}
 
 

@@ -1,7 +1,7 @@
 """Вкладка «Состояние»: карточка состояния только для чтения (без переключателей режима) и буфер событий."""
 from pathlib import Path
 
-HTML = (Path(__file__).resolve().parents[1] / "agent" / "static" / "ui" / "index.html").read_text(encoding="utf-8")
+HTML = (Path(__file__).resolve().parents[1] / "agent" / "clients" / "gui" / "index.html").read_text(encoding="utf-8")
 
 
 def test_profile_graph_is_gone():

@@ -22,6 +22,6 @@ def test_generated_files_match_spec():
 
 
 def test_gui_has_scheme_tab():
-    html = (ROOT / "agent" / "static" / "ui" / "index.html").read_text(encoding="utf-8")
+    html = (ROOT / "agent" / "clients" / "gui" / "index.html").read_text(encoding="utf-8")
     assert 'data-tab="arch"' in html and 'id="tab-arch"' in html
     assert "architecture-data.js" in html and "architecture.js" in html

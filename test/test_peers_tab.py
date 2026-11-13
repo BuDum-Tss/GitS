@@ -91,7 +91,7 @@ def test_planned_modules_are_not_run_by_the_supervisor():
 
 def test_dev_mode_is_a_setting_with_a_form_field():
     assert settings.DEFAULTS["dev_mode"] is False
-    html = (AGENT / "static" / "ui" / "index.html").read_text(encoding="utf-8")
+    html = (AGENT / "clients" / "gui" / "index.html").read_text(encoding="utf-8")
     assert "key: 'dev_mode'" in html and 'data-tab="workspaces"' in html and 'data-tab="services"' in html
     assert 'data-tab="modules"' not in html
 

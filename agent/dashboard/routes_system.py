@@ -17,7 +17,7 @@ from aiohttp import web
 from . import presenters
 from .context import ctx, raw_json_body
 
-_UI_FILE = Path(__file__).resolve().parents[1] / "static" / "ui" / "index.html"
+_UI_FILE = Path(__file__).resolve().parents[1] / "clients" / "gui" / "index.html"
 
 
 def read_json(name: str, default):
@@ -42,7 +42,7 @@ async def handle_root(request: web.Request) -> web.Response:
     try:
         html = _UI_FILE.read_text(encoding="utf-8")
     except OSError:
-        return web.Response(text="UI не найден: static/ui/index.html", status=500)
+        return web.Response(text="UI не найден: clients/gui/index.html", status=500)
     return web.Response(text=html, content_type="text/html")
 
 

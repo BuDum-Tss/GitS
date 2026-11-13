@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GitS: архитектура ядра</title>
-<!-- UI-кит как в GUI агента: Tailwind (play CDN) + daisyUI 4; граф на Cytoscape.js из agent/static/ui/vendor -->
+<!-- UI-кит как в GUI агента: Tailwind (play CDN) + daisyUI 4; граф на Cytoscape.js из agent/clients/gui/vendor -->
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{height:auto}code{font-size:.85em}</style>
@@ -36,8 +36,8 @@ sdk/gits_sdk/contract/   публичные контракты для модул
 <h2 class="text-xl font-semibold mt-8 mb-2">План рефакторинга без остановки проекта</h2>
 <p class="opacity-70 mb-2">Каждый шаг отдельной веткой, поведение не меняется, тесты зелёные.</p><div class="overflow-x-auto"><table class="table table-sm bg-base-100"><thead><tr><th>Шаг</th><th>Что</th><th>Содержание</th></tr></thead><tbody><tr><td><b>R0</b></td><td>Страховка</td><td>Тест архитектуры по импортам; текущие тесты без изменений.</td></tr><tr><td><b>R1</b></td><td>Домен</td><td>Чистые функции в <code>agent/domain/</code>: оценка и D0–D4, правила и «замолчи», дедупликация, риск, политика фокуса.</td></tr><tr><td><b>R2</b></td><td>Контракты</td><td><code>agent/contracts.py</code> (Protocol) и адаптеры поверх существующих модулей.</td></tr><tr><td><b>R3</b></td><td>Разрезать Attention</td><td>ProcessEvent (Normalizer → HardRules → Classifier → Scorer → Dispatcher), SpeechCoordinator, Digest, QuestionService, JobTracker; фасад <code>Attention</code> остаётся.</td></tr><tr><td><b>R4</b></td><td>Разрезать Companion</td><td>ConversationService, ContextBuilder, ReplyGenerator, MemoryCapture; проактивность по таймеру выделена временно и удалена в ТЗ 30.</td></tr><tr><td><b>R5</b></td><td>Разрезать FocusManager</td><td>FocusPolicy, FocusQueue, CheckpointStore, FocusDispatch.</td></tr><tr><td><b>R6</b></td><td>Сборка и транспорт</td><td><code>core_service</code> только собирает; <code>peer_hub</code> без импорта домена.</td></tr><tr><td><b>R7</b></td><td>Дашборд</td><td>Роутеры и презентеры, чтение через контракты.</td></tr><tr><td><b>ТЗ 30</b></td><td>Внутренние импульсы и размышление</td><td>ReminderStore, ImpulseTimer, ReflectionService, PlanNudger; <code>proactive_loop</code> убран.</td></tr><tr><td><b>ТЗ 32</b></td><td>Workspace и общие задачи</td><td>WorkspaceManager, TaskService, Planner, TaskStore: задачи, напоминания себе и планы пользователя живут в <code>tasks.db</code>.</td></tr></tbody></table></div>
 </div>
-<script src="../agent/static/ui/vendor/cytoscape.min.js"></script>
-<script src="../agent/static/ui/architecture-data.js"></script>
-<script src="../agent/static/ui/architecture.js"></script>
+<script src="../agent/clients/gui/vendor/cytoscape.min.js"></script>
+<script src="../agent/clients/gui/architecture-data.js"></script>
+<script src="../agent/clients/gui/architecture.js"></script>
 <script>ARCH.mount(document.getElementById('arch-root'));</script>
 </body></html>

@@ -86,7 +86,7 @@ text=факт)` там, где событие происходит (`controller.
 
 ## Как добавить настройку
 Общая с ядром: ключ в `DEFAULTS` (`settings.py`) в обоих репозиториях, поле формы в дашборде ядра
-(`GitS/agent/static/ui/index.html`), имя в `SHARED_SETTINGS` (`module_manifest.py`): так она доходит сюда темой `settings`.
+(`GitS/agent/clients/gui/index.html`), имя в `SHARED_SETTINGS` (`module_manifest.py`): так она доходит сюда темой `settings`.
 Собственная настройка модуля: запись в `SETTINGS_SCHEMA` (`module_manifest.py`), форму рисует дашборд ядра, значение в
 `link.module_settings` (пример: `auto_montage`).
 
