@@ -53,6 +53,9 @@ class FakeAttention(Recorder):
         self._log.append("reset")
         return 2
 
+    def rebind_rules(self, memory_dir):                # настоящий Attention.rebind_rules: файл правил в папке памяти персонажа
+        self.rules.rebind(memory_dir / "attention.rules.json")
+
 
 class FakeGraph(Recorder):
     def set_character(self, char_id):

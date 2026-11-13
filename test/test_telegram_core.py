@@ -224,7 +224,7 @@ def test_module_events_report_and_trace_of_module_launch():
     reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"peers": {}})
     assert reg.events_report() == "событий модулей нет"
     tool_trace.clear()
-    record = core_service._module_event_recorder(reg, SimpleNamespace(silent_kinds={"voice.heard"}))
+    record = core_service._module_event_recorder(reg, SimpleNamespace(is_silent=lambda kind: kind in {"voice.heard"}))
     record("rimworld", {"kind": "rimworld.game_started", "text": "Игра RimWorld запущена."})
     record("rimworld", {"kind": "rimworld.raid", "text": "Налёт"})
     record("voice", {"kind": "voice.heard", "text": "шум"})                # тихие виды в журнал не идут

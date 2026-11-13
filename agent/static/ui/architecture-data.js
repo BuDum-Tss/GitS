@@ -197,6 +197,15 @@ window.ARCH_DATA = {
      "now": "decide.py + services/decider; в Attention его зовёт attention/input_classifier.py; без сервиса обращение идёт по правилам"
     },
     {
+     "id": "attn",
+     "t": "EventAttention (контракт)",
+     "tag": "A",
+     "new": true,
+     "do": "граница сервиса внимания: остальное ядро знает его только через `attention.Attention` и этот протокол (приём событий, речь, правила, чтение сводки, подключение при сборке: connect, register_handler, set_*); внутренние файлы папки снаружи не импортируются",
+     "out": "вызовы сервиса",
+     "now": "contracts.EventAttention; attention/service.py; граница проверяется test_attention_boundary.py"
+    },
+    {
      "id": "disp",
      "t": "Dispatcher",
      "tag": "A",

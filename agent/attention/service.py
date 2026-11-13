@@ -174,6 +174,70 @@ class Attention:
                                       self.announcer, self.decision_log)
         self.jobs = JobTracker(ctx, self.store, self.dispatcher)
 
+    # ── подключение: так ядро собирает сервис (остальное ядро не трогает компоненты и контекст напрямую) ────────────
+
+    def connect(self, *, hub=None, modules=None, profiles=None) -> None:
+        """Соединения участников (доставка вопросов), реестр участников (манифесты, включённость), профили (веса)."""
+        if hub is not None:
+            self.hub = hub
+        if modules is not None:
+            self.modules = modules
+        if profiles is not None:
+            self.profiles = profiles
+
+    def set_node_watch(self, fn: Callable[[str], dict]) -> None:
+        """ТЗ 33: тема -> сдвиг срочности для текущего узла участника."""
+        self.ctx.node_watch = fn
+
+    def set_env_of(self, fn: Callable[[], Any]) -> None:
+        """Текущая среда агента: вес записей очереди, подавление."""
+        self.ctx.env_of = fn
+
+    def set_think_handler(self, fn: Callable[[Item], Any] | None) -> None:
+        """ТЗ 30: маршрут think; fn(item) запускает размышление в фоне."""
+        self.ctx.on_think = fn
+
+    def set_alert_handler(self, fn: Callable[[Item], bool] | None) -> None:
+        """Важное событие не от пользователя: fn(item) -> True, если его берёт единый агент и обрывает идущий ход."""
+        self.ctx.on_alert = fn
+
+    def register_handler(self, kind: str, handler: Callable) -> None:
+        """Служебное событие вида `kind`: async handler(item) вместо обычной обработки (ТЗ 11, RW-9)."""
+        self.kind_handlers[kind] = handler
+
+    def register_handlers(self, handlers: dict[str, Callable]) -> None:
+        self.kind_handlers.update(handlers)
+
+    def register_hook(self, kind: str, hook: Callable) -> None:
+        """То же с побочным действием, обычная обработка продолжается (ТЗ 12, VOICE-14)."""
+        self.kind_hooks[kind] = hook
+
+    def add_silent_kinds(self, kinds) -> None:
+        """Виды событий, которые не пишутся в журнал `module_event`."""
+        self.silent_kinds |= set(kinds)
+
+    def is_silent(self, kind: str) -> bool:
+        return kind in self.silent_kinds
+
+    def spawn(self, coro) -> asyncio.Task:
+        """Фоновая задача сервиса: `settle` и остановка дожидаются её."""
+        return self.ctx.spawn(coro)
+
+    def settings_now(self) -> dict:
+        return self.ctx.settings()
+
+    def quiet_now(self) -> bool:
+        """Включён ли режим «не отвлекать»."""
+        return bool(self.ctx.quiet(self.ctx.settings()))
+
+    def rebind_rules(self, memory_dir) -> None:
+        """Смена персонажа: временные правила читаются из папки памяти нового персонажа."""
+        self.rules.rebind(memory_dir / RULES_FILE)
+
+    def discard_speech(self, cand, why: str = "cancelled") -> None:
+        """Снять кандидата очереди речи (реплику отменили до звука)."""
+        self.speech.discard(cand, why)
+
     # ── служебное ────────────────────────────────────────────────────────────
 
     @staticmethod

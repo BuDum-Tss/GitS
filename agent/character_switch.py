@@ -15,7 +15,6 @@ import character
 import events_log
 import memory_migration
 import prompts
-from attention.rules import FILE_NAME as RULES_FILE
 
 log = logging.getLogger("character_switch")
 
@@ -53,7 +52,7 @@ class CharacterSwitch:
             self.companion.rebind_memory(mdir)
             self.rel.rebind(mdir)
             if self.attention is not None:
-                self.attention.rules.rebind(mdir / RULES_FILE)
+                self.attention.rebind_rules(mdir)
             if self.graph is not None:
                 self.graph.set_character(new.id)
                 try:                                  # у этого персонажа ещё может лежать старая memories.json

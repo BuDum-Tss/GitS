@@ -12,7 +12,7 @@ import prompts
 from adapters.impulse_store import JsonReminders, JsonThoughts
 from app import impulse_origin
 from app.impulse_timer import ImpulseTimer
-from attention.items import event_of
+from attention import event_of
 from app.plan_nudge import PlanNudger
 from app.reflection import ReflectionService
 from domain.event import KIND_AFTER_CONVERSATION
@@ -47,15 +47,15 @@ def build(companion, attention, *, settings_source=None, clock=None, tasks=None)
     def think(item):
         """Один агент: событие и самоимпульс обдумывает единый агент."""
         e = event_of(item)
-        return attention.ctx.spawn(companion.resident.handle_event(e.kind, e.text, e.origin))
-    attention.ctx.on_think = think
+        return attention.spawn(companion.resident.handle_event(e.kind, e.text, e.origin))
+    attention.set_think_handler(think)
 
     def alert(item) -> bool:
         """Важное событие модуля (игра: враги, смерть, пожар) прерывает работу агента и разбирается им первым."""
         e = event_of(item)
-        attention.ctx.spawn(companion.resident.preempt(e.kind, e.text, e.origin))
+        attention.spawn(companion.resident.preempt(e.kind, e.text, e.origin))
         return True
-    attention.ctx.on_alert = alert
+    attention.set_alert_handler(alert)
     plans = PlanNudger(tasks, timer.add, clock=clock)   # планы пользователя -> напоминания себе
 
     def conversation_ended(text: str) -> None:

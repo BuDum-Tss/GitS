@@ -159,7 +159,7 @@ class Companion:
             try:
                 await cand.done
             except asyncio.CancelledError:
-                self.attention.speech.discard(cand, "cancelled")
+                self.attention.discard_speech(cand, "cancelled")
                 raise
 
     async def say(self, text: str, sticker: str | None = None, priority: int | None = None, *, direct: bool = False,

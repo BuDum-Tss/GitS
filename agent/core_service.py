@@ -95,7 +95,7 @@ def wire_workspace_nodes(companion, registry, attention, modules, workspaces) ->
             if isinstance(n, dict) and n.get("path") == node:
                 return dict(n.get("watch") or {})
         return {}
-    attention.ctx.node_watch = node_watch
+    attention.set_node_watch(node_watch)
     panel = NodePanel(env_of=lambda: workspaces.current, manifest_of=modules.manifest_of, node_of=modules.node,
                       run_tool=lambda tool_id, args: companion.router.run_tool_ex(tool_id, args))
     companion.node_panel = panel
@@ -122,7 +122,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                     presence=presence, profile_source=lambda: holder["profiles"].info())
     hub.attention = attention                            # только для диагностики и тестов: шина работает через sink (ARC-7)
     io.hub = hub
-    attention.hub, attention.modules = hub, modules
+    attention.connect(hub=hub, modules=modules)
     # среды агента: среду модуля объявляет его манифест и включает только импульс (сообщение пользователя, самоимпульс);
     # обмен с модулем (вход, выход, возобновление) делает WorkspaceLink
     leases = LeaseAdapter(character=lambda: character.active().id, core_url=lambda: core_public_url(port),
@@ -153,18 +153,18 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
         log=lambda kind, **data: _log_workspace(kind, data))
     holder["workspaces"] = workspaces
     workspaces.refresh_leases = leases.refresh
-    attention.ctx.env_of = lambda: workspaces.current            # среда: вес записей очереди, подавление ассистентского шума в игре
+    attention.set_env_of(lambda: workspaces.current)            # среда: вес записей очереди, подавление ассистентского шума в игре
     wire_workspace_nodes(companion, registry, attention, modules, workspaces)
     modules.is_noise = lambda module, kind: scoring.is_assistant_noise(workspaces.current, module, kind)     # отчёт о событиях без экрана пользователя
     presence.listener = hub.broadcast_presence
     speech = getattr(companion, "speech", None)
     if hasattr(speech, "attach"):
         speech.attach(hub, modules)                      # VOICE-15: речь идёт модулю voice, пока он подключён
-    attention.silent_kinds |= VOICE_SILENT_KINDS
-    attention.kind_handlers.update(make_voice_handlers(companion, attention, speech))
-    attention.kind_hooks["voice.heard"] = make_heard_hook(companion)
-    attention.kind_hooks["desktop.activity"] = make_activity_hook(companion)
-    attention.kind_hooks["rimworld.run_ended"] = make_run_lost_hook()
+    attention.add_silent_kinds(VOICE_SILENT_KINDS)
+    attention.register_handlers(make_voice_handlers(companion, attention, speech))
+    attention.register_hook("voice.heard", make_heard_hook(companion))
+    attention.register_hook("desktop.activity", make_activity_hook(companion))
+    attention.register_hook("rimworld.run_ended", make_run_lost_hook())
 
     async def live_subgraph(profile):
         """Подграф профиля от первого модуля фокуса с graph: true (запрос graph.get, CORE-22, RW-19); None, если такого нет."""
@@ -187,7 +187,7 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
                                               workspace_of=lambda: workspaces.current,
                                               on_change=on_profile_change, subgraph=live_subgraph)
     holder["profiles"] = profiles
-    attention.profiles = profiles
+    attention.connect(profiles=profiles)
     profiles.evaluate()
     registry.focus = profiles.focus_modules
     companion.profile_hint = profiles.hint
@@ -294,7 +294,7 @@ def _module_event_recorder(modules, attention):
     """Журнал событий модулей по запросу (`core.module_events`) и строки в чат о том, что сделал модуль сам (запуск игры)."""
     def record(peer_id: str, event: dict) -> None:
         kind = str(event.get("kind") or "")
-        if kind in attention.silent_kinds:
+        if attention.is_silent(kind):
             return
         modules.note_event(peer_id, event)
         if kind in TRACED_EVENT_KINDS:
@@ -401,8 +401,8 @@ async def _run(config: dict):
     impulses = impulse_service.build(companion, layer.attention, tasks=companion.tasks)             # ТЗ 30: импульсы и размышление
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     work_loop = WorkLoop(env_of=lambda: layer.workspaces.current, manifest_of=layer.modules.manifest_of, agent=companion.resident,
-                         emit=layer.attention.submit_self, settings=layer.attention.ctx.settings,
-                         quiet=lambda: layer.attention.ctx.quiet(layer.attention.ctx.settings()), blocked=llm_gate.blocked,
+                         emit=layer.attention.submit_self, settings=layer.attention.settings_now,
+                         quiet=layer.attention.quiet_now, blocked=llm_gate.blocked,
                          tasks=companion.tasks)
     work_loop.start()                                    # ТЗ 33: автономная работа агента в среде игры или мира
     companion.router.auto_ok = lambda: work_loop.spec() is not None      # пока она играет сама, обычные действия идут без вопроса
@@ -420,7 +420,7 @@ async def _run(config: dict):
     await impulses.plans.start()                         # планы пользователя -> напоминания себе (без опроса модели, ТЗ 30)
 
     # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
-    layer.attention.kind_handlers["rimworld.colonists"] = make_colonists_handler(rel, graph)
+    layer.attention.register_handler("rimworld.colonists", make_colonists_handler(rel, graph))
     logger.info("Ядро запущено: зрение, компаньон, быстрый слой, шина модулей. Игра и модули подключатся, когда появятся.")
     try:
         await asyncio.Event().wait()

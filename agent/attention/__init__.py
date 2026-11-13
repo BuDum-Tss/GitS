@@ -24,4 +24,6 @@ from .core import (  # noqa: F401  (имена прежнего модуля att
     Question,
     clamp,
 )
+from .inbox import BATCH_KIND  # noqa: F401  (вид события пачки входящей очереди: его знает размышление)
+from .items import event_of  # noqa: F401  (запись очереди -> Event: нужно размышлению и самоимпульсам)
 from .service import Attention  # noqa: F401
