@@ -2,8 +2,8 @@
 import pytest
 
 import tool_trace
-from adapters.approver import ApprovalsModule
-from adapters.settings_provider import SettingsModule
+import approvals
+import settings
 from dashboard import presenters
 from environments.base import ToolError
 from router import Router
@@ -60,8 +60,8 @@ def make_router(tool, plan):
         def describe(self):
             return ""
 
-    router = Router(Registry(), lambda _t: None, event_log=FakeLog(), settings_provider=SettingsModule(),
-                    approver=ApprovalsModule())
+    router = Router(Registry(), lambda _t: None, event_log=FakeLog(), settings_provider=settings,
+                    approver=approvals)
     router.registry.get = lambda _tid: tool
     return router
 

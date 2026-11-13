@@ -25,5 +25,6 @@ from .core import (  # noqa: F401  (имена прежнего модуля att
     clamp,
 )
 from .inbox import BATCH_KIND  # noqa: F401  (вид события пачки входящей очереди: его знает размышление)
+from .event_sink import AttentionEventSink  # noqa: F401  (приёмник событий шины: контракт `EventSink`)
 from .items import event_of  # noqa: F401  (запись очереди -> Event: нужно размышлению и самоимпульсам)
 from .service import Attention  # noqa: F401

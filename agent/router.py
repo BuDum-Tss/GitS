@@ -8,18 +8,24 @@ import asyncio
 import logging
 import time
 
-from adapters.approver import ApprovalsModule
-from adapters.event_log_sqlite import SqliteEventLog
-from adapters.settings_provider import SettingsModule
+import approvals
+import events_log
 import flow_trace
+import settings
 import journal
 import tool_trace
-from domain import risk as risk_policy
 from environments.base import ToolError, validate_args
 
 logger = logging.getLogger("router")
 
 RESULT_CHARS = 600
+
+
+
+def _needs_ask(danger, risk: str, self_confirming: bool, telegram_confirm: bool) -> bool:
+    """True, если перед действием нужно разрешение. `telegram_confirm` имеет смысл только для публичных действий
+    без самоподтверждения; вызывающий код читает настройку лениво, только в этом случае."""
+    return bool(danger) or risk == "ask" or (risk == "public" and not self_confirming and bool(telegram_confirm))
 
 
 class Router:
@@ -30,9 +36,9 @@ class Router:
         self._say = say                          # как озвучить вопрос о разрешении
         self.after_tool = None                   # async (tool, args, ok, result) -> None: что делать после инструмента (ставит ядро)
         self.auto_ok = lambda: False             # () -> агент сейчас играет в автономной среде: обычные действия без вопроса (ставит ядро)
-        self._log = event_log if event_log is not None else SqliteEventLog()
-        self._settings = settings_provider if settings_provider is not None else SettingsModule()
-        self._approver = approver if approver is not None else ApprovalsModule()
+        self._log = event_log if event_log is not None else events_log
+        self._settings = settings_provider if settings_provider is not None else settings
+        self._approver = approver if approver is not None else approvals
 
     async def _step(self, step: dict, candidates: dict, executor: str = "fast") -> tuple[bool, str, str, str | None]:
         """(успех, название, результат/причина, код ошибки по MOD-9 или None); шаг пишется в трассу потока (ТЗ 17)
@@ -66,7 +72,7 @@ class Router:
         if tool.danger_check and tool.check is not None and not danger:
             danger = await tool.check(args)       # модуль сам называет опасность (tool.check, CORE-35)
         public_unconfirmed = tool.risk == "public" and not tool.self_confirming
-        needs_ask = risk_policy.needs_ask(danger, tool.risk, tool.self_confirming,
+        needs_ask = _needs_ask(danger, tool.risk, tool.self_confirming,
                                           public_unconfirmed and self._settings.load()["telegram_confirm"])
         if needs_ask and not danger and tool.risk == "ask" and self.auto_ok():
             needs_ask = False                    # она играет сама: владельца обычными вопросами не отвлекаем; опасное и публичное спрашивается

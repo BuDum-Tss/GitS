@@ -73,6 +73,11 @@ def _leave():
 
 # ── состояние для дашборда и разговора ───────────────────────────────────────
 
+def formulating() -> bool:
+    """Идёт формулировка вопроса (контекстная метка `announcing`)."""
+    return bool(announcing.get())
+
+
 def has_pending() -> bool:
     return _active is not None
 

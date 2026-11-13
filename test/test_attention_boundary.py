@@ -10,7 +10,7 @@ from services.attention import Attention
 AGENT = Path(__file__).resolve().parents[1] / "agent"
 SKIP_PARTS = {"tests", ".venv", "node_modules", "logs", "tools"}
 OWN = ("services", "attention")                                           # папка сервиса: внутри неё можно что угодно
-ALLOWED_ROOT_NAMES = {"Attention", "Question", "BATCH_KIND", "event_of"}              # имена, которые остальное ядро берёт из пакета
+ALLOWED_ROOT_NAMES = {"Attention", "Question", "BATCH_KIND", "event_of", "AttentionEventSink"}              # имена, которые остальное ядро берёт из пакета
 ATT_NAMES = {"attention", "att"}
 
 

@@ -9,17 +9,14 @@ from test_attention import Clock, StubDecider
 
 import character
 from interfaces import contracts
+import approvals
 import decide
+from fast_brain import FastLLM
 import events_log
 import settings
-from adapters.approver import ApprovalsModule
-from adapters.classifier_gliner import GlinerClassifier
-from adapters.event_log_sqlite import SqliteEventLog
-from adapters.llm_fast import FastLLM
 from services.memory_service.adapters import UserMemoryAdapter
-from adapters.people import RelationshipsAdapter
+from relationships import RelationshipsAdapter
 from adapters.runtime_pi import PiRuntime
-from adapters.settings_provider import SettingsModule
 from services.attention import Attention
 from companion import Companion
 from services.memory_service.graph import GraphMemory
@@ -30,10 +27,9 @@ from router import Router
 
 @pytest.mark.parametrize("obj, contract", [
     (FastLLM(), contracts.LanguageModel),
-    (GlinerClassifier(), contracts.Classifier),
-    (SqliteEventLog(), contracts.EventLog),
-    (SettingsModule(), contracts.SettingsProvider),
-    (ApprovalsModule(), contracts.Approver),
+    (events_log, contracts.EventLog),
+    (settings, contracts.SettingsProvider),
+    (approvals, contracts.Approver),
     (RelationshipsAdapter(lambda: None), contracts.PeopleDirectory),
     (UserMemoryAdapter(lambda: None, lambda: None), contracts.MemoryReader),
     (UserMemoryAdapter(lambda: None, lambda: None), contracts.MemoryWriter),
@@ -49,17 +45,6 @@ def test_adapters_satisfy_their_contracts(obj, contract):
 
 def test_pi_runtime_can_steer():
     assert PiRuntime.can_steer is True
-
-
-def test_adapters_delegate_to_the_old_modules(monkeypatch):
-    """Адаптер не дублирует логику: вызов уходит в тот же модуль, что и раньше."""
-    seen = []
-    monkeypatch.setattr(events_log, "log", lambda kind, text="", **data: seen.append(("log", kind, text, data)))
-    monkeypatch.setattr(settings, "load", lambda: {"vision": True})
-
-    SqliteEventLog().log("say", "привет", emotion="happy")
-    assert seen == [("log", "say", "привет", {"emotion": "happy"})]
-    assert SettingsModule().load() == {"vision": True}
 
 
 # ── сценарии на заглушках контрактов ───────────────────────────────────────────────────────

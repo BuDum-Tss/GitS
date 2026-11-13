@@ -36,7 +36,7 @@ import speech_out
 import supervisor as supervisor_mod
 import tool_search
 from app.workspace_manager import WorkspaceManager
-from services.attention import Attention
+from services.attention import Attention, AttentionEventSink
 from app.workspace_link import WorkspaceLink
 from app.lease_adapter import LeaseAdapter
 from character_switch import CharacterSwitch
@@ -46,7 +46,6 @@ import core_requests
 from core_requests import CoreRequests
 from environments import builtin
 from environments.registry import Registry
-from adapters.module_events import AttentionEventSink
 from app.handlers.desktop import desktop_state, make_activity_hook
 import llm_gate
 from domain import scoring

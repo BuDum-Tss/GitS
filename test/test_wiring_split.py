@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 import dashboard
-from adapters.module_events import AttentionEventSink
+from services.attention import AttentionEventSink
 from interfaces.contracts import EventSink, RequestHandler
 from core_requests import CoreRequests
 from peer_hub import PeerHub

@@ -1,5 +1,5 @@
 """Общее состояние дашборда и защита запросов (ТЗ 29, ARC-8). Ядро кладёт сюда свои объекты через `set_*` пакета;
-роутеры берут их из `ctx`. Настройки читаются через контракт `SettingsProvider` (адаптер `adapters/settings_provider.py`)."""
+роутеры берут их из `ctx`. Настройки читаются через контракт `SettingsProvider` (по умолчанию модуль `settings`)."""
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from aiohttp import web
 
-from adapters.settings_provider import SettingsModule
+import settings as settings_module
 
 
 def default_is_local_json(request: web.Request) -> bool:
@@ -24,7 +24,7 @@ def default_is_local_json(request: web.Request) -> bool:
 @dataclass
 class DashboardContext:
     memory_dir: Path = Path("./memory")
-    settings: Any = field(default_factory=SettingsModule)        # SettingsProvider
+    settings: Any = field(default_factory=lambda: settings_module)        # SettingsProvider
     is_local_json: Callable[[web.Request], bool] = default_is_local_json
     modules: Any = None            # PeerRegistry
     hub: Any = None                # PeerHub

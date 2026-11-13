@@ -28,13 +28,11 @@ import logging
 import time
 from typing import Any, Callable
 
+import approvals
 import decide
-from adapters.approver import ApprovalsModule
-from adapters.classifier_gliner import GlinerClassifier
-from adapters.event_log_sqlite import SqliteEventLog
+import events_log
 from services.memory_service import writer_for_companion
-from adapters.people import people_for_companion
-from adapters.settings_provider import SettingsModule
+from relationships import people_for_companion
 from services.attention.announce import Announcer, is_announce_event
 from services.attention.core import (  # noqa: F401  (прежние имена модуля: их импортируют ядро, модули и тесты)
     ANNOUNCE_DEFAULT_URGENCY,
@@ -142,12 +140,12 @@ class Attention:
         запускается только вручную (`await attention.speech.pump()`), без фоновых задач.
         Контракты (ТЗ 29, ARC-3): people - PeopleDirectory, memory_writer - MemoryWriter, event_log - EventLog,
         settings_provider - SettingsProvider, approver - Approver. Без них берутся публичные свойства компаньона и адаптеры."""
-        provider = settings_provider if settings_provider is not None else SettingsModule()
+        provider = settings_provider if settings_provider is not None else settings
         ctx = self.ctx = AttentionContext(
-            companion=companion, io=io, clock=clock, decider=decider if decider is not None else GlinerClassifier(),
+            companion=companion, io=io, clock=clock, decider=decider if decider is not None else decide.Decider(),
             settings_provider=provider, settings_source=settings_source or provider.load,
-            log=event_log if event_log is not None else SqliteEventLog(),
-            approver=approver if approver is not None else ApprovalsModule(),
+            log=event_log if event_log is not None else events_log,
+            approver=approver if approver is not None else approvals,
             people=people if people is not None else people_for_companion(companion),
             writer=memory_writer if memory_writer is not None else writer_for_companion(companion),
             idle=idle_source or self._default_idle, autopump=autopump,

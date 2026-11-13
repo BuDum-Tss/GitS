@@ -9,7 +9,7 @@ from aiohttp import web
 
 import speech_out
 from conversation_io import current_channel
-from adapters.module_events import AttentionEventSink
+from services.attention import AttentionEventSink
 from services.attention import Attention
 from core_requests import CoreRequests
 from environments.registry import Registry

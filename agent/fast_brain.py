@@ -58,3 +58,16 @@ async def _ask_stream(system: str, user: str, timeout: float, max_tokens: int = 
     """Ответ потоком кусков текста (асинхронный генератор). Закрытие генератора обрывает запрос."""
     async for piece in pi_llm.ask_stream(system, user, max(timeout, 30.0)):
         yield piece
+
+
+class FastLLM:
+    """LanguageModel (контракт `interfaces.contracts`) поверх быстрой модели: `_ask` и потоком `_ask_stream`."""
+
+    async def ask(self, system: str, user: str, *, timeout: float, max_tokens: int = 40, temperature: float = 0.3,
+                  background: bool = False, image_b64: str | None = None, parallel: bool = False) -> str:
+        return await _ask(system, user, timeout=timeout, max_tokens=max_tokens, image_b64=image_b64,
+                          temperature=temperature, background=background)
+
+    def ask_stream(self, system: str, user: str, *, timeout: float, max_tokens: int = 140, temperature: float = 0.7):
+        """Ответ потоком кусков текста (асинхронный генератор)."""
+        return _ask_stream(system, user, timeout=timeout, max_tokens=max_tokens, temperature=temperature)

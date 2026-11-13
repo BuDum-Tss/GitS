@@ -26,15 +26,15 @@ import logging
 import time
 from pathlib import Path
 
+import approvals
 import character
+import events_log
 import prompts
 import reply_trace
-from adapters.approver import ApprovalsModule
-from adapters.event_log_sqlite import SqliteEventLog
-from adapters.llm_fast import FastLLM
+import settings
+from fast_brain import FastLLM
+from relationships import RelationshipsAdapter
 from services.memory_service import UserMemoryAdapter
-from adapters.people import RelationshipsAdapter
-from adapters.settings_provider import SettingsModule
 from app.context_builder import ContextBuilder
 from app.conversation_service import ConversationService, _sender_ctx  # noqa: F401  (_sender_ctx: прежнее имя)
 from services.memory_service import MemoryCapture
@@ -72,9 +72,9 @@ class Companion:
         self._rel = rel
         self._people = people if people is not None else RelationshipsAdapter(lambda: self._rel)
         self._llm = llm if llm is not None else FastLLM()
-        self._log = event_log if event_log is not None else SqliteEventLog()
-        self._settings = settings_provider if settings_provider is not None else SettingsModule()
-        self._approver = approver if approver is not None else ApprovalsModule()
+        self._log = event_log if event_log is not None else events_log
+        self._settings = settings_provider if settings_provider is not None else settings
+        self._approver = approver if approver is not None else approvals
         self.router = None    # Router, ставится ядром после создания реестра окружений
         self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (PeerRegistry.notes, ставит ядро)
         self.graph = None        # GraphMemory: факты о людях и жизни в графе

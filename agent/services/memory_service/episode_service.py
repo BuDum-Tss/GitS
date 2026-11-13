@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import character
 import prompts
 from services.memory_service.episode_store import FILE, EpisodeStore
-from adapters.event_source import JournalSource
+import events_log
 from services.memory_service.diary import DayWriter
 from services.memory_service.episode_cutter import EpisodeCutter
 from services.memory_service.episode_recall import EpisodeRecall
@@ -41,7 +41,7 @@ class EpisodeService:
         self.settings = settings_source or companion._settings.load
         self.clock = clock
         self.embedder = embedder if embedder is not None else LmStudioEmbedder()
-        self.source = source or JournalSource()
+        self.source = source or events_log
         self._parts: dict[str, SimpleNamespace] = {}
         self._dir = ""
         self.scheduler: SleepScheduler | None = None

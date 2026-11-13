@@ -11,7 +11,6 @@ import character
 from interfaces import contracts
 import events_log
 from services.memory_service.episode_store import EpisodeStore
-from adapters.event_source import JournalSource
 from services.memory_service.adapters import UserMemoryAdapter
 from services.memory_service.diary import DayWriter
 from services.memory_service.episode_cutter import EpisodeCutter
@@ -776,7 +775,7 @@ def test_events_log_after_and_delete_ids():
     events_log.log("user", "раз")
     events_log.log("trace", "служебное")
     events_log.log("say", "два", emotion="x")
-    src = JournalSource()
+    src = events_log
     rows_ = src.after(0, 10, {"user", "say"})
     assert [r["text"] for r in rows_] == ["раз", "два"] and rows_[0]["id"] < rows_[1]["id"] and rows_[1]["data"]["emotion"] == "x"
     assert src.after(rows_[0]["id"], 10, {"user", "say"})[0]["text"] == "два"

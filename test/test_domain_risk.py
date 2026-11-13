@@ -1,7 +1,7 @@
 """Домен: политика риска инструмента (ТЗ 29, ARC-2): когда нужно разрешение человека. Логика прежней `Router._step`."""
 import pytest
 
-from domain import risk
+import router as risk
 
 
 @pytest.mark.parametrize("danger, rk, self_confirming, telegram_confirm, expected", [
@@ -14,4 +14,4 @@ from domain import risk
     (None, "public", False, False, False),              # настройка выключена
 ])
 def test_needs_ask(danger, rk, self_confirming, telegram_confirm, expected):
-    assert risk.needs_ask(danger, rk, self_confirming, telegram_confirm) is expected
+    assert risk._needs_ask(danger, rk, self_confirming, telegram_confirm) is expected
