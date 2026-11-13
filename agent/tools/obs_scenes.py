@@ -18,7 +18,7 @@ NS = uuid.UUID("6f1c2b6e-3d0a-4f5e-9d2a-5a7c0b1e4d10")
 GAME_WINDOW = "RimWorld by Ludeon Studios:UnityWndClass:RimWorldWin64.exe"       # заголовок:класс:exe окна игры
 SCENES = (("Кабинет", ("browser:office", "audio:voice")), ("AFK", ("browser:afk", "audio:voice")),
           ("Игра", ("game", "audio:game", "audio:voice", "browser:game")))
-VOICE_WINDOW = "GladosVoice:SDL_app:ffplay.exe"      # окно ffplay модуля голоса (modules/voice/player.py, FFPLAY_TITLE)
+VOICE_WINDOW = "GladosVoice:SDL_app:ffplay.exe"      # id данных; окно ffplay модуля голоса (modules/voice/player.py, FFPLAY_TITLE)
 
 
 def _uuid(name: str) -> str:
