@@ -40,4 +40,4 @@ ignore = [
 asyncio_mode = "auto"
 testpaths = ["test"]
 # sdk и sdk/examples: пакет gits_sdk и эхо-модуль до установки пакета (pip install -e ./sdk, см. README)
-pythonpath = ["agent", "sdk", "sdk/examples"]
+pythonpath = [".", "agent", "sdk", "sdk/examples"]

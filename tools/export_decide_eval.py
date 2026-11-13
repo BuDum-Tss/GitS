@@ -8,7 +8,7 @@
 должен работать), и считается точность `intent` против разметки маршрутизатора: нужен ли маршрутизатор (action и cannot) или
 хватает разговора (chat). Намерения `action` и `attention_rule` считаются «нужен маршрутизатор», остальные «разговор».
 
-    python agent/tools/export_decide_eval.py --out decide_eval.jsonl [--days 14] [--eval] [--memory-dir memory]
+    python tools/export_decide_eval.py --out decide_eval.jsonl [--days 14] [--eval] [--memory-dir memory]
 """
 import argparse
 import asyncio
@@ -19,7 +19,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Awaitable, Callable
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 import events_log  # noqa: E402
 
 PLAN_WINDOW_S = 180.0                 # итог маршрутизатора ищется не позже чем через столько секунд после реплики

@@ -1,6 +1,6 @@
 # Собирает agent/static/ui/vendor/tailwind.css из классов, которые встречаются в index.html и architecture.js.
-# Нужен Node.js и доступ к npm. Запуск: .\agent\tools\build_ui_css.ps1  (после правки классов в интерфейсе)
-$ui = Join-Path $PSScriptRoot "..\static\ui" | Resolve-Path
+# Нужен Node.js и доступ к npm. Запуск: .\tools\build_ui_css.ps1  (после правки классов в интерфейсе)
+$ui = Join-Path $PSScriptRoot "..\agent\static\ui" | Resolve-Path
 $tmp = Join-Path $env:TEMP "gits_tw"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 $cfg = @"

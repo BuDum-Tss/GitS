@@ -14,9 +14,9 @@
 число задач не растёт без предела; ядро закрывается за разумное время и не оставляет своих задач.
 
 Запуск:
-  python agent/tools/soak_core.py --minutes 10                  # FLOW-2, как в ТЗ
-  python agent/tools/soak_core.py --minutes 2 --sample 2        # короткий прогон
-  python agent/tools/soak_core.py --minutes 3 --real-modules telegram,voice,pet   # FLOW-3, настоящие модули с заглушками
+  python tools/soak_core.py --minutes 10                  # FLOW-2, как в ТЗ
+  python tools/soak_core.py --minutes 2 --sample 2        # короткий прогон
+  python tools/soak_core.py --minutes 3 --real-modules telegram,voice,pet   # FLOW-3, настоящие модули с заглушками
   --out docs/CORE_SOAK_RUN.md  записать отчёт в файл; код выхода 0, если все критерии выполнены.
 """
 import argparse
@@ -31,7 +31,7 @@ import tempfile
 import time
 from pathlib import Path
 
-AGENT = Path(__file__).resolve().parents[1]
+AGENT = Path(__file__).resolve().parents[1] / "agent"
 for _p in (AGENT, AGENT.parent / "sdk"):              # ядро и пакет gits_sdk (до установки пакета)
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))

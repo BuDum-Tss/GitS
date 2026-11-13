@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 import flow_trace
 from typing import Any, Awaitable, Callable
 
-logger = logging.getLogger("attention.speech_queue")
+logger = logging.getLogger("speech_queue")
 
 MIN_GAP_S = {"quiet": 90.0, "normal": 30.0, "chatty": 10.0}      # ATT-14, пункт 4
 USER_QUIET_S = 1.5                                                # ATT-14, пункт 2
@@ -121,7 +121,7 @@ class SpeechQueue:
             key: str | None = None, **extra) -> SpeechCandidate:
         """Собрать и положить кандидата; срок жизни по умолчанию из ATT-15."""
         now = self._clock()
-        flow_trace.step(None, "attention.speech_queue", "attention", "attention.speech_queue", "speech", size=len(text or ""), label=source.split(":", 1)[0])
+        flow_trace.step(None, "speech_queue", "attention", "speech_queue", "speech", size=len(text or ""), label=source.split(":", 1)[0])
         if ttl is None:
             fam = source.split(":", 1)[0]
             ttl = DEFAULT_TTL_S[fam] if fam in ("conversation", "proactive", "question", "announce") else DEFAULT_TTL_S[mode]

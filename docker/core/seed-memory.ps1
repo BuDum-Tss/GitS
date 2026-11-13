@@ -42,7 +42,7 @@ try {
     $exportArgs = @("-m", "tools.character_home", "export", $CharacterId, $tmp)
     if ($MemoryRoot) { $exportArgs += @("--memory-root", $MemoryRoot) }
     if ($ResourcesRoot) { $exportArgs += @("--resources-root", $ResourcesRoot) }
-    Push-Location (Join-Path $repo "agent")
+    Push-Location $repo
     try { & python @exportArgs; if ($LASTEXITCODE -ne 0) { throw "tools.character_home export не удался" } } finally { Pop-Location }
     $mem = Join-Path $tmp "memory"
     if (-not (Test-Path $mem)) { throw "у персонажа $CharacterId нет памяти для переноса (нет папки memory в собранном томе)" }

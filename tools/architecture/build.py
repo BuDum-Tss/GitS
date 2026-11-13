@@ -1,6 +1,6 @@
 """Генератор схемы архитектуры ядра из одной спецификации (`spec.py`).
 
-Запуск из папки `agent`:  python -m tools.architecture.build
+Запуск из корня репозитория:  python -m tools.architecture.build
 Пишет:
   agent/static/ui/architecture-data.js        данные для вкладки «Схема» GUI и для страницы docs;
   docs/architecture-clean.html                страница с той же схемой и пояснениями (сущности, проблемы кода, план);
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from tools.architecture import spec, texts
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 DATA_JS = ROOT / "agent" / "static" / "ui" / "architecture-data.js"
 DOCS_HTML = ROOT / "docs" / "architecture-clean.html"
 DOCS_DRAWIO = ROOT / "docs" / "architecture-clean.drawio"

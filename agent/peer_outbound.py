@@ -70,7 +70,7 @@ class Outbound:
             self.notify("presence", data)
             try:
                 if self._hub.is_connected("pet"):                        # ТЗ 17: питомец получает присутствие, это его «вывод»
-                    flow_trace.step(None, "out_pet", "attention.speech_queue", "out_pet", "presence", label="presence")
+                    flow_trace.step(None, "out_pet", "speech_queue", "out_pet", "presence", label="presence")
             except Exception:
                 pass
 

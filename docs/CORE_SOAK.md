@@ -1,6 +1,6 @@
 # Прогон ядра на устойчивость (ТЗ 17, FLOW-2 и FLOW-3)
 
-Скрипт: `agent/tools/soak_core.py`. Тесты: `test/test_soak_core.py` (короткий прогон на несколько секунд идёт в `check.ps1`).
+Скрипт: `tools/soak_core.py`. Тесты: `test/test_soak_core.py` (короткий прогон на несколько секунд идёт в `check.ps1`).
 
 ## 1. Что делает скрипт
 
@@ -21,7 +21,7 @@
 p99 по всем замерам), число записей ERROR в логах и необработанных исключений цикла, размеры очередей речи, внимания (фоновые задачи) и графа,
 длина буфера трассы потока.
 
-Запуск: `python agent/tools/soak_core.py --minutes 10 --sample 10 [--real-modules telegram,voice,pet] [--out файл.md]`;
+Запуск: `python tools/soak_core.py --minutes 10 --sample 10 [--real-modules telegram,voice,pet] [--out файл.md]`;
 код выхода 0, если все критерии выполнены. Переменные окружения прогона (`GITS_NO_MODULES` и др.) после него возвращаются.
 
 ## 2. Критерии

@@ -19,7 +19,7 @@ NODES = [
     ("bus", "Шина событий", "attention"),
     ("gliner", "Классификатор GLiNER", "attention"),
     ("attention", "Внимание (срочность)", "attention"),
-    ("attention.speech_queue", "Очередь речи", "output"),
+    ("speech_queue", "Очередь речи", "output"),
     ("planner", "Выбор инструментов", "thinking"),
     ("gemma", "Claude (быстрая модель)", "thinking"),                  # id узла прежний, модель теперь Claude (claude_llm)
     ("claude", "Claude (долгие задачи)", "thinking"),
@@ -34,18 +34,18 @@ NODES = [
 
 EDGES = [
     ("bus", "gliner"), ("gliner", "attention"), ("bus", "attention"), ("attention", "working_memory"),
-    ("attention", "planner"), ("attention", "attention.speech_queue"), ("planner", "gemma"), ("planner", "claude"),
-    ("planner", "tools"), ("planner", "graph_memory"), ("gemma", "attention.speech_queue"), ("gemma", "working_memory"),
+    ("attention", "planner"), ("attention", "speech_queue"), ("planner", "gemma"), ("planner", "claude"),
+    ("planner", "tools"), ("planner", "graph_memory"), ("gemma", "speech_queue"), ("gemma", "working_memory"),
     ("gemma", "graph_memory"), ("working_memory", "graph_memory"),
-    ("attention.speech_queue", "out_voice"), ("attention.speech_queue", "out_pet"), ("attention.speech_queue", "out_telegram"),
-    ("attention.speech_queue", "out_dashboard"), ("claude", "attention.speech_queue"),
+    ("speech_queue", "out_voice"), ("speech_queue", "out_pet"), ("speech_queue", "out_telegram"),
+    ("speech_queue", "out_dashboard"), ("claude", "speech_queue"),
 ]
 
 # Состояния хода и узел, который переводит в состояние (поведенческий граф без LangGraph)
 STATES = [
     ("received", "принято", "bus"), ("classified", "классифицировано", "gliner"), ("decided", "решено", "attention"),
     ("memory", "память", "graph_memory"), ("llm", "LLM", "gemma"), ("tool", "инструмент", "tools"),
-    ("answered", "ответ", "attention.speech_queue"), ("silent", "молчание", "attention"),
+    ("answered", "ответ", "speech_queue"), ("silent", "молчание", "attention"),
 ]
 TRANSITIONS = [
     ("received", "classified", ""), ("classified", "decided", ""), ("decided", "silent", "D0, D1 или D2"),

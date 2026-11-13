@@ -31,7 +31,7 @@
 гибридный поиск (`agent/search/`), воспоминания персонажа о себе. Эмоции (ТЗ 26) и настроение влияют на тон.
 
 Схему архитектуры (группы, компоненты, связи, статусы «есть/планируется») показывает вкладка **«Схема»** дашборда
-(`http://localhost:8766`). Источник схемы: `agent/tools/architecture/spec.py`, сборка: `cd agent && python -m tools.architecture.build`
+(`http://localhost:8766`). Источник схемы: `tools/architecture/spec.py`, сборка: `python -m tools.architecture.build`
 (тест `test/test_architecture_spec.py` следит, чтобы собранное совпадало с источником).
 
 ## Участники шины
@@ -103,7 +103,7 @@ pythonw tray.py                          # трей: поднимает толь
 обрывают ход. Поиск в памяти идёт с дедлайном 300 мс. Настройки `fast_contour` и `latency_budget`.
 
 ## Устойчивость ядра
-`python agent/tools/soak_core.py --minutes 10` поднимает настоящее ядро без участников шины (модель и речь заглушены), шлёт реплики и события,
+`python tools/soak_core.py --minutes 10` поднимает настоящее ядро без участников шины (модель и речь заглушены), шлёт реплики и события,
 подключает и роняет фиктивные участники шины и раз в 10 секунд снимает память, задержку цикла событий, число задач, ошибки и очереди
 (критерии и результаты: [docs/CORE_SOAK.md](docs/CORE_SOAK.md)); с `--real-modules telegram,voice,pet` то же с настоящими участниками шины в режиме
 заглушек и убийством их процессов. Режим «только ядро»: настройка «Только ядро» в дашборде или `GITS_NO_MODULES=1`.
@@ -127,7 +127,7 @@ python -m pytest -q workspaces/telegram/tests           # то же для voice
 ```
 Тесты не ходят в сеть, к микрофону, игре и Claude: модель и внешние службы заменены заглушками. Тесты `rimworld` и `montage` запускай
 из их папок с `PYTHONPATH=sdk`. После правки контракта запусти `python sdk/tools/gen_contract_doc.py`, после правки схемы
-`python -m tools.architecture.build` (из `agent/`).
+`python -m tools.architecture.build` .
 
 ## Для разработки
 Правила работы, карта участников шины и порядок добавления инструментов и настроек: [AGENTS.md](AGENTS.md). Изменения: [CHANGELOG.md](CHANGELOG.md).

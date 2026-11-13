@@ -91,12 +91,12 @@ class ConversationIO:
             if not (isinstance(value, dict) and value.get("delivered")):
                 raise RuntimeError("модуль не доставил ответ")
             if node:
-                flow_trace.step(None, node, "attention.speech_queue", node, "deliver", ms=(time.perf_counter() - t0) * 1000,
+                flow_trace.step(None, node, "speech_queue", node, "deliver", ms=(time.perf_counter() - t0) * 1000,
                                 size=len(text or ""), label=f"{channel.module}:ok")
             return True
         except Exception as e:
             if node:
-                flow_trace.step(None, node, "attention.speech_queue", node, "error", ms=(time.perf_counter() - t0) * 1000,
+                flow_trace.step(None, node, "speech_queue", node, "error", ms=(time.perf_counter() - t0) * 1000,
                                 size=len(text or ""), label=f"{channel.module}:error")
             events_log.log("module", f"ответ в канал {channel.label()} не доставлен: {e}", module=channel.module,
                            deliver_failed=True)

@@ -20,7 +20,8 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve()
-sys.path.insert(0, str(HERE.parents[2] / "sdk"))
+sys.path.insert(0, str(HERE.parents[1] / "sdk"))
+sys.path.insert(0, str(HERE.parents[1] / "agent"))
 
 from gits_sdk import resources  # noqa: E402
 

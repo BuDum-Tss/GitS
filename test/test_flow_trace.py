@@ -70,7 +70,7 @@ def test_edge_stats_windows_errors_and_p95():
 def test_turns_outcome_and_node_info():
     flow_trace.step("a", "bus", "module:m", "bus", "event", size=3)
     flow_trace.step("a", "attention", "gliner", "attention", "decision", label="D2")
-    flow_trace.step("b", "out_voice", "attention.speech_queue", "out_voice", "speak", size=9)
+    flow_trace.step("b", "out_voice", "speech_queue", "out_voice", "speak", size=9)
     outs = {t["turn"]: t["outcome"] for t in flow_trace.turns()}
     assert outs == {"a": "silence", "b": "answer"}
     info = flow_trace.node_info("attention")

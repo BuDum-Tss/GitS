@@ -31,7 +31,7 @@ MAP = [
     ("peer_hub.py + peer_outbound.py", "PeerHub: входящие, исходящие в <code>PeerHub.outbound</code>, без импорта домена"),
     ("dashboard/", "HTTP-адаптер: роутеры <code>routes_*.py</code> и презентеры <code>presenters.py</code>"),
     ("memory_service/graph.py, memory_service/user.py, memory_service/adapters.py", "MemoryWriter/MemoryReader + репозитории"),
-    ("attention.attention/speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
+    ("attention/speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
     ("events_log.py, settings.py, character.py", "контракты EventLog, SettingsProvider, CharacterRepo"),
     ("нет", "ReminderStore, ImpulseTimer, ReflectionService, журнал мыслей (ТЗ 30)"),
 ]

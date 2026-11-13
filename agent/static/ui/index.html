@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ассистент</title>
-<!-- UI-кит: Tailwind (собран локально в vendor/tailwind.css, `agent/tools/build_ui_css.ps1`) + daisyUI 4 (CDN). Пока Tailwind брался с CDN, при его недоступности пропадала вся раскладка. -->
+<!-- UI-кит: Tailwind (собран локально в vendor/tailwind.css, `tools/build_ui_css.ps1`) + daisyUI 4 (CDN). Пока Tailwind брался с CDN, при его недоступности пропадала вся раскладка. -->
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css">
 <link href="/static/ui/vendor/tailwind.css" rel="stylesheet" type="text/css">
 <style>
@@ -346,7 +346,7 @@
       </div>
 
       <!-- Настройки -->
-      <!-- Схема архитектуры ядра: Cytoscape, данные из static/ui/architecture-data.js (создаёт agent/tools/architecture/build.py) -->
+      <!-- Схема архитектуры ядра: Cytoscape, данные из static/ui/architecture-data.js (создаёт tools/architecture/build.py) -->
       <div id="tab-arch" class="card bg-base-100 shadow-sm min-h-0 hidden flex flex-col">
         <div id="arch-root" class="card-body gap-2 p-3 min-h-0 flex flex-col flex-1"></div>
       </div>

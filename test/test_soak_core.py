@@ -107,7 +107,7 @@ async def test_deliver_to_telegram_is_traced_ok_and_error_without_text():
     io = ConversationIO(SimpleNamespace(), hub)
     assert await io.deliver(Channel("module", "telegram", "1"), "секретный текст ответа")
     rec = flow_trace.records()[-1]
-    assert rec["node"] == "out_telegram" and rec["from"] == "attention.speech_queue" and rec["label"] == "telegram:ok"
+    assert rec["node"] == "out_telegram" and rec["from"] == "speech_queue" and rec["label"] == "telegram:ok"
     assert "секретный" not in str(flow_trace.records())
 
     io2 = ConversationIO(SimpleNamespace(), None)
@@ -133,7 +133,7 @@ async def test_presence_to_connected_pet_is_traced():
     ob = Outbound(Hub())
     ob.broadcast_presence({"speaking": True})
     recs = [r for r in flow_trace.records() if r["node"] == "out_pet"]
-    assert recs and recs[0]["from"] == "attention.speech_queue" and sent
+    assert recs and recs[0]["from"] == "speech_queue" and sent
 
 
 async def test_presence_without_pet_is_not_traced():

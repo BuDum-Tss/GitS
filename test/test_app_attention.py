@@ -168,3 +168,11 @@ def test_app_package_is_small_and_clean():
             if isinstance(node, ast.ClassDef):
                 assert (node.end_lineno or node.lineno) - node.lineno + 1 <= 400, f"{path.name}:{node.name}"
         assert '"_rel"' not in src and "companion._" not in src.replace("companion._speak_about", ""), path.name
+
+
+def test_rules_file_name_and_flow_node_id_are_stable():
+    """Имя файла временных правил и id узла очереди речи сохранены (их хранят данные и схема потока, не код)."""
+    from attention import rules as attention_rules_module
+    import flow_spec
+    assert attention_rules_module.FILE_NAME == "attention_rules.json"
+    assert "speech_queue" in {n[0] for n in flow_spec.NODES}
