@@ -1,7 +1,7 @@
 # Проверка перед коммитом: линтер и тесты.  Запуск: .\check.ps1
 $ErrorActionPreference = "Continue"
 Write-Host "== ruff ==" -ForegroundColor Cyan
-python -m ruff check agent sdk services modules
+python -m ruff check agent sdk workspaces services
 $lint = $LASTEXITCODE
 Write-Host "== pytest ==" -ForegroundColor Cyan
 python -m pytest -q
@@ -13,28 +13,28 @@ Write-Host "== pytest sdk/template (шаблон модуля) ==" -ForegroundCo
 python -m pytest -q sdk/template/tests
 if ($LASTEXITCODE -ne 0) { $sdktests = $LASTEXITCODE }
 # тесты каждого модуля идут отдельным запуском: у модулей одинаковые имена файлов (app.py, manifest.py, common.py)
-Write-Host "== pytest modules/telegram (модуль Telegram) ==" -ForegroundColor Cyan
-python -m pytest -q modules/telegram/tests
+Write-Host "== pytest workspaces/telegram (модуль Telegram) ==" -ForegroundColor Cyan
+python -m pytest -q workspaces/telegram/tests
 $modtests = $LASTEXITCODE
-Write-Host "== pytest modules/twitch (модуль Twitch) ==" -ForegroundColor Cyan
-python -m pytest -q modules/twitch/tests
+Write-Host "== pytest workspaces/twitch (модуль Twitch) ==" -ForegroundColor Cyan
+python -m pytest -q workspaces/twitch/tests
 $twitchtests = $LASTEXITCODE
-Write-Host "== pytest modules/voice (модуль голоса) ==" -ForegroundColor Cyan
-python -m pytest -q modules/voice/tests
+Write-Host "== pytest services/voice (модуль голоса) ==" -ForegroundColor Cyan
+python -m pytest -q services/voice/tests
 $voicetests = $LASTEXITCODE
-Write-Host "== pytest modules/pet (модуль питомца) ==" -ForegroundColor Cyan
-python -m pytest -q modules/pet/tests
+Write-Host "== pytest services/pet (модуль питомца) ==" -ForegroundColor Cyan
+python -m pytest -q services/pet/tests
 $pettests = $LASTEXITCODE
-Write-Host "== pytest modules/desktop (модуль компьютера) ==" -ForegroundColor Cyan
-python -m pytest -q modules/desktop/tests
+Write-Host "== pytest workspaces/desktop (модуль компьютера) ==" -ForegroundColor Cyan
+python -m pytest -q workspaces/desktop/tests
 $desktoptests = $LASTEXITCODE
-Write-Host "== pytest modules/rimworld (модуль RimWorld) ==" -ForegroundColor Cyan
-Push-Location modules/rimworld
+Write-Host "== pytest workspaces/rimworld (модуль RimWorld) ==" -ForegroundColor Cyan
+Push-Location workspaces/rimworld
 python -m pytest -q -m "not slow and not game"
 $rimtests = $LASTEXITCODE
 Pop-Location
-Write-Host "== pytest modules/montage (модуль монтажа; полная проверка с Remotion: modules/montage/check.ps1) ==" -ForegroundColor Cyan
-Push-Location modules/montage
+Write-Host "== pytest workspaces/montage (модуль монтажа; полная проверка с Remotion: workspaces/montage/check.ps1) ==" -ForegroundColor Cyan
+Push-Location workspaces/montage
 $montagepy = if (Test-Path .venv\Scripts\python.exe) { ".venv\Scripts\python.exe" } else { "python" }
 & $montagepy -m pytest -q
 $montagetests = $LASTEXITCODE

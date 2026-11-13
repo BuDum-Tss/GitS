@@ -129,7 +129,7 @@ def test_core_no_longer_posts_run_summaries():
 def test_shipped_modules_yaml_declares_the_telegram_module():
     spec = {s.id: s for s in load_specs()}["telegram"]
     assert spec.role == "workspace" and spec.ownership == "owned" and spec.autostart and spec.restart == "on-failure" and spec.enabled
-    assert spec.command == "{PYTHON}" and spec.args == ["-u", "main.py"] and spec.cwd == "{GITS}/modules/telegram"
+    assert spec.command == "{PYTHON}" and spec.args == ["-u", "main.py"] and spec.cwd == "{GITS}/workspaces/telegram"
     sup = Supervisor(load_specs(), token="t" * 64, core_url="ws://x")
     cmd, cwd = sup.resolve("telegram")
     assert cmd == [sys.executable, "-u", "main.py"] and (cwd / "main.py").is_file()
@@ -204,7 +204,7 @@ def test_no_telegram_imports_in_core_sources():
             offenders.append(str(path.relative_to(AGENT)))
     assert offenders == []
     for name in ("telegram_channel.py", "telegram_user.py", "tg_draft.py", "tg_login.py"):
-        assert not (AGENT / name).exists(), name                                 # переехали в modules/telegram
+        assert not (AGENT / name).exists(), name                                 # переехали в workspaces/telegram
     assert not (AGENT / "opus_encoder.py").exists()                              # перекодирование звука ушло в модуль voice (ТЗ 12)
 
 

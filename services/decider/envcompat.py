@@ -4,7 +4,7 @@
 один раз за процесс пишется предупреждение с обоими именами (значение не пишется). Старые имена удаляются через одну версию:
 запись в CHANGELOG, раздел «Deprecated».
 
-Это тот же файл, что копии в `modules/<id>/envcompat.py`, `sdk/gits_sdk/envcompat.py` и `services/decider/envcompat.py`
+Это тот же файл, что копии в `workspaces/<id>/envcompat.py` и `services/<id>/envcompat.py`, `sdk/gits_sdk/envcompat.py` и `services/decider/envcompat.py`
 (модули и SDK не импортируют `agent/`). Тест `agent/tests/test_envcompat.py` сверяет копии: правь все вместе.
 """
 from __future__ import annotations

@@ -336,7 +336,7 @@ async with FakeCore() as core:
 
 ## Модули в монорепо
 
-Модули GitS лежат в `modules/<id>/` (образец: `modules/telegram/`): `main.py`, `manifest.py`, свои файлы, `tests/`. Супервизор запускает их с `cwd` модуля и передаёт `MEMORY_DIR` (абсолютный путь папки памяти ядра); пакет `gits-sdk` берётся из `PYTHONPATH` (`GitS/sdk`) или из окружения, если он установлен. В `command` и `args` кроме `{PYTHON}` доступен `{PYTHONW}` (pythonw.exe рядом с интерпретатором ядра, для модулей с окном).
+Участники GitS лежат в `workspaces/<id>/` (окружения) и `services/<id>/` (сервисы; образец: `workspaces/telegram/`): `main.py`, `manifest.py`, свои файлы, `tests/`. Супервизор запускает их с `cwd` модуля и передаёт `MEMORY_DIR` (абсолютный путь папки памяти ядра); пакет `gits-sdk` берётся из `PYTHONPATH` (`GitS/sdk`) или из окружения, если он установлен. В `command` и `args` кроме `{PYTHON}` доступен `{PYTHONW}` (pythonw.exe рядом с интерпретатором ядра, для модулей с окном).
 
 - **`voice`** (ТЗ 12): capabilities `voice.output` и `voice.input`; принимает от ядра `speak` (`utterance_id`, `text`, `replace`) и `speak.stop` (`utterance_id` или `null`, `at: now | segment_end`), отвечает на `tts.synthesize` (`text`, `emotion`, `format: wav | ogg` → `path`, `duration_ms`; файлы в `%TEMP%\glados_voice\`), шлёт события `voice.speech` (`phase: started | segment | ended`, `utterance_id`, `seq`, `segment`, `completed`, `spoken_upto`, `reason`), `voice.utterance`, `voice.user_speaking`, `voice.heard`, `voice.named`. Настройки: `barge_in`, `echo_tail_ms`. `GITS_VOICE_FAKE=1` — без звука.
   Распознавание речи (`stt_client.py`, `local_stt.py`): основной путь — WhisperX (`WHISPERX_URL`, с диаризацией и голосовыми
@@ -350,8 +350,8 @@ async with FakeCore() as core:
 
 ## Тяжёлые модули
 
-Тяжёлые модули живут в `modules/<id>` со своими зависимостями и своей проверкой: `rimworld` (игра RimWorld, ТЗ 11) и `montage` (ТЗ 20). Запись в
-`agent/modules.yaml` ссылается на папку через `{GITS}/modules/<id>`,
+Тяжёлые окружения живут в `workspaces/<id>` со своими зависимостями и своей проверкой: `rimworld` (игра RimWorld, ТЗ 11) и `montage` (ТЗ 20). Запись в
+`agent/peers.yaml` ссылается на папку через `{GITS}/workspaces/<id>`,
 интерпретатор общий (`{PYTHON}`), если зависимостей модуля хватает в нём. Такой модуль хранит данные в своей папке, а не в
 `MEMORY_DIR` ядра (супервизор передаёт `MEMORY_DIR` всем, модуль RimWorld заменяет его своим `agent/memory`). Проверка у него своя:
 `.\check.ps1` в папке модуля, а тесты против `FakeCore` из этого SDK. Пример манифеста с `capabilities: ["game"]`, инструментом `order`
@@ -360,4 +360,4 @@ async with FakeCore() as core:
 
 ## Проверка
 
-Из корня репозитория `.\check.ps1` запускает ruff и тесты ядра, SDK и модулей. Только SDK: `python -m pytest -q sdk/tests`; модуль Telegram: `python -m pytest -q modules/telegram/tests`; голос: `python -m pytest -q modules/voice/tests`; питомец: `python -m pytest -q modules/pet/tests` (тесты каждого модуля идут отдельным запуском).
+Из корня репозитория `.\check.ps1` запускает ruff и тесты ядра, SDK и модулей. Только SDK: `python -m pytest -q sdk/tests`; модуль Telegram: `python -m pytest -q workspaces/telegram/tests`; голос: `python -m pytest -q services/voice/tests`; питомец: `python -m pytest -q services/pet/tests` (тесты каждого модуля идут отдельным запуском).

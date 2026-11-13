@@ -7,7 +7,7 @@
 
 ## Как это устроено
 
-**Ядро** (`agent/`) принимает события от источников, решает, что с ними делать, говорит и помнит. **Окружения и сервисы** (участники шины; пока их код лежит в `modules/`) это
+**Ядро** (`agent/`) принимает события от источников, решает, что с ними делать, говорит и помнит. **Окружения и сервисы** (участники шины; их код лежит в `workspaces/` и `services/`) это
 отдельные процессы, которые подключаются к ядру по WebSocket (`ws://127.0.0.1:8766/ws`, прежний путь `/module/ws` тоже работает) и общаются
 только по контракту; ядро само запускает их по `agent/peers.yaml` (разделы `workspaces:` и `services:`).
 
@@ -38,12 +38,12 @@
 
 | Модуль | Папка | Что делает |
 |---|---|---|
-| Голос | `modules/voice` | микрофон и распознавание (WhisperX, запасной faster-whisper), узнавание голосов, синтез (Fish Speech, запасной edge-tts), воспроизведение, слух системного звука |
-| Питомец | `modules/pet` | окно на рабочем столе: стикер и облачко по состоянию (`presence`) |
-| Компьютер | `modules/desktop` | зрение и экран, мышь и клавиатура, приложения, Модуль кода как задача |
-| Telegram | `modules/telegram` | канал-дневник, бот, её собственный аккаунт |
-| RimWorld | `modules/rimworld` | мод, MCP-сервер, игровые контуры на Claude, комментатор |
-| Монтаж | `modules/montage` | конвейер роликов (Remotion, ffmpeg, агент Claude) |
+| Голос | `services/voice` | микрофон и распознавание (WhisperX, запасной faster-whisper), узнавание голосов, синтез (Fish Speech, запасной edge-tts), воспроизведение, слух системного звука |
+| Питомец | `services/pet` | окно на рабочем столе: стикер и облачко по состоянию (`presence`) |
+| Компьютер | `workspaces/desktop` | зрение и экран, мышь и клавиатура, приложения, Модуль кода как задача |
+| Telegram | `workspaces/telegram` | канал-дневник, бот, её собственный аккаунт |
+| RimWorld | `workspaces/rimworld` | мод, MCP-сервер, игровые контуры на Claude, комментатор |
+| Монтаж | `workspaces/montage` | конвейер роликов (Remotion, ffmpeg, агент Claude) |
 
 Включаются во вкладке «Модули» дашборда (там же настройки, задачи и вопросы модулей). Профили поведения: `agent/profiles/*.yaml`.
 Игровые и прочие специальные вещи живут только в своём модуле, в ядре их нет.
@@ -62,7 +62,7 @@
 ## Запуск
 ```powershell
 cd agent
-pip install -r requirements.txt -r ../modules/voice/requirements.txt    # ядро и звук
+pip install -r requirements.txt -r ../services/voice/requirements.txt    # ядро и звук
 copy .env.example .env     # токены Telegram и т.д. (не в git)
 python main.py                           # ядро и дашборд на http://localhost:8766; модули запускает само ядро
 pythonw tray.py                          # трей: поднимает только ядро
@@ -72,9 +72,9 @@ pythonw tray.py                          # трей: поднимает толь
 - Без Fish Speech модуль голоса говорит запасным edge-tts (нужен интернет); без WhisperX микрофон распознаёт локально (faster-whisper,
   веса скачивает владелец сам). Если голос выключен, она отвечает текстом в чате дашборда.
 - Без звука и без окна для проверки запуска: `GITS_VOICE_FAKE=1`, `GITS_PET_HEADLESS=1`. Выключить второй эшелон фокуса: `GITS_FOCUS_LLM=0`.
-- Вручную (при разработке, ядро должно работать): `python modules/voice/main.py`, `python modules/pet/main.py`.
+- Вручную (при разработке, ядро должно работать): `python services/voice/main.py`, `python services/pet/main.py`.
 - Telegram: токен бота и канал (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL`) и ключи аккаунта (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`) лежат
-  в `.env`; вход в аккаунт один раз вручную: `python modules/telegram/tg_login.py`.
+  в `.env`; вход в аккаунт один раз вручную: `python workspaces/telegram/tg_login.py`.
 
 ### Дашборд
 Вкладки: **Состояние** (профили, внимание, фокус, задержка реплики и бюджеты задержек), **Память** (что помнит, граф, эпизоды),
@@ -123,7 +123,7 @@ owned) и «Сервисы» (service, включая внешние decider и 
 python -m ruff check agent sdk services modules
 python -m pytest -q agent/tests sdk/tests            # ядро и SDK
 python -m pytest -q sdk/template/tests               # шаблон модуля
-python -m pytest -q modules/telegram/tests           # то же для voice, pet, desktop; у каждого модуля отдельный запуск
+python -m pytest -q workspaces/telegram/tests           # то же для voice, pet, desktop; у каждого модуля отдельный запуск
 ```
 Тесты не ходят в сеть, к микрофону, игре и Claude: модель и внешние службы заменены заглушками. Тесты `rimworld` и `montage` запускай
 из их папок с `PYTHONPATH=sdk`. После правки контракта запусти `python sdk/tools/gen_contract_doc.py`, после правки схемы

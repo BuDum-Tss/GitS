@@ -459,9 +459,9 @@ on_error: stop
 | `subscribe` и `coalesce` в объявлении событий, таблица подписок ядра | план | раздел 5 |
 | Инструмент агента `watch` (ожидание события с условием) | план | `attention.*` |
 | Навыки и избранное, статистика использования | план | раздел 11 |
-| Дерево RimWorld как данные | есть | `modules/rimworld/agent/workspace_tree.py` |
-| Манифест RimWorld по дереву: `nodes`, `tools[].node`, навигация `open`/`back`/`where`, запросы без узла, события с `topics` | есть | `modules/rimworld/agent/workspace_module.py`, `module_manifest.py`; ядро видит ~32-39 инструментов вместо 74 |
-| Игровой агент модуля убран: ходы, планирование, рефлексия, комментатор, `order`, `glados_agent.py` | есть | `modules/rimworld/agent/controller.py` остался инфраструктурой (состояние, события ядру, запись, камера, фокус) |
+| Дерево RimWorld как данные | есть | `workspaces/rimworld/agent/workspace_tree.py` |
+| Манифест RimWorld по дереву: `nodes`, `tools[].node`, навигация `open`/`back`/`where`, запросы без узла, события с `topics` | есть | `workspaces/rimworld/agent/workspace_module.py`, `module_manifest.py`; ядро видит ~32-39 инструментов вместо 74 |
+| Игровой агент модуля убран: ходы, планирование, рефлексия, комментатор, `order`, `glados_agent.py` | есть | `workspaces/rimworld/agent/controller.py` остался инфраструктурой (состояние, события ядру, запись, камера, фокус) |
 | Хвосты игрового агента в модуле: политики и режимы (`policy_*`, `game_modes`), правила наблюдения, оценка событий (`appraisal`, `decider`), цели и задачи игры в MCP-сервере | план | чистка следующим проходом |
 | Автономная игра единого агента: рабочий цикл `self.work_tick` раз в `workspace.work_interval_s`, пока агент в среде и свободен (`workspace.autonomous`, настройка `autoplay`) | есть | `app/work_loop.py`, `domain/rules.think_route` |
 | Шаблон модуля (`sdk/template`) с узлами | есть | `sdk/template/` |

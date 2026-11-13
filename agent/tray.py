@@ -253,7 +253,7 @@ def build_menu() -> pystray.Menu:
 
 
 def _icon_image() -> Image.Image:
-    path = HERE.parent / "modules" / "pet" / "static" / "stickers" / "idle.png"
+    path = HERE.parent / "services" / "pet" / "static" / "stickers" / "idle.png"
     try:
         img = Image.open(path).convert("RGBA")
         img.thumbnail((64, 64))

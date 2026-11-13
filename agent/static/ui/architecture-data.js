@@ -17,7 +17,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "микрофон, VAD, распознавание речи (WhisperX), узнавание голоса; озвучка (ESpeech, запасные Fish Speech и edge-tts)",
      "out": "Event voice.utterance",
-     "now": "modules/voice"
+     "now": "services/voice"
     },
     {
      "id": "desk",
@@ -26,7 +26,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "экран, активность, мышь и клавиатура, Модуль кода",
      "out": "Event desktop.*, job.update",
-     "now": "modules/desktop"
+     "now": "workspaces/desktop"
     },
     {
      "id": "tg",
@@ -35,7 +35,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "бот, её аккаунт, посты канала",
      "out": "Event telegram.*",
-     "now": "modules/telegram"
+     "now": "workspaces/telegram"
     },
     {
      "id": "tw",
@@ -44,7 +44,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "чат и события канала, ответы в чат, модерация",
      "out": "Event twitch.*",
-     "now": "modules/twitch"
+     "now": "workspaces/twitch"
     },
     {
      "id": "obs",
@@ -53,7 +53,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "сцены, трансляция и запись OBS, субтитры в поток (obs-websocket)",
      "out": "Event obs.*",
-     "now": "modules/obs"
+     "now": "workspaces/obs"
     },
     {
      "id": "rim",
@@ -62,7 +62,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "игровой агент: ходы, комментатор, запись забега",
      "out": "Event raid, death, colonists",
-     "now": "modules/rimworld"
+     "now": "workspaces/rimworld"
     },
     {
      "id": "mont",
@@ -71,7 +71,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "конвейер роликов: Remotion + ffmpeg, агент Claude",
      "out": "job.update, вопросы",
-     "now": "modules/montage"
+     "now": "workspaces/montage"
     },
     {
      "id": "dash",

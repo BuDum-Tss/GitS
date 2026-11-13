@@ -82,7 +82,8 @@ def test_class_sizes_report():
 
 # ── ТЗ 31, MC-4: модули не импортируют внутренности ядра ────────────────────────────────────────────────────────────────
 
-MODULES = AGENT.parent / "modules"
+MODULES = [AGENT.parent / "workspaces", AGENT.parent / "services"]
+SERVICES_CHECKED = ("pet", "voice")      # из services/ проверяются участники шины на SDK; decider, f5-tts и agent-runtime: свои службы вне этого правила
 # Исключения: "модуль/файл.py:имя" -> дата удаления (ГГГГ-ММ-ДД). Пока пусто: все модули переведены на SDK.
 MODULE_IMPORT_EXCEPTIONS: dict[str, str] = {}
 
@@ -97,7 +98,8 @@ def _core_names() -> set[str]:
 def _module_imports_of_core() -> list[str]:
     core = _core_names()
     found = []
-    for mod in sorted(p for p in MODULES.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))):
+    for mod in sorted(p for root in MODULES for p in root.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))
+                       and (root.name != "services" or p.name in SERVICES_CHECKED)):
         own = {p.stem for p in mod.rglob("*.py")} | {p.name for p in mod.rglob("*") if p.is_dir()}
         for path in sorted(mod.rglob("*.py")):
             rel = path.relative_to(mod)
@@ -112,7 +114,7 @@ def _module_imports_of_core() -> list[str]:
 
 
 def test_modules_do_not_import_core_internals():
-    """Код модулей (`modules/*`, кроме тестов) импортирует стандартную библиотеку, сторонние пакеты, `gits_sdk` и свои файлы;
+    """Код модулей (`workspaces/*`, `services/*`, кроме тестов) импортирует стандартную библиотеку, сторонние пакеты, `gits_sdk` и свои файлы;
     файлы ядра (`events_log`, `fast_brain`, `safety`, `claude_cli`, `latency_trace`...) берутся только через SDK."""
     problems = []
     for line in _module_imports_of_core():

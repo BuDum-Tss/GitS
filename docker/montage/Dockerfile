@@ -44,14 +44,14 @@ RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin gits \
 WORKDIR /app
 
 # зависимости Python отдельным слоем (SDK ядра: aiohttp, он уже в requirements модуля)
-COPY modules/montage/requirements.txt modules/montage/requirements.txt
-RUN pip install -r modules/montage/requirements.txt
+COPY workspaces/montage/requirements.txt workspaces/montage/requirements.txt
+RUN pip install -r workspaces/montage/requirements.txt
 
 USER gits
 
 # зависимости шаблона Remotion и браузер: слой меняется только вместе с package-lock.json
-WORKDIR /app/modules/montage/template
-COPY --chown=gits:gits modules/montage/template/package.json modules/montage/template/package-lock.json ./
+WORKDIR /app/workspaces/montage/template
+COPY --chown=gits:gits workspaces/montage/template/package.json workspaces/montage/template/package-lock.json ./
 RUN npm ci --no-audit --no-fund && npm cache clean --force \
     && npx remotion browser ensure
 
@@ -59,8 +59,8 @@ WORKDIR /app
 COPY --chown=gits:gits sdk sdk
 COPY --from=agent-runtime --chown=gits:gits /app/services/agent-runtime/node_modules services/agent-runtime/node_modules
 COPY --chown=gits:gits services/agent-runtime services/agent-runtime
-COPY --chown=gits:gits modules/montage modules/montage
+COPY --chown=gits:gits workspaces/montage workspaces/montage
 
 VOLUME ["/data", "/work"]
-WORKDIR /app/modules/montage/agent
+WORKDIR /app/workspaces/montage/agent
 CMD ["python", "-u", "main.py"]

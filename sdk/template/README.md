@@ -1,6 +1,6 @@
 # Шаблон модуля
 
-Скопируйте папку в `modules/<id>/`, замените `template` на id модуля (`manifest.py`, имена в `tests/`), добавьте запись в
+Скопируйте папку в `workspaces/<id>/` (или `services/<id>/`), замените `template` на id модуля (`manifest.py`, имена в `tests/`), добавьте запись в
 `agent/modules.yaml` и опишите модуль в `docs/MODULES.md`. Контракт «ядро - модуль»: `docs/MODULE_CONTRACT.md` (создаётся
 скриптом `sdk/tools/gen_contract_doc.py`).
 

@@ -4,7 +4,7 @@
 # Разделы: workspaces (окружения: инструменты, события, рабочее место; поле ownership: shared - общее, берётся в аренду, или
 # owned - живёт внутри ядра персонажа), services (сервисы: голос, питомец, а также внешние процессы без WebSocket: `kind: service`
 # с `health_url`) и planned (запланированные, серые карточки). Если манифест подключившегося участника содержит `role` или
-# `ownership`, они главнее записи здесь. Пути cwd пока прежние (`{GITS}/modules/...`): перенос папок делает фаза 3.
+# `ownership`, они главнее записи здесь. Пути cwd: `{GITS}/workspaces/<id>` и `{GITS}/services/<id>`.
 # Поля записи: id; cwd; command; args; autostart (запускать вместе с ядром, если участник включён); restart (always | on-failure |
 # never); enabled (включён ли, пока пользователь не выбрал сам: настройка peers.<id>.enabled в дашборде); title и description
 # (как запись называется и описывается во вкладках «Окружения» и «Сервисы»; перекрывают манифест); dev: true (запись видна во вкладках
@@ -20,18 +20,18 @@ workspaces:
   - id: telegram
     ownership: owned
     title: Telegram
-    cwd: "{GITS}/modules/telegram"
+    cwd: "{GITS}/workspaces/telegram"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
     restart: on-failure       # секреты (TELEGRAM_*) модуль читает сам из .env; без них он работает и пишет «не настроен»
 
   # Twitch: чат и события канала, ответы, модерация, название трансляции. Секреты TWITCH_* модуль читает сам из .env,
-  # токены входа создаёт modules/twitch/tw_login.py; без них модуль работает и пишет «не настроен».
+  # токены входа создаёт workspaces/twitch/tw_login.py; без них модуль работает и пишет «не настроен».
   - id: twitch
     ownership: owned
     title: Twitch
-    cwd: "{GITS}/modules/twitch"
+    cwd: "{GITS}/workspaces/twitch"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
@@ -42,42 +42,42 @@ workspaces:
   - id: obs
     ownership: owned
     title: OBS
-    cwd: "{GITS}/modules/obs"
+    cwd: "{GITS}/workspaces/obs"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
     restart: on-failure
 
   # Компьютер (ТЗ 14): экран, приложения, мышь и клавиатура, Claude-помощник для задач на ПК. Зависимости модуля:
-  # modules/desktop/requirements.txt (в окружение ядра). Экран и ввод работают только в Windows.
+  # workspaces/desktop/requirements.txt (в окружение ядра). Экран и ввод работают только в Windows.
   - id: desktop
     ownership: shared
     title: Компьютер
-    cwd: "{GITS}/modules/desktop"
+    cwd: "{GITS}/workspaces/desktop"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
     restart: on-failure
 
-  # RimWorld (ТЗ 11): модуль лежит в этом репозитории (modules/rimworld). Интерпретатор общий ({PYTHON}): зависимости игрового
+  # RimWorld (ТЗ 11): модуль лежит в этом репозитории (workspaces/rimworld). Интерпретатор общий ({PYTHON}): зависимости игрового
   # агента и пакет gits-sdk стоят в нём же, отдельного .venv у модуля нет. Данные модуля лежат в его папке agent/memory
   # (RIMWORLD_MEMORY_DIR), а не в MEMORY_DIR ядра, который супервизор передаёт всем модулям.
   - id: rimworld
     ownership: shared
     title: RimWorld
-    cwd: "{GITS}/modules/rimworld/agent"
+    cwd: "{GITS}/workspaces/rimworld/agent"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
     restart: on-failure
 
-  # Монтаж видео (ТЗ 20-22): модуль лежит в этом репозитории (modules/montage). Окружение у модуля своё: modules/montage/.venv
+  # Монтаж видео (ТЗ 20-22): модуль лежит в этом репозитории (workspaces/montage). Окружение у модуля своё: workspaces/montage/.venv
   # (Python 3.12, claude-agent-sdk, gits-sdk), поэтому интерпретатор не {PYTHON}. Нужны Node.js и ffmpeg.
   - id: montage
     ownership: shared
     title: Монтаж видео
-    cwd: "{GITS}/modules/montage/agent"
-    command: "{GITS}/modules/montage/.venv/Scripts/python.exe"
+    cwd: "{GITS}/workspaces/montage/agent"
+    command: "{GITS}/workspaces/montage/.venv/Scripts/python.exe"
     args: ["-u", "main.py"]
     autostart: true
     restart: on-failure
@@ -96,10 +96,10 @@ workspaces:
 
 services:
   # Голос (ТЗ 12): весь звук - микрофон, распознавание, узнавание голосов, синтез, воспроизведение, слух системного звука.
-  # Зависимости модуля: modules/voice/requirements.txt (в окружение ядра); Fish Speech и WhisperX в docker необязательны.
+  # Зависимости модуля: services/voice/requirements.txt (в окружение ядра); Fish Speech и WhisperX в docker необязательны.
   - id: voice
     title: Голос
-    cwd: "{GITS}/modules/voice"
+    cwd: "{GITS}/services/voice"
     command: "{PYTHON}"
     args: ["-u", "main.py"]
     autostart: true
@@ -110,7 +110,7 @@ services:
   # остаётся подключённым.
   - id: pet
     title: Питомец
-    cwd: "{GITS}/modules/pet"
+    cwd: "{GITS}/services/pet"
     command: "{PYTHONW}"
     args: ["main.py"]
     autostart: true
@@ -132,7 +132,7 @@ services:
 
   # Синтез речи ESpeech-TTS-1 (F5-TTS, русский): сервис для модуля голоса, окружение Python 3.12 + CUDA torch в
   # services/f5-tts/.venv (установка и веса: services/f5-tts/README.md). Пока модель грузится, /health отвечает 503.
-  # Нет сервиса: модуль голоса пользуется Fish Speech, потом edge-tts (`TTS_ENGINE`, modules/voice/tts_engine.py).
+  # Нет сервиса: модуль голоса пользуется Fish Speech, потом edge-tts (`TTS_ENGINE`, services/voice/tts_engine.py).
   - id: espeech
     title: Синтез речи ESpeech
     description: "русский голос персонажа по референсу (F5-TTS); работает отдельным процессом на видеокарте"

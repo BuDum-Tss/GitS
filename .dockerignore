@@ -29,11 +29,11 @@ services/agent-runtime/test
 services/decider
 services/f5-tts/*
 !services/f5-tts/f5_server.py
-modules/desktop
-modules/montage
-modules/pet
-modules/rimworld
-modules/voice
+workspaces/desktop
+workspaces/montage
+services/pet
+workspaces/rimworld
+services/voice
 **/tests
 docs
 docker/core/*.env

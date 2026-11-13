@@ -82,7 +82,7 @@ def test_dockerignore_keeps_secrets_and_host_artifacts_out():
     lines = [ln.strip() for ln in IGNORE.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
     assert lines[0] == "*"                                                     # белый список
     for needed in ("**/.venv", "**/node_modules", "**/.env", "services/agent-runtime/auth.json",
-                   "services/agent-runtime/memory", "modules/montage/jobs"):
+                   "services/agent-runtime/memory", "workspaces/montage/jobs"):
         assert needed in lines, needed
     assert "!resources" not in lines and "!agent" not in lines                # персонаж и память не попадают в образ
 

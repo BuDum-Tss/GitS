@@ -2,7 +2,7 @@
 
 Долговременного здесь нет: профиль владельца и важные факты лежат в графе (`graph_memory.py`), цели и планы
 в `tasks.db`, события жизни в `episodes.db`. OCR-текст с экрана НЕ сохраняется никогда, только короткие выводы вроде
-«писала код» (см. modules/desktop/perception.py).
+«писала код» (см. workspaces/desktop/perception.py).
 """
 import json
 import time

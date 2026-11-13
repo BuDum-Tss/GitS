@@ -39,9 +39,9 @@ COPY --from=agent-runtime /app/services/agent-runtime/node_modules services/agen
 COPY sdk sdk
 COPY services/agent-runtime services/agent-runtime
 COPY agent agent
-COPY modules/telegram modules/telegram
-COPY modules/twitch modules/twitch
-COPY modules/obs modules/obs
+COPY workspaces/telegram workspaces/telegram
+COPY workspaces/twitch workspaces/twitch
+COPY workspaces/obs workspaces/obs
 
 RUN mkdir -p agent/logs && chown -R gits:gits agent/logs
 USER gits

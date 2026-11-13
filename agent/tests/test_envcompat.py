@@ -7,7 +7,7 @@ from pathlib import Path
 import envcompat
 
 ROOT = Path(__file__).resolve().parents[2]
-CODE_DIRS = ("agent", "modules", "sdk/gits_sdk", "services")
+CODE_DIRS = ("agent", "workspaces", "sdk/gits_sdk", "services")
 
 
 def test_new_name_wins_over_old(monkeypatch):
@@ -55,8 +55,8 @@ def test_names_without_prefix_have_no_fallback():
 def test_copies_of_envcompat_are_identical():
     """Модули, SDK и сервис decider не импортируют agent/: их копии обязаны совпадать с каноническим файлом."""
     canon = (ROOT / "agent" / "envcompat.py").read_bytes()
-    copies = sorted(ROOT.glob("modules/*/envcompat.py")) + [ROOT / "sdk" / "gits_sdk" / "envcompat.py",
-                                                            ROOT / "services" / "decider" / "envcompat.py"]
+    copies = sorted(ROOT.glob("workspaces/*/envcompat.py")) + sorted(ROOT.glob("services/*/envcompat.py")) + [
+        ROOT / "sdk" / "gits_sdk" / "envcompat.py"]
     assert len(copies) >= 6
     for copy in copies:
         assert copy.read_bytes() == canon, f"копия не совпадает с agent/envcompat.py: {copy.relative_to(ROOT)}"

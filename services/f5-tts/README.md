@@ -1,7 +1,7 @@
 # f5-tts: сервис синтеза речи ESpeech-TTS-1
 
 Русский F5-TTS ([ESpeech-TTS-1 SFT-256K](https://huggingface.co/ESpeech/ESpeech-TTS-1_SFT-256K), Apache-2.0) с клонированием
-голоса по референсу. Им пользуется модуль голоса (`modules/voice/tts_engine.py`, цепочка ESpeech → Fish Speech → edge-tts,
+голоса по референсу. Им пользуется модуль голоса (`services/voice/tts_engine.py`, цепочка ESpeech → Fish Speech → edge-tts,
 переменная `TTS_ENGINE`). Отдельный процесс нужен потому, что ядро на Python 3.14, а модели нужен CUDA-torch.
 
 Адрес: `http://127.0.0.1:8771` (`F5_PORT` меняет порт, `ESPEECH_URL` у клиента). `GET /health` отвечает 503, пока модель

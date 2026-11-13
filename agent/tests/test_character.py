@@ -86,7 +86,7 @@ def test_module_resources_live_in_the_module_folder_of_the_character():
     assert (resources.module_dir("pet", "glados") / "stickers" / "idle.png").is_file()
     assert (resources.module_dir("voice", "glados") / "GlaDos.wav").is_file()
     assert (resources.module_dir("montage", "glados") / "assets" / "fonts" / "OFL.txt").is_file()
-    assert not (resources.module_dir("rimworld", "glados") / "prompts").exists()    # игровые промпты в modules/rimworld/prompts
+    assert not (resources.module_dir("rimworld", "glados") / "prompts").exists()    # игровые промпты в workspaces/rimworld/prompts
     assert (resources.character_dir("glados") / "core" / "prompt.yaml").is_file()
 
 

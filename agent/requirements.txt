@@ -8,5 +8,5 @@ psutil
 pystray; sys_platform == "win32"
 pyyaml>=6.0
 # pystray (трей) нужен только в Windows, в контейнере его нет
-# звук (синтез, микрофон, слух) это модуль voice: его зависимости в modules/voice/requirements.txt;
-# экран, мышь и клавиатура (OCR, pyautogui, pygetwindow) это модуль desktop: modules/desktop/requirements.txt
+# звук (синтез, микрофон, слух) это модуль voice: его зависимости в services/voice/requirements.txt;
+# экран, мышь и клавиатура (OCR, pyautogui, pygetwindow) это модуль desktop: workspaces/desktop/requirements.txt

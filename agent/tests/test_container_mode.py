@@ -66,7 +66,7 @@ def test_container_peers_file_has_no_hardware_modules_in_text():
         if m.get("external"):
             continue
         for hw in HARDWARE:
-            assert f"modules/{hw}" not in m["cwd"]
+            assert f"workspaces/{hw}" not in m["cwd"] and f"services/{hw}" not in m["cwd"]
 
 
 # ── допуск шины ─────────────────────────────────────────────────────────────────

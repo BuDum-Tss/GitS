@@ -145,8 +145,8 @@ async def test_event_handler_failure_does_not_break_the_hub(tmp_path):
 
 def test_modules_yaml_points_at_the_rimworld_folder_in_this_repo():
     spec = {s.id: s for s in load_specs()}["rimworld"]
-    assert spec.cwd == "{GITS}/modules/rimworld/agent"
-    assert (Path(__file__).resolve().parents[2] / "modules" / "rimworld" / "agent" / "main.py").is_file()
+    assert spec.cwd == "{GITS}/workspaces/rimworld/agent"
+    assert (Path(__file__).resolve().parents[2] / "workspaces" / "rimworld" / "agent" / "main.py").is_file()
 
 
 # ── RW-5: запись в peers.yaml ─────────────────────────────────────────────────────────────────
@@ -154,8 +154,8 @@ def test_modules_yaml_points_at_the_rimworld_folder_in_this_repo():
 def test_shipped_modules_yaml_declares_the_rimworld_module(tmp_path, monkeypatch):
     spec = {s.id: s for s in load_specs()}["rimworld"]
     assert spec.role == "workspace" and spec.ownership == "shared" and spec.autostart and spec.restart == "on-failure" and spec.enabled
-    assert spec.command == "{PYTHON}" and spec.args == ["-u", "main.py"] and spec.cwd == "{GITS}/modules/rimworld/agent"
-    repo = tmp_path / "modules" / "rimworld"
+    assert spec.command == "{PYTHON}" and spec.args == ["-u", "main.py"] and spec.cwd == "{GITS}/workspaces/rimworld/agent"
+    repo = tmp_path / "workspaces" / "rimworld"
     (repo / "agent").mkdir(parents=True)
     (repo / "agent" / "main.py").write_text("", encoding="utf-8")
     sup = Supervisor([spec], token="t" * 64, core_url="ws://x", env={}, gits_root=tmp_path)

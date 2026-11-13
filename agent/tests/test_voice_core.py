@@ -396,7 +396,7 @@ def test_presence_has_the_sticker_time_field():
 
 
 async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tmp_path, monkeypatch):
-    """Настоящий процесс modules/voice (GITS_VOICE_FAKE=1: звука нет), запущенный супервизором из настоящего peers.yaml:
+    """Настоящий процесс services/voice (GITS_VOICE_FAKE=1: звука нет), запущенный супервизором из настоящего peers.yaml:
     речь ядра -> speak -> события voice.speech -> presence -> конец; выключение модуля возвращает речь в текст."""
     import psutil
 
@@ -460,7 +460,7 @@ async def test_real_voice_process_started_by_the_supervisor_speaks_end_to_end(tm
 
 
 def test_core_process_has_no_audio_code_or_dependencies():
-    """Приёмка ТЗ 12 п. 1: в процессе ядра нет импортов звука, а файлы звука переехали в modules/voice."""
+    """Приёмка ТЗ 12 п. 1: в процессе ядра нет импортов звука, а файлы звука переехали в services/voice."""
     import ast
     from pathlib import Path
     agent = Path(__file__).resolve().parent.parent
@@ -480,7 +480,7 @@ def test_core_process_has_no_audio_code_or_dependencies():
         assert not (agent / name).exists(), name
     req = (agent / "requirements.txt").read_text(encoding="utf-8").lower()
     for package in ("edge-tts", "soundcard", "faster-whisper", "ormsgpack"):
-        assert package not in req, package                                         # ставятся из modules/voice/requirements.txt
+        assert package not in req, package                                         # ставятся из services/voice/requirements.txt
 
 
 @pytest.mark.parametrize("kind", ["voice.speech", "voice.user_speaking", "voice.utterance"])

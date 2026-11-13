@@ -1572,4 +1572,4 @@ Workspace с `ownership: shared` занимает один хозяин за р�
 
 ## Что модулю запрещено
 
-Модули (`modules/*`, кроме тестов) импортируют только стандартную библиотеку, сторонние пакеты, `gits_sdk` и свои файлы. Журнал, локальная модель, путь к Claude, опасность действия и метки трассы берутся из SDK: `client.log`, `gits_sdk.host`, `gits_sdk.claude_path`, `gits_sdk.safety`, `gits_sdk.trace`. Тест: `agent/tests/test_architecture.py`.
+Модули (`workspaces/*`, `services/*`, кроме тестов) импортируют только стандартную библиотеку, сторонние пакеты, `gits_sdk` и свои файлы. Журнал, локальная модель, путь к Claude, опасность действия и метки трассы берутся из SDK: `client.log`, `gits_sdk.host`, `gits_sdk.claude_path`, `gits_sdk.safety`, `gits_sdk.trace`. Тест: `agent/tests/test_architecture.py`.

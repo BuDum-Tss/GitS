@@ -3,7 +3,7 @@
 *
 !sdk
 !services/agent-runtime
-!modules/montage
+!workspaces/montage
 
 # окружения и зависимости хоста (npm ci и pip ставят своё внутри образа)
 **/.venv
@@ -21,15 +21,15 @@
 services/agent-runtime/auth.json
 services/agent-runtime/memory
 services/agent-runtime/test
-modules/montage/.claude/settings.local.json
+workspaces/montage/.claude/settings.local.json
 sdk/tests
 
 # рабочие папки задач, готовые ролики и демо
-modules/montage/jobs
-modules/montage/template/out
-modules/montage/template/demo
-modules/montage/template/.remotion
-modules/montage/template/public/media
-modules/montage/template/public/vo
+workspaces/montage/jobs
+workspaces/montage/template/out
+workspaces/montage/template/demo
+workspaces/montage/template/.remotion
+workspaces/montage/template/public/media
+workspaces/montage/template/public/vo
 **/*.log
 **/tests

@@ -14,7 +14,7 @@ MODULES = ("telegram", "voice", "pet", "desktop")
 def load_manifest(module: str) -> dict:
     """manifest.py каждого модуля лежит в своей папке и имеет то же имя (common.py тоже): грузим из папки модуля,
     а прежние записи sys.modules возвращаем на место."""
-    folder = str(ROOT / "modules" / module)
+    folder = str(ROOT / ("services" if module in ("voice", "pet") else "workspaces") / module)
     names = ("manifest", "common")
     saved = {k: sys.modules.pop(k) for k in names if k in sys.modules}
     sys.path.insert(0, folder)

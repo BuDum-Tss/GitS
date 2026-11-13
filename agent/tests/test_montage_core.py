@@ -10,13 +10,13 @@ TOKEN = "ab" * 32
 def test_modules_yaml_declares_the_montage_module():
     specs = {s.id: s for s in load_specs()}
     montage = specs["montage"]
-    assert montage.cwd == "{GITS}/modules/montage/agent" and montage.command == "{GITS}/modules/montage/.venv/Scripts/python.exe"
+    assert montage.cwd == "{GITS}/workspaces/montage/agent" and montage.command == "{GITS}/workspaces/montage/.venv/Scripts/python.exe"
     assert montage.autostart is True and montage.restart == "on-failure" and montage.role == "workspace" and montage.ownership == "shared" and not montage.external
     assert "montage" not in {p.id for p in load_planned()}                                   # из «запланированных» убран
 
 
 def test_montage_command_is_built_from_the_repo_folder(tmp_path):
-    repo = tmp_path / "modules" / "montage"
+    repo = tmp_path / "workspaces" / "montage"
     (repo / "agent").mkdir(parents=True)
     (repo / ".venv" / "Scripts").mkdir(parents=True)
     python = repo / ".venv" / "Scripts" / "python.exe"

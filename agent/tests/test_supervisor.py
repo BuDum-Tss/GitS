@@ -426,7 +426,7 @@ def test_real_peers_yaml_roles_and_ownership():
     assert {i: s.ownership for i, s in specs.items() if s.ownership} == {
         "telegram": "owned", "twitch": "owned", "obs": "owned", "echo": "owned",
         "desktop": "shared", "rimworld": "shared", "montage": "shared"}
-    assert specs["rimworld"].cwd == "{GITS}/modules/rimworld/agent"                  # пути прежние: папки переносит фаза 3
+    assert specs["rimworld"].cwd == "{GITS}/workspaces/rimworld/agent"                  # пути прежние: папки переносит фаза 3
 
 
 def test_peers_file_env_and_legacy_alias(tmp_path, monkeypatch):

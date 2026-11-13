@@ -151,7 +151,7 @@ def build_markdown() -> str:
         lines.append(f"| `{v.name}` | {v.by} | {'да' if v.required else 'нет'} | {_md(v.doc)} | {_md(v.default) or '-'} |")
     lines += ["", "## Ресурсы персонажа", ""] + [f"- {r}" for r in E.RESOURCE_RULES] + [""]
     lines += ["## Что модулю запрещено", "",
-              "Модули (`modules/*`, кроме тестов) импортируют только стандартную библиотеку, сторонние пакеты, `gits_sdk` и свои файлы. "
+              "Модули (`workspaces/*`, `services/*`, кроме тестов) импортируют только стандартную библиотеку, сторонние пакеты, `gits_sdk` и свои файлы. "
               "Журнал, локальная модель, путь к Claude, опасность действия и метки трассы берутся из SDK: `client.log`, `gits_sdk.host`, "
               "`gits_sdk.claude_path`, `gits_sdk.safety`, `gits_sdk.trace`. Тест: `agent/tests/test_architecture.py`.", ""]
     return "\n".join(lines).rstrip("\n") + "\n"

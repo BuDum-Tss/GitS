@@ -1,5 +1,5 @@
 /* Общие стили сцен стрима (источники «Браузер» в OBS, 1920x1080). Цвета, шрифты и размеры равны токенам дизайн-системы
-   (modules/montage/template/src/style/tokens.ts, design/tokens.json). Страницы раздаёт дашборд: http://localhost:8766/static/stream/ */
+   (workspaces/montage/template/src/style/tokens.ts, design/tokens.json). Страницы раздаёт дашборд: http://localhost:8766/static/stream/ */
 @font-face{font-family:PlexCaption;src:url(fonts/IBMPlexSansCondensed-SemiBold.ttf);font-weight:600}
 @font-face{font-family:PlexHeading;src:url(fonts/IBMPlexSansCondensed-Bold.ttf);font-weight:700}
 @font-face{font-family:PlexService;src:url(fonts/IBMPlexSans-Medium.ttf);font-weight:500}
