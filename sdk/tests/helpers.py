@@ -2,10 +2,12 @@
 import asyncio
 import contextlib
 
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import ToolError, WorkspaceClient
 
 MANIFEST = {
     "id": "demo",
+    "role": "workspace",
+    "ownership": "owned",
     "title": "Демо",
     "description": "Тестовый модуль для проверки SDK.",
     "version": "1.0.0",
@@ -32,10 +34,10 @@ MANIFEST = {
 }
 
 
-def make_client(core, *, handlers=True, manifest=None, token="core") -> ModuleClient:
+def make_client(core, *, handlers=True, manifest=None, token="core") -> WorkspaceClient:
     """Клиент к FakeCore с быстрыми переподключениями и стандартными обработчиками.
     token="core": токен FakeCore; None: клиент ищет токен сам (переменная окружения, файл)."""
-    client = ModuleClient(manifest or MANIFEST, url=core.url, token=core.token if token == "core" else token)
+    client = WorkspaceClient(manifest or MANIFEST, url=core.url, token=core.token if token == "core" else token)
     client.reconnect_delays = (0.05, 0.05, 0.1)
     if not handlers:
         return client

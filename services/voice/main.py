@@ -20,12 +20,12 @@ from common import secrets_file  # noqa: E402
 load_dotenv(secrets_file())                       # адреса сервисов и модели; файла нет - значения по умолчанию
 
 from voice_module import VoiceModule  # noqa: E402
-from gits_sdk import ModuleClient  # noqa: E402
+from gits_sdk import ServiceClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 
 
 async def amain() -> int:
-    client = ModuleClient(build_manifest())
+    client = ServiceClient(build_manifest())
     module = VoiceModule(client)
     module.start()
     try:

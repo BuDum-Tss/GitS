@@ -39,7 +39,7 @@
       "text"
     ],
     "title": "tts.synthesize",
-    "description": "Синтез речи у модуля голоса (`capabilities: voice.output`), ответ на `core.tts`."
+    "description": "Синтез речи у участника шины голоса (`capabilities: voice.output`), ответ на `core.tts`."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

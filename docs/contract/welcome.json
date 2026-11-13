@@ -19,7 +19,7 @@
       },
       "enabled": {
         "type": "boolean",
-        "description": "включён ли модуль"
+        "description": "включён ли участник шины"
       },
       "settings": {
         "type": "object",
@@ -27,7 +27,7 @@
       },
       "module_settings": {
         "type": "object",
-        "description": "настройки модуля"
+        "description": "настройки участника шины"
       },
       "profile": {
         "type": "object",

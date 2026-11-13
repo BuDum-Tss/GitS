@@ -145,7 +145,7 @@ def test_peer_registry_keeps_reported_node_and_passes_tool_node_to_the_environme
     import peer_registry
     from gits_sdk import protocol as P
     reg = peer_registry.PeerRegistry(Registry(), settings_source=lambda: {})
-    manifest = {"id": "game", "title": "Игра", "description": "d", "version": "1.0.0",
+    manifest = {"id": "game", "role": "workspace", "ownership": "owned", "title": "Игра", "description": "d", "version": "1.0.0",
                 "tools": [{"name": "place", "description": "d", "params": {}, "risk": "auto", "availability": "always",
                            "node": "build"}],
                 "nodes": [{"path": "build", "title": "Строительство"}]}
@@ -220,7 +220,7 @@ def test_work_tick_goes_to_the_agent_through_the_think_route():
 
 def test_manifest_workspace_accepts_autonomous_fields_and_rejects_bad_ones():
     from gits_sdk import protocol as P
-    base = {"id": "game", "title": "G", "description": "d", "version": "1.0.0"}
+    base = {"id": "game", "role": "workspace", "ownership": "owned", "title": "G", "description": "d", "version": "1.0.0"}
     assert P.validate_manifest({**base, "workspace": {"id": "game", "title": "G", "autonomous": True, "work_interval_s": 90}}) == []
     bad = P.validate_manifest({**base, "workspace": {"id": "game", "title": "G", "autonomous": "да", "work_interval_s": 5}})
     assert any("autonomous" in p for p in bad) and any("work_interval_s" in p for p in bad)

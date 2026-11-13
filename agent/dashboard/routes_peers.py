@@ -20,16 +20,6 @@ def _module_or_404(request: web.Request):
     return rec, None
 
 
-async def handle_api_modules(request: web.Request) -> web.Response:
-    """Все участники шины: состояние, инструменты, настройки (CORE-37). У каждой записи `role` (workspace или service) и
-    `ownership` (shared или owned, у workspace); запланированные (ещё не установлены) идут с `kind: planned`. Записи для
-    разработчиков (echo) отдаются только при настройке dev_mode. Прежний адрес, оставлен алиасом."""
-    if ctx.modules is None:
-        return web.json_response([])
-    dev_mode = bool(await asyncio.to_thread(lambda: ctx.settings.load().get("dev_mode")))
-    return web.json_response(ctx.modules.dashboard_rows(dev_mode))
-
-
 async def _rows_of(role: str) -> web.Response:
     if ctx.modules is None:
         return web.json_response([])
@@ -40,7 +30,7 @@ async def _rows_of(role: str) -> web.Response:
 
 
 async def handle_api_workspaces(request: web.Request) -> web.Response:
-    """Окружения (роль workspace): тот же снимок реестра, что и у `/api/modules`, плюс запланированные карточки."""
+    """Окружения (роль workspace): снимок реестра, плюс запланированные карточки."""
     return await _rows_of(ROLE_WORKSPACE)
 
 
@@ -265,15 +255,14 @@ async def handle_api_job_answer(request: web.Request) -> web.Response:
 
 
 ROUTES = [
-    ("GET", "/api/modules", handle_api_modules),
     ("GET", "/api/workspaces", handle_api_workspaces),
     ("GET", "/api/services", handle_api_services),
-    ("POST", "/api/modules/{id}/enabled", handle_api_module_enabled),
-    ("POST", "/api/modules/{id}/restart", handle_api_module_restart),
-    ("POST", "/api/modules/{id}/settings", handle_api_module_settings),
-    ("GET", "/api/modules/{id}/panel", handle_api_peer_panel),
-    ("POST", "/api/modules/{id}/panel/action", handle_api_peer_panel_action),
-    ("POST", "/api/modules/{id}/panel/link", handle_api_peer_panel_link),
+    ("POST", "/api/peers/{id}/enabled", handle_api_module_enabled),
+    ("POST", "/api/peers/{id}/restart", handle_api_module_restart),
+    ("POST", "/api/peers/{id}/settings", handle_api_module_settings),
+    ("GET", "/api/peers/{id}/panel", handle_api_peer_panel),
+    ("POST", "/api/peers/{id}/panel/action", handle_api_peer_panel_action),
+    ("POST", "/api/peers/{id}/panel/link", handle_api_peer_panel_link),
     ("GET", "/api/artifact", handle_api_artifact),
     ("GET", "/api/jobs", handle_api_jobs),
     ("POST", "/api/jobs/{module}/{job_id}/cancel", handle_api_job_cancel),

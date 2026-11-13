@@ -15,7 +15,7 @@ from collections import deque
 from pathlib import Path
 
 from fakes import FakePlayer, fake_synth_file
-from gits_sdk import ModuleClient, ToolError, resources
+from gits_sdk import ServiceClient, ToolError, resources
 from hearing import Hearing
 from mic_listener import MicListener
 from player import default_player
@@ -40,7 +40,7 @@ OUTBOX_MAX = 500
 class Outbox:
     """Очередь исходящих событий: уходят по одному, в порядке постановки."""
 
-    def __init__(self, client: ModuleClient):
+    def __init__(self, client: ServiceClient):
         self._client = client
         self._q: asyncio.Queue = asyncio.Queue(maxsize=OUTBOX_MAX)
         self._task: asyncio.Task | None = None
@@ -84,7 +84,7 @@ def _wav_ms(path: Path) -> int:
 
 
 class VoiceModule:
-    def __init__(self, client: ModuleClient, *, fake: bool | None = None, player=None, stt=None,
+    def __init__(self, client: ServiceClient, *, fake: bool | None = None, player=None, stt=None,
                  tmp_dir: Path | None = None, synth=None):
         """fake (или GITS_VOICE_FAKE=1): синтез пишет тишину, воспроизведение только ждёт, микрофон и слух не запускаются.
         player / stt / synth(текст, папка) -> путь подменяют части в тестах."""

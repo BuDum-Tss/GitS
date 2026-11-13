@@ -19,9 +19,9 @@ OK = textwrap.dedent('''
     from pathlib import Path
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
     Path("child.pid").write_text(str(child.pid))
-    print("module_id=" + os.environ["GITS_MODULE_ID"], "id=" + os.environ["GITS_ID"], "url=" + os.environ["GITS_CORE_URL"],
-          "token=" + ("yes" if len(os.environ.get("GITS_MODULE_TOKEN", "")) == 64 else "no"),
-          "newtoken=" + ("yes" if os.environ.get("GITS_TOKEN") == os.environ.get("GITS_MODULE_TOKEN") else "no"),
+    print("id=" + os.environ["GITS_ID"], "url=" + os.environ["GITS_CORE_URL"],
+          "token=" + ("yes" if len(os.environ.get("GITS_TOKEN", "")) == 64 else "no"),
+          "oldvars=" + ("yes" if os.environ.get("GITS_MODULE_ID") or os.environ.get("GITS_MODULE_TOKEN") else "no"),
           "unbuffered=" + os.environ.get("PYTHONUNBUFFERED", ""), "sdk=" + str("sdk" in os.environ.get("PYTHONPATH", "")))
     while not Path("stop.flag").exists():
         time.sleep(0.05)
@@ -50,12 +50,12 @@ def make(tmp_path, script, *, restart="on-failure", command="{PYTHON}", cwd=None
     mod.mkdir(exist_ok=True)
     (mod / "main.py").write_text(script, encoding="utf-8")
 
-    async def shutdown(module_id):
+    async def shutdown(peer_id):
         (mod / "stop.flag").write_text("1")
         return True
     spec = PeerSpec(id="fake", cwd=cwd or str(mod), command=command, args=["-u", "main.py"], restart=restart)
     flags = {"enabled": enabled, "connected": False}
-    sup = Supervisor([spec], token=TOKEN, core_url="ws://127.0.0.1:1/module/ws", enabled=lambda i: flags["enabled"],
+    sup = Supervisor([spec], token=TOKEN, core_url="ws://127.0.0.1:1/ws", enabled=lambda i: flags["enabled"],
                      is_connected=lambda i: flags["connected"], send_shutdown=kw.pop("send_shutdown", shutdown),
                      gits_root=tmp_path / "gits", agent_dir=tmp_path, logs_dir=tmp_path / "logs", **kw)
     return sup, mod, flags
@@ -81,7 +81,7 @@ async def test_start_passes_environment_writes_log_and_stops_on_shutdown(tmp_pat
     st = sup.status("fake")
     assert st["status"] == "running" and st["pid"] and st["configured"]
     text = log_text(sup)
-    assert "module_id=fake" in text and "url=ws://127.0.0.1:1/module/ws" in text and "unbuffered=1" in text
+    assert "id=fake " in text and "url=ws://127.0.0.1:1/ws" in text and "unbuffered=1" in text
     assert "sdk=True" in text                         # SDK виден процессу через PYTHONPATH (до установки пакета)
     assert TOKEN not in text                          # токен в журнал не попадает
     pid = st["pid"]
@@ -153,7 +153,7 @@ async def test_restart_policy_never_and_clean_exit_are_not_restarted(tmp_path):
 
 
 async def test_stubborn_process_tree_is_killed_after_wait(tmp_path):
-    async def no_shutdown(module_id):
+    async def no_shutdown(peer_id):
         return True                                    # shutdown послан, модуль его игнорирует
     sup, mod, _ = make(tmp_path, STUBBORN, send_shutdown=no_shutdown, shutdown_wait=0.4)
     await sup.start()
@@ -231,7 +231,7 @@ async def test_relative_cwd_is_relative_to_agent_dir(tmp_path):
 def test_load_specs_and_defaults(tmp_path):
     f = tmp_path / "peers.yaml"
     f.write_text(textwrap.dedent('''
-        modules:
+        workspaces:
           - id: a
             cwd: "{GITS}/x"
             command: "{PYTHON}"
@@ -278,8 +278,8 @@ async def test_launch_announcements_for_enable_and_restart_button_but_not_boot_o
     """Правило 14: включили в настройках и «перезапустить» объявляются; старт при загрузке ядра и уже работающий модуль - нет."""
     said = []
 
-    async def announce(module_id, text):
-        said.append((module_id, text))
+    async def announce(peer_id, text):
+        said.append((peer_id, text))
     sup, mod, flags = make(tmp_path, LIVE, announce=announce)
     await sup.start()                                       # загрузка ядра
     await wait_for(lambda: sup.status("fake")["status"] == "running")
@@ -302,7 +302,7 @@ async def test_launch_announcements_for_enable_and_restart_button_but_not_boot_o
 async def test_crash_restarts_are_announced_with_exit_code_and_count(tmp_path):
     said = []
 
-    async def announce(module_id, text):
+    async def announce(peer_id, text):
         said.append(text)
 
     async def fake_sleep(s):
@@ -320,7 +320,7 @@ async def test_crash_restarts_are_announced_with_exit_code_and_count(tmp_path):
 async def test_service_restarts_and_unconfigured_modules_are_not_announced(tmp_path):
     said = []
 
-    async def announce(module_id, text):
+    async def announce(peer_id, text):
         said.append(text)
     sup, mod, _ = make(tmp_path, OK, announce=announce)
     sup.specs["fake"].external = True                      # сервис (decider) - внутренняя часть ядра
@@ -333,7 +333,7 @@ async def test_service_restarts_and_unconfigured_modules_are_not_announced(tmp_p
 
 
 async def test_announcement_failure_does_not_stop_the_launch(tmp_path):
-    async def broken(module_id, text):
+    async def broken(peer_id, text):
         raise RuntimeError("очередь внимания недоступна")
     sup, mod, _ = make(tmp_path, LIVE, announce=broken)
     await sup.restart("fake")
@@ -346,8 +346,8 @@ async def test_real_echo_module_command_resolves_inside_repo():
     cmd, cwd = sup.resolve("echo")
     assert cmd == [sys.executable, "-u", "echo_module.py"] and (cwd / "echo_module.py").is_file()
     env = sup._process_env("echo")
-    assert env["GITS_MODULE_ID"] == "echo" and env["GITS_MODULE_TOKEN"] == TOKEN
-    assert env["GITS_ID"] == "echo" and env["GITS_TOKEN"] == TOKEN               # основные имена и (на время перехода) прежние
+    assert env["GITS_ID"] == "echo" and env["GITS_TOKEN"] == TOKEN
+    assert "GITS_MODULE_ID" not in env and "GITS_MODULE_TOKEN" not in env
     assert os.path.join(str(supervisor.GITS_ROOT), "sdk") in env["PYTHONPATH"]
 
 
@@ -406,14 +406,12 @@ def test_load_specs_reads_workspaces_and_services_sections(tmp_path):
         "service", True, "http://127.0.0.1:1/health")
 
 
-def test_legacy_modules_section_is_still_read(tmp_path):
+def test_legacy_modules_section_is_ignored(tmp_path):
     path = tmp_path / "old.yaml"
     path.write_text(yaml.safe_dump({"modules": [
         {"id": "a", "cwd": ".", "command": "python"},
         {"id": "b", "cwd": ".", "command": "python", "kind": "service", "health_url": "http://x/health"}]}), encoding="utf-8")
-    specs = {s.id: s for s in load_specs(path)}
-    assert specs["a"].role == "workspace" and not specs["a"].external
-    assert specs["b"].role == "service" and specs["b"].external
+    assert load_specs(path) == []                                                       # раздел modules: больше не читается
 
 
 def test_real_peers_yaml_roles_and_ownership():
@@ -432,28 +430,27 @@ def test_real_peers_yaml_roles_and_ownership():
     assert specs["streamer"].restart == "on-failure"
 
 
-def test_peers_file_env_and_legacy_alias(tmp_path, monkeypatch):
+def test_peers_file_env_and_old_name_ignored(tmp_path, monkeypatch):
     new, old = tmp_path / "new.yaml", tmp_path / "old.yaml"
     for path, pid in ((new, "from_new"), (old, "from_old")):
         path.write_text(yaml.safe_dump({"workspaces": [{"id": pid, "cwd": ".", "command": "python"}]}), encoding="utf-8")
     monkeypatch.delenv("GITS_PEERS_FILE", raising=False)
     monkeypatch.setenv("GITS_MODULES_FILE", str(old))
-    assert [s.id for s in load_specs()] == ["from_old"]                                   # прежнее имя переменной читается
+    assert "from_old" not in [s.id for s in load_specs()]                                  # прежнее имя переменной не читается
     monkeypatch.setenv("GITS_PEERS_FILE", str(new))
     assert [s.id for s in load_specs()] == ["from_new"]                                   # новое главнее
 
 
-async def test_launched_peer_gets_new_and_legacy_variables(tmp_path):
+async def test_launched_peer_gets_only_new_variables(tmp_path):
     sup, mod, _ = make(tmp_path, OK)
     await sup.start()
     await wait_for(lambda: (mod / "child.pid").exists() and "token=yes" in (log_text(sup) if sup.log_path("fake").exists() else ""))
     text = log_text(sup)
-    assert " id=fake " in text and "module_id=fake" in text         # GITS_ID и (на время перехода) GITS_MODULE_ID
-    assert "newtoken=yes" in text and "token=yes" in text           # GITS_TOKEN совпадает с GITS_MODULE_TOKEN
+    assert "id=fake " in text and "token=yes" in text and "oldvars=no" in text           # GITS_ID и GITS_TOKEN, без GITS_MODULE_*
     await sup.stop("fake")
 
 
 def test_external_service_gets_no_token(tmp_path):
     spec = PeerSpec(id="svc", cwd=str(tmp_path), command="x", role="service", external=True, health_url="http://x/health")
     env = Supervisor([spec], token=TOKEN, core_url="ws://x", env={})._process_env("svc")
-    assert "GITS_TOKEN" not in env and "GITS_MODULE_TOKEN" not in env and "GITS_ID" not in env
+    assert "GITS_TOKEN" not in env and "GITS_ID" not in env

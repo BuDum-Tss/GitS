@@ -2,7 +2,7 @@
 
 Общий сервис GitS (ТЗ 03, ATT-1): им пользуются ядро (менеджер внимания, agent/decide.py) и rimworld-module. Запускается
 в своём окружении (`services/decider/.venv`, Python 3.12 + torch CPU), чтобы не мешать Gemma на видеокарте; супервизор ядра
-запускает его сам (запись `decider` в agent/modules.yaml, kind: service):
+запускает его сам (запись `decider` в agent/peers.yaml, kind: service):
 
     services\\decider\\.venv\\Scripts\\python.exe services\\decider\\decider_server.py            (порт 8768, процессор)
 

@@ -17,7 +17,7 @@ def test_glados_module_alias_warns_and_shares_objects():
         old_protocol = importlib.import_module("glados_module.protocol")
     assert any(issubclass(w.category, DeprecationWarning) and "gits_sdk" in str(w.message) for w in seen)
     import gits_sdk
-    assert old.ModuleClient is gits_sdk.ModuleClient
+    assert old.WorkspaceClient is gits_sdk.WorkspaceClient
     assert old.ToolError is gits_sdk.ToolError
     assert old_protocol is gits_sdk.protocol
     assert old.__all__ == gits_sdk.__all__

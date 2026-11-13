@@ -14,7 +14,7 @@
     "properties": {},
     "additionalProperties": true,
     "title": "graph.get",
-    "description": "Подграф модуля фокуса для дашборда (манифест `graph: true`)."
+    "description": "Подграф участника шины фокуса для дашборда (манифест `graph: true`)."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

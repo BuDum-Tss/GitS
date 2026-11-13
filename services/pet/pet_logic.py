@@ -38,7 +38,7 @@ def dashboard_base() -> str:
     explicit = env("GITS_DASHBOARD_URL")
     if explicit:
         return explicit.rstrip("/")
-    core = env("GITS_CORE_URL") or "ws://127.0.0.1:8766/module/ws"
+    core = env("GITS_CORE_URL") or "ws://127.0.0.1:8766/ws"
     host = core.split("://", 1)[-1].split("/", 1)[0]
     return f"http://{host}"
 

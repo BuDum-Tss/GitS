@@ -10,8 +10,8 @@ class FakeAttention:
     def __init__(self):
         self.speech = []
 
-    async def submit_speech(self, module_id, say):
-        self.speech.append((module_id, say))
+    async def submit_speech(self, peer_id, say):
+        self.speech.append((peer_id, say))
 
 
 async def serve():

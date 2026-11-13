@@ -29,9 +29,9 @@ class Outbound:
         except PeerError:
             pass
 
-    async def send_topic(self, module_id: str, topic: str, data: dict) -> None:
+    async def send_topic(self, peer_id: str, topic: str, data: dict) -> None:
         """Тема одному модулю (если подключён)."""
-        conn = self._hub.connection(module_id)
+        conn = self._hub.connection(peer_id)
         if conn is not None:
             await self.safe_send_topic(conn, topic, data)
 
@@ -74,16 +74,16 @@ class Outbound:
             except Exception:
                 pass
 
-    async def send_job_answer(self, module_id: str, job_id: str, question_id: str, answer) -> bool:
+    async def send_job_answer(self, peer_id: str, job_id: str, question_id: str, answer) -> bool:
         """Ответ на вопрос задачи (MOD-20) уходит модулю как job.answer. False: модуль не подключён (отправим при
         следующем job.update этой задачи после переподключения) или отправка не удалась."""
         from peer_hub import PeerError
-        conn = self._hub.connection(module_id)
+        conn = self._hub.connection(peer_id)
         if conn is None:
             return False
         try:
             await conn.send("job.answer", {"job_id": job_id, "question_id": question_id, "answer": answer})
             return True
         except PeerError as e:
-            logger.warning(f"job.answer для {module_id}/{job_id} не отправлен: {e.message}")
+            logger.warning(f"job.answer для {peer_id}/{job_id} не отправлен: {e.message}")
             return False

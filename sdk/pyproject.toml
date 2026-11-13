@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gits-sdk"
 version = "0.1.0"
-description = "SDK модулей GitS: протокол ядро-модуль (ТЗ 01), клиент ModuleClient, FakeCore для тестов"
+description = "SDK участников шины GitS: протокол ядро-модуль (ТЗ 01), клиенты WorkspaceClient и ServiceClient, FakeCore для тестов"
 requires-python = ">=3.12"
 dependencies = ["aiohttp>=3.9"]
 

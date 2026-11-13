@@ -123,7 +123,7 @@ class AttentionContext:
         self.clock = clock
         self.decider = decider
         self.env_of = lambda: None                      # текущая среда агента (WorkspaceManager.current, ставит ядро)
-        self.node_watch = lambda module_id: {}          # ТЗ 33: тема -> сдвиг срочности для текущего узла модуля (ставит ядро)
+        self.node_watch = lambda peer_id: {}          # ТЗ 33: тема -> сдвиг срочности для текущего узла модуля (ставит ядро)
         self.settings_provider = settings_provider
         self.settings = settings_source
         self.log = log
@@ -181,12 +181,12 @@ class AttentionContext:
         out["classifier"] = bool(out.get("classifier", True))
         return out
 
-    def module_title(self, module_id: str) -> str:
-        rec = self.modules.get(module_id) if self.modules is not None else None
-        return (rec.title if rec is not None and rec.title else module_id)
+    def module_title(self, peer_id: str) -> str:
+        rec = self.modules.get(peer_id) if self.modules is not None else None
+        return (rec.title if rec is not None and rec.title else peer_id)
 
-    def emit_info(self, module_id: str, kind: str) -> dict | None:
-        rec = self.modules.get(module_id) if self.modules is not None else None
+    def emit_info(self, peer_id: str, kind: str) -> dict | None:
+        rec = self.modules.get(peer_id) if self.modules is not None else None
         for e in ((rec.manifest or {}).get("emits") or []) if rec is not None else []:
             if isinstance(e, dict) and e.get("kind") == kind:
                 return e

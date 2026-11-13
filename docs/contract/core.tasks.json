@@ -14,12 +14,12 @@
     "properties": {
       "workspace": {
         "type": "string",
-        "description": "среда (id модуля); без неё текущая среда ядра"
+        "description": "среда (id участника шины); без неё текущая среда ядра"
       }
     },
     "additionalProperties": true,
     "title": "core.tasks",
-    "description": "Цель и открытые задачи среды (ТЗ 32): что агент сейчас делает; модуль показывает их в своей панели или оверлее."
+    "description": "Цель и открытые задачи среды (ТЗ 32): что агент сейчас делает; участник шины показывает их в своей панели или оверлее."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

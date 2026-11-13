@@ -1,11 +1,11 @@
 """Поддельное ядро для тестов модулей (ТЗ 01, раздел 10): `FakeCore`.
 
-Это настоящий aiohttp-сервер на свободном порту 127.0.0.1 с адресом `/module/ws`: он проверяет токен (401), принимает
+Это настоящий aiohttp-сервер на свободном порту 127.0.0.1 с адресом `/ws`: он проверяет токен (401), принимает
 `hello`, проверяет манифест, отвечает `welcome` или `reject`, вытесняет старое подключение того же модуля (код 4000),
 записывает все сообщения модуля и позволяет вызвать инструмент, послать тему или ответить на запрос модуля.
 
     async with FakeCore() as core:
-        client = ModuleClient(MANIFEST, url=core.url, token=core.token)
+        client = WorkspaceClient(MANIFEST, url=core.url, token=core.token)
         task = asyncio.create_task(client.run())
         await core.wait_connected()
         assert await core.call_tool("repeat", {"text": "привет"}) == "привет"
@@ -35,8 +35,8 @@ class _Conn:
         self.ws = ws
         self.transport = transport
         self.welcomed = False
-        self.module_id: str | None = None
-        self.role: str | None = None             # роль из hello (нет поля: из манифеста, по умолчанию workspace)
+        self.id: str | None = None
+        self.role: str | None = None             # роль из hello
         self.hello: dict | None = None
         self.pending: dict[str, asyncio.Future] = {}
 
@@ -57,7 +57,7 @@ class FakeCore:
 
         self.messages: list[Envelope] = []       # всё, что прислал модуль после рукопожатия (включая result)
         self.sent: list[Envelope] = []           # всё, что отправило ядро
-        self.hellos: list[dict] = []             # тела принятых hello (в них `id`, `role` и прежнее `module_id`)
+        self.hellos: list[dict] = []             # тела принятых hello (в них `id` и `role`)
         self.rejected: list[dict] = []           # тела hello, на которые ответили reject
         self.states: dict[str, dict] = {}        # последняя `state` каждого модуля
         self.panels: dict[str, dict] = {}        # последнее `panel.set` каждого модуля: {"blocks": [...]} (TZ 15)
@@ -79,7 +79,7 @@ class FakeCore:
 
     @property
     def url(self) -> str:
-        return f"ws://127.0.0.1:{self._port}/module/ws"
+        return f"ws://127.0.0.1:{self._port}/ws"
 
     async def __aenter__(self) -> FakeCore:
         await self.start()
@@ -90,7 +90,7 @@ class FakeCore:
 
     async def start(self) -> None:
         app = web.Application()
-        app.router.add_get("/module/ws", self._handle)
+        app.router.add_get("/ws", self._handle)
         self._runner = web.AppRunner(app, shutdown_timeout=1.0)
         await self._runner.setup()
         site = web.TCPSite(self._runner, "127.0.0.1", 0)
@@ -179,7 +179,7 @@ class FakeCore:
             return
         self.messages.append(env)
         if env.type == "state":
-            self.states[conn.module_id or "?"] = env.body
+            self.states[conn.id or "?"] = env.body
         if env.type in contract.REGISTRY and env.type in ("event", "say", "job.update", "log", "emotion", "state"):
             problems = contract.validate(env.type, env.body)          # тот же контракт, что проверяет ядро (MC-7)
             if problems:
@@ -193,7 +193,7 @@ class FakeCore:
             if problems:
                 self.violations.append("panel.set неверен: " + "; ".join(problems))
             else:
-                self.panels[conn.module_id or "?"] = env.body
+                self.panels[conn.id or "?"] = env.body
         if env.type == "result":
             fut = conn.pending.get(env.re or "")
             if fut is not None and not fut.done():
@@ -253,11 +253,11 @@ class FakeCore:
             await self._send(conn, Envelope("reject", {"reason": reason}, re=env.id))
             await conn.ws.close()
             return
-        conn.module_id = P.hello_id(body)
-        conn.role = body.get("role") or P.role_of(body.get("manifest"))
+        conn.id = body["id"]
+        conn.role = body["role"]
         conn.hello = body
         for old in list(self._conns):
-            if old is not conn and old.welcomed and old.module_id == conn.module_id and not old.ws.closed:
+            if old is not conn and old.welcomed and old.id == conn.id and not old.ws.closed:
                 await old.ws.close(code=P.CLOSE_REPLACED, message=b"replaced")     # MOD-13
         conn.welcomed = True
         self.hellos.append(body)

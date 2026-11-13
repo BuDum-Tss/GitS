@@ -1,4 +1,4 @@
-"""Публичный контракт «ядро - модуль» (ТЗ 31): единый источник описаний и проверок.
+"""Публичный контракт «ядро - участник шины» (ТЗ 31): единый источник описаний и проверок.
 
     from gits_sdk import contract
     contract.validate("core.tts", {"text": "привет"})            # список проблем, пусто - верно
@@ -20,8 +20,8 @@ from .versions import CONTRACT_VERSION, PROTOCOL
 REGISTRY: dict[str, Message] = {m.name: m for m in ALL_MESSAGES}
 assert len(REGISTRY) == len(ALL_MESSAGES), "имена сообщений контракта повторяются"
 
-CORE_REQUESTS = tuple(m.name for m in CORE_REQUEST_MESSAGES)           # модуль -> ядро, с ответом
-MODULE_REQUESTS = tuple(m.name for m in MODULE_REQUEST_MESSAGES)       # ядро -> модуль, с ответом
+CORE_REQUESTS = tuple(m.name for m in CORE_REQUEST_MESSAGES)           # участник шины -> ядро, с ответом
+MODULE_REQUESTS = tuple(m.name for m in MODULE_REQUEST_MESSAGES)       # ядро -> участник шины, с ответом
 TOPICS = tuple(m.name for m in TOPIC_MESSAGES)
 
 

@@ -1,4 +1,4 @@
-"""Все сообщения контракта «ядро - модуль» (ТЗ 31, MC-1): запросы модуля к ядру, запросы ядра к модулю, сообщения без
+"""Все сообщения контракта «ядро - участник шины» (ТЗ 31, MC-1): запросы участника шины к ядру, запросы ядра к участнику шины, сообщения без
 ответа, темы. Это единственное место, где записаны поля, ограничения, коды ошибок, статус и версия появления.
 
 Тело `event`, `say`, `core.ask`, `job.update`, `panel.set`, `hello` проверяют готовые `validate_*` протокола
@@ -17,13 +17,13 @@ LLM_IMAGE_B64_MAX = 700_000              # картинка укладывает
 LLM_TIMEOUT_MAX_S = 120
 LLM_TOKENS_MAX = 2000
 LOG_TEXT_MAX = 500
-LOG_KINDS = ("error", "telegram", "hearing", "vision", "approval", "game", "memory")   # что модуль вправе писать в журнал
-LOG_READ_KINDS = ("game", "telegram", "hearing", "vision", "error")                    # что модуль вправе читать из журнала
+LOG_KINDS = ("error", "telegram", "hearing", "vision", "approval", "game", "memory")   # что участник шины вправе писать в журнал
+LOG_READ_KINDS = ("game", "telegram", "hearing", "vision", "error")                    # что участник шины вправе читать из журнала
 TAIL_LIMIT_MAX = 100
 
 _OBJ_OK = ({"x": 1},)
 
-# ── запросы модуля к ядру ─────────────────────────────────────────────────────
+# ── запросы участника шины к ядру ─────────────────────────────────────────────────────
 
 _ask = Message(
     "core.ask", M2C, REQUEST, "Вопрос пользователю через менеджер внимания. Ответ: bool для approval, строка для choice и text.",
@@ -48,7 +48,7 @@ _ask = Message(
 )
 
 _tts = Message(
-    "core.tts", M2C, REQUEST, "Синтез речи её голосом: ядро передаёт запрос модулю голоса (`tts.synthesize`) и его ответ.",
+    "core.tts", M2C, REQUEST, "Синтез речи её голосом: ядро передаёт запрос участнику шины голоса (`tts.synthesize`) и его ответ.",
     request=(F("text", "string", True, "что произнести", nonempty=True, max=TTS_TEXT_MAX),
              F("emotion", "string", False, "устарело: эмоций в ядре нет, поле игнорируется"),
              F("format", "string", False, "формат файла", enum=("wav", "ogg"), default="wav")),
@@ -62,8 +62,8 @@ _tts = Message(
 )
 
 _tool_call = Message(
-    "core.tool.call", M2C, REQUEST, "Вызов инструмента любого окружения ядра (кроме запрещённых правилами) по id `модуль.имя`.",
-    request=(F("tool", "string", True, "id инструмента вида модуль.имя", nonempty=True),
+    "core.tool.call", M2C, REQUEST, "Вызов инструмента любого окружения ядра (кроме запрещённых правилами) по id `участник шины.имя`.",
+    request=(F("tool", "string", True, "id инструмента вида участник шины.имя", nonempty=True),
              F("args", "object", False, "аргументы инструмента")),
     response=(F("text", "string", True, "результат инструмента"),),
     errors=("bad_request", "unknown", "unavailable", "denied", "internal"),
@@ -90,7 +90,7 @@ _remember = Message(
     response_valid=({"stored": True},), response_invalid=({},),
 )
 _persona = Message(
-    "core.persona", M2C, REQUEST, "Карточка активного персонажа и разделы persona.md для текстов модуля (ТЗ 05).",
+    "core.persona", M2C, REQUEST, "Карточка активного персонажа и разделы persona.md для текстов участника шины (ТЗ 05).",
     request=(),
     response=(F("id", "string", True, "id персонажа"), F("name", "string", True, "имя"),
               F("aliases", "array", False, "другие имена", items="string"), F("gender", "string", False, "род"),
@@ -115,7 +115,7 @@ _privacy = Message(
 )
 
 _claude_usage = Message(
-    "core.claude_usage", M2C, REQUEST, "Учесть расход токенов Claude модулем и, если лимит исчерпан, сообщить его текст.",
+    "core.claude_usage", M2C, REQUEST, "Учесть расход токенов Claude участником шины и, если лимит исчерпан, сообщить его текст.",
     request=(F("tokens", "integer", True, "расход токенов", min=0), F("source", "string", False, "кто потратил"),
              F("limit_text", "string", False, "текст исчерпанного лимита")),
     response=(),
@@ -184,26 +184,24 @@ _claude_locate = Message(
     response_invalid=({"path": 5},),
 )
 
-# ── сообщения модуля к ядру без ответа ────────────────────────────────────────
+# ── сообщения участника шины к ядру без ответа ────────────────────────────────────────
 
 _hello = Message(
-    "hello", M2C, NOTE, "Рукопожатие: первое сообщение модуля, с манифестом.",
-    request=(F("id", "string", False, "id участника (с 1.11; нужно `id` или прежнее `module_id`)"),
-             F("role", "string", False, "роль: workspace или service (с 1.11; нет поля: роль манифеста, по умолчанию workspace)",
-               enum=P.ROLES),
-             F("module_id", "string", False, "устарело (уберёт фаза 4): прежнее имя `id`; клиент SDK шлёт оба"),
+    "hello", M2C, NOTE, "Рукопожатие: первое сообщение участника шины, с манифестом.",
+    request=(F("id", "string", True, "id участника"),
+             F("role", "string", True, "роль: workspace или service (совпадает с `manifest.role`)", enum=P.ROLES),
              F("instance", "string", True, "уникальный id запуска"),
              F("pid", "integer", True, "pid процесса"), F("protocol", "integer", True, "версия протокола"),
              F("manifest", "object", True, "манифест")),
     check=P.validate_hello,
     invalid=({}, "не объект", {"protocol": 99}),
-    note="Ядро отвечает welcome или reject. id берётся из `id` или `module_id` (заданы оба: равны), должен совпадать с "
-         "`manifest.id`; `role`, если есть, совпадает с ролью манифеста.",
+    note="Ядро отвечает welcome или reject. `id` совпадает с `manifest.id`, `role` с `manifest.role`; hello без `role` "
+         "или со старым полем `module_id` отвергается.",
 )
 
 _event = Message(
-    "event", M2C, NOTE, "Событие модуля для менеджера внимания (ТЗ 03). Вид должен начинаться с `<id модуля>.`.",
-    request=(F("kind", "string", True, "вид «<модуль>.<что>»"),
+    "event", M2C, NOTE, "Событие участника шины для менеджера внимания (ТЗ 03). Вид должен начинаться с `<id участника шины>.`.",
+    request=(F("kind", "string", True, "вид «<участник шины>.<что>»"),
              F("text", "string", True, "что случилось", nonempty=True, max=P.EVENT_TEXT_MAX),
              F("data", "object", False, "подробности"),
              F("urgency_hint", "integer", False, "подсказка срочности", min=P.URGENCY_MIN, max=P.URGENCY_MAX),
@@ -243,17 +241,17 @@ _emotion = Message(
 )
 
 _state = Message(
-    "state", M2C, NOTE, "Сводка состояния модуля для дашборда и выбора профиля.",
+    "state", M2C, NOTE, "Сводка состояния участника шины для дашборда и выбора профиля.",
     request=(F("summary", "string", True, "сводка", max=P.STATE_SUMMARY_MAX), F("data", "object", False, "данные"),
              F("node", "string", False, "ТЗ 33: текущий узел рабочего места (путь из манифеста `nodes`, например architect/zone); "
-                                       "модуль шлёт state сразу при смене узла")),
+                                       "участник шины шлёт state сразу при смене узла")),
     valid=({"summary": "работает"}, {"summary": "в игре", "data": {"colonists": 3}},
            {"summary": "в Архитекторе", "node": "architect/zone"}),
     invalid=({}, {"summary": "x" * (P.STATE_SUMMARY_MAX + 1)}, {"summary": "x", "data": []}, {"summary": "x", "node": 5}),
 )
 
 _job_update = Message(
-    "job.update", M2C, NOTE, "Состояние долгой задачи модуля (ТЗ 01, раздел 9).",
+    "job.update", M2C, NOTE, "Состояние долгой задачи участника шины (ТЗ 01, раздел 9).",
     request=(F("job_id", "string", True, "id вида j-xxxxxxxx"), F("state", "string", True, "состояние", enum=P.JOB_STATES),
              F("title", "string", False, "заголовок"), F("stage", "string", False, "этап"), F("text", "string", False, "пояснение"),
              F("progress", "number", False, "прогресс", min=0, max=1),
@@ -271,7 +269,7 @@ _job_update = Message(
 )
 
 _panel_set = Message(
-    "panel.set", M2C, NOTE, "Блоки пространства модуля в дашборде (ТЗ 15); не чаще раза в секунду, до 64 КиБ.",
+    "panel.set", M2C, NOTE, "Блоки пространства участника шины в дашборде (ТЗ 15); не чаще раза в секунду, до 64 КиБ.",
     request=(F("blocks", "array", True, "блоки", items="object"),),
     check=lambda body, actions=None: P.validate_panel_set(body, actions), max_bytes=P.PANEL_SET_MAX_BYTES,
     valid=({"blocks": []}, {"blocks": [{"type": "text", "text": "привет"}]}),
@@ -280,7 +278,7 @@ _panel_set = Message(
 
 _log = Message(
     "log", M2C, NOTE, "Запись в журнал событий ядра (замена прямого `events_log`). Ядро принимает только виды LOG_KINDS "
-    "и обрезает текст до 500 символов; выключенный модуль не пишет.",
+    "и обрезает текст до 500 символов; выключенный участник шины не пишет.",
     since="1.1",
     request=(F("kind", "string", True, "вид записи", enum=LOG_KINDS),
              F("text", "string", False, "текст", max=LOG_TEXT_MAX),
@@ -289,10 +287,10 @@ _log = Message(
     invalid=({}, {"kind": "user", "text": "чужой вид"}, {"kind": "error", "text": 5}, {"kind": "error", "data": []}),
 )
 
-# ── ядро -> модуль ────────────────────────────────────────────────────────────
+# ── ядро -> участник шины ────────────────────────────────────────────────────────────
 
 _c_tool_call = Message(
-    "tool.call", C2M, REQUEST, "Вызов инструмента модуля из манифеста. `tool` без префикса модуля или с ним.",
+    "tool.call", C2M, REQUEST, "Вызов инструмента участника шины из манифеста. `tool` без префикса участника шины или с ним.",
     request=(F("tool", "string", True, "имя инструмента", nonempty=True), F("args", "object", False, "аргументы")),
     response=(), errors=("bad_request", "unknown", "unavailable", "denied", "internal", "timeout", "cancelled"),
     valid=({"tool": "repeat", "args": {"text": "а"}}, {"tool": "echo.repeat"}),
@@ -307,30 +305,30 @@ _c_tool_check = Message(
     response_valid=({"danger": None}, {"danger": "удаление"}), response_invalid=({"danger": 5},),
 )
 _c_job_cancel = Message(
-    "job.cancel", C2M, REQUEST, "Отменить задачу модуля.",
+    "job.cancel", C2M, REQUEST, "Отменить задачу участника шины.",
     request=(F("job_id", "string", True, "id задачи", nonempty=True),), response=(), errors=("bad_request", "unknown"),
     valid=({"job_id": "j-0123abcd"},), invalid=({}, {"job_id": 1}),
 )
 _c_job_list = Message(
-    "job.list", C2M, REQUEST, "Список задач модуля (после переподключения ядра).",
+    "job.list", C2M, REQUEST, "Список задач участника шины (после переподключения ядра).",
     request=(), response=(F("jobs", "array", True, "состояния задач", items="object"),), errors=("internal",),
     valid=({},), invalid=("не объект",), response_valid=({"jobs": []},), response_invalid=({},),
 )
 _c_graph_get = Message(
-    "graph.get", C2M, REQUEST, "Подграф модуля фокуса для дашборда (манифест `graph: true`).",
+    "graph.get", C2M, REQUEST, "Подграф участника шины фокуса для дашборда (манифест `graph: true`).",
     request=(), response=(F("nodes", "array", False, "узлы", items="object"), F("edges", "array", False, "связи", items="object")),
     errors=("unavailable", "internal"),
     valid=({},), invalid=("не объект",), response_valid=({"nodes": [], "edges": []}, {}), response_invalid=({"nodes": 3},),
 )
 _c_deliver = Message(
-    "deliver", C2M, REQUEST, "Доставить ответ ассистентки в канал модуля (`capabilities: chat.channel`).",
+    "deliver", C2M, REQUEST, "Доставить ответ ассистентки в канал участника шины (`capabilities: chat.channel`).",
     request=(F("target", "string", False, "адресат в канале (chat id и т.п.)"), F("text", "string", True, "текст", nonempty=True)),
     response=(F("delivered", "boolean", True, "доставлено ли"),), errors=("bad_request", "unavailable", "internal"),
     valid=({"target": "42", "text": "привет"}, {"text": "всем"}), invalid=({}, {"text": ""}, {"target": 1, "text": "x"}),
     response_valid=({"delivered": True},), response_invalid=({},),
 )
 _c_tts = Message(
-    "tts.synthesize", C2M, REQUEST, "Синтез речи у модуля голоса (`capabilities: voice.output`), ответ на `core.tts`.",
+    "tts.synthesize", C2M, REQUEST, "Синтез речи у участника шины голоса (`capabilities: voice.output`), ответ на `core.tts`.",
     request=(F("text", "string", True, "текст", nonempty=True, max=TTS_TEXT_MAX), F("emotion", "string", False, "устарело, игнорируется"),
              F("format", "string", False, "формат", enum=("wav", "ogg"), default="wav")),
     response=(F("path", "string", True, "путь к файлу"), F("duration_ms", "integer", True, "длительность, мс", min=0)),
@@ -339,7 +337,7 @@ _c_tts = Message(
     response_valid=({"path": "a.wav", "duration_ms": 10},), response_invalid=({"path": "a.wav"},),
 )
 _c_panel_action = Message(
-    "panel.action", C2M, REQUEST, "Нажатие кнопки или строки пространства модуля (ТЗ 15).",
+    "panel.action", C2M, REQUEST, "Нажатие кнопки или строки пространства участника шины (ТЗ 15).",
     request=(F("action_id", "string", True, "id действия из panel.actions", nonempty=True), F("args", "object", False, "аргументы")),
     response=(F("ok", "boolean", True, "успех"), F("message", "string", False, "сообщение", max=P.PANEL_ACTION_RESULT_MESSAGE_MAX),
               F("open_url", "string", False, "что открыть")),
@@ -349,10 +347,10 @@ _c_panel_action = Message(
 )
 _c_ws_enter = Message(
     "workspace.enter", C2M, REQUEST,
-    "Ядро вводит агента в среду модуля (ТЗ 32): только по импульсу (сообщение пользователя, "
-    "самоимпульс) или по критическому сигналу. Модуль может отказать.",
+    "Ядро вводит агента в среду участника шины (ТЗ 32): только по импульсу (сообщение пользователя, "
+    "самоимпульс) или по критическому сигналу. Участник шины может отказать.",
     since="1.5",
-    request=(F("workspace", "string", False, "среда (id модуля)"),
+    request=(F("workspace", "string", False, "среда (id участника шины)"),
              F("goal", "string", False, "цель"), F("task_id", "string", False, "id задачи"),
              F("reason", "string", False, "причина входа: user, self, critical")),
     response=(F("ok", "boolean", False, "принято"), F("error", "string", False, "причина отказа")),
@@ -362,7 +360,7 @@ _c_ws_enter = Message(
 )
 _c_ws_exit = Message(
     "workspace.exit", C2M, REQUEST,
-    "Ядро выводит агента из среды модуля и просит checkpoint (ТЗ 32).",
+    "Ядро выводит агента из среды участника шины и просит checkpoint (ТЗ 32).",
     since="1.5",
     request=(F("reason", "string", False, "причина"), F("task_id", "string", False, "id задачи"),
              F("force", "boolean", False, "принудительно"), F("event_id", "string", False, "id события"),
@@ -375,7 +373,7 @@ _c_ws_exit = Message(
 )
 _c_ws_resume = Message(
     "workspace.resume", C2M, REQUEST,
-    "Ядро возвращает агента в среду модуля с её checkpoint (ТЗ 32).",
+    "Ядро возвращает агента в среду участника шины с её checkpoint (ТЗ 32).",
     since="1.5",
     request=(F("task_id", "string", True, "id задачи", nonempty=True),
              F("goal", "string", False, "цель"), F("checkpoint", "any", False, "сохранённое состояние"),
@@ -386,7 +384,7 @@ _c_ws_resume = Message(
     response_valid=({"ok": True}, {}), response_invalid=({"ok": 1},),
 )
 
-# ── ядро -> модуль, без ответа ────────────────────────────────────────────────
+# ── ядро -> участник шины, без ответа ────────────────────────────────────────────────
 
 _speak = Message(
     "speak", C2M, NOTE, "Произнести реплику (`capabilities: voice.output`).",
@@ -407,14 +405,14 @@ _job_answer = Message(
     valid=({"job_id": "j-0123abcd", "question_id": "q1", "answer": True},), invalid=({}, {"job_id": "j-0123abcd"}),
 )
 _shutdown = Message(
-    "shutdown", C2M, NOTE, "Ядро просит модуль завершиться (в течение 10 секунд).",
+    "shutdown", C2M, NOTE, "Ядро просит участник шины завершиться (в течение 10 секунд).",
     request=(F("reason", "string", False, "причина"),), valid=({"reason": "выход"}, {}), invalid=({"reason": 5},),
 )
 _welcome = Message(
     "welcome", C2M, NOTE, "Ответ на hello: версия, включённость, настройки, профиль, батарейка.",
     request=(F("protocol", "integer", True, "версия протокола"), F("core_version", "string", False, "версия ядра"),
-             F("enabled", "boolean", True, "включён ли модуль"), F("settings", "object", False, "общие настройки"),
-             F("module_settings", "object", False, "настройки модуля"), F("profile", "object", False, "активный профиль"),
+             F("enabled", "boolean", True, "включён ли участник шины"), F("settings", "object", False, "общие настройки"),
+             F("module_settings", "object", False, "настройки участника шины"), F("profile", "object", False, "активный профиль"),
              F("battery", "object", False, "батарейка Claude")),
     valid=({"protocol": 1, "enabled": True, "settings": {}, "module_settings": {}, "profile": {}, "battery": {}},),
     invalid=({}, {"protocol": 1}),
@@ -440,14 +438,14 @@ _t_presence = Message(
     invalid=({}, {"speaking": "да", "sticker": "idle"}, "не объект"),
 )
 _t_settings = Message(
-    "settings", C2M, TOPIC, "Настройки: общие из `shared_settings` и собственные из `settings_schema` модуля.",
-    request=(F("settings", "object", False, "общие настройки"), F("module_settings", "object", False, "настройки модуля")),
+    "settings", C2M, TOPIC, "Настройки: общие из `shared_settings` и собственные из `settings_schema` участника шины.",
+    request=(F("settings", "object", False, "общие настройки"), F("module_settings", "object", False, "настройки участника шины")),
     valid=({"settings": {"dnd": False}, "module_settings": {"x": 1}}, {}), invalid=({"settings": []},),
 )
 _t_profile = Message(
-    "profile", C2M, TOPIC, "Активный профиль: id, название, модули фокуса.",
+    "profile", C2M, TOPIC, "Активный профиль: id, название, участники шины фокуса.",
     request=(F("id", "string", True, "id профиля", nonempty=True), F("title", "string", False, "название"),
-             F("focus_modules", "array", False, "модули фокуса", items="string")),
+             F("focus_modules", "array", False, "участники шины фокуса", items="string")),
     valid=({"id": "assistant", "title": "Ассистент", "focus_modules": []},), invalid=({}, {"id": "a", "focus_modules": "x"}),
 )
 _t_battery = Message(
@@ -464,7 +462,7 @@ _t_character = Message(
     invalid=({}, {"id": "glados"}),
 )
 _t_module = Message(
-    "module", C2M, TOPIC, "Включение и выключение модуля (MOD-14). Клиент подписан всегда.",
+    "module", C2M, TOPIC, "Включение и выключение участника шины (MOD-14). Клиент подписан всегда.",
     request=(F("enabled", "boolean", True, "включён ли"),), valid=({"enabled": False},), invalid=({}, {"enabled": "нет"}),
 )
 
@@ -485,9 +483,9 @@ _episodes = Message(
 )
 
 _tasks = Message(
-    "core.tasks", M2C, REQUEST, "Цель и открытые задачи среды (ТЗ 32): что агент сейчас делает; модуль показывает их в своей панели или оверлее.",
+    "core.tasks", M2C, REQUEST, "Цель и открытые задачи среды (ТЗ 32): что агент сейчас делает; участник шины показывает их в своей панели или оверлее.",
     since="1.9",
-    request=(F("workspace", "string", False, "среда (id модуля); без неё текущая среда ядра"),),
+    request=(F("workspace", "string", False, "среда (id участника шины); без неё текущая среда ядра"),),
     response=(F("workspace", "string", True, "среда"),
               F("active", "object", False, "активная задача: id, goal, status, steps[{text, status}]"),
               F("tasks", "array", True, "открытые задачи среды: id, goal, status, steps, progress [сделано, всего]", items="object")),

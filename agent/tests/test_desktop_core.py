@@ -48,7 +48,7 @@ def make_registry():
     conn = FakeConn()
     reg.hub = SimpleNamespace(connection=lambda mid: conn, attention=None)
     reg._build_environment(reg.declare("desktop"), P.Manifest.from_dict(
-        {"id": "desktop", "title": "Компьютер", "description": "Экран и ввод", "version": "1.0.0", "tools": DESKTOP_TOOLS}))
+        {"id": "desktop", "role": "workspace", "ownership": "shared", "title": "Компьютер", "description": "Экран и ввод", "version": "1.0.0", "tools": DESKTOP_TOOLS}))
     return reg, conn
 
 
@@ -111,8 +111,8 @@ async def test_run_claude_waits_for_the_desktop_job(tmp_path, monkeypatch):
     comp = make_companion(tmp_path)
     router, waited = _Router(), []
 
-    async def job_wait(module_id, job_id, timeout):
-        waited.append((module_id, job_id, timeout))
+    async def job_wait(peer_id, job_id, timeout):
+        waited.append((peer_id, job_id, timeout))
         return {"state": "done", "text": "В проекте порт 8766."}
     comp.router, comp.job_wait = router, job_wait
     assert await comp.run_claude("найди порт") == "В проекте порт 8766."
@@ -154,7 +154,7 @@ def test_profile_idle_and_activity_come_from_the_desktop_state(tmp_path):
     layer = make_layer(tmp_path)
     comp = layer.attention.companion
     assert layer.profiles._foreground() is None and comp.idle_seconds() == 0.0 and comp.screen_activity() is None
-    manifest = {"id": "desktop", "title": "Компьютер", "description": "Экран", "version": "1.0.0", "tools": []}
+    manifest = {"id": "desktop", "role": "workspace", "ownership": "shared", "title": "Компьютер", "description": "Экран", "version": "1.0.0", "tools": []}
     layer.modules.declare("desktop")
     layer.modules.on_connected(SimpleNamespace(id="desktop", manifest=manifest, instance="i1", pid=1,
                                                connected_at=0.0, spec=P.Manifest.from_dict(manifest)))

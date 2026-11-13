@@ -3,7 +3,7 @@ import asyncio
 import time
 
 import pytest
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import WorkspaceClient, ToolError
 from gits_sdk.testing import FakeCore
 
 from twitch.eventsub import EventSubSession
@@ -42,7 +42,7 @@ class Rig:
         def privacy(body):
             return {"terms": rig.terms}
 
-        self.client = ModuleClient(build_manifest(("twitch",)), url=self.core.url, token=self.core.token)
+        self.client = WorkspaceClient(build_manifest(("twitch",)), url=self.core.url, token=self.core.token)
         self.client.reconnect_delays = (0.05, 0.05, 0.1)
         self.mod = TwitchModule(self.client, str(self.mem))
 

@@ -8,6 +8,8 @@ from gits_sdk.protocol import Manifest
 
 BASE = {
     "id": "montage",
+    "role": "workspace",
+    "ownership": "shared",
     "title": "Монтаж",
     "description": "Монтаж роликов по сценарию.",
     "version": "1.0.0",

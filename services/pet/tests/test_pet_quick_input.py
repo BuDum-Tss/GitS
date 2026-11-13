@@ -22,7 +22,7 @@ def test_parse_hotkey_rejects_bad_specs(spec):
 def test_dashboard_base_follows_the_core_url(monkeypatch):
     monkeypatch.delenv("GITS_CORE_URL", raising=False)
     assert pet_logic.dashboard_base() == "http://127.0.0.1:8766"
-    monkeypatch.setenv("GITS_CORE_URL", "ws://127.0.0.1:9100/module/ws")
+    monkeypatch.setenv("GITS_CORE_URL", "ws://127.0.0.1:9100/ws")
     assert pet_logic.dashboard_base() == "http://127.0.0.1:9100"
     monkeypatch.setenv("GITS_DASHBOARD_URL", "http://localhost:7000/")
     assert pet_logic.dashboard_base() == "http://localhost:7000"

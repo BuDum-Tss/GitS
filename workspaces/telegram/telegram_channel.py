@@ -59,7 +59,7 @@ class TelegramChannel:
         return [line[2:].strip() for line in raw.splitlines() if line.startswith("- ")]
 
     def __init__(self, memory_dir: str, client, privacy):
-        """client - ModuleClient (settings, ask, request, event); privacy - Privacy (личные слова от ядра, TG-5)."""
+        """client - WorkspaceClient (settings, ask, request, event); privacy - Privacy (личные слова от ядра, TG-5)."""
         self._file = Path(memory_dir) / STATE_FILE
         self.draft = TgDraft(memory_dir)
         self.client = client

@@ -1,7 +1,7 @@
 # Ядро GitS в контейнере
 
 Один контейнер на персонажа. В контейнере только ядро и окружения без железа (`telegram` и `streamer` (Twitch и OBS одним окружением), оба со владением `owned`; файл `agent/peers.container.yaml`,
-его выбирает `GITS_PEERS_FILE`, прежнее имя `GITS_MODULES_FILE` читается как алиас).
+его выбирает `GITS_PEERS_FILE`).
 Голос, питомец и «Компьютер» остаются на хосте и подключаются к ядру по WebSocket на опубликованный порт.
 
 ## Запуск
@@ -13,8 +13,8 @@
 память лежит в именованном томе `gits-<id>-memory` на `/data/memory` (SQLite WAL на bind-mount Windows ненадёжен). Порт опубликован
 только на `127.0.0.1:${CORE_PORT}`; дашборд: `http://127.0.0.1:8766/`.
 
-Участники на хосте: `GITS_CORE_URL=ws://127.0.0.1:<CORE_PORT>/ws` (прежний путь `/module/ws` тоже работает) и тот же `GITS_TOKEN`, что в `.env`
-ядра (SDK берёт переменную раньше файла токена; прежнее имя `GITS_MODULE_TOKEN` читается как алиас). Без `GITS_TOKEN` ядро создаст токен и положит в `/data/memory/module_token`.
+Участники на хосте: `GITS_CORE_URL=ws://127.0.0.1:<CORE_PORT>/ws` и тот же `GITS_TOKEN`, что в `.env`
+ядра (SDK берёт переменную раньше файла токена). Без `GITS_TOKEN` ядро создаст токен и положит в `/data/memory/module_token`.
 Классификатор decider это общий контейнер `decider` (корневой `docker-compose.yml`, группа gits, сеть `gits_default` общая с ядром):
 ядро ходит к нему по `GITS_DECIDER_URL=http://decider:8768` (запуск из корня: `docker compose up -d decider`). Остальные сервисы хоста (LM Studio, OBS,
 RimWorld) ядро находит по `host.docker.internal`; адреса меняются переменными `GITS_DECIDER_URL`, `GITS_LM_URL`, `OBS_WEBSOCKET_URL`, `RIMWORLD_API`.
@@ -64,7 +64,7 @@ Python 3.12, Node 20, ffmpeg/ffprobe, шрифты, chrome-headless-shell для
 
 Данные: ресурсы персонажа (шрифты, звуки, стиль) монтаж берёт из тома хозяина аренды: папка персонажа монтируется в
 `/characters/<id>`, значит `/characters/<id>/montage` (`resources/<Имя>/montage` на хосте); других персонажей контейнер не видит.
-Готовые ролики лежат в `montage/out` этой папки (в `.gitignore`). Рабочая память модуля (папки задач `jobs/<id>/`, обучающий журнал)
+Готовые ролики лежат в `montage/out` этой папки (в `.gitignore`). Рабочая память участника шины (папки задач `jobs/<id>/`, обучающий журнал)
 лежит в общем именованном томе `gits-montage-work` на `/work` (`MEMORY_DIR=/work`, `MONTAGE_JOBS_DIR=/work/jobs`; внутри разделена по персонажам: `jobs/<персонаж>`), не в слое контейнера.
 
 Вход pi по подписке: `auth.json` в образ не копируется. В `compose.yml` секция закомментирована: раскомментировать `GITS_PI_AUTH` и том
@@ -92,4 +92,4 @@ Chrome внутри контейнера работает от пользова�
 
 ## Ограничения
 `POST /api/notify` принимает только петлю внутри контейнера, поэтому с хоста через порт не работает. Запись в дашборд проверяет Origin
-(`localhost`), чтение и WebSocket модулей работают.
+(`localhost`), чтение и WebSocket участников шины работают.

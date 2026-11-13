@@ -1,4 +1,4 @@
-"""ModuleClient против FakeCore (настоящий aiohttp-сервер на 127.0.0.1): MOD-4…MOD-14, MOD-23…MOD-25."""
+"""WorkspaceClient против FakeCore (настоящий aiohttp-сервер на 127.0.0.1): MOD-4…MOD-14, MOD-23…MOD-25."""
 import asyncio
 import copy
 import logging
@@ -7,7 +7,7 @@ import pytest
 from helpers import MANIFEST, make_client, running
 
 import gits_sdk.client as client_mod
-from gits_sdk import ManifestError, ModuleClient, ToolError
+from gits_sdk import ManifestError, ToolError, WorkspaceClient
 from gits_sdk import protocol as P
 from gits_sdk.testing import NO_REPLY, FakeCore
 
@@ -18,7 +18,7 @@ async def test_handshake(core):
     client = make_client(core)
     async with running(client, core):
         hello = core.hellos[0]
-        assert hello["module_id"] == "demo" and hello["protocol"] == 1
+        assert hello["id"] == "demo" and hello["role"] == "workspace" and "module_id" not in hello and hello["protocol"] == 2
         assert len(hello["instance"]) == 8 and isinstance(hello["pid"], int)
         assert hello["manifest"]["id"] == "demo" and hello["manifest"]["tools"][0]["name"] == "ping"
         assert client.connected and client.enabled and client.instance == hello["instance"]
@@ -55,12 +55,12 @@ async def test_bad_token_gets_401_and_no_hello(core):
 
 async def test_token_from_env_then_file(core, monkeypatch, tmp_path):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.setenv("GITS_MODULE_TOKEN", core.token)
+    monkeypatch.setenv("GITS_TOKEN", core.token)
     client = make_client(core, token=None)
     async with running(client, core):
         assert len(core.hellos) == 1
     # без переменной токен читается из файла ядра
-    monkeypatch.delenv("GITS_MODULE_TOKEN")
+    monkeypatch.delenv("GITS_TOKEN")
     P.write_token_file(core.token)
     client2 = make_client(core, token=None)
     async with running(client2, core):
@@ -69,7 +69,7 @@ async def test_token_from_env_then_file(core, monkeypatch, tmp_path):
 
 async def test_no_token_anywhere_keeps_trying(core, monkeypatch, tmp_path):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.delenv("GITS_MODULE_TOKEN", raising=False)
+    monkeypatch.delenv("GITS_TOKEN", raising=False)
     client = make_client(core, token=None)
     async with running(client, core, connected=False):
         await asyncio.sleep(0.2)
@@ -102,7 +102,7 @@ def test_invalid_manifest_raises_before_connect():
     bad = copy.deepcopy(MANIFEST)
     bad["version"] = "x"
     with pytest.raises(ManifestError) as e:
-        ModuleClient(bad)
+        WorkspaceClient(bad)
     assert any("version" in p for p in e.value.problems)
 
 
@@ -134,7 +134,7 @@ def test_register_unknown_names_fail_early(core):
     m = copy.deepcopy(MANIFEST)
     m["subscribe"] = []
     with pytest.raises(ValueError, match="subscribe"):
-        ModuleClient(m).on_topic("presence")
+        WorkspaceClient(m).on_topic("presence")
 
 
 # ---------------------------------------------------------------- инструменты (MOD-8, MOD-9, MOD-24)
@@ -556,7 +556,7 @@ async def test_reconnect_when_core_comes_back_later():
 async def _start_on_port(core: FakeCore, port: int) -> None:
     from aiohttp import web
     app = web.Application()
-    app.router.add_get("/module/ws", core._handle)
+    app.router.add_get("/ws", core._handle)
     core._runner = web.AppRunner(app, shutdown_timeout=1.0)
     await core._runner.setup()
     await web.TCPSite(core._runner, "127.0.0.1", port).start()
@@ -640,7 +640,7 @@ async def test_stop_closes_connection(core):
 
 
 async def test_core_unreachable_keeps_trying_and_stop_works():
-    client = ModuleClient(MANIFEST, url="ws://127.0.0.1:1/module/ws", token="t")
+    client = WorkspaceClient(MANIFEST, url="ws://127.0.0.1:1/ws", token="t")
     client.reconnect_delays = (0.05,)
     for name in ("ping", "slow", "refuse", "boom", "huge", "weird", "wipe"):
         client.tool(name)(lambda args: asyncio.sleep(0))
@@ -807,7 +807,7 @@ async def test_stop_during_handshake_returns_run_quickly():
         return ws
 
     app = web.Application()
-    app.router.add_get("/module/ws", silent)
+    app.router.add_get("/ws", silent)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0)
@@ -816,7 +816,7 @@ async def test_stop_during_handshake_returns_run_quickly():
     try:
         manifest = copy.deepcopy(MANIFEST)
         manifest["tools"] = [manifest["tools"][0]]
-        client = ModuleClient(manifest, url=f"ws://127.0.0.1:{port}/module/ws", token="t")
+        client = WorkspaceClient(manifest, url=f"ws://127.0.0.1:{port}/ws", token="t")
         client.reconnect_delays = (0.05,)
         client.tool("ping")(lambda a: {})
         task = asyncio.create_task(client.run())
@@ -828,10 +828,10 @@ async def test_stop_during_handshake_returns_run_quickly():
 
 
 async def test_env_token_wins_over_file(core, monkeypatch, tmp_path):
-    """Контейнер: GITS_MODULE_TOKEN главнее файла токена (файл ядра на хосте может быть чужим или старым)."""
+    """Контейнер: GITS_TOKEN главнее файла токена (файл ядра на хосте может быть чужим или старым)."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     P.write_token_file("старый-токен-из-файла")
-    monkeypatch.setenv("GITS_MODULE_TOKEN", core.token)
+    monkeypatch.setenv("GITS_TOKEN", core.token)
     client = make_client(core, token=None)
     assert await client._resolve_token() == core.token
     async with running(client, core):

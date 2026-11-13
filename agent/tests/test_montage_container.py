@@ -41,7 +41,7 @@ def test_montage_service_environment_and_volumes():
     svc = compose["services"]["montage"]
     env = _env(svc)
     assert env["GITS_CONTROL_TOKEN"].startswith("${GITS_CONTROL_TOKEN") and env["GITS_CONTROL_PORT"] == "8780"
-    for gone in ("GITS_CORE_URL", "GITS_TOKEN", "GITS_MODULE_TOKEN", "CHARACTER_HOME", "MONTAGE_OUT_DIR"):
+    for gone in ("GITS_CORE_URL", "GITS_TOKEN", "CHARACTER_HOME", "MONTAGE_OUT_DIR"):
         assert gone not in env, gone                                          # токен шины приходит в acquire
     assert env["GITS_CHARACTERS_ROOT"] == "/characters"
     assert env["MEMORY_DIR"] == "/work" and env["MONTAGE_JOBS_DIR"].startswith("/work/")

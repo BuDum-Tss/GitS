@@ -13,7 +13,7 @@ import speech_out
 from companion import Companion
 from graph_memory import GraphMemory
 from environments.registry import Registry
-from gits_sdk import ModuleClient
+from gits_sdk import ServiceClient
 from relationships import Relationships
 
 
@@ -24,7 +24,7 @@ def free_port() -> int:
 
 
 def voice_manifest(**extra) -> dict:
-    base = {"id": "voice", "title": "Голос", "description": "Тестовый модуль голоса.", "version": "1.0.0",
+    base = {"id": "voice", "role": "service", "title": "Голос", "description": "Тестовый модуль голоса.", "version": "1.0.0",
             "capabilities": ["voice.output", "voice.input"], "subscribe": ["settings", "module"],
             "emits": [{"kind": k, "description": k, "default_urgency": 1} for k in
                       ("voice.utterance", "voice.speech", "voice.user_speaking", "voice.heard")]}
@@ -36,7 +36,7 @@ class FakeModule:
     """Модуль голоса-заглушка на настоящем SDK: запоминает speak / speak.stop / tts.synthesize, события шлёт тест."""
 
     def __init__(self, url, token, manifest=None):
-        self.client = ModuleClient(manifest or voice_manifest(), url=url, token=token)
+        self.client = ServiceClient(manifest or voice_manifest(), url=url, token=token)
         self.spoken: list[dict] = []
         self.stops: list[dict] = []
         self.synth: list[dict] = []
@@ -78,7 +78,7 @@ class Wired:
         self.port = free_port()
         self.layer = core_service.wire_modules(self.companion, Registry(), port=self.port, specs=[],
                                                battery=lambda: {"level": 1.0, "sleeping": False})
-        self.url = f"ws://127.0.0.1:{self.port}/module/ws"
+        self.url = f"ws://127.0.0.1:{self.port}/ws"
 
     async def __aenter__(self):
         app = web.Application()
@@ -217,7 +217,7 @@ async def test_module_gone_or_disabled_resets_speech_and_falls_back_to_text(tmp_
 async def test_disabled_voice_module_does_not_get_speak_and_text_is_used(tmp_path):
     async with Wired(tmp_path) as w:
         mod = await w.module()
-        w.layer.modules._settings_source = lambda: {"modules": {"voice": {"enabled": False}}}
+        w.layer.modules._settings_source = lambda: {"peers": {"voice": {"enabled": False}}}
         w.layer.modules.invalidate()
         await w.speech.speak("u-00000001", "Модуль выключен.", None, 50)
         await asyncio.sleep(0.1)
@@ -306,9 +306,9 @@ async def test_user_speaking_updates_presence_and_last_user_ts(tmp_path):
 async def test_presence_is_broadcast_to_subscribers_on_voice_events(tmp_path):
     async with Wired(tmp_path) as w:
         mod = await w.module()
-        pet_manifest = {"id": "pet", "title": "Питомец", "description": "Тест.", "version": "1.0.0",
+        pet_manifest = {"id": "pet", "role": "service", "title": "Питомец", "description": "Тест.", "version": "1.0.0",
                         "capabilities": ["presence.view"], "subscribe": ["presence"]}
-        pet = ModuleClient(pet_manifest, url=w.url, token=w.layer.hub.token)
+        pet = ServiceClient(pet_manifest, url=w.url, token=w.layer.hub.token)
         seen: list[dict] = []
 
         @pet.on_topic("presence")

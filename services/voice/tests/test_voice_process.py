@@ -16,7 +16,7 @@ async def test_main_process_speaks_fake_and_shuts_down(tmp_path):
     async with FakeCore(settings={"voice_muted": False, "volume": 100, "mic": False, "hearing": False,
                                   "dnd": False, "quiet_until": 0.0}) as core:
         env = dict(os.environ)
-        env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="voice", MEMORY_DIR=str(mem),
+        env.update(GITS_CORE_URL=core.url, GITS_TOKEN=core.token, GITS_ID="voice", MEMORY_DIR=str(mem),
                    GITS_SECRETS_FILE=str(tmp_path / "нет-.env"), LOCALAPPDATA=str(tmp_path / "la"),
                    GITS_VOICE_TMP=str(tmp_path / "vtmp"), GITS_VOICE_FAKE="1", GITS_VOICE_FAKE_SEGMENT_MS="150",
                    PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "sdk"))
@@ -26,7 +26,7 @@ async def test_main_process_speaks_fake_and_shuts_down(tmp_path):
         try:
             await core.wait_connected(timeout=30)
             hello = core.hellos[0]
-            assert hello["module_id"] == "voice" and hello["manifest"]["capabilities"] == ["voice.output", "voice.input"]
+            assert hello["id"] == "voice" and hello["manifest"]["capabilities"] == ["voice.output", "voice.input"]
             state = (await core.wait_message("state", timeout=30)).body
             assert state["data"]["fake"] is True and state["data"]["mic"] is False
             assert proc.returncode is None

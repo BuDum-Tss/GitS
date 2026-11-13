@@ -225,17 +225,17 @@ class FakeAttention:
     def __init__(self, order, fail=False):
         self.order, self.fail, self.announces = order, fail, []
 
-    async def submit_announce(self, module_id, text, *, data=None):
+    async def submit_announce(self, peer_id, text, *, data=None):
         self.order.append(("announce", text))
         if self.fail:
             raise RuntimeError("внимание сломано")
-        self.announces.append((module_id, text, data))
+        self.announces.append((peer_id, text, data))
 
 
 def make_registry(order, attention):
     reg = peer_registry.PeerRegistry(Registry(), settings_source=lambda: {})
     reg.hub = SimpleNamespace(connection=lambda mid: FakeConn(order), attention=attention)
-    manifest = {"id": "montage", "title": "Монтаж", "description": "Монтаж видео", "version": "0.1.0", "tools": TOOLS}
+    manifest = {"id": "montage", "role": "workspace", "ownership": "shared", "title": "Монтаж", "description": "Монтаж видео", "version": "0.1.0", "tools": TOOLS}
     reg._build_environment(reg.declare("montage"), P.Manifest.from_dict(manifest))
     return reg
 

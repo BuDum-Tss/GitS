@@ -30,7 +30,7 @@ RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin gits \
 
 WORKDIR /app
 
-# зависимости ядра и модулей без железа (telegram, streamer): отдельным слоем, меняются редко
+# зависимости ядра и окружений без железа (telegram, streamer): отдельным слоем, меняются редко
 COPY agent/requirements.txt agent/requirements.txt
 COPY docker/core/requirements.txt docker/core/requirements.txt
 RUN pip install -r docker/core/requirements.txt

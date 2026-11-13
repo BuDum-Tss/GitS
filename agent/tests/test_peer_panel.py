@@ -1,4 +1,4 @@
-"""Пространство модуля на стороне ядра (TZ 15): поле panel доходит до реестра и /api/modules, неверный panel не
+"""Пространство модуля на стороне ядра (TZ 15): поле panel доходит до реестра и /api/workspaces и /api/services, неверный panel не
 отклоняет модуль (TAB-1); блоки panel.set хранятся, лимиты и отказы, действия (TAB-8); раздача файлов артефактов и
 отказы на пути и симлинки (TAB-3). Тесты не открывают проводник: reveal подменяется."""
 import asyncio
@@ -52,9 +52,9 @@ async def panel_http(core):
     """Дашборд на тестовом сервере: только маршруты пространства и раздачи файлов."""
     dashboard.set_modules(core.modules, core.hub, None)
     app = web.Application()
-    app.router.add_get("/api/modules/{id}/panel", dashboard.handle_api_peer_panel)
-    app.router.add_post("/api/modules/{id}/panel/action", dashboard.handle_api_peer_panel_action)
-    app.router.add_post("/api/modules/{id}/panel/link", dashboard.handle_api_peer_panel_link)
+    app.router.add_get("/api/peers/{id}/panel", dashboard.handle_api_peer_panel)
+    app.router.add_post("/api/peers/{id}/panel/action", dashboard.handle_api_peer_panel_action)
+    app.router.add_post("/api/peers/{id}/panel/link", dashboard.handle_api_peer_panel_link)
     app.router.add_get("/api/artifact", dashboard.handle_api_artifact)
     client = TestClient(TestServer(app))
     await client.start_server()
@@ -112,7 +112,7 @@ async def test_panel_set_is_stored_and_served(tmp_path):
             await raw.send("panel.set", {"blocks": blocks_text("привет")})
             await core.wait_for(lambda: core.modules.get("paneled").panel_blocks)
             async with panel_http(core) as http:
-                resp = await http.get("/api/modules/paneled/panel")
+                resp = await http.get("/api/peers/paneled/panel")
                 body = await resp.json()
     assert resp.status == 200
     assert body["blocks"] == blocks_text("привет") and body["connected"] is True
@@ -174,7 +174,7 @@ async def test_panel_action_round_trip_and_open_url_check(tmp_path):
 
             raw.handlers["panel.action"] = approve
             async with panel_http(core) as http:
-                resp = await http.post("/api/modules/paneled/panel/action", json={"action_id": "approve",
+                resp = await http.post("/api/peers/paneled/panel/action", json={"action_id": "approve",
                                                                                  "args": {"job_id": "j-1a2b3c4d"}})
                 body = await resp.json()
             assert resp.status == 200 and body == {"ok": True, "message": "одобрено",
@@ -187,7 +187,7 @@ async def test_panel_action_foreign_host_is_not_opened(tmp_path):
         async with connected(core) as raw:
             raw.handlers["panel.action"] = lambda body: {"ok": True, "open_url": "https://evil.example/x"}
             async with panel_http(core) as http:
-                resp = await http.post("/api/modules/paneled/panel/action", json={"action_id": "approve"})
+                resp = await http.post("/api/peers/paneled/panel/action", json={"action_id": "approve"})
                 body = await resp.json()
     assert "open_url" not in body and "не открыт" in body["message"]
 
@@ -195,19 +195,19 @@ async def test_panel_action_foreign_host_is_not_opened(tmp_path):
 async def test_panel_action_must_be_declared_and_module_connected(tmp_path):
     async with running_core(tmp_path) as core:
         async with panel_http(core) as http:
-            resp = await http.post("/api/modules/nobody/panel/action", json={"action_id": "approve"})
+            resp = await http.post("/api/peers/nobody/panel/action", json={"action_id": "approve"})
             assert resp.status == 404                             # такого модуля нет
         async with connected(core) as raw:
             raw.handlers["panel.action"] = lambda body: {"ok": True}
             async with panel_http(core) as http:
-                resp = await http.post("/api/modules/paneled/panel/action", json={"action_id": "nope"})
+                resp = await http.post("/api/peers/paneled/panel/action", json={"action_id": "nope"})
                 assert resp.status == 400                         # действие не объявлено в panel.actions
-                resp = await http.post("/api/modules/paneled/panel/action", json={"action_id": "approve",
+                resp = await http.post("/api/peers/paneled/panel/action", json={"action_id": "approve",
                                                                                  "args": "не объект"})
                 assert resp.status == 400
     await core.wait_for(lambda: core.hub.connection("paneled") is None)
     async with panel_http(core) as http:
-        resp = await http.post("/api/modules/paneled/panel/action", json={"action_id": "approve"})
+        resp = await http.post("/api/peers/paneled/panel/action", json={"action_id": "approve"})
         assert resp.status == 409                                 # модуль объявлен, но не подключён
 
 
@@ -218,7 +218,7 @@ async def test_panel_action_refusal_is_an_answer(tmp_path):
                 raise RuntimeError("сбой в модуле")
             raw.handlers["panel.action"] = refuse
             async with panel_http(core) as http:
-                resp = await http.post("/api/modules/paneled/panel/action", json={"action_id": "approve"})
+                resp = await http.post("/api/peers/paneled/panel/action", json={"action_id": "approve"})
                 body = await resp.json()
     assert resp.status == 200 and body["ok"] is False and body["code"] == "internal"
 
@@ -236,7 +236,7 @@ async def test_tool_link_runs_auto_tool_and_returns_url(tmp_path):
             await raw.send("job.update", {"job_id": "j-1a2b3c4d", "state": "running"})
             await core.wait_for(lambda: "j-1a2b3c4d" in core.modules.get("paneled").jobs)
             async with panel_http(core) as http:
-                resp = await http.post("/api/modules/paneled/panel/link",
+                resp = await http.post("/api/peers/paneled/panel/link",
                                        json={"link_id": "open", "job_id": "j-1a2b3c4d"})
                 body = await resp.json()
     assert resp.status == 200 and body == {"ok": True, "open_url": "http://127.0.0.1:3000/"}
@@ -248,14 +248,14 @@ async def test_tool_link_needs_a_job_and_auto_risk(tmp_path):
     async with running_core(tmp_path / "ask") as core:
         async with connected(core, paneled(tools=[tool("open", risk="ask")])):
             async with panel_http(core) as http:
-                resp = await http.post("/api/modules/paneled/panel/link",
+                resp = await http.post("/api/peers/paneled/panel/link",
                                        json={"link_id": "open", "job_id": "j-1a2b3c4d"})
                 assert resp.status == 403
     (tmp_path / "nojob").mkdir()
     async with running_core(tmp_path / "nojob") as core:
         async with connected(core):
             async with panel_http(core) as http:
-                resp = await http.post("/api/modules/paneled/panel/link", json={"link_id": "open"})
+                resp = await http.post("/api/peers/paneled/panel/link", json={"link_id": "open"})
                 assert resp.status == 400
 
 
@@ -263,9 +263,9 @@ async def test_url_link_returns_its_address_and_unknown_link_404(tmp_path):
     async with running_core(tmp_path) as core:
         async with connected(core):
             async with panel_http(core) as http:
-                resp = await http.post("/api/modules/paneled/panel/link", json={"link_id": "docs"})
+                resp = await http.post("/api/peers/paneled/panel/link", json={"link_id": "docs"})
                 assert (await resp.json()) == {"ok": True, "open_url": "https://example.com/docs"}
-                resp = await http.post("/api/modules/paneled/panel/link", json={"link_id": "missing"})
+                resp = await http.post("/api/peers/paneled/panel/link", json={"link_id": "missing"})
                 assert resp.status == 404
 
 
@@ -285,11 +285,11 @@ async def test_reveal_link_only_inside_serve_dirs(tmp_path, monkeypatch):
             await raw.send("state", {"summary": "ок", "data": {"jobs_dir": str(outside)}})
             await core.wait_for(lambda: core.modules.get("paneled").state)
             async with panel_http(core) as http:
-                ok = await http.post("/api/modules/paneled/panel/link", json={"link_id": "folder"})
+                ok = await http.post("/api/peers/paneled/panel/link", json={"link_id": "folder"})
                 assert ok.status == 200 and opened == [jobs.resolve()]
-                no = await http.post("/api/modules/paneled/panel/link", json={"link_id": "outside"})
+                no = await http.post("/api/peers/paneled/panel/link", json={"link_id": "outside"})
                 assert no.status == 403
-                no = await http.post("/api/modules/paneled/panel/link", json={"link_id": "state"})
+                no = await http.post("/api/peers/paneled/panel/link", json={"link_id": "state"})
                 assert no.status == 403
     assert len(opened) == 1
 

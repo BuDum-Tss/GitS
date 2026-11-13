@@ -13,15 +13,15 @@ from app import impulse_origin
 from app import workspace_manager as wm
 from domain.workspace import ASSISTANT, Reason
 from environments.base import ToolError
-from gits_sdk import ModuleClient
+from gits_sdk import WorkspaceClient
 
 
-def manifest(module_id: str, workspace: bool = True, emits: tuple = ()) -> dict:
-    m = {"id": module_id, "title": module_id.title(), "description": "Заглушка модуля.", "version": "1.0.0",
-         "capabilities": ["game"] if module_id == "rimworld" else [], "subscribe": ["module"], "state": True,
+def manifest(peer_id: str, workspace: bool = True, emits: tuple = ()) -> dict:
+    m = {"id": peer_id, "role": "workspace", "ownership": "owned", "title": peer_id.title(), "description": "Заглушка модуля.", "version": "1.0.0",
+         "capabilities": ["game"] if peer_id == "rimworld" else [], "subscribe": ["module"], "state": True,
          "emits": [{"kind": k, "description": "событие", "default_urgency": u} for k, u in emits]}
     if workspace:
-        m["workspace"] = {"id": module_id, "title": module_id.title(), "purpose": "тест",
+        m["workspace"] = {"id": peer_id, "title": peer_id.title(), "purpose": "тест",
                           "entry": ["user_message", "self_impulse", "critical"], "signals_in": ["telegram.*"]}
     return m
 
@@ -29,10 +29,10 @@ def manifest(module_id: str, workspace: bool = True, emits: tuple = ()) -> dict:
 class Stub:
     """Модуль-заглушка: журнал запросов среды и статус, который он присылает ядру."""
 
-    def __init__(self, port, layer, module_id, **kw):
-        self.client = ModuleClient(manifest(module_id, **kw), url=f"ws://127.0.0.1:{port}/module/ws",
+    def __init__(self, port, layer, peer_id, **kw):
+        self.client = WorkspaceClient(manifest(peer_id, **kw), url=f"ws://127.0.0.1:{port}/ws",
                                    token=layer.hub.token)
-        self.id, self.calls = module_id, []
+        self.id, self.calls = peer_id, []
         self.interruptible, self.blocked, self.done = True, None, False
         for name in ("workspace.enter", "workspace.exit", "workspace.resume"):
             self.client.on_request(name)(self._handler(name))
@@ -74,8 +74,8 @@ async def world(tmp_path, monkeypatch):
     port, layer, runner = await serve(tmp_path)
     stubs: list[Stub] = []
 
-    async def add(module_id, **kw):
-        stub = Stub(port, layer, module_id, **kw)
+    async def add(peer_id, **kw):
+        stub = Stub(port, layer, peer_id, **kw)
         stubs.append(stub)
         await stub.start()
         return stub

@@ -9,6 +9,8 @@ from gits_sdk.protocol import Envelope, ManifestError, ProtocolError, ToolError
 
 GOOD = {
     "id": "rimworld",
+    "role": "workspace",
+    "ownership": "shared",
     "title": "RimWorld",
     "description": "Игра-симулятор колонии: колонисты, строительство, исследования, бой.",
     "version": "1.0.0",
@@ -65,7 +67,9 @@ def test_manifest_from_spec_is_valid():
 
 
 def test_minimal_manifest_is_valid():
-    assert problems_of({"id": "ab", "title": "T", "description": "d", "version": "0.0.1"}) == []
+    assert problems_of({"id": "ab", "title": "T", "description": "d", "version": "0.0.1", "role": "service"}) == []
+    assert problems_of({"id": "ab", "title": "T", "description": "d", "version": "0.0.1", "role": "workspace",
+                        "ownership": "owned"}) == []
 
 
 def test_tool_with_all_optional_fields_is_valid():
@@ -261,14 +265,16 @@ def test_unknown_manifest_fields_are_ignored():
 
 def test_hello_body_validates():
     body = P.hello_body(GOOD, "c0ffee12", 123)
-    assert body["module_id"] == "rimworld" and body["protocol"] == 1
+    assert body["id"] == "rimworld" and body["role"] == "workspace" and body["protocol"] == 2 and "module_id" not in body
     assert P.validate_hello(body) == []
 
 
 @pytest.mark.parametrize("changes, needle", [
-    ({"protocol": 2}, "protocol"),
-    ({"module_id": "other"}, "не совпадает"),
-    ({"module_id": "BAD"}, "module_id"),
+    ({"protocol": 1}, "protocol"),
+    ({"module_id": "other"}, "module_id"),
+    ({"id": "BAD"}, "id"),
+    ({"role": None}, "role"),
+    ({"role": "service"}, "role"),
     ({"instance": ""}, "instance"),
     ({"pid": "1"}, "pid"),
     ({"manifest": None}, "манифест"),
@@ -288,7 +294,7 @@ def test_hello_manifest_problems_are_reported():
 
 def test_envelope_roundtrip():
     env = Envelope("event", {"kind": "echo.x", "text": "привет"})
-    assert env.id.startswith("m-") and len(env.id) == 18 and env.v == 1 and env.re is None
+    assert env.id.startswith("m-") and len(env.id) == 18 and env.v == 2 and env.re is None
     raw = env.dumps()
     assert "привет" in raw                       # UTF-8, а не \u-экранирование
     back = Envelope.loads(raw)
@@ -304,7 +310,7 @@ def test_envelope_ids_are_unique():
     "не json",
     "[]",
     "{}",
-    json.dumps({"v": 2, "type": "x", "id": "m-1", "re": None, "ts": 1, "body": {}}),
+    json.dumps({"v": 1, "type": "x", "id": "m-1", "re": None, "ts": 1, "body": {}}),
     json.dumps({"v": 1, "type": "", "id": "m-1", "re": None, "ts": 1, "body": {}}),
     json.dumps({"v": 1, "type": "x", "id": "", "re": None, "ts": 1, "body": {}}),
     json.dumps({"v": 1, "type": "x", "id": "m-1", "re": 5, "ts": 1, "body": {}}),
@@ -317,7 +323,7 @@ def test_envelope_rejects_bad_frames(raw):
 
 
 def test_envelope_ignores_unknown_fields():
-    env = Envelope.loads(json.dumps({"v": 1, "type": "x", "id": "m-1", "re": None, "ts": 1, "body": {"a": 1},
+    env = Envelope.loads(json.dumps({"v": 2, "type": "x", "id": "m-1", "re": None, "ts": 1, "body": {"a": 1},
                                      "новое": True}))
     assert env.body == {"a": 1}
 
@@ -391,7 +397,7 @@ def test_token_file_legacy_path_is_fallback(tmp_path, monkeypatch):
 
 def test_core_url_env(monkeypatch):
     monkeypatch.delenv("GITS_CORE_URL", raising=False)
-    assert P.core_url() == "ws://127.0.0.1:8766/module/ws"
+    assert P.core_url() == "ws://127.0.0.1:8766/ws"
     monkeypatch.setenv("GITS_CORE_URL", "ws://127.0.0.1:9/x")
     assert P.core_url() == "ws://127.0.0.1:9/x"
 

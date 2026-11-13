@@ -15,7 +15,7 @@ import core_service
 import dashboard
 import settings
 from environments.registry import Registry
-from gits_sdk import ModuleClient
+from gits_sdk import WorkspaceClient
 from supervisor import Supervisor, load_specs
 
 AGENT = Path(__file__).resolve().parent.parent
@@ -28,7 +28,7 @@ def free_port() -> int:
 
 
 def game_manifest(**extra) -> dict:
-    base = {"id": "rimworld", "title": "RimWorld", "description": "Тестовая игра.", "version": "1.0.0",
+    base = {"id": "rimworld", "role": "workspace", "ownership": "shared", "title": "RimWorld", "description": "Тестовая игра.", "version": "1.0.0",
             "capabilities": ["game"], "subscribe": ["profile", "module"], "state": True, "graph": True,
             "tools": [{"name": "order", "description": "Приказ игроку-агенту.", "params": {"text": {"type": "string"}},
                        "risk": "auto", "availability": "profile", "timeout_s": 15}],
@@ -38,7 +38,7 @@ def game_manifest(**extra) -> dict:
 
 
 def game_client(url, token, manifest=None, accept="построй"):
-    client = ModuleClient(manifest or game_manifest(), url=url, token=token)
+    client = WorkspaceClient(manifest or game_manifest(), url=url, token=token)
     client.orders = []
 
     @client.tool("order")
@@ -63,7 +63,7 @@ class Wired:
         self.registry = Registry()
         self.layer = core_service.wire_modules(self.companion, self.registry, port=self.port, specs=[],
                                                battery=lambda: {"level": 1.0, "sleeping": False})
-        self.url = f"ws://127.0.0.1:{self.port}/module/ws"
+        self.url = f"ws://127.0.0.1:{self.port}/ws"
 
     async def __aenter__(self):
         app = web.Application()
@@ -227,10 +227,10 @@ def test_appraisal_label_url_new_variable_and_old_fallback(monkeypatch, caplog):
 
 
 def _core_of(w):
-    """running_client ждёт у «ядра» wait_connected(module_id): достаточно обёртки над шиной слоя."""
+    """running_client ждёт у «ядра» wait_connected(peer_id): достаточно обёртки над шиной слоя."""
     class Core:
-        async def wait_connected(self, module_id, timeout=5.0):
-            await w.wait(lambda: w.layer.hub.connection(module_id) is not None, timeout)
+        async def wait_connected(self, peer_id, timeout=5.0):
+            await w.wait(lambda: w.layer.hub.connection(peer_id) is not None, timeout)
     return Core()
 
 

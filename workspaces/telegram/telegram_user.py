@@ -39,7 +39,7 @@ def session_path(memory_dir: str) -> str:
 
 class TelegramUser:
     def __init__(self, memory_dir: str, client, privacy):
-        """client - ModuleClient (event, settings, module_settings); privacy - Privacy (личные слова от ядра, TG-5)."""
+        """client - WorkspaceClient (event, settings, module_settings); privacy - Privacy (личные слова от ядра, TG-5)."""
         self._dir = Path(memory_dir)
         self.client = client
         self.privacy = privacy

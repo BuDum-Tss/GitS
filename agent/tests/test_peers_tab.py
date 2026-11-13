@@ -32,8 +32,11 @@ def wire():
 
 
 async def rows():
-    resp = await dashboard.handle_api_modules(make_mocked_request("GET", "/api/modules"))
-    return json.loads(resp.text)
+    """Окружения и сервисы одним списком (две вкладки дашборда)."""
+    out = []
+    for handler, path in ((dashboard.handle_api_workspaces, "/api/workspaces"), (dashboard.handle_api_services, "/api/services")):
+        out += json.loads((await handler(make_mocked_request("GET", path))).text)
+    return [r for r in out if r.get("kind") != "planned"] + [r for r in out if r.get("kind") == "planned"]
 
 
 async def test_peers_are_grouped_by_role_and_carry_titles():
@@ -83,7 +86,7 @@ def test_planned_modules_are_not_run_by_the_supervisor():
     assert not planned & {s.id for s in load_specs()}                                    # в peers они не попадают
     assert not planned & set(layer.supervisor.specs)
     assert not planned & set(layer.modules.records)
-    assert all(layer.supervisor.status(module_id) is None for module_id in planned)
+    assert all(layer.supervisor.status(peer_id) is None for peer_id in planned)
 
 
 def test_dev_mode_is_a_setting_with_a_form_field():
@@ -116,12 +119,13 @@ async def test_workspaces_and_services_endpoints_split_by_role():
     assert {r["id"] for r in services} == {"voice", "pet", "decider", "espeech"}
     assert all(r["role"] == "workspace" for r in workspaces if r.get("kind") != "planned")
     assert all(r["role"] == "service" for r in services)
-    everything = {r["id"] for r in await rows() if r.get("kind") != "planned"}                # /api/modules остался алиасом общего списка
+    everything = {r["id"] for r in await rows() if r.get("kind") != "planned"}                # две вкладки вместе
     assert everything == ws_real | {r["id"] for r in services}
 
 
-def test_routes_register_new_and_legacy_paths():
+def test_routes_register_workspaces_services_and_peer_paths_only():
     from dashboard import routes_peers
     paths = {(m, p) for m, p, _ in routes_peers.ROUTES}
-    assert {("GET", "/api/modules"), ("GET", "/api/workspaces"), ("GET", "/api/services")} <= paths
-    assert ("POST", "/api/modules/{id}/enabled") in paths
+    assert {("GET", "/api/workspaces"), ("GET", "/api/services")} <= paths
+    assert not [p for _, p in paths if p.startswith("/api/modules")] and not hasattr(dashboard, "handle_api_modules")
+    assert ("POST", "/api/peers/{id}/enabled") in paths

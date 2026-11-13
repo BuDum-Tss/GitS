@@ -32,7 +32,7 @@
       "tool"
     ],
     "title": "tool.call",
-    "description": "Вызов инструмента модуля из манифеста. `tool` без префикса модуля или с ним."
+    "description": "Вызов инструмента участника шины из манифеста. `tool` без префикса участника шины или с ним."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

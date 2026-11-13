@@ -68,7 +68,7 @@ highlight detection. На API-моделях 24/7 — сотни долларо�
 - При старте — recovery: прочитать последний checkpoint, восстановить контекст
   ("что я делала до рестарта").
 - Watchdog: supervisor (docker restart policy / systemd) + heartbeat.
-- Циклы изолированы: падение Vision-модуля не роняет Observer.
+- Циклы изолированы: падение Vision-участника шины не роняет Observer.
 
 ---
 

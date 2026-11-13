@@ -22,7 +22,7 @@ async def test_main_process_connects_reports_not_configured_and_shuts_down(tmp_p
         def terms(body):
             return {"terms": ["Анна"]}
 
-        env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="telegram",
+        env.update(GITS_CORE_URL=core.url, GITS_TOKEN=core.token, GITS_ID="telegram",
                    MEMORY_DIR=str(mem), GITS_SECRETS_FILE=str(tmp_path / "нет-.env"),
                    LOCALAPPDATA=str(tmp_path / "la"), PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "sdk"))
         proc = await asyncio.create_subprocess_exec(
@@ -31,7 +31,7 @@ async def test_main_process_connects_reports_not_configured_and_shuts_down(tmp_p
         try:
             await core.wait_connected(timeout=30)
             hello = core.hellos[0]
-            assert hello["module_id"] == "telegram" and hello["manifest"]["capabilities"] == ["chat.channel"]
+            assert hello["id"] == "telegram" and hello["manifest"]["capabilities"] == ["chat.channel"]
             state = (await core.wait_message("state", timeout=30)).body
             assert state["summary"] == "канал: не настроен, аккаунт: нет ключей, последний пост: ещё не было"
             assert state["data"] == {"channel_ok": False, "account_ok": False, "last_post_ts": 0.0, "unread": 0}

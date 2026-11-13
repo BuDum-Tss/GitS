@@ -24,7 +24,7 @@ logger = logging.getLogger("game_api")
 
 _RIMWORLD_BASE = "http://localhost:8765"
 _MEMORY_DIR: Path = Path("./memory")
-_CORE = None           # ModuleClient: запросы к ядру (core.tool.call, core.web_search) для мостика MCP-сервера
+_CORE = None           # WorkspaceClient: запросы к ядру (core.tool.call, core.web_search) для мостика MCP-сервера
 _STATIC = Path(__file__).parent / "static"
 
 
@@ -252,7 +252,7 @@ def build_app() -> web.Application:
 
 
 async def start(memory_dir: str, rimworld_url: str = "http://localhost:8765", port: int | None = None, core=None):
-    """Поднять HTTP-API. Возвращает AppRunner (его закрывают при остановке модуля). core - ModuleClient для мостиков к ядру."""
+    """Поднять HTTP-API. Возвращает AppRunner (его закрывают при остановке модуля). core - WorkspaceClient для мостиков к ядру."""
     global _MEMORY_DIR, _RIMWORLD_BASE, _CORE
     _MEMORY_DIR = Path(memory_dir)
     _RIMWORLD_BASE = rimworld_url

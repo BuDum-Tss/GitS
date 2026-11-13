@@ -58,7 +58,7 @@ def test_schema_to_params_handles_optional_and_enum():
 async def test_every_tool_has_a_handler_and_core_connects(tmp_path):
     async with Rig(tmp_path) as rig:                     # run() бросил бы RuntimeError, если у инструмента нет обработчика
         hello = rig.core.hellos[0]
-        assert hello["module_id"] == "rimworld"
+        assert hello["id"] == "rimworld"
         assert {t["name"] for t in hello["manifest"]["tools"]} == {t["name"] for t in rig.tools}
 
 

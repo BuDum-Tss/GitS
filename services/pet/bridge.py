@@ -1,4 +1,4 @@
-"""Поток клиента модуля (ТЗ 13, PET-3): `ModuleClient.run()` в отдельном потоке со своим циклом asyncio.
+"""Поток клиента модуля (ТЗ 13, PET-3): `ServiceClient.run()` в отдельном потоке со своим циклом asyncio.
 
 tkinter живёт в главном потоке и сюда не заглядывает: всё, что узнал клиент (присутствие, настройки, связь с ядром,
 включённость), кладётся в `queue.Queue` сообщениями `(kind, data)`; окно разбирает очередь через `root.after`.
@@ -10,7 +10,7 @@ import queue
 import threading
 import time
 
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import ServiceClient, ToolError
 from pet_logic import panel_blocks
 
 log = logging.getLogger("pet")
@@ -23,7 +23,7 @@ class ClientThread(threading.Thread):
     def __init__(self, manifest: dict, messages: "queue.Queue", *, url: str | None = None, token: str | None = None):
         super().__init__(name="pet-client", daemon=True)
         self.q = messages
-        self.client = ModuleClient(manifest, url=url, token=token)
+        self.client = ServiceClient(manifest, url=url, token=token)
         self.exit_code: int | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
         self._started = threading.Event()

@@ -9,7 +9,7 @@ from gits_sdk.control import (ControlError, ControlServer, LeaseBusy, LeaseClien
                               LeaseUnavailable)
 
 TOKEN = "control-secret"
-CORE = "ws://127.0.0.1:8766/module/ws"
+CORE = "ws://127.0.0.1:8766/ws"
 
 
 class Clock:
@@ -120,7 +120,8 @@ async def test_client_websocket_drop_releases_lease(hooks):
     from gits_sdk import WorkspaceClient
     from gits_sdk.testing import FakeCore
     async with FakeCore(token="core-token") as core:
-        manifest = {"id": "rimworld", "title": "R", "description": "d", "version": "1.0.0", "ownership": "shared"}
+        manifest = {"id": "rimworld", "title": "R", "description": "d", "version": "1.0.0", "role": "workspace",
+                    "ownership": "shared"}
         holder = {}
 
         async def on_acquire(lease):
@@ -162,7 +163,7 @@ async def test_idempotent_acquire_same_character_and_purpose(lc, hooks):
 
 async def test_acquire_with_new_core_replaces_lease_of_same_holder(lc, hooks):
     first = await acquire(lc)
-    second = await lc.acquire(character="glados", core_url="ws://127.0.0.1:9999/module/ws", token="new-token", purpose="play")
+    second = await lc.acquire(character="glados", core_url="ws://127.0.0.1:9999/ws", token="new-token", purpose="play")
     assert second["lease_id"] != first["lease_id"]
     assert len(hooks.released) == 1 and len(hooks.acquired) == 2 and hooks.acquired[1].token == "new-token"
 

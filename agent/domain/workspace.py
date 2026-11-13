@@ -56,16 +56,16 @@ BUILTIN: dict[str, WorkspaceSpec] = {
 MODULE_ENTRY = (Reason.USER, Reason.SELF, Reason.CRITICAL)
 
 
-def module_spec(module_id: str, title: str = "", purpose: str = "") -> WorkspaceSpec:
-    return WorkspaceSpec(module_id, title or module_id, KIND_MODULE, purpose, entry=MODULE_ENTRY)
+def module_spec(peer_id: str, title: str = "", purpose: str = "") -> WorkspaceSpec:
+    return WorkspaceSpec(peer_id, title or peer_id, KIND_MODULE, purpose, entry=MODULE_ENTRY)
 
 
-def spec_from_manifest(module_id: str, ws: dict, title: str = "") -> WorkspaceSpec:
+def spec_from_manifest(peer_id: str, ws: dict, title: str = "") -> WorkspaceSpec:
     """Среда модуля из поля `workspace` манифеста (ТЗ 32, WS-4; поля проверил `validate_manifest`). Причины входа берутся из
     `entry`; автоматического `process_started` в них нет и быть не может."""
     names = ws.get("entry") or ("user_message", "self_impulse", "critical")
     entry = tuple(dict.fromkeys(ENTRY_REASONS[n] for n in names if n in ENTRY_REASONS))
-    return WorkspaceSpec(module_id, str(ws.get("title") or title or module_id), KIND_MODULE, str(ws.get("purpose") or ""),
+    return WorkspaceSpec(peer_id, str(ws.get("title") or title or peer_id), KIND_MODULE, str(ws.get("purpose") or ""),
                          entry=entry, interruptible=bool(ws.get("interruptible", True)),
                          safe_points=tuple(ws.get("safe_points") or ()),
                          done_when=str(ws.get("done_when") or ""), when_to_use=str(ws.get("when_to_use") or ""),

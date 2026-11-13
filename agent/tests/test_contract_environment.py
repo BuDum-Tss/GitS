@@ -12,12 +12,12 @@ from supervisor import Supervisor, load_specs
 
 def test_supervisor_passes_every_declared_variable(tmp_path):
     specs = [s for s in load_specs() if not s.external][:1]
-    sup = Supervisor(specs, token="t" * 64, core_url="ws://127.0.0.1:1/module/ws", env={"GITS_CHARACTER_ID": "glados"},
+    sup = Supervisor(specs, token="t" * 64, core_url="ws://127.0.0.1:1/ws", env={"GITS_CHARACTER_ID": "glados"},
                      gits_root=tmp_path, memory_dir=tmp_path / "mem")
     env = sup._process_env(specs[0].id)
     for name in E.SUPERVISOR_VARS:
         assert env.get(name), f"супервизор не передал {name}"
-    assert env["GITS_MODULE_ID"] == specs[0].id and env["GITS_CORE_URL"] == "ws://127.0.0.1:1/module/ws"
+    assert env["GITS_ID"] == specs[0].id and env["GITS_CORE_URL"] == "ws://127.0.0.1:1/ws"
     assert Path(env["MEMORY_DIR"]).is_absolute()
 
 

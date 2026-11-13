@@ -1,4 +1,4 @@
-"""Модуль целиком против FakeCore из SDK (MON-5, MON-7, MON-8, MON-10, MON-12, MON-31, MON-33): настоящий ModuleClient, настоящий
+"""Модуль целиком против FakeCore из SDK (MON-5, MON-7, MON-8, MON-10, MON-12, MON-31, MON-33): настоящий WorkspaceClient, настоящий
 WebSocket; агент, Remotion и контроль качества — заглушки."""
 import asyncio
 import json
@@ -23,8 +23,8 @@ class Env:
         self.layout = layout_for(tmp)
         self.runner = kw.pop("runner", None) or FakeRunner()
         self.renderer = kw.pop("renderer", None) or FakeRenderer()
-        from gits_sdk import ModuleClient
-        self.client = ModuleClient(build_manifest(), url=core.url, token=core.token)
+        from gits_sdk import WorkspaceClient
+        self.client = WorkspaceClient(build_manifest(), url=core.url, token=core.token)
         self.client, self.manager = main_mod.build(self.layout, client=self.client, runner=self.runner, renderer=self.renderer, qa=StubQA())
         self.task = None
 

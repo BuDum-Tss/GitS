@@ -57,15 +57,15 @@ TRANSITIONS = [
 OUTPUT_OF_MODULE = {"voice": "out_voice", "pet": "out_pet", "telegram": "out_telegram"}
 
 
-def module_node(module_id: str) -> str:
-    return f"module:{module_id}"
+def module_node(peer_id: str) -> str:
+    return f"module:{peer_id}"
 
 
-def topology(module_ids=()) -> dict:
+def topology(peer_ids=()) -> dict:
     """Узлы, рёбра, слои, состояния. Каждому модулю: узел `module:<id>` и рёбра в шину и из инструментов."""
     nodes = [{"id": i, "label": t, "layer": layer} for i, t, layer in NODES]
     edges = [{"id": edge_id(a, b), "from": a, "to": b} for a, b in EDGES]
-    for mid in sorted(set(module_ids)):
+    for mid in sorted(set(peer_ids)):
         n = module_node(mid)
         nodes.append({"id": n, "label": mid, "layer": "modules"})
         edges.append({"id": edge_id(n, "bus"), "from": n, "to": "bus"})

@@ -21,7 +21,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(Path(env("GITS_SECRETS_FILE") or GITS / ".env"))
 
 from desktop_module import DesktopModule  # noqa: E402
-from gits_sdk import ModuleClient  # noqa: E402
+from gits_sdk import WorkspaceClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 
 
@@ -31,7 +31,7 @@ def memory_dir() -> str:
 
 
 async def amain() -> int:
-    client = ModuleClient(build_manifest())
+    client = WorkspaceClient(build_manifest())
     module = DesktopModule(client)
     module.start()
     try:

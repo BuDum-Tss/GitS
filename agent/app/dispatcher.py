@@ -88,10 +88,10 @@ class Dispatcher:
         focus = self.focus.push("reaction", topic, source, int(round(item.priority)), False)
         self.focus.reaction_focus[item.id] = focus.id
 
-    def speech_item(self, item: Item, text: str, say: dict, module_id: str, mode: str, ttl: float | None,
+    def speech_item(self, item: Item, text: str, say: dict, peer_id: str, mode: str, ttl: float | None,
                     cfg: dict, att: dict) -> None:
         """Речь модуля после создания Item: правило R3, оценка, сводка или очередь речи (ТЗ 01, раздел 7.2)."""
-        if self.ctx.rules.muted(module_id, item.kind, None) is not None:
+        if self.ctx.rules.muted(peer_id, item.kind, None) is not None:
             item.priority = 0.0
             item.decision = "D1"
             self.digest.add(item)
@@ -105,10 +105,10 @@ class Dispatcher:
             self.digest.add(item)
         elif decision != "D0":
             key = say.get("key")
-            self.speech.speech.new(source=f"module:{module_id}", mode=mode, text=text[:TEXT_MAX] if mode == "fact" else text,
+            self.speech.speech.new(source=f"module:{peer_id}", mode=mode, text=text[:TEXT_MAX] if mode == "fact" else text,
                                    priority=int(round(item.priority)), ttl=ttl,
-                                   key=f"module:{module_id}:{key}" if key else None, item_id=item.id)
+                                   key=f"module:{peer_id}:{key}" if key else None, item_id=item.id)
             if decision == "D4":
-                self.react(item, text[:80], f"module:{module_id}")
+                self.react(item, text[:80], f"module:{peer_id}")
             self.speech.kick()
         self.decisions.write(item, att, score={"priority": item.priority})

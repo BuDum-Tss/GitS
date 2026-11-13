@@ -13,7 +13,7 @@
     "properties": {},
     "additionalProperties": true,
     "title": "job.list",
-    "description": "Список задач модуля (после переподключения ядра)."
+    "description": "Список задач участника шины (после переподключения ядра)."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

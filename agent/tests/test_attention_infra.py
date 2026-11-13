@@ -26,7 +26,7 @@ from supervisor import PeerSpec, Supervisor, load_specs
 
 SERVICE = textwrap.dedent('''
     import os, time
-    print("сервис запущен token=" + ("есть" if os.environ.get("GITS_MODULE_TOKEN") else "нет"), flush=True)
+    print("сервис запущен token=" + ("есть" if os.environ.get("GITS_TOKEN") else "нет"), flush=True)
     time.sleep(120)
 ''')
 SERVICE_CRASH = 'import sys\nprint("упал", flush=True)\nsys.exit(1)'
@@ -49,7 +49,7 @@ def make_service(tmp_path, script, health, *, command="{PYTHON}", restart="on-fa
     (mod / "main.py").write_text(script, encoding="utf-8")
     spec = PeerSpec(id="decider", cwd=str(mod), command=command, args=["-u", "main.py"], restart=restart,
                       role="service", external=True, health_url="http://127.0.0.1:8768/health")
-    sup = Supervisor([spec], token="ab" * 32, core_url="ws://127.0.0.1:1/module/ws", gits_root=tmp_path, agent_dir=tmp_path,
+    sup = Supervisor([spec], token="ab" * 32, core_url="ws://127.0.0.1:1/ws", gits_root=tmp_path, agent_dir=tmp_path,
                      logs_dir=tmp_path / "logs", probe=health, health_interval=0.03, **kw)
     return sup
 
@@ -57,8 +57,9 @@ def make_service(tmp_path, script, health, *, command="{PYTHON}", restart="on-fa
 def test_load_specs_reads_kind_and_health_url_and_validates(tmp_path):
     path = tmp_path / "peers.yaml"
     path.write_text(textwrap.dedent('''
-        modules:
+        workspaces:
           - {id: plain, command: x}
+        services:
           - {id: svc, kind: service, command: x, health_url: "http://127.0.0.1:1/health"}
           - {id: nohealth, kind: service, command: x}
           - {id: strange, kind: daemon, command: x, health_url: "http://127.0.0.1:1/health"}
@@ -135,7 +136,7 @@ async def test_service_without_its_own_python_is_not_configured_not_run_with_cor
 
 async def test_service_declared_in_registry_and_shown_with_kind(tmp_path):
     envs = Registry()
-    modules = peer_registry.PeerRegistry(envs, settings_source=lambda: {"modules": {}})
+    modules = peer_registry.PeerRegistry(envs, settings_source=lambda: {"peers": {}})
     modules.declare("decider", title="Классификатор", role="service", external=True)
     health = Health(True)
     sup = make_service(tmp_path, SERVICE, health)

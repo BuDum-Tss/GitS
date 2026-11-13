@@ -1,11 +1,16 @@
-"""Манифест модуля (ТЗ 01, раздел 6). Замените `template` на id вашего модуля (латиница, нижний регистр)."""
+"""Манифест участника шины (ТЗ 01, раздел 6). Замените `template` на id вашего участника (латиница, нижний регистр).
 
-MODULE_ID = "template"
+`role` и `ownership` обязательны: `workspace` (окружение) с `shared` (общий, берётся в аренду) или `owned` (живёт в ядре),
+либо `service` (без `ownership`, без `workspace`; тогда в `app.py` берите `ServiceClient`)."""
+
+PEER_ID = "template"
 
 
 def build_manifest() -> dict:
     return {
-        "id": MODULE_ID,
+        "id": PEER_ID,
+        "role": "workspace",
+        "ownership": "owned",
         "title": "Шаблон",
         "description": "Заготовка нового модуля: два инструмента, одно событие, типизированные запросы к ядру.",
         "version": "0.1.0",

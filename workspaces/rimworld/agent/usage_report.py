@@ -15,7 +15,7 @@ logger = logging.getLogger("usage_report")
 SOURCE_PREFIX = "rimworld."
 SEND_TIMEOUT_S = 10.0
 
-_client = None      # ModuleClient
+_client = None      # WorkspaceClient
 _loop: asyncio.AbstractEventLoop | None = None
 
 

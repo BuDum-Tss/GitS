@@ -7,7 +7,7 @@
 ## Общая схема
 
 ```
-ядро GitS  --(tool.call montage.start)-->  agent/main.py (ModuleClient, очередь, одна задача за раз)
+ядро GitS  --(tool.call montage.start)-->  agent/main.py (WorkspaceClient, очередь, одна задача за раз)
                                               |
         jobs/<job_id>/  <---- pipeline.py: стадии ----> агент Claude (claude_runner.py, sandbox.py, скиллы Remotion)
                                               |

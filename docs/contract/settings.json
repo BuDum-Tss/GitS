@@ -15,11 +15,11 @@
       },
       "module_settings": {
         "type": "object",
-        "description": "настройки модуля"
+        "description": "настройки участника шины"
       }
     },
     "additionalProperties": true,
     "title": "settings",
-    "description": "Настройки: общие из `shared_settings` и собственные из `settings_schema` модуля."
+    "description": "Настройки: общие из `shared_settings` и собственные из `settings_schema` участника шины."
   }
 }

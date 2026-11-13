@@ -23,7 +23,7 @@ import pc_control
 import perception
 import screen_operator
 import screenshots
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import WorkspaceClient, ToolError
 from gits_sdk.protocol import new_job_id
 from watch import FocusWatch
 
@@ -49,7 +49,7 @@ def fake_mode() -> bool:
 
 
 class DesktopModule:
-    def __init__(self, client: ModuleClient, *, fake: bool | None = None, clock=time.time,
+    def __init__(self, client: WorkspaceClient, *, fake: bool | None = None, clock=time.time,
                  idle_fn=None, foreground_fn=None, analyze_fn=None):
         """idle_fn() -> секунды простоя, foreground_fn() -> активное окно (по умолчанию из perception); подменяются в тестах."""
         self.client = client

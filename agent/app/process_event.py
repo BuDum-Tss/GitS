@@ -64,13 +64,13 @@ class EventPipeline:
         self.ctx, self.normalizer, self.store, self.rules = ctx, normalizer, store, rules
         self.dispatcher, self.announcer, self.decisions = dispatcher, announcer, decisions
 
-    async def submit(self, module_id: str, event: dict) -> None:
+    async def submit(self, peer_id: str, event: dict) -> None:
         """Событие модуля (тело `event`, ТЗ 01 раздел 7.1)."""
         ctx = self.ctx
         now = ctx.clock()
-        item = self.normalizer.make_item(module_id, event, now)
+        item = self.normalizer.make_item(peer_id, event, now)
         if item.kind not in ctx.silent_kinds:
-            ctx.log.log_nowait("module_event", item.text[:TEXT_LOG], module=module_id, event_kind=item.kind,
+            ctx.log.log_nowait("module_event", item.text[:TEXT_LOG], module=peer_id, event_kind=item.kind,
                                urgency_hint=item.urgency_hint, addressed_to_me=item.addressed_to_me,
                                sender=ctx.sender_name(item.sender))
         handler = ctx.kind_handlers.get(item.kind)
@@ -91,7 +91,7 @@ class EventPipeline:
         att = ctx.att(cfg)
         to_conversation = self.normalizer.is_owner_address(item)
         self.normalizer.note_sender(item, skip_memory=to_conversation)
-        info = ctx.emit_info(module_id, item.kind)
+        info = ctx.emit_info(peer_id, item.kind)
         declared = info.get("default_urgency") if info else None
         if await self.rules.apply(item, cfg, att, to_conversation, declared):
             return
@@ -112,17 +112,17 @@ class EventPipeline:
         except Exception as e:
             logger.warning(f"Обработчик события «{item.kind}»: {e}")
 
-    async def submit_speech(self, module_id: str, say: dict) -> None:
+    async def submit_speech(self, peer_id: str, say: dict) -> None:
         """Речь модуля (тело `say`, ТЗ 01 раздел 7.2): проходит ту же оценку важности, затем очередь речи."""
         text = str(say.get("text", "")).strip()
         if not text:
             return
         ctx = self.ctx
-        item, mode, ttl = self.normalizer.make_speech_item(module_id, say, text, ctx.clock())
+        item, mode, ttl = self.normalizer.make_speech_item(peer_id, say, text, ctx.clock())
         if say.get("announce") is True:
             self.store.register(item)
             await self.announcer.announce(item, mode=mode, ttl=ttl)      # AN-2
             return
         cfg = ctx.settings()
         att = ctx.att(cfg)
-        self.dispatcher.speech_item(item, text, say, module_id, mode, ttl, cfg, att)
+        self.dispatcher.speech_item(item, text, say, peer_id, mode, ttl, cfg, att)

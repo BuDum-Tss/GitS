@@ -70,7 +70,7 @@ DEFAULTS = {
     "pet_bubble_secs": 25,      # сколько секунд облачко держится после конца речи (3-120)
     "pet_x": None,              # запомненная позиция окна питомца (None — угол по умолчанию)
     "pet_y": None,
-    # участники шины (ТЗ 02, CORE-40; прежний ключ `modules` при загрузке переносится сюда): id -> {"enabled": bool,
+    # участники шины (ТЗ 02, CORE-40): id -> {"enabled": bool,
     # <имя собственной настройки>: значение}; нет записи — по умолчанию (включён; для записей из peers.yaml берётся поле enabled)
     "peers": {},
     # менеджер внимания (ТЗ 03, ATT-30): классификатор обращений (decide), запас прерывания, когда пользователь считается
@@ -120,13 +120,10 @@ def _file() -> Path:
 
 
 def peer_entry(cfg: dict | None, peer_id: str) -> dict | None:
-    """Запись участника: `peers.<id>`, а если её нет, прежняя `modules.<id>` (старые файлы и источники настроек в тестах)."""
-    cfg = cfg or {}
-    for key in ("peers", "modules"):
-        entry = (cfg.get(key) or {}).get(peer_id) if isinstance(cfg.get(key), dict) else None
-        if isinstance(entry, dict):
-            return entry
-    return None
+    """Запись участника: `peers.<id>` или None."""
+    peers = (cfg or {}).get("peers")
+    entry = peers.get(peer_id) if isinstance(peers, dict) else None
+    return entry if isinstance(entry, dict) else None
 
 
 def _write(data: dict) -> None:
@@ -139,8 +136,9 @@ def _write(data: dict) -> None:
         pass
 
 
+# Миграции уже существующих settings.json (убрать после 2026-12-01): `modules` -> `peers` и `twitch`/`obs` -> `streamer`.
 def _migrate_modules_key(data: dict) -> bool:
-    """Одноразовая миграция: ключ `modules` (участники шины) -> `peers`. True, если файл надо переписать."""
+    """Миграция: ключ `modules` (участники шины) -> `peers`. True, если файл надо переписать."""
     if "modules" not in data:
         return False
     legacy = data.pop("modules")

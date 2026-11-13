@@ -52,7 +52,7 @@ def stage_name(stage) -> str:
 
 def core_base() -> str:
     """Адрес HTTP ядра (раздача файлов `/api/artifact`): тот же хост и порт, что и у WebSocket модуля."""
-    ws = env("GITS_CORE_URL") or "ws://127.0.0.1:8766/module/ws"
+    ws = env("GITS_CORE_URL") or "ws://127.0.0.1:8766/ws"
     return "http://" + ws.split("://", 1)[-1].split("/", 1)[0]
 
 

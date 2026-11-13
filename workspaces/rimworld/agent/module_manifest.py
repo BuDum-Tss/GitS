@@ -20,7 +20,7 @@ from core_link import EVENTS
 
 logger = logging.getLogger("module_manifest")
 
-MODULE_ID = "rimworld"
+PEER_ID = "rimworld"
 VERSION = "1.0.0"
 DESCRIPTION = ("Игра-симулятор колонии RimWorld: рабочее место агента. Агент сам играет в колонию инструментами узлов (интерфейс игры: "
                "вкладки, действия, запросы) и получает события игры (набег, гибель, пожар, письмо).")
@@ -61,7 +61,7 @@ SETTINGS_SCHEMA = {
                    "default": "core", "enum": ["auto", "core", "manual"]},
 }
 # среда агента (ТЗ 32, WS-4): в неё входят по сообщению пользователя, по самоимпульсу или по критическому сигналу
-WORKSPACE = {"id": MODULE_ID, "title": "RimWorld",
+WORKSPACE = {"id": PEER_ID, "title": "RimWorld",
              "purpose": "играть в свою колонию самой: осматриваться, строить, настраивать работы, защищать",
              "entry": ["user_message", "self_impulse", "critical"], "interruptible": True,
              "safe_points": ["игра на паузе", "тихо: нет угрозы и боя"], "signals_in": ["telegram.*"],
@@ -187,7 +187,7 @@ def build_manifest(tools: list[dict], nodes: list[dict] | None = None) -> dict:
             emit["follow_up"] = [n for n in emit["follow_up"] if n in names]
             if not emit["follow_up"]:
                 del emit["follow_up"]
-    return {"id": MODULE_ID, "title": "RimWorld", "description": DESCRIPTION, "version": VERSION,
+    return {"id": PEER_ID, "role": "workspace", "ownership": "shared", "title": "RimWorld", "description": DESCRIPTION, "version": VERSION,
             "capabilities": ["game"], "subscribe": ["presence", "settings", "profile", "module"],
             "shared_settings": list(SHARED_SETTINGS), "settings_schema": json.loads(json.dumps(SETTINGS_SCHEMA)),
             "tools": [launch_spec(), *tools], "emits": emits, "graph": True, "state": True,

@@ -26,7 +26,7 @@ services\decider\.venv\Scripts\python.exe -m pip install --extra-index-url https
 
 ## Запуск
 
-Обычно сервис запускает супервизор ядра (запись `decider` в `agent/modules.yaml`, `kind: service`): он следит за
+Обычно сервис запускает супервизор ядра (запись `decider` в `agent/peers.yaml`, `kind: service`): он следит за
 `GET /health` и перезапускает процесс. Если порт уже занят работающим сервисом, второй экземпляр не запускается. Вручную:
 
 ```powershell

@@ -35,7 +35,7 @@
       "task_id"
     ],
     "title": "workspace.resume",
-    "description": "Ядро возвращает агента в среду модуля с её checkpoint (ТЗ 32)."
+    "description": "Ядро возвращает агента в среду участника шины с её checkpoint (ТЗ 32)."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

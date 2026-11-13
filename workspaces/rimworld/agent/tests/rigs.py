@@ -1,10 +1,10 @@
-"""Стенд тестов модуля: настоящий ModuleClient модуля RimWorld против FakeCore (поддельное ядро SDK).
+"""Стенд тестов модуля: настоящий WorkspaceClient модуля RimWorld против FakeCore (поддельное ядро SDK).
 
 Без игры, без сети (кроме локального aiohttp на свободном порту), без Claude: функции MCP-сервера подменяются в тестах."""
 import asyncio
 import contextlib
 
-from gits_sdk import ModuleClient
+from gits_sdk import WorkspaceClient
 from gits_sdk.testing import FakeCore
 
 import game_api
@@ -30,7 +30,7 @@ class Rig:
         await self.core.start()
         manifest = await module_manifest.build()
         self.tools = list(manifest["tools"])
-        self.client = ModuleClient(manifest, url=self.core.url, token=self.core.token)
+        self.client = WorkspaceClient(manifest, url=self.core.url, token=self.core.token)
         self.client.reconnect_delays = (0.05, 0.05, 0.1)
         self.link = CoreLink(self.client)
         rig = self

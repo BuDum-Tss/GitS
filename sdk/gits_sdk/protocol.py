@@ -22,15 +22,12 @@ from .envcompat import env
 
 # ---------------------------------------------------------------- транспорт (MOD-1…MOD-7)
 
-PROTOCOL = 1
-WS_PATH = "/module/ws"                 # адрес входа, которым клиент пользуется сейчас
-WS_PATH_NEW = "/ws"                    # новый адрес входа: описан в контракте, доступен с фазы 2 (ядро в agent/ его ещё не принимает)
+PROTOCOL = 2
+WS_PATH = "/ws"                        # единственный адрес входа
 DEFAULT_CORE_URL = "ws://127.0.0.1:8766" + WS_PATH
 ENV_CORE_URL = "GITS_CORE_URL"
-ENV_TOKEN = "GITS_TOKEN"               # токен подключения к ядру (с фазы 1 основное имя; GITS_MODULE_TOKEN читается как алиас)
-ENV_MODULE_TOKEN = "GITS_MODULE_TOKEN"  # устарело, уберёт фаза 4
-ENV_ID = "GITS_ID"                     # id участника (с фазы 1 основное имя; GITS_MODULE_ID читается как алиас)
-ENV_MODULE_ID = "GITS_MODULE_ID"       # устарело, уберёт фаза 4
+ENV_TOKEN = "GITS_TOKEN"               # токен подключения к ядру
+ENV_ID = "GITS_ID"                     # id участника
 ENV_CONTROL_TOKEN = "GITS_CONTROL_TOKEN"   # общий токен интерфейса управления (аренда workspace, `gits_sdk.control`)
 ENV_CONTAINER = "GITS_CONTAINER"       # 1: ядро работает в Docker-контейнере (том персонажа, токен из переменной, без трея)
 ENV_HUB_ALLOW = "GITS_HUB_ALLOW"       # сети CIDR через запятую, которым шина модулей открыта помимо петли (контейнер: шлюз Docker)
@@ -50,13 +47,13 @@ def is_container(environ=None) -> bool:
 
 
 def env_token() -> str | None:
-    """Токен подключения из окружения: `GITS_TOKEN`, иначе прежний `GITS_MODULE_TOKEN` (алиас, уберёт фаза 4)."""
-    return os.environ.get(ENV_TOKEN) or env(ENV_MODULE_TOKEN) or None
+    """Токен подключения из окружения (`GITS_TOKEN`)."""
+    return os.environ.get(ENV_TOKEN) or None
 
 
 def env_id() -> str | None:
-    """id участника из окружения: `GITS_ID`, иначе прежний `GITS_MODULE_ID` (алиас, уберёт фаза 4)."""
-    return os.environ.get(ENV_ID) or env(ENV_MODULE_ID) or None
+    """id участника из окружения (`GITS_ID`)."""
+    return os.environ.get(ENV_ID) or None
 
 
 def core_url() -> str:
@@ -188,33 +185,31 @@ JOB_FINISHED = ("done", "failed", "cancelled")
 
 # ---------------------------------------------------------------- ограничения
 
-# роли участника шины (фаза 1 переименования): workspace (окружение с инструментами, событиями и рабочим местом) и service
+# роли участника шины: workspace (окружение с инструментами, событиями и рабочим местом) и service
 ROLE_WORKSPACE = "workspace"
 ROLE_SERVICE = "service"
 ROLES = (ROLE_WORKSPACE, ROLE_SERVICE)
-DEFAULT_ROLE = ROLE_WORKSPACE          # поля `role` в манифесте нет: режим совместимости, считается workspace
 # режим владения workspace: shared (общий, эксклюзивный, берётся в аренду) и owned (живёт внутри ядра персонажа)
 OWNERSHIP_SHARED = "shared"
 OWNERSHIP_OWNED = "owned"
 OWNERSHIPS = (OWNERSHIP_SHARED, OWNERSHIP_OWNED)
-DEFAULT_OWNERSHIP = OWNERSHIP_OWNED
 
 
 def role_of(manifest: Any) -> str:
-    """Роль по манифесту; без поля `role` это workspace."""
-    if isinstance(manifest, dict) and manifest.get("role"):
+    """Роль по манифесту (`role` обязательно); для неверного манифеста пустая строка."""
+    if isinstance(manifest, dict) and isinstance(manifest.get("role"), str):
         return manifest["role"]
-    return DEFAULT_ROLE
+    return ""
 
 
 def ownership_of(manifest: Any) -> str | None:
-    """Режим владения workspace (по умолчанию owned); у service None."""
+    """Режим владения workspace (`shared` или `owned`); у service None."""
     if role_of(manifest) != ROLE_WORKSPACE:
         return None
-    return (manifest.get("ownership") if isinstance(manifest, dict) else None) or DEFAULT_OWNERSHIP
+    return manifest.get("ownership") if isinstance(manifest, dict) else None
 
 
-MODULE_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
+PEER_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 TOOL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
 SETTING_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,47}$")
 PARAM_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
@@ -508,10 +503,10 @@ def _check_setting(name: Any, spec: Any, problems: list[str]) -> None:
             problems.append(f"{where}.default: нет среди enum")
 
 
-def kind_allowed(kind: str, module_id: str, extra_prefixes: Any = ()) -> bool:
+def kind_allowed(kind: str, peer_id: str, extra_prefixes: Any = ()) -> bool:
     """Вид события допустим, если начинается с id модуля или с одного из `event_prefixes` манифеста (окружение, слитое из
     нескольких подсистем, сохраняет прежние виды `twitch.chat`, `obs.scene`)."""
-    return any(kind.startswith(p + ".") for p in (module_id, *(extra_prefixes or ())))
+    return any(kind.startswith(p + ".") for p in (peer_id, *(extra_prefixes or ())))
 
 
 def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[str]:
@@ -524,9 +519,9 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
     problems: list[str] = []
 
     mid = manifest.get("id")
-    id_ok = isinstance(mid, str) and bool(MODULE_ID_RE.match(mid))
+    id_ok = isinstance(mid, str) and bool(PEER_ID_RE.match(mid))
     if not id_ok:
-        problems.append(f"id: должен соответствовать {MODULE_ID_RE.pattern}")
+        problems.append(f"id: должен соответствовать {PEER_ID_RE.pattern}")
     title = manifest.get("title")
     if not isinstance(title, str) or not title.strip():
         problems.append("title: обязательная непустая строка")
@@ -572,7 +567,7 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
     extra_prefixes: list[str] = []
     if "event_prefixes" in manifest:
         raw_prefixes = manifest["event_prefixes"]
-        if not _is_str_list(raw_prefixes) or not all(MODULE_ID_RE.match(x) for x in raw_prefixes):
+        if not _is_str_list(raw_prefixes) or not all(PEER_ID_RE.match(x) for x in raw_prefixes):
             problems.append("event_prefixes: список префиксов видов событий (как id модуля)")
         else:
             extra_prefixes = list(raw_prefixes)
@@ -624,18 +619,24 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
 
 
 def _check_role(manifest: dict, problems: list[str]) -> None:
-    """Фаза 1: поля `role` (workspace | service; нет поля: workspace) и `ownership` (только у workspace: shared | owned)."""
-    role = DEFAULT_ROLE
-    if "role" in manifest:
-        role = manifest["role"]
-        if not isinstance(role, str) or role not in ROLES:
-            problems.append(f"role: одно из {list(ROLES)}")
-            role = None
-    if "ownership" in manifest:
-        if role == ROLE_SERVICE:
+    """Поля `role` (обязательно: workspace | service) и `ownership` (обязательно у workspace: shared | owned; у service нельзя)."""
+    role = manifest.get("role")
+    if "role" not in manifest:
+        problems.append(f"role: обязательное поле, одно из {list(ROLES)}")
+        role = None
+    elif not isinstance(role, str) or role not in ROLES:
+        problems.append(f"role: одно из {list(ROLES)}")
+        role = None
+    if role == ROLE_SERVICE:
+        if "ownership" in manifest:
             problems.append("ownership: только у workspace")
+    elif role == ROLE_WORKSPACE:
+        if "ownership" not in manifest:
+            problems.append(f"ownership: обязательное поле у workspace, одно из {list(OWNERSHIPS)}")
         elif not isinstance(manifest["ownership"], str) or manifest["ownership"] not in OWNERSHIPS:
             problems.append(f"ownership: одно из {list(OWNERSHIPS)}")
+    elif "ownership" in manifest and (not isinstance(manifest["ownership"], str) or manifest["ownership"] not in OWNERSHIPS):
+        problems.append(f"ownership: одно из {list(OWNERSHIPS)}")
     if role == ROLE_SERVICE and "workspace" in manifest:
         problems.append("workspace: у service описания среды быть не может")
 
@@ -771,8 +772,8 @@ class ToolSpec:
     announce: bool = False          # долгое или заметное действие на ПК: ядро объявляет запуск до вызова (AN-3)
     node: str | None = None         # ТЗ 33: узел рабочего места, в котором инструмент виден; None - виден всегда
 
-    def full_id(self, module_id: str) -> str:
-        return f"{module_id}.{self.name}"
+    def full_id(self, peer_id: str) -> str:
+        return f"{peer_id}.{self.name}"
 
     @classmethod
     def from_dict(cls, d: dict) -> ToolSpec:
@@ -1227,10 +1228,10 @@ class Manifest:
     panel: PanelSpec | None = None                      # пространство модуля (TZ 15); None - вкладки нет
     panel_warnings: list[str] = field(default_factory=list)   # почему panel отброшен (для журнала ядра)
     workspace: dict | None = None                       # ТЗ 32, WS-4: среда агента, которую объявляет модуль
-    role: str | None = None                             # фаза 1: workspace | service; None - поля нет в манифесте (workspace)
-    ownership: str | None = None                        # фаза 1: shared | owned (только workspace); None - поля нет (owned)
+    role: str = ""                                      # workspace | service (обязательно в манифесте)
+    ownership: str | None = None                        # shared | owned (обязательно у workspace; у service None)
     nodes: list[dict] = field(default_factory=list)     # ТЗ 33: дерево узлов рабочего места (пусто: плоский список)
-    event_prefixes: list[str] = field(default_factory=list)   # фаза 3b: дополнительные префиксы видов событий (кроме id)
+    event_prefixes: list[str] = field(default_factory=list)   # дополнительные префиксы видов событий (кроме id)
 
     @classmethod
     def from_dict(cls, d: Any) -> Manifest:
@@ -1253,12 +1254,12 @@ class Manifest:
 
     @property
     def effective_role(self) -> str:
-        return self.role or DEFAULT_ROLE
+        return self.role
 
     @property
     def effective_ownership(self) -> str | None:
-        """Режим владения: у workspace shared или owned (по умолчанию owned), у service None."""
-        return None if self.effective_role != ROLE_WORKSPACE else self.ownership or DEFAULT_OWNERSHIP
+        """Режим владения: у workspace shared или owned, у service None."""
+        return None if self.role != ROLE_WORKSPACE else self.ownership
 
     def to_dict(self) -> dict:
         out = {"id": self.id, "title": self.title, "description": self.description, "version": self.version,
@@ -1269,8 +1270,7 @@ class Manifest:
                "graph": self.graph, "state": self.state}
         if self.event_prefixes:
             out["event_prefixes"] = list(self.event_prefixes)
-        if self.role is not None:
-            out["role"] = self.role
+        out["role"] = self.role
         if self.ownership is not None:
             out["ownership"] = self.ownership
         if self.panel is not None:
@@ -1292,30 +1292,25 @@ class Manifest:
 # ---------------------------------------------------------------- рукопожатие (раздел 5)
 
 def hello_body(manifest: dict, instance: str, pid: int | None = None) -> dict:
-    """Тело `hello`. Фаза 1: новые поля `id` и `role`, прежнее `module_id` шлётся рядом (алиас, уберёт фаза 4)."""
-    return {"id": manifest["id"], "module_id": manifest["id"], "role": role_of(manifest), "instance": instance,
+    """Тело `hello`: `id`, `role` (как в манифесте), `instance`, `pid`, `protocol`, `manifest`."""
+    return {"id": manifest["id"], "role": role_of(manifest), "instance": instance,
             "pid": os.getpid() if pid is None else pid, "protocol": PROTOCOL, "manifest": manifest}
-
-
-def hello_id(body: dict) -> Any:
-    """id из hello: новое `id`, иначе прежнее `module_id`."""
-    return body.get("id") if body.get("id") is not None else body.get("module_id")
 
 
 def validate_hello(body: Any) -> list[str]:
     """Проверить тело `hello` вместе с манифестом (для ядра: при проблемах отвечает `reject`).
 
-    id берётся из `id` или прежнего `module_id` (заданы оба: должны совпадать); `role`, если есть, совпадает с ролью манифеста."""
+    `id` и `role` обязательны; `role` совпадает с ролью манифеста; удалённое поле `module_id` не принимается."""
     if not isinstance(body, dict):
         return ["hello: тело должно быть объектом"]
     problems = []
     if body.get("protocol") != PROTOCOL or isinstance(body.get("protocol"), bool):
         problems.append(f"protocol {body.get('protocol')!r} не поддерживается (нужен {PROTOCOL})")
-    mid = hello_id(body)
-    if not isinstance(mid, str) or not MODULE_ID_RE.match(mid):
-        problems.append(f"id: должен соответствовать {MODULE_ID_RE.pattern}")
-    elif body.get("id") is not None and body.get("module_id") is not None and body["id"] != body["module_id"]:
-        problems.append("module_id не совпадает с id")
+    mid = body.get("id")
+    if not isinstance(mid, str) or not PEER_ID_RE.match(mid):
+        problems.append(f"id: должен соответствовать {PEER_ID_RE.pattern}")
+    if "module_id" in body:
+        problems.append("module_id: поле удалено в контракте 2.0, нужно id")
     if not isinstance(body.get("instance"), str) or not body["instance"]:
         problems.append("instance: обязательная непустая строка")
     if not _is_int(body.get("pid")):
@@ -1324,7 +1319,9 @@ def validate_hello(body: Any) -> list[str]:
     problems.extend(validate_manifest(manifest))
     if isinstance(manifest, dict) and manifest.get("id") != mid:
         problems.append("id не совпадает с manifest.id")
-    if body.get("role") is not None and isinstance(manifest, dict) and body["role"] != role_of(manifest):
+    if body.get("role") not in ROLES:
+        problems.append(f"role: одно из {list(ROLES)}")
+    elif isinstance(manifest, dict) and body["role"] != role_of(manifest):
         problems.append(f"role {body['role']!r} не совпадает с manifest.role")
     return problems
 

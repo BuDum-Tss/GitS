@@ -13,7 +13,7 @@
 следит за здоровьем. Токен ядра сервису не передаётся.
 
 Вывод процесса (stdout и stderr вместе) пишется в `agent/logs/modules/<id>.log` (5 МБ, три файла). Токен ядра процессу
-передаётся в `GITS_TOKEN` (и на время перехода в `GITS_MODULE_TOKEN`), id в `GITS_ID` (и `GITS_MODULE_ID`), в журналы он не попадает: похожие на токены места в выводе вырезаются. Модулю также
+передаётся в `GITS_TOKEN`, id в `GITS_ID`, в журналы он не попадает: похожие на токены места в выводе вырезаются. Модулю также
 передаётся `MEMORY_DIR`: абсолютный путь к папке памяти ядра (модули хранят свои данные там же, ТЗ 10).
 """
 import asyncio
@@ -41,7 +41,6 @@ AGENT_DIR = Path(__file__).resolve().parent
 GITS_ROOT = AGENT_DIR.parent
 PEERS_YAML = AGENT_DIR / "peers.yaml"
 ENV_PEERS_FILE = "GITS_PEERS_FILE"           # другой файл участников (контейнер: agent/peers.container.yaml); относительный путь от корня репозитория
-ENV_MODULES_FILE = "GITS_MODULES_FILE"       # прежнее имя переменной (алиас на время перехода)
 LOGS_DIR = AGENT_DIR / "logs" / "modules"
 
 RESTART_DELAYS = (2, 5, 15, 60)       # CORE-15
@@ -52,9 +51,9 @@ LOG_BYTES, LOG_FILES = 5 * 1024 * 1024, 3
 POLL_MANUAL_S = 5.0                   # как часто смотрим, не отключился ли вручную запущенный модуль
 HEALTH_INTERVAL_S = 10.0              # ATT-2: опрос health_url сервиса
 HEALTH_TIMEOUT_S = 2.0
-KINDS = ("module", "service")           # kind в записи: service - внешний процесс без WebSocket (health_url)
+KINDS = ("service",)                    # kind в записи (необязателен): service - внешний процесс без WebSocket (health_url)
 OWNERSHIPS = ("shared", "owned")
-SECTIONS = (("workspaces", "workspace"), ("services", "service"), ("modules", None))   # раздел файла -> роль (modules: прежний, роль по kind)
+SECTIONS = (("workspaces", "workspace"), ("services", "service"))   # раздел файла -> роль
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 RESTART_POLICIES = ("always", "on-failure", "never")
 
@@ -94,10 +93,10 @@ class PlannedPeer:
 
 
 def peers_file(env: dict | None = None, gits_root: Path = GITS_ROOT) -> Path:
-    """Файл участников: `GITS_PEERS_FILE` (прежнее имя `GITS_MODULES_FILE` читается как алиас; относительный путь считается от
+    """Файл участников: `GITS_PEERS_FILE` (относительный путь считается от
     корня репозитория) или `agent/peers.yaml`."""
     source = os.environ if env is None else env
-    raw = str(source.get(ENV_PEERS_FILE) or source.get(ENV_MODULES_FILE) or "").strip()
+    raw = str(source.get(ENV_PEERS_FILE) or "").strip()
     if not raw:
         return PEERS_YAML
     path = Path(raw)
@@ -130,23 +129,22 @@ def _skip_when_env(raw) -> dict[str, list[str]]:
     return {str(k): [str(x).strip().lower() for x in v] for k, v in raw.items()}
 
 
-def _entry(raw: dict, role_hint: str | None, section: str) -> PeerSpec:
-    """Одна запись файла -> PeerSpec. Роль задаёт раздел (`workspaces:` / `services:`); в прежнем разделе `modules:` роль
-    берётся по `kind`. Внешний сервис без WebSocket это `kind: service` с `health_url`."""
+def _entry(raw: dict, role_hint: str, section: str) -> PeerSpec:
+    """Одна запись файла -> PeerSpec. Роль задаёт раздел (`workspaces:` / `services:`). Внешний сервис без WebSocket это `kind: service` с `health_url`."""
     restart = raw.get("restart", "on-failure")
     if restart not in RESTART_POLICIES:
         raise ValueError(f"restart: одно из {list(RESTART_POLICIES)}")
     args = raw.get("args") or []
     if not isinstance(args, list):
         raise ValueError("args: список строк")
-    kind = raw.get("kind", "module")
-    if kind not in KINDS:
+    kind = raw.get("kind")
+    if kind is not None and kind not in KINDS:
         raise ValueError(f"kind: одно из {list(KINDS)}")
     external = kind == "service"
     health_url = str(raw.get("health_url") or "")
     if external and not health_url.startswith(("http://", "https://")):
         raise ValueError("для kind: service нужен health_url (http:// или https://)")
-    role = role_hint or ("service" if external else "workspace")
+    role = role_hint
     ownership = raw.get("ownership")
     if role == "workspace":
         ownership = ownership or None
@@ -177,7 +175,7 @@ def _entry(raw: dict, role_hint: str | None, section: str) -> PeerSpec:
 
 
 def load_specs(path: Path | str | None = None) -> list[PeerSpec]:
-    """Участники из peers.yaml (разделы `workspaces:`, `services:`; прежний `modules:` тоже читается). Неверная запись
+    """Участники из peers.yaml (разделы `workspaces:` и `services:`). Неверная запись
     пропускается с предупреждением."""
     path = peers_file() if path is None else path
     try:
@@ -277,8 +275,8 @@ class Supervisor:
     _only_core = staticmethod(lambda: False)         # настройка «только ядро»; в __init__ заменяется на источник из ядра
 
     def __init__(self, specs: list[PeerSpec], *, token: str, core_url: str,
-                 enabled: Callable[[str], bool] = lambda module_id: True,
-                 is_connected: Callable[[str], bool] = lambda module_id: False,
+                 enabled: Callable[[str], bool] = lambda peer_id: True,
+                 is_connected: Callable[[str], bool] = lambda peer_id: False,
                  send_shutdown: Callable[[str], Awaitable[bool]] | None = None,
                  gits_root: Path = GITS_ROOT, agent_dir: Path = AGENT_DIR, logs_dir: Path = LOGS_DIR,
                  python: str = sys.executable, env: dict | None = None,
@@ -347,9 +345,9 @@ class Supervisor:
             return m.group(0)
         return _VAR.sub(one, text)
 
-    def resolve(self, module_id: str) -> tuple[list[str], Path] | str:
+    def resolve(self, peer_id: str) -> tuple[list[str], Path] | str:
         """(команда с аргументами, рабочая папка) или причина «не настроен» (CORE-12)."""
-        spec = self.specs[module_id]
+        spec = self.specs[peer_id]
         missing: list[str] = []
         command = self._subst(spec.command, missing)
         args = [self._subst(a, missing) for a in spec.args]
@@ -363,18 +361,16 @@ class Supervisor:
         if spec.external and not Path(command).is_file() and not shutil.which(command):
             return f"окружение сервиса не найдено: {command} (см. README сервиса)"      # чужой Python сервису не годится
         if spec.command.strip() not in ("{PYTHON}", "{PYTHONW}") and not Path(command).is_file() and not shutil.which(command):
-            logger.warning(f"Модуль {module_id}: команда {command} не найдена, запускаю тем же Python, что и ядро")
+            logger.warning(f"Модуль {peer_id}: команда {command} не найдена, запускаю тем же Python, что и ядро")
             command = self.python
         return [command, *args], cwd
 
-    def _process_env(self, module_id: str) -> dict:
+    def _process_env(self, peer_id: str) -> dict:
         env = dict(self._env)
-        if self.specs[module_id].external:
+        if self.specs[peer_id].external:
             env["PYTHONUNBUFFERED"] = "1"           # внешний сервис не участник шины: токен ядра и адрес шины ему не нужны
             return env
-        # GITS_TOKEN и GITS_ID основные; GITS_MODULE_* остаются на время перехода (старый клиент SDK читает их)
-        env.update(GITS_TOKEN=self.token, GITS_MODULE_TOKEN=self.token, GITS_CORE_URL=self.core_url,
-                   GITS_ID=module_id, GITS_MODULE_ID=module_id, PYTHONUNBUFFERED="1")
+        env.update(GITS_TOKEN=self.token, GITS_CORE_URL=self.core_url, GITS_ID=peer_id, PYTHONUNBUFFERED="1")
         if self.memory_dir is not None:
             env["MEMORY_DIR"] = str(self.memory_dir)
         if os.environ.get("CHARACTER_HOME"):          # том персонажа: модули берут ресурсы из него (gits_sdk.resources)
@@ -384,15 +380,15 @@ class Supervisor:
                 import character
                 env["GITS_CHARACTER_ID"] = character.configured_id()
             except Exception as e:                  # настройки не читаются: модуль возьмёт персонажа по умолчанию
-                logger.warning(f"Модуль {module_id}: персонаж для ресурсов не определён ({e})")
+                logger.warning(f"Модуль {peer_id}: персонаж для ресурсов не определён ({e})")
         if self.pythonpath:            # до установки пакета gits-sdk модули находят SDK через PYTHONPATH
             env["PYTHONPATH"] = os.pathsep.join([*self.pythonpath, *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])])
         return env
 
     # ── состояние ───────────────────────────────────────────────────────────
 
-    def status(self, module_id: str) -> dict | None:
-        m = self.state.get(module_id)
+    def status(self, peer_id: str) -> dict | None:
+        m = self.state.get(peer_id)
         if m is None:
             return None
         return {"status": m.status, "text": m.text, "pid": m.proc.pid if m.alive else None, "restarts": m.restarts,
@@ -400,76 +396,76 @@ class Supervisor:
                 "configured": m.status != "not_configured", "reason": m.reason, "role": m.spec.role, "external": m.spec.external,
                 "healthy": m.healthy}
 
-    def log_path(self, module_id: str) -> Path:
-        return self.logs_dir / f"{module_id}.log"
+    def log_path(self, peer_id: str) -> Path:
+        return self.logs_dir / f"{peer_id}.log"
 
-    def should_run(self, module_id: str) -> bool:
-        if getattr(self.specs[module_id], "unmanaged", False):            # контейнер запускает compose, супервизор его не трогает
+    def should_run(self, peer_id: str) -> bool:
+        if getattr(self.specs[peer_id], "unmanaged", False):            # контейнер запускает compose, супервизор его не трогает
             return False
         if os.environ.get("GITS_NO_MODULES") == "1" or self._only_core():     # ТЗ 17, FLOW-1: режим «только ядро», службы ядра (decider) остаются
-            spec = self.specs[module_id]
+            spec = self.specs[peer_id]
             if not spec.external or os.environ.get("GITS_NO_DECIDER") == "1":
                 return False
-        for name, values in self.specs[module_id].skip_when_env.items():
+        for name, values in self.specs[peer_id].skip_when_env.items():
             if os.environ.get(name, "").strip().lower() in values:        # например TTS_ENGINE=fish: ESpeech не нужен
                 return False
-        return self.specs[module_id].autostart and self._enabled(module_id)
+        return self.specs[peer_id].autostart and self._enabled(peer_id)
 
     # ── управление ──────────────────────────────────────────────────────────
 
     async def start(self) -> None:
         """Запуск при старте ядра: все включённые модули с autostart."""
-        for module_id in self.specs:
-            if self.should_run(module_id):
-                self._launch(module_id)
+        for peer_id in self.specs:
+            if self.should_run(peer_id):
+                self._launch(peer_id)
 
-    def _launch(self, module_id: str) -> None:
-        m = self.state[module_id]
+    def _launch(self, peer_id: str) -> None:
+        m = self.state[peer_id]
         if m.task is not None and not m.task.done():
             return
         m.desired = True
         m.task = asyncio.get_running_loop().create_task(self._supervise(m))
 
-    async def apply(self, module_id: str) -> None:
+    async def apply(self, peer_id: str) -> None:
         """Привести процесс в соответствие с настройкой: включили - запустить, выключили - остановить (CORE-14)."""
-        if module_id not in self.specs:
+        if peer_id not in self.specs:
             return
-        if self.should_run(module_id):
-            fresh = self.state[module_id].task is None or self.state[module_id].task.done()   # без надзора до сих пор
-            self._launch(module_id)
+        if self.should_run(peer_id):
+            fresh = self.state[peer_id].task is None or self.state[peer_id].task.done()   # без надзора до сих пор
+            self._launch(peer_id)
             if fresh:
-                await self._announce_launch(module_id, "его включили в настройках")
+                await self._announce_launch(peer_id, "его включили в настройках")
         else:
-            await self.stop(module_id)
+            await self.stop(peer_id)
 
-    async def restart(self, module_id: str) -> None:
+    async def restart(self, peer_id: str) -> None:
         """Кнопка «перезапустить»: счётчик сбоев сбрасывается; выключенный модуль не запускается."""
-        if module_id not in self.specs:
+        if peer_id not in self.specs:
             return
-        await self.stop(module_id)
-        m = self.state[module_id]
+        await self.stop(peer_id)
+        m = self.state[peer_id]
         m.failures.clear()
         m.restarts, m.last_error, m.reason = 0, "", ""
         m.status, m.text = "stopped", "остановлен"
-        if self._enabled(module_id):
-            self._launch(module_id)
-            await self._announce_launch(module_id, "перезапуск по кнопке в дашборде")
+        if self._enabled(peer_id):
+            self._launch(peer_id)
+            await self._announce_launch(peer_id, "перезапуск по кнопке в дашборде")
 
-    async def _announce_launch(self, module_id: str, why: str) -> None:
+    async def _announce_launch(self, peer_id: str, why: str) -> None:
         """Объявление о запуске процесса модуля (правило 14): факт «что запускается и зачем», фразу строит модель.
         Не объявляется: сервисы (decider - внутренняя часть ядра), старт при загрузке ядра, модуль без настроек
         (он не запустится, см. resolve)."""
-        spec = self.specs[module_id]
-        if self._announce is None or spec.external or not isinstance(self.resolve(module_id), tuple):
+        spec = self.specs[peer_id]
+        if self._announce is None or spec.external or not isinstance(self.resolve(peer_id), tuple):
             return
         try:
-            await self._announce(module_id, f"Запускаю модуль «{spec.title or module_id}»: {why}.")
+            await self._announce(peer_id, f"Запускаю модуль «{spec.title or peer_id}»: {why}.")
         except Exception as e:                       # объявление не должно мешать запуску
-            logger.warning(f"Объявление запуска модуля {module_id}: {e}")
+            logger.warning(f"Объявление запуска модуля {peer_id}: {e}")
 
-    async def stop(self, module_id: str) -> None:
+    async def stop(self, peer_id: str) -> None:
         """Остановить процесс, запущенный супервизором: shutdown, ожидание 10 с, затем убить дерево."""
-        m = self.state.get(module_id)
+        m = self.state.get(peer_id)
         if m is None or m.spec.unmanaged:
             return
         m.desired = False

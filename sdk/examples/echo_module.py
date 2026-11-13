@@ -3,7 +3,7 @@
 Инструмент `echo.repeat` возвращает свой текст. Инструмент `echo.count` запускает задачу: считает до `n` раз в секунду,
 шлёт прогресс, на середине спрашивает «продолжать?» и по ответу идёт дальше или останавливается.
 
-Клиент типизированный (ТЗ 31): события, задачи и вопросы идут через методы `ModuleClient` (`event`, `job_update`, `ask`,
+Клиент типизированный (ТЗ 31): события, задачи и вопросы идут через методы `WorkspaceClient` (`event`, `job_update`, `ask`,
 `persona`, `memory_recall`, ...), тела проверяются по контракту `gits_sdk.contract`. Новый модуль удобнее начинать с шаблона
 `sdk/template/` (там же примеры запросов к ядру).
 
@@ -12,11 +12,13 @@
 import asyncio
 import logging
 
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import ToolError, WorkspaceClient
 from gits_sdk.protocol import new_job_id
 
 MANIFEST = {
     "id": "echo",
+    "role": "workspace",
+    "ownership": "owned",
     "title": "Эхо",
     "description": "Тестовый модуль: повторяет текст и умеет считать до числа задачей со стадиями и вопросом.",
     "version": "1.0.0",
@@ -35,9 +37,9 @@ MANIFEST = {
 CHOICE_CONTINUE, CHOICE_STOP = "продолжать", "остановить"
 
 
-def build_client(interval: float = 1.0, **kwargs) -> ModuleClient:
+def build_client(interval: float = 1.0, **kwargs) -> WorkspaceClient:
     """Собрать клиента. `interval` секунд между числами (в тестах меньше)."""
-    client = ModuleClient(MANIFEST, **kwargs)
+    client = WorkspaceClient(MANIFEST, **kwargs)
     runners: dict[str, asyncio.Task] = {}            # job_id -> задача счёта
     answers: dict[str, asyncio.Future] = {}          # job_id -> ожидаемый ответ на вопрос
 

@@ -70,16 +70,16 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
                 async with http.post(base + path, json=body, headers=JSON) as r:
                     return r.status, await r.json()
 
-            assert "echo" not in {m["id"] for m in await get("/api/modules")}                   # пример для разработчиков: только при dev_mode
+            assert "echo" not in {m["id"] for m in await get("/api/workspaces")}                   # пример для разработчиков: только при dev_mode
             settings.update(dev_mode=True)
-            mods = {m["id"]: m for m in await get("/api/modules")}
+            mods = {m["id"]: m for m in await get("/api/workspaces")}
             assert mods["echo"]["enabled"] is False and mods["echo"]["connected"] is False       # выключен по умолчанию
             assert mods["echo"]["status"] == "disabled" and mods["echo"]["configured"] is True
             assert layer.supervisor.state["echo"].task is None                                  # процесс не запущен
 
-            assert (await post("/api/modules/echo/enabled", {"enabled": True}))[0] == 200
+            assert (await post("/api/peers/echo/enabled", {"enabled": True}))[0] == 200
             await wait_for(lambda: layer.hub.is_connected("echo"))                              # запустил супервизор
-            m = next(x for x in await get("/api/modules") if x["id"] == "echo")
+            m = next(x for x in await get("/api/workspaces") if x["id"] == "echo")
             assert m["connected"] and m["status"] == "connected" and m["pid"] and m["version"] == "1.0.0"
             assert {t["id"] for t in m["tools"]} == {"echo.repeat", "echo.count"}
             pid = m["pid"]
@@ -112,17 +112,17 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
 
             # выключение завершает процесс за <= 10 с
             t0 = time.monotonic()
-            assert (await post("/api/modules/echo/enabled", {"enabled": False}))[0] == 200
+            assert (await post("/api/peers/echo/enabled", {"enabled": False}))[0] == 200
             await wait_for(lambda: not psutil.pid_exists(pid), 12)
             assert time.monotonic() - t0 <= 10
             await wait_for(lambda: not layer.hub.is_connected("echo"))
-            m = next(x for x in await get("/api/modules") if x["id"] == "echo")
+            m = next(x for x in await get("/api/workspaces") if x["id"] == "echo")
             assert m["status"] == "disabled" and not m["connected"]
 
             # проверки эндпоинтов
-            assert (await post("/api/modules/нет/enabled", {"enabled": True}))[0] == 404
-            assert (await post("/api/modules/echo/enabled", {"enabled": "да"}))[0] == 400
-            assert (await post("/api/modules/echo/settings", {"key": "x", "value": 1}))[0] == 400
+            assert (await post("/api/peers/нет/enabled", {"enabled": True}))[0] == 404
+            assert (await post("/api/peers/echo/enabled", {"enabled": "да"}))[0] == 400
+            assert (await post("/api/peers/echo/settings", {"key": "x", "value": 1}))[0] == 400
     finally:
         await layer.stop()
         await runner.cleanup()
@@ -141,9 +141,9 @@ async def test_module_launch_from_the_dashboard_is_announced_through_attention(t
     said = []
     submit = layer.attention.submit_announce
 
-    async def record(module_id, text, **kw):
-        said.append((module_id, text))
-        await submit(module_id, text, **kw)
+    async def record(peer_id, text, **kw):
+        said.append((peer_id, text))
+        await submit(peer_id, text, **kw)
     layer.attention.submit_announce = record
     dashboard._MEMORY_DIR = tmp_path / "memory"
     dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
@@ -158,11 +158,11 @@ async def test_module_launch_from_the_dashboard_is_announced_through_attention(t
     try:
         settings.update(dev_mode=True)
         async with aiohttp.ClientSession() as http:
-            async with http.post(base + "/api/modules/echo/enabled", json={"enabled": True}, headers=JSON) as r:
+            async with http.post(base + "/api/peers/echo/enabled", json={"enabled": True}, headers=JSON) as r:
                 assert r.status == 200
             await wait_for(lambda: layer.hub.is_connected("echo"))
             assert said == [("echo", "Запускаю модуль «Пример модуля (для разработчиков)»: его включили в настройках.")]
-            async with http.post(base + "/api/modules/echo/enabled", json={"enabled": False}, headers=JSON) as r:
+            async with http.post(base + "/api/peers/echo/enabled", json={"enabled": False}, headers=JSON) as r:
                 assert r.status == 200
             await wait_for(lambda: not layer.hub.is_connected("echo"), 12)
         assert len(said) == 1                                                  # выключение не объявляется

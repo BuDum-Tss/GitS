@@ -1,4 +1,4 @@
-"""Точка входа модуля монтажа (ТЗ 20): `python main.py` из папки agent/. Ядро GitS запускает модуль само (modules.yaml).
+"""Точка входа модуля монтажа (ТЗ 20): `python main.py` из папки agent/. Ядро GitS запускает модуль само (peers.yaml).
 
 Подключается к ядру по контракту модулей (SDK `gits_sdk`), объявляет инструменты `start`, `status`, `revise`, `cancel`,
 ведёт очередь задач и конвейер. Ничего не публикует (закон ТЗ 20): публикует ядро по просьбе пользователя.
@@ -11,7 +11,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE)]
 
-from gits_sdk import ModuleClient  # noqa: E402
+from gits_sdk import WorkspaceClient  # noqa: E402
 
 import approval_panel as ap  # noqa: E402
 from claude_runner import SdkRunner  # noqa: E402
@@ -25,7 +25,7 @@ from pipeline import Pipeline  # noqa: E402
 log = logging.getLogger("montage")
 
 
-def wire(client: ModuleClient, manager: Manager) -> None:
+def wire(client: WorkspaceClient, manager: Manager) -> None:
     """Подключить обработчики инструментов, ответов, отмены и тем ядра к менеджеру."""
 
     @client.tool("start")
@@ -102,11 +102,11 @@ def wire(client: ModuleClient, manager: Manager) -> None:
         await manager.stop()
 
 
-def build(layout: Layout = DEFAULT, *, client: ModuleClient | None = None, runner=None, renderer=None, qa=None,
+def build(layout: Layout = DEFAULT, *, client: WorkspaceClient | None = None, runner=None, renderer=None, qa=None,
           url: str | None = None, token: str | None = None):
     """Собрать модуль: (клиент, менеджер). Параметры позволяют подставить заглушки (тесты, живой прогон против FakeCore);
     url и token: адрес и токен ядра (при аренде они приходят в acquire, иначе берутся из окружения)."""
-    client = client or ModuleClient(build_manifest(serve_dirs(layout.jobs)), url=url, token=token)
+    client = client or WorkspaceClient(build_manifest(serve_dirs(layout.jobs)), url=url, token=token)
     core = ClientCore(client)
     store = JobStore(layout.jobs)
     if renderer is None:
@@ -122,7 +122,7 @@ def build(layout: Layout = DEFAULT, *, client: ModuleClient | None = None, runne
     return client, manager
 
 
-async def run(client: ModuleClient, manager: Manager) -> int:
+async def run(client: WorkspaceClient, manager: Manager) -> int:
     """Подключение к ядру и работа: восстановление задач, очередь."""
     manager.start_worker()
     background: list[asyncio.Task] = []

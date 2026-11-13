@@ -75,13 +75,13 @@ def _message_section(m: Message) -> list[str]:
 
 
 def _roles_section() -> list[str]:
-    out = ["## Роли и режим владения (с 1.11)", "",
+    out = ["## Роли и режим владения (обязательны с 2.0)", "",
            "Участник шины это `workspace` (окружение: инструменты, события, рабочее место; режим владения `shared` или `owned`) "
            "или `service` (подключается к ядру по WebSocket, окружения и аренды нет; инструменты допустимы). Поля манифеста:", ""]
     out += _fields_table(RL.MANIFEST_FIELDS) + [""]
     out += [f"- {r}" for r in RL.MANIFEST_RULES] + [""]
     out += ["Рукопожатие и окружение:", ""] + [f"- {r}" for r in RL.HELLO_NOTES]
-    out += [f"- Переменная `{new}` читается первой, `{old}` остаётся алиасом (уберёт фаза 4)." for new, old in RL.ENV_ALIASES] + [""]
+    out += [""]
     return out
 
 
@@ -123,9 +123,9 @@ def _section(title: str, intro: str, msgs) -> list[str]:
 
 def build_markdown() -> str:
     lines = [
-        "# Контракт модулей GitS", "",
+        "# Контракт участников шины GitS", "",
         "Файл создан скриптом `sdk/tools/gen_contract_doc.py` из `sdk/gits_sdk/contract/`. Руками не правится: меняйте описания в коде "
-        "и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора модуля: `docs/MODULES.md`, "
+        "и запускайте скрипт. Тест `sdk/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора участника шины: `docs/MODULES.md`, "
         "код контракта: `sdk/gits_sdk/contract/`.", "",
         f"Версия протокола `PROTOCOL = {P.PROTOCOL}`, версия контракта `{V.CONTRACT_VERSION}`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.", "",
         "## Версии и совместимость", "",
@@ -134,24 +134,24 @@ def build_markdown() -> str:
     lines += ["", "История:", ""] + [f"- `{v}`: {d}" for v, d in V.HISTORY] + [""]
     lines += ["Устаревшее: " + ("; ".join(f"`{i}` до {d}, заменить на {r}" for i, d, r in V.DEPRECATED) or "нет."), ""]
     lines += _roles_section()
-    lines += _section("Запросы модуля к ядру", "Модуль шлёт запрос, ядро отвечает `result`. Клиент SDK: типизированные методы "
-                      "`ModuleClient` (`tts`, `persona`, `llm_ask`, ...) или универсальный `request`.", M.CORE_REQUEST_MESSAGES)
-    lines += _section("Сообщения модуля к ядру без ответа", "Одностороннее. Тело проверяет ядро; неверное отбрасывается с записью в журнал.",
+    lines += _section("Запросы участника шины к ядру", "Участник шины шлёт запрос, ядро отвечает `result`. Клиент SDK: типизированные методы "
+                      "`PeerClient` (`tts`, `persona`, `llm_ask`, ...) или универсальный `request`.", M.CORE_REQUEST_MESSAGES)
+    lines += _section("Сообщения участника шины к ядру без ответа", "Одностороннее. Тело проверяет ядро; неверное отбрасывается с записью в журнал.",
                       M.MODULE_NOTE_MESSAGES)
-    lines += _section("Запросы ядра к модулю", "Ядро шлёт запрос, модуль отвечает `result`. Обработчики модуля: `@client.tool`, "
+    lines += _section("Запросы ядра к участнику шины", "Ядро шлёт запрос, участник шины отвечает `result`. Обработчики участника шины: `@client.tool`, "
                       "`@client.on_request` и т. д.", M.MODULE_REQUEST_MESSAGES)
-    lines += _section("Сообщения ядра к модулю без ответа", "Одностороннее.", M.CORE_NOTE_MESSAGES)
-    lines += _section("Темы", "Ядро рассылает `topic` с `{topic, data}` модулям, подписанным в манифесте (`subscribe`).", M.TOPIC_MESSAGES)
+    lines += _section("Сообщения ядра к участнику шины без ответа", "Одностороннее.", M.CORE_NOTE_MESSAGES)
+    lines += _section("Темы", "Ядро рассылает `topic` с `{topic, data}` участникам шины, подписанным в манифесте (`subscribe`).", M.TOPIC_MESSAGES)
     lines += _control_section()
     lines += ["## Журнал ядра", "",
               "Запись: `client.log(kind, text, **data)` (сообщение `log`), допустимые виды: " + ", ".join(f"`{k}`" for k in M.LOG_KINDS) + ".",
               "Чтение: `core.events.tail`, допустимые виды: " + ", ".join(f"`{k}`" for k in M.LOG_READ_KINDS) + ".", ""]
-    lines += ["## Окружение процесса модуля", "", "| Переменная | Кто задаёт | Обязательна | Описание | По умолчанию |", "|---|---|---|---|---|"]
+    lines += ["## Окружение процесса участника шины", "", "| Переменная | Кто задаёт | Обязательна | Описание | По умолчанию |", "|---|---|---|---|---|"]
     for v in E.ENV_VARS:
         lines.append(f"| `{v.name}` | {v.by} | {'да' if v.required else 'нет'} | {_md(v.doc)} | {_md(v.default) or '-'} |")
     lines += ["", "## Ресурсы персонажа", ""] + [f"- {r}" for r in E.RESOURCE_RULES] + [""]
-    lines += ["## Что модулю запрещено", "",
-              "Модули (`workspaces/*`, `services/*`, кроме тестов) импортируют только стандартную библиотеку, сторонние пакеты, `gits_sdk` и свои файлы. "
+    lines += ["## Что участнику шины запрещено", "",
+              "Участники шины (`workspaces/*`, `services/*`, кроме тестов) импортируют только стандартную библиотеку, сторонние пакеты, `gits_sdk` и свои файлы. "
               "Журнал, локальная модель, путь к Claude, опасность действия и метки трассы берутся из SDK: `client.log`, `gits_sdk.host`, "
               "`gits_sdk.claude_path`, `gits_sdk.safety`, `gits_sdk.trace`. Тест: `agent/tests/test_architecture.py`.", ""]
     return "\n".join(lines).rstrip("\n") + "\n"

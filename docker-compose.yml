@@ -1,8 +1,8 @@
 # Общие сервисы GitS: голос ГЛаДОС (локально, на GPU) и монтаж видео (общий контейнер montage, см. его описание ниже). Голос по умолчанию ESpeech: `docker compose up -d` поднимает espeech;
 # Fish Speech запасной и стоит за профилем fish: `docker compose --profile fish up -d fish-speech`.
-# Сервисы необязательны: без ESpeech и Fish Speech модуль voice говорит запасным голосом edge-tts. Распознавание речи в
-# docker не нужно: оно идёт внутри модуля voice (GigaAM на процессоре, запасной faster-whisper). Веса: Fish Speech в agent/resources/tts/checkpoints, веса ESpeech в
-# services/f5-tts/weights, референс голоса у модуля voice). ESpeech в контейнере: в .env ESPEECH_EXTERNAL=1, чтобы супервизор
+# Сервисы необязательны: без ESpeech и Fish Speech сервис voice говорит запасным голосом edge-tts. Распознавание речи в
+# docker не нужно: оно идёт внутри сервис voice (GigaAM на процессоре, запасной faster-whisper). Веса: Fish Speech в agent/resources/tts/checkpoints, веса ESpeech в
+# services/f5-tts/weights, референс голоса у сервис voice). ESpeech в контейнере: в .env ESPEECH_EXTERNAL=1, чтобы супервизор
 # ядра не поднимал второй процесс на том же порту. На видеокарте с 6 ГБ вместе с локальной моделью (LM Studio) и игрой видеопамяти
 # может не хватить, поэтому поднимай то, что нужно сейчас.
 # Имя проекта фиксировано: все сервисы всегда в группе gits в Docker Desktop, как бы ни называлась папка репозитория.

@@ -1,7 +1,5 @@
 """Клиент участника шины ГЛаДОС (ТЗ 01, раздел 10): `PeerClient` и его роли `WorkspaceClient`, `ServiceClient`.
 
-`ModuleClient` оставлен прежним именем (устарело, уберёт фаза 4): ведёт себя как раньше, роль берётся из манифеста.
-
 Модуль создаёт клиент с манифестом, регистрирует обработчики инструментов и вызывает `await client.run()`: клиент сам
 подключается к ядру по WebSocket, проходит рукопожатие, принимает вызовы, переподключается при обрыве. Журналы идут в
 `logging.getLogger("gits_sdk")`, токен в них не попадает.
@@ -90,11 +88,11 @@ class PanelClient:
 
 
 class PeerClient:
-    """Клиент участника шины (база для `WorkspaceClient`, `ServiceClient` и прежнего `ModuleClient`).
+    """Клиент участника шины (база для `WorkspaceClient` и `ServiceClient`).
     Имена методов зафиксированы ТЗ 01, раздел 10.
 
-    Роль участника (`workspace` или `service`) берётся из манифеста (`role`); без поля это workspace (режим совместимости).
-    Подклассы могут закрепить роль через `ROLE`."""
+    Роль участника (`workspace` или `service`) обязательна в манифесте (`role`); у workspace обязателен ещё `ownership`.
+    Подклассы закрепляют роль через `ROLE`: манифест с другой ролью отвергается."""
 
     ROLE: str | None = None            # None: роль из манифеста
 
@@ -112,8 +110,7 @@ class PeerClient:
         if "module" not in subscribe:
             subscribe.append("module")
         self.manifest["subscribe"] = subscribe
-        self.module_id: str = self.manifest["id"]      # прежнее имя атрибута (уберёт фаза 4)
-        self.id: str = self.module_id
+        self.id: str = self.manifest["id"]
         self.role: str = P.role_of(self.manifest)
         self.ownership: str | None = P.ownership_of(self.manifest)
         self.instance = P.new_instance()
@@ -169,15 +166,13 @@ class PeerClient:
         host.bind(self)
 
     def _with_role(self, manifest: dict) -> dict:
-        """Подставить закреплённую роль класса в манифест (если поля `role` нет) и отвергнуть чужую."""
+        """Отвергнуть манифест с ролью, чужой для класса (отсутствие `role` ловит `validate_manifest`)."""
         if self.ROLE is None or not isinstance(manifest, dict):
             return manifest
         have = manifest.get("role")
         if have is not None and have != self.ROLE:
             raise ManifestError(f"{type(self).__name__} служит роли «{self.ROLE}», а в манифесте role={have!r}",
                                 [f"role: для {type(self).__name__} нужна роль «{self.ROLE}»"])
-        if have is None and self.ROLE != P.DEFAULT_ROLE:
-            manifest = {**manifest, "role": self.ROLE}
         return manifest
 
     # ------------------------------------------------------------ регистрация обработчиков
@@ -192,7 +187,7 @@ class PeerClient:
         """Обработчик действия пространства (кнопка или строка таблицы), объявленного в `panel.actions`:
         `async (args: dict) -> {"ok": bool, "message": str?, "open_url": str?}` (или None: считается успехом)."""
         if action_id not in self._panel_action_ids():
-            raise ValueError(f"действия «{action_id}» нет в panel.actions манифеста модуля «{self.module_id}»")
+            raise ValueError(f"действия «{action_id}» нет в panel.actions манифеста модуля «{self.id}»")
 
         def deco(fn: Handler) -> Handler:
             self._panel_actions[action_id] = fn
@@ -202,7 +197,7 @@ class PeerClient:
     def tool(self, name: str):
         """Обработчик инструмента из манифеста: `async (args: dict) -> JSON-значение`."""
         if name not in self._tool_names():
-            raise ValueError(f"инструмента «{name}» нет в манифесте модуля «{self.module_id}»")
+            raise ValueError(f"инструмента «{name}» нет в манифесте модуля «{self.id}»")
 
         def deco(fn: Handler) -> Handler:
             self._tools[name] = fn
@@ -212,7 +207,7 @@ class PeerClient:
     def check(self, name: str):
         """Обработчик `tool.check` (для `danger_check: true`): `async (args) -> str | None` (причина опасности)."""
         if name not in self._tool_names():
-            raise ValueError(f"инструмента «{name}» нет в манифесте модуля «{self.module_id}»")
+            raise ValueError(f"инструмента «{name}» нет в манифесте модуля «{self.id}»")
 
         def deco(fn: Handler) -> Handler:
             self._checks[name] = fn
@@ -292,7 +287,7 @@ class PeerClient:
         return self._url or P.core_url()
 
     async def _resolve_token(self) -> str | None:
-        """Токен: параметр, GITS_TOKEN (запасное имя GITS_MODULE_TOKEN), файл ядра (MOD-4). Файл перечитывается при
+        """Токен: параметр, GITS_TOKEN, файл ядра (MOD-4). Файл перечитывается при
         каждой попытке: ядро меняет токен при каждом старте."""
         if self._token:
             return self._token
@@ -337,7 +332,7 @@ class PeerClient:
                     delays = self.reconnect_delays
                     delay = float(delays[min(attempt, len(delays) - 1)])
                     attempt += 1
-                    log.info("модуль «%s»: переподключение через %.0f с", self.module_id, delay)
+                    log.info("модуль «%s»: переподключение через %.0f с", self.id, delay)
                     try:
                         await asyncio.wait_for(self._stop.wait(), delay)
                     except asyncio.TimeoutError:
@@ -381,11 +376,11 @@ class PeerClient:
                 reason = str(payload)
                 if any(w in reason.lower() for w in _FATAL_REJECT_WORDS):
                     log.error("ядро отклонило модуль «%s»: %s. Переподключения не будет, процесс завершается "
-                              "с кодом %d.", self.module_id, reason, P.EXIT_REJECTED)
+                              "с кодом %d.", self.id, reason, P.EXIT_REJECTED)
                     self._exit_code = P.EXIT_REJECTED
                     self._stop.set()
                 else:
-                    log.warning("ядро отклонило модуль «%s»: %s", self.module_id, reason)
+                    log.warning("ядро отклонило модуль «%s»: %s", self.id, reason)
                 return False
             if kind != "welcome":
                 log.warning("соединение закрыто до welcome")
@@ -397,7 +392,7 @@ class PeerClient:
             self._welcomes += 1
             self._ws = ws
             self._ready.set()
-            log.info("модуль «%s» подключён к ядру %s", self.module_id, self.core_version or "")
+            log.info("модуль «%s» подключён к ядру %s", self.id, self.core_version or "")
             self._flush_log()
             if self._last_state is not None:
                 self._spawn(self._send_env(Envelope("state", self._last_state), gen))
@@ -420,7 +415,7 @@ class PeerClient:
 
         if ws.close_code == P.CLOSE_REPLACED:
             log.warning("модуль «%s» вытеснен новым подключением (код %d); процесс завершается",
-                        self.module_id, P.CLOSE_REPLACED)
+                        self.id, P.CLOSE_REPLACED)
             self._stop.set()
         elif welcomed and not self._stop.is_set():
             log.warning("соединение с ядром потеряно (код %s)", ws.close_code)
@@ -591,18 +586,18 @@ class PeerClient:
 
     async def _tool_call(self, body: dict) -> Any:
         name = body.get("tool")
-        if isinstance(name, str) and name.startswith(self.module_id + "."):
-            name = name[len(self.module_id) + 1:]
+        if isinstance(name, str) and name.startswith(self.id + "."):
+            name = name[len(self.id) + 1:]
         fn = self._tools.get(name) if isinstance(name, str) else None
         if fn is None:
-            raise ToolError(f"у модуля «{self.module_id}» нет инструмента «{name}»", code="unknown")
+            raise ToolError(f"у модуля «{self.id}» нет инструмента «{name}»", code="unknown")
         args = body.get("args")
         if args is None:
             args = {}
         if not isinstance(args, dict):
             raise ToolError("аргументы должны быть объектом", code="bad_request")
         if not self.enabled:
-            raise ToolError(f"модуль «{self.module_id}» выключен", code="unavailable")
+            raise ToolError(f"модуль «{self.id}» выключен", code="unavailable")
         return await fn(args)
 
     async def _tool_check(self, body: dict) -> dict:
@@ -634,14 +629,14 @@ class PeerClient:
         action_id = body.get("action_id")
         fn = self._panel_actions.get(action_id) if isinstance(action_id, str) else None
         if fn is None:
-            raise ToolError(f"у модуля «{self.module_id}» нет действия «{action_id}»", code="unknown")
+            raise ToolError(f"у модуля «{self.id}» нет действия «{action_id}»", code="unknown")
         args = body.get("args")
         if args is None:
             args = {}
         if not isinstance(args, dict):
             raise ToolError("аргументы действия должны быть объектом", code="bad_request")
         if not self.enabled:
-            raise ToolError(f"модуль «{self.module_id}» выключен", code="unavailable")
+            raise ToolError(f"модуль «{self.id}» выключен", code="unavailable")
         value = await fn(args)
         if value is None:
             return {"ok": True}
@@ -685,8 +680,8 @@ class PeerClient:
         body = {"kind": kind, "text": P.clip(str(text), P.EVENT_TEXT_MAX), **{k: v for k, v in fields.items()
                                                                               if v is not None}}
         problems = contract.validate("event", body)
-        if not P.kind_allowed(kind, self.module_id, self.manifest.get("event_prefixes")):
-            problems.append(f"kind должен начинаться с «{self.module_id}.» или с одного из event_prefixes манифеста")
+        if not P.kind_allowed(kind, self.id, self.manifest.get("event_prefixes")):
+            problems.append(f"kind должен начинаться с «{self.id}.» или с одного из event_prefixes манифеста")
         if problems:
             raise ValueError("событие неверно: " + "; ".join(problems))
         if not self.enabled:
@@ -986,18 +981,13 @@ class PeerClient:
 
 class WorkspaceClient(PeerClient):
     """Клиент участника с ролью workspace: окружение с инструментами, событиями и рабочим местом (`workspace` в манифесте).
-    Манифест без `role` принимается (режим совместимости); с `role: service` отвергается."""
+    Манифест с `role: service` или без `role` отвергается."""
 
     ROLE = P.ROLE_WORKSPACE
 
 
 class ServiceClient(PeerClient):
     """Клиент участника с ролью service (например питомец, голос): подключается к ядру по WebSocket, окружения и аренды нет.
-    Если в манифесте нет `role`, клиент сам ставит `role: service`; описания `workspace` у сервиса быть не может."""
+    В манифесте нужен `role: service`; описания `workspace` и `ownership` у сервиса быть не может."""
 
     ROLE = P.ROLE_SERVICE
-
-
-class ModuleClient(PeerClient):
-    """Устарело, уберёт фаза 4: прежнее имя клиента. Ведёт себя как раньше: роль берётся из манифеста, без `role` это
-    workspace. Для нового кода: `WorkspaceClient` или `ServiceClient`."""

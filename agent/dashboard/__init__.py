@@ -29,7 +29,7 @@ from .routes_memory import (  # noqa: F401
 from .routes_peers import (  # noqa: F401
     PANEL_ACTION_TIMEOUT_S, handle_api_artifact, handle_api_job_answer, handle_api_job_cancel, handle_api_jobs,
     handle_api_module_enabled, handle_api_peer_panel, handle_api_peer_panel_action, handle_api_peer_panel_link,
-    handle_api_module_restart, handle_api_module_settings, handle_api_modules, handle_api_services,
+    handle_api_module_restart, handle_api_module_settings, handle_api_services,
     handle_api_workspaces)
 from .routes_system import (  # noqa: F401
     handle_api_appraisal_label, handle_api_capabilities, handle_api_character_post, handle_api_decisions,
@@ -98,7 +98,7 @@ def set_workspace(workspace) -> None:
 # ── Server lifecycle ─────────────────────────────────────────────────────────
 
 def build_app() -> web.Application:
-    """Приложение дашборда: страницы, API и шина участников (/ws и /module/ws)."""
+    """Приложение дашборда: страницы, API и шина участников (/ws)."""
     app = web.Application()
     for router in _ROUTERS:
         for method, path, handler in router.ROUTES:

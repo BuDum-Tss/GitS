@@ -30,7 +30,7 @@
       "tokens"
     ],
     "title": "core.claude_usage",
-    "description": "Учесть расход токенов Claude модулем и, если лимит исчерпан, сообщить его текст."
+    "description": "Учесть расход токенов Claude участником шины и, если лимит исчерпан, сообщить его текст."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

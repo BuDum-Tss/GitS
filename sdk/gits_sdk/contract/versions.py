@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .. import protocol as P
 
-CONTRACT_VERSION = "1.11"
+CONTRACT_VERSION = "2.0"
 PROTOCOL = P.PROTOCOL
 
 # версия контракта, в которой появился элемент (поле `since` у Message): "1.0" - исходный состав ТЗ 01
@@ -41,6 +41,10 @@ HISTORY = (
              "GITS_ID и GITS_TOKEN (GITS_MODULE_ID и GITS_MODULE_TOKEN остаются алиасами), HTTP-интерфейс управления "
              "workspace с ownership shared: аренда без срока и продления (GET /status, GET /info, POST /acquire, /release; "
              "аренда кончается по release или при обрыве WebSocket участника), поля среды workspace.when_to_use и keywords"),
+    ("2.0", "фаза 4 переименования, PROTOCOL 2: удалены алиасы фаз 1-3 (ModuleClient, module_id в hello и в ответе ядра, адрес "
+            "/module/ws, переменные GITS_MODULE_ID и GITS_MODULE_TOKEN, раздел modules: в peers.yaml, /api/modules); role в "
+            "манифесте и hello и ownership у workspace обязательны (без них reject). Запросы workspace.enter, workspace.exit, "
+            "workspace.resume без изменений"),
 )
 
 # Устаревшее: (элемент, дата удаления, чем заменить)

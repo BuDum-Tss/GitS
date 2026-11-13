@@ -228,26 +228,26 @@ class Attention:
 
     # ── события, речь модулей, объявления, задачи ───────────────────────────
 
-    async def submit(self, module_id: str, event: dict) -> None:
+    async def submit(self, peer_id: str, event: dict) -> None:
         """Событие модуля (тело `event`, ТЗ 01 раздел 7.1)."""
-        await self.pipeline.submit(module_id, event)
+        await self.pipeline.submit(peer_id, event)
 
-    async def submit_speech(self, module_id: str, say: dict) -> None:
+    async def submit_speech(self, peer_id: str, say: dict) -> None:
         """Речь модуля (тело `say`, ТЗ 01 раздел 7.2): проходит ту же оценку важности, затем очередь речи."""
-        await self.pipeline.submit_speech(module_id, say)
+        await self.pipeline.submit_speech(peer_id, say)
 
     @staticmethod
     def is_announce_event(kind: str, body: dict) -> bool:
         """Событие - объявление о запуске: вид `<модуль>.launch` или явная пометка `announce: true`."""
         return is_announce_event(kind, body)
 
-    async def submit_announce(self, module_id: str, text: str, *, data: dict | None = None) -> None:
+    async def submit_announce(self, peer_id: str, text: str, *, data: dict | None = None) -> None:
         """Объявление о запуске от самого ядра (инструмент модуля с `announce: true`, AN-3)."""
-        await self.announcer.submit(module_id, text, data=data)
+        await self.announcer.submit(peer_id, text, data=data)
 
-    async def on_job_update(self, module_id: str, job: dict) -> None:
+    async def on_job_update(self, peer_id: str, job: dict) -> None:
         """Ход задачи модуля (тело `job.update`, ТЗ 01 раздел 9, ATT-12)."""
-        await self.jobs.on_update(module_id, job)
+        await self.jobs.on_update(peer_id, job)
 
     async def submit_question(self, q: Question) -> Any:
         """Задать вопрос пользователю (ATT-19). Возвращает (answer, by), как approvals.ask."""
@@ -422,8 +422,8 @@ class Attention:
 
     # ── прежние закрытые методы: ядро, инструменты и тесты зовут их напрямую ──
 
-    def _make_item(self, module_id: str, ev: dict, now: float) -> Item:
-        return self.normalizer.make_item(module_id, ev, now)
+    def _make_item(self, peer_id: str, ev: dict, now: float) -> Item:
+        return self.normalizer.make_item(peer_id, ev, now)
 
     def _note_sender(self, item: Item, *, skip_memory: bool) -> None:
         self.normalizer.note_sender(item, skip_memory=skip_memory)

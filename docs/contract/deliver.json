@@ -28,7 +28,7 @@
       "text"
     ],
     "title": "deliver",
-    "description": "Доставить ответ ассистентки в канал модуля (`capabilities: chat.channel`)."
+    "description": "Доставить ответ ассистентки в канал участника шины (`capabilities: chat.channel`)."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

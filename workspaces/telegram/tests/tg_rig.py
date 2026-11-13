@@ -1,10 +1,10 @@
-"""Стенд тестов модуля Telegram: настоящий ModuleClient против FakeCore, сеть Telegram и Telethon подменены."""
+"""Стенд тестов модуля Telegram: настоящий WorkspaceClient против FakeCore, сеть Telegram и Telethon подменены."""
 import asyncio
 import contextlib
 import json
 from pathlib import Path
 
-from gits_sdk import ModuleClient
+from gits_sdk import WorkspaceClient
 from gits_sdk.testing import FakeCore
 
 from telegram_module import TelegramModule
@@ -97,7 +97,7 @@ class Rig:
 
     def _build(self):
         """Клиент и модуль создаются после старта FakeCore: адрес ядра известен только тогда."""
-        self.client = ModuleClient(build_manifest(), url=self.core.url, token=self.core.token)
+        self.client = WorkspaceClient(build_manifest(), url=self.core.url, token=self.core.token)
         self.client.reconnect_delays = (0.05, 0.05, 0.1)
         self.mod = TelegramModule(self.client, str(self.mem))
         # персона от ядра (core.persona, ТЗ 05 CHR-4): в тестах заглушка с теми же разделами и именами

@@ -1,4 +1,4 @@
-"""Всё, что конвейер берёт у ядра (ТЗ 20, раздел 11): тонкая обёртка над `gits_sdk.ModuleClient`.
+"""Всё, что конвейер берёт у ядра (ТЗ 20, раздел 11): тонкая обёртка над `gits_sdk.WorkspaceClient`.
 
 Конвейер зависит от этого интерфейса, а не от клиента: тесты подставляют заглушку (`agent/tests/stubs.py`), живой прогон
 идёт против FakeCore из SDK. Ошибки ядра приходят как `ToolError` с кодами ТЗ 01.
@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Protocol
 
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import WorkspaceClient, ToolError
 
 log = logging.getLogger("montage.core")
 
@@ -32,9 +32,9 @@ class CoreAPI(Protocol):
 
 
 class ClientCore:
-    """Реализация поверх ModuleClient."""
+    """Реализация поверх WorkspaceClient."""
 
-    def __init__(self, client: ModuleClient):
+    def __init__(self, client: WorkspaceClient):
         self.client = client
 
     @property

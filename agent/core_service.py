@@ -4,7 +4,7 @@
   - окружения (environments/): реестр инструментов, маршрутизатор «могу или нет», манифесты;
   - компаньон (companion): разговор, память, проактивность, граф памяти;
   - дашборд (порт 8766, только localhost): состояние, чат, настройки;
-  - шина модулей (ТЗ 02): модули подключаются сами по WebSocket (/module/ws в том же приложении), супервизор запускает и
+  - шина модулей (ТЗ 02): модули подключаются сами по WebSocket (/ws в том же приложении), супервизор запускает и
     перезапускает их процессы из agent/peers.yaml, профили в agent/profiles/ решают, какие инструменты видны. Telegram
     (канал, бот, её аккаунт) это модуль workspaces/telegram (ТЗ 10): в процессе ядра его кода нет. Игра RimWorld это модуль rimworld
     из отдельного репозитория rimworld-module (ТЗ 11): приказы идут его инструментом order, состояние и события приходят по шине.
@@ -70,7 +70,7 @@ SUBGRAPH_TIMEOUT_S = 1.5       # CORE-22: подграф профиля от м�
 def core_public_url(port: int = DASHBOARD_PORT) -> str:
     """Адрес шины ядра для арендованного пространства: `GITS_CORE_PUBLIC_URL` (в контейнере адрес контейнера ядра)
     или `ws://127.0.0.1:<порт>/ws`."""
-    return os.environ.get("GITS_CORE_PUBLIC_URL", "").strip() or f"ws://127.0.0.1:{port}{P.WS_PATH_NEW}"
+    return os.environ.get("GITS_CORE_PUBLIC_URL", "").strip() or f"ws://127.0.0.1:{port}{P.WS_PATH}"
 
 
 def _workspace_manifests(modules, leases) -> list:
@@ -89,8 +89,8 @@ def wire_workspace_nodes(companion, registry, attention, modules, workspaces) ->
     сдвиг срочности событий по теме (`nodes[].watch`) и панель узла в контексте агента (`nodes[].context`)."""
     registry.node_of = modules.node
 
-    def node_watch(module_id: str) -> dict:
-        node, manifest = modules.node(module_id), modules.manifest_of(module_id) or {}
+    def node_watch(peer_id: str) -> dict:
+        node, manifest = modules.node(peer_id), modules.manifest_of(peer_id) or {}
         for n in manifest.get("nodes") or []:
             if isinstance(n, dict) and n.get("path") == node:
                 return dict(n.get("watch") or {})
@@ -168,10 +168,10 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
 
     async def live_subgraph(profile):
         """Подграф профиля от первого модуля фокуса с graph: true (запрос graph.get, CORE-22, RW-19); None, если такого нет."""
-        for module_id in profile.focus_modules:
-            rec = modules.get(module_id)
-            conn = hub.connection(module_id)
-            if rec is None or conn is None or not (rec.manifest or {}).get("graph") or not modules.is_enabled(module_id):
+        for peer_id in profile.focus_modules:
+            rec = modules.get(peer_id)
+            conn = hub.connection(peer_id)
+            if rec is None or conn is None or not (rec.manifest or {}).get("graph") or not modules.is_enabled(peer_id):
                 continue
             return await conn.request("graph.get", {}, timeout=SUBGRAPH_TIMEOUT_S)
         return None
@@ -219,18 +219,18 @@ def wire_modules(companion, registry, *, battery=claude_battery.status, specs=No
     for planned in supervisor_mod.load_planned():
         modules.declare_planned(planned.id, title=planned.title, tz=planned.tz)
 
-    async def send_shutdown(module_id: str) -> bool:
-        conn = hub.connection(module_id)
+    async def send_shutdown(peer_id: str) -> bool:
+        conn = hub.connection(peer_id)
         if conn is None:
             return False
         await conn.send("shutdown", {"reason": "модуль выключен или ядро останавливается"})
         return True
 
-    async def announce_launch(module_id: str, text: str) -> None:
+    async def announce_launch(peer_id: str, text: str) -> None:
         """Запуск процесса модуля супервизором (правило 14): объявление идёт через очередь внимания, как у инструментов."""
-        await attention.submit_announce(module_id, text, data={"source": "supervisor"})
+        await attention.submit_announce(peer_id, text, data={"source": "supervisor"})
 
-    sup = supervisor_mod.Supervisor(specs, token=hub.token, core_url=f"ws://127.0.0.1:{port}{P.WS_PATH_NEW}",
+    sup = supervisor_mod.Supervisor(specs, token=hub.token, core_url=f"ws://127.0.0.1:{port}{P.WS_PATH}",
                                     enabled=modules.is_enabled, is_connected=hub.is_connected,
                                     send_shutdown=send_shutdown, memory_dir=settings.memory_dir(),
                                     announce=announce_launch,
@@ -292,11 +292,11 @@ def _log_workspace(kind: str, data: dict) -> None:
 
 def _module_event_recorder(modules, attention):
     """Журнал событий модулей по запросу (`core.module_events`) и строки в чат о том, что сделал модуль сам (запуск игры)."""
-    def record(module_id: str, event: dict) -> None:
+    def record(peer_id: str, event: dict) -> None:
         kind = str(event.get("kind") or "")
         if kind in attention.silent_kinds:
             return
-        modules.note_event(module_id, event)
+        modules.note_event(peer_id, event)
         if kind in TRACED_EVENT_KINDS:
             tool_trace.note("external", kind, str(event.get("text") or "")[:120])
     return record
@@ -305,9 +305,9 @@ def _module_event_recorder(modules, attention):
 TRACED_EVENT_KINDS = ("rimworld.game_started",)
 
 
-def _module_status(modules, module_id: str) -> dict | None:
+def _module_status(modules, peer_id: str) -> dict | None:
     """Статус модуля (ТЗ 18, FOC-1) из его последнего `state`: data.status; None, если модуль его не прислал."""
-    rec = modules.get(module_id)
+    rec = modules.get(peer_id)
     data = (rec.state or {}).get("data") if rec is not None and rec.state else None
     status = (data or {}).get("status") if isinstance(data, dict) else None
     return status if isinstance(status, dict) else None

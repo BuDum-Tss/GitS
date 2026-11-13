@@ -163,7 +163,7 @@ def test_module_notes_describe_connected_modules_with_tools():
     from types import SimpleNamespace
 
     from peer_registry import PeerRecord, PeerRegistry
-    reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"modules": {}})
+    reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"peers": {}})
     reg.records["telegram"] = PeerRecord("telegram", title="Telegram", description="Telegram: канал и бот.", connected=True,
                                            manifest={"tools": [{"name": "post"}]},
                                            state={"summary": "канал: готов, аккаунт: нет сессии", "data": {}, "ts": 1})
@@ -173,7 +173,7 @@ def test_module_notes_describe_connected_modules_with_tools():
     assert reg.notes(with_state=True) == ["Модуль «Telegram»: Telegram: канал и бот. Сейчас: канал: готов, аккаунт: нет сессии."]
     report = reg.status_report()
     assert "Telegram: подключён, канал: готов" in report and "Нет: не подключён" in report
-    reg._settings_source = lambda: {"modules": {"telegram": {"enabled": False}}}
+    reg._settings_source = lambda: {"peers": {"telegram": {"enabled": False}}}
     reg.invalidate()
     assert reg.notes() == []                                                     # выключенный в контекст не попадает
 
@@ -221,7 +221,7 @@ def test_module_events_report_and_trace_of_module_launch():
     import core_service
     import tool_trace
     from peer_registry import PeerRegistry
-    reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"modules": {}})
+    reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"peers": {}})
     assert reg.events_report() == "событий модулей нет"
     tool_trace.clear()
     record = core_service._module_event_recorder(reg, SimpleNamespace(silent_kinds={"voice.heard"}))

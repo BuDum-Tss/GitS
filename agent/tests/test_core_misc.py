@@ -80,10 +80,10 @@ def test_streamer_migration_both_disabled_and_existing_streamer_wins(tmp_path):
     assert settings.load()["peers"] == {"streamer": {"enabled": False}}
 
 
-def test_peer_entry_falls_back_to_legacy_modules_key():
+def test_peer_entry_reads_only_peers_key():
     cfg = {"peers": {"a": {"enabled": False}}, "modules": {"a": {"enabled": True}, "b": {"enabled": False}}}
-    assert settings.peer_entry(cfg, "a") == {"enabled": False}          # peers главнее
-    assert settings.peer_entry(cfg, "b") == {"enabled": False}          # нет в peers: старый ключ
+    assert settings.peer_entry(cfg, "a") == {"enabled": False}
+    assert settings.peer_entry(cfg, "b") is None                        # прежний ключ modules больше не читается
     assert settings.peer_entry(cfg, "c") is None
 
 

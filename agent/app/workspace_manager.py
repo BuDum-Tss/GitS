@@ -59,27 +59,27 @@ class WorkspaceManager:
 
     # ── среды ─────────────────────────────────────────────────────────────────
 
-    def register_module(self, module_id: str, title: str = "", purpose: str = "") -> dom.WorkspaceSpec:
-        spec = dom.module_spec(module_id, title, purpose)
-        self.specs[module_id] = spec
+    def register_module(self, peer_id: str, title: str = "", purpose: str = "") -> dom.WorkspaceSpec:
+        spec = dom.module_spec(peer_id, title, purpose)
+        self.specs[peer_id] = spec
         return spec
 
-    def register_manifest(self, module_id: str, manifest: dict | None, title: str = "") -> dom.WorkspaceSpec | None:
+    def register_manifest(self, peer_id: str, manifest: dict | None, title: str = "") -> dom.WorkspaceSpec | None:
         """Среда модуля по его манифесту (ТЗ 32, WS-4). Модуль без поля `workspace` среды не имеет: если она была, снимается
         (кроме текущей). Возвращает спецификацию или None."""
         ws = (manifest or {}).get("workspace")
         if not isinstance(ws, dict):
-            if module_id in self.specs and self.specs[module_id].kind == dom.KIND_MODULE and module_id != self.current:
-                del self.specs[module_id]
+            if peer_id in self.specs and self.specs[peer_id].kind == dom.KIND_MODULE and peer_id != self.current:
+                del self.specs[peer_id]
             return None
-        spec = dom.spec_from_manifest(module_id, ws, title)
-        self.specs[module_id] = spec
+        spec = dom.spec_from_manifest(peer_id, ws, title)
+        self.specs[peer_id] = spec
         return spec
 
     def refresh_modules(self, items) -> None:
         """Манифесты модулей изменились: items это (id, манифест, название)."""
-        for module_id, manifest, title in items:
-            self.register_manifest(module_id, manifest, title)
+        for peer_id, manifest, title in items:
+            self.register_manifest(peer_id, manifest, title)
 
     def sync(self) -> None:
         """Подхватить среды из манифестов подключённых модулей (читается при каждом обращении, модули приходят и уходят)."""
@@ -158,10 +158,10 @@ class WorkspaceManager:
         elif state != "sleeping" and self.current == dom.SLEEP:
             self._set(dom.ASSISTANT, dom.Reason.DONE, "")
 
-    def on_module_gone(self, module_id: str) -> None:
+    def on_module_gone(self, peer_id: str) -> None:
         """Модуль отключился: если агент был в его среде, возврат в базовую (checkpoint остаётся у менеджера фокуса)."""
-        if self.current == module_id:
-            self._set(dom.exit_target(dom.Reason.DISCONNECT), dom.Reason.DISCONNECT, "", note=module_id)
+        if self.current == peer_id:
+            self._set(dom.exit_target(dom.Reason.DISCONNECT), dom.Reason.DISCONNECT, "", note=peer_id)
 
     def check(self) -> None:
         """Состояние модулей изменилось: модуль текущей среды отключился, сообщил блокировку или конец задачи (`done`) - вернуться в базовую среду. Checkpoint при этом ведёт менеджер фокуса."""

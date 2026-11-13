@@ -6,7 +6,7 @@ import asyncio
 import re
 
 import pytest
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import WorkspaceClient, ToolError
 from gits_sdk.protocol import validate_manifest
 from gits_sdk.testing import FakeCore
 
@@ -43,7 +43,7 @@ async def no_analysis(win):
 
 async def connect(core, scene=None, analyze=None, **kw):
     scene = scene or Scene()
-    client = ModuleClient(build_manifest(), url=core.url, token=core.token)
+    client = WorkspaceClient(build_manifest(), url=core.url, token=core.token)
     mod = DesktopModule(client, clock=scene.clock, idle_fn=scene.idle_fn, foreground_fn=scene.fg,
                         analyze_fn=analyze or no_analysis, **kw)
     task = asyncio.create_task(client.run())

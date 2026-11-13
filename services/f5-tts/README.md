@@ -31,7 +31,7 @@ services\f5-tts\.venv\Scripts\python.exe -c "from huggingface_hub import hf_hub_
 
 ## Запуск и настройки
 
-Обычно запускает супервизор ядра (запись `espeech` в `agent/modules.yaml`, `kind: service`). Вручную:
+Обычно запускает супервизор ядра (запись `espeech` в `agent/peers.yaml`, `kind: service`). Вручную:
 `services\f5-tts\.venv\Scripts\python.exe services\f5-tts\f5_server.py`. `F5_NFE_STEP` (по умолчанию 16; больше шагов - лучше
 качество и медленнее), `F5_DEVICE` (`cuda` или `cpu`), `F5_HOST` (адрес, по умолчанию 127.0.0.1), `F5_CKPT`, `F5_VOCAB`,
 `F5_WARMUP_DIR` (папка с `espeech_ref.wav` и `espeech_ref.txt` для прогрева), `F5_ACCENT_DIR` (куда RUAccent кладёт модели),

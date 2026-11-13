@@ -49,16 +49,16 @@ class FakeSink:
     def __init__(self):
         self.events, self.speech, self.jobs = [], [], []
 
-    async def submit(self, module_id, event):
-        self.events.append((module_id, event))
+    async def submit(self, peer_id, event):
+        self.events.append((peer_id, event))
 
-    async def submit_speech(self, module_id, say):
-        self.speech.append((module_id, say))
+    async def submit_speech(self, peer_id, say):
+        self.speech.append((peer_id, say))
 
-    async def on_job_update(self, module_id, job):
-        self.jobs.append((module_id, job))
+    async def on_job_update(self, peer_id, job):
+        self.jobs.append((peer_id, job))
 
-    async def submit_question(self, module_id, job_id, question_id, question):
+    async def submit_question(self, peer_id, job_id, question_id, question):
         return "yes", "user"
 
 
@@ -108,10 +108,10 @@ PUBLIC_ROUTES = {
     ("GET", "/api/core"), ("GET", "/api/events"), ("GET", "/api/latency"), ("GET", "/api/flow"), ("GET", "/api/flow/stream"), ("GET", "/api/flow/node/{node}"), ("GET", "/api/flow/turn/{turn}"), ("POST", "/api/rating"),
     ("GET", "/api/decisions"), ("GET", "/api/capabilities"), ("GET", "/api/modes"), ("POST", "/api/appraisal_label"),
     ("POST", "/api/menu_click"), ("POST", "/api/mode"), ("POST", "/api/approval"), ("POST", "/api/memory/forget"),
-    ("GET", "/api/graph"), ("GET", "/api/graph/search"), ("POST", "/api/graph/forget"), ("GET", "/api/chat"), ("GET", "/api/modules"), ("GET", "/api/workspaces"), ("GET", "/api/services"),
-    ("POST", "/api/modules/{id}/enabled"), ("POST", "/api/modules/{id}/restart"), ("POST", "/api/modules/{id}/settings"),
-    ("GET", "/api/modules/{id}/panel"), ("POST", "/api/modules/{id}/panel/action"),
-    ("POST", "/api/modules/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"), ("GET", "/api/buffer"),
+    ("GET", "/api/graph"), ("GET", "/api/graph/search"), ("POST", "/api/graph/forget"), ("GET", "/api/chat"), ("GET", "/api/workspaces"), ("GET", "/api/services"),
+    ("POST", "/api/peers/{id}/enabled"), ("POST", "/api/peers/{id}/restart"), ("POST", "/api/peers/{id}/settings"),
+    ("GET", "/api/peers/{id}/panel"), ("POST", "/api/peers/{id}/panel/action"),
+    ("POST", "/api/peers/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"), ("GET", "/api/buffer"),
     ("POST", "/api/attention/rules/clear"), ("GET", "/api/workspace"), ("POST", "/api/workspace/enter"), ("POST", "/api/workspace/exit"),
     ("GET", "/api/thoughts"), ("GET", "/api/episodes"), ("GET", "/api/episodes/{id}"), ("GET", "/api/diary"), ("GET", "/api/sleep"),
     ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("POST", "/api/notify"), ("GET", "/api/jobs"), ("POST", "/api/jobs/{module}/{job_id}/cancel"),
@@ -122,7 +122,7 @@ PUBLIC_ROUTES = {
 def test_public_urls_do_not_change():
     app = dashboard.build_app()
     got = {(r.method, r.resource.canonical) for r in app.router.routes() if r.method != "HEAD"}
-    got = {(m, p) for m, p in got if not p.startswith("/static") and p not in ("/module/ws", "/ws")}
+    got = {(m, p) for m, p in got if not p.startswith("/static") and p not in ("/ws", "/ws")}
     assert got == PUBLIC_ROUTES
 
 

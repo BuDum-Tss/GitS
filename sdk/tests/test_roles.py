@@ -1,8 +1,9 @@
-"""Фаза 1 переименования: роли workspace / service, ownership, hello с id и role, алиасы окружения, три клиента."""
+"""Роли workspace / service, ownership, hello с id и role, три клиента; контракт 2.0: role и ownership обязательны, алиасов нет."""
+import aiohttp
 import pytest
 from helpers import MANIFEST, running
 
-from gits_sdk import ModuleClient, PeerClient, ServiceClient, WorkspaceClient
+from gits_sdk import PeerClient, ServiceClient, WorkspaceClient
 from gits_sdk import protocol as P
 from gits_sdk.protocol import Manifest, ManifestError, validate_hello, validate_manifest
 from gits_sdk.testing import FakeCore
@@ -12,27 +13,43 @@ def man(**extra):
     return {**MANIFEST, **extra}
 
 
+def without(manifest: dict, *keys: str) -> dict:
+    return {k: v for k, v in manifest.items() if k not in keys}
+
+
 def service_manifest(**extra):
     return {"id": "pet", "title": "Питомец", "description": "Сервис для проверки.", "version": "1.0.0", "role": "service", **extra}
 
 
 # ---------------------------------------------------------------- манифест
 
-def test_manifest_without_role_is_workspace():
+def test_manifest_requires_role():
     assert validate_manifest(MANIFEST) == []
-    assert P.role_of(MANIFEST) == "workspace" and P.ownership_of(MANIFEST) == "owned"
-    m = Manifest.from_dict(MANIFEST)
-    assert m.role is None and m.effective_role == "workspace" and m.effective_ownership == "owned"
-    assert "role" not in m.to_dict() and "ownership" not in m.to_dict()        # прежние манифесты не меняются
+    problems = validate_manifest(without(MANIFEST, "role", "ownership"))
+    assert any(p.startswith("role:") and "обязательное" in p for p in problems)
+    with pytest.raises(ManifestError):
+        Manifest.from_dict(without(MANIFEST, "role", "ownership"))
+    with pytest.raises(ManifestError):
+        WorkspaceClient(without(MANIFEST, "role"))
+    with pytest.raises(ManifestError):
+        ServiceClient(without(service_manifest(), "role"))
 
 
-@pytest.mark.parametrize("role,ownership", [("workspace", "shared"), ("workspace", "owned"), ("workspace", None), (None, "shared")])
-def test_workspace_roles_and_ownership_pass(role, ownership):
-    extra = {k: v for k, v in (("role", role), ("ownership", ownership)) if v}
-    assert validate_manifest(man(**extra)) == []
-    m = Manifest.from_dict(man(**extra))
-    assert m.effective_ownership == (ownership or "owned")
-    assert Manifest.from_dict(m.to_dict()).to_dict() == m.to_dict()
+def test_workspace_requires_ownership():
+    problems = validate_manifest(without(MANIFEST, "ownership"))
+    assert any(p.startswith("ownership:") and "обязательное" in p for p in problems)
+    with pytest.raises(ManifestError):
+        WorkspaceClient(without(MANIFEST, "ownership"))
+
+
+@pytest.mark.parametrize("ownership", ["shared", "owned"])
+def test_workspace_roles_and_ownership_pass(ownership):
+    manifest = man(role="workspace", ownership=ownership)
+    assert validate_manifest(manifest) == []
+    m = Manifest.from_dict(manifest)
+    assert m.role == "workspace" and m.effective_role == "workspace" and m.effective_ownership == ownership
+    assert P.role_of(manifest) == "workspace" and P.ownership_of(manifest) == ownership
+    assert Manifest.from_dict(m.to_dict()).to_dict() == m.to_dict() and m.to_dict()["role"] == "workspace"
 
 
 def test_service_manifest_is_valid_and_has_no_ownership():
@@ -57,65 +74,62 @@ def test_service_with_ownership_or_workspace_is_rejected():
     assert validate_manifest(ok) == []                                                   # у workspace описание среды допустимо
 
 
-def test_workspace_without_workspace_description_is_valid():
-    assert validate_manifest(man(role="workspace", ownership="shared")) == []
-
-
 # ---------------------------------------------------------------- hello
 
-def test_hello_carries_id_role_and_legacy_module_id():
+def test_hello_carries_only_id_and_role():
     body = P.hello_body(MANIFEST, "inst0001", 1)
-    assert body["id"] == body["module_id"] == "demo" and body["role"] == "workspace"
+    assert body["id"] == "demo" and body["role"] == "workspace" and "module_id" not in body and body["protocol"] == 2
     assert validate_hello(body) == []
     assert P.hello_body(service_manifest(), "i", 1)["role"] == "service"
 
 
-def test_old_hello_with_only_module_id_is_accepted():
+def test_hello_without_role_is_rejected():
     body = P.hello_body(MANIFEST, "inst0001", 1)
+    del body["role"]
+    assert any(p.startswith("role:") for p in validate_hello(body))
+
+
+def test_hello_with_module_id_is_rejected():
+    body = P.hello_body(MANIFEST, "inst0001", 1)
+    assert any("module_id" in p for p in validate_hello({**body, "module_id": "demo"}))
     old = {k: v for k, v in body.items() if k not in ("id", "role")}
-    assert validate_hello(old) == []
-    assert P.hello_id(old) == "demo"
-
-
-def test_new_hello_with_only_id_is_accepted():
-    body = P.hello_body(MANIFEST, "inst0001", 1)
-    body.pop("module_id")
-    assert validate_hello(body) == []
+    old["module_id"] = "demo"
+    assert validate_hello(old)                                                           # старый hello целиком не проходит
 
 
 def test_hello_mismatches_are_rejected():
     body = P.hello_body(MANIFEST, "inst0001", 1)
-    assert any("не совпадает" in p for p in validate_hello({**body, "module_id": "other"}))
-    assert any("manifest.id" in p for p in validate_hello({**body, "id": "other", "module_id": "other"}))
+    assert any("manifest.id" in p for p in validate_hello({**body, "id": "other"}))
     assert any("role" in p for p in validate_hello({**body, "role": "service"}))
-    assert validate_hello({k: v for k, v in body.items() if k not in ("id", "module_id")})
+    assert validate_hello({k: v for k, v in body.items() if k != "id"})
+    assert any("protocol" in p for p in validate_hello({**body, "protocol": 1}))        # протокол 1 больше не принимается
 
 
-# ---------------------------------------------------------------- окружение
+# ---------------------------------------------------------------- окружение и адрес
 
-def test_env_aliases_new_names_win(monkeypatch):
-    for name in ("GITS_ID", "GITS_TOKEN", "GITS_MODULE_ID", "GITS_MODULE_TOKEN", "GLADOS_MODULE_TOKEN", "GLADOS_MODULE_ID"):
+def test_env_names(monkeypatch):
+    for name in ("GITS_ID", "GITS_TOKEN", "GITS_MODULE_ID", "GITS_MODULE_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     assert P.env_id() is None and P.env_token() is None
     monkeypatch.setenv("GITS_MODULE_ID", "old")
     monkeypatch.setenv("GITS_MODULE_TOKEN", "old-token")
-    assert P.env_id() == "old" and P.env_token() == "old-token"                # алиасы читаются, если новых нет
+    assert P.env_id() is None and P.env_token() is None                                  # старые имена не читаются
     monkeypatch.setenv("GITS_ID", "new")
     monkeypatch.setenv("GITS_TOKEN", "new-token")
-    assert P.env_id() == "new" and P.env_token() == "new-token"                # новые имена первыми
+    assert P.env_id() == "new" and P.env_token() == "new-token"
 
 
-def test_ws_paths_and_default_url():
-    assert P.WS_PATH == "/module/ws" and P.WS_PATH_NEW == "/ws"
-    assert P.DEFAULT_CORE_URL.endswith(P.WS_PATH)
+def test_ws_path_and_default_url():
+    assert P.WS_PATH == "/ws" and not hasattr(P, "WS_PATH_NEW")
+    assert P.DEFAULT_CORE_URL.endswith("/ws") and "module" not in P.DEFAULT_CORE_URL
+    assert P.PROTOCOL == 2
 
 
-async def test_token_from_new_env_name(monkeypatch, tmp_path):
+async def test_token_from_env_name(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.delenv("GITS_MODULE_TOKEN", raising=False)
     async with FakeCore() as core:
         monkeypatch.setenv("GITS_TOKEN", core.token)
-        client = WorkspaceClient(service_manifest(role="workspace"), url=core.url)
+        client = WorkspaceClient(man(tools=[]), url=core.url)
         client.reconnect_delays = (0.05,)
         async with running(client, core):
             assert len(core.hellos) == 1
@@ -128,15 +142,13 @@ async def _pong(args):
 # ---------------------------------------------------------------- клиенты
 
 def test_client_classes_and_roles():
-    assert issubclass(WorkspaceClient, PeerClient) and issubclass(ServiceClient, PeerClient) and issubclass(ModuleClient, PeerClient)
-    assert "уберёт фаза 4" in ModuleClient.__doc__
+    import gits_sdk
+    assert issubclass(WorkspaceClient, PeerClient) and issubclass(ServiceClient, PeerClient)
+    assert not hasattr(gits_sdk, "ModuleClient") and "ModuleClient" not in gits_sdk.__all__
     assert WorkspaceClient(MANIFEST).role == "workspace" and WorkspaceClient(MANIFEST).ownership == "owned"
-    assert ModuleClient(MANIFEST).role == "workspace"                                    # без role: workspace
-    assert ModuleClient(service_manifest()).role == "service"                            # роль берётся из манифеста
-    assert ModuleClient(man(ownership="shared")).ownership == "shared"
-    c = ServiceClient({k: v for k, v in service_manifest().items() if k != "role"})
-    assert c.role == "service" and c.manifest["role"] == "service" and c.ownership is None   # роль подставляется
-    assert c.id == c.module_id == "pet"
+    assert WorkspaceClient(man(ownership="shared")).ownership == "shared"
+    c = ServiceClient(service_manifest())
+    assert c.role == "service" and c.ownership is None and c.id == "pet" and not hasattr(c, "module_id")
 
 
 def test_clients_reject_foreign_role():
@@ -152,11 +164,9 @@ NO_TOOLS = man(tools=[])
 
 
 @pytest.mark.parametrize("make,manifest,role", [
-    (ModuleClient, NO_TOOLS, "workspace"),
     (WorkspaceClient, NO_TOOLS, "workspace"),
     (WorkspaceClient, man(tools=[], role="workspace", ownership="shared"), "workspace"),
     (ServiceClient, service_manifest(), "service"),
-    (ModuleClient, service_manifest(), "service"),
 ])
 async def test_clients_connect_to_fake_core(make, manifest, role):
     async with FakeCore() as core:
@@ -166,21 +176,31 @@ async def test_clients_connect_to_fake_core(make, manifest, role):
             client.tool(t["name"])(_pong)
         async with running(client, core):
             hello = core.hellos[0]
-            assert hello["id"] == hello["module_id"] == manifest["id"]               # шлёт оба имени
+            assert hello["id"] == manifest["id"] and "module_id" not in hello
             assert hello["role"] == role
-            assert core.conn.module_id == manifest["id"] and core.conn.role == role
+            assert core.conn.id == manifest["id"] and core.conn.role == role
             assert not core.violations and not core.rejected
 
 
-async def test_fake_core_accepts_old_hello_without_id_and_role():
-    """Старый клиент (только module_id, без role) подключается к FakeCore как workspace."""
-    import aiohttp
-    async with FakeCore() as core, aiohttp.ClientSession() as s:
+async def _raw_hello(core, mutate):
+    async with aiohttp.ClientSession() as s:
         ws = await s.ws_connect(core.url, headers={"Authorization": f"Bearer {core.token}"})
         body = P.hello_body(MANIFEST, "inst0001", 1)
-        del body["id"], body["role"]
+        mutate(body)
         await ws.send_str(P.Envelope("hello", body).dumps())
         reply = P.Envelope.loads((await ws.receive()).data)
-        assert reply.type == "welcome"
-        assert core.conn.module_id == "demo" and core.conn.role == "workspace"
         await ws.close()
+        return reply
+
+
+async def test_fake_core_accepts_only_id_and_role():
+    async with FakeCore() as core:
+        assert (await _raw_hello(core, lambda b: None)).type == "welcome"
+
+
+async def test_fake_core_rejects_old_and_incomplete_hello():
+    async with FakeCore() as core:
+        assert (await _raw_hello(core, lambda b: b.pop("role"))).type == "reject"
+        assert (await _raw_hello(core, lambda b: b.update(module_id="demo"))).type == "reject"
+        assert (await _raw_hello(core, lambda b: (b.pop("id"), b.pop("role"), b.update(module_id="demo")))).type == "reject"
+        assert len(core.rejected) == 3 and not core.hellos

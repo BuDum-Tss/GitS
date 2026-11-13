@@ -20,7 +20,7 @@ from common import default_memory_dir, secrets_file  # noqa: E402
 load_dotenv(secrets_file())                       # секреты не в git; файла нет - модуль «не настроен»
 
 from telegram_module import TelegramModule  # noqa: E402
-from gits_sdk import ModuleClient  # noqa: E402
+from gits_sdk import WorkspaceClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 
 log = logging.getLogger("telegram")
@@ -28,7 +28,7 @@ log = logging.getLogger("telegram")
 
 async def amain() -> int:
     memory_dir = default_memory_dir()
-    client = ModuleClient(build_manifest())
+    client = WorkspaceClient(build_manifest())
     module = TelegramModule(client, memory_dir)
     module.start()
     try:

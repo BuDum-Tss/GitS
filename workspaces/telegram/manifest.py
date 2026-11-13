@@ -88,6 +88,8 @@ TOOLS = [
 
 MANIFEST = {
     "id": "telegram",
+    "role": "workspace",
+    "ownership": "owned",
     "title": "Telegram",
     "description": "Telegram: посты бота в канал, черновики, её собственный аккаунт (чаты, чтение, отправка) и разговор "
                    "владельца с ней через бота и личку.",

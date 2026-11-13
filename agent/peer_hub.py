@@ -1,4 +1,4 @@
-"""Шина участников (ТЗ 02, раздел 5): WebSocket-сервер `/ws` (и прежний `/module/ws`) в приложении дашборда (порт 8766).
+"""Шина участников (ТЗ 02, раздел 5): WebSocket-сервер `/ws` в приложении дашборда (порт 8766).
 
 Участник шины (peer: окружение workspace или сервис service) подключается сам (клиент SDK `gits_sdk`), проходит рукопожатие по ТЗ 01 §5 и дальше шлёт события, речь,
 состояние, задачи и запросы к ядру, а ядро вызывает его инструменты и рассылает темы (`presence`, `settings`, `profile`,
@@ -100,7 +100,7 @@ class PeerConnection:
 
     def __init__(self, ws: web.WebSocketResponse, hello: dict, spec: Manifest):
         self.ws = ws
-        self.id: str = P.hello_id(hello)
+        self.id: str = hello["id"]
         self.instance: str = hello["instance"]
         self.pid: int = hello["pid"]
         self.manifest: dict = hello["manifest"]
@@ -115,11 +115,6 @@ class PeerConnection:
         self._send_lock = asyncio.Lock()
         self.tasks: set[asyncio.Task] = set()
         self.inbox: asyncio.Queue = asyncio.Queue(INBOX_LIMIT)
-
-    @property
-    def module_id(self) -> str:
-        """Прежнее имя `id` (устарело, читают тесты модулей)."""
-        return self.id
 
     def spawn(self, coro) -> asyncio.Task:
         task = asyncio.get_running_loop().create_task(coro)
@@ -206,11 +201,11 @@ class PeerHub:
         core_requests.CoreRequests); *_source - откуда брать настройки, профиль и батарейку (в тестах подменяются);
         presence - PresenceTracker (снимок для новых модулей); allow - сети, которым шина открыта помимо петли (по
         умолчанию `GITS_HUB_ALLOW`); environ - переменные окружения (в тестах подменяются). В контейнере
-        (`GITS_CONTAINER=1`) токен берётся из `GITS_TOKEN`, запасное имя `GITS_MODULE_TOKEN` (файл не пишется), а без неё создаётся и пишется в
+        (`GITS_CONTAINER=1`) токен берётся из `GITS_TOKEN` (файл не пишется), а без неё создаётся и пишется в
         `MEMORY_DIR/module_token`, не в LOCALAPPDATA."""
         environ = os.environ if environ is None else environ
         self.allow = list(allow) if allow is not None else parse_allow(environ.get(P.ENV_HUB_ALLOW))
-        env_token = (str(environ.get(P.ENV_TOKEN) or environ.get(P.ENV_MODULE_TOKEN) or "").strip()
+        env_token = (str(environ.get(P.ENV_TOKEN) or "").strip()
                      if P.is_container(environ) else "")
         if P.is_container(environ) and token_file is None and not (token or env_token):
             token_file = Path(settings.memory_dir()) / "module_token"
@@ -240,8 +235,7 @@ class PeerHub:
     # ── жизненный цикл ─────────────────────────────────────────────────────────
 
     def attach(self, app: web.Application) -> None:
-        """Маршруты GET /ws (основной) и /module/ws (прежний, пока клиенты SDK подключаются к нему) в приложение дашборда."""
-        app.router.add_get(P.WS_PATH_NEW, self.handle)
+        """Маршрут GET /ws в приложение дашборда."""
         app.router.add_get(P.WS_PATH, self.handle)
 
     async def start(self) -> None:
@@ -278,12 +272,12 @@ class PeerHub:
 
     # ── доступ ──────────────────────────────────────────────────────────────
 
-    def connection(self, module_id: str) -> PeerConnection | None:
-        conn = self._conns.get(module_id)
+    def connection(self, peer_id: str) -> PeerConnection | None:
+        conn = self._conns.get(peer_id)
         return conn if conn is not None and not conn.closed else None
 
-    def is_connected(self, module_id: str) -> bool:
-        return self.connection(module_id) is not None
+    def is_connected(self, peer_id: str) -> bool:
+        return self.connection(peer_id) is not None
 
     def connections(self) -> list[PeerConnection]:
         return [c for c in self._conns.values() if not c.closed]
@@ -323,9 +317,9 @@ class PeerHub:
             await self._disconnected(conn, conn.close_reason or reason)
         return ws
 
-    async def _reject(self, ws: web.WebSocketResponse, hello_id: str | None, module_id: str, reason: str) -> None:
-        events_log.log("module", f"модуль {module_id} отклонён: {reason}", module=module_id, reject=True)
-        logger.warning(f"Модуль {module_id} отклонён: {reason}")
+    async def _reject(self, ws: web.WebSocketResponse, hello_id: str | None, peer_id: str, reason: str) -> None:
+        events_log.log("module", f"модуль {peer_id} отклонён: {reason}", module=peer_id, reject=True)
+        logger.warning(f"Модуль {peer_id} отклонён: {reason}")
         try:
             await ws.send_str(Envelope("reject", {"reason": reason}, re=hello_id).dumps())
         except (ConnectionError, RuntimeError):
@@ -334,7 +328,7 @@ class PeerHub:
 
     def _extra_problems(self, hello: dict) -> list[str]:
         """Проверки ядра сверх схемы: зарезервированные имена и единственность voice.output (MOD-18)."""
-        m, mid = hello["manifest"], P.hello_id(hello)
+        m, mid = hello["manifest"], hello.get("id")
         problems = []
         if mid in RESERVED_IDS:
             problems.append(f"идентификатор «{mid}» зарезервирован ядром")
@@ -363,7 +357,7 @@ class PeerHub:
             await self._reject(ws, env.id, "?", "до welcome допустим только hello (протокол)")
             return None
         body = env.body
-        mid = str(P.hello_id(body) or "?")
+        mid = str(body.get("id") or "?")
         if body.get("protocol") != P.PROTOCOL:
             await self._reject(ws, env.id, mid, f"protocol {body.get('protocol')} не поддерживается")
             return None
@@ -412,9 +406,9 @@ class PeerHub:
     def _shared(spec: Manifest, cfg: dict) -> dict:
         return {k: cfg[k] for k in spec.shared_settings if k in cfg}
 
-    def _module_settings(self, module_id: str, spec: Manifest, cfg: dict) -> dict:
+    def _module_settings(self, peer_id: str, spec: Manifest, cfg: dict) -> dict:
         schema = spec.settings_schema
-        stored = settings.peer_entry(cfg, module_id) or {}
+        stored = settings.peer_entry(cfg, peer_id) or {}
         return {name: stored.get(name, s["default"]) for name, s in schema.items()}
 
     @staticmethod
@@ -576,10 +570,10 @@ class PeerHub:
         if await self.outbound.send_job_answer(mid, job_id, question_id, entry.answer):
             entry.sent = True
 
-    async def answer_job(self, module_id: str, job_id: str, question_id: str, answer: Any) -> str | None:
+    async def answer_job(self, peer_id: str, job_id: str, question_id: str, answer: Any) -> str | None:
         """Ответ на вопрос задачи не словами, а кнопкой в дашборде: вопрос снимается из очереди approvals, модулю уходит
         job.answer. Возвращает причину отказа или None."""
-        rec = self.modules.get(module_id)
+        rec = self.modules.get(peer_id)
         job = rec.jobs.get(job_id) if rec is not None else None
         q = job.get("question") if job and job.get("state") == "waiting_user" else None
         if not q:
@@ -593,7 +587,7 @@ class PeerHub:
             return f"ответ должен быть одним из {q.get('options')}"
         if kind == "text" and not (isinstance(answer, str) and answer.strip()):
             return "ответ должен быть непустой строкой"
-        key = (module_id, job_id, q["question_id"])
+        key = (peer_id, job_id, q["question_id"])
         entry = self._job_questions.get(key)
         if entry is None:
             entry = self._job_questions[key] = _JobQuestion()
@@ -603,7 +597,7 @@ class PeerHub:
             entry.task.cancel()                          # вопрос в очереди approvals больше не нужен
         entry.answer, entry.ready = answer, True
         await self._send_answer(key, entry)
-        return None if entry.sent or self.connection(module_id) is None else "ответ не отправлен"
+        return None if entry.sent or self.connection(peer_id) is None else "ответ не отправлен"
 
     # ── запросы модуля к ядру ───────────────────────────────────────────────────
 
@@ -650,9 +644,9 @@ class PeerHub:
 
     # ── темы (исходящее лежит в Outbound; здесь короткие входы для старых вызовов) ──────────────────────────
 
-    async def send_topic(self, module_id: str, topic: str, data: dict) -> None:
+    async def send_topic(self, peer_id: str, topic: str, data: dict) -> None:
         """Тема одному модулю (если подключён)."""
-        await self.outbound.send_topic(module_id, topic, data)
+        await self.outbound.send_topic(peer_id, topic, data)
 
     async def broadcast(self, topic: str, data: dict) -> None:
         """Тема всем подключённым и включённым модулям, подписанным на неё (CORE-5)."""

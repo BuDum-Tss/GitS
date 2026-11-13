@@ -39,7 +39,7 @@
       "text"
     ],
     "title": "core.tts",
-    "description": "Синтез речи её голосом: ядро передаёт запрос модулю голоса (`tts.synthesize`) и его ответ."
+    "description": "Синтез речи её голосом: ядро передаёт запрос участнику шины голоса (`tts.synthesize`) и его ответ."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

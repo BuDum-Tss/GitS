@@ -5,7 +5,7 @@ import json
 import os
 
 import pytest
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import WorkspaceClient, ToolError
 
 import main as main_mod
 from manifest import build_manifest
@@ -124,7 +124,7 @@ async def test_stop_all_clears_everything(tmp_path):
 
 def manager_for(tmp_path):
     layout = layout_for(tmp_path)
-    client = ModuleClient(build_manifest())
+    client = WorkspaceClient(build_manifest())
     client, manager = main_mod.build(layout, client=client, runner=FakeRunner(), renderer=FakeRenderer(), qa=StubQA())
     return client, manager
 

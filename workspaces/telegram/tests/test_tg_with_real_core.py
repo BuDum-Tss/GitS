@@ -18,7 +18,7 @@ import settings
 from telegram_module import TelegramModule
 from conversation_io import Channel, ConversationIO
 from environments import builtin
-from gits_sdk import ModuleClient
+from gits_sdk import WorkspaceClient
 from manifest import build_manifest
 
 OWNER = 777
@@ -45,7 +45,7 @@ async def stack(tmp_path, monkeypatch, *, owner=OWNER, state=None, terms=("Ан�
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:SECRET-TOKEN")
     monkeypatch.setenv("TELEGRAM_CHANNEL", "@chan")
     st = copy.deepcopy(settings.DEFAULTS)
-    st["modules"] = {"telegram": {"owner_tg_id": owner}}
+    st["peers"] = {"telegram": {"owner_tg_id": owner}}
     st.update(state or {})
     core = Core(tmp_path, st)
     core.companion._rel = Rel()
@@ -58,7 +58,7 @@ async def stack(tmp_path, monkeypatch, *, owner=OWNER, state=None, terms=("Ан�
     deliver_io = ConversationIO(core.companion, core.hub)         # обратный путь ответа (у core.io заглушка для входа обращений)
     await core.start()
     mem = tmp_path / "memory"
-    client = ModuleClient(build_manifest(), url=core.url, token=core.token)
+    client = WorkspaceClient(build_manifest(), url=core.url, token=core.token)
     mod = TelegramModule(client, str(mem))
     net = NetStubs()
     net.install(mod)
@@ -179,7 +179,7 @@ async def test_privacy_terms_come_from_the_real_core_request(tmp_path, monkeypat
 
 async def test_disabling_the_module_hides_its_tools_and_drops_its_events(tmp_path, monkeypatch):
     async with stack(tmp_path, monkeypatch) as s:
-        s.core.settings_state["modules"]["telegram"]["enabled"] = False
+        s.core.settings_state["peers"]["telegram"]["enabled"] = False
         await s.core.hub.refresh()
         await s.core.wait_for(lambda: not s.client.enabled)
         assert s.core.envs.envs["telegram"].state()[0] is False                 # «возможности»: инструменты пропали
@@ -192,11 +192,11 @@ async def test_disabling_the_module_hides_its_tools_and_drops_its_events(tmp_pat
 @pytest.mark.parametrize("path", ["post", "send"])
 def test_planner_search_finds_telegram_tools_by_old_requests(path):
     from environments.registry import Registry
-    from module_registry import ModuleRegistry
+    from peer_registry import PeerRegistry
 
     reg = Registry()
-    mods = ModuleRegistry(reg, settings_source=lambda: {"modules": {}})
-    conn = SimpleNamespace(module_id="telegram", manifest=build_manifest(), instance="x", pid=1, connected_at=0,
+    mods = PeerRegistry(reg, settings_source=lambda: {"peers": {}})
+    conn = SimpleNamespace(id="telegram", manifest=build_manifest(), instance="x", pid=1, connected_at=0,
                            spec=__import__("gits_sdk.protocol", fromlist=["Manifest"]).Manifest.from_dict(build_manifest()))
     mods.on_connected(conn)
     reg.focus = lambda: set()

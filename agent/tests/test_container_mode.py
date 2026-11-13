@@ -26,9 +26,7 @@ def test_peers_file_default_and_override(tmp_path):
     assert supervisor.peers_file({"GITS_PEERS_FILE": "agent/x.yaml"}, tmp_path) == tmp_path / "agent" / "x.yaml"
     absolute = tmp_path / "m.yaml"
     assert supervisor.peers_file({"GITS_PEERS_FILE": str(absolute)}, tmp_path) == absolute
-    assert supervisor.peers_file({"GITS_MODULES_FILE": "agent/old.yaml"}, tmp_path) == tmp_path / "agent" / "old.yaml"     # алиас
-    assert supervisor.peers_file({"GITS_PEERS_FILE": "agent/new.yaml", "GITS_MODULES_FILE": "agent/old.yaml"},
-                                 tmp_path) == tmp_path / "agent" / "new.yaml"                                          # новое имя главнее
+    assert supervisor.peers_file({"GITS_MODULES_FILE": "agent/old.yaml"}, tmp_path) == supervisor.PEERS_YAML     # прежнее имя не читается
 
 
 def test_load_specs_follows_env_file(tmp_path, monkeypatch):
@@ -50,9 +48,9 @@ def test_container_peers_file_is_valid_and_hardware_free(monkeypatch):
     assert (montage.ownership, montage.unmanaged, montage.control_url) == ("shared", True, "http://montage:8780")
     assert montage.control_token_env == "GITS_CONTROL_TOKEN"
     main = {s.id: s for s in supervisor.load_specs(ROOT / "agent" / "peers.yaml")}
-    for module_id, spec in specs.items():
-        assert spec.role == "workspace" and spec.ownership == "owned" and spec.autostart == main[module_id].autostart and spec.restart == main[module_id].restart
-        assert spec.cwd == main[module_id].cwd and spec.args == main[module_id].args
+    for peer_id, spec in specs.items():
+        assert spec.role == "workspace" and spec.ownership == "owned" and spec.autostart == main[peer_id].autostart and spec.restart == main[peer_id].restart
+        assert spec.cwd == main[peer_id].cwd and spec.args == main[peer_id].args
     assert not set(specs) & HARDWARE
     assert not any(s.external for s in specs.values())            # decider и espeech внешние
     assert supervisor.load_planned(CONTAINER_FILE) == []
@@ -126,14 +124,14 @@ async def test_container_token_from_environment_and_no_file(tmp_path, monkeypatc
     assert not (tmp_path / "module_token").exists()
 
 
-async def test_container_token_legacy_alias_and_new_name_priority(tmp_path, monkeypatch):
+async def test_container_token_old_name_is_ignored(tmp_path, monkeypatch):
     import settings
     monkeypatch.setattr(settings, "_dir", tmp_path)
-    legacy = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1", P.ENV_MODULE_TOKEN: "old-token"})
-    assert legacy.token == "old-token"                                         # прежнее имя GITS_MODULE_TOKEN читается как алиас
-    both = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1", P.ENV_MODULE_TOKEN: "old-token",
+    legacy = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1", "GITS_MODULE_TOKEN": "old-token"})
+    assert legacy.token != "old-token"                                         # прежнее имя GITS_MODULE_TOKEN не читается
+    both = PeerHub(PeerRegistry(Registry()), environ={"GITS_CONTAINER": "1", "GITS_MODULE_TOKEN": "old-token",
                                                       P.ENV_TOKEN: "new-token"})
-    assert both.token == "new-token"                                           # GITS_TOKEN главнее
+    assert both.token == "new-token"
 
 
 async def test_container_without_token_writes_file_to_memory_dir(tmp_path, monkeypatch):

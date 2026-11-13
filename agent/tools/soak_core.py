@@ -3,7 +3,7 @@
 Поднимается настоящее ядро (Companion, менеджер внимания и фокуса, шина модулей, дашборд на свободном порту, временная папка
 памяти). Модель, классификатор и речь подменены заглушками; сети, микрофона, игры и Claude нет. Нагрузка:
   - реплики в чат через `POST /api/chat`;
-  - события от фиктивных модулей через клиентов SDK (`ModuleClient.event`);
+  - события от фиктивных модулей через клиентов SDK (`WorkspaceClient.event`);
   - подключение и отключение фиктивных модулей, в том числе обрыв соединения без закрытия;
   - заглушка очереди памяти-графа (`enqueue` от разговора, разбор по таймеру).
 Раз в `--sample` секунд снимаются: память процесса (RSS), задержка цикла событий, число задач asyncio, число ошибок в журнале,
@@ -172,10 +172,10 @@ def _rss_mb() -> float:
     return psutil.Process().memory_info().rss / 1048576
 
 
-def _fake_manifest(module_id: str) -> dict:
-    return {"id": module_id, "title": module_id, "description": "Фиктивный модуль прогона.", "version": "1.0.0",
+def _fake_manifest(peer_id: str) -> dict:
+    return {"id": peer_id, "role": "workspace", "ownership": "owned", "title": peer_id, "description": "Фиктивный модуль прогона.", "version": "1.0.0",
             "subscribe": ["presence"], "tools": [],
-            "emits": [{"kind": f"{module_id}.ping", "description": "пинг", "default_urgency": 1}]}
+            "emits": [{"kind": f"{peer_id}.ping", "description": "пинг", "default_urgency": 1}]}
 
 
 class Soak:
@@ -295,10 +295,10 @@ class Soak:
 
     async def module_load(self, deadline: float, name: str, period: float):
         """Фиктивный модуль: подключается, шлёт события, периодически отключается (то закрытием, то обрывом соединения)."""
-        from gits_sdk import ModuleClient
-        url = f"ws://127.0.0.1:{self.port}/module/ws"
+        from gits_sdk import WorkspaceClient
+        url = f"ws://127.0.0.1:{self.port}/ws"
         while time.time() < deadline:
-            client = ModuleClient(_fake_manifest(name), url=url, token=self.layer.hub.token)
+            client = WorkspaceClient(_fake_manifest(name), url=url, token=self.layer.hub.token)
             client.reconnect_delays = (0.2, 0.5)
             task = asyncio.get_running_loop().create_task(client.run())
             try:

@@ -149,7 +149,7 @@ class ProfileManager:
                  battery: Callable[[], dict] = lambda: {},
                  foreground_app: Callable[[], str | None] = lambda: None,
                  workspace_of: Callable[[], str] = lambda: "assistant",
-                 module_state: Callable[[str], dict | None] = lambda module_id: None,
+                 module_state: Callable[[str], dict | None] = lambda peer_id: None,
                  choice: Callable[[], str] | None = None,
                  streamer: Callable[[], bool] | None = None,
                  now: Callable[[], float] = time.time,
@@ -198,8 +198,8 @@ class ProfileManager:
             return True
         wanted = act.get("module_state") or {}
         if wanted:
-            for module_id, pairs in wanted.items():
-                data = self._module_state(module_id) or {}
+            for peer_id, pairs in wanted.items():
+                data = self._module_state(peer_id) or {}
                 if not all(k in data and data[k] == v for k, v in pairs.items()):
                     return False
             return True
@@ -337,8 +337,8 @@ class ProfileManager:
         act, parts = p.activate or {}, []
         if act.get("foreground_apps"):
             parts.append("на экране: " + ", ".join(act["foreground_apps"]))
-        for module_id, pairs in (act.get("module_state") or {}).items():
-            parts.append(f"модуль {module_id}: " + ", ".join(f"{k} = {v}" for k, v in pairs.items()))
+        for peer_id, pairs in (act.get("module_state") or {}).items():
+            parts.append(f"модуль {peer_id}: " + ", ".join(f"{k} = {v}" for k, v in pairs.items()))
         return ("Сама, когда " + "; ".join(parts)) if parts else "Только вручную"
 
     def states(self) -> list[dict]:

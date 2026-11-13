@@ -142,12 +142,12 @@ async def node_actions(module, path: str) -> list[dict]:
         if node != path or kind not in ("action", "skill") or old not in listed:
             continue
         t = listed[old]
-        out.append({"id": f"{MODULE_ID_FOR_CALLS}.{name}", "params": {k: v.get("type", "string") + ("" if v.get("required") else "?")
+        out.append({"id": f"{PEER_ID_FOR_CALLS}.{name}", "params": {k: v.get("type", "string") + ("" if v.get("required") else "?")
                                                                      for k, v in schema_to_params(t.inputSchema, t.description).items()}})
     return out
 
 
-MODULE_ID_FOR_CALLS = "rimworld"
+PEER_ID_FOR_CALLS = "rimworld"
 
 
 def make_nav_handlers(state: NodeState, module=None) -> dict[str, Callable]:

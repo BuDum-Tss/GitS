@@ -115,11 +115,6 @@ class Core:
 
     @property
     def url(self) -> str:
-        return f"ws://127.0.0.1:{self.port}/module/ws"
-
-    @property
-    def url_ws(self) -> str:
-        """Новый адрес входа `/ws` (прежний `/module/ws` остаётся в `url`: им пользуются клиенты SDK и тесты модулей)."""
         return f"ws://127.0.0.1:{self.port}/ws"
 
     @property
@@ -157,13 +152,13 @@ class Core:
                 await asyncio.sleep(0.01)
         return await asyncio.wait_for(waiter(), timeout)
 
-    async def wait_connected(self, module_id: str, timeout=5.0):
-        await self.wait_for(lambda: self.hub.connection(module_id) is not None, timeout)
+    async def wait_connected(self, peer_id: str, timeout=5.0):
+        await self.wait_for(lambda: self.hub.connection(peer_id) is not None, timeout)
 
 
 @contextlib.asynccontextmanager
 async def running_core(tmp_path, settings_state=None, spoof_remote=None, allow=None):
-    core = Core(tmp_path, {"modules": {}} if settings_state is None else settings_state, spoof_remote, allow=allow)
+    core = Core(tmp_path, {"peers": {}} if settings_state is None else settings_state, spoof_remote, allow=allow)
     await core.start()
     try:
         yield core
@@ -173,10 +168,10 @@ async def running_core(tmp_path, settings_state=None, spoof_remote=None, allow=N
 
 @contextlib.asynccontextmanager
 async def running_client(client, core):
-    """Запустить ModuleClient против ядра и дождаться рукопожатия."""
+    """Запустить WorkspaceClient против ядра и дождаться рукопожатия."""
     task = asyncio.create_task(client.run())
     try:
-        await core.wait_connected(client.module_id)
+        await core.wait_connected(client.id)
         await client.wait_connected(5)
         yield task
     finally:
@@ -193,7 +188,7 @@ class RawModule:
 
     def __init__(self, core: Core, manifest: dict, *, token: str | None = None, protocol: int = P.PROTOCOL,
                  url: str | None = None, hello_extra: dict | None = None, hello_drop: tuple = ()):
-        """url - другой адрес входа (по умолчанию `core.url`); hello_extra и hello_drop меняют поля hello (id, role, module_id)."""
+        """url - другой адрес входа (по умолчанию `core.url`); hello_extra и hello_drop меняют поля hello (id, role, peer_id)."""
         self.core, self.manifest, self.token, self.protocol = core, manifest, token or core.token, protocol
         self.url, self.hello_extra, self.hello_drop = url, hello_extra or {}, hello_drop
         self.inbox: list[Envelope] = []
@@ -271,12 +266,14 @@ class RawModule:
             await self.session.close()
 
 
-def manifest(module_id="raw", **extra) -> dict:
+def manifest(peer_id="raw", **extra) -> dict:
     """Минимальный верный манифест для сырых модулей."""
-    base = {"id": module_id, "title": module_id.title(), "description": "Тестовый модуль.", "version": "1.0.0",
+    base = {"id": peer_id, "role": "workspace", "ownership": "owned", "title": peer_id.title(), "description": "Тестовый модуль.", "version": "1.0.0",
             "subscribe": ["presence", "settings", "profile", "module", "battery"],
-            "emits": [{"kind": f"{module_id}.ping", "description": "пинг", "default_urgency": 2}]}
+            "emits": [{"kind": f"{peer_id}.ping", "description": "пинг", "default_urgency": 2}]}
     base.update(extra)
+    if base.get("ownership") is None:
+        base.pop("ownership", None)                  # у service ownership быть не должно: `ownership=None` убирает поле
     return base
 
 

@@ -20,7 +20,7 @@
       },
       "focus_modules": {
         "type": "array",
-        "description": "модули фокуса",
+        "description": "участники шины фокуса",
         "items": {
           "type": "string"
         }
@@ -31,6 +31,6 @@
       "id"
     ],
     "title": "profile",
-    "description": "Активный профиль: id, название, модули фокуса."
+    "description": "Активный профиль: id, название, участники шины фокуса."
   }
 }

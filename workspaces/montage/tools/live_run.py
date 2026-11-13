@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "agent")]
 
-from gits_sdk import ModuleClient  # noqa: E402
+from gits_sdk import WorkspaceClient  # noqa: E402
 from gits_sdk.testing import FakeCore  # noqa: E402
 
 import main as main_mod  # noqa: E402
@@ -58,7 +58,7 @@ async def run(smoke: bool, models: str, resume: str | None = None, source: str |
 
     t0 = time.time()
     async with core:
-        client = ModuleClient(build_manifest(), url=core.url, token=core.token)
+        client = WorkspaceClient(build_manifest(), url=core.url, token=core.token)
         client, manager = main_mod.build(layout, client=client)
         task = asyncio.create_task(main_mod.run(client, manager))
         await core.wait_connected()

@@ -51,31 +51,31 @@ class Normalizer:
                 item.urgency = max(new, 4) if base >= 4 else new
 
     @staticmethod
-    def make_item(module_id: str, ev: dict, now: float) -> Item:
+    def make_item(peer_id: str, ev: dict, now: float) -> Item:
         sender = ev.get("sender") if isinstance(ev.get("sender"), dict) else None
         reply = ev.get("reply_channel") if isinstance(ev.get("reply_channel"), dict) else None
         hint = ev.get("urgency_hint")
         hint = int(hint) if isinstance(hint, (int, float)) and not isinstance(hint, bool) else None
         ttl = ev.get("expires_in_s")
-        return Item(id="a-" + secrets.token_hex(4), module=module_id, kind=str(ev.get("kind") or f"{module_id}.event"),
+        return Item(id="a-" + secrets.token_hex(4), module=peer_id, kind=str(ev.get("kind") or f"{peer_id}.event"),
                     text=str(ev.get("text") or "")[:TEXT_MAX], data=ev.get("data") if isinstance(ev.get("data"), dict) else {},
                     sender=sender, reply_channel=reply,
                     addressed_to_me=ev["addressed_to_me"] if isinstance(ev.get("addressed_to_me"), bool) else None,
                     urgency=None, needs_reply=False, memorable=bool(ev.get("memorable")), created=now,
                     expires=now + float(ttl) if isinstance(ttl, (int, float)) and not isinstance(ttl, bool) and ttl > 0 else None,
                     dedupe_key=str(ev["dedupe_key"]) if ev.get("dedupe_key") else None, urgency_hint=hint, updated=now,
-                    trace=latency_trace.from_bus(ev.get("trace"), str(ev.get("kind") or f"{module_id}.event")),
-                    origin=ORIGIN_SELF if module_id == SELF_MODULE else ORIGIN_EXTERNAL)
+                    trace=latency_trace.from_bus(ev.get("trace"), str(ev.get("kind") or f"{peer_id}.event")),
+                    origin=ORIGIN_SELF if peer_id == SELF_MODULE else ORIGIN_EXTERNAL)
 
     @staticmethod
-    def make_speech_item(module_id: str, say: dict, text: str, now: float) -> tuple[Item, str, float | None]:
+    def make_speech_item(peer_id: str, say: dict, text: str, now: float) -> tuple[Item, str, float | None]:
         """Item для речи модуля (тело `say`, ТЗ 01 раздел 7.2) и её режим и срок жизни."""
         mode = "verbatim" if say.get("mode", "fact") == "verbatim" else "fact"
         hint = say.get("urgency_hint")
         hint = int(hint) if isinstance(hint, (int, float)) and not isinstance(hint, bool) else SPEECH_DEFAULT_URGENCY
         ttl = say.get("expires_in_s")
         ttl = float(ttl) if isinstance(ttl, (int, float)) and not isinstance(ttl, bool) and ttl > 0 else None
-        item = Item(id="a-" + secrets.token_hex(4), module=module_id, kind=f"{module_id}.say", text=text[:TEXT_MAX], data={},
+        item = Item(id="a-" + secrets.token_hex(4), module=peer_id, kind=f"{peer_id}.say", text=text[:TEXT_MAX], data={},
                     sender=None, reply_channel=None, addressed_to_me=None, urgency=hint, needs_reply=False,
                     memorable=False, created=now, expires=None, dedupe_key=None, urgency_hint=hint, updated=now)
         return item, mode, ttl

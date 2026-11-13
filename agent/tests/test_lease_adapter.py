@@ -18,7 +18,7 @@ from supervisor import PeerSpec, Supervisor, load_specs
 
 TOKEN = "control-secret"
 CORE_TOKEN = "core-secret-token"
-MANIFEST = {"id": "montage", "title": "Монтаж видео", "description": "d", "version": "1.0.0", "tools": [
+MANIFEST = {"id": "montage", "role": "workspace", "ownership": "shared", "title": "Монтаж видео", "description": "d", "version": "1.0.0", "tools": [
     {"name": "start", "description": "смонтировать"}],
     "workspace": {"id": "montage", "title": "Монтаж", "purpose": "делать ролики", "when_to_use": "просят смонтировать видео",
                   "keywords": ["монтаж"], "entry": ["user_message", "self_impulse"]}}

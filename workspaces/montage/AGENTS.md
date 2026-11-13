@@ -43,7 +43,7 @@
 ## Карта модулей
 | Путь | Назначение | Состояние |
 |---|---|---|
-| `agent/main.py` | точка входа: `ModuleClient`, подключение обработчиков (`wire`), восстановление при подключении | готов |
+| `agent/main.py` | точка входа: `WorkspaceClient`, подключение обработчиков (`wire`), восстановление при подключении | готов |
 | `agent/manifest.py` | манифест модуля: инструменты `start`, `status`, `revise`, `cancel`, настройки, `announce` у `start` | готов |
 | `agent/manager.py` | очередь (одна задача за раз), проверки `start` (MON-5), отмена, правки, `state` (MON-33) | готов |
 | `agent/pipeline.py` | стадии `intake`, `clarify`, `transcribe`, `story`, `plan`, `plan_approval`, `voiceover`, `build`, `preview`, `review`, `final`; вопросы, батарейка, автоисправление по QA | готов |

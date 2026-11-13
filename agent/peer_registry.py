@@ -78,7 +78,7 @@ class PeerRecord:
     def role(self) -> str:
         """workspace | service: `role` манифеста подключившегося участника, иначе роль из peers.yaml, иначе workspace."""
         declared = (self.manifest or {}).get("role")
-        return declared if declared in P.ROLES else (self.declared_role or P.DEFAULT_ROLE)
+        return declared if declared in P.ROLES else (self.declared_role or P.ROLE_WORKSPACE)
 
     @property
     def ownership(self) -> str | None:
@@ -86,7 +86,7 @@ class PeerRecord:
         if self.role != P.ROLE_WORKSPACE:
             return None
         declared = (self.manifest or {}).get("ownership")
-        return declared if declared in P.OWNERSHIPS else (self.declared_ownership or P.DEFAULT_OWNERSHIP)
+        return declared if declared in P.OWNERSHIPS else (self.declared_ownership or P.OWNERSHIP_OWNED)
 
 
 class PeerRegistry:
@@ -110,25 +110,25 @@ class PeerRegistry:
 
     # ── записи ──────────────────────────────────────────────────────────────
 
-    def declare(self, module_id: str, *, title: str = "", default_enabled: bool = True, role: str = "workspace",
+    def declare(self, peer_id: str, *, title: str = "", default_enabled: bool = True, role: str = "workspace",
                 ownership: str | None = None, external: bool = False, description: str = "",
                 dev: bool = False, control_url: str = "") -> PeerRecord:
         """Окружение или сервис, который ядро знает заранее (peers.yaml): запись есть и пока он не подключился."""
-        rec = self.records.setdefault(module_id, PeerRecord(module_id))
-        rec.title = rec.title or title or module_id
+        rec = self.records.setdefault(peer_id, PeerRecord(peer_id))
+        rec.title = rec.title or title or peer_id
         rec.default_enabled = default_enabled
         rec.declared_role, rec.declared_ownership, rec.external = role, ownership, external
         rec.title_override, rec.description_override, rec.dev = title, description, dev
         rec.control_url = control_url
         return rec
 
-    def declare_planned(self, module_id: str, *, title: str, tz: str = "") -> PlannedRecord:
+    def declare_planned(self, peer_id: str, *, title: str, tz: str = "") -> PlannedRecord:
         """Запланированный участник (peers.yaml, planned): виден в дашборде серой карточкой, ядро его не запускает."""
-        rec = self.planned[module_id] = PlannedRecord(module_id, title, tz)
+        rec = self.planned[peer_id] = PlannedRecord(peer_id, title, tz)
         return rec
 
-    def get(self, module_id: str) -> PeerRecord | None:
-        return self.records.get(module_id)
+    def get(self, peer_id: str) -> PeerRecord | None:
+        return self.records.get(peer_id)
 
     def _settings(self, cfg: dict | None = None) -> dict:
         if cfg is not None:
@@ -143,25 +143,25 @@ class PeerRegistry:
     def invalidate(self) -> None:
         self._enabled_cache = (0.0, {})
 
-    def is_enabled(self, module_id: str, cfg: dict | None = None) -> bool:
-        """Включён ли модуль: явный выбор в настройках (modules.<id>.enabled), иначе значение по умолчанию (включён)."""
-        entry = settings.peer_entry(self._settings(cfg), module_id)
+    def is_enabled(self, peer_id: str, cfg: dict | None = None) -> bool:
+        """Включён ли модуль: явный выбор в настройках (peers.<id>.enabled), иначе значение по умолчанию (включён)."""
+        entry = settings.peer_entry(self._settings(cfg), peer_id)
         if entry is not None and isinstance(entry.get("enabled"), bool):
             return entry["enabled"]
-        rec = self.records.get(module_id)
+        rec = self.records.get(peer_id)
         return rec.default_enabled if rec is not None else True
 
-    def module_settings(self, module_id: str, cfg: dict | None = None) -> dict:
+    def module_settings(self, peer_id: str, cfg: dict | None = None) -> dict:
         """Собственные настройки модуля: значения по умолчанию из манифеста, поверх них сохранённые."""
-        rec = self.records.get(module_id)
+        rec = self.records.get(peer_id)
         schema = ((rec.manifest or {}).get("settings_schema") or {}) if rec else {}
-        stored = settings.peer_entry(self._settings(cfg), module_id) or {}
+        stored = settings.peer_entry(self._settings(cfg), peer_id) or {}
         return {name: stored.get(name, spec["default"]) for name, spec in schema.items()}
 
     # ── подключение ─────────────────────────────────────────────────────────
 
     def on_connected(self, conn) -> PeerRecord:
-        peer_id = getattr(conn, "id", None) or conn.module_id
+        peer_id = conn.id
         rec = self.records.setdefault(peer_id, PeerRecord(peer_id))
         changed = rec.manifest != conn.manifest
         m = conn.manifest
@@ -174,20 +174,20 @@ class PeerRegistry:
             self._build_environment(rec, conn.spec)
         return rec
 
-    def on_disconnected(self, module_id: str, reason: str) -> None:
-        rec = self.records.get(module_id)
+    def on_disconnected(self, peer_id: str, reason: str) -> None:
+        rec = self.records.get(peer_id)
         if rec is None:
             return
         rec.connected = False
         rec.last_disconnect_reason = reason
-        for key in [k for k in self._job_waiters if k[0] == module_id]:       # ждавшие задачу модуля получают сбой
+        for key in [k for k in self._job_waiters if k[0] == peer_id]:       # ждавшие задачу модуля получают сбой
             fut = self._job_waiters.pop(key)
             if not fut.done():
                 fut.set_result({"job_id": key[1], "state": "failed", "text": "",
                                 "error": {"code": "unavailable", "message": "модуль отключился"}})
 
-    def set_state(self, module_id: str, summary: str, data: dict, node: str | None = None) -> None:
-        rec = self.records.get(module_id)
+    def set_state(self, peer_id: str, summary: str, data: dict, node: str | None = None) -> None:
+        rec = self.records.get(peer_id)
         if rec is None:
             return
         rec.state = {"summary": summary, "data": data, "ts": time.time()}
@@ -199,10 +199,10 @@ class PeerRegistry:
             except Exception as e:
                 logger.warning(f"Реакция на state модуля: {e}")
 
-    def set_panel(self, module_id: str, body: dict) -> bool:
+    def set_panel(self, peer_id: str, body: dict) -> bool:
         """Блоки пространства модуля (`panel.set`, TZ 15): последнее значение целиком. Чаще раза в секунду - лишнее
         отбрасывается (с допуском на задержку сети). False, если модуль не объявил panel или сообщение отброшено."""
-        rec = self.records.get(module_id)
+        rec = self.records.get(peer_id)
         if rec is None or rec.panel is None:
             return False
         now = time.time()
@@ -259,8 +259,8 @@ class PeerRegistry:
 
     is_noise = staticmethod(lambda module, kind: False)       # (модуль, вид) -> событие чужого занятия, пока она в среде модуля (ставит ядро)
 
-    def note_event(self, module_id: str, event: dict) -> None:
-        self.events.append({"ts": time.time(), "module": module_id, "kind": str(event.get("kind") or ""),
+    def note_event(self, peer_id: str, event: dict) -> None:
+        self.events.append({"ts": time.time(), "module": peer_id, "kind": str(event.get("kind") or ""),
                             "text": " ".join(str(event.get("text") or "").split())[:200]})
 
     def events_report(self, module: str | None = None, limit: int = 15) -> str:
@@ -275,28 +275,28 @@ class PeerRegistry:
         return "Недавние события модулей:\n" + "\n".join(
             f"- {max(0, round((now - e['ts']) / 60))} мин назад, {e['module']} {e['kind']}: {e['text']}" for e in rows)
 
-    def node(self, module_id: str) -> str | None:
+    def node(self, peer_id: str) -> str | None:
         """Узел рабочего места, о котором модуль сообщил в `state.node` (ТЗ 33), или None."""
-        rec = self.records.get(module_id)
+        rec = self.records.get(peer_id)
         return (rec.state or {}).get("node") if rec is not None and rec.connected and rec.state else None
 
-    def manifest_of(self, module_id: str) -> dict | None:
-        rec = self.records.get(module_id)
+    def manifest_of(self, peer_id: str) -> dict | None:
+        rec = self.records.get(peer_id)
         return rec.manifest if rec is not None else None
 
-    def state_data(self, module_id: str) -> dict | None:
+    def state_data(self, peer_id: str) -> dict | None:
         """state.data подключённого модуля (для профилей) или None."""
-        rec = self.records.get(module_id)
+        rec = self.records.get(peer_id)
         return rec.state["data"] if rec is not None and rec.connected and rec.state else None
 
     # ── задачи ──────────────────────────────────────────────────────────────
 
-    def update_job(self, module_id: str, body: dict) -> dict | None:
-        rec = self.records.get(module_id)
+    def update_job(self, peer_id: str, body: dict) -> dict | None:
+        rec = self.records.get(peer_id)
         if rec is None:
             return None
         job = {**rec.jobs.get(body["job_id"], {}), **{k: v for k, v in body.items() if v is not None}}
-        job["module"], job["updated"] = module_id, time.time()
+        job["module"], job["updated"] = peer_id, time.time()
         if body.get("state") != "waiting_user":
             job.pop("question", None)
         rec.jobs[body["job_id"]] = job
@@ -304,18 +304,18 @@ class PeerRegistry:
         for old in finished[:-FINISHED_JOBS_KEPT]:
             rec.jobs.pop(old["job_id"], None)
         if job["state"] in JOB_FINISHED:
-            fut = self._job_waiters.pop((module_id, body["job_id"]), None)
+            fut = self._job_waiters.pop((peer_id, body["job_id"]), None)
             if fut is not None and not fut.done():
                 fut.set_result(dict(job))
         return job
 
-    async def wait_job(self, module_id: str, job_id: str, timeout: float = 600.0) -> dict:
+    async def wait_job(self, peer_id: str, job_id: str, timeout: float = 600.0) -> dict:
         """Дождаться завершения задачи модуля (ТЗ 14, DESK-11): вернуть её последний job (state done/failed/cancelled).
         Тайм-аут и обрыв модуля дают state failed с error."""
-        rec = self.records.get(module_id)
+        rec = self.records.get(peer_id)
         if rec is not None and rec.jobs.get(job_id, {}).get("state") in JOB_FINISHED:
             return dict(rec.jobs[job_id])
-        key = (module_id, job_id)
+        key = (peer_id, job_id)
         fut = asyncio.get_running_loop().create_future()
         self._job_waiters[key] = fut
         try:
@@ -338,8 +338,8 @@ class PeerRegistry:
         rows.sort(key=lambda j: (j["state"] in ("done", "failed", "cancelled"), -j["updated"]))
         return rows
 
-    async def cancel_job(self, module_id: str, job_id: str) -> str:
-        conn = self.hub.connection(module_id) if self.hub is not None else None
+    async def cancel_job(self, peer_id: str, job_id: str) -> str:
+        conn = self.hub.connection(peer_id) if self.hub is not None else None
         if conn is None:
             raise ToolError("модуль не подключён")
         try:
@@ -350,11 +350,11 @@ class PeerRegistry:
 
     # ── окружение для планировщика ────────────────────────────────────────────
 
-    def _env_state(self, module_id: str) -> tuple[bool, str]:
-        rec = self.records.get(module_id)
+    def _env_state(self, peer_id: str) -> tuple[bool, str]:
+        rec = self.records.get(peer_id)
         if rec is None or not rec.connected:
             return False, "модуль не подключён"
-        if not self.is_enabled(module_id):
+        if not self.is_enabled(peer_id):
             return False, "модуль выключен"
         return True, "доступно"
 
@@ -378,19 +378,19 @@ class PeerRegistry:
             context = ""
         return {**args, "context": str(context)[:4000]}
 
-    def _make_tool(self, module_id: str, spec) -> Tool:
+    def _make_tool(self, peer_id: str, spec) -> Tool:
         async def call(args: dict) -> str:
-            conn = self.hub.connection(module_id) if self.hub is not None else None
+            conn = self.hub.connection(peer_id) if self.hub is not None else None
             if conn is None:
                 raise ToolError("модуль не подключён")
-            if not self.is_enabled(module_id):
+            if not self.is_enabled(peer_id):
                 raise ToolError("модуль выключен")
             attention = getattr(self.hub, "attention", None)
             if spec.announce and attention is not None:
                 try:
-                    await attention.submit_announce(module_id, announce_text(spec, args), data={"tool": spec.name})
+                    await attention.submit_announce(peer_id, announce_text(spec, args), data={"tool": spec.name})
                 except Exception as e:                  # объявление не должно мешать самому вызову
-                    logger.warning(f"Объявление запуска {spec.full_id(module_id)}: {e}")
+                    logger.warning(f"Объявление запуска {spec.full_id(peer_id)}: {e}")
             args = await self._fill_core(spec, args)
             try:
                 value = await conn.request("tool.call", {"tool": spec.name, "args": args}, timeout=spec.timeout_s)
@@ -399,7 +399,7 @@ class PeerRegistry:
             return self.render(value, spec.job)
 
         async def check(args: dict) -> str | None:
-            conn = self.hub.connection(module_id) if self.hub is not None else None
+            conn = self.hub.connection(peer_id) if self.hub is not None else None
             try:
                 if conn is None:
                     raise PeerError("unavailable", "модуль не подключён")
@@ -410,7 +410,7 @@ class PeerRegistry:
                 return "модуль не ответил на проверку"
 
         params = {k: v for k, v in spec.params.items() if k not in spec.core_fills}     # планировщик core_fills не видит
-        return Tool(id=spec.full_id(module_id), env=module_id, name=spec.name, description=spec.description,
+        return Tool(id=spec.full_id(peer_id), env=peer_id, name=spec.name, description=spec.description,
                     params=params, risk=spec.risk, keywords=tuple(spec.keywords), call=call,
                     self_confirming=spec.self_confirming, informative=spec.informative, always=spec.fallback,
                     availability=spec.availability, node=spec.node, timeout_s=spec.timeout_s, job=spec.job,

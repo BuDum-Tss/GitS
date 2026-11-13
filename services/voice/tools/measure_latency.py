@@ -9,7 +9,7 @@
            `voice.utterance` в FakeCore, в режиме legacy - вызов `on_voice` (в ядре до переноса).
 
 Режимы:
-  --mode module   текущая ветка (после переноса): Speaker и MicListener модуля, события через настоящий ModuleClient.
+  --mode module   текущая ветка (после переноса): Speaker и MicListener модуля, события через настоящий ServiceClient.
   --mode legacy   ветка master (до переноса): `tts_engine.speak_sequence` и `mic_listener.MicListener` из каталога агента.
                   Укажи --agent-dir каталога agent/ из master (например git worktree: `git worktree add ..\\GitS-master master`).
 
@@ -72,7 +72,7 @@ def pcm_frames(audio: str) -> list[bytes]:
 async def measure_module(n: int, audio: str | None, skip_utter: bool) -> dict:
     sys.path[:0] = [str(HERE), str(GITS / "agent"), str(GITS / "sdk")]
     import tts_engine
-    from gits_sdk import ModuleClient
+    from gits_sdk import ServiceClient
     from gits_sdk.testing import FakeCore
     from voice_module import VoiceModule
     from manifest import build_manifest
@@ -91,7 +91,7 @@ async def measure_module(n: int, audio: str | None, skip_utter: bool) -> dict:
     out: dict = {}
     async with FakeCore(settings={"voice_muted": False, "volume": 100, "mic": False, "hearing": False,
                                   "dnd": False, "quiet_until": 0.0}) as core:
-        client = ModuleClient(build_manifest(), url=core.url, token=core.token)
+        client = ServiceClient(build_manifest(), url=core.url, token=core.token)
         player = SilentPlayer()
         mod = VoiceModule(client, fake=False, player=player, tmp_dir=tmp)
         task = asyncio.create_task(client.run())

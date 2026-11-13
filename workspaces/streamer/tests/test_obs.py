@@ -4,7 +4,7 @@ import json
 
 import pytest
 from aiohttp import web
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import WorkspaceClient, ToolError
 from gits_sdk.testing import FakeCore
 
 from obs import obs_client
@@ -94,7 +94,7 @@ class Rig:
     async def __aenter__(self):
         await self.fake.start()
         await self.core.start()
-        self.client = ModuleClient(build_manifest(("obs",)), url=self.core.url, token=self.core.token)
+        self.client = WorkspaceClient(build_manifest(("obs",)), url=self.core.url, token=self.core.token)
         self.client.reconnect_delays = (0.05, 0.05, 0.1)
         self.mod = ObsModule(self.client, self.fake.url, PASSWORD if self.give_password else "")
         obs_client.RECONNECT_S = 0.1
@@ -186,7 +186,7 @@ async def test_wrong_password_keeps_module_disconnected_with_a_reason():
     rig = Rig(give_password=False)
     await rig.fake.start()
     await rig.core.start()
-    client = ModuleClient(build_manifest(("obs",)), url=rig.core.url, token=rig.core.token)
+    client = WorkspaceClient(build_manifest(("obs",)), url=rig.core.url, token=rig.core.token)
     mod = ObsModule(client, rig.fake.url, "")
     obs_client.RECONNECT_S = 0.1
     task = asyncio.create_task(mod.obs.run())

@@ -1,9 +1,9 @@
-"""Стенд тестов модуля голоса: настоящий ModuleClient против FakeCore, синтез, воспроизведение и STT подменены."""
+"""Стенд тестов модуля голоса: настоящий ServiceClient против FakeCore, синтез, воспроизведение и STT подменены."""
 import asyncio
 import contextlib
 from pathlib import Path
 
-from gits_sdk import ModuleClient
+from gits_sdk import ServiceClient
 from gits_sdk.testing import FakeCore
 
 from voice_module import VoiceModule
@@ -115,7 +115,7 @@ class Rig:
 
     async def __aenter__(self):
         await self.core.start()
-        self.client = ModuleClient(build_manifest(), url=self.core.url, token=self.core.token)
+        self.client = ServiceClient(build_manifest(), url=self.core.url, token=self.core.token)
         self.client.reconnect_delays = (0.05, 0.05, 0.1)
         self.player = self._player or FakePlayer(hold=self._hold)
 

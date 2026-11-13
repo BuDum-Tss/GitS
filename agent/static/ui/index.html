@@ -1540,7 +1540,7 @@ function modPageHtml(m, data, jobs, events) {
 async function renderModPage(mods, jobs) {
   const m = mods.find(x => x.id === MODTAB.selected);
   if (!m) return;
-  const data = await fetch(`/api/modules/${encodeURIComponent(m.id)}/panel`).then(r => r.json()).catch(() => ({blocks: []}));
+  const data = await fetch(`/api/peers/${encodeURIComponent(m.id)}/panel`).then(r => r.json()).catch(() => ({blocks: []}));
   const events = await modEvents(m.id);
   const html = modPageHtml(m, data, jobs.filter(j => j.module === m.id), events);
   const typing = $('mod-page').contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
@@ -1592,19 +1592,19 @@ $('mod-page').addEventListener('click', async e => {
   const act = e.target.closest('[data-panel-action]');
   if (act) {
     let args = {}; try { args = JSON.parse(act.dataset.args || '{}'); } catch (_) { args = {}; }
-    const r = await post(`/api/modules/${encodeURIComponent(act.dataset.module)}/panel/action`, {action_id: act.dataset.panelAction, args});
+    const r = await post(`/api/peers/${encodeURIComponent(act.dataset.module)}/panel/action`, {action_id: act.dataset.panelAction, args});
     await showPanelReply(act.dataset.module, r); return;
   }
   const link = e.target.closest('[data-panel-link]');
   if (link) {
     const body = {link_id: link.dataset.panelLink}; if (link.dataset.job) body.job_id = link.dataset.job;
-    const r = await post(`/api/modules/${encodeURIComponent(link.dataset.module)}/panel/link`, body);
+    const r = await post(`/api/peers/${encodeURIComponent(link.dataset.module)}/panel/link`, body);
     await showPanelReply(link.dataset.module, r);
   }
 });
 $('tab-peers').addEventListener('change', async e => {
   const el = e.target, id = el.dataset.id;
-  if (el.dataset.act === 'enable') await post(`/api/modules/${encodeURIComponent(id)}/enabled`, {enabled: el.checked});
+  if (el.dataset.act === 'enable') await post(`/api/peers/${encodeURIComponent(id)}/enabled`, {enabled: el.checked});
   else if (el.dataset.act === 'gset') {
     let value = el.type === 'checkbox' ? el.checked : (el.type === 'range' ? +el.value : el.value);
     if (el.dataset.invert) value = !value;
@@ -1614,7 +1614,7 @@ $('tab-peers').addEventListener('change', async e => {
   } else if (el.dataset.act === 'setting') {
     let value = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.type === 'integer') value = parseInt(value, 10); else if (el.dataset.type === 'number') value = parseFloat(value);
-    const r = await post(`/api/modules/${encodeURIComponent(id)}/settings`, {key: el.dataset.key, value});
+    const r = await post(`/api/peers/${encodeURIComponent(id)}/settings`, {key: el.dataset.key, value});
     const box = document.querySelector(`[data-err="${CSS.escape(id)}"]`);
     if (box) box.textContent = r.ok ? '' : (await r.json()).error;
   } else return;
@@ -1623,7 +1623,7 @@ $('tab-peers').addEventListener('change', async e => {
 $('tab-peers').addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
-  if (act === 'restart') await post(`/api/modules/${encodeURIComponent(el.dataset.id)}/restart`, {});
+  if (act === 'restart') await post(`/api/peers/${encodeURIComponent(el.dataset.id)}/restart`, {});
   else if (act === 'cancel') await post(`/api/jobs/${encodeURIComponent(el.dataset.module)}/${encodeURIComponent(el.dataset.job)}/cancel`, {});
   else if (act === 'answer') {
     let answer = el.dataset.answer;

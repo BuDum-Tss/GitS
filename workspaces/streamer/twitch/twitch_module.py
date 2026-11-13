@@ -14,7 +14,7 @@ from collections import deque
 
 from .common import chunks, message_fact, quiet_active, scrub, sender_info
 from .eventsub import EventSubSession
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import WorkspaceClient, ToolError
 from .privacy import Privacy
 from .twitch_api import Helix, Tokens, TwitchError
 
@@ -43,7 +43,7 @@ def _int_arg(args: dict, name: str, default: int) -> int:
 
 
 class TwitchModule:
-    def __init__(self, client: ModuleClient, memory_dir: str):
+    def __init__(self, client: WorkspaceClient, memory_dir: str):
         self.client = client
         self.memory_dir = memory_dir
         self.privacy = Privacy(client.privacy_terms)
@@ -211,7 +211,7 @@ class TwitchModule:
         return bool(await self.client.event(
             "twitch.mention" if mention else "twitch.chat", message_fact(name, text),
             addressed_to_me=mention or owner, sender=sender_info(str(ev.get("chatter_user_id") or ""), name, owner),
-            reply_channel={"module": self.client.module_id, "target": f"chat:{mid}"}, dedupe_key=f"tw:chat:{mid}",
+            reply_channel={"module": self.client.id, "target": f"chat:{mid}"}, dedupe_key=f"tw:chat:{mid}",
             memorable=mention or owner, data={"message_id": mid, "login": login}))
 
     # ── инструменты ──────────────────────────────────────────────────────────

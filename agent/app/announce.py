@@ -22,13 +22,13 @@ class Announcer:
         self.ctx, self.store, self.digest, self.speech, self.decisions = ctx, store, digest, speech, decisions
         self.recent: dict[tuple[str, str], dict] = {}   # (модуль, текст) -> {item, cand, short} недавних объявлений (AN-1)
 
-    async def submit(self, module_id: str, text: str, *, data: dict | None = None) -> None:
+    async def submit(self, peer_id: str, text: str, *, data: dict | None = None) -> None:
         """Объявление о запуске от самого ядра (инструмент модуля с `announce: true`, AN-3): тот же путь, что у `.launch`."""
         text = str(text).strip()
         if not text:
             return
         now = self.ctx.clock()
-        item = Item(id="a-" + secrets.token_hex(4), module=module_id, kind=f"{module_id}.launch", text=text[:TEXT_MAX],
+        item = Item(id="a-" + secrets.token_hex(4), module=peer_id, kind=f"{peer_id}.launch", text=text[:TEXT_MAX],
                     data=dict(data or {}), sender=None, reply_channel=None, addressed_to_me=False,
                     urgency=ANNOUNCE_DEFAULT_URGENCY, needs_reply=False, memorable=False, created=now, expires=None,
                     dedupe_key=None, urgency_hint=ANNOUNCE_DEFAULT_URGENCY, updated=now)

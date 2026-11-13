@@ -187,7 +187,7 @@ def test_only_core_setting_blocks_modules_like_the_env_variable(tmp_path, monkey
     spec = PeerSpec(id="m", cwd=str(tmp_path), command="x", args=[])
     svc = PeerSpec(id="decider", cwd=str(tmp_path), command="x", args=[], external=True)
     flag = {"on": False}
-    sup = Supervisor([spec, svc], token="t", core_url="ws://127.0.0.1:1/module/ws", gits_root=tmp_path, agent_dir=tmp_path,
+    sup = Supervisor([spec, svc], token="t", core_url="ws://127.0.0.1:1/ws", gits_root=tmp_path, agent_dir=tmp_path,
                      logs_dir=tmp_path / "logs", only_core=lambda: flag["on"])
     assert sup.should_run("m") and sup.should_run("decider")
     flag["on"] = True

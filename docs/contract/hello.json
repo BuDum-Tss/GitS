@@ -11,19 +11,15 @@
     "properties": {
       "id": {
         "type": "string",
-        "description": "id участника (с 1.11; нужно `id` или прежнее `module_id`)"
+        "description": "id участника"
       },
       "role": {
         "type": "string",
-        "description": "роль: workspace или service (с 1.11; нет поля: роль манифеста, по умолчанию workspace)",
+        "description": "роль: workspace или service (совпадает с `manifest.role`)",
         "enum": [
           "workspace",
           "service"
         ]
-      },
-      "module_id": {
-        "type": "string",
-        "description": "устарело (уберёт фаза 4): прежнее имя `id`; клиент SDK шлёт оба"
       },
       "instance": {
         "type": "string",
@@ -44,12 +40,14 @@
     },
     "additionalProperties": true,
     "required": [
+      "id",
+      "role",
       "instance",
       "pid",
       "protocol",
       "manifest"
     ],
     "title": "hello",
-    "description": "Рукопожатие: первое сообщение модуля, с манифестом."
+    "description": "Рукопожатие: первое сообщение участника шины, с манифестом."
   }
 }

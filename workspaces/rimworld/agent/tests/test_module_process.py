@@ -32,7 +32,7 @@ async def test_main_process_connects_reports_state_and_shuts_down(tmp_path):
     async with FakeCore(settings={"streamer": False, "dnd": False, "quiet_until": 0.0, "game_model": "haiku",
                                   "claude_usage": "normal", "voice_muted": False, "telegram_after_run": False,
                                   "record_runs": False}) as core:
-        env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="rimworld",
+        env.update(GITS_CORE_URL=core.url, GITS_TOKEN=core.token, GITS_ID="rimworld",
                    MEMORY_DIR=str(core_memory),                     # так передаёт супервизор: чужая, ядровая папка памяти
                    RIMWORLD_MEMORY_DIR=str(own_memory), RIMWORLD_MODULE_PORT=str(free_port()),
                    CHARACTER_FAST_URL="http://127.0.0.1:9/v1/chat/completions",         # локальная модель недоступна
@@ -45,7 +45,7 @@ async def test_main_process_connects_reports_state_and_shuts_down(tmp_path):
             await core.wait_connected(timeout=90)
             hello = core.hellos[0]
             manifest = hello["manifest"]
-            assert hello["module_id"] == "rimworld" and manifest["capabilities"] == ["game"]
+            assert hello["id"] == "rimworld" and manifest["capabilities"] == ["game"]
             names = {t["name"] for t in manifest["tools"]}
             assert "order" not in names and "colony_overview" in names and "launch_game" in names and {"open", "back", "where"} <= names and len(names) > 50
             assert not any(n.startswith("game_") for n in names) and "get_pending_events" not in names

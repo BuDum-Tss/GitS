@@ -23,7 +23,7 @@
       "job_id"
     ],
     "title": "job.cancel",
-    "description": "Отменить задачу модуля."
+    "description": "Отменить задачу участника шины."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

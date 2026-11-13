@@ -9,9 +9,9 @@ from gits_sdk import contract
 from gits_sdk import protocol as P
 from gits_sdk.contract import versions
 
-# манифест эпохи 1.0 (ТЗ 01): ни одного поля, появившегося позже
+# манифест эпохи 1.0 (ТЗ 01): ни одного поля, появившегося позже (кроме обязательных с 2.0 role и ownership)
 OLD_MANIFEST = {
-    "id": "legacy", "title": "Старый модуль", "description": "Модуль, написанный по контракту 1.0.", "version": "1.0.0",
+    "id": "legacy", "role": "workspace", "ownership": "owned", "title": "Старый модуль", "description": "Модуль, написанный по контракту 1.0.", "version": "1.0.0",
     "capabilities": [], "subscribe": ["presence", "settings"], "shared_settings": ["dnd"],
     "settings_schema": {"poll_seconds": {"type": "integer", "title": "Опрос", "default": 5, "min": 1, "max": 60}},
     "tools": [{"name": "ping", "description": "Ответить pong.", "params": {"text": {"type": "string"}},
@@ -61,7 +61,15 @@ NAMES_1_0 = {"hello", "event", "say", "emotion", "state", "job.update", "panel.s
 def test_old_manifest_still_passes():
     assert P.validate_manifest(OLD_MANIFEST) == []
     hello = P.hello_body(OLD_MANIFEST, "inst0001", 1234)
-    assert hello["protocol"] == 1 and P.validate_hello(hello) == []
+    assert hello["protocol"] == 2 and P.validate_hello(hello) == []
+
+
+def test_manifest_of_1_x_without_role_is_rejected():
+    """Контракт 2.0: манифест без role (и workspace без ownership) больше не проходит; hello протокола 1 тоже."""
+    old = {k: v for k, v in OLD_MANIFEST.items() if k not in ("role", "ownership")}
+    assert any(p.startswith("role:") for p in P.validate_manifest(old))
+    assert any(p.startswith("ownership:") for p in P.validate_manifest({k: v for k, v in OLD_MANIFEST.items() if k != "ownership"}))
+    assert any("protocol" in p for p in P.validate_hello({**P.hello_body(OLD_MANIFEST, "inst0001", 1234), "protocol": 1}))
 
 
 def test_old_message_bodies_still_pass():
@@ -77,7 +85,7 @@ def test_no_message_of_version_1_0_was_removed():
 
 
 def test_protocol_and_contract_versions_agree():
-    assert P.PROTOCOL == versions.PROTOCOL == 1
+    assert P.PROTOCOL == versions.PROTOCOL == 2
     assert re.fullmatch(r"\d+\.\d+", versions.CONTRACT_VERSION)
     assert versions.CONTRACT_VERSION.split(".")[0] == str(P.PROTOCOL)            # мажор контракта = протокол
     cur = tuple(int(x) for x in versions.CONTRACT_VERSION.split("."))

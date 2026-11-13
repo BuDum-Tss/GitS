@@ -54,7 +54,7 @@ async def handle_api_state(request: web.Request) -> web.Response:
         modules=ctx.modules.snapshot() if ctx.modules is not None else []))
 
 
-def _module_ids() -> list[str]:
+def _peer_ids() -> list[str]:
     try:
         return [m["id"] for m in (ctx.modules.snapshot() if ctx.modules is not None else []) if m.get("id")]
     except Exception:
@@ -68,7 +68,7 @@ async def handle_api_flow(request: web.Request) -> web.Response:
         lat = [t for t in (flow_trace.turn_from_latency_row(r) for r in rows) if t]
         return lat[-20:][::-1]
     latency = await asyncio.to_thread(build)
-    return web.json_response({**flow_spec.topology(_module_ids()), "stats": flow_trace.edge_stats(),
+    return web.json_response({**flow_spec.topology(_peer_ids()), "stats": flow_trace.edge_stats(),
                               "turns": flow_trace.turns(30), "latency_turns": latency,
                               "errors": flow_trace.error_nodes(), "only_core": os.environ.get("GITS_NO_MODULES") == "1" or bool(ctx.settings.load().get("only_core"))})
 

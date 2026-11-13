@@ -97,14 +97,14 @@ class FakeModules:
     def __init__(self):
         self.records = {}
 
-    def declare(self, module_id, title=None, emits=(), enabled=True):
+    def declare(self, peer_id, title=None, emits=(), enabled=True):
         manifest = {"emits": [{"kind": k, "description": "x", "default_urgency": u} for k, u in emits]}
-        self.records[module_id] = SimpleNamespace(title=title or module_id, manifest=manifest)
+        self.records[peer_id] = SimpleNamespace(title=title or peer_id, manifest=manifest)
 
-    def get(self, module_id):
-        return self.records.get(module_id)
+    def get(self, peer_id):
+        return self.records.get(peer_id)
 
-    def is_enabled(self, module_id):
+    def is_enabled(self, peer_id):
         return True
 
 

@@ -11,7 +11,7 @@ import approvals
 import settings
 from environments import builtin
 from environments.base import ToolError
-from gits_sdk import ModuleClient
+from gits_sdk import WorkspaceClient
 from gits_sdk import protocol as P
 
 
@@ -60,7 +60,7 @@ async def test_ipv6_loopback_and_mapped_ipv4_are_allowed(tmp_path):
 
 
 async def test_welcome_body_follows_the_contract(tmp_path):
-    state = {"modules": {"raw": {"poll": 9}}, "streamer": True, "dnd": False}
+    state = {"peers": {"raw": {"poll": 9}}, "streamer": True, "dnd": False}
     async with running_core(tmp_path, state) as core:
         m = manifest(shared_settings=["streamer", "nonexistent"],
                      settings_schema={"poll": {"type": "integer", "title": "Опрос", "default": 5},
@@ -69,7 +69,7 @@ async def test_welcome_body_follows_the_contract(tmp_path):
         try:
             welcome = await raw.hello()
             b = welcome.body
-            assert b["protocol"] == 1 and b["enabled"] is True and b["core_version"]
+            assert b["protocol"] == 2 and "module_id" not in b and b["enabled"] is True and b["core_version"]
             assert b["settings"] == {"streamer": True}                          # только shared_settings модуля
             assert b["module_settings"] == {"poll": 9, "mode": "a"}             # сохранённое поверх умолчаний
             assert set(b["profile"]) == {"id", "title", "focus_modules"} and b["battery"] == {"percent": 100, "sleeping": False}
@@ -81,7 +81,7 @@ async def test_invalid_manifest_and_bad_hello_are_rejected(tmp_path):
     async with running_core(tmp_path) as core:
         bad = manifest()
         bad["tools"] = [{"name": "X"}]
-        for raw, words in ((RawModule(core, bad), "манифест"), (RawModule(core, manifest(), protocol=2), "protocol 2"),
+        for raw, words in ((RawModule(core, bad), "манифест"), (RawModule(core, manifest(), protocol=1), "protocol 1"),
                            (RawModule(core, manifest("core")), "зарезервирован"),
                            (RawModule(core, manifest("room", settings_schema={"enabled": {"type": "boolean", "title": "x", "default": True}})), "enabled")):
             try:
@@ -148,7 +148,7 @@ async def test_duplicate_module_replaces_the_old_connection(tmp_path):
 
 async def test_sdk_exits_with_code_2_on_fatal_reject(tmp_path):
     async with running_core(tmp_path) as core:
-        client = ModuleClient(manifest("core"), url=core.url, token=core.token)
+        client = WorkspaceClient(manifest("core"), url=core.url, token=core.token)
         assert await asyncio.wait_for(client.run(), 5) == 2
 
 
@@ -196,7 +196,7 @@ async def test_echo_tool_visible_in_any_profile_and_runs_via_router(tmp_path):
 async def test_profile_availability_follows_focus_modules(tmp_path):
     async with running_core(tmp_path) as core:
         m = manifest("game", tools=[tool("order", availability="profile"), tool("peek")])
-        c = ModuleClient(m, url=core.url, token=core.token)
+        c = WorkspaceClient(m, url=core.url, token=core.token)
 
         @c.tool("order")
         async def order(args):
@@ -217,7 +217,7 @@ async def test_profile_availability_follows_focus_modules(tmp_path):
 
 
 async def test_disabled_module_is_not_available_and_cannot_be_called(tmp_path):
-    state = {"modules": {"echo": {"enabled": False}}}
+    state = {"peers": {"echo": {"enabled": False}}}
     async with running_core(tmp_path, state) as core:
         client = build_client(interval=0.01, url=core.url, token=core.token)
         async with running_client(client, core):
@@ -226,7 +226,7 @@ async def test_disabled_module_is_not_available_and_cannot_be_called(tmp_path):
             assert _names(core) == set()
             ok, text = await core.router.run_tool("echo.repeat", {"text": "x"})
             assert not ok                                                    # ни событий, ни вызовов
-            state["modules"]["echo"]["enabled"] = True
+            state["peers"]["echo"]["enabled"] = True
             await core.hub.refresh()
             await core.wait_for(lambda: client.enabled)
             assert "echo.repeat" in _names(core)
@@ -235,7 +235,7 @@ async def test_disabled_module_is_not_available_and_cannot_be_called(tmp_path):
 async def test_tool_timeout_becomes_tool_error(tmp_path):
     async with running_core(tmp_path) as core:
         m = manifest("slowpoke", tools=[tool("wait", timeout_s=1)])
-        c = ModuleClient(m, url=core.url, token=core.token)
+        c = WorkspaceClient(m, url=core.url, token=core.token)
 
         @c.tool("wait")
         async def wait(args):
@@ -252,7 +252,7 @@ async def test_tool_timeout_becomes_tool_error(tmp_path):
 async def test_module_error_and_internal_error_keep_codes(tmp_path):
     async with running_core(tmp_path) as core:
         m = manifest("flaky", tools=[tool("deny"), tool("crash")])
-        c = ModuleClient(m, url=core.url, token=core.token)
+        c = WorkspaceClient(m, url=core.url, token=core.token)
 
         @c.tool("deny")
         async def deny(args):
@@ -271,7 +271,7 @@ async def test_danger_check_asks_permission_even_for_auto_tools(tmp_path):
     async with running_core(tmp_path) as core:
         settings.update(auto_accept=True)                      # опасное спрашивается всегда, даже с авто-разрешением
         m = manifest("files", tools=[tool("wipe", danger_check=True, params={"path": {"type": "string"}})])
-        c = ModuleClient(m, url=core.url, token=core.token)
+        c = WorkspaceClient(m, url=core.url, token=core.token)
         calls = []
 
         @c.tool("wipe")
@@ -299,7 +299,7 @@ async def test_danger_check_asks_permission_even_for_auto_tools(tmp_path):
 async def test_danger_check_failure_counts_as_dangerous(tmp_path):
     async with running_core(tmp_path) as core:
         m = manifest("files", tools=[tool("wipe", danger_check=True)])
-        c = ModuleClient(m, url=core.url, token=core.token)
+        c = WorkspaceClient(m, url=core.url, token=core.token)
 
         @c.tool("wipe")
         async def wipe(args):
@@ -429,7 +429,7 @@ async def test_events_speech_state_reach_core_and_emotion_is_ignored(tmp_path):
 
 
 async def test_disabled_module_events_and_speech_are_dropped_by_core(tmp_path):
-    state = {"modules": {"tg": {"enabled": False}}}
+    state = {"peers": {"tg": {"enabled": False}}}
     async with running_core(tmp_path, state) as core:
         raw = RawModule(core, manifest("tg"))
         try:
@@ -451,7 +451,7 @@ async def test_unknown_and_malformed_messages_do_not_break_connection(tmp_path):
         try:
             await raw.hello()
             await raw.ws.send_str("это не JSON")
-            await raw.ws.send_str('{"v": 1, "type": "weird", "id": "m-1", "re": null, "ts": 1, "body": {}}')
+            await raw.ws.send_str('{"v": 2, "type": "weird", "id": "m-1", "re": null, "ts": 1, "body": {}}')
             await raw.send("job.update", {"job_id": "плохой", "state": "running"})
             body = await raw.request("core.nothing")                          # неизвестный запрос с core.
             assert body["ok"] is False and body["error"]["code"] == "unknown"
@@ -465,7 +465,7 @@ async def test_unknown_and_malformed_messages_do_not_break_connection(tmp_path):
 # ── темы ────────────────────────────────────────────────────────────────────────
 
 async def test_broadcast_reaches_only_subscribed_enabled_modules(tmp_path):
-    state = {"modules": {"off": {"enabled": False}}}
+    state = {"peers": {"off": {"enabled": False}}}
     async with running_core(tmp_path, state) as core:
         a = RawModule(core, manifest("aaa", subscribe=["profile"]))
         b = RawModule(core, manifest("bbb", subscribe=["presence"]))
@@ -501,7 +501,7 @@ async def test_presence_is_throttled_to_ten_per_second_last_value_wins(tmp_path)
 
 
 async def test_settings_and_enabled_changes_are_sent_as_topics(tmp_path):
-    state = {"modules": {}, "streamer": False, "dnd": False}
+    state = {"peers": {}, "streamer": False, "dnd": False}
     async with running_core(tmp_path, state) as core:
         m = manifest("cfg", shared_settings=["streamer"],
                      settings_schema={"poll": {"type": "integer", "title": "Опрос", "default": 5}})
@@ -513,14 +513,14 @@ async def test_settings_and_enabled_changes_are_sent_as_topics(tmp_path):
             await core.hub.refresh()
             t = await raw.wait("topic", where=lambda e: e.body["topic"] == "settings")
             assert t.body["data"] == {"settings": {"streamer": True}, "module_settings": {"poll": 5}}
-            state["modules"]["cfg"] = {"poll": 20}
+            state["peers"]["cfg"] = {"poll": 20}
             await core.hub.refresh()
             await raw.wait("topic", where=lambda e: e.body["topic"] == "settings" and e.body["data"]["module_settings"] == {"poll": 20})
             await core.hub.refresh()                                     # без изменений - без новой темы
             n = len(raw.of("topic"))
             await core.hub.refresh()
             assert len(raw.of("topic")) == n
-            state["modules"]["cfg"]["enabled"] = False
+            state["peers"]["cfg"]["enabled"] = False
             await core.hub.refresh()
             t = await raw.wait("topic", where=lambda e: e.body["topic"] == "module")
             assert t.body["data"] == {"enabled": False}
@@ -572,7 +572,7 @@ async def test_core_tool_call_runs_through_router_with_permissions(tmp_path):
     async with running_core(tmp_path) as core:
         echo = build_client(interval=0.01, url=core.url, token=core.token)
         m = manifest("caller", tools=[tool("risky", risk="ask")])
-        caller = ModuleClient(m, url=core.url, token=core.token)
+        caller = WorkspaceClient(m, url=core.url, token=core.token)
 
         @caller.tool("risky")
         async def risky(args):
@@ -641,7 +641,7 @@ async def test_core_tts_is_forwarded_to_the_voice_module(tmp_path):
                 with pytest.raises(ToolError) as e:
                     await client.request("core.tts", {"text": "Плохо"})
                 assert e.value.code == "internal"
-                core.settings_state["modules"] = {"voice": {"enabled": False}}      # выключенный модуль голоса не синтезирует
+                core.settings_state["peers"] = {"voice": {"enabled": False}}      # выключенный модуль голоса не синтезирует
                 core.modules.invalidate()
                 with pytest.raises(ToolError) as e:
                     await client.request("core.tts", {"text": "Выключен"})
@@ -664,39 +664,52 @@ async def test_pending_requests_fail_with_unavailable_on_disconnect(tmp_path):
         assert getattr(e.value, "code", None) == "unavailable"
 
 
-# ── фаза 2a: /ws, hello с id и role, роль и ownership ───────────────────────────────
+# ── контракт 2.0: /ws, hello только с id и role, роль и ownership ───────────────────
 
-async def test_hello_with_id_and_role_is_accepted_on_new_path(tmp_path):
+async def test_hello_with_id_and_role_is_accepted(tmp_path):
     async with running_core(tmp_path) as core:
-        raw = RawModule(core, manifest("newone"), url=core.url_ws, hello_drop=("module_id",))
+        raw = RawModule(core, manifest("newone"))
         try:
-            assert (await raw.hello()).type == "welcome"            # только id и role, прежнего module_id нет
+            assert (await raw.hello()).type == "welcome"
             conn = core.hub.connection("newone")
-            assert conn is not None and conn.id == "newone" and conn.module_id == "newone"
+            assert conn is not None and conn.id == "newone" and not hasattr(conn, "module_id")
             assert core.modules.get("newone").role == "workspace"
         finally:
             await raw.close()
 
 
-async def test_hello_with_legacy_module_id_only_is_accepted_on_both_paths(tmp_path):
+async def test_hello_without_role_or_id_is_rejected(tmp_path):
     async with running_core(tmp_path) as core:
-        for path_url, mid in ((core.url, "oldone"), (core.url_ws, "oldtwo")):
-            raw = RawModule(core, manifest(mid), url=path_url, hello_drop=("id", "role"))
+        for drop in (("role",), ("id",), ("id", "role")):
+            raw = RawModule(core, manifest("oldone"), hello_drop=drop)
             try:
-                assert (await raw.hello()).type == "welcome"
-                assert core.hub.connection(mid) is not None and core.modules.get(mid).connected
+                assert (await raw.hello()).type == "reject"
+                assert core.hub.connection("oldone") is None
             finally:
                 await raw.close()
 
 
-async def test_hello_with_conflicting_id_and_module_id_is_rejected(tmp_path):
+async def test_hello_with_legacy_module_id_is_rejected(tmp_path):
     async with running_core(tmp_path) as core:
-        raw = RawModule(core, manifest("one"), hello_extra={"module_id": "two"})
+        raw = RawModule(core, manifest("one"), hello_extra={"module_id": "one"})
         try:
             reply = await raw.hello()
             assert reply.type == "reject" and "module_id" in reply.body["reason"]
         finally:
             await raw.close()
+
+
+async def test_manifest_without_role_or_ownership_is_rejected(tmp_path):
+    async with running_core(tmp_path) as core:
+        for drop in ("role", "ownership"):
+            m = manifest("noroles")
+            del m[drop]
+            raw = RawModule(core, m, hello_extra={"role": "workspace"})
+            try:
+                reply = await raw.hello()
+                assert reply.type == "reject" and drop in reply.body["reason"]
+            finally:
+                await raw.close()
 
 
 async def test_hello_role_must_match_manifest_role(tmp_path):
@@ -709,20 +722,15 @@ async def test_hello_role_must_match_manifest_role(tmp_path):
             await raw.close()
 
 
-async def test_both_paths_check_the_token(tmp_path):
+async def test_old_path_is_gone_and_new_path_checks_the_token(tmp_path):
     async with running_core(tmp_path) as core:
         async with aiohttp.ClientSession() as s:
-            for url in (core.url, core.url_ws):
-                with pytest.raises(aiohttp.WSServerHandshakeError) as e:
-                    await s.ws_connect(url, headers={"Authorization": "Bearer nope"})
-                assert e.value.status == 401
-
-
-async def test_sdk_client_connects_by_new_path(tmp_path):
-    async with running_core(tmp_path) as core:
-        client = build_client(interval=0.01, url=core.url_ws, token=core.token)
-        async with running_client(client, core):
-            assert core.modules.get("echo").connected
+            with pytest.raises(aiohttp.WSServerHandshakeError) as e:
+                await s.ws_connect(core.url, headers={"Authorization": "Bearer nope"})
+            assert e.value.status == 401
+            with pytest.raises(aiohttp.WSServerHandshakeError) as e:
+                await s.ws_connect(core.url.replace("/ws", "/module/ws"), headers={"Authorization": f"Bearer {core.token}"})
+            assert e.value.status == 404
 
 
 async def test_role_and_ownership_come_from_declaration_and_manifest_wins(tmp_path):
@@ -733,10 +741,10 @@ async def test_role_and_ownership_come_from_declaration_and_manifest_wins(tmp_pa
         core.modules.declare("ext", role="service", external=True)
         assert (core.modules.get("decl_ws").role, core.modules.get("decl_ws").ownership) == ("workspace", "shared")
         assert (core.modules.get("decl_svc").role, core.modules.get("decl_svc").ownership) == ("service", None)
-        raws = [RawModule(core, manifest("decl_ws")),                                         # манифест молчит: из файла
-                RawModule(core, manifest("decl_svc")),
+        raws = [RawModule(core, manifest("decl_ws", ownership="shared")),                           # манифест совпадает с файлом
+                RawModule(core, manifest("decl_svc", role="service", ownership=None)),
                 RawModule(core, manifest("decl_mix", ownership="owned")),                      # манифест главнее файла
-                RawModule(core, manifest("undeclared", role="service"))]                       # записи нет, манифест задаёт роль
+                RawModule(core, manifest("undeclared", role="service", ownership=None))]       # записи нет, манифест задаёт роль
         try:
             for raw in raws:
                 assert (await raw.hello()).type == "welcome"
@@ -755,7 +763,7 @@ async def test_role_and_ownership_come_from_declaration_and_manifest_wins(tmp_pa
 async def test_manifest_role_overrides_declared_role(tmp_path):
     async with running_core(tmp_path) as core:
         core.modules.declare("flip", role="workspace", ownership="shared")
-        raw = RawModule(core, manifest("flip", role="service"))
+        raw = RawModule(core, manifest("flip", role="service", ownership=None))
         try:
             assert (await raw.hello()).type == "welcome"
             rec = core.modules.get("flip")

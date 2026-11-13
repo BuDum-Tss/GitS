@@ -10,7 +10,7 @@ ENT = [
     ("Tool", "Инструмент: имя, схема параметров, риск, видимость по профилю, исполнитель.", "<code>environments/base.Tool</code>"),
     ("Slot / FocusDecision / Checkpoint", "Единственный слот фокуса, очередь событий, состояние прерванной задачи.", "<code>focus.py</code>"),
     ("MemoryRecord / MemoryHit", "Единица памяти: факт, запись о человеке, воспоминание о себе, план, (план) эпизод, урок, убеждение; результат поиска с близостью.", "четыре формата: граф, <code>MemoryStore</code>, отношения, диалог"),
-    ("Person · Character · Job", "Человек или колонист; данные персонажа; долгая задача модуля.", "<code>relationships.py</code> · <code>character.py</code> · <code>peer_registry.py</code>"),
+    ("Person · Character · Job", "Человек или колонист; данные персонажа; долгая задача участника шины.", "<code>relationships.py</code> · <code>character.py</code> · <code>peer_registry.py</code>"),
 ]
 SMELLS = [
     ("Бог-объекты", "<code>Attention</code>: 1108 строк, 70 методов. <code>Companion</code>: 37 методов, 15 импортов. <code>FocusManager</code>: 60 методов.", "разрезать по сценариям (шаги R3–R5)"),

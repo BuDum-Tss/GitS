@@ -29,7 +29,7 @@
       "action_id"
     ],
     "title": "panel.action",
-    "description": "Нажатие кнопки или строки пространства модуля (ТЗ 15)."
+    "description": "Нажатие кнопки или строки пространства участника шины (ТЗ 15)."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -64,7 +64,7 @@ STATUS = Endpoint(
               F("active", "integer", True, "сколько хозяев или подключений сейчас (для shared 0 или 1)")),
     errors=(_UNAUTH,),
     example_response={"id": "rimworld", "role": "workspace", "ownership": "shared", "state": "busy",
-                      "holder": {"character": "glados", "core_url": "ws://127.0.0.1:8766/module/ws", "since": 1760000000.0,
+                      "holder": {"character": "glados", "core_url": "ws://127.0.0.1:8766/ws", "since": 1760000000.0,
                                  "purpose": "play"}, "active": 1},
 )
 
@@ -108,7 +108,7 @@ ACQUIRE = Endpoint(
             (409, "занято другим: `{\"ok\": false, \"state\": \"busy\", \"holder\": {...}}`"),
             (502, "`on_acquire` не смог подключиться: `{\"ok\": false, \"error\": \"acquire_failed\", \"message\": ...}`, аренда не выдана"),
             (503, "окружение недоступно: `{\"ok\": false, \"state\": \"offline\"}`")),
-    example_request={"character": "glados", "core_url": "ws://127.0.0.1:8766/module/ws", "token": "<токен ядра>",
+    example_request={"character": "glados", "core_url": "ws://127.0.0.1:8766/ws", "token": "<токен ядра>",
                      "purpose": "play"},
     example_response={"ok": True, "lease_id": "l-0123456789ab"},
 )

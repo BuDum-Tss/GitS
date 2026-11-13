@@ -1,10 +1,10 @@
 """Логика модуля: инструменты и обработчики. Запросы к ядру идут только через методы клиента SDK (в тестах их отдаёт FakeCore)."""
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import ToolError, WorkspaceClient
 
 
-def build_client(manifest: dict, **kwargs) -> ModuleClient:
+def build_client(manifest: dict, **kwargs) -> WorkspaceClient:
     """Собрать клиента и повесить обработчики инструментов из манифеста. `kwargs` (url, token) нужны тестам."""
-    client = ModuleClient(manifest, **kwargs)
+    client = WorkspaceClient(manifest, **kwargs)
 
     @client.tool("greet")
     async def greet(args):
@@ -20,7 +20,7 @@ def build_client(manifest: dict, **kwargs) -> ModuleClient:
         text = str(args.get("text") or "").strip()
         if not text:
             raise ToolError("text не должен быть пустым", code="bad_request")
-        stored = await client.memory_remember(text, source=client.module_id)
+        stored = await client.memory_remember(text, source=client.id)
         facts = await client.memory_recall(text, limit=3)
         return {"stored": stored, "found": [f.get("text", "") for f in facts]}
 

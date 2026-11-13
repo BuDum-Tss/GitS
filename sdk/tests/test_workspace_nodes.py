@@ -6,7 +6,7 @@ from gits_sdk import protocol as P
 
 def _manifest(**extra):
     base = {
-        "id": "demo", "title": "Demo", "description": "d", "version": "1.0.0",
+        "id": "demo", "role": "workspace", "ownership": "owned", "title": "Demo", "description": "d", "version": "1.0.0",
         "tools": [
             {"name": "open", "description": "открыть узел", "params": {}, "risk": "auto", "availability": "always"},
             {"name": "get_res", "description": "ресурсы", "params": {}, "risk": "auto", "availability": "always"},

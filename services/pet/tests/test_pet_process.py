@@ -19,7 +19,7 @@ SETTINGS = {"voice_muted": False, "pet_visible": True, "pet_pinned": False, "pet
 async def run_pet(tmp_path, headless: bool, run_s: float = 0.0):
     async with FakeCore(settings=SETTINGS) as core:
         env = dict(os.environ)
-        env.update(GITS_CORE_URL=core.url, GITS_MODULE_TOKEN=core.token, GITS_MODULE_ID="pet",
+        env.update(GITS_CORE_URL=core.url, GITS_TOKEN=core.token, GITS_ID="pet",
                    LOCALAPPDATA=str(tmp_path / "la"), PYTHONUNBUFFERED="1", PYTHONPATH=str(GITS / "sdk"))
         if headless:
             env["GITS_PET_HEADLESS"] = "1"
@@ -29,7 +29,7 @@ async def run_pet(tmp_path, headless: bool, run_s: float = 0.0):
         try:
             await core.wait_connected(timeout=30)
             hello = core.hellos[0]
-            assert hello["module_id"] == "pet" and hello["manifest"]["capabilities"] == ["presence.view"]
+            assert hello["id"] == "pet" and hello["manifest"]["capabilities"] == ["presence.view"]
             assert core.rejected == [] and proc.returncode is None
             await core.topic("presence", {"speaking": True, "segment": "Привет.", "sticker": "happy"})
             await asyncio.sleep(run_s or 0.5)

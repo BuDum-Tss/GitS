@@ -14,7 +14,7 @@
     "properties": {},
     "additionalProperties": true,
     "title": "core.persona",
-    "description": "Карточка активного персонажа и разделы persona.md для текстов модуля (ТЗ 05)."
+    "description": "Карточка активного персонажа и разделы persona.md для текстов участника шины (ТЗ 05)."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

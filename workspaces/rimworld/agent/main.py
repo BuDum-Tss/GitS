@@ -1,7 +1,7 @@
 """Точка входа модуля RimWorld (ТЗ 11): игровые контуры, API оверлея на порту 8767, связь с ядром по контракту модулей.
 
-Запускает супервизор ядра (`agent/modules.yaml` в GitS): `python -u main.py` из папки agent/. Модуль сам подключается к ядру
-(`ws://127.0.0.1:8766/module/ws`, токен из GITS_MODULE_TOKEN), присылает манифест (рабочее место RimWorld: узлы, действия, запросы, `launch_game`),
+Запускает супервизор ядра (`agent/peers.yaml` в GitS): `python -u main.py` из папки agent/. Модуль сам подключается к ядру
+(`ws://127.0.0.1:8766/ws`, токен из GITS_TOKEN), присылает манифест (рабочее место RimWorld: узлы, действия, запросы, `launch_game`),
 состояние и события, говорит и показывает эмоции через ядро. Без игры не падает: контуры простаивают, `game_running: false`.
 Вручную (ядро должно работать): `python main.py`; токен тогда берётся из файла ядра.
 """
@@ -52,7 +52,7 @@ import usage_report  # noqa: E402
 from camera_director import CameraDirector  # noqa: E402
 from controller import Controller  # noqa: E402
 from core_link import CoreLink  # noqa: E402
-from gits_sdk import ModuleClient  # noqa: E402
+from gits_sdk import WorkspaceClient  # noqa: E402
 from run_recorder import RunRecorder  # noqa: E402
 import core_tasks  # noqa: E402
 from state_reporter import StateReporter  # noqa: E402
@@ -77,7 +77,7 @@ async def amain(config: dict) -> int:
 
     manifest = await module_manifest.build()
     tools = [t for t in manifest["tools"] if t["name"] != "launch_game"]
-    client = ModuleClient(manifest)
+    client = WorkspaceClient(manifest)
     link = CoreLink(client)
     usage_report.attach(client, loop)
 

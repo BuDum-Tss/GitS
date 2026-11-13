@@ -17,7 +17,7 @@
     "properties": {
       "tool": {
         "type": "string",
-        "description": "id инструмента вида модуль.имя",
+        "description": "id инструмента вида участник шины.имя",
         "minLength": 1
       },
       "args": {
@@ -30,7 +30,7 @@
       "tool"
     ],
     "title": "core.tool.call",
-    "description": "Вызов инструмента любого окружения ядра (кроме запрещённых правилами) по id `модуль.имя`."
+    "description": "Вызов инструмента любого окружения ядра (кроме запрещённых правилами) по id `участник шины.имя`."
   },
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

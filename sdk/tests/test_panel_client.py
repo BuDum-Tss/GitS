@@ -5,7 +5,7 @@ import logging
 import pytest
 from helpers import MANIFEST, make_client, running
 
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import WorkspaceClient, ToolError
 from gits_sdk import protocol as P
 from gits_sdk.testing import FakeCore
 
@@ -135,7 +135,7 @@ async def test_panel_action_bad_return_is_internal_error(core):
 
 
 def test_panel_action_must_be_declared():
-    client = ModuleClient(PANEL_MANIFEST, url="ws://127.0.0.1:9/module/ws", token="x")
+    client = WorkspaceClient(PANEL_MANIFEST, url="ws://127.0.0.1:9/ws", token="x")
     with pytest.raises(ValueError, match="panel.actions"):
         client.panel_action("not_declared")(lambda args: None)
 

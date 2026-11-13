@@ -84,6 +84,6 @@ def character_dir(char_id: str | None = None, root: Path | None = None) -> Path:
     return folders[cid]
 
 
-def module_dir(module_id: str, char_id: str | None = None, root: Path | None = None) -> Path:
+def module_dir(peer_id: str, char_id: str | None = None, root: Path | None = None) -> Path:
     """Папка ресурсов модуля у персонажа: `resources/<Имя>/<модуль>/`. Не создаётся."""
-    return character_dir(char_id, root) / module_id
+    return character_dir(char_id, root) / peer_id

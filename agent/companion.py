@@ -84,7 +84,7 @@ class Companion:
         self._heard: collections.deque = collections.deque(maxlen=20)   # (время, сводка) услышанного в колонках (voice.heard)
         self.idle_seconds = lambda: 0.0          # секунды простоя ввода (ставит ядро из state модуля desktop; без модуля 0: за компьютером)
         self.screen_activity = lambda: None      # текущая активность экрана {app, category, summary, ...} (ставит ядро, ТЗ 14 DESK-7)
-        self.job_wait = None                     # async (module_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
+        self.job_wait = None                     # async (peer_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
         if memory_reader is None or memory_writer is None:
             self._mem = UserMemory(memory_dir)                 # личная память на диске (адаптеры по умолчанию)
             default_memory = UserMemoryAdapter(lambda: self._mem, lambda: self.graph, lambda: getattr(self, "episodes", None),

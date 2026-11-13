@@ -1,6 +1,6 @@
 """Модуль Telegram: сборка клиента, инструментов, доставки ответов (`deliver`) и состояния для дашборда (ТЗ 10).
 
-`TelegramModule(client, memory_dir)` вешает обработчики на `ModuleClient` и создаёт фоновые задачи (`start()`):
+`TelegramModule(client, memory_dir)` вешает обработчики на `WorkspaceClient` и создаёт фоновые задачи (`start()`):
 личные слова от ядра (privacy), входящие бота, цикл постов, проверка канала, её аккаунт (Telethon), состояние раз в 5 минут.
 Тесты собирают модуль против `gits_sdk.testing.FakeCore`, а сеть Telegram подменяют (`_call`, `_upload`, клиент Telethon).
 """
@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from common import scrub
-from gits_sdk import ModuleClient, ToolError
+from gits_sdk import WorkspaceClient, ToolError
 from privacy import Privacy
 from telegram_channel import TelegramChannel
 from telegram_user import LeakError, TelegramUser
@@ -57,7 +57,7 @@ def _int_arg(args: dict, name: str, default: int) -> int:
 
 
 class TelegramModule:
-    def __init__(self, client: ModuleClient, memory_dir: str):
+    def __init__(self, client: WorkspaceClient, memory_dir: str):
         self.client = client
         self.memory_dir = memory_dir
         self.privacy = Privacy(client.privacy_terms)

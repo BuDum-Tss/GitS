@@ -9,26 +9,26 @@ class AttentionEventSink:
     def __init__(self, attention, presence=None, recorder=None):
         self.attention = attention
         self.presence = presence
-        self.recorder = recorder          # (module_id, event) -> None: журнал событий для запроса и строки в чат
+        self.recorder = recorder          # (peer_id, event) -> None: журнал событий для запроса и строки в чат
 
-    async def submit(self, module_id: str, event: dict) -> None:
+    async def submit(self, peer_id: str, event: dict) -> None:
         if self.recorder is not None:
             try:
-                self.recorder(module_id, event)
+                self.recorder(peer_id, event)
             except Exception:
                 pass                      # журнал не должен мешать доставке события
-        await self.attention.submit(module_id, event)
+        await self.attention.submit(peer_id, event)
 
-    async def submit_speech(self, module_id: str, say: dict) -> None:
-        await self.attention.submit_speech(module_id, say)
+    async def submit_speech(self, peer_id: str, say: dict) -> None:
+        await self.attention.submit_speech(peer_id, say)
 
-    async def on_job_update(self, module_id: str, job: dict) -> None:
-        await self.attention.on_job_update(module_id, job)
+    async def on_job_update(self, peer_id: str, job: dict) -> None:
+        await self.attention.on_job_update(peer_id, job)
 
-    async def submit_question(self, module_id: str, job_id: str, question_id: str, question: dict) -> tuple[Any, str]:
+    async def submit_question(self, peer_id: str, job_id: str, question_id: str, question: dict) -> tuple[Any, str]:
         from attention import Question
         q = Question(kind=question["kind"], question=question["question"], options=question.get("options"),
-                     timeout_s=question.get("timeout_s", P.ASK_TIMEOUT_DEFAULT), source=module_id,
+                     timeout_s=question.get("timeout_s", P.ASK_TIMEOUT_DEFAULT), source=peer_id,
                      context={"job_id": job_id, **(question.get("context") or {})},
                      urgency_hint=question.get("urgency_hint"), job_id=job_id, question_id=question_id)
         return await self.attention.submit_question(q)
