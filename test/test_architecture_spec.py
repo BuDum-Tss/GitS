@@ -3,7 +3,7 @@ from pathlib import Path
 
 from tools.architecture import build, spec
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_spec_edges_point_to_known_nodes():

@@ -13,7 +13,7 @@ import speech_out
 from environments.registry import Registry
 from supervisor import load_planned, load_specs
 
-AGENT = Path(__file__).resolve().parent.parent
+AGENT = Path(__file__).resolve().parent.parent / "agent"
 
 
 class WiredCompanion(FakeCompanion):

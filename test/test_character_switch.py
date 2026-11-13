@@ -10,7 +10,7 @@ import prompts
 import settings
 from character_switch import CharacterSwitch
 
-REAL = Path(__file__).resolve().parents[2] / "resources"
+REAL = Path(__file__).resolve().parents[1] / "resources"
 
 
 class Recorder:

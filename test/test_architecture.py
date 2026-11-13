@@ -9,7 +9,7 @@ import ast
 import sys
 from pathlib import Path
 
-AGENT = Path(__file__).resolve().parents[1]
+AGENT = Path(__file__).resolve().parents[1] / "agent"
 DOMAIN = AGENT / "domain"
 
 FORBIDDEN = {

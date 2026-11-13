@@ -18,7 +18,7 @@ from environments.registry import Registry
 from gits_sdk import protocol as P
 from user_memory import UserMemory
 
-AGENT = Path(__file__).resolve().parent.parent
+AGENT = Path(__file__).resolve().parent.parent / "agent"
 JOB = "j-1a2b3c4d"
 
 DESKTOP_TOOLS = [

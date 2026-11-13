@@ -147,7 +147,7 @@ def test_persona_name_stays_out_of_agent_code():
     """CHR-4, CHR-13 (сторож): в agent/**/*.py (кроме characters/, тестов и копии envcompat) нет имени персонажа без
     пометки `# id данных`. Текст для модели и имена в интерфейсе берутся из карточки персонажа."""
     import re
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[1] / "agent"
     pattern = re.compile(r"гладос|глэдос|glados|aperture", re.IGNORECASE)
     offenders = []
     for path in root.rglob("*.py"):

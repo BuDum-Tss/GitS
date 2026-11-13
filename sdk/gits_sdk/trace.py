@@ -2,7 +2,7 @@
 
 Модуль ставит метки своих этапов (`mic_end`, `stt_done`, ...) и кладёт трассу в поле `trace` события или команды; разбирает,
 складывает и записывает трассы ядро (`agent/latency_trace.py`). Формат один: `{id, source, marks}`, метки - миллисекунды
-`time.perf_counter()` (общий счётчик процессов на одной машине). Тест `agent/tests/test_contract_modules.py` сверяет формат
+`time.perf_counter()` (общий счётчик процессов на одной машине). Тест `test/test_contract_modules.py` сверяет формат
 с `latency_trace`.
 """
 from __future__ import annotations

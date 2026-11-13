@@ -1,6 +1,6 @@
 # Прогон ядра на устойчивость (ТЗ 17, FLOW-2 и FLOW-3)
 
-Скрипт: `agent/tools/soak_core.py`. Тесты: `agent/tests/test_soak_core.py` (короткий прогон на несколько секунд идёт в `check.ps1`).
+Скрипт: `agent/tools/soak_core.py`. Тесты: `test/test_soak_core.py` (короткий прогон на несколько секунд идёт в `check.ps1`).
 
 ## 1. Что делает скрипт
 

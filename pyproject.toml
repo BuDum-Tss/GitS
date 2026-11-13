@@ -30,14 +30,14 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"agent/tests/*.py" = ["E402"]    # sys.path правится до импортов проекта
+"test/*.py" = ["E402"]    # sys.path правится до импортов проекта
 "agent/main.py" = ["E402"]       # путь и окружение настраиваются до импортов
 
 # ============================================================
-#  Pytest: тесты в agent/tests, асинхронные без декораторов
+#  Pytest: тесты ядра в test/, асинхронные без декораторов
 # ============================================================
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["agent/tests"]
+testpaths = ["test"]
 # sdk и sdk/examples: пакет gits_sdk и эхо-модуль до установки пакета (pip install -e ./sdk, см. README)
 pythonpath = ["agent", "sdk", "sdk/examples"]

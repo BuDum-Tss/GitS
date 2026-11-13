@@ -162,7 +162,7 @@ def test_app_package_is_small_and_clean():
     """ARC-4: ни один класс в `app/` не длиннее 400 строк; компоненты не лезут в приватные поля компаньона."""
     import ast
     from pathlib import Path
-    for path in sorted((Path(__file__).resolve().parents[1] / "app").glob("*.py")):
+    for path in sorted((Path(__file__).resolve().parents[1] / "agent" / "app").glob("*.py")):
         src = path.read_text(encoding="utf-8")
         for node in ast.parse(src).body:
             if isinstance(node, ast.ClassDef):

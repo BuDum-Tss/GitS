@@ -5,7 +5,7 @@
   agent/static/ui/architecture-data.js        данные для вкладки «Схема» GUI и для страницы docs;
   docs/architecture-clean.html                страница с той же схемой и пояснениями (сущности, проблемы кода, план);
   docs/architecture-clean.drawio              редактируемая версия для diagrams.net (всё раскрыто).
-Тест `agent/tests/test_architecture_spec.py` следит, что файлы совпадают со спецификацией.
+Тест `test/test_architecture_spec.py` следит, что файлы совпадают со спецификацией.
 """
 import html
 import json

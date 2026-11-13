@@ -32,7 +32,7 @@
 
 Схему архитектуры (группы, компоненты, связи, статусы «есть/планируется») показывает вкладка **«Схема»** дашборда
 (`http://localhost:8766`). Источник схемы: `agent/tools/architecture/spec.py`, сборка: `cd agent && python -m tools.architecture.build`
-(тест `agent/tests/test_architecture_spec.py` следит, чтобы собранное совпадало с источником).
+(тест `test/test_architecture_spec.py` следит, чтобы собранное совпадало с источником).
 
 ## Участники шины
 
@@ -121,7 +121,7 @@ owned) и «Сервисы» (service, включая внешние decider и 
 По частям (из корня репозитория):
 ```
 python -m ruff check agent sdk services modules
-python -m pytest -q agent/tests sdk/tests            # ядро и SDK
+python -m pytest -q test sdk/tests            # ядро и SDK
 python -m pytest -q sdk/template/tests               # шаблон участника шины
 python -m pytest -q workspaces/telegram/tests           # то же для voice, pet, desktop; у каждого участника шины отдельный запуск
 ```

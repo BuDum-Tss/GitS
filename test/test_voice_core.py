@@ -448,7 +448,7 @@ def test_core_process_has_no_audio_code_or_dependencies():
     """Приёмка ТЗ 12 п. 1: в процессе ядра нет импортов звука, а файлы звука переехали в services/voice."""
     import ast
     from pathlib import Path
-    agent = Path(__file__).resolve().parent.parent
+    agent = Path(__file__).resolve().parent.parent / "agent"
     forbidden = {"tts_engine", "mic_listener", "hearing", "voice_id", "stt_client", "opus_encoder", "sounddevice",
                  "soundcard", "faster_whisper", "edge_tts", "ormsgpack", "webrtcvad", "desktop_pet", "quick_input"}
     offenders = []

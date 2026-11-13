@@ -14,7 +14,7 @@ from environments import builtin
 from relationships import Relationships
 from supervisor import Supervisor, load_specs
 
-AGENT = Path(__file__).resolve().parent.parent
+AGENT = Path(__file__).resolve().parent.parent / "agent"
 
 
 # ── core.privacy_terms (TG-12) ─────────────────────────────────────────────────────────────────

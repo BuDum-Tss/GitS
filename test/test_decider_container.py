@@ -5,7 +5,7 @@ import yaml
 
 import supervisor
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = ROOT / "docker-compose.yml"
 CORE_COMPOSE = ROOT / "docker" / "core" / "compose.yml"
 DOCKERFILE = ROOT / "docker" / "decider" / "Dockerfile"

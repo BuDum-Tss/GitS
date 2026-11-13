@@ -7,7 +7,7 @@ import pytest
 
 from gits_sdk.protocol import Manifest
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 MODULES = ("telegram", "voice", "pet", "desktop")
 
 

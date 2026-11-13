@@ -26,7 +26,7 @@ IBM Plex, лицензия SIL Open Font License 1.1 (`OFL.txt`, Copyright 2017 
 - файлы побайтно совпадают (sha256 одинаковый), в git лежит один блоб;
 - `IBMPlexMono-Regular.ttf` содержит кириллицу и оставлен как есть.
 
-Тест `agent/tests/test_fonts.py` проверяет покрытие кириллицы по `cmap`, наличие осей и совпадение с `template/public/fonts/`.
+Тест `test/test_fonts.py` проверяет покрытие кириллицы по `cmap`, наличие осей и совпадение с `template/public/fonts/`.
 Визуальная проверка (STY-2): кадры `template/demo/out/cyrillic_*.png`.
 
 Это замена шрифта в рамках той же семьи IBM Plex; решение о ней остаётся за владельцем (ТЗ 21 §2 и STY-2). Если нужна

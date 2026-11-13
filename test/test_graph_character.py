@@ -12,7 +12,7 @@ import character_seed
 import events_log
 from graph_memory import Fact, GraphMemory
 
-REAL_CHARACTERS = Path(__file__).resolve().parents[2] / "resources"
+REAL_CHARACTERS = Path(__file__).resolve().parents[1] / "resources"
 
 
 class FakeGraph:

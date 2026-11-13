@@ -43,7 +43,7 @@ def test_stream_keeps_a_lone_bracket_and_drops_an_unfinished_tag_at_the_end():
 @pytest.mark.parametrize("tag", st.STICKERS)
 def test_every_sticker_has_an_image_in_the_pet_set(tag):
     from pathlib import Path
-    folder = Path(__file__).resolve().parents[2] / "resources" / "GlaDOS" / "pet" / "stickers"
+    folder = Path(__file__).resolve().parents[1] / "resources" / "GlaDOS" / "pet" / "stickers"
     assert (folder / f"{tag}.png").exists()
 
 

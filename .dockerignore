@@ -19,7 +19,7 @@ agent/memory
 agent/logs
 agent/models
 agent/resources
-agent/tests
+test
 agent/debug_screenshot.png
 agent/_*.log
 resources

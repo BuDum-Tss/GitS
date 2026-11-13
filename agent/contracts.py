@@ -5,7 +5,7 @@
 `fast_brain`, `events_log`, `settings`, `UserMemory`, `GraphMemory`, `Relationships`, `approvals`, `decide`).
 
 Здесь только `typing.Protocol` и стандартная библиотека: без `settings`, `events_log`, `fast_brain`, `character`,
-сети и баз данных. Проверяет это `agent/tests/test_architecture.py`.
+сети и баз данных. Проверяет это `test/test_architecture.py`.
 """
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field

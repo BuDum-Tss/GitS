@@ -18,7 +18,7 @@ from environments.registry import Registry
 from gits_sdk import WorkspaceClient
 from supervisor import Supervisor, load_specs
 
-AGENT = Path(__file__).resolve().parent.parent
+AGENT = Path(__file__).resolve().parent.parent / "agent"
 
 
 def free_port() -> int:
@@ -146,7 +146,7 @@ async def test_event_handler_failure_does_not_break_the_hub(tmp_path):
 def test_modules_yaml_points_at_the_rimworld_folder_in_this_repo():
     spec = {s.id: s for s in load_specs()}["rimworld"]
     assert spec.cwd == "{GITS}/workspaces/rimworld/agent"
-    assert (Path(__file__).resolve().parents[2] / "workspaces" / "rimworld" / "agent" / "main.py").is_file()
+    assert (Path(__file__).resolve().parents[1] / "workspaces" / "rimworld" / "agent" / "main.py").is_file()
 
 
 # ── RW-5: запись в peers.yaml ─────────────────────────────────────────────────────────────────

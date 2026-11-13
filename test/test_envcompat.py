@@ -6,7 +6,7 @@ from pathlib import Path
 
 import envcompat
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 CODE_DIRS = ("agent", "workspaces", "sdk/gits_sdk", "services")
 
 

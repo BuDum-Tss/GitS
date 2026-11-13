@@ -153,7 +153,7 @@ def build_markdown() -> str:
     lines += ["## Что участнику шины запрещено", "",
               "Участники шины (`workspaces/*`, `services/*`, кроме тестов) импортируют только стандартную библиотеку, сторонние пакеты, `gits_sdk` и свои файлы. "
               "Журнал, локальная модель, путь к Claude, опасность действия и метки трассы берутся из SDK: `client.log`, `gits_sdk.host`, "
-              "`gits_sdk.claude_path`, `gits_sdk.safety`, `gits_sdk.trace`. Тест: `agent/tests/test_architecture.py`.", ""]
+              "`gits_sdk.claude_path`, `gits_sdk.safety`, `gits_sdk.trace`. Тест: `test/test_architecture.py`.", ""]
     return "\n".join(lines).rstrip("\n") + "\n"
 
 

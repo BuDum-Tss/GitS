@@ -12,7 +12,7 @@ from core_requests import CoreRequests
 from peer_hub import PeerHub
 from peer_outbound import Outbound
 
-AGENT = Path(__file__).resolve().parents[1]
+AGENT = Path(__file__).resolve().parents[1] / "agent"
 
 
 def _imports(path: Path) -> set[str]:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = ROOT / "docker-compose.yml"                                       # монтаж: общий контейнер, корневой compose
 CORE_COMPOSE = ROOT / "docker" / "core" / "compose.yml"
 DOCKERFILE = ROOT / "docker" / "montage" / "Dockerfile"

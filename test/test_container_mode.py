@@ -13,7 +13,7 @@ from gits_sdk import protocol as P
 from peer_hub import PeerHub, parse_allow, remote_allowed
 from peer_registry import PeerRegistry
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 CONTAINER_FILE = ROOT / "agent" / "peers.container.yaml"
 HARDWARE = {"voice", "pet", "desktop"}
 

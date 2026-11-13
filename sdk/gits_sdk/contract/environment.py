@@ -2,7 +2,7 @@
 и правила папки ресурсов `resources/<Имя>/<участник шины>/`.
 
 Супервизор (`agent/supervisor.py`, `_process_env`) обязан передавать все переменные с `by == "supervisor"`: тест
-`agent/tests/test_contract_environment.py` сверяет таблицу с настоящим окружением процесса участника шины.
+`test/test_contract_environment.py` сверяет таблицу с настоящим окружением процесса участника шины.
 """
 from __future__ import annotations
 

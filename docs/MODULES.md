@@ -8,7 +8,7 @@
 [docs/MODULE_CONTRACT.md](MODULE_CONTRACT.md)** (создаётся из кода скриптом `python sdk/tools/gen_contract_doc.py`, схемы в
 `docs/contract/*.json`). Участник шины зависит только от SDK: журнал `client.log(...)`, локальная модель `gits_sdk.host.llm_ask` /
 `llm_json`, типизированные запросы `client.tts`, `persona`, `call_tool`, `claude_usage` и др.; внутренности `agent/` не
-импортируются (тест `agent/tests/test_architecture.py`).
+импортируются (тест `test/test_architecture.py`).
 
 ## Словарь: workspace и service (контракт 2.0)
 
@@ -217,7 +217,7 @@ asyncio.run(main())
   `pet`, действия `show` и `hide` меняют `pet_visible`). Окружение может менять только настройки из белого списка
   `MODULE_SETTINGS` (`agent/environments/builtin.py`), значение должно быть `true` или `false`; остальные меняет только человек.
   Белый список сейчас: `telegram`, `telegram_after_run`, `telegram_voice`, `telegram_confirm`, `pet_visible`. Новая настройка в
-  список добавляется решением владельца и тестом в `agent/tests/test_telegram_core.py`.
+  список добавляется решением владельца и тестом в `test/test_telegram_core.py`.
 
 ### Среда агента (ТЗ 32)
 
@@ -357,7 +357,7 @@ async with FakeCore() as core:
 `MEMORY_DIR` ядра (супервизор передаёт `MEMORY_DIR` всем, участник шины RimWorld заменяет его своим `agent/memory`). Проверка у него своя:
 `.\check.ps1` в папке участника шины, а тесты против `FakeCore` из этого SDK. Пример манифеста с `capabilities: ["game"]`, инструментом `order`
 (приказ игроку-агенту: ядро зовёт его у участников шины фокуса с этой возможностью), `graph: true` (подграф профиля) и событиями: выше и в
-`agent/tests/test_rimworld_core.py`.
+`test/test_rimworld_core.py`.
 
 ## Проверка
 

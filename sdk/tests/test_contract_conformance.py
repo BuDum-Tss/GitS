@@ -1,7 +1,7 @@
 """Набор проверок на соответствие контракту (ТЗ 31, MC-7).
 
 Одни и те же примеры (`valid`, `invalid`, `response_valid`, `response_invalid` из `gits_sdk.contract.messages`) прогоняются через
-проверки SDK и через `FakeCore`; те же примеры прогоняет ядро в `agent/tests/test_contract_conformance_core.py`
+проверки SDK и через `FakeCore`; те же примеры прогоняет ядро в `test/test_contract_conformance_core.py`
 (настоящие `module_hub` и `core_requests`). Все три обязаны отвечать одинаково: неверное тело - `bad_request`,
 верное - не `bad_request`, запрос со статусом planned - `unavailable`.
 """

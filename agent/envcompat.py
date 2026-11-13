@@ -5,7 +5,7 @@
 запись в CHANGELOG, раздел «Deprecated».
 
 Это тот же файл, что копии в `workspaces/<id>/envcompat.py` и `services/<id>/envcompat.py`, `sdk/gits_sdk/envcompat.py` и `services/decider/envcompat.py`
-(модули и SDK не импортируют `agent/`). Тест `agent/tests/test_envcompat.py` сверяет копии: правь все вместе.
+(модули и SDK не импортируют `agent/`). Тест `test/test_envcompat.py` сверяет копии: правь все вместе.
 """
 from __future__ import annotations
 

@@ -18,7 +18,7 @@ import speech_out
 from environments.registry import Registry
 from supervisor import Supervisor, load_specs
 
-AGENT = Path(__file__).resolve().parent.parent
+AGENT = Path(__file__).resolve().parent.parent / "agent"
 GITS = AGENT.parent
 
 
