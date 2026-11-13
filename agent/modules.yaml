@@ -123,7 +123,7 @@ modules:
     command: "{GITS}/services/f5-tts/.venv/Scripts/python.exe"
     args: ["f5_server.py"]
     health_url: "http://127.0.0.1:8771/health"
-    skip_when_env: {TTS_ENGINE: [fish, edge]}     # TTS_ENGINE=fish|edge в .env: этот голос не запускается
+    skip_when_env: {TTS_ENGINE: [fish, edge], ESPEECH_EXTERNAL: ["1"]}     # TTS_ENGINE=fish|edge в .env: этот голос не запускается; ESPEECH_EXTERNAL=1: сервис уже в контейнере (docker compose up -d espeech)
     autostart: true
     restart: on-failure
 

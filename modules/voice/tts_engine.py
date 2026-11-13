@@ -2,7 +2,7 @@
 Синтез речи ГЛаДОС (ТЗ 12, VOICE-1): текст в аудиофайл. Воспроизведение и очередь реплик это `speaker.py` и `player.py`.
 
 Приоритет (переменная окружения `TTS_ENGINE`: auto | espeech | fish | edge, по умолчанию auto):
-  1. ESpeech-TTS-1 (http://127.0.0.1:8771, сервис `services/f5-tts`): русский F5-TTS, клонирование по референсу персонажа
+  1. ESpeech-TTS-1 (http://127.0.0.1:8771, сервис `services/f5-tts`: процесс из .venv или контейнер `espeech-tts`, `ESPEECH_URL`): русский F5-TTS, клонирование по референсу персонажа
      (`espeech_ref.wav` и `espeech_ref.txt` рядом с основным референсом в папке voice/ персонажа)
   2. Fish Speech S2-Pro (http://127.0.0.1:8080): клонирование голоса по референсу персонажа
   3. edge-tts, запасной (ru-RU-SvetlanaNeural, pitch=-25Hz): если ни один из них недоступен
@@ -10,6 +10,7 @@
 Все пути записывают WAV/MP3 во временный файл. Блокирующий вызов: гонять через `asyncio.to_thread`.
 """
 import asyncio
+import base64
 import logging
 import os
 import re
@@ -89,6 +90,7 @@ MAX_CHARS = 600
 
 # Кешируем референс при первом использовании
 _reference_bytes: bytes | None = None
+_espeech_ref_cache: tuple[Path, int, str] | None = None   # (файл, mtime_ns, base64) референса ESpeech: читается один раз
 _fish_available: bool | None   = None   # None = ещё не проверяли
 _fish_checked_at = 0.0
 _espeech_available: bool | None = None
@@ -107,7 +109,9 @@ def use_character_voice(reference, edge_voice: str | None = None) -> None:
 def reset() -> None:
     """Забыть кэш доступности Fish Speech и референса (тесты)."""
     global _reference_bytes, _fish_available, _fish_checked_at, _espeech_available, _espeech_checked_at, _last_backend
+    global _espeech_ref_cache
     _reference_bytes, _fish_available, _fish_checked_at = None, None, 0.0
+    _espeech_ref_cache = None
     _espeech_available, _espeech_checked_at, _last_backend = None, 0.0, None
 
 
@@ -235,6 +239,16 @@ def _espeech_reference() -> tuple[Path, str] | None:
     return None
 
 
+def _espeech_ref_b64(audio: Path) -> str:
+    """Содержимое референса ESpeech в base64 (сервис может быть в контейнере и не видеть путь клиента). Читается один раз;
+    замена файла (другое время изменения) читается заново."""
+    global _espeech_ref_cache
+    mtime = audio.stat().st_mtime_ns
+    if _espeech_ref_cache is None or _espeech_ref_cache[:2] != (audio, mtime):
+        _espeech_ref_cache = (audio, mtime, base64.b64encode(audio.read_bytes()).decode("ascii"))
+    return _espeech_ref_cache[2]
+
+
 async def _espeech_ping() -> bool:
     """Сервис ESpeech отвечает 200 только когда модель загружена (пока грузится, 503)."""
     try:
@@ -275,7 +289,9 @@ async def _espeech_synth(text: str, directory: Path | None = None) -> str | None
         return None
     try:
         async with httpx.AsyncClient(timeout=ESPEECH_TIMEOUT) as client:
-            resp = await client.post(f"{ESPEECH_URL}/tts", json={"text": text, "ref_audio": str(ref[0]), "ref_text": ref[1], "speed": _speed})
+            # Новый сервис берёт ref_audio_b64 (работает и в контейнере); путь остаётся для старого сервера, который его не знает.
+            resp = await client.post(f"{ESPEECH_URL}/tts", json={"text": text, "ref_audio": str(ref[0]), "ref_audio_b64": _espeech_ref_b64(ref[0]),
+                                                                  "ref_text": ref[1], "speed": _speed})
             resp.raise_for_status()
     except Exception as e:
         logger.warning(f"ESpeech ошибка: {type(e).__name__}: {e}")

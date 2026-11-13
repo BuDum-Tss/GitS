@@ -1,5 +1,6 @@
 """Выбор движка синтеза (ESpeech → Fish Speech → edge-tts): без сети и видеокарты, движки подменены."""
 import types
+from pathlib import Path
 
 import pytest
 
@@ -190,3 +191,62 @@ def test_recheck_waits_for_a_loading_service_instead_of_fallback_voice(monkeypat
     monkeypatch.setattr(tts_engine, "_espeech_available", False)
     monkeypatch.setattr(tts_engine, "_espeech_checked_at", -1e9)
     assert tts_engine._check_espeech() is False and waits[-1] == 0.0
+
+
+def _fake_client(sent: list):
+    class Resp:
+        content = b"RIFFdata"
+
+        def raise_for_status(self):
+            pass
+
+    class Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json):
+            sent.append(json)
+            return Resp()
+
+    return Client
+
+
+def test_espeech_request_carries_reference_as_base64_and_path(monkeypatch, tmp_path):
+    import asyncio
+    import base64
+    sent: list = []
+    (tmp_path / "espeech_ref.wav").write_bytes(b"RIFF-wav-bytes")
+    (tmp_path / "espeech_ref.txt").write_text("текст", encoding="utf-8")
+    monkeypatch.setattr(tts_engine, "FISH_REFERENCE", tmp_path / "ref.wav")
+    monkeypatch.setattr(tts_engine.httpx, "AsyncClient", _fake_client(sent))
+    assert asyncio.run(tts_engine._espeech_synth("привет", tmp_path))
+    body = sent[0]
+    assert base64.b64decode(body["ref_audio_b64"]) == b"RIFF-wav-bytes"
+    assert body["ref_audio"] == str(tmp_path / "espeech_ref.wav") and body["ref_text"] == "текст"
+
+
+def test_espeech_reference_is_read_once_and_reread_when_replaced(monkeypatch, tmp_path):
+    import asyncio
+    import os
+    sent: list = []
+    wav = tmp_path / "espeech_ref.wav"
+    wav.write_bytes(b"first")
+    (tmp_path / "espeech_ref.txt").write_text("текст", encoding="utf-8")
+    monkeypatch.setattr(tts_engine, "FISH_REFERENCE", tmp_path / "ref.wav")
+    monkeypatch.setattr(tts_engine.httpx, "AsyncClient", _fake_client(sent))
+    reads = []
+    real = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: (reads.append(self.name), real(self))[1])
+    asyncio.run(tts_engine._espeech_synth("раз", tmp_path))
+    asyncio.run(tts_engine._espeech_synth("два", tmp_path))
+    assert reads.count("espeech_ref.wav") == 1 and sent[0]["ref_audio_b64"] == sent[1]["ref_audio_b64"]
+    wav.write_bytes(b"second!")
+    os.utime(wav, ns=(1, 1))                                      # время изменения другое: референс заменили
+    asyncio.run(tts_engine._espeech_synth("три", tmp_path))
+    assert reads.count("espeech_ref.wav") == 2 and sent[2]["ref_audio_b64"] != sent[0]["ref_audio_b64"]

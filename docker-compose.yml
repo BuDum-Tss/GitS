@@ -1,14 +1,21 @@
-# Голосовые сервисы ГЛаДОС (локально, на GPU). Запуск: docker compose up -d fish-speech
-# Оба сервиса необязательны: без Fish Speech модуль voice говорит запасным голосом edge-tts, без WhisperX слух использует
-# встроенный локальный Whisper (веса Fish Speech по-прежнему в agent/resources/tts/checkpoints, референс голоса у модуля voice). На видеокарте с 6 ГБ вместе с локальной моделью (LM Studio) и игрой видеопамяти может
-# не хватить, поэтому поднимай то, что нужно сейчас.
+# Голосовые сервисы ГЛаДОС (локально, на GPU). Голос по умолчанию ESpeech: `docker compose up -d` поднимает espeech (и whisperx);
+# Fish Speech запасной и стоит за профилем fish: `docker compose --profile fish up -d fish-speech`.
+# Все три сервиса необязательны: без ESpeech и Fish Speech модуль voice говорит запасным голосом edge-tts, без WhisperX слух
+# использует встроенный локальный Whisper (веса Fish Speech в agent/resources/tts/checkpoints, веса ESpeech в
+# services/f5-tts/weights, референс голоса у модуля voice). ESpeech в контейнере: в .env ESPEECH_EXTERNAL=1, чтобы супервизор
+# ядра не поднимал второй процесс на том же порту. На видеокарте с 6 ГБ вместе с локальной моделью (LM Studio) и игрой видеопамяти
+# может не хватить, поэтому поднимай то, что нужно сейчас.
+# Имя проекта фиксировано: все сервисы всегда в группе gits в Docker Desktop, как бы ни называлась папка репозитория.
+name: gits
+
 services:
   fish-speech:
+    profiles: ["fish"]                          # запасной голос: не поднимается по умолчанию
     build:
       context: .
       dockerfile: docker/fish-speech/Dockerfile
     image: fish-speech-custom:latest
-    container_name: glados-tts
+    container_name: fish-speech-tts
     restart: "no"
     ports:
       - "${FISH_HOST:-127.0.0.1}:${FISH_PORT:-8080}:8080"
@@ -23,12 +30,40 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # ESpeech-TTS-1 (F5-TTS, русский): тот же сервис, что services/f5-tts/f5_server.py. Первый запуск докачивает модели RUAccent и vocos
+  # в том espeech_cache; /health отвечает 503, пока модель грузится.
+  espeech:
+    build:
+      context: .
+      dockerfile: docker/espeech/Dockerfile
+    image: espeech-tts:latest
+    container_name: espeech-tts
+    restart: "no"
+    ports:
+      - "${ESPEECH_HOST:-127.0.0.1}:${ESPEECH_PORT:-8771}:8771"
+    environment:
+      F5_HOST: 0.0.0.0
+      F5_CKPT: /opt/f5-tts/weights/espeech/espeech_tts_256k.pt
+      F5_VOCAB: /opt/f5-tts/weights/espeech/vocab.txt
+      F5_WARMUP_DIR: /opt/f5-tts/references
+    volumes:
+      - ${ESPEECH_WEIGHTS:-./services/f5-tts/weights}:/opt/f5-tts/weights
+      - ./resources/GlaDOS/voice:/opt/f5-tts/references:ro
+      - espeech_cache:/home/app/.cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   whisperx:
     build:
       context: .
       dockerfile: docker/whisperx/Dockerfile
     image: whisperx-custom:latest
-    container_name: glados-stt
+    container_name: whisperx-stt
     restart: "no"
     ports:
       - "${WHISPER_HOST:-127.0.0.1}:${WHISPER_PORT:-9000}:9000"
@@ -53,3 +88,4 @@ services:
 
 volumes:
   whisper_cache:
+  espeech_cache:
