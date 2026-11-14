@@ -139,7 +139,7 @@ async def test_panel_shows_the_latest_action_and_the_plan_step(tmp_path):
 class SiteManager:
     def __init__(self, store, core=None):
         self.store = store
-        self.layout = SimpleNamespace(owner="glados")
+        self.layout = SimpleNamespace(owner="glados", character=store.dir / "character")
         self.core = core or SimpleNamespace()
         self._jobs = {}
         self.journal = Journal(self)

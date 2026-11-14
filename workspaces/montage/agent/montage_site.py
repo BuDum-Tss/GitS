@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from aiohttp import web
+from gits_sdk import ToolError
 
 from journal import active_task, hms, plan_steps
 from plan_tools import story_markdown
@@ -37,8 +38,8 @@ TEXT_LIMIT = 400_000                      # больше этого текст �
 SKIP_DIRS = {"node_modules", ".git", "__pycache__", ".claude"}        # .claude: сотни файлов навыков Remotion, не работа задачи
 TEXT_EXT = {".md", ".txt", ".json", ".jsonl", ".ts", ".tsx", ".js", ".css", ".html", ".srt", ".yaml", ".yml", ".svg", ".sh",
             ".ps1", ".py", ".lock", ".config"}
-SECTIONS = (("Идея", "idea"), ("Сценарий", "story"), ("Монтажный лист", "sheet"), ("Действия", "actions"), ("Файлы", "files"))
-DEFAULT_SECTION = "idea"
+SECTIONS = (("Монтажный лист", "sheet"), ("Действия", "actions"), ("Файлы", "files"), ("Дизайн", "design"))
+DEFAULT_SECTION = "sheet"
 ACTIONS_SHOWN = 300                       # сколько последних действий на вкладке
 LIVE_EVERY_MS = 3000                      # автообновление вкладки «Действия» и плана действий
 PREVIEW_CSP = ("sandbox allow-scripts; default-src 'none'; "
@@ -73,6 +74,98 @@ pre{background:oklch(var(--b1));border:1px solid oklch(var(--b3));padding:12px;o
 .inline-preview iframe,.inline-preview img,.inline-preview video{display:block;width:100%;height:100%;border:0;object-fit:contain}
 .inline-preview audio{max-width:100%}.inline-preview pre{margin:0}.inline-preview .font-sample{padding:.6rem}
 @media(max-width:650px){.browser{grid-template-columns:1fr}.file-nav{max-height:25vh}}"""
+WORKSPACE_STYLE = """
+main:has(.editor){max-width:none;padding:0}
+.editor{display:flex;flex-direction:column;height:calc(100dvh - 64px);min-height:440px}
+.editor-head{padding:.45rem .8rem;border-bottom:1px solid oklch(var(--b3))}
+.editor-head h1{font-size:1rem;margin:0}.editor-main,.editor-bottom{display:flex;min-height:0}
+.editor-main{flex:1}.editor-bottom{height:34%;min-height:130px;border-top:1px solid oklch(var(--b3))}
+.editor-bottom:not(:has(.editor-panel:not([hidden]))){height:4.7rem;min-height:0}
+.editor-panel[hidden]{display:none}.editor-panel{min-width:0;overflow:auto;padding:.55rem}
+.editor-side{width:clamp(160px,25vw,480px);border-inline:1px solid oklch(var(--b3))}
+.editor-bottom .editor-panel{flex:1}.editor-rail{display:flex;flex-direction:column;flex:none;background:oklch(var(--b1));border-inline:1px solid oklch(var(--b3))}
+.editor-rail button{writing-mode:vertical-rl;padding:.55rem .35rem;border-radius:0;border:0;min-height:0;height:auto}
+.editor-rail button[aria-expanded=true]{background:oklch(var(--b3));box-shadow:inset 2px 0 oklch(var(--p))}
+.editor-bottom .editor-rail{flex-direction:row;align-self:flex-start}
+.editor-bottom .editor-rail button{padding:.3rem .45rem}
+.editor-studio{display:flex;flex:1;min-width:0;background:#171717}.editor-studio iframe{flex:1;width:100%;border:0}
+.editor-studio p{margin:auto;color:#eee}.editor-table{overflow:auto}
+.agent-tree,.agent-tree ul{padding:0;margin:0;list-style:none}
+.agent-tree ul{margin-left:.65rem;padding-left:.65rem;border-left:1px solid oklch(var(--b3))}
+.agent-tree summary,.agent-tree a{display:block;padding:.2rem .4rem;overflow-wrap:anywhere}
+.agent-tree summary{cursor:pointer;list-style:none}.agent-tree summary::-webkit-details-marker{display:none}
+.agent-tree summary::before{content:'›';display:inline-block;width:1rem}
+.agent-tree details[open]>summary::before{transform:rotate(90deg)}
+.agent-tree a{padding-left:1.4rem}.agent-tree a:hover,.agent-tree summary:hover{background:oklch(var(--b2))}
+@media(max-width:800px){.editor-side{width:29vw;min-width:110px}.editor-panel{padding:.35rem}}
+"""
+WORKSPACE_SCRIPT = """<script>
+for (const rail of document.querySelectorAll('[data-panel-group]')) {
+  const tabs = Array.from(rail.querySelectorAll('[data-panel]'));
+  for (const tab of tabs) {
+    tab.onclick = () => {
+      const opening = tab.getAttribute('aria-expanded') === 'false';
+      for (const button of tabs) {
+        const active = opening && button === tab;
+        button.setAttribute('aria-expanded', String(active));
+        document.getElementById(button.getAttribute('aria-controls')).hidden = !active;
+      }
+      if (opening && tab.dataset.panel === 'files') loadBranch('.', document.getElementById('agent-files'));
+    };
+  }
+}
+
+async function loadBranch(path, list) {
+  if (list.dataset.loading || list.dataset.loaded) return;
+  list.dataset.loading = 'true';
+  const message = document.createElement('li');
+  message.textContent = 'Загрузка…';
+  list.replaceChildren(message);
+  try {
+    const response = await fetch('/workspace-files?' + new URLSearchParams({path}));
+    if (!response.ok) throw new Error('workspace-files');
+    const data = await response.json();
+    list.replaceChildren();
+    for (const entry of data.entries) {
+      const row = document.createElement('li');
+      const child = path === '.' ? entry.name : path + '/' + entry.name;
+      if (entry.type === 'dir') {
+        const folder = document.createElement('details');
+        const label = document.createElement('summary');
+        const branch = document.createElement('ul');
+        label.textContent = entry.name;
+        folder.append(label, branch);
+        folder.ontoggle = () => { if (folder.open) loadBranch(child, branch); };
+        row.append(folder);
+      } else {
+        const link = document.createElement('a');
+        link.href = '/workspace-file?' + new URLSearchParams({path: child});
+        link.textContent = entry.name;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        row.append(link);
+      }
+      list.append(row);
+    }
+    if (data.truncated || !data.entries.length) {
+      message.textContent = data.truncated ? 'Показан тот же ограниченный список, что и у агента' : 'Папка пуста';
+      list.append(message);
+    }
+    list.dataset.loaded = 'true';
+  } catch {
+    message.textContent = 'Не удалось прочитать папку';
+    list.replaceChildren(message);
+  } finally {
+    delete list.dataset.loading;
+  }
+}
+if (!document.getElementById('panel-files').hidden) loadBranch('.', document.getElementById('agent-files'));
+document.getElementById('refresh-agent-files').onclick = () => {
+  const list = document.getElementById('agent-files');
+  delete list.dataset.loaded;
+  loadBranch('.', list);
+};
+</script>"""
 DASHBOARD_CSS = Path(__file__).resolve().parents[3] / "agent/clients/gui/vendor/tailwind.css"
 
 
@@ -112,7 +205,7 @@ def _page(title: str, owner: str, body: str) -> web.Response:
             "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css'>"
             "<link rel='stylesheet' href='/static/ui/vendor/tailwind.css'>"
             "<link rel='stylesheet' href='/design/components/bundle.css'>"
-            f"<title>{_e(title)}</title><style>{STYLE}</style><body class='bg-base-200'>"
+            f"<title>{_e(title)}</title><style>{STYLE}{WORKSPACE_STYLE}</style><body class='bg-base-200'>"
             "<div class='navbar bg-base-100 border-b border-base-300 px-4'>"
             "<a href='/' class='btn btn-ghost text-lg'>Монтаж</a>"
             f"<span class='badge badge-outline'>{owner_text}</span></div><main>{body}</main></body></html>")
@@ -232,7 +325,11 @@ def _live_script(job_id: str) -> str:
     return ("<script>(function(){var u='/job/" + quote(job_id) + "/live';function g(i){return document.getElementById(i)}"
             "function t(){fetch(u).then(function(r){return r.json()}).then(function(d){"
             "if(g('now'))g('now').innerHTML=d.now;if(g('plan'))g('plan').innerHTML=d.plan;"
-            "if(g('rows')&&d.rows)g('rows').innerHTML=d.rows;}).catch(function(){})}"
+            "if(g('rows'))g('rows').innerHTML=d.rows;"
+            "if(g('sheet')&&d.sheet!==g('sheet').dataset.html){g('sheet').innerHTML=d.sheet;g('sheet').dataset.html=d.sheet;}"
+            "if(d.has_plan&&g('studio-placeholder')){const frame=document.createElement('iframe');"
+            "frame.src=u.replace(/\\/live$/,'/studio');frame.title='Remotion Studio';"
+            "frame.allow='fullscreen';g('studio-placeholder').replaceWith(frame);}}).catch(function(){})}"
             f"setInterval(t,{LIVE_EVERY_MS});}})();</script>")
 
 
@@ -256,6 +353,8 @@ class Site:
         self.app = web.Application(middlewares=[lease_required])
         self.app.add_routes([web.get("/", self.index), web.get("/job/{job}", self.job),
                              web.get("/job/{job}/studio", self.studio), web.get("/job/{job}/live", self.live),
+                             web.get("/workspace-files", self.workspace_files), web.get("/workspace-file", self.workspace_file),
+                             web.get("/workspace-raw/{path:.*}", self.workspace_file),
                              web.get("/job/{job}/raw/{path:.*}", self.raw), web.get("/job/{job}/view/{path:.*}", self.view),
                              web.get("/design/{path:.*}", self.design),
                              web.get("/static/ui/vendor/tailwind.css", self.dashboard_css)])
@@ -310,23 +409,51 @@ class Site:
         return _page("Монтаж", self.owner, body)
 
     async def job(self, request: web.Request) -> web.Response:
+        manager = self.manager
         job = self._job(request)
         section = request.query.get("s", DEFAULT_SECTION)
-        if section not in {key for _, key in SECTIONS}:
-            section = DEFAULT_SECTION
         jid = quote(job.job_id)
-        nav = "".join(f"<a class='{'on' if key == section else ''}' href='/job/{jid}?s={key}'>{label}</a>"
-                      for label, key in SECTIONS)
-        studio = ""
+        studio = "<p id='studio-placeholder'>Remotion Studio появится после сохранения монтажного листа.</p>"
         if (job.plan_dir / "plan.json").is_file():
-            studio = f" <a class=btn href='/job/{jid}/studio'>Открыть в Remotion Studio</a>"
+            studio = f"<iframe src='/job/{jid}/studio' title='Remotion Studio' allow='fullscreen'></iframe>"
         plan_html = await self._plan_html()
-        head = (f"<h1>{_e(job.data.get('title') or job.job_id)}</h1><p class=muted>{_e(job.job_id)} · "
-                f"{_e(job.state)}{studio}</p><p class=now id=now>{_now_text(job, with_label=True)}</p>"
-                f"<div id=plan>{plan_html}</div><nav>{nav}</nav><hr>")
-        script = _live_script(job.job_id)
-        return _page(str(job.data.get("title") or job.job_id), self.owner,
-                     head + getattr(self, f"_s_{section}", self._s_idea)(job) + script)
+        if self.manager is not manager:
+            raise web.HTTPServiceUnavailable(text="Аренда монтажа изменилась")
+        bottom = section if section in ("files", "design") else "files"
+        left = "actions" if section == "actions" else "sheet"
+        actions, sheet, design = await asyncio.to_thread(
+            lambda: (self._s_actions(job), self._s_sheet(job), self._design_sections(job)))
+        sheet = f"<div id='sheet'>{sheet}</div>"
+        if self.manager is not manager:
+            raise web.HTTPServiceUnavailable(text="Аренда монтажа изменилась")
+        if section in ("idea", "story"):
+            sheet += await asyncio.to_thread(getattr(self, f"_s_{section}"), job)
+        elif not (job.plan_dir / "plan.json").is_file():
+            sheet += await asyncio.to_thread(self._s_idea, job)
+        labels = dict((key, title) for title, key in SECTIONS)
+        labels["tasks"] = "Задачи"
+
+        def rail(group, keys, active):
+            buttons = "".join(f"<button class='btn btn-ghost' data-panel='{key}' aria-controls='panel-{key}' "
+                              f"aria-expanded='{str(key == active).lower()}'>{labels[key]}</button>" for key in keys)
+            return f"<nav class='editor-rail' data-panel-group='{group}'>{buttons}</nav>"
+
+        def panel(key, body, active, css=""):
+            hidden = "" if key == active else " hidden"
+            return f"<section id='panel-{key}' class='editor-panel {css}'{hidden}>{body}</section>"
+
+        tasks = f"<p class=now id=now>{_now_text(job, with_label=True)}</p><div id=plan>{plan_html}</div>"
+        files = ("<h2>Файлы</h2><button id='refresh-agent-files' class='btn btn-ghost btn-xs'>Обновить</button>"
+                 "<ul id='agent-files' class='agent-tree'></ul>")
+        title = str(job.data.get("title") or job.job_id)
+        body = (f"<div class='editor'><div class='editor-head'><h1>{_e(title)}</h1></div>"
+                f"<div class='editor-main'>{rail('left', ('sheet', 'actions'), left)}"
+                f"{panel('sheet', sheet, left, 'editor-side editor-table')}{panel('actions', actions, left, 'editor-side')}"
+                f"<section class='editor-studio'>{studio}</section>{panel('tasks', tasks, 'tasks', 'editor-side')}"
+                f"{rail('right', ('tasks',), 'tasks')}</div>"
+                f"<div class='editor-bottom'>{rail('bottom', ('files', 'design'), bottom)}"
+                f"{panel('files', files, bottom)}{panel('design', design, bottom)}</div></div>")
+        return _page(title, self.owner, body + _live_script(job.job_id) + WORKSPACE_SCRIPT)
 
     async def _plan_html(self) -> str:
         """Блок «План действий»: активная задача и её шаги из `core.tasks` (план хранит ядро, не окружение)."""
@@ -340,7 +467,9 @@ class Site:
         """Данные для автообновления страницы единицы (раз в 3 секунды): строка «Сейчас», план действий, таблица действий."""
         job = self._job(request)
         rows = _action_rows(list(reversed(self.manager.store.read_actions(job, ACTIONS_SHOWN))))
-        return web.json_response({"now": _now_text(job, with_label=True), "plan": await self._plan_html(), "rows": rows})
+        sheet = await asyncio.to_thread(self._s_sheet, job)
+        return web.json_response({"now": _now_text(job, with_label=True), "plan": await self._plan_html(), "rows": rows,
+                                  "sheet": sheet, "has_plan": (job.plan_dir / "plan.json").is_file()})
 
     def _doc(self, job, name: str, empty: str) -> str:
         path = job.plan_dir / name
@@ -386,30 +515,6 @@ class Site:
                        f"<td>{_e(r['what'])}</td><td>{_e(r['text'])}</td><td style='width:220px'>{bar}</td></tr>")
         out.append("</table>")
         return "".join(out)
-
-    def _s_files(self, job) -> str:
-        jid = quote(job.job_id)
-        items = []
-        project_files = list_files(job.folder)
-        for rel in project_files:
-            posix = rel.as_posix()
-            q = quote(posix)
-            kind = mimetypes.guess_type(posix)[0] or ""
-            viewable = rel.suffix.lower() in TEXT_EXT or kind.startswith(("video/", "image/", "audio/"))
-            link = f"/job/{jid}/view/{q}" if viewable else f"/job/{jid}/raw/{q}"
-            try:
-                size = f"{(job.folder / rel).stat().st_size / 1024:.0f} КБ"
-            except OSError:
-                size = ""
-            items.append(f"<tr><td><a href='{link}'>{_e(posix)}</a></td><td class=muted>{size}</td></tr>")
-        visible = set(project_files)
-        technical = "".join(
-            f"<li><a href='/job/{jid}/raw/{quote(rel.as_posix())}'>{_e(rel.as_posix())}</a></li>"
-            for rel in list_files(job.folder, technical=True) if rel not in visible
-        )
-        details = f"<details><summary>Служебные файлы</summary><ul>{technical}</ul></details>" if technical else ""
-        design = self._design_sections(job)
-        return f"{design}<h2>Файлы проекта</h2><table><tr><th>Файл</th><th>Размер</th></tr>{''.join(items)}</table>{details}"
 
     def _design_sections(self, job) -> str:
         root = self.manager.layout.character / "design"
@@ -476,9 +581,34 @@ class Site:
 
     async def studio(self, request: web.Request) -> web.Response:
         job = self._job(request)
-        value = await self.manager.open_studio(job.job_id)
+        try:
+            value = await self.manager.open_studio(job.job_id)
+        except ToolError as exc:
+            return web.Response(text=str(exc), status=503)
         port = urlsplit(value["url"]).port
         raise web.HTTPFound(f"http://{request.url.host}:{port}")
+
+    async def workspace_files(self, request: web.Request) -> web.Response:
+        try:
+            result = await asyncio.to_thread(self.manager.tools._op_list, {"path": request.query.get("path", ".")})
+        except ToolError as exc:
+            raise web.HTTPNotFound(text=str(exc)) from exc
+        return web.json_response(result)
+
+    async def workspace_file(self, request: web.Request) -> web.StreamResponse:
+        raw_path = request.match_info.get("path")
+        name = raw_path if raw_path is not None else request.query.get("path", "")
+        try:
+            path = await asyncio.to_thread(self.manager.tools.sandbox.resolve, name)
+        except ToolError as exc:
+            raise web.HTTPNotFound(text=str(exc)) from exc
+        if not path.is_file():
+            raise web.HTTPNotFound(text="файла нет")
+        if raw_path is not None or request.query.get("raw") == "1":
+            return self._asset_response(path)
+        raw = "/workspace-raw/" + quote(name)
+        body = await asyncio.to_thread(_preview_markup, path, raw)
+        return _page(path.name, self.owner, f"<h1>{_e(name)}</h1><section class='preview'>{body}</section>")
 
     async def view(self, request: web.Request) -> web.Response:
         job = self._job(request)

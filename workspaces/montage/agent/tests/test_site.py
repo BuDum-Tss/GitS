@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
+from area import MontageSandbox, MontageTools
 from jobs import JobStore
 from montage_site import Site, safe_file, sheet_rows
 
@@ -13,6 +14,7 @@ class FakeManager:
     def __init__(self, store, owner="glados"):
         self.store = store
         self.layout = SimpleNamespace(owner=owner, character=store.dir / "character")
+        self.tools = MontageTools(MontageSandbox(store.dir, {}, readonly=["*/plan", "*/renders"], hidden=["node_modules", ".claude"]))
 
     async def open_studio(self, job_id):
         return {"url": "http://127.0.0.1:8791", "job_id": job_id}
@@ -62,15 +64,20 @@ async def test_pages_files_and_studio_redirect(job):
         story = await (await c.get(f"/job/{j.job_id}?s=story")).text()
         assert "Сценарий &lt;b&gt;№1" in story and "Remotion Studio" in story        # текст экранируется
         main = await (await c.get(f"/job/{j.job_id}")).text()
-        assert "Идеи пока нет" in main and all(t in main for t in ("Идея", "Сценарий", "Монтажный лист", "Действия", "Файлы"))
+        assert all(t in main for t in ("Монтажный лист", "Действия", "Файлы", "Дизайн", "Задачи"))
+        assert f"<iframe src='/job/{j.job_id}/studio'" in main
+        assert "data-panel='sheet' aria-controls='panel-sheet' aria-expanded='true'" in main
         assert "Агент ещё не завёл план действий" in main and "Сейчас:" in main
         sheet = await (await c.get(f"/job/{j.job_id}?s=sheet")).text()
         assert "ПРОТОКОЛ" in sheet and "chime_up" in sheet and "0:30.00" in sheet
         files = await (await c.get(f"/job/{j.job_id}?s=files")).text()
-        project, technical = files.split("<details><summary>Служебные файлы</summary>")
-        assert "plan/story.md" in project and "work/src/Main.tsx" not in project
-        assert "work/src/Main.tsx" in technical and "job.json" in technical
-        assert "node_modules" not in files and ".claude" not in files
+        assert "id='agent-files'" in files
+        params = {"path": f"{j.job_id}/plan"}
+        tree = await (await c.get("/workspace-files", params=params)).json()
+        assert tree == site.manager.tools._op_list({"path": params["path"]})
+        assert {entry["name"] for entry in tree["entries"]} == {"story.md", "plan.json"}
+        assert (await c.get("/workspace-file", params={"path": f"{j.job_id}/work/src/Main.tsx"})).status == 404
+        assert (await c.get("/workspace-file", params={"path": f"{j.job_id}/plan/story.md", "raw": "1"})).status == 200
         view = await (await c.get(f"/job/{j.job_id}/view/work/src/Main.tsx")).text()
         assert "export const A" in view
         assert (await c.get(f"/job/{j.job_id}/raw/work/node_modules/x.js")).status == 404
@@ -98,7 +105,7 @@ async def test_visual_preview_and_isolated_html(job):
     async with TestClient(TestServer(site.app)) as c:
         url = f"/job/{j.job_id}/view/design"
         files = await (await c.get(f"/job/{j.job_id}?s=files")).text()
-        assert files.index("Библиотека Aperture") < files.index("Служебные файлы")
+        assert "id='panel-design'" in files and "Библиотека Aperture" in files
         assert f"{url}/design-system.json" in files
         assert "<th>Название</th><th>Описание</th><th>Просмотр</th>" in files
         assert "class='inline-preview'><iframe" in files
