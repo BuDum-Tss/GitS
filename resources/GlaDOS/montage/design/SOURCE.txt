@@ -1,0 +1,3 @@
+Выгрузка дизайн-системы «Лаборатория Aperture» из Claude (артефакт, версия от 2026-10-24).
+Готовое: README.md (книга стиля), tokens.json, components/* (README и preview.html: Intro, Blueprint, ChamberSign, ResultSign, Captions, GladosRoom, рамки, примеры роликов), components/bundle.css (стили и анимации ap-bob, ap-draw, ap-talk), fonts/, assets/ (видео заставок Aperture_Boot, комната, стикеры питомца, рамка HUD, чертежи роботов).
+Лежит как справочник и исходник для шаблона монтажа; код шаблона (workspaces/montage/template) отсюда не генерируется.
