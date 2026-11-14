@@ -1,0 +1,9 @@
+services:
+  core:
+    environment:
+      GITS_REPAIR_QUEUE: /repair-queue
+      GITS_REPAIR_SCREENSHOTS: /repair-screenshots
+    volumes:
+      - "${GITS_REPAIR_QUEUE_HOST:?Set GITS_REPAIR_QUEUE_HOST}:/repair-queue"
+      - "${GITS_REPAIR_SCREENSHOTS_HOST:?Set GITS_REPAIR_SCREENSHOTS_HOST}:/repair-screenshots:ro"
+

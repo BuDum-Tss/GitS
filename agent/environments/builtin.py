@@ -6,6 +6,7 @@
 environments/manifests/.
 """
 import asyncio
+import os
 import re
 import time
 
@@ -15,6 +16,7 @@ from services.conversation.stems import stems
 from services.tasks.service import TaskError
 from services.tasks import model as task_dom
 from .base import Environment, Tool, ToolError
+from .bug_report import repair_status, report_bug
 
 
 # настройки, которые модули меняют инструментом core.set_setting (TG-13): белый список, остальное только человек.
@@ -500,7 +502,7 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
         if not res.get("ok"):
             raise ToolError(str(res.get("error") or "не удалось выйти из среды"), code="unavailable")
         if res.get("releasing"):
-            return (f"вышла из среды «{title_of(ws)}»; в ней ещё идут операции" + (f" ({res['jobs']})" if res.get("jobs") else "") + f", аренда вернётся, когда они закончатся, "
+            return (f"вышла из среды «{title_of(ws)}»; в ней ещё идут операции" + (f" ({res['jobs']})" if res.get("jobs") else "") + ", аренда вернётся, когда они закончатся, "
                     "новые начинать нельзя")
         return f"вышла из среды «{title_of(ws)}», аренда возвращена"
 
@@ -698,11 +700,31 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
     ]
 
     workspace_tools = [] if workspaces is None else _workspace_tools(workspaces, modules)     # ТЗ 32: среды агента
+    repair_tools = []
+    if os.environ.get("GITS_REPAIR_QUEUE"):
+        repair_tools.append(_tool(
+            "core", "bug_report",
+            "Поставить подтверждённый баг GitS в очередь автономного исправления. "
+            "Можно вызывать из любого окружения. Передай симптомы, воспроизведение, ожидаемое и фактическое "
+            "поведение. Убери секреты и личные данные. Используй для наблюдаемого сбоя или сообщения владельца.",
+            {"summary": {"type": "string", "description": "Компонент и суть бага"},
+             "steps": {"type": "string", "description": "Подробные шаги воспроизведения и исходные условия"},
+             "expected": {"type": "string", "description": "Как система должна была повести себя"},
+             "actual": {"type": "string", "description": "Что произошло, включая релевантные ошибки"},
+             "screenshot": {"type": "string", "required": False,
+                            "description": "Имя снимка из desktop.take_screenshot без личных данных"}},
+            report_bug, informative=True, keywords=("баг", "ошибка", "сломалось", "исправь", "почини"),
+        ))
+        repair_tools.append(_tool(
+            "core", "bug_status", "Статус исправления бага, ссылка на GitHub Issue и итог передеплоя.",
+            {"request_id": {"type": "string", "description": "Номер из core.bug_report"}},
+            repair_status, informative=True, keywords=("баг", "статус", "исправление"),
+        ))
     registry.add(Environment(
         id="core", title="Ядро: задачи модулей и внимание",
         description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "
                     "«не отвлекай / выдели» и сводка накопившегося. Общие настройки Telegram для модулей.",
-        tools=attention_tools + workspace_tools + [
+        tools=attention_tools + workspace_tools + repair_tools + [
             _tool("core", "jobs", "Перечень задач всех модулей: модуль, название, состояние, стадия, прогресс. "
                   "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",
                   {}, jobs, informative=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),

@@ -65,6 +65,15 @@ window.ARCH_DATA = {
      "now": "workspaces/montage"
     },
     {
+     "id": "repair",
+     "t": "Самоисправление GitS",
+     "tag": "I",
+     "new": false,
+     "do": "хост читает очередь багов, создаёт GitHub Issues и запускает классический Pi в контейнере; проверяет патч, коммитит и обновляет образы",
+     "out": "коммит и результат в Issue",
+     "now": "docker/self-improvement"
+    },
+    {
      "id": "dash",
      "t": "Дашборд и чат",
      "tag": "I",
@@ -700,6 +709,12 @@ window.ARCH_DATA = {
   }
  ],
  "edges": [
+  [
+   "exec",
+   "repair",
+   "flow",
+   "core.bug_report"
+  ],
   [
    "voice",
    "hub",

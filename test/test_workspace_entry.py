@@ -1,5 +1,4 @@
 """Вводная модуля при входе в среду (WORKSPACE_CONTRACT §7): ответ на workspace.enter доходит до агента и до заметки о среде."""
-import pytest
 
 from core_service import entry_intro
 from environments.builtin import _workspace_tools

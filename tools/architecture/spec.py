@@ -35,6 +35,7 @@ GROUPS = [
         N("strm", "streamer", "I", "ведение трансляции: чат и события Twitch, ответы, модерация; сцены, запись и субтитры OBS (obs-websocket)", "Event twitch.*, obs.*", "workspaces/streamer: подсистемы twitch/ и obs/"),
         N("rim", "rimworld", "I", "игровой агент: ходы, комментатор, запись забега", "Event raid, death, colonists", "workspaces/rimworld"),
         N("mont", "montage", "I", "конвейер роликов: Remotion + ffmpeg, агент Claude", "job.update, вопросы", "workspaces/montage"),
+        N("repair", "Самоисправление GitS", "I", "хост читает очередь багов, создаёт GitHub Issues и запускает классический Pi в контейнере; проверяет патч, коммитит и обновляет образы", "коммит и результат в Issue", "docker/self-improvement"),
         N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (services/tracing/flow_trace.py, services/tracing/flow_spec.py, /api/flow; ошибки GLiNER, Claude и выходов отдельно; настройка «Только ядро»)"),
     ]),
     dict(id="g_imp", col="A", title="Внутренние импульсы", tag="A",
@@ -130,6 +131,7 @@ OWNER = {n["id"]: g["id"] for g in GROUPS for n in g["nodes"]}
 BYID = {g["id"]: g for g in GROUPS}
 
 EDGES = [
+    ("exec", "repair", "flow", "core.bug_report", None),
     ("voice", "hub", "flow", "Event", None), ("desk", "hub", "flow", None, None), ("tg", "hub", "flow", None, None), ("strm", "hub", "flow", None, None),
     ("hub", "preg", "use", "кто подключён", None), ("rim", "hub", "flow", None, None), ("mont", "hub", "flow", "job.update", None), ("dash", "hub", "flow", "UserInput", None),
     ("reminders", "timer", "use", "срок", None), ("mr", "plans", "r", "планы пользователя", None), ("plans", "reminders", "w", "напомнить", None),

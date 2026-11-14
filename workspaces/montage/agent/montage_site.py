@@ -10,14 +10,13 @@ import json
 import logging
 import mimetypes
 import os
-import time
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from aiohttp import web
 
 from journal import active_task, hms, plan_steps
-from plan_tools import plan_markdown, story_markdown
+from plan_tools import story_markdown
 
 log = logging.getLogger("montage.site")
 

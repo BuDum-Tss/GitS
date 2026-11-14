@@ -8,9 +8,8 @@ from environments import builtin
 from environments.base import ToolError
 from environments.registry import Registry
 from services.tasks import model as T
-from services.tasks.service import TaskError, TaskService
-from services.tasks.store import TaskStore
-from test.test_tasks import Clock, FakePlanner, service
+from services.tasks.service import TaskError
+from test.test_tasks import FakePlanner, service
 
 
 def tools(tmp_path, planner=None):

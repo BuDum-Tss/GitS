@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from gits_sdk import ToolError
 
 from journal import Journal
 from jobs import JobStore
@@ -30,9 +31,9 @@ async def test_actions_are_logged_for_skill_files_denial_and_run(tmp_path):
     await rig.tool("skills", {"name": "montage-regulation"})
     await rig.files("read", "template/package.json")
     await rig.files("write", f"{jid}/plan/idea.md", content="Идея про куб")
-    with pytest.raises(Exception):
+    with pytest.raises(ToolError):
         await rig.files("write", f"{jid}/sources/x.mp4", content="x")
-    with pytest.raises(Exception):
+    with pytest.raises(ToolError):
         await rig.run("check", jid)                                                      # плана ещё нет: отказ тоже в журнале
     rows = actions(rig, jid)
     texts = [r["text"] for r in rows]
@@ -124,7 +125,7 @@ async def test_panel_shows_the_latest_action_and_the_plan_step(tmp_path):
     blocks = rig.manager.panel_blocks()
     assert [b["type"] for b in blocks] == ["stats", "text"] and blocks[1]["title"] == "Последнее действие"
     assert "Действий пока нет" in blocks[1]["text"]
-    jid = await rig.create()
+    await rig.create()
     await rig.files("read", "template/package.json")
     blocks = rig.manager.panel_blocks()
     assert "читает template/package.json" in blocks[1]["text"] and ":" in blocks[1]["text"].split(" · ")[0]

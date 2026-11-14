@@ -2,7 +2,6 @@
 import json
 from types import SimpleNamespace
 
-import http_api
 from http_api import routes_memory
 from http_api.context import ctx
 from services.tasks.service import TaskService
