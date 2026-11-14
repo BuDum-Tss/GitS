@@ -14,7 +14,7 @@ workspaces/desktop/models/
 agent/memory/screenshots/
 
 # веса Fish Speech (2.5 ГБ), качаются отдельно
-agent/resources/tts/checkpoints/
+models/
 
 .claude/
 .venv/
