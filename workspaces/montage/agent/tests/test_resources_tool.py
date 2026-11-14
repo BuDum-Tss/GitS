@@ -78,7 +78,9 @@ async def test_compact_catalog_fits_and_has_groups(tmp_path):
         assert name in text, name
     assert "resources/design/assets/Room/glados-room.webp" in text and "resources/APERTURE_STYLE.md" in text
     assert "resources/design/tokens.json" in text or "tokens.json" in text
-    assert "C:" not in text and "components" not in text and "preview.png" not in text
+    assert "C:" not in text and "Компоненты дизайна" in text and "preview.png" not in text
+    catalog = (await rig.tool("resources", {"group": "Компоненты дизайна"}))["text"]
+    assert "Intro" in catalog and "README.md" in catalog and "preview.html" in catalog
 
 
 async def test_group_returns_full_list_with_sizes(tmp_path):

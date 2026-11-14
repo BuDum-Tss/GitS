@@ -30,7 +30,7 @@ from manifest import normalize_voiceover, resolve_output_dir
 from plan_schema import PlanContext, story_beat_ids, validate_plan, validate_story
 from plan_tools import fit_voiceover, load_voice_cache, synthesize_to, voice_digest
 from render import RenderError, Renderer
-from workspace import custom_components, sync_media
+from workspace import custom_components, sync_intro, sync_media
 
 log = logging.getLogger("montage.commands")
 
@@ -120,6 +120,7 @@ class Commands:
 
         def on_progress(frac: float) -> None:
             loop.create_task(progress(span[0] + max(0.0, min(1.0, frac)) * (span[1] - span[0]), f"{text}: {round(frac * 100)} %"))
+        await asyncio.to_thread(sync_intro, job.work, self.layout)
         await self.renderer.render(job.work, job.plan_dir / "plan.json", out, scale=scale, crf=crf, on_progress=on_progress)
         return time.monotonic() - t0
 
@@ -256,6 +257,7 @@ class Commands:
         if frame > last:
             raise ToolError(f"frame: в ролике кадры 0–{last}", code="invalid")
         out = job.renders / f"still_{frame}.png"
+        await asyncio.to_thread(sync_intro, job.work, self.layout)
         await asyncio.to_thread(sync_media, job.folder)
         await self.renderer.still(job.work, plan_path, frame, out)
         return {"path": f"renders/still_{frame}.png", "frame": frame, "text": f"кадр {frame}: renders/still_{frame}.png"}

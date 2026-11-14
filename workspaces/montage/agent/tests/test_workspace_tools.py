@@ -79,7 +79,9 @@ async def test_files_write_in_writable_and_deny_elsewhere(tmp_path):
     rep = await rig.files("replace", f"{jid}/plan/idea.md", old="ролика", new="про куб")
     assert rep["replaced"] == 1
     # код ролика и любые другие имена в plan/ закрыты
-    for path in (f"{jid}/work/src/custom/Mine.tsx", f"{jid}/work/src/Main.tsx", f"{jid}/work/public/vo/a.txt",
+    assert (await rig.files("write", f"{jid}/work/src/custom/Mine.tsx", content="export {}"))["ok"]
+    assert (await rig.files("write", f"{jid}/work/public/design/preview.html", content="<p>Preview</p>"))["ok"]
+    for path in (f"{jid}/work/src/Main.tsx", f"{jid}/work/public/vo/a.txt",
                  f"{jid}/plan/story.json", f"{jid}/plan/plan.md", f"{jid}/plan/other.txt"):
         assert await code_of(rig.files("write", path, content="x")) == "denied", path
     # неверный монтажный лист отвергается с понятным списком ошибок, прежний файл остаётся
@@ -124,7 +126,7 @@ async def test_files_read_template_and_resources_and_list_root(tmp_path):
     assert await code_of(rig.files("read", "template/package.json")) == "denied"
     assert await code_of(rig.files("read", f"{jid}/work/src/schema.ts")) == "denied"
     work_entries = (await rig.files("list", f"{jid}/work"))["entries"]
-    assert [entry["name"] for entry in work_entries] == ["public"]
+    assert [entry["name"] for entry in work_entries] == ["public", "src"]
     style = await rig.files("read", "resources/APERTURE_STYLE.md")
     assert style["size"] > 0 and style["content"]
     assert {e["name"] for e in (await rig.files("list", "resources"))["entries"]} >= {"assets", "design"}

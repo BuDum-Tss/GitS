@@ -73,6 +73,7 @@ async def test_visual_preview_and_isolated_html(job):
     (design / "preview.html").write_text('<link rel="stylesheet" href="style.css">', encoding="utf-8")
     (design / "style.css").write_text("body { color: red }", encoding="utf-8")
     (design / "heading.ttf").write_bytes(b"font")
+    (design / "design-system.json").write_text("{}", encoding="utf-8")
     (design / "icon.svg").write_text("<svg/>", encoding="utf-8")
     intro = design / "components" / "Intro"
     intro.mkdir(parents=True)
@@ -80,6 +81,9 @@ async def test_visual_preview_and_isolated_html(job):
     site = Site(manager, port=0)
     async with TestClient(TestServer(site.app)) as c:
         url = f"/job/{j.job_id}/view/design"
+        files = await (await c.get(f"/job/{j.job_id}?s=files")).text()
+        assert files.index("Библиотека Aperture") < files.index("Служебные файлы")
+        assert f"{url}/design-system.json" in files
         page = await (await c.get(f"{url}/preview.html")).text()
         assert "sandbox='allow-scripts'" in page and "allow-same-origin" not in page
         assert "aria-current='page'" in page and "/design/heading.ttf" in page

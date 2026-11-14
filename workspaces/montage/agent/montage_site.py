@@ -356,13 +356,12 @@ class Site:
         )
         details = f"<details><summary>Служебные файлы</summary><ul>{technical}</ul></details>" if technical else ""
         design = self._file_links(job, "design")
-        return f"<table><tr><th>Файл</th><th>Размер</th></tr>{''.join(items)}</table>{details}{design}"
+        return f"{design}<h2>Файлы проекта</h2><table><tr><th>Файл</th><th>Размер</th></tr>{''.join(items)}</table>{details}"
 
     def _file_links(self, job, scope: str, selected: str = "") -> str:
         if scope == "design":
             root = self.manager.layout.character / "design"
             files = list_files(root, technical=True)
-            files = [p for p in files if p.suffix.lower() in FONT_EXT | {".html", ".svg", ".gif", ".png", ".jpg", ".webp", ".mp4", ".webm"}]
             prefix = "design/"
             title = "Библиотека Aperture"
         else:

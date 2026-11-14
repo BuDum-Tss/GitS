@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -20,6 +21,19 @@ COPY_DIRS = ("src", "scripts")
 PUBLIC_DIRS = ("fonts", "sfx", "scenes", "pet", "hud")   # шрифты, звуки, фон комнаты, питомец, рамка HUD (ТЗ 23)
 MEDIA_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".wav", ".mp3", ".m4a",
                   ".aac", ".flac", ".ogg"}
+LEGACY_INTRO = "199b77f974ab3a5028e1cccbbaef7c38af08c69a04f038dc39271ac85aeb20f7"
+
+
+def sync_intro(work: Path, layout: Layout) -> None:
+    """Подключить видео и обновить неизменённую копию прежнего штатного интро."""
+    assets = layout.character / "design" / "assets" / "Intro"
+    for name in ("Aperture_Boot_light.mp4", "Aperture_Boot_vertical_light.mp4"):
+        if (assets / name).is_file():
+            link_or_copy(assets / name, work / "public" / "intro" / name)
+    relative = Path("src/components/Intro.tsx")
+    component = work / relative
+    if component.is_file() and hashlib.sha256(component.read_bytes().replace(b"\r\n", b"\n")).hexdigest() == LEGACY_INTRO:
+        shutil.copyfile(layout.template / relative, component)
 
 
 def link_or_copy(src: Path, dst: Path) -> None:
@@ -68,6 +82,7 @@ def prepare_work(job_dir: Path, layout: Layout) -> Path:
     for sub in ("media", "vo", "transcript"):
         (work / "public" / sub).mkdir(parents=True, exist_ok=True)
     make_dir_link(work / "node_modules", tpl / "node_modules")
+    sync_intro(work, layout)
     sync_media(job_dir)
     return work
 

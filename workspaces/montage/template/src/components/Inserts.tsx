@@ -11,7 +11,7 @@ import {ChamberSign, ResultSign} from './Sign';
 const InsertView: React.FC<{insert: Insert; durationInFrames: number; voiceover: Voiceover[]}> = ({insert, durationInFrames, voiceover}) => {
 	switch (insert.kind) {
 		case 'intro':
-			return <Intro insert={insert} durationInFrames={durationInFrames} />;
+			return <Intro />;
 		case 'blueprint':
 			return <Blueprint insert={insert} durationInFrames={durationInFrames} />;
 		case 'glados_room':

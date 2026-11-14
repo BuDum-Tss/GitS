@@ -93,15 +93,14 @@ class Layout:
         return out
 
     def catalog_files(self) -> list[tuple[str, int]]:
-        """Все файлы ресурсов персонажа в форме раздела files (`resources/...`, от папки montage) и размер: без превью, кода и сборки."""
+        """Ресурсы и компоненты дизайна с путями для files и размером."""
         base = self.character
         out: list[tuple[str, int]] = []
         if not base.is_dir():
             return out
         for p in sorted(base.rglob("*")):
             rel = p.relative_to(base).parts
-            if (not p.is_file() or rel[0] in ("out", "node_modules") or "components" in rel or "node_modules" in rel
-                    or p.suffix.lower() in (".html", ".css")):
+            if not p.is_file() or rel[0] == "out" or any(part in {"node_modules", ".git", ".claude"} for part in rel):
                 continue
             out.append(("resources/" + "/".join(rel), p.stat().st_size))
         return out

@@ -18,7 +18,7 @@ from layout import Layout
 
 # где что лежит относительно корня области (папка единиц хозяина); те же значения идут в манифест (`workspace.area`)
 AREA_ROOT = "jobs"
-WRITABLE = ["*/plan"]                                    # агент пишет только идею, сценарий и монтажный лист (имена ниже)
+WRITABLE = ["*/plan", "*/work/src/custom", "*/work/public/design"]
 PLAN_FILES = ("idea.md", "story.md", "plan.json")
 PLAN_JSON = "plan.json"
 READONLY = ["template/demo/plan.*.json", "resources", "*/sources", "*/transcript", "*/renders", "*/qa", "*/work/public"]
@@ -64,8 +64,10 @@ class MontageSandbox(Sandbox):
         return super().rel(path)
 
     def can_write(self, parts: tuple[str, ...]) -> bool:
-        """Запись только в `<id>/plan/idea.md`, `story.md`, `plan.json`: другие имена в plan/ и весь остальной код ролика закрыты."""
-        return len(parts) == 3 and parts[1].casefold() == "plan" and parts[2] in PLAN_FILES and super().can_write(parts)
+        """План и собственные компоненты и дизайн конкретной единицы."""
+        plan = len(parts) == 3 and parts[1].casefold() == "plan" and parts[2] in PLAN_FILES
+        custom = len(parts) >= 5 and parts[1:4] in (("work", "src", "custom"), ("work", "public", "design"))
+        return (plan or custom) and super().can_write(parts)
 
     def mount_root(self, name: str) -> Path | None:
         return self.mounts.get(name)

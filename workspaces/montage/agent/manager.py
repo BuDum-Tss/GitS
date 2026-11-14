@@ -30,7 +30,7 @@ from layout import Layout
 from manifest import BRIEF, COMMANDS, FORMATS, MANIFEST, PLATFORMS, SOURCE_KINDS, VOICEOVERS, normalize_voiceover, resolve_output_dir
 from montage_site import Site
 from studio import StudioError, StudioPool
-from workspace import prepare_work
+from workspace import prepare_work, sync_intro
 
 log = logging.getLogger("montage.manager")
 
@@ -209,7 +209,7 @@ class Manager:
     # русские названия известных папок design/assets; новые папки попадают в каталог под своим именем
     _GROUP_NAMES = {"room": "Комната", "intro": "Интро", "pet": "Питомец", "hud": "Рамки/HUD", "frames": "Рамки/HUD",
                     "robots": "Чертежи роботов", "footage": "Кадры игры", "fonts": "Шрифты", "sfx": "Звуки",
-                    "pictograms": "Пиктограммы"}
+                    "pictograms": "Пиктограммы", "components": "Компоненты дизайна"}
     _STYLE_GROUP = "Регламент стиля"
 
     @classmethod
@@ -266,11 +266,18 @@ class Manager:
             name = next((k for k in groups if k.casefold() == want), None)
             if name is None:
                 raise ToolError(f"нет группы {group}; группы: {', '.join(groups)}", code="invalid")
-            lines = [f"{name}: {len(groups[name])} файл(ов); пути годятся и в files (раздел resources), и в sources инструмента work:"]
+            lines = [f"{name}: {len(groups[name])} файл(ов); пути для files. Медиа можно использовать в work.sources."]
+            if name == "Компоненты дизайна":
+                components = sorted({p.split("/")[3] for p, _ in groups[name] if len(p.split("/")) > 4})
+                return ("resources/design/components/<компонент>/README.md — описание; preview.html — просмотр. "
+                        "Обзор назначения: resources/design/README.md. Компоненты: " + ", ".join(components))
             lines += [f"{p} ({size // 1024 or 1} КБ)" if size >= 1024 else f"{p} ({size} Б)" for p, size in groups[name]]
             return "\n".join(lines)
         lines = ["Ресурсы монтажа; пути как в files, в sources work годятся они и абсолютные. Полный список: resources с group=<имя>."]
         for name, items in groups.items():
+            if name == "Компоненты дизайна":
+                lines.append(f"{name}: {len(items)} файлов; открой resources с group={name}.")
+                continue
             folders: dict[str, list[str]] = {}
             for path, _ in items:
                 folder, _, fname = path.rpartition("/")
@@ -614,6 +621,7 @@ class Manager:
         if not (job.plan_dir / "plan.json").is_file():
             raise ToolError("у единицы ещё нет плана, Studio открыть нельзя", code="unavailable")
         try:
+            await asyncio.to_thread(sync_intro, job.work, self.layout)
             url, started = await self.studios.open(job.job_id, job.work)
         except StudioError as e:
             raise ToolError(str(e), code="unavailable") from e
