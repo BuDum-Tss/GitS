@@ -19,42 +19,6 @@ classDiagram
     refresh() None
     target() tuple[str, dict] | None
   }
-  class Profile {
-    activate : dict
-    attention : dict
-    description : str
-    focus_modules : tuple[str, ...]
-    id : str
-    memory_scopes : tuple[str, ...]
-    planned : bool
-    priority : int
-    sticky_s : float
-    title : str
-    tone : str
-    workspace : str
-  }
-  class ProfileManager {
-    current_id : str
-    history : deque
-    on_change : NoneType
-    override : str | None
-    poke
-    profiles : dict
-    sleeping : Callable[[], bool]
-    subgraph : NoneType
-    auto_id() str
-    choices() list[str]
-    current() Profile
-    evaluate() str
-    focus_modules() set[str]
-    graph() dict
-    hint() str
-    info() dict
-    manual_choice() str | None
-    run(interval: float)
-    set_override(mode: str | None) str | None
-    states() list[dict]
-  }
   class Reason {
     ALL : tuple
     BLOCKED : str
@@ -66,6 +30,19 @@ classDiagram
     SELF : str
     START : str
     USER : str
+  }
+  class SpaceConfig {
+    focus : tuple[str, ...]
+    memory_scopes : tuple[str, ...]
+    tone : str
+  }
+  class SpaceFocus {
+    config : dict
+    focus_modules() set[str]
+    hint() str
+    info() dict
+    memory_scopes() list[str]
+    scope_title(scope: str) str
   }
   class WorkspaceLink {
     checkpoints : dict[str, dict]

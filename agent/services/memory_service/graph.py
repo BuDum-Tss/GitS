@@ -156,9 +156,9 @@ class SqliteBackend:
 
     def __init__(self, path: Path | str, embedder=None):
         self.path = Path(path)
-        self.store = FactStore(self.path)
+        self.store: FactStore = FactStore(self.path)
         self.embedder = embedder or LmStudioEmbedder(query_timeout=5.0)
-        self.search_service = HybridSearch(HybridIndex(self.path), self.embedder,
+        self.search_service: HybridSearch = HybridSearch(HybridIndex(self.path), self.embedder,
                                            cfg=SearchConfig(min_cos=MIN_SCORE, min_cos_bm25=0.4))
 
     async def healthy(self) -> tuple[bool, str]:

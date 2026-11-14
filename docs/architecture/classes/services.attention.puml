@@ -36,7 +36,6 @@ class "Attention" as services.attention.service.Attention {
   on_think
   pipeline
   presence
-  profiles
   questions
   rules
   silent_kinds
@@ -96,7 +95,7 @@ class "AttentionContext" as services.attention.core.AttentionContext {
   decider
   decisions : deque
   env_of : Callable[[], Any]
-  hub : NoneType
+  hub : PeerHub | None
   idle
   io
   kind_handlers : dict[str, Callable]
@@ -104,13 +103,12 @@ class "AttentionContext" as services.attention.core.AttentionContext {
   last_decision : dict | None
   last_user_text : str
   log
-  modules : NoneType
+  modules : PeerRegistry | None
   node_watch : Callable[[str], dict]
   on_alert : Callable[[Item], bool] | None
   on_think : Callable[[Item], Any] | None, Callable[[Item], None] | None
   people
   presence
-  profiles : NoneType
   rules
   settings
   settings_provider
@@ -426,7 +424,6 @@ services.attention.service._Via --* services.attention.service.Attention : io
 services.attention.service._Via --* services.attention.service.Attention : decider
 services.attention.service._Via --* services.attention.service.Attention : hub
 services.attention.service._Via --* services.attention.service.Attention : modules
-services.attention.service._Via --* services.attention.service.Attention : profiles
 services.attention.service._Via --* services.attention.service.Attention : rules
 services.attention.service._Via --* services.attention.service.Attention : presence
 services.attention.service._Via --* services.attention.service.Attention : kind_handlers

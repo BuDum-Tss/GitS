@@ -1,10 +1,14 @@
 """MemoryCapture: что запомнить из разговора (ТЗ 29, ARC-5): явное «запомни» (`remember_text`) и очередь реплик в граф.
 Остальное запоминает единый агент сам инструментом памяти, а во сне и в паузе работают эпизоды и размышление."""
+from typing import TYPE_CHECKING
 import logging
 import re
 import time
 
 from services.runtime import fast_brain
+
+if TYPE_CHECKING:
+    from services.conversation.companion import Companion
 
 logger = logging.getLogger("companion")
 
@@ -13,7 +17,7 @@ SPEAKER_TAG = re.compile(r"^\[(говорит ([^\]]+)|незнакомый го
 
 class MemoryCapture:
     def __init__(self, host):
-        self._h = host
+        self._h: Companion = host
 
     def owner_name(self) -> str:
         for fact in self._h._memory_reader.facts():

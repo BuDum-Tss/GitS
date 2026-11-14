@@ -153,23 +153,23 @@ class Attention:
         self._loop_task: asyncio.Task | None = None
         self._last_purge = clock()
         # компоненты (ТЗ 29, ARC-4); связи между ними ставятся ниже, потому что они ссылаются друг на друга
-        self.store = ItemStore(ctx)
-        self.digest_ = Digest(ctx)
-        self.focus_ = FocusStack(ctx)
-        self.coordinator = SpeechCoordinator(ctx, self.store, self.digest_, self.focus_)
+        self.store: ItemStore = ItemStore(ctx)
+        self.digest_: Digest = Digest(ctx)
+        self.focus_: FocusStack = FocusStack(ctx)
+        self.coordinator: SpeechCoordinator = SpeechCoordinator(ctx, self.store, self.digest_, self.focus_)
         self.store.speech = self.digest_.speech = self.focus_.speech = self.coordinator
         self.store.digest = self.focus_.digest = self.digest_
-        self.decision_log = DecisionLog(ctx)
-        self.dispatcher = Dispatcher(ctx, self.digest_, self.coordinator, self.focus_, self.decision_log)
-        self.classifier = InputClassifier(ctx)
-        self.inbox = Inbox(ctx, self.digest_, self.focus_, self.coordinator)
-        self.questions = QuestionService(ctx, self.coordinator, self.focus_)
-        self.announcer = Announcer(ctx, self.store, self.digest_, self.coordinator, self.decision_log)
-        self.normalizer = Normalizer(ctx)
-        self.hard_rules = HardRules(ctx, self.dispatcher, self.decision_log, self.questions)
-        self.pipeline = EventPipeline(ctx, self.normalizer, self.store, self.hard_rules, self.dispatcher,
+        self.decision_log: DecisionLog = DecisionLog(ctx)
+        self.dispatcher: Dispatcher = Dispatcher(ctx, self.digest_, self.coordinator, self.focus_, self.decision_log)
+        self.classifier: InputClassifier = InputClassifier(ctx)
+        self.inbox: Inbox = Inbox(ctx, self.digest_, self.focus_, self.coordinator)
+        self.questions: QuestionService = QuestionService(ctx, self.coordinator, self.focus_)
+        self.announcer: Announcer = Announcer(ctx, self.store, self.digest_, self.coordinator, self.decision_log)
+        self.normalizer: Normalizer = Normalizer(ctx)
+        self.hard_rules: HardRules = HardRules(ctx, self.dispatcher, self.decision_log, self.questions)
+        self.pipeline: EventPipeline = EventPipeline(ctx, self.normalizer, self.store, self.hard_rules, self.dispatcher,
                                       self.announcer, self.decision_log)
-        self.jobs = JobTracker(ctx, self.store, self.dispatcher)
+        self.jobs: JobTracker = JobTracker(ctx, self.store, self.dispatcher)
 
     # ── подключение: так ядро собирает сервис (остальное ядро не трогает компоненты и контекст напрямую) ────────────
 

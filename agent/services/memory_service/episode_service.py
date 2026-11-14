@@ -110,7 +110,7 @@ class EpisodeService:
 
     def attach_scheduler(self) -> SleepScheduler:
         p = self.parts()
-        self.scheduler = SleepScheduler(
+        self.scheduler: SleepScheduler = SleepScheduler(
             p.runner, store=p.store, settings=self.settings, clock=self.clock,
             idle_seconds=lambda: float(self.companion.idle_seconds() or 0.0),
             last_user_ts=lambda: float(getattr(self.companion, "_last_user_ts", 0.0) or 0.0),

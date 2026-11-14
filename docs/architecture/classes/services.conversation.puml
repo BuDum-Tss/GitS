@@ -8,13 +8,13 @@ class "Channel" as services.conversation.conversation_io.Channel {
   to_dict() -> dict
 }
 class "Companion" as services.conversation.companion.Companion {
-  attention : NoneType
+  attention : Attention | None
   context_builder
   conversation
   environment_note
-  graph : NoneType
+  graph : GraphMemory | None
   idle_seconds
-  io : NoneType
+  io : ConversationIO | None
   job_wait : NoneType
   last_utterance_id : str | None
   memory_capture : MemoryCapture
@@ -27,7 +27,7 @@ class "Companion" as services.conversation.companion.Companion {
   profile_hint
   reply_generator
   resident
-  router : NoneType
+  router : Router | None
   screen_activity
   speech
   workspace_of

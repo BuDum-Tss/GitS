@@ -2,11 +2,15 @@
 память и диалог, справка о возможностях, услышанное, воспоминания о себе, факты графа, отношение к игроку.
 Состояние (`_graph_block`, `_self_block`, `_heard`) живёт на фасаде `Companion`.
 """
+from typing import TYPE_CHECKING
 import asyncio
 import logging
 import time
 
 from services.memory_service import SPEAKER_TAG
+
+if TYPE_CHECKING:
+    from services.conversation.companion import Companion
 
 logger = logging.getLogger("companion")
 
@@ -15,7 +19,7 @@ PREFETCH_TTL_S = 600.0     # найденное с опозданием годи
 
 class ContextBuilder:
     def __init__(self, host):
-        self._h = host
+        self._h: Companion = host
 
     def model_note(self) -> str:
         from services.runtime import llm_gate

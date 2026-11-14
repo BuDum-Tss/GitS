@@ -12,12 +12,16 @@ import re
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from host import settings
 from environments.base import Environment, Tool, ToolError
 from gits_sdk import protocol as P
 from services.peers.hub import PeerError
+
+if TYPE_CHECKING:
+    from services.peers.hub import PeerHub
+    from host.supervisor import Supervisor
 
 logger = logging.getLogger("modules")
 
@@ -96,8 +100,8 @@ class PeerRegistry:
         модуля изменилось (ProfileManager.poke)."""
         self.envs = envs
         self.on_state = on_state
-        self.hub = None                    # PeerHub, ставит ядро
-        self.supervisor = None             # Supervisor, ставит ядро
+        self.hub: PeerHub | None = None                    # PeerHub, ставит ядро
+        self.supervisor: Supervisor | None = None             # Supervisor, ставит ядро
         self.leases = None                 # LeaseAdapter (аренда общих пространств), ставит ядро
         self.records: dict[str, PeerRecord] = {}
         self.planned: dict[str, PlannedRecord] = {}

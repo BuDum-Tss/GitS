@@ -183,10 +183,6 @@ classDiagram
   }
   class PresenceTracker {
   }
-  class Profile {
-  }
-  class ProfileManager {
-  }
   class Question {
   }
   class QuestionService {
@@ -234,6 +230,10 @@ classDiagram
   class SleepScheduler {
   }
   class SourceError {
+  }
+  class SpaceConfig {
+  }
+  class SpaceFocus {
   }
   class SpeechCandidate {
   }
@@ -366,7 +366,6 @@ classDiagram
   _Via --* Attention : decider
   _Via --* Attention : hub
   _Via --* Attention : modules
-  _Via --* Attention : profiles
   _Via --* Attention : rules
   _Via --* Attention : presence
   _Via --* Attention : kind_handlers
@@ -398,4 +397,5 @@ classDiagram
   AttentionContext --o SpeechCoordinator : ctx
   Channel --o QuestionService : channel
   HybridIndex --o HybridSearch : index
+  PeerRegistry --o PeerHub : modules
   TaskStore --o TaskService : store

@@ -239,6 +239,8 @@ classDiagram
   }
   class spaces {
   }
+  class focus {
+  }
   class lease {
   }
   class link {
@@ -248,8 +250,6 @@ classDiagram
   class model {
   }
   class node_panel {
-  }
-  class profile_manager {
   }
   class tasks {
   }
@@ -570,7 +570,6 @@ classDiagram
   web_search --> tracing
   link --> hub
   manager --> spaces
-  profile_manager --> host
   migration --> tasks
   planner --> contracts
   planner --> tasks
@@ -594,3 +593,16 @@ classDiagram
   journal --> tracing
   latency_trace --> host
   latency_trace --> tracing
+  core ..> hub
+  core ..> registry
+  companion ..> attention
+  companion ..> router
+  context_builder ..> companion
+  reply_generator ..> companion
+  resident ..> companion
+  service ..> companion
+  capture ..> companion
+  hub ..> contracts
+  hub ..> registry
+  hub ..> requests
+  registry ..> supervisor

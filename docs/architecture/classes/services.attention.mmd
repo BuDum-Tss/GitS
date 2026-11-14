@@ -35,7 +35,6 @@ classDiagram
     on_think
     pipeline
     presence
-    profiles
     questions
     rules
     silent_kinds
@@ -95,7 +94,7 @@ classDiagram
     decider
     decisions : deque
     env_of : Callable[[], Any]
-    hub : NoneType
+    hub : PeerHub | None
     idle
     io
     kind_handlers : dict[str, Callable]
@@ -103,13 +102,12 @@ classDiagram
     last_decision : dict | None
     last_user_text : str
     log
-    modules : NoneType
+    modules : PeerRegistry | None
     node_watch : Callable[[str], dict]
     on_alert : Callable[[Item], bool] | None
     on_think : Callable[[Item], Any] | None, Callable[[Item], None] | None
     people
     presence
-    profiles : NoneType
     rules
     settings
     settings_provider
@@ -425,7 +423,6 @@ classDiagram
   _Via --* Attention : decider
   _Via --* Attention : hub
   _Via --* Attention : modules
-  _Via --* Attention : profiles
   _Via --* Attention : rules
   _Via --* Attention : presence
   _Via --* Attention : kind_handlers

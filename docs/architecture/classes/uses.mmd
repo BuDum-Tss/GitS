@@ -1,0 +1,456 @@
+classDiagram
+  direction LR
+  namespace корень {
+    class core_service
+  }
+  namespace environments {
+    class Environment
+    class Registry
+    class SourceError
+    class Tool
+    class ToolError
+    class _ModuleIds
+    class _WorkspaceIds
+  }
+  namespace host {
+    class PeerSpec
+    class PlannedPeer
+    class Supervisor
+    class _LogSink
+    class _Proc
+  }
+  namespace http_api {
+    class DashboardContext
+    class _Facade
+  }
+  namespace interfaces {
+    class AgentRuntime
+    class Approver
+    class Classifier
+    class Clock
+    class Embedder
+    class EndEvent
+    class EventAttention
+    class EventLog
+    class EventSink
+    class EventSource
+    class FactGraph
+    class LanguageModel
+    class MemoryReader
+    class MemoryWriter
+    class PeopleDirectory
+    class Planner
+    class ReminderRepository
+    class RequestHandler
+    class SettingsProvider
+    class StreamingLanguageModel
+    class TaskRepository
+    class TextEvent
+    class ThoughtJournal
+    class ToolEvent
+    class ToolInvoker
+    class ToolSpec
+  }
+  namespace kernel {
+    class Event
+  }
+  namespace services_attention {
+    class Announcer
+    class Attention
+    class AttentionContext
+    class AttentionEventSink
+    class DecisionLog
+    class Digest
+    class Dispatcher
+    class EventPipeline
+    class Focus
+    class FocusStack
+    class Inbox
+    class InputClassifier
+    class Item
+    class ItemStore
+    class JobTracker
+    class Normalizer
+    class NullPresence
+    class NullSpeech
+    class Question
+    class QuestionService
+    class Rule
+    class RuleStore
+    class SpeechCandidate
+    class SpeechCoordinator
+    class SpeechQueue
+    class _Via
+  }
+  namespace services_character {
+    class Character
+    class CharacterError
+    class CharacterSwitch
+    class Relationships
+    class RelationshipsAdapter
+  }
+  namespace services_classifier {
+    class Decider
+    class InputClass
+  }
+  namespace services_conversation {
+    class Channel
+    class Companion
+    class ContextBuilder
+    class ConversationIO
+    class ConversationService
+    class Piece
+    class PresenceTracker
+    class ReplyGenerator
+    class ResidentAgent
+    class Retrieval
+    class SentenceSplitter
+    class SpeechOutput
+    class SpeechSelector
+    class TagStream
+    class Tagged
+    class TextOnlySpeech
+    class UserInput
+    class VoiceModuleSpeech
+  }
+  namespace services_memory_service {
+    class Candidate
+    class CutCfg
+    class DayWriter
+    class EpisodeCutter
+    class EpisodeRecall
+    class EpisodeService
+    class EpisodeStore
+    class EpisodeSummarizer
+    class Fact
+    class FactExtractor
+    class FactStore
+    class GraphMemory
+    class HashEmbedder
+    class Hit
+    class HybridIndex
+    class HybridSearch
+    class LmStudioEmbedder
+    class MemoryCapture
+    class Rec
+    class SearchConfig
+    class SleepPlan
+    class SleepRunner
+    class SleepScheduler
+    class SqliteBackend
+    class SummaryResult
+    class UserMemory
+    class UserMemoryAdapter
+  }
+  namespace services_peers {
+    class CoreRequests
+    class Outbound
+    class PeerConnection
+    class PeerError
+    class PeerHub
+    class PeerRecord
+    class PeerRegistry
+    class PlannedRecord
+    class _JobQuestion
+  }
+  namespace services_reflection {
+    class ImpulseTimer
+    class Intent
+    class JsonReminders
+    class JsonThoughts
+    class PlanNudger
+    class ReflectionService
+    class WorkLoop
+  }
+  namespace services_runtime {
+    class FastLLM
+    class FetchError
+    class PiLlmClient
+    class PiRuntime
+  }
+  namespace services_spaces {
+    class LeaseAdapter
+    class NodePanel
+    class Reason
+    class SpaceConfig
+    class SpaceFocus
+    class WorkspaceLink
+    class WorkspaceManager
+    class WorkspaceSpec
+    class _Space
+  }
+  namespace services_tasks {
+    class LlmPlanner
+    class Step
+    class Task
+    class TaskError
+    class TaskReminders
+    class TaskService
+    class TaskStore
+  }
+  namespace services_tools {
+    class HardMatch
+    class RouteDecision
+    class Router
+    class ToolEmbeddings
+  }
+  namespace services_tracing {
+    class Trace
+  }
+  AgentRuntime ..> ToolSpec
+  Announcer ..> AttentionContext
+  Announcer ..> DecisionLog
+  Announcer ..> Digest
+  Announcer ..> Item
+  Announcer ..> ItemStore
+  Announcer ..> SpeechCoordinator
+  Attention ..> Announcer
+  Attention ..> AttentionContext
+  Attention ..> Decider
+  Attention ..> DecisionLog
+  Attention ..> Digest
+  Attention ..> Dispatcher
+  Attention ..> Event
+  Attention ..> EventPipeline
+  Attention ..> Focus
+  Attention ..> FocusStack
+  Attention ..> Inbox
+  Attention ..> InputClass
+  Attention ..> InputClassifier
+  Attention ..> Item
+  Attention ..> ItemStore
+  Attention ..> JobTracker
+  Attention ..> Normalizer
+  Attention ..> NullPresence
+  Attention ..> Question
+  Attention ..> QuestionService
+  Attention ..> RuleStore
+  Attention ..> SpeechCandidate
+  Attention ..> SpeechCoordinator
+  Attention ..> Task
+  Attention ..> ToolError
+  Attention ..> _Via
+  AttentionContext ..> Item
+  AttentionContext ..> PeerHub
+  AttentionContext ..> PeerRegistry
+  AttentionContext ..> Task
+  AttentionEventSink ..> Question
+  CharacterSwitch ..> CharacterError
+  Companion ..> Attention
+  Companion ..> ContextBuilder
+  Companion ..> ConversationIO
+  Companion ..> ConversationService
+  Companion ..> FastLLM
+  Companion ..> GraphMemory
+  Companion ..> MemoryCapture
+  Companion ..> PresenceTracker
+  Companion ..> RelationshipsAdapter
+  Companion ..> ReplyGenerator
+  Companion ..> ResidentAgent
+  Companion ..> Router
+  Companion ..> TextOnlySpeech
+  Companion ..> UserInput
+  Companion ..> UserMemory
+  Companion ..> UserMemoryAdapter
+  ContextBuilder ..> Companion
+  ContextBuilder ..> Retrieval
+  ConversationIO ..> Channel
+  ConversationIO ..> UserInput
+  ConversationService ..> Companion
+  ConversationService ..> HardMatch
+  ConversationService ..> UserInput
+  CoreRequests ..> PeerConnection
+  CoreRequests ..> PeerError
+  CoreRequests ..> Question
+  DayWriter ..> LanguageModel
+  DecisionLog ..> AttentionContext
+  DecisionLog ..> Item
+  Digest ..> AttentionContext
+  Digest ..> Item
+  Dispatcher ..> AttentionContext
+  Dispatcher ..> DecisionLog
+  Dispatcher ..> Digest
+  Dispatcher ..> FocusStack
+  Dispatcher ..> Item
+  Dispatcher ..> SpeechCoordinator
+  Environment ..> Tool
+  EpisodeCutter ..> Candidate
+  EpisodeCutter ..> CutCfg
+  EpisodeCutter ..> EventSource
+  EpisodeCutter ..> Rec
+  EpisodeRecall ..> EventSource
+  EpisodeService ..> DayWriter
+  EpisodeService ..> EpisodeCutter
+  EpisodeService ..> EpisodeRecall
+  EpisodeService ..> EpisodeStore
+  EpisodeService ..> EpisodeSummarizer
+  EpisodeService ..> HybridIndex
+  EpisodeService ..> HybridSearch
+  EpisodeService ..> LmStudioEmbedder
+  EpisodeService ..> SearchConfig
+  EpisodeService ..> SleepRunner
+  EpisodeService ..> SleepScheduler
+  EpisodeSummarizer ..> CutCfg
+  EpisodeSummarizer ..> LanguageModel
+  EpisodeSummarizer ..> Rec
+  EpisodeSummarizer ..> SummaryResult
+  EventPipeline ..> Announcer
+  EventPipeline ..> AttentionContext
+  EventPipeline ..> DecisionLog
+  EventPipeline ..> Dispatcher
+  EventPipeline ..> Item
+  EventPipeline ..> ItemStore
+  EventPipeline ..> Normalizer
+  FactExtractor ..> Fact
+  FocusStack ..> AttentionContext
+  FocusStack ..> Focus
+  GraphMemory ..> CharacterError
+  GraphMemory ..> Event
+  GraphMemory ..> Fact
+  GraphMemory ..> FactExtractor
+  GraphMemory ..> SqliteBackend
+  HybridIndex ..> Hit
+  HybridIndex ..> SearchConfig
+  HybridSearch ..> Embedder
+  HybridSearch ..> Hit
+  HybridSearch ..> HybridIndex
+  HybridSearch ..> LanguageModel
+  HybridSearch ..> SearchConfig
+  ImpulseTimer ..> Event
+  ImpulseTimer ..> ReminderRepository
+  ImpulseTimer ..> Task
+  Inbox ..> AttentionContext
+  Inbox ..> Item
+  InputClassifier ..> AttentionContext
+  InputClassifier ..> InputClass
+  ItemStore ..> AttentionContext
+  ItemStore ..> Item
+  JobTracker ..> AttentionContext
+  JobTracker ..> Dispatcher
+  JobTracker ..> Item
+  JobTracker ..> ItemStore
+  LeaseAdapter ..> _Space
+  LlmPlanner ..> LanguageModel
+  MemoryCapture ..> Companion
+  Normalizer ..> AttentionContext
+  Normalizer ..> Item
+  Outbound ..> PeerError
+  PeerConnection ..> PeerError
+  PeerConnection ..> Task
+  PeerHub ..> CoreRequests
+  PeerHub ..> EventSink
+  PeerHub ..> Outbound
+  PeerHub ..> PeerConnection
+  PeerHub ..> PeerError
+  PeerHub ..> PeerRegistry
+  PeerHub ..> Task
+  PeerHub ..> _JobQuestion
+  PeerRegistry ..> Environment
+  PeerRegistry ..> PeerError
+  PeerRegistry ..> PeerHub
+  PeerRegistry ..> PeerRecord
+  PeerRegistry ..> PlannedRecord
+  PeerRegistry ..> Supervisor
+  PeerRegistry ..> Tool
+  PeerRegistry ..> ToolError
+  PiLlmClient ..> Task
+  PiRuntime ..> EndEvent
+  PiRuntime ..> Task
+  PiRuntime ..> TextEvent
+  PiRuntime ..> ToolEvent
+  PiRuntime ..> ToolSpec
+  PlanNudger ..> Task
+  QuestionService ..> AttentionContext
+  QuestionService ..> Channel
+  QuestionService ..> FocusStack
+  QuestionService ..> Question
+  QuestionService ..> SpeechCoordinator
+  ReflectionService ..> Event
+  ReflectionService ..> Intent
+  ReflectionService ..> LanguageModel
+  ReflectionService ..> MemoryReader
+  ReflectionService ..> MemoryWriter
+  ReflectionService ..> ThoughtJournal
+  Registry ..> Environment
+  Registry ..> Tool
+  ReplyGenerator ..> Companion
+  ResidentAgent ..> AgentRuntime
+  ResidentAgent ..> Companion
+  ResidentAgent ..> EndEvent
+  ResidentAgent ..> TextEvent
+  ResidentAgent ..> ToolEvent
+  ResidentAgent ..> ToolSpec
+  Router ..> ToolError
+  RuleStore ..> Rule
+  SleepRunner ..> DayWriter
+  SleepRunner ..> EpisodeSummarizer
+  SleepRunner ..> EventSource
+  SleepRunner ..> MemoryWriter
+  SleepRunner ..> SleepPlan
+  SleepScheduler ..> Event
+  SleepScheduler ..> SleepPlan
+  SleepScheduler ..> SleepRunner
+  SleepScheduler ..> Task
+  SpaceFocus ..> SpaceConfig
+  SpeechCoordinator ..> AttentionContext
+  SpeechCoordinator ..> NullSpeech
+  SpeechCoordinator ..> SpeechCandidate
+  SpeechCoordinator ..> SpeechQueue
+  SpeechQueue ..> SpeechCandidate
+  SpeechQueue ..> Task
+  SpeechSelector ..> SpeechOutput
+  SpeechSelector ..> TextOnlySpeech
+  SpeechSelector ..> VoiceModuleSpeech
+  SqliteBackend ..> Fact
+  SqliteBackend ..> FactStore
+  SqliteBackend ..> HybridIndex
+  SqliteBackend ..> HybridSearch
+  SqliteBackend ..> LmStudioEmbedder
+  SqliteBackend ..> SearchConfig
+  Supervisor ..> PeerSpec
+  Supervisor ..> _LogSink
+  Supervisor ..> _Proc
+  TagStream ..> Piece
+  Task ..> Step
+  TaskReminders ..> TaskRepository
+  TaskService ..> Planner
+  TaskService ..> Task
+  TaskService ..> TaskError
+  TaskService ..> TaskRepository
+  TextOnlySpeech ..> PresenceTracker
+  ToolEmbeddings ..> Task
+  UserInput ..> Channel
+  VoiceModuleSpeech ..> PresenceTracker
+  WorkLoop ..> Task
+  WorkspaceLink ..> PeerError
+  WorkspaceManager ..> Reason
+  WorkspaceManager ..> WorkspaceSpec
+  _JobQuestion ..> Task
+  _Proc ..> PeerSpec
+  _Proc ..> Task
+  _Proc ..> _LogSink
+  core_service ..> Attention
+  core_service ..> AttentionEventSink
+  core_service ..> CharacterSwitch
+  core_service ..> Companion
+  core_service ..> ConversationIO
+  core_service ..> CoreRequests
+  core_service ..> Event
+  core_service ..> GraphMemory
+  core_service ..> LeaseAdapter
+  core_service ..> NodePanel
+  core_service ..> PeerHub
+  core_service ..> PeerRegistry
+  core_service ..> PresenceTracker
+  core_service ..> Registry
+  core_service ..> Relationships
+  core_service ..> Router
+  core_service ..> SpaceFocus
+  core_service ..> SpeechSelector
+  core_service ..> Supervisor
+  core_service ..> TextOnlySpeech
+  core_service ..> ToolEmbeddings
+  core_service ..> VoiceModuleSpeech
+  core_service ..> WorkLoop
+  core_service ..> WorkspaceLink
+  core_service ..> WorkspaceManager

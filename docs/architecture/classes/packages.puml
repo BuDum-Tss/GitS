@@ -240,6 +240,8 @@ package "services.runtime.web_tools" as services.runtime.web_tools {
 }
 package "services.spaces" as services.spaces {
 }
+package "services.spaces.focus" as services.spaces.focus {
+}
 package "services.spaces.lease" as services.spaces.lease {
 }
 package "services.spaces.link" as services.spaces.link {
@@ -249,8 +251,6 @@ package "services.spaces.manager" as services.spaces.manager {
 package "services.spaces.model" as services.spaces.model {
 }
 package "services.spaces.node_panel" as services.spaces.node_panel {
-}
-package "services.spaces.profile_manager" as services.spaces.profile_manager {
 }
 package "services.tasks" as services.tasks {
 }
@@ -571,7 +571,6 @@ services.runtime.web_search --> services.runtime.pi_runtime
 services.runtime.web_search --> services.tracing
 services.spaces.link --> services.peers.hub
 services.spaces.manager --> services.spaces
-services.spaces.profile_manager --> host
 services.tasks.migration --> services.tasks
 services.tasks.planner --> interfaces.contracts
 services.tasks.planner --> services.tasks
@@ -595,4 +594,17 @@ services.tracing.flow_trace --> services.tracing
 services.tracing.journal --> services.tracing
 services.tracing.latency_trace --> host
 services.tracing.latency_trace --> services.tracing
+services.attention.core ..> services.peers.hub
+services.attention.core ..> services.peers.registry
+services.conversation.companion ..> services.attention
+services.conversation.companion ..> services.tools.router
+services.conversation.context_builder ..> services.conversation.companion
+services.conversation.reply_generator ..> services.conversation.companion
+services.conversation.resident ..> services.conversation.companion
+services.conversation.service ..> services.conversation.companion
+services.memory_service.capture ..> services.conversation.companion
+services.peers.hub ..> interfaces.contracts
+services.peers.hub ..> services.peers.registry
+services.peers.hub ..> services.peers.requests
+services.peers.registry ..> host.supervisor
 @enduml

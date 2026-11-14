@@ -8,9 +8,13 @@ import asyncio
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from host import settings
+
+if TYPE_CHECKING:
+    from services.peers.hub import PeerHub
+    from services.peers.registry import PeerRegistry
 
 logger = logging.getLogger("attention")
 
@@ -134,8 +138,8 @@ class AttentionContext:
         self.autopump = autopump
         self.rules = rules
         self.presence = presence
-        self.hub = None                          # PeerHub: соединения для доставки вопросов, ставит ядро
-        self.modules = None                      # PeerRegistry: манифесты, включённость
+        self.hub: PeerHub | None = None                          # PeerHub: соединения для доставки вопросов, ставит ядро
+        self.modules: PeerRegistry | None = None                      # PeerRegistry: манифесты, включённость
         # служебные события модулей, которые ядро обрабатывает само и не озвучивает: kind -> async (Item) -> None
         self.kind_handlers: dict[str, Callable] = {}
         # то же для событий, которым нужно побочное действие, но которые дальше идут обычным путём внимания

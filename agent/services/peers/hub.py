@@ -18,7 +18,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from aiohttp import WSMsgType, web
 
@@ -29,6 +29,11 @@ from gits_sdk import contract
 from gits_sdk import protocol as P
 from gits_sdk.protocol import Envelope, Manifest, ProtocolError
 from services.peers.outbound import Outbound
+
+if TYPE_CHECKING:
+    from services.peers.registry import PeerRegistry
+    from services.peers.requests import CoreRequests
+    from interfaces.contracts import EventSink
 
 logger = logging.getLogger("hub")
 
@@ -208,9 +213,9 @@ class PeerHub:
             token_file = Path(settings.memory_dir()) / "module_token"
         token = token or env_token or None
         self._token_from_env = bool(env_token) and token == env_token
-        self.modules = modules
-        self.sink = sink
-        self.requests = requests
+        self.modules: PeerRegistry = modules
+        self.sink: EventSink | None = sink
+        self.requests: CoreRequests | None = requests
         if requests is not None:
             requests.hub = self                        # core.tts передаётся модулю голоса через шину (VOICE-16)
         self.token = token or P.new_token()

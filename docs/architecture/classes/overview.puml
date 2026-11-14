@@ -184,10 +184,6 @@ class "Planner" as interfaces.contracts.Planner {
 }
 class "PresenceTracker" as services.conversation.speech_out.PresenceTracker {
 }
-class "Profile" as services.spaces.profile_manager.Profile {
-}
-class "ProfileManager" as services.spaces.profile_manager.ProfileManager {
-}
 class "Question" as services.attention.core.Question {
 }
 class "QuestionService" as services.attention.questions.QuestionService {
@@ -235,6 +231,10 @@ class "SleepRunner" as services.memory_service.sleep.SleepRunner {
 class "SleepScheduler" as services.memory_service.sleep_scheduler.SleepScheduler {
 }
 class "<color:red>SourceError</color>" as environments.sources.SourceError {
+}
+class "SpaceConfig" as services.spaces.focus.SpaceConfig {
+}
+class "SpaceFocus" as services.spaces.focus.SpaceFocus {
 }
 class "SpeechCandidate" as services.attention.speech_queue.SpeechCandidate {
 }
@@ -367,7 +367,6 @@ services.attention.service._Via --* services.attention.service.Attention : io
 services.attention.service._Via --* services.attention.service.Attention : decider
 services.attention.service._Via --* services.attention.service.Attention : hub
 services.attention.service._Via --* services.attention.service.Attention : modules
-services.attention.service._Via --* services.attention.service.Attention : profiles
 services.attention.service._Via --* services.attention.service.Attention : rules
 services.attention.service._Via --* services.attention.service.Attention : presence
 services.attention.service._Via --* services.attention.service.Attention : kind_handlers
@@ -399,5 +398,6 @@ services.attention.core.AttentionContext --o services.attention.normalizer.Norma
 services.attention.core.AttentionContext --o services.attention.speech_coordinator.SpeechCoordinator : ctx
 services.conversation.conversation_io.Channel --o services.attention.questions.QuestionService : channel
 services.memory_service.search.index.HybridIndex --o services.memory_service.search.service.HybridSearch : index
+services.peers.registry.PeerRegistry --o services.peers.hub.PeerHub : modules
 services.tasks.store.TaskStore --o services.tasks.service.TaskService : store
 @enduml

@@ -20,6 +20,7 @@ Companion теперь тонкий фасад (ТЗ 29, ARC-5): состоян�
 ConversationService (путь обращения), ContextBuilder (контекст), ReplyGenerator (ответ), MemoryCapture (запоминание).
 Проактивности по таймеру нет (ТЗ 30): её заменили внутренние импульсы, `services/reflection/service.py`.
 """
+from typing import TYPE_CHECKING
 import asyncio
 import collections
 import logging
@@ -44,6 +45,12 @@ from services.conversation.conversation_io import UserInput, current_channel
 from services.conversation.speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
 from services.memory_service import UserMemory
 
+if TYPE_CHECKING:
+    from services.attention import Attention
+    from services.conversation.conversation_io import ConversationIO
+    from services.tools.router import Router
+    from services.memory_service import GraphMemory
+
 logger = logging.getLogger("companion")
 IDLE_CONSOLIDATE_S = 8 * 60 + 5
 
@@ -63,8 +70,8 @@ class Companion:
         self._dir = Path(memory_dir)
         self.presence = presence or PresenceTracker()          # тема presence (ставит слушателя ядро)
         self.speech = speech or TextOnlySpeech(self.presence)  # вывод речи (CORE-27, VOICE-15): ядро ставит выбор голос/текст
-        self.io = None                                         # ConversationIO: доставка ответов в каналы модулей
-        self.attention = None                                  # Attention: очередь речи и фокус (ТЗ 03); None - говорит сразу
+        self.io: ConversationIO | None = None                                         # ConversationIO: доставка ответов в каналы модулей
+        self.attention: Attention | None = None                                  # Attention: очередь речи и фокус (ТЗ 03); None - говорит сразу
         self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
         self.environment_note = lambda: ""                      # () -> строка о текущей среде модуля (ставит ядро)
         self.workspace_of = lambda: "assistant"                # () -> текущая среда (WorkspaceManager.current, ставит ядро)
@@ -75,9 +82,9 @@ class Companion:
         self._log = event_log if event_log is not None else events_log
         self._settings = settings_provider if settings_provider is not None else settings
         self._approver = approver if approver is not None else approvals
-        self.router = None    # Router, ставится ядром после создания реестра окружений
+        self.router: Router | None = None    # Router, ставится ядром после создания реестра окружений
         self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (PeerRegistry.notes, ставит ядро)
-        self.graph = None        # GraphMemory: факты о людях и жизни в графе
+        self.graph: GraphMemory | None = None        # GraphMemory: факты о людях и жизни в графе
         self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
         self._self_block = ""     # воспоминания персонажа о себе к последней реплике (ТЗ 05, CHR-19)
         self._heard: collections.deque = collections.deque(maxlen=20)   # (время, сводка) услышанного в колонках (voice.heard)
@@ -85,7 +92,7 @@ class Companion:
         self.screen_activity = lambda: None      # текущая активность экрана {app, category, summary, ...} (ставит ядро, ТЗ 14 DESK-7)
         self.job_wait = None                     # async (peer_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
         if memory_reader is None or memory_writer is None:
-            self._mem = UserMemory(memory_dir)                 # личная память на диске (адаптеры по умолчанию)
+            self._mem: UserMemory = UserMemory(memory_dir)                 # личная память на диске (адаптеры по умолчанию)
             default_memory = UserMemoryAdapter(lambda: self._mem, lambda: self.graph, lambda: getattr(self, "episodes", None),
                                                lambda: getattr(self, "tasks", None), lambda: self._owner_name())
         else:
@@ -103,11 +110,11 @@ class Companion:
         self._bg_tasks: set = set()       # фоновые проверки поправок (ТЗ 24)
         self._prefetch = None             # поиск в памяти, закончившийся после дедлайна: ждёт следующей реплики (ТЗ 25, FAST-6)
         # компоненты (ТЗ 29, ARC-5): состояние остаётся здесь, логика в agent/app/
-        self.context_builder = ContextBuilder(self)
-        self.reply_generator = ReplyGenerator(self)
-        self.memory_capture = MemoryCapture(self)
-        self.conversation = ConversationService(self)
-        self.resident = ResidentAgent(self)  # один агент на всё: разговор, события и самоимпульсы в одной сессии агента
+        self.context_builder: ContextBuilder = ContextBuilder(self)
+        self.reply_generator: ReplyGenerator = ReplyGenerator(self)
+        self.memory_capture: MemoryCapture = MemoryCapture(self)
+        self.conversation: ConversationService = ConversationService(self)
+        self.resident: ResidentAgent = ResidentAgent(self)  # один агент на всё: разговор, события и самоимпульсы в одной сессии агента
 
     @property
     def people(self):

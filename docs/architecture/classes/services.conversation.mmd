@@ -7,13 +7,13 @@ classDiagram
     to_dict() dict
   }
   class Companion {
-    attention : NoneType
+    attention : Attention | None
     context_builder
     conversation
     environment_note
-    graph : NoneType
+    graph : GraphMemory | None
     idle_seconds
-    io : NoneType
+    io : ConversationIO | None
     job_wait : NoneType
     last_utterance_id : str | None
     memory_capture : MemoryCapture
@@ -26,7 +26,7 @@ classDiagram
     profile_hint
     reply_generator
     resident
-    router : NoneType
+    router : Router | None
     screen_activity
     speech
     workspace_of

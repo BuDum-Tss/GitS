@@ -4,6 +4,7 @@
 формулирует реплику по факту (объявление, итог, вопрос модуля) и `declutter` убирает навязчивый хвост («Хочешь, чтобы я…?»,
 третий вопрос подряд).
 """
+from typing import TYPE_CHECKING
 import logging
 import re
 
@@ -11,12 +12,15 @@ from services.runtime import fast_brain
 from services.character import prompts
 from services.tracing import reply_trace
 
+if TYPE_CHECKING:
+    from services.conversation.companion import Companion
+
 logger = logging.getLogger("companion")
 
 
 class ReplyGenerator:
     def __init__(self, host):
-        self._h = host
+        self._h: Companion = host
 
     _OFFER = re.compile(r"^(ты )?(хочешь|не хочешь|хотела бы|хотел бы)(,? чтобы я)?|^если (хочешь|нужно)|^могу ли я|"
                         r"^нужна ли тебе|^чем (ещё )?(могу )?помочь|^давай я", re.I)

@@ -1,6 +1,7 @@
 """ConversationService: путь одного обращения владельца (ТЗ 29, ARC-5): вход, жёсткие правила, запись реплики, ответ на
 вопрос о разрешении, затем реплика уходит единому агенту (`services/conversation/resident.py`). Память пишет MemoryCapture, остальное зовётся
 через фасад `Companion`."""
+from typing import TYPE_CHECKING
 import asyncio
 import contextvars
 import re
@@ -15,6 +16,9 @@ from services.conversation.conversation_io import DASHBOARD, VOICE, UserInput, c
 
 from services.memory_service import SPEAKER_TAG
 
+if TYPE_CHECKING:
+    from services.conversation.companion import Companion
+
 logger = logging.getLogger("companion")
 
 # отправитель текущего обращения (узнанный голос: новый человек даёт яркость, ТЗ 24 TRC-4)
@@ -26,7 +30,7 @@ _EXPLICIT_MEMORY = re.compile(r"\b(запомни\w*|не забудь\w*|зап
 
 class ConversationService:
     def __init__(self, host):
-        self._h = host
+        self._h: Companion = host
 
     async def on_voice(self, text: str, speaker: dict, trace=None):
         """Реплика, сказанная голосом: говорящих различить нельзя (нет голосовых отпечатков), поэтому это реплика владельца

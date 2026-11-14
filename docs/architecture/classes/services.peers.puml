@@ -53,8 +53,8 @@ class "PeerHub" as services.peers.hub.PeerHub {
   modules
   outbound : Outbound
   presence : NoneType
-  requests : NoneType
-  sink : NoneType
+  requests : CoreRequests | None
+  sink : EventSink | None
   token
   token_file : NoneType
   answer_job(peer_id: str, job_id: str, question_id: str, answer: Any) -> str | None
@@ -101,13 +101,13 @@ class "PeerRegistry" as services.peers.registry.PeerRegistry {
   context_for : Callable[[str], str]
   envs
   events : deque
-  hub : NoneType
+  hub : PeerHub | None
   is_noise : staticmethod
   leases : NoneType
   on_state : NoneType
   planned : dict[str, PlannedRecord]
   records : dict[str, PeerRecord]
-  supervisor : NoneType
+  supervisor : Supervisor | None
   cancel_job(peer_id: str, job_id: str) -> str
   dashboard_rows(dev_mode: bool) -> list[dict]
   declare(peer_id: str) -> PeerRecord
@@ -151,4 +151,5 @@ class "_JobQuestion" as services.peers.hub._JobQuestion {
 }
 services.peers.registry.PeerRegistry --> services.peers.registry.PeerRecord : records
 services.peers.registry.PeerRegistry --> services.peers.registry.PlannedRecord : planned
+services.peers.registry.PeerRegistry --o services.peers.hub.PeerHub : modules
 @enduml

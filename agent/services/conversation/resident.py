@@ -9,6 +9,7 @@
 Среда исполнения (`AgentRuntime`, сейчас pi) спрятана за контрактом;
 сессия начинается заново при сбое, отмене и после лимита обращений. Работает всегда: другого пути обращения и событий нет.
 """
+from typing import TYPE_CHECKING
 import asyncio
 import logging
 import time
@@ -18,6 +19,9 @@ from services.runtime import llm_gate
 from services.character import prompts
 from interfaces.contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
 from services.conversation.stickers import first_sticker, plain as strip_tags
+
+if TYPE_CHECKING:
+    from services.conversation.companion import Companion
 
 logger = logging.getLogger("resident")
 
@@ -73,7 +77,7 @@ def _default_runtime() -> AgentRuntime:
 
 class ResidentAgent:
     def __init__(self, host, runtime: AgentRuntime | None = None, runtime_factory=None):
-        self._h = host
+        self._h: Companion = host
         self._runtime: AgentRuntime | None = runtime        # подставленная извне (тесты) не меняется настройкой
         self._pinned = runtime is not None
         self._factory = runtime_factory or _default_runtime

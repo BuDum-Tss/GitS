@@ -24,7 +24,7 @@ class SpeechCoordinator:
         self.digest = digest
         self.focus = focus
         companion = ctx.companion
-        self.speech = SpeechQueue(
+        self.speech: SpeechQueue = SpeechQueue(
             speech=getattr(companion, "speech", None) or NullSpeech(), play=self.play, presence=ctx.presence.snapshot,
             chattiness=lambda: str(ctx.settings().get("chattiness", "normal")), question_pending=ctx.approver.has_pending,
             repeats=lambda text: bool(getattr(companion, "_repeats_recent", lambda t: False)(text)),
