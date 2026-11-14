@@ -324,9 +324,6 @@ classDiagram
   class _WorkspaceIds {
   }
   Registry --> Environment : envs
-  EpisodeService --> LmStudioEmbedder : embedder
-  SqliteBackend --> LmStudioEmbedder : embedder
-  HybridSearch --> SearchConfig : cfg
   FocusStack --> Focus : stack
   ItemStore --> Item : items
   ItemStore --> Item : by_key
@@ -344,10 +341,12 @@ classDiagram
   Companion --> TextOnlySpeech : speech
   GraphMemory --> FactExtractor : extractor
   GraphMemory --> SqliteBackend : backend
+  EpisodeService --> LmStudioEmbedder : embedder
+  SqliteBackend --> LmStudioEmbedder : embedder
+  HybridSearch --> SearchConfig : cfg
   PeerRegistry --> PeerRecord : records
   PeerRegistry --> PlannedRecord : planned
   LeaseAdapter --> _Space : spaces
-  HybridSearch --* SqliteBackend : search_service
   Announcer --* Attention : announcer
   AttentionContext --* Attention : ctx
   DecisionLog --* Attention : decision_log
@@ -386,10 +385,10 @@ classDiagram
   MemoryCapture --* Companion : memory_capture
   SleepPlan --* SleepScheduler : plan
   FactStore --* SqliteBackend : store
+  HybridSearch --* SqliteBackend : search_service
   SleepScheduler --* EpisodeService : scheduler
   TaskReminders --* TaskService : reminders
   PeerSpec --o _Proc : spec
-  HybridIndex --o HybridSearch : index
   AttentionContext --o DecisionLog : ctx
   AttentionContext --o Digest : ctx
   AttentionContext --o FocusStack : ctx
@@ -398,4 +397,5 @@ classDiagram
   AttentionContext --o Normalizer : ctx
   AttentionContext --o SpeechCoordinator : ctx
   Channel --o QuestionService : channel
+  HybridIndex --o HybridSearch : index
   TaskStore --o TaskService : store

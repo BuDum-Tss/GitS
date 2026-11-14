@@ -1,18 +1,4 @@
 classDiagram
-  class dashboard {
-  }
-  class context {
-  }
-  class presenters {
-  }
-  class routes_attention {
-  }
-  class routes_memory {
-  }
-  class routes_peers {
-  }
-  class routes_system {
-  }
   class environments {
   }
   class base {
@@ -33,11 +19,21 @@ classDiagram
   }
   class supervisor {
   }
-  class tray {
-  }
-  class tray_autostart {
-  }
   class tray_launch {
+  }
+  class http_api {
+  }
+  class context {
+  }
+  class presenters {
+  }
+  class routes_attention {
+  }
+  class routes_memory {
+  }
+  class routes_peers {
+  }
+  class routes_system {
   }
   class contracts {
   }
@@ -52,18 +48,6 @@ classDiagram
   class model_json {
   }
   class scoring {
-  }
-  class search {
-  }
-  class embedder {
-  }
-  class index {
-  }
-  class normalize {
-  }
-  class rewrite {
-  }
-  class service {
   }
   class attention {
   }
@@ -189,6 +173,18 @@ classDiagram
   }
   class scope {
   }
+  class search {
+  }
+  class embedder {
+  }
+  class index {
+  }
+  class normalize {
+  }
+  class rewrite {
+  }
+  class service {
+  }
   class sleep {
   }
   class sleep_scheduler {
@@ -299,30 +295,6 @@ classDiagram
   }
   class tool_trace {
   }
-  dashboard --> context
-  dashboard --> routes_attention
-  dashboard --> routes_memory
-  dashboard --> routes_peers
-  dashboard --> routes_system
-  dashboard --> host
-  dashboard --> memory_service
-  dashboard --> tracing
-  context --> host
-  presenters --> relationships
-  routes_attention --> context
-  routes_memory --> context
-  routes_memory --> routes_system
-  routes_memory --> conversation
-  routes_memory --> tasks
-  routes_memory --> tracing
-  routes_peers --> context
-  routes_peers --> peers
-  routes_peers --> hub
-  routes_system --> context
-  routes_system --> host
-  routes_system --> character
-  routes_system --> memory_service
-  routes_system --> tracing
   builtin --> base
   builtin --> host
   builtin --> stems
@@ -338,17 +310,30 @@ classDiagram
   settings --> tracing
   supervisor --> character
   supervisor --> tracing
-  tray --> host
-  tray --> character
-  search --> index
-  search --> service
-  embedder --> normalize
-  embedder --> tools
-  index --> normalize
-  rewrite --> contracts
-  service --> contracts
-  service --> index
-  service --> rewrite
+  http_api --> host
+  http_api --> context
+  http_api --> routes_attention
+  http_api --> routes_memory
+  http_api --> routes_peers
+  http_api --> routes_system
+  http_api --> memory_service
+  http_api --> tracing
+  context --> host
+  presenters --> relationships
+  routes_attention --> context
+  routes_memory --> context
+  routes_memory --> routes_system
+  routes_memory --> conversation
+  routes_memory --> tasks
+  routes_memory --> tracing
+  routes_peers --> context
+  routes_peers --> peers
+  routes_peers --> hub
+  routes_system --> host
+  routes_system --> context
+  routes_system --> character
+  routes_system --> memory_service
+  routes_system --> tracing
   attention --> core
   attention --> event_sink
   attention --> inbox
@@ -496,14 +481,14 @@ classDiagram
   episode_cutter --> contracts
   episode_cutter --> tracing
   episode_recall --> contracts
-  episode_service --> search
-  episode_service --> embedder
   episode_service --> character
   episode_service --> diary
   episode_service --> episode_cutter
   episode_service --> episode_recall
   episode_service --> episode_store
   episode_service --> episode_summary
+  episode_service --> search
+  episode_service --> embedder
   episode_service --> sleep
   episode_service --> sleep_scheduler
   episode_service --> tracing
@@ -511,16 +496,25 @@ classDiagram
   episode_summary --> kernel
   episode_summary --> model_json
   graph --> host
-  graph --> embedder
-  graph --> index
-  graph --> service
   graph --> character
   graph --> conversation
   graph --> fact_store
+  graph --> embedder
+  graph --> index
+  graph --> service
   graph --> runtime
   graph --> tracing
   migration --> memory_service
   migration --> adapters
+  search --> index
+  search --> service
+  embedder --> normalize
+  embedder --> tools
+  index --> normalize
+  rewrite --> contracts
+  service --> contracts
+  service --> index
+  service --> rewrite
   sleep --> contracts
   sleep --> diary
   sleep --> episode_summary

@@ -13,7 +13,7 @@ from aiohttp import web
 from test_attention import Rig
 from test_supervisor import wait_for
 
-import dashboard
+import http_api
 from services.tracing import events_log
 from services.peers import registry as peer_registry
 from host import settings
@@ -266,8 +266,8 @@ async def test_dashboard_attention_endpoints(tmp_path):
     rig = Rig(tmp_path)
     await rig.att.set_rule(module="telegram", effect="mute", minutes=30)
     await rig.submit("echo", urgency_hint=4, addressed_to_me=False, text="Пинг")
-    dashboard.set_attention(rig.att)
-    runner = web.AppRunner(dashboard.build_app())
+    http_api.set_attention(rig.att)
+    runner = web.AppRunner(http_api.build_app())
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0)
     await site.start()
@@ -288,13 +288,13 @@ async def test_dashboard_attention_endpoints(tmp_path):
             r = await http.post(base + "/api/settings", json={"attention": {"classifier": False}}, headers=hdr)
             assert (await r.json())["attention"]["classifier"] is False and (await r.json())["attention"]["inbox"] == {"min_interval_s": 60}
     finally:
-        dashboard.set_attention(None)
+        http_api.set_attention(None)
         await runner.cleanup()
 
 
 async def test_dashboard_attention_without_manager_is_empty():
-    dashboard.set_attention(None)
-    resp = await dashboard.handle_api_attention(SimpleNamespace())
+    http_api.set_attention(None)
+    resp = await http_api.handle_api_attention(SimpleNamespace())
     assert json.loads(resp.text)["rules"] == []
 
 

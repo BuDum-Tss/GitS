@@ -4,11 +4,11 @@ from services.tracing import journal
 from services.tracing import latency_trace as lt
 from aiohttp.test_utils import TestClient, TestServer
 
-import dashboard
+import http_api
 
 
 async def _client():
-    return TestClient(TestServer(dashboard.build_app()))
+    return TestClient(TestServer(http_api.build_app()))
 
 
 async def test_latency_endpoint_returns_report_and_rejects_bad_window():

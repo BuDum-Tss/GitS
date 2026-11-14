@@ -8,7 +8,7 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from tools import soak_core
 
-import dashboard
+import http_api
 from services.classifier import decide
 from host import settings
 from services.conversation.conversation_io import Channel, ConversationIO
@@ -186,7 +186,7 @@ def test_only_core_setting_blocks_modules_like_the_env_variable(tmp_path, monkey
 
 async def test_api_flow_reports_errors_and_only_core(monkeypatch):
     monkeypatch.delenv("GITS_NO_MODULES", raising=False)
-    c = TestClient(TestServer(dashboard.build_app()))
+    c = TestClient(TestServer(http_api.build_app()))
     await c.start_server()
     try:
         flow_trace.step("t1", "gliner", "bus", "gliner", "error", label="error:down")

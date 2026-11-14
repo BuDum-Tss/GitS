@@ -12,7 +12,7 @@ from test_core_wiring import WiredCompanion, free_port
 from test_dashboard_endpoints import serve
 
 import core_service
-import dashboard
+import http_api
 from host import settings
 from services.conversation import speech_out
 from environments.registry import Registry
@@ -42,7 +42,7 @@ def test_pythonw_placeholder_falls_back_to_python_without_pythonw(tmp_path):
 
 
 def test_tray_does_not_start_the_pet_any_more():
-    src = (AGENT / "host" / "tray.py").read_text(encoding="utf-8")
+    src = (AGENT / "clients" / "tray" / "tray.py").read_text(encoding="utf-8")
     assert "desktop_pet" not in src and "start_pet" not in src
     assert "pet_visible" not in src and "_toggle_pet" not in src                                          # пунктов питомца в трее нет
     assert '"services" / "pet"' not in src and "services/pet" not in src                  # трей не читает файлы питомца
@@ -86,8 +86,8 @@ async def test_real_pet_process_started_by_the_supervisor_gets_presence_and_stop
     companion = WiredCompanion()
     port = free_port()
     layer = core_service.wire_modules(companion, Registry(), port=port, specs=[spec])
-    dashboard._MEMORY_DIR = tmp_path / "memory"
-    dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
+    http_api._MEMORY_DIR = tmp_path / "memory"
+    http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
     app = web.Application()
     layer.hub.attach(app)
     runner = web.AppRunner(app, shutdown_timeout=0.5)

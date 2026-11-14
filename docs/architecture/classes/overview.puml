@@ -38,7 +38,7 @@ class "CoreRequests" as services.peers.requests.CoreRequests {
 }
 class "CutCfg" as services.memory_service.episodes.CutCfg {
 }
-class "DashboardContext" as dashboard.context.DashboardContext {
+class "DashboardContext" as http_api.context.DashboardContext {
 }
 class "DayWriter" as services.memory_service.diary.DayWriter {
 }
@@ -102,13 +102,13 @@ class "HardRules" as services.attention.pipeline.HardRules {
 }
 class "HardRules" as services.tools.routes.HardRules {
 }
-class "HashEmbedder" as search.embedder.HashEmbedder {
+class "HashEmbedder" as services.memory_service.search.embedder.HashEmbedder {
 }
-class "Hit" as search.index.Hit {
+class "Hit" as services.memory_service.search.index.Hit {
 }
-class "HybridIndex" as search.index.HybridIndex {
+class "HybridIndex" as services.memory_service.search.index.HybridIndex {
 }
-class "HybridSearch" as search.service.HybridSearch {
+class "HybridSearch" as services.memory_service.search.service.HybridSearch {
 }
 class "ImpulseTimer" as services.reflection.timer.ImpulseTimer {
 }
@@ -136,7 +136,7 @@ class "LeaseAdapter" as services.spaces.lease.LeaseAdapter {
 }
 class "LlmPlanner" as services.tasks.planner.LlmPlanner {
 }
-class "LmStudioEmbedder" as search.embedder.LmStudioEmbedder {
+class "LmStudioEmbedder" as services.memory_service.search.embedder.LmStudioEmbedder {
 }
 class "MemoryCapture" as services.memory_service.capture.MemoryCapture {
 }
@@ -222,7 +222,7 @@ class "Rule" as services.attention.rules.Rule {
 }
 class "RuleStore" as services.attention.rules.RuleStore {
 }
-class "SearchConfig" as search.index.SearchConfig {
+class "SearchConfig" as services.memory_service.search.index.SearchConfig {
 }
 class "SentenceSplitter" as services.conversation.speech_text.SentenceSplitter {
 }
@@ -308,7 +308,7 @@ class "WorkspaceManager" as services.spaces.manager.WorkspaceManager {
 }
 class "WorkspaceSpec" as services.spaces.model.WorkspaceSpec {
 }
-class "_Facade" as dashboard._Facade {
+class "_Facade" as http_api._Facade {
 }
 class "_JobQuestion" as services.peers.hub._JobQuestion {
 }
@@ -325,9 +325,6 @@ class "_Via" as services.attention.service._Via {
 class "_WorkspaceIds" as environments.builtin._WorkspaceIds {
 }
 environments.registry.Registry --> environments.base.Environment : envs
-services.memory_service.episode_service.EpisodeService --> search.embedder.LmStudioEmbedder : embedder
-services.memory_service.graph.SqliteBackend --> search.embedder.LmStudioEmbedder : embedder
-search.service.HybridSearch --> search.index.SearchConfig : cfg
 services.attention.focus_stack.FocusStack --> services.attention.core.Focus : stack
 services.attention.items.ItemStore --> services.attention.core.Item : items
 services.attention.items.ItemStore --> services.attention.core.Item : by_key
@@ -345,10 +342,12 @@ services.conversation.speech_out.VoiceModuleSpeech --> services.conversation.spe
 services.conversation.companion.Companion --> services.conversation.speech_out.TextOnlySpeech : speech
 services.memory_service.graph.GraphMemory --> services.memory_service.graph.FactExtractor : extractor
 services.memory_service.graph.GraphMemory --> services.memory_service.graph.SqliteBackend : backend
+services.memory_service.episode_service.EpisodeService --> services.memory_service.search.embedder.LmStudioEmbedder : embedder
+services.memory_service.graph.SqliteBackend --> services.memory_service.search.embedder.LmStudioEmbedder : embedder
+services.memory_service.search.service.HybridSearch --> services.memory_service.search.index.SearchConfig : cfg
 services.peers.registry.PeerRegistry --> services.peers.registry.PeerRecord : records
 services.peers.registry.PeerRegistry --> services.peers.registry.PlannedRecord : planned
 services.spaces.lease.LeaseAdapter --> services.spaces.lease._Space : spaces
-search.service.HybridSearch --* services.memory_service.graph.SqliteBackend : search_service
 services.attention.announce.Announcer --* services.attention.service.Attention : announcer
 services.attention.core.AttentionContext --* services.attention.service.Attention : ctx
 services.attention.decision_log.DecisionLog --* services.attention.service.Attention : decision_log
@@ -387,10 +386,10 @@ services.conversation.service.ConversationService --* services.conversation.comp
 services.memory_service.capture.MemoryCapture --* services.conversation.companion.Companion : memory_capture
 services.memory_service.episodes.SleepPlan --* services.memory_service.sleep_scheduler.SleepScheduler : plan
 services.memory_service.fact_store.FactStore --* services.memory_service.graph.SqliteBackend : store
+services.memory_service.search.service.HybridSearch --* services.memory_service.graph.SqliteBackend : search_service
 services.memory_service.sleep_scheduler.SleepScheduler --* services.memory_service.episode_service.EpisodeService : scheduler
 services.tasks.reminders.TaskReminders --* services.tasks.service.TaskService : reminders
 host.supervisor.PeerSpec --o host.supervisor._Proc : spec
-search.index.HybridIndex --o search.service.HybridSearch : index
 services.attention.core.AttentionContext --o services.attention.decision_log.DecisionLog : ctx
 services.attention.core.AttentionContext --o services.attention.digest.Digest : ctx
 services.attention.core.AttentionContext --o services.attention.focus_stack.FocusStack : ctx
@@ -399,5 +398,6 @@ services.attention.core.AttentionContext --o services.attention.items.ItemStore 
 services.attention.core.AttentionContext --o services.attention.normalizer.Normalizer : ctx
 services.attention.core.AttentionContext --o services.attention.speech_coordinator.SpeechCoordinator : ctx
 services.conversation.conversation_io.Channel --o services.attention.questions.QuestionService : channel
+services.memory_service.search.index.HybridIndex --o services.memory_service.search.service.HybridSearch : index
 services.tasks.store.TaskStore --o services.tasks.service.TaskService : store
 @enduml

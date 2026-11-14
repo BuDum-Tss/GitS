@@ -58,7 +58,7 @@ classDiagram
     attention
     clock
     companion
-    embedder : LmStudioEmbedder
+    embedder
     hooks : list
     recall : EpisodeRecall
     scheduler : SleepScheduler | None
@@ -157,6 +157,47 @@ classDiagram
     step() bool
     sync_colonists(pawns: list[dict], colony: str, force: bool) int
   }
+  class HashEmbedder {
+    dim : int
+    embed(texts: list[str], query: bool) list[list[float]]
+  }
+  class Hit {
+    bm25_rank : int | None
+    collection : str
+    cos : float | None
+    id : int
+    key : str
+    meta : dict
+    score : float
+    text : str
+    ts : float
+  }
+  class HybridIndex {
+    collections() dict[str, int]
+    count(collection: str | None) int
+    delete(collection: str, key: str) bool
+    delete_collection(collection: str) int
+    invalidate(collection: str, key: str) bool
+    keys(collection: str) list[str]
+    search(query: str, qvec: list[float] | None) list[Hit]
+    stats() dict[str, dict]
+    upsert(collection: str, key: str, text: str) int
+  }
+  class HybridSearch {
+    cfg
+    embedder : Embedder | None
+    index
+    last_embedded : bool
+    llm : LanguageModel | None
+    add(collection: str, key: str, text: str) int
+    delete(collection: str, key: str) bool
+    search(query: str) list[Hit]
+  }
+  class LmStudioEmbedder {
+    batch_timeout : float
+    query_timeout : float
+    embed(texts: list[str], query: bool) list[list[float]]
+  }
   class MemoryCapture {
     owner_name() str
     queue_graph(text: str)
@@ -175,6 +216,15 @@ classDiagram
     stream : str
     text : str
     ts : float
+  }
+  class SearchConfig {
+    bm25_top : int
+    boosts : dict
+    candidates : int
+    half_life_days : float
+    min_cos : float
+    min_cos_bm25 : float
+    recency_weight : float
   }
   class SleepPlan {
     budget_tokens : int | None
@@ -224,9 +274,9 @@ classDiagram
     tick() bool
   }
   class SqliteBackend {
-    embedder : LmStudioEmbedder
+    embedder
     path : Path
-    search_service : HybridSearch
+    search_service
     store
     add_fact(f: Fact, when: datetime, group: str) str
     delete(uuid: str, group: str)
@@ -287,6 +337,11 @@ classDiagram
   }
   GraphMemory --> FactExtractor : extractor
   GraphMemory --> SqliteBackend : backend
+  EpisodeService --> LmStudioEmbedder : embedder
+  SqliteBackend --> LmStudioEmbedder : embedder
+  HybridSearch --> SearchConfig : cfg
   SleepPlan --* SleepScheduler : plan
   FactStore --* SqliteBackend : store
+  HybridSearch --* SqliteBackend : search_service
   SleepScheduler --* EpisodeService : scheduler
+  HybridIndex --o HybridSearch : index

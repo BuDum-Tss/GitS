@@ -65,7 +65,7 @@ cd agent
 pip install -r requirements.txt -r ../services/voice/requirements.txt    # ядро и звук
 copy .env.example .env     # токены Telegram и т.д. (не в git)
 python main.py                           # ядро и дашборд на http://localhost:8766; участники шины запускает само ядро
-pythonw host/tray.py                          # трей: поднимает только ядро
+pythonw clients/tray/tray.py                          # трей: поднимает только ядро
 ```
 - Внешние сервисы (необязательные): `docker compose up -d` поднимает синтез голоса (ESpeech, запасной Fish Speech; память-граф Docker не нужен). Локальная модель:
   LM Studio (`google/gemma-4-e4b` и эмбеддинги EmbeddingGemma). Классификатор внимания GLiNER: `services/decider/README.md`.

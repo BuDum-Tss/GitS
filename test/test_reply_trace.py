@@ -6,7 +6,7 @@ import pytest
 from aiohttp.test_utils import make_mocked_request
 
 from services.tracing import reply_trace
-from dashboard import routes_memory
+from http_api import routes_memory
 
 
 @pytest.fixture(autouse=True)

@@ -12,7 +12,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 from hub_helpers import RawModule, manifest, running_core, tool
 
-import dashboard
+import http_api
 from services.peers import panel as peer_panel
 from gits_sdk import protocol as P
 
@@ -50,19 +50,19 @@ async def connected(core, module=None):
 @contextlib.asynccontextmanager
 async def panel_http(core):
     """Дашборд на тестовом сервере: только маршруты пространства и раздачи файлов."""
-    dashboard.set_modules(core.modules, core.hub, None)
+    http_api.set_modules(core.modules, core.hub, None)
     app = web.Application()
-    app.router.add_get("/api/peers/{id}/panel", dashboard.handle_api_peer_panel)
-    app.router.add_post("/api/peers/{id}/panel/action", dashboard.handle_api_peer_panel_action)
-    app.router.add_post("/api/peers/{id}/panel/link", dashboard.handle_api_peer_panel_link)
-    app.router.add_get("/api/artifact", dashboard.handle_api_artifact)
+    app.router.add_get("/api/peers/{id}/panel", http_api.handle_api_peer_panel)
+    app.router.add_post("/api/peers/{id}/panel/action", http_api.handle_api_peer_panel_action)
+    app.router.add_post("/api/peers/{id}/panel/link", http_api.handle_api_peer_panel_link)
+    app.router.add_get("/api/artifact", http_api.handle_api_artifact)
     client = TestClient(TestServer(app))
     await client.start_server()
     try:
         yield client
     finally:
         await client.close()
-        dashboard.set_modules(None, None, None)
+        http_api.set_modules(None, None, None)
 
 
 # ---------------------------------------------------------------- TAB-1: поле panel доходит до ядра
@@ -409,8 +409,8 @@ async def test_events_filter_by_module(monkeypatch):
             {"ts": 2.0, "kind": "module", "text": "b", "data": {"module": "voice"}},
             {"ts": 3.0, "kind": "module", "text": "c", "data": {"module": "montage"}}]
     monkeypatch.setattr(events_log, "tail", lambda limit, kinds, since: list(rows))
-    resp = await dashboard.handle_api_events(make_mocked_request("GET", "/api/events?module=montage&limit=1"))
+    resp = await http_api.handle_api_events(make_mocked_request("GET", "/api/events?module=montage&limit=1"))
     body = __import__("json").loads(resp.text)
     assert [e["text"] for e in body["events"]] == ["c"]
-    resp = await dashboard.handle_api_events(make_mocked_request("GET", "/api/events?limit=5"))
+    resp = await http_api.handle_api_events(make_mocked_request("GET", "/api/events?limit=5"))
     assert len(__import__("json").loads(resp.text)["events"]) == 3

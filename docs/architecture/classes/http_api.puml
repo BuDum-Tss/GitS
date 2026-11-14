@@ -1,6 +1,6 @@
-@startuml classes_dashboard
+@startuml classes_http_api
 set namespaceSeparator none
-class "DashboardContext" as dashboard.context.DashboardContext {
+class "DashboardContext" as http_api.context.DashboardContext {
   attention : Optional[Any]
   bg_tasks : set
   character : Optional[Any]
@@ -21,6 +21,6 @@ class "DashboardContext" as dashboard.context.DashboardContext {
   tasks : Callable[[], Any] | None
   workspace : Optional[Any]
 }
-class "_Facade" as dashboard._Facade {
+class "_Facade" as http_api._Facade {
 }
 @enduml

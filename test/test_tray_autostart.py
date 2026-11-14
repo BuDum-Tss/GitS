@@ -1,7 +1,7 @@
 """Запись автозапуска трея: протухший путь (проект переехал, Python обновили) определяется, живой не считается протухшим."""
 from pathlib import Path
 
-from host import tray_autostart as ta
+from clients.tray import tray_autostart as ta
 
 
 def test_command_roundtrip(tmp_path):

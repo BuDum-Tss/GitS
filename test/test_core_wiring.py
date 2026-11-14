@@ -11,7 +11,7 @@ from hub_helpers import FakeCompanion
 
 from services.conversation import approvals
 import core_service
-import dashboard
+import http_api
 from host import settings
 from services.conversation import speech_out
 from environments.registry import Registry
@@ -49,12 +49,12 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
     companion, registry = WiredCompanion(), Registry()
     layer = core_service.wire_modules(companion, registry, port=port,
                                       specs=[x for x in load_specs() if x.id == "echo"])      # только эхо: Telegram в тесте не запускаем
-    dashboard._MEMORY_DIR = tmp_path / "memory"
-    dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
-    dashboard.set_presence(companion.presence)
-    dashboard.set_registry(registry)
-    dashboard.set_modes(layer.profiles)
-    runner = web.AppRunner(dashboard.build_app())
+    http_api._MEMORY_DIR = tmp_path / "memory"
+    http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
+    http_api.set_presence(companion.presence)
+    http_api.set_registry(registry)
+    http_api.set_modes(layer.profiles)
+    runner = web.AppRunner(http_api.build_app())
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", port).start()
     await layer.start()
@@ -145,12 +145,12 @@ async def test_module_launch_from_the_dashboard_is_announced_through_attention(t
         said.append((peer_id, text))
         await submit(peer_id, text, **kw)
     layer.attention.submit_announce = record
-    dashboard._MEMORY_DIR = tmp_path / "memory"
-    dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
-    dashboard.set_presence(companion.presence)
-    dashboard.set_registry(registry)
-    dashboard.set_modes(layer.profiles)
-    runner = web.AppRunner(dashboard.build_app())
+    http_api._MEMORY_DIR = tmp_path / "memory"
+    http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
+    http_api.set_presence(companion.presence)
+    http_api.set_registry(registry)
+    http_api.set_modes(layer.profiles)
+    runner = web.AppRunner(http_api.build_app())
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", port).start()
     await layer.start()

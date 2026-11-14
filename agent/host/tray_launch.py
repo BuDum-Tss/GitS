@@ -1,6 +1,6 @@
 """Трей всегда запускается вместе с ядром (`main.py`).
 
-Ядро при старте запускает `host/tray.py` отдельным процессом. Повторный запуск безопасен: трей держит мьютекс `Local\\AssistantTray`
+Ядро при старте запускает `clients/tray/tray.py` отдельным процессом. Повторный запуск безопасен: трей держит мьютекс `Local\\AssistantTray`
 и сам тихо выходит, если уже работает. Отключается переменной `GITS_NO_TRAY=1` (тесты, прогон на устойчивость, ядро без экрана) и
 не нужен вне Windows. Решение не зависит от того, кто запустил ядро: трей, ярлык или консоль. Чистые функции, процесс создаёт
 переданная `spawn` (в тестах заглушка)."""
@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Callable, Mapping
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1] / "clients" / "tray"     # где лежит tray.py
 NO_TRAY_ENV = "GITS_NO_TRAY"
 _DETACHED = 0x00000008 | 0x00000200 | 0x08000000     # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
 
@@ -23,7 +23,7 @@ def wanted(env: Mapping[str, str], platform: str) -> bool:
 
 
 def command(executable: str, here: Path = HERE) -> list[str]:
-    """Команда запуска: `pythonw host/tray.py` (без консоли), если pythonw рядом с интерпретатором."""
+    """Команда запуска: `pythonw clients/tray/tray.py` (без консоли), если pythonw рядом с интерпретатором."""
     exe = Path(executable)
     w = exe.with_name("pythonw.exe")
     return [str(w if w.exists() else exe), str(here / "tray.py")]

@@ -28,7 +28,7 @@ def packages() -> dict[str, Path]:
     for p in sorted((AGENT / "services").iterdir()):
         if p.is_dir() and (p / "__init__.py").exists() and p.name != "__pycache__":
             found[f"services.{p.name}"] = p
-    for name in ("kernel", "environments", "dashboard", "host"):
+    for name in ("kernel", "environments", "http_api", "host"):
         if (AGENT / name).is_dir():
             found[name] = AGENT / name
     found["interfaces.contracts"] = AGENT / "interfaces" / "contracts.py"

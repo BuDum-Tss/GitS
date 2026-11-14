@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from hub_helpers import FakeCompanion
 
 import core_service
-import dashboard
+import http_api
 from services.peers import registry as peer_registry
 from services.conversation.companion import Companion
 from environments.base import Environment, Tool
@@ -167,25 +167,25 @@ async def test_menu_click_goes_through_the_router(monkeypatch):
     async def body_of(text):
         return SimpleNamespace(json=lambda: asyncio.sleep(0, {"text": text}))
 
-    monkeypatch.setattr(dashboard, "_is_local_json", lambda request: True)
-    dashboard.set_router(Router((True, "нажала «Продолжить»", None)))
-    ok = await dashboard.handle_api_menu_click(await body_of("Продолжить"))
+    monkeypatch.setattr(http_api, "_is_local_json", lambda request: True)
+    http_api.set_router(Router((True, "нажала «Продолжить»", None)))
+    ok = await http_api.handle_api_menu_click(await body_of("Продолжить"))
     assert ok.status == 200 and '"ok": true' in ok.text
-    dashboard.set_router(Router((False, "такой кнопки в списке разрешённых нет", "denied")))
-    denied = await dashboard.handle_api_menu_click(await body_of("Удалить"))
+    http_api.set_router(Router((False, "такой кнопки в списке разрешённых нет", "denied")))
+    denied = await http_api.handle_api_menu_click(await body_of("Удалить"))
     assert denied.status == 403
-    dashboard.set_router(None)
+    http_api.set_router(None)
 
 
 def test_dashboard_shows_the_desktop_screen_state(tmp_path):
     layer = make_layer(tmp_path)
-    dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
-    assert dashboard._screen_state() is None                                   # модуля нет: честно пусто
+    http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
+    assert http_api._screen_state() is None                                   # модуля нет: честно пусто
     layer.modules.declare("desktop")
     layer.modules.set_state("desktop", "код", {"foreground_app": "code", "sensitive": False, "idle_s": 3.0, "activity": None})
     layer.modules.records["desktop"].connected = True
-    assert dashboard._screen_state()["foreground_app"] == "code"
-    dashboard.set_modules(None, None, None)
+    assert http_api._screen_state()["foreground_app"] == "code"
+    http_api.set_modules(None, None, None)
 
 
 def test_core_has_no_screen_or_perception_code():

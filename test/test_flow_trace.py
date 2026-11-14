@@ -7,7 +7,7 @@ from services.tracing import flow_trace
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-import dashboard
+import http_api
 
 
 @pytest.fixture(autouse=True)
@@ -106,7 +106,7 @@ async def test_thousand_records_per_second_do_not_stall_the_loop():
 
 
 async def test_flow_endpoints():
-    c = TestClient(TestServer(dashboard.build_app()))
+    c = TestClient(TestServer(http_api.build_app()))
     await c.start_server()
     try:
         flow_trace.step("tt", "bus", "module:m", "bus", "event", size=2, label="m.x")

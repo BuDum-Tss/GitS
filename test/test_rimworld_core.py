@@ -12,7 +12,7 @@ from hub_helpers import running_client, running_core
 from test_companion_attention import Rig as ConversationRig
 
 import core_service
-import dashboard
+import http_api
 from host import settings
 from environments.registry import Registry
 from gits_sdk import WorkspaceClient
@@ -165,7 +165,7 @@ def test_shipped_modules_yaml_declares_the_rimworld_module(tmp_path, monkeypatch
 # ── RW-18: старых каналов агента игры больше нет ────────────────────────────────────────────────
 
 def test_old_game_agent_channels_are_gone():
-    app = dashboard.build_app()
+    app = http_api.build_app()
     routes = {(r.method, r.resource.canonical) for r in app.router.routes() if r.resource is not None}
     for path in ("/api/say", "/api/speech_status", "/api/emotion", "/api/event", "/api/tool", "/api/web_search",
                  "/api/claude_usage"):
@@ -174,12 +174,12 @@ def test_old_game_agent_channels_are_gone():
         assert kept in routes, kept
     assert not (AGENT / "game_bridge.py").exists()
     assert not (AGENT / "environments" / "manifests" / "rimworld.json").exists()
-    assert not hasattr(dashboard, "set_game_link") and not hasattr(core_service, "_LINKED_SETTINGS")
+    assert not hasattr(http_api, "set_game_link") and not hasattr(core_service, "_LINKED_SETTINGS")
     assert not hasattr(core_service, "post_run_summary")
 
 
 def test_tray_no_longer_starts_the_game_agent():
-    from host import tray
+    from clients.tray import tray
     for name in ("start_game_agent", "restart_game_agent", "GAME_AGENT_DIR", "game_agent_available"):
         assert not hasattr(tray, name), name
 
@@ -197,10 +197,10 @@ def test_record_runs_is_a_shared_setting_with_a_form_field():
 
 async def test_dashboard_state_takes_the_game_from_module_state(tmp_path, monkeypatch):
     async with Wired(tmp_path, monkeypatch) as w:
-        dashboard.set_modules(w.layer.modules, w.layer.hub, w.layer.supervisor)
-        dashboard._MEMORY_DIR = tmp_path / "memory"
+        http_api.set_modules(w.layer.modules, w.layer.hub, w.layer.supervisor)
+        http_api._MEMORY_DIR = tmp_path / "memory"
         try:
-            offline = await dashboard.handle_api_state(None)
+            offline = await http_api.handle_api_state(None)
             import json
             assert json.loads(offline.body)["connected"] is False and json.loads(offline.body)["colony_name"] is None
             client = w.client()
@@ -208,21 +208,21 @@ async def test_dashboard_state_takes_the_game_from_module_state(tmp_path, monkey
                 await client.state("игра: колония «Дом»", {"connected": True, "colony_name": "Дом", "tick": 7,
                                                            "pawns": [{"name": "Борис"}], "game_running": True})
                 await w.wait(lambda: w.layer.modules.state_data("rimworld"))
-                data = json.loads((await dashboard.handle_api_state(None)).body)
+                data = json.loads((await http_api.handle_api_state(None)).body)
                 assert data["connected"] is True and data["colony_name"] == "Дом" and data["pawns"] == [{"name": "Борис"}]
         finally:
-            dashboard.set_modules(None, None, None)
+            http_api.set_modules(None, None, None)
 
 
 def test_appraisal_label_url_new_variable_and_old_fallback(monkeypatch, caplog):
     monkeypatch.delenv("RIMWORLD_MODULE_URL", raising=False)
     monkeypatch.delenv("RIMWORLD_AGENT_URL", raising=False)
-    assert dashboard._rimworld_url() == "http://127.0.0.1:8767"
+    assert http_api._rimworld_url() == "http://127.0.0.1:8767"
     monkeypatch.setenv("RIMWORLD_AGENT_URL", "http://127.0.0.1:9000")
     with caplog.at_level("WARNING"):
-        assert dashboard._rimworld_url() == "http://127.0.0.1:9000" and "устарела" in caplog.text
+        assert http_api._rimworld_url() == "http://127.0.0.1:9000" and "устарела" in caplog.text
     monkeypatch.setenv("RIMWORLD_MODULE_URL", "http://127.0.0.1:9001")
-    assert dashboard._rimworld_url() == "http://127.0.0.1:9001"
+    assert http_api._rimworld_url() == "http://127.0.0.1:9001"
 
 
 def _core_of(w):
@@ -236,4 +236,4 @@ def _core_of(w):
 @pytest.fixture(autouse=True)
 def _reset_dashboard():
     yield
-    dashboard.set_modules(None, None, None)
+    http_api.set_modules(None, None, None)

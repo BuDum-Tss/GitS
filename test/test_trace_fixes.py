@@ -9,7 +9,7 @@ from services.tracing import latency_trace as lt
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-import dashboard
+import http_api
 from services.peers.hub import PeerHub
 from test_companion_attention import Rig
 
@@ -74,7 +74,7 @@ def test_long_bus_id_is_found_by_the_same_key_everywhere():
 # ── оценка с телом не-объектом ──────────────────────────────────────────────────
 
 async def test_rating_with_a_list_body_is_a_bad_request():
-    c = TestClient(TestServer(dashboard.build_app()))
+    c = TestClient(TestServer(http_api.build_app()))
     await c.start_server()
     try:
         r = await c.post("/api/rating", json=[1, 2])

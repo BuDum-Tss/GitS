@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import dashboard
+import http_api
 from services.attention import AttentionEventSink
 from interfaces.contracts import EventSink, RequestHandler
 from services.peers.requests import CoreRequests
@@ -122,23 +122,23 @@ PUBLIC_ROUTES = {
 
 
 def test_public_urls_do_not_change():
-    app = dashboard.build_app()
+    app = http_api.build_app()
     got = {(r.method, r.resource.canonical) for r in app.router.routes() if r.method != "HEAD"}
     got = {(m, p) for m, p in got if not p.startswith("/static") and p not in ("/ws", "/ws")}
     assert got == PUBLIC_ROUTES
 
 
 def test_legacy_module_names_still_reach_the_context():
-    old = dashboard.ctx.memory_dir
+    old = http_api.ctx.memory_dir
     try:
-        dashboard._MEMORY_DIR = Path("x-mem")
-        assert dashboard.ctx.memory_dir == Path("x-mem") and dashboard._MEMORY_DIR == Path("x-mem")
+        http_api._MEMORY_DIR = Path("x-mem")
+        assert http_api.ctx.memory_dir == Path("x-mem") and http_api._MEMORY_DIR == Path("x-mem")
     finally:
-        dashboard._MEMORY_DIR = old
+        http_api._MEMORY_DIR = old
 
 
 def test_presenters_are_pure():
-    from dashboard import presenters
+    from http_api import presenters
     assert presenters.screen_state(None) is None
     assert presenters.jobs_view([{"module": "a", "job_id": "j", "extra": 1}])[0]["title"] is None
     assert presenters.check_setting_value({"type": "integer", "min": 1}, 0)[1] == "значение меньше 1"
@@ -151,5 +151,5 @@ def test_presenters_are_pure():
 
 @pytest.mark.parametrize("module", ["context", "presenters", "routes_system", "routes_memory", "routes_peers", "routes_attention"])
 def test_dashboard_files_are_small(module):
-    path = AGENT / "dashboard" / f"{module}.py"
+    path = AGENT / "http_api" / f"{module}.py"
     assert len(path.read_text(encoding="utf-8").splitlines()) < 320

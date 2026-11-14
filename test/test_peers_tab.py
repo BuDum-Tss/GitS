@@ -7,7 +7,7 @@ from aiohttp.test_utils import make_mocked_request
 from hub_helpers import FakeCompanion
 
 import core_service
-import dashboard
+import http_api
 from host import settings
 from services.conversation import speech_out
 from environments.registry import Registry
@@ -27,14 +27,14 @@ class WiredCompanion(FakeCompanion):
 def wire():
     """Ядро с настоящим peers.yaml, но без запуска: процессы не нужны, проверяется то, что видит дашборд."""
     layer = core_service.wire_modules(WiredCompanion(), Registry(), port=1)
-    dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
+    http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
     return layer
 
 
 async def rows():
     """Окружения и сервисы одним списком (две вкладки дашборда)."""
     out = []
-    for handler, path in ((dashboard.handle_api_workspaces, "/api/workspaces"), (dashboard.handle_api_services, "/api/services")):
+    for handler, path in ((http_api.handle_api_workspaces, "/api/workspaces"), (http_api.handle_api_services, "/api/services")):
         out += json.loads((await handler(make_mocked_request("GET", path))).text)
     return [r for r in out if r.get("kind") != "planned"] + [r for r in out if r.get("kind") == "planned"]
 
@@ -104,7 +104,7 @@ def test_load_planned_skips_broken_entries(tmp_path):
 
 
 async def _by_role(role):
-    handler = dashboard.handle_api_workspaces if role == "workspace" else dashboard.handle_api_services
+    handler = http_api.handle_api_workspaces if role == "workspace" else http_api.handle_api_services
     resp = await handler(make_mocked_request("GET", f"/api/{role}s"))
     return json.loads(resp.text)
 
@@ -124,8 +124,8 @@ async def test_workspaces_and_services_endpoints_split_by_role():
 
 
 def test_routes_register_workspaces_services_and_peer_paths_only():
-    from dashboard import routes_peers
+    from http_api import routes_peers
     paths = {(m, p) for m, p, _ in routes_peers.ROUTES}
     assert {("GET", "/api/workspaces"), ("GET", "/api/services")} <= paths
-    assert not [p for _, p in paths if p.startswith("/api/modules")] and not hasattr(dashboard, "handle_api_modules")
+    assert not [p for _, p in paths if p.startswith("/api/modules")] and not hasattr(http_api, "handle_api_modules")
     assert ("POST", "/api/peers/{id}/enabled") in paths

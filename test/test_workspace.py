@@ -3,7 +3,7 @@ import aiohttp
 from aiohttp import web
 from test_core_wiring import JSON, free_port
 
-import dashboard
+import http_api
 from services.spaces.manager import WorkspaceManager
 from services.spaces import model as dom
 from services.spaces.model import ASSISTANT, SLEEP, Reason
@@ -175,9 +175,9 @@ async def test_snapshot_lists_workspaces_and_history():
 
 async def test_dashboard_workspace_endpoints():
     mgr, _, _ = make()
-    dashboard.set_workspace(mgr)
+    http_api.set_workspace(mgr)
     port = free_port()
-    runner = web.AppRunner(dashboard.build_app())
+    runner = web.AppRunner(http_api.build_app())
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", port).start()
     base = f"http://127.0.0.1:{port}"
@@ -196,7 +196,7 @@ async def test_dashboard_workspace_endpoints():
             async with http.get(base + "/api/workspace") as r:
                 assert (await r.json())["current"] == ASSISTANT
     finally:
-        dashboard.set_workspace(None)
+        http_api.set_workspace(None)
         await runner.cleanup()
 
 

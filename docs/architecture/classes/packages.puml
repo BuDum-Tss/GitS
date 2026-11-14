@@ -1,19 +1,5 @@
 @startuml packages_overview
 set namespaceSeparator none
-package "dashboard" as dashboard {
-}
-package "dashboard.context" as dashboard.context {
-}
-package "dashboard.presenters" as dashboard.presenters {
-}
-package "dashboard.routes_attention" as dashboard.routes_attention {
-}
-package "dashboard.routes_memory" as dashboard.routes_memory {
-}
-package "dashboard.routes_peers" as dashboard.routes_peers {
-}
-package "dashboard.routes_system" as dashboard.routes_system {
-}
 package "environments" as environments {
 }
 package "environments.base" as environments.base {
@@ -34,11 +20,21 @@ package "host.settings" as host.settings {
 }
 package "host.supervisor" as host.supervisor {
 }
-package "host.tray" as host.tray {
-}
-package "host.tray_autostart" as host.tray_autostart {
-}
 package "host.tray_launch" as host.tray_launch {
+}
+package "http_api" as http_api {
+}
+package "http_api.context" as http_api.context {
+}
+package "http_api.presenters" as http_api.presenters {
+}
+package "http_api.routes_attention" as http_api.routes_attention {
+}
+package "http_api.routes_memory" as http_api.routes_memory {
+}
+package "http_api.routes_peers" as http_api.routes_peers {
+}
+package "http_api.routes_system" as http_api.routes_system {
 }
 package "interfaces.contracts" as interfaces.contracts {
 }
@@ -53,18 +49,6 @@ package "kernel.impulses" as kernel.impulses {
 package "kernel.model_json" as kernel.model_json {
 }
 package "kernel.scoring" as kernel.scoring {
-}
-package "search" as search {
-}
-package "search.embedder" as search.embedder {
-}
-package "search.index" as search.index {
-}
-package "search.normalize" as search.normalize {
-}
-package "search.rewrite" as search.rewrite {
-}
-package "search.service" as search.service {
 }
 package "services.attention" as services.attention {
 }
@@ -190,6 +174,18 @@ package "services.memory_service.plan_due" as services.memory_service.plan_due {
 }
 package "services.memory_service.scope" as services.memory_service.scope {
 }
+package "services.memory_service.search" as services.memory_service.search {
+}
+package "services.memory_service.search.embedder" as services.memory_service.search.embedder {
+}
+package "services.memory_service.search.index" as services.memory_service.search.index {
+}
+package "services.memory_service.search.normalize" as services.memory_service.search.normalize {
+}
+package "services.memory_service.search.rewrite" as services.memory_service.search.rewrite {
+}
+package "services.memory_service.search.service" as services.memory_service.search.service {
+}
 package "services.memory_service.sleep" as services.memory_service.sleep {
 }
 package "services.memory_service.sleep_scheduler" as services.memory_service.sleep_scheduler {
@@ -300,30 +296,6 @@ package "services.tracing.salience" as services.tracing.salience {
 }
 package "services.tracing.tool_trace" as services.tracing.tool_trace {
 }
-dashboard --> dashboard.context
-dashboard --> dashboard.routes_attention
-dashboard --> dashboard.routes_memory
-dashboard --> dashboard.routes_peers
-dashboard --> dashboard.routes_system
-dashboard --> host
-dashboard --> services.memory_service
-dashboard --> services.tracing
-dashboard.context --> host
-dashboard.presenters --> services.character.relationships
-dashboard.routes_attention --> dashboard.context
-dashboard.routes_memory --> dashboard.context
-dashboard.routes_memory --> dashboard.routes_system
-dashboard.routes_memory --> services.conversation
-dashboard.routes_memory --> services.tasks
-dashboard.routes_memory --> services.tracing
-dashboard.routes_peers --> dashboard.context
-dashboard.routes_peers --> services.peers
-dashboard.routes_peers --> services.peers.hub
-dashboard.routes_system --> dashboard.context
-dashboard.routes_system --> host
-dashboard.routes_system --> services.character
-dashboard.routes_system --> services.memory_service
-dashboard.routes_system --> services.tracing
 environments.builtin --> environments.base
 environments.builtin --> host
 environments.builtin --> services.conversation.stems
@@ -339,17 +311,30 @@ environments.sources --> environments.base
 host.settings --> services.tracing
 host.supervisor --> services.character
 host.supervisor --> services.tracing
-host.tray --> host
-host.tray --> services.character
-search --> search.index
-search --> search.service
-search.embedder --> search.normalize
-search.embedder --> services.tools
-search.index --> search.normalize
-search.rewrite --> interfaces.contracts
-search.service --> interfaces.contracts
-search.service --> search.index
-search.service --> search.rewrite
+http_api --> host
+http_api --> http_api.context
+http_api --> http_api.routes_attention
+http_api --> http_api.routes_memory
+http_api --> http_api.routes_peers
+http_api --> http_api.routes_system
+http_api --> services.memory_service
+http_api --> services.tracing
+http_api.context --> host
+http_api.presenters --> services.character.relationships
+http_api.routes_attention --> http_api.context
+http_api.routes_memory --> http_api.context
+http_api.routes_memory --> http_api.routes_system
+http_api.routes_memory --> services.conversation
+http_api.routes_memory --> services.tasks
+http_api.routes_memory --> services.tracing
+http_api.routes_peers --> http_api.context
+http_api.routes_peers --> services.peers
+http_api.routes_peers --> services.peers.hub
+http_api.routes_system --> host
+http_api.routes_system --> http_api.context
+http_api.routes_system --> services.character
+http_api.routes_system --> services.memory_service
+http_api.routes_system --> services.tracing
 services.attention --> services.attention.core
 services.attention --> services.attention.event_sink
 services.attention --> services.attention.inbox
@@ -497,14 +482,14 @@ services.memory_service.diary --> kernel.model_json
 services.memory_service.episode_cutter --> interfaces.contracts
 services.memory_service.episode_cutter --> services.tracing
 services.memory_service.episode_recall --> interfaces.contracts
-services.memory_service.episode_service --> search
-services.memory_service.episode_service --> search.embedder
 services.memory_service.episode_service --> services.character
 services.memory_service.episode_service --> services.memory_service.diary
 services.memory_service.episode_service --> services.memory_service.episode_cutter
 services.memory_service.episode_service --> services.memory_service.episode_recall
 services.memory_service.episode_service --> services.memory_service.episode_store
 services.memory_service.episode_service --> services.memory_service.episode_summary
+services.memory_service.episode_service --> services.memory_service.search
+services.memory_service.episode_service --> services.memory_service.search.embedder
 services.memory_service.episode_service --> services.memory_service.sleep
 services.memory_service.episode_service --> services.memory_service.sleep_scheduler
 services.memory_service.episode_service --> services.tracing
@@ -512,16 +497,25 @@ services.memory_service.episode_summary --> interfaces.contracts
 services.memory_service.episode_summary --> kernel
 services.memory_service.episode_summary --> kernel.model_json
 services.memory_service.graph --> host
-services.memory_service.graph --> search.embedder
-services.memory_service.graph --> search.index
-services.memory_service.graph --> search.service
 services.memory_service.graph --> services.character
 services.memory_service.graph --> services.conversation
 services.memory_service.graph --> services.memory_service.fact_store
+services.memory_service.graph --> services.memory_service.search.embedder
+services.memory_service.graph --> services.memory_service.search.index
+services.memory_service.graph --> services.memory_service.search.service
 services.memory_service.graph --> services.runtime
 services.memory_service.graph --> services.tracing
 services.memory_service.migration --> services.memory_service
 services.memory_service.migration --> services.memory_service.adapters
+services.memory_service.search --> services.memory_service.search.index
+services.memory_service.search --> services.memory_service.search.service
+services.memory_service.search.embedder --> services.memory_service.search.normalize
+services.memory_service.search.embedder --> services.tools
+services.memory_service.search.index --> services.memory_service.search.normalize
+services.memory_service.search.rewrite --> interfaces.contracts
+services.memory_service.search.service --> interfaces.contracts
+services.memory_service.search.service --> services.memory_service.search.index
+services.memory_service.search.service --> services.memory_service.search.rewrite
 services.memory_service.sleep --> interfaces.contracts
 services.memory_service.sleep --> services.memory_service.diary
 services.memory_service.sleep --> services.memory_service.episode_summary

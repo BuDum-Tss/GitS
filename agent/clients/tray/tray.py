@@ -1,6 +1,6 @@
 """Иконка в системном трее: управление ассистентом без окон.
 
-Запуск:  pythonw host/tray.py   (или python host/tray.py)
+Запуск:  pythonw clients/tray/tray.py   (или python clients/tray/tray.py)
 
 Трей сам поднимает ядро (main.py), если оно не запущено, а ядро при старте само запускает трей (host/tray_launch.py,
 `GITS_NO_TRAY=1` отключает). Модули (ТЗ 02), в том числе голос и питомец (ТЗ 12, 13), трей не
@@ -31,14 +31,14 @@ import psutil
 import pystray
 from PIL import Image
 
-HERE = Path(__file__).resolve().parent                # папка этого файла (agent/host)
-AGENT_DIR = HERE.parent                                # папка ядра: там main.py и memory
+HERE = Path(__file__).resolve().parent                # папка этого файла (agent/clients/tray)
+AGENT_DIR = HERE.parents[1]                               # папка ядра: там main.py и memory
 for _p in (AGENT_DIR, AGENT_DIR / "interfaces" / "workspace"):     # запуск как скрипт: пакеты ядра ещё не видны
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
 from host import settings  # noqa: E402
-from host import tray_autostart  # noqa: E402
+from clients.tray import tray_autostart  # noqa: E402
 
 DASHBOARD_URL = "http://localhost:8766/"
 CORE_PORT = 8766
@@ -129,7 +129,7 @@ def autostart_enabled() -> bool:
 
 
 def heal_autostart() -> bool:
-    """Автозапуск включён, но путь в записи протух (проект переехал, Python обновили): переписать на текущий host/tray.py.
+    """Автозапуск включён, но путь в записи протух (проект переехал, Python обновили): переписать на текущий clients/tray/tray.py.
     Живую запись (оба файла на месте) не трогаем, чтобы запуск из чужой копии проекта её не перехватывал."""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:

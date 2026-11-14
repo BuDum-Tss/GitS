@@ -201,7 +201,7 @@ class Soak:
         from services.conversation import speech_out
         from aiohttp import web
         import core_service
-        import dashboard
+        import http_api
         from services.conversation.companion import Companion
         from environments.registry import Registry
         from services.character.relationships import Relationships
@@ -241,15 +241,15 @@ class Soak:
         specs = [s for s in load_specs() if s.id in want]
         self.layer = core_service.wire_modules(self.companion, registry, port=self.port,
                                                specs=specs)
-        dashboard._MEMORY_DIR = Path(self.memory_dir)
-        dashboard.set_modules(self.layer.modules, self.layer.hub, self.layer.supervisor)
-        dashboard.set_attention(self.layer.attention)
-        dashboard.set_presence(presence)
-        dashboard.set_registry(registry)
-        dashboard.set_modes(self.layer.profiles)
+        http_api._MEMORY_DIR = Path(self.memory_dir)
+        http_api.set_modules(self.layer.modules, self.layer.hub, self.layer.supervisor)
+        http_api.set_attention(self.layer.attention)
+        http_api.set_presence(presence)
+        http_api.set_registry(registry)
+        http_api.set_modes(self.layer.profiles)
         loop = asyncio.get_running_loop()
-        dashboard.ctx.chat_callback = lambda msg: loop.create_task(self.layer.io.from_dashboard(msg))
-        self.runner = web.AppRunner(dashboard.build_app(), shutdown_timeout=2)
+        http_api.ctx.chat_callback = lambda msg: loop.create_task(self.layer.io.from_dashboard(msg))
+        self.runner = web.AppRunner(http_api.build_app(), shutdown_timeout=2)
         await self.runner.setup()
         await web.TCPSite(self.runner, "127.0.0.1", self.port).start()
         await self.layer.start()

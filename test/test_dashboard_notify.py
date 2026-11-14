@@ -3,7 +3,7 @@ import aiohttp
 from aiohttp import web
 from test_core_wiring import JSON, free_port
 
-import dashboard
+import http_api
 
 
 class FakeAttention:
@@ -17,8 +17,8 @@ class FakeAttention:
 async def serve():
     port = free_port()
     att = FakeAttention()
-    dashboard.set_attention(att)
-    runner = web.AppRunner(dashboard.build_app())
+    http_api.set_attention(att)
+    runner = web.AppRunner(http_api.build_app())
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", port).start()
     return f"http://127.0.0.1:{port}", att, runner
@@ -34,7 +34,7 @@ async def test_notify_submits_an_announcement():
         assert att.speech == [("rimworld-tests", {"text": "Запускаю RimWorld: тест", "mode": "fact", "urgency_hint": 3,
                                                   "announce": True})]            # AN-2: объявление, а не обычная речь
     finally:
-        dashboard.set_attention(None)
+        http_api.set_attention(None)
         await runner.cleanup()
 
 
@@ -56,7 +56,7 @@ async def test_notify_rejects_bad_requests():
             async with http.post(base + "/api/notify", data="text=ok&source=t") as r:                     # не JSON
                 assert r.status == 403
         assert att.speech == []
-        dashboard.set_attention(None)
+        http_api.set_attention(None)
         async with aiohttp.ClientSession() as http:
             async with http.post(base + "/api/notify", json={"text": "ок", "source": "t"}, headers=JSON) as r:
                 assert r.status == 503                                        # внимание не подключено
@@ -67,5 +67,5 @@ async def test_notify_rejects_bad_requests():
 async def test_notify_refuses_non_local_peers():
     class Req:
         remote = "192.168.1.5"
-    resp = await dashboard.handle_api_notify(Req())
+    resp = await http_api.handle_api_notify(Req())
     assert resp.status == 403

@@ -7,7 +7,7 @@ from test_core_wiring import JSON, WiredCompanion, free_port, wait_for
 
 from services.conversation import approvals
 import core_service
-import dashboard
+import http_api
 from host import settings
 from environments.registry import Registry
 
@@ -17,12 +17,12 @@ async def serve(tmp_path, specs=()):
     companion, registry = WiredCompanion(), Registry()
     layer = core_service.wire_modules(companion, registry, port=port,
                                       specs=list(specs))
-    dashboard._MEMORY_DIR = tmp_path / "memory"
-    dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
-    dashboard.set_presence(companion.presence)
-    dashboard.set_registry(registry)
-    dashboard.set_modes(layer.profiles)
-    runner = web.AppRunner(dashboard.build_app())
+    http_api._MEMORY_DIR = tmp_path / "memory"
+    http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
+    http_api.set_presence(companion.presence)
+    http_api.set_registry(registry)
+    http_api.set_modes(layer.profiles)
+    runner = web.AppRunner(http_api.build_app())
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", port).start()
     await layer.start()
@@ -111,7 +111,7 @@ async def test_dashboard_module_settings_mode_approval_and_job_endpoints(tmp_pat
 
 
 async def test_core_dashboard_routes_remain_after_old_game_channels_were_removed():
-    app = dashboard.build_app()
+    app = http_api.build_app()
     routes = {(r.method, r.resource.canonical) for r in app.router.routes() if r.resource is not None}
     for r in (("GET", "/api/modes"), ("POST", "/api/mode"), ("GET", "/api/state"), ("POST", "/api/chat"),
               ("POST", "/api/approval"), ("POST", "/api/appraisal_label")):

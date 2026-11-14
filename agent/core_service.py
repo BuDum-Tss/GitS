@@ -20,7 +20,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from services.character import character
-import dashboard
+import http_api
 from services.tracing import events_log
 from services.tracing import tool_trace
 from services.memory_service import episode_routes
@@ -330,12 +330,12 @@ async def _run(config: dict):
     registry = Registry()
     registry.embedder = tool_search.ToolEmbeddings(Path(mem_dir) / "tool_embeddings.json")     # отбор инструментов по смыслу
     layer = wire_modules(companion, registry)
-    dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
-    dashboard.set_attention(layer.attention)
-    dashboard.set_workspace(layer.workspaces)            # ТЗ 32: карточка «Сейчас», среда агента
-    dashboard.set_presence(presence)
+    http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
+    http_api.set_attention(layer.attention)
+    http_api.set_workspace(layer.workspaces)            # ТЗ 32: карточка «Сейчас», среда агента
+    http_api.set_presence(presence)
     loop = asyncio.get_running_loop()
-    await dashboard.start_dashboard(
+    await http_api.start_dashboard(
         memory_dir=mem_dir, chat_callback=lambda m: loop.create_task(layer.io.from_dashboard(m)))
     await layer.start()                  # токен модулей в файл, сверка настроек, профили, процессы модулей
 
@@ -349,11 +349,11 @@ async def _run(config: dict):
     graph.scope_of = graph_scope.make_scope_of(
         layer.attention.decider, graph.scopes_of,
         lambda s: next((p.description or p.title for p in layer.profiles.profiles.values() if s in p.memory_scopes), s))
-    dashboard.set_graph(graph)
-    dashboard.set_tasks(lambda: getattr(companion, "tasks", None))
+    http_api.set_graph(graph)
+    http_api.set_tasks(lambda: getattr(companion, "tasks", None))
     layer.character_switch = CharacterSwitch(companion=companion, rel=rel, graph=graph, attention=layer.attention,
                                              hub=layer.hub, mem_root=Path(mem_dir))
-    dashboard.set_character(layer.character_switch)
+    http_api.set_character(layer.character_switch)
     graph.set_character(character.active().id)           # новые факты пишутся в группу активного персонажа
     asyncio.create_task(graph.run())
     try:
@@ -383,9 +383,9 @@ async def _run(config: dict):
             tool_trace.note("external", "workspace.switch", f"{ws}: {'ok' if res.get('ok') else res.get('error')}")
     companion.router.after_tool = enter_after_launch
     layer.requests.router = companion.router            # core.tool.call от модулей идёт тем же путём, что просьбы
-    dashboard.set_router(companion.router)              # POST /api/menu_click идёт инструментом desktop.menu_click (DESK-14)
-    dashboard.set_registry(registry)
-    dashboard.set_modes(layer.profiles)
+    http_api.set_router(companion.router)              # POST /api/menu_click идёт инструментом desktop.menu_click (DESK-14)
+    http_api.set_registry(registry)
+    http_api.set_modes(layer.profiles)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
     layer.requests.tasks = companion.tasks = task_wiring.build(companion, layer.workspaces)    # ТЗ 32, WS-8: общие задачи, напоминания себе и планы
     await _migrate_memory(companion, graph, Path(companion._dir))      # старая memories.json -> граф и задачи (один раз)
@@ -404,7 +404,7 @@ async def _run(config: dict):
                          tasks=companion.tasks)
     work_loop.start()                                    # ТЗ 33: автономная работа агента в среде игры или мира
     companion.router.auto_ok = lambda: work_loop.spec() is not None      # пока она играет сама, обычные действия идут без вопроса
-    dashboard.set_impulses(impulses)
+    http_api.set_impulses(impulses)
     episodes = episode_service.build(companion, layer.attention,       # ТЗ 27: эпизоды и сон (простой, расписание, догоняющий)
                                      busy=lambda: layer.attention.top_focus().kind in ("conversation", "question")
                                      or layer.link.holder is not None)

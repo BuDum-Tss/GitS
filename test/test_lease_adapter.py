@@ -7,7 +7,7 @@ import pytest
 from aiohttp.test_utils import make_mocked_request
 from gits_sdk.control import ControlServer
 
-import dashboard
+import http_api
 from host import settings
 from services.spaces.lease import LeaseAdapter
 from services.spaces.link import WorkspaceLink
@@ -254,11 +254,11 @@ async def test_peer_snapshot_and_api_show_lease_and_space_without_secrets(space,
     spec = PeerSpec(id="montage", cwd=".", command="", ownership="shared", unmanaged=True, control_url=space.server.url,
                     title="Монтаж видео")
     layer = core_service.wire_modules(Companion(), Registry(), port=1, specs=[spec])
-    dashboard.set_modules(layer.modules, layer.hub, layer.supervisor)
+    http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
     settings.update(dev_mode=False)
 
     async def row():
-        resp = await dashboard.handle_api_workspaces(make_mocked_request("GET", "/api/workspaces"))
+        resp = await http_api.handle_api_workspaces(make_mocked_request("GET", "/api/workspaces"))
         return next(r for r in json.loads(resp.text) if r["id"] == "montage"), resp.text
     r, _ = await row()
     assert r["lease"]["state"] == "free" and r["lease"]["holder"] is None
