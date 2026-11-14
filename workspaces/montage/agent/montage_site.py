@@ -415,6 +415,8 @@ class Site:
         root = self.manager.layout.character / "design"
         sections: dict[str, list[Path]] = {}
         for path in list_files(root, technical=True):
+            if path.name.casefold() == "readme.md":
+                continue
             section = path.parts[0] if len(path.parts) > 1 else "Обзор"
             sections.setdefault(section, []).append(path)
         titles = {"assets": "Медиа", "components": "Компоненты", "fonts": "Шрифты"}

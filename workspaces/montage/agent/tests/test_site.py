@@ -92,6 +92,7 @@ async def test_visual_preview_and_isolated_html(job):
     (design / "icon.svg").write_text("<svg/>", encoding="utf-8")
     intro = design / "components" / "Intro"
     intro.mkdir(parents=True)
+    (intro / "README.md").write_text("Описание заставки", encoding="utf-8")
     (intro / "preview.html").write_text('<video src="/_blob/529b6ede200adc229d8cc149e3962526"></video>', encoding="utf-8")
     site = Site(manager, port=0)
     async with TestClient(TestServer(site.app)) as c:
@@ -101,6 +102,7 @@ async def test_visual_preview_and_isolated_html(job):
         assert f"{url}/design-system.json" in files
         assert "<th>Название</th><th>Описание</th><th>Просмотр</th>" in files
         assert "class='inline-preview'><iframe" in files
+        assert "Описание заставки" in files and "/Intro/README.md" not in files
         page = await (await c.get(f"{url}/preview.html")).text()
         assert "sandbox='allow-scripts'" in page and "allow-same-origin" not in page
         assert "aria-current='page'" in page and "/design/heading.ttf" in page
