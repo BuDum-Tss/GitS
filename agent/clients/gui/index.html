@@ -359,7 +359,7 @@
       <div id="tab-resources" class="card bg-base-100 shadow-sm min-h-0 hidden flex flex-col">
         <div class="card-body scroll-y">
           <div class="flex gap-2 items-center">
-            <span class="font-semibold">Общие ресурсы</span>
+            <span class="font-semibold">Файлы персонажа</span>
             <button id="resources-refresh" class="btn btn-ghost btn-sm" type="button">Обновить</button>
           </div>
           <ul id="resources-list" class="resource-tree w-full"></ul>
@@ -501,7 +501,7 @@ async function loadResourceBranch(folder, list) {
         const details = document.createElement('details');
         const summary = document.createElement('summary');
         const children = document.createElement('ul');
-        summary.textContent = entry.name;
+        summary.textContent = entry.path === 'shared' ? 'temp' : entry.name;
         details.append(summary, children);
         row.append(details);
         details.open = openResourceFolders.has(entry.path);

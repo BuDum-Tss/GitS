@@ -54,57 +54,78 @@ def default_memory_dir() -> Path:
     return folder / "memory" if folder is not None else Path("./memory")
 
 
-def shared_catalog(query: str = "") -> list[str]:
-    """Файлы обмена и готовые экспорты монтажа текущего персонажа."""
-    files = []
-    for prefix, root in _shared_roots().items():
-        for path in root.rglob("*") if root.is_dir() else ():
-            identifier = f"{prefix}/{path.relative_to(root).as_posix()}"
-            if query.casefold() in identifier.casefold() and shared_file(identifier):
-                try:
-                    files.append((path.stat().st_mtime, identifier))
-                except FileNotFoundError:
-                    continue
-    return [identifier for _, identifier in sorted(files, reverse=True)]
+_PRIVATE_PARTS = {"core", "memory", "settings", "config", "secrets", "credentials", "node_modules", "__pycache__"}
+_PRIVATE_FILES = {"settings.json", "settings.yaml", "settings.yml", "persona.yaml", "persona.yml",
+                  "config.json", "config.yaml", "config.yml", "character.yaml", "prompt.yaml",
+                  "auth.json", "credentials.json", "tokens.env", "twitch_tokens.json", "module_token"}
+_PRIVATE_SUFFIXES = {".env", ".session", ".session-journal", ".pem", ".key"}
 
 
-def _shared_roots() -> dict[str, Path]:
-    home = character_home() or character_dir()
-    return {"shared": home / "shared", "montage": home / "montage" / "out"}
+def _resource_home() -> Path:
+    return character_home() or character_dir()
 
 
-def shared_file(identifier: str) -> Path | None:
-    path = _shared_path(identifier)
-    return path if path is not None and path.is_file() else None
+def _public_part(part: str) -> bool:
+    name = part.casefold()
+    return (bool(name) and name == name.rstrip(" .") and not name.startswith(".")
+            and chr(92) not in name and ":" not in name
+            and name not in _PRIVATE_PARTS and name not in _PRIVATE_FILES
+            and Path(name).suffix not in _PRIVATE_SUFFIXES)
 
 
-def _shared_path(identifier: str) -> Path | None:
-    prefix, _, relative = identifier.partition("/")
-    root = _shared_roots().get(prefix)
-    parts = relative.split("/") if relative else []
-    if root is None or any(not part or part.startswith(".") or "\\" in part or ":" in part for part in parts):
+def resource_path(identifier: str, *, home: Path | None = None) -> Path | None:
+    home = home if home is not None else _resource_home()
+    parts = identifier.split("/") if identifier else []
+    if not all(_public_part(part) for part in parts):
         return None
-    path = root.joinpath(*parts)
+    path = home.joinpath(*parts)
     try:
-        if root.is_symlink() or path.resolve() != root.resolve().joinpath(*parts):
+        if path.is_symlink() or path.resolve() != home.resolve().joinpath(*parts):
             return None
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, ValueError):
         return None
     return path
 
 
 def shared_entries(folder: str = "") -> list[dict] | None:
-    if not folder:
-        return [{"name": name, "path": name, "directory": True} for name in _shared_roots()]
-    root = _shared_path(folder)
-    if root is None or ("/" in folder and not root.is_dir()):
+    root = resource_path(folder)
+    if root is None or not root.is_dir():
         return None
     entries = []
-    for child in root.iterdir() if root.is_dir() else ():
-        identifier = f"{folder}/{child.name}"
-        if _shared_path(identifier) is not None and (child.is_file() or child.is_dir()):
+    for child in root.iterdir():
+        identifier = f"{folder}/{child.name}" if folder else child.name
+        if resource_path(identifier) is not None and (child.is_file() or child.is_dir()):
             entries.append({"name": child.name, "path": identifier, "directory": child.is_dir()})
     return sorted(entries, key=lambda row: (not row["directory"], row["name"].casefold()))
+
+
+def shared_catalog(query: str = "") -> list[str]:
+    """Ресурсы текущего персонажа. При равном фильтре готовые экспорты первыми."""
+    folders = [""]
+    files = []
+    while folders:
+        for entry in shared_entries(folders.pop()) or ():
+            identifier = entry["path"]
+            if entry["directory"]:
+                folders.append(identifier)
+            elif query.casefold() in identifier.casefold():
+                try:
+                    files.append((identifier.startswith("montage/out/"), (_resource_home() / identifier).stat().st_mtime, identifier))
+                except FileNotFoundError:
+                    continue
+    return [identifier for _, _, identifier in sorted(files, reverse=True)]
+
+
+def shared_file(identifier: str) -> Path | None:
+    path = resource_path(identifier)
+    if path is not None and path.is_file():
+        return path
+    # Старые идентификаторы экспортов имели вид montage/<имя>.
+    if identifier.startswith("montage/") and not identifier.startswith("montage/out/"):
+        path = resource_path("montage/out/" + identifier.removeprefix("montage/"))
+        if path is not None and path.is_file():
+            return path
+    return None
 
 
 def card_id(folder: Path) -> str | None:

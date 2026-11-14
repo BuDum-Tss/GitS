@@ -67,6 +67,12 @@ class Layout:
         """Путь к ресурсу персонажа по короткому имени: `design/assets/Intro/x.mp4`, `montage/design/...` или `resources/<Имя>/montage/...`
         (так их называет агент). Нет такого файла: None."""
         s = raw.replace("\\", "/").strip().lstrip("/")
+        from gits_sdk.resources import resource_path
+        candidate = resource_path(s.removeprefix("character/"), home=self.character.parent)
+        if candidate is not None and candidate.exists():
+            return candidate
+        if s.startswith("character/"):
+            return None
         parts = s.split("/")
         if parts[0] == "resources" and len(parts) > 2 and parts[2] == "montage":
             parts = parts[3:]
@@ -74,8 +80,8 @@ class Layout:
             parts = parts[1:]
         if not parts or ".." in parts:
             return None
-        p = self.character.joinpath(*parts)
-        return p if p.exists() else None
+        p = resource_path("/".join(parts), home=self.character)
+        return p if p is not None and p.exists() else None
 
     def list_resources(self, limit: int = 120) -> list[tuple[Path, int]]:
         """Файлы ресурсов персонажа для монтажа (папка montage без подготовленных превью и кода): путь и размер."""

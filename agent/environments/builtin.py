@@ -703,7 +703,11 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
     workspace_tools = [] if workspaces is None else _workspace_tools(workspaces, modules)     # ТЗ 32: среды агента
     async def resources(a):
         found = await asyncio.to_thread(shared_catalog, a.get("query") or "")
-        return "\n".join(found[:8]) or "Подходящих общих файлов пока нет."
+        offset = max(0, a.get("offset") or 0)
+        page = found[offset:offset + 5]
+        if offset + len(page) < len(found):
+            page.append(f"Следующая страница: offset={offset + len(page)} с тем же query.")
+        return "\n".join(page) or "Подходящих файлов нет."
 
     repair_tools = []
     if os.environ.get("GITS_REPAIR_QUEUE"):
@@ -730,9 +734,10 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
         description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "
                     "«не отвлекай / выдели» и сводка накопившегося. Общие настройки Telegram для модулей.",
         tools=attention_tools + workspace_tools + repair_tools + [
-            _tool("core", "resources", "Общие файлы персонажа и готовые ролики монтажа. Доступно в любом окружении. "
+            _tool("core", "resources", "Рабочие файлы персонажа, включая дизайн и готовые ролики монтажа. Доступно в любом окружении. "
                   "Идентификатор MP4 можно передать в telegram.publish_video после перехода в Telegram.",
-                  {"query": {"type": "string", "required": False, "description": "часть имени файла или группы"}},
+                  {"query": {"type": "string", "required": False, "description": "часть имени файла или папки"},
+                   "offset": {"type": "integer", "required": False, "description": "позиция следующей страницы"}},
                   resources, informative=True, keywords=("ресурсы", "файлы", "ролик", "видео", "экспорт")),
             _tool("core", "jobs", "Перечень задач всех модулей: модуль, название, состояние, стадия, прогресс. "
                   "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",

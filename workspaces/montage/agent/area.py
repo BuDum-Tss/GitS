@@ -12,6 +12,7 @@ from pathlib import Path
 
 from gits_sdk import Sandbox, ToolError, WorkspaceTools
 from gits_sdk.protocol import WorkspaceSkill
+from gits_sdk.resources import resource_path
 from gits_sdk.workspace_tools import _denied, _offset, _read_file, _str_arg
 
 from layout import Layout
@@ -21,7 +22,7 @@ AREA_ROOT = "jobs"
 WRITABLE = ["*/plan", "*/work/src/custom", "*/work/public/design"]
 PLAN_FILES = ("idea.md", "story.md", "plan.json")
 PLAN_JSON = "plan.json"
-READONLY = ["template/demo/plan.*.json", "resources", "*/sources", "*/transcript", "*/renders", "*/qa", "*/work/public"]
+READONLY = ["template/demo/plan.*.json", "resources", "character", "*/sources", "*/transcript", "*/renders", "*/qa", "*/work/public"]
 HIDDEN = ["node_modules", ".git", ".claude"]
 SKILLS_MOUNT = "skills"
 SKILL_DESCRIPTION_MAX = 300
@@ -36,6 +37,11 @@ class MontageSandbox(Sandbox):
 
     def _mount(self, parts: tuple[str, ...]) -> Path | None:
         return self.mounts.get(parts[0]) if parts else None
+
+    def can_read(self, parts: tuple[str, ...]) -> bool:
+        if parts and parts[0] in ("character", "resources"):
+            return resource_path("/".join(parts[1:]), home=self.mounts[parts[0]]) is not None
+        return super().can_read(parts)
 
     def _real(self, parts: tuple[str, ...], rel, *, write: bool, listing: bool) -> Path:
         base = self._mount(parts)
@@ -194,5 +200,6 @@ def discover_skills(skills_dir: Path) -> list[WorkspaceSkill]:
 def make_sandbox(layout: Layout) -> MontageSandbox:
     """Песочница агента для хозяина аренды: корень это его папка единиц, рядом шаблон, ресурсы персонажа и навыки."""
     layout.jobs.mkdir(parents=True, exist_ok=True)
-    return MontageSandbox(layout.jobs, {"template": layout.template, "resources": layout.character, SKILLS_MOUNT: layout.skills},
+    return MontageSandbox(layout.jobs, {"template": layout.template, "resources": layout.character,
+                                       "character": layout.character.parent, SKILLS_MOUNT: layout.skills},
                           writable=WRITABLE, readonly=READONLY, hidden=HIDDEN)

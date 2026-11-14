@@ -19,6 +19,13 @@ def test_short_names_resolve_to_the_resource(tmp_path):
                 "resources/GlaDOS/montage/design/assets/Intro/Aperture_Boot_dark.mp4"):
         assert lay.resolve_resource(raw) == expected, raw
     assert lay.resolve_resource("design/нет.mp4") is None and lay.resolve_resource("../x") is None
+    other = lay.character.parent / "pet"
+    other.mkdir()
+    (other / "idle.png").write_bytes(b"image")
+    (other / "settings.json").write_text("{}")
+    assert lay.resolve_resource("pet/idle.png") == other / "idle.png"
+    assert lay.resolve_resource("character/pet/idle.png") == other / "idle.png"
+    assert lay.resolve_resource("character/pet/settings.json") is None
 
 
 def test_listing_skips_code_and_previews(tmp_path):

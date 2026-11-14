@@ -35,7 +35,7 @@ GROUPS = [
         N("strm", "streamer", "I", "ведение трансляции: чат и события Twitch, ответы, модерация; сцены, запись и субтитры OBS (obs-websocket)", "Event twitch.*, obs.*", "workspaces/streamer: подсистемы twitch/ и obs/"),
         N("rim", "rimworld", "I", "игровой агент: ходы, комментатор, запись забега", "Event raid, death, colonists", "workspaces/rimworld"),
         N("mont", "montage", "I", "конвейер роликов: Remotion + ffmpeg, агент Claude", "job.update, вопросы", "workspaces/montage"),
-        N("sharedfiles", "Ресурсы персонажа", "I", "общая папка shared и готовые экспорты montage/out доступны через core.resources независимо от фокуса", "идентификаторы файлов", "agent/interfaces/workspace/gits_sdk/resources.py"),
+        N("sharedfiles", "Ресурсы персонажа", "I", "рабочие файлы из корня персонажа доступны через core.resources независимо от фокуса; монтаж читает их через character/", "пути файлов", "agent/interfaces/workspace/gits_sdk/resources.py"),
         N("repair", "Самоисправление GitS", "I", "хост читает очередь багов, создаёт GitHub Issues и запускает классический Pi в контейнере; проверяет патч, коммитит и обновляет образы", "коммит и результат в Issue", "docker/self-improvement"),
         N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (services/tracing/flow_trace.py, services/tracing/flow_spec.py, /api/flow; ошибки GLiNER, Claude и выходов отдельно; настройка «Только ядро»)"),
     ]),

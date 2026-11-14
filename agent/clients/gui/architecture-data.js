@@ -69,8 +69,8 @@ window.ARCH_DATA = {
      "t": "Ресурсы персонажа",
      "tag": "I",
      "new": false,
-     "do": "общая папка shared и готовые экспорты montage/out доступны через core.resources независимо от фокуса",
-     "out": "идентификаторы файлов",
+     "do": "рабочие файлы из корня персонажа доступны через core.resources независимо от фокуса; монтаж читает их через character/",
+     "out": "пути файлов",
      "now": "agent/interfaces/workspace/gits_sdk/resources.py"
     },
     {
