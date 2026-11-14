@@ -90,6 +90,7 @@ class ResidentAgent:
         self._lock: asyncio.Lock | None = None
         self._busy = False
         self._source = ""                   # откуда идущее обращение: user, event, alert
+        self._last_montage_read = None
         self._note = ""                     # что сказать новой сессии после сброса (обрыв хода по времени)
         self.last_end = 0.0                 # когда закончился последний ход (рабочий цикл не торопит свободного агента)
 
@@ -124,18 +125,29 @@ class ResidentAgent:
 
         async def call_tool(args: dict) -> tuple[bool, str]:
             a = _schema_args(args)
+            tool_id = str(a.get("tool_id") or "")
+            params = _schema_args(a.get("args"))
+            file_read = tool_id == "montage.files" and params.get("op") == "read"
+            read_key = (params.get("path"), params.get("offset", 0))
+            if file_read and read_key == agent._last_montage_read:
+                return False, ("Этот фрагмент уже прочитан. Используй offset продолжения из ответа, "
+                               "перейди к следующему шагу задачи или найди короткий пример плана.")
+            if tool_id == "montage.files" and not file_read and params.get("op") == "write":
+                agent._last_montage_read = None
             if agent._source != "alert":                      # тревога действует сразу, остальное после того, как реплика прозвучала
                 try:
                     await host.wait_speech(SPEECH_SYNC_S)
                 except Exception as e:
                     logger.debug(f"ожидание речи: {e}")
-            ok, result, code = await host.router.run_tool_ex(str(a.get("tool_id") or ""), _schema_args(a.get("args")))
+            ok, result, code = await host.router.run_tool_ex(tool_id, params)
+            if ok and file_read:
+                agent._last_montage_read = read_key
             text = result if ok else f"НЕ ПОЛУЧИЛОСЬ ({code}): {result}"
             if not ok and code in ("unknown", "unavailable"):      # инструмент мог быть в среде, куда она ещё не вошла
                 catalog = getattr(host, "workspace_catalog", lambda: "")()
                 if catalog:
                     text += "\n" + catalog
-            if len(text) > RESULT_CHARS:                           # обрезанное не должно выглядеть как полный ответ
+            if len(text) > RESULT_CHARS and not (ok and file_read):
                 total = len(text)
                 text = text[:RESULT_CHARS] + f"\n[ответ обрезан: показано {RESULT_CHARS} из {total} символов; уточни запрос, чтобы получить нужную часть]"
             return ok, text
@@ -282,6 +294,8 @@ class ResidentAgent:
         runtime = await self._runtime_for_turn()
         await runtime.start(self._system(), self._tool_specs())
         self._source = source
+        if source == "user":
+            self._last_montage_read = None
         if self._note:
             prompt, self._note = f"=== ЗАМЕТКА ===\n{self._note}\n\n{prompt}", ""
         latency_trace.mark("route")                        # запрос собран, ход ушёл в среду (трасса задержки, ТЗ 24)

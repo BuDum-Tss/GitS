@@ -5,6 +5,7 @@
 разрешении (`services/conversation/approvals.py`), тайм-аут инструмента, ошибки с кодами MOD-9.
 """
 import asyncio
+import json
 import logging
 import time
 
@@ -19,6 +20,27 @@ from environments.base import ToolError, validate_args
 logger = logging.getLogger("router")
 
 RESULT_CHARS = 600
+FILE_PAGE_BYTES = 4096
+
+
+def format_tool_result(tool_id: str, args: dict, result) -> str:
+    text = str(result)
+    if tool_id != "montage.files" or args.get("op") != "read":
+        return text[:RESULT_CHARS]
+    try:
+        page = result if isinstance(result, dict) else json.loads(text)
+    except ValueError:
+        return text[:RESULT_CHARS]
+    if not isinstance(page, dict) or not isinstance(page.get("content"), str):
+        return text[:RESULT_CHARS]
+    offset = page.get("offset", args.get("offset", 0))
+    content = page["content"]
+    chunk = content.encode("utf-8")[:FILE_PAGE_BYTES].decode("utf-8", errors="ignore")
+    message = f"{page.get('path', args.get('path'))} (offset={offset})\n{chunk}"
+    if chunk != content or page.get("truncated"):
+        next_offset = offset + len(chunk.encode("utf-8"))
+        message += f"\n[Продолжение: вызови montage.files с тем же path и offset={next_offset}.]"
+    return message
 
 
 
@@ -99,7 +121,7 @@ class Router:
             logger.warning(f"Инструмент {tool.id}: {e}")
             journal.mistake("tool_failed", f"{tool.id}: {e}"[:200], code="internal")
             return False, tool.name, f"сбой: {e}", "internal"
-        return True, tool.name, str(result)[:RESULT_CHARS], None
+        return True, tool.name, format_tool_result(tool.id, args, result), None
 
     # ── главный вход ───────────────────────────────────────────────────────────
 
