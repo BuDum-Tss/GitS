@@ -407,7 +407,7 @@ async def _run(config: dict):
                          quiet=layer.attention.quiet_now, blocked=llm_gate.blocked,
                          tasks=companion.tasks)
     work_loop.start()                                    # ТЗ 33: автономная работа агента в среде игры или мира
-    companion.router.auto_ok = lambda: work_loop.spec() is not None      # пока она играет сама, обычные действия идут без вопроса
+    companion.router.auto_ok = lambda: bool((work_loop.spec() or ("", {}))[1].get("autonomous"))
     http_api.set_impulses(impulses)
     episodes = episode_service.build(companion, layer.attention,       # ТЗ 27: эпизоды и сон (простой, расписание, догоняющий)
                                      busy=lambda: layer.attention.top_focus().kind in ("conversation", "question")

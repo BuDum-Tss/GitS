@@ -178,6 +178,28 @@ def _loop(env, manifest, agent, now, sent, *, settings=None, quiet=False, blocke
 WS_MANIFEST = {"workspace": {"id": "game", "title": "Игра", "purpose": "играть вместе", "autonomous": True, "work_interval_s": 100}}
 
 
+async def test_montage_work_loop_requires_an_active_task_even_without_autoplay():
+    from services.reflection.work_loop import WorkLoop
+    from test.test_tasks import service
+
+    tasks = service(ws="montage")
+    now, sent = [1000.0], []
+
+    async def emit(body):
+        sent.append(body)
+
+    loop = WorkLoop(env_of=lambda: "montage", manifest_of=lambda _: {}, agent=_Agent(),
+                    emit=emit, settings=lambda: {}, quiet=lambda: False, clock=lambda: now[0], tasks=tasks)
+    assert not await loop.tick()
+    now[0] += 31
+    task = await tasks.create("Собрать черновик", workspace="montage", plan=False)
+    assert not await loop.tick()
+    await tasks.activate(task.id)
+    assert await loop.tick()
+    assert sent[0]["data"] == {"module": "montage"}
+    assert "Собрать черновик" in sent[0]["text"]
+
+
 def test_work_loop_ticks_after_the_interval_and_only_when_the_agent_is_free():
     env, now, sent, agent = ["game"], [1000.0], [], _Agent()
     loop = _loop(env, WS_MANIFEST, agent, now, sent)

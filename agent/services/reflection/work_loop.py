@@ -18,6 +18,7 @@ logger = logging.getLogger("work_loop")
 DEFAULT_INTERVAL_S = 120
 CHECK_S = 5.0
 NO_MODULE_ENVS = ("assistant", "sleep")
+TASK_WORKSPACES = {"montage": 30}
 
 
 class WorkLoop:
@@ -39,7 +40,7 @@ class WorkLoop:
         if not module or module in NO_MODULE_ENVS:
             return None
         ws = (self._manifest_of(module) or {}).get("workspace") or {}
-        return (module, ws) if ws.get("autonomous") else None
+        return (module, ws) if ws.get("autonomous") or module in TASK_WORKSPACES else None
 
     async def tick(self) -> bool:
         """Один шаг: выдать событие, если пора. Возвращает, выдано ли оно."""
@@ -50,17 +51,27 @@ class WorkLoop:
             return False
         module, ws = target
         self._since.setdefault(module, now)
-        if not self._settings().get("autoplay", False) or self._quiet() or self._blocked() or self._agent.busy:
+        task_interval = TASK_WORKSPACES.get(module)
+        if ((task_interval is None and not self._settings().get("autoplay", False))
+                or self._quiet() or self._blocked() or self._agent.busy):
             return False
-        interval = float(ws.get("work_interval_s") or DEFAULT_INTERVAL_S)
+        interval = float(task_interval or ws.get("work_interval_s") or DEFAULT_INTERVAL_S)
         ready = max(self._last, getattr(self._agent, "last_end", 0.0), self._since[module])
         if now - ready < interval:
             return False
+        if task_interval is not None:
+            from services.tasks import model as dom
+            task = await self._tasks.active(module) if self._tasks is not None else None
+            if task is None or task.status != dom.ACTIVE or self._env_of() != module or self._agent.busy:
+                return False
+            facts = self._describe_task(task)
+        else:
+            facts = await self._task_facts(module, ws)
         self._last = now
         title = ws.get("title") or module
         purpose = ws.get("purpose")
         text = (f"Рабочий цикл: ты в среде «{title}» и свободна. " + (f"Назначение среды: {purpose}. " if purpose else "")
-                + await self._task_facts(module, ws) + "Событий и просьб сейчас нет.")
+                + facts + "Событий и просьб сейчас нет.")
         await self._emit({"kind": KIND_WORK_TICK, "text": text, "urgency_hint": 1, "data": {"module": module}})
         return True
 
@@ -79,16 +90,20 @@ class WorkLoop:
                 task = await svc.activate(task.id)
             if task is None:
                 return "Открытых задач у среды нет. "
-            from services.tasks import model as dom
-            step = dom.next_step(task)
-            done, total = dom.progress(task)
-            line = f"Активная задача: «{task.goal}» (шагов выполнено {done} из {total}). "
-            if step is not None:
-                line += f"Следующий шаг: {step.text}. "
-            return line
+            return self._describe_task(task)
         except Exception as e:
             logger.warning(f"Задача среды: {e}")
             return ""
+
+    @staticmethod
+    def _describe_task(task) -> str:
+        from services.tasks import model as dom
+        step = dom.next_step(task)
+        done, total = dom.progress(task)
+        line = f"Активная задача: «{task.goal}» (шагов выполнено {done} из {total}). "
+        if step is not None:
+            line += f"Следующий шаг: {step.text}. "
+        return line
 
     async def _run(self) -> None:
         while True:

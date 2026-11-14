@@ -461,7 +461,7 @@ window.ARCH_DATA = {
      "t": "WorkLoop",
      "tag": "A",
      "new": false,
-     "do": "автономная работа единого агента в среде контентного окружения (workspace.autonomous): пока агент свободен, раз в work_interval_s шлёт ему самоимпульс self.work_tick (маршрут think); молчит при «не отвлекать», выключенной настройке autoplay, занятом агенте и лимите Claude",
+     "do": "посылает self.work_tick свободному агенту для автономной игры или активной задачи монтажа в фокусе; монтаж продолжает работу без игрового autoplay",
      "out": "self.work_tick",
      "now": "services/reflection/work_loop.py (ТЗ 33), core_service"
     },
