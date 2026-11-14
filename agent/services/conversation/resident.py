@@ -126,7 +126,12 @@ class ResidentAgent:
                 except Exception as e:
                     logger.debug(f"ожидание речи: {e}")
             ok, result, code = await host.router.run_tool_ex(str(a.get("tool_id") or ""), _schema_args(a.get("args")))
-            return ok, (result if ok else f"НЕ ПОЛУЧИЛОСЬ ({code}): {result}")[:RESULT_CHARS]
+            text = result if ok else f"НЕ ПОЛУЧИЛОСЬ ({code}): {result}"
+            if not ok and code in ("unknown", "unavailable"):      # инструмент мог быть в среде, куда она ещё не вошла
+                catalog = getattr(host, "workspace_catalog", lambda: "")()
+                if catalog:
+                    text += "\n" + catalog
+            return ok, text[:RESULT_CHARS]
 
         self._specs = [
             ToolSpec("find_tools", "Найти инструменты по смыслу запроса (все окружения и модули). Возвращает id, описание и "
