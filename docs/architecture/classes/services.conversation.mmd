@@ -1,0 +1,181 @@
+classDiagram
+  class Channel {
+    kind : str
+    module : str | None
+    target : str | None
+    label() str
+    to_dict() dict
+  }
+  class Companion {
+    attention : NoneType
+    context_builder
+    conversation
+    environment_note
+    graph : NoneType
+    idle_seconds
+    io : NoneType
+    job_wait : NoneType
+    last_utterance_id : str | None
+    memory_capture : MemoryCapture
+    memory_reader
+    memory_writer
+    module_notes
+    on_conversation_end : NoneType
+    people
+    presence
+    profile_hint
+    reply_generator
+    resident
+    router : NoneType
+    screen_activity
+    speech
+    workspace_of
+    arm_idle_consolidation() None
+    ask_permission(fact: str) None
+    cancel_reply(reason: str) bool
+    is_speaking() bool
+    note_heard(summary: str) None
+    on_input(ui: UserInput)
+    on_user_message(text: str, channel)
+    on_voice(text: str, speaker: dict, trace)
+    rebind_memory(memory_dir) None
+    recent_heard(secs: int) str
+    remember_text(text: str, hint_kind: str | None) list[str]
+    say(text: str, sticker: str | None, priority: int | None)
+    speak_about(fact: str, user_text: str, must: bool, question: bool, direct: bool)
+    wait_speech(max_s: float) None
+  }
+  class ContextBuilder {
+    actions_block(window_s: float, limit: int) str
+    build(include_hearing: bool, query: str, needs_memory: str | None, role: str, mode: str | None, owner: bool | None) str
+    capabilities() str
+    environment_note() str
+    events_block() str
+    in_module_env() bool
+    model_note() str
+    node_block() str
+    owner_allowed() bool
+    refresh_graph(query: str) None
+    start_retrieval(query: str) 'Retrieval'
+    use_retrieval(retrieval: 'Retrieval | None', query: str, deadline_s: float | None) bool
+  }
+  class ConversationIO {
+    companion
+    hub : NoneType
+    deliver(channel: Channel, text: str) bool
+    from_dashboard(text: str) None
+    from_module(text: str, reply_channel: dict, sender: dict | None) None
+    submit(ui: UserInput) None
+  }
+  class ConversationService {
+    check_correction(text: str) None
+    handle_text(text: str)
+    log_decision(text: str, decision) None
+    log_route(text: str, route: str) None
+    on_input(ui: UserInput)
+    on_user_message(text: str, channel)
+    on_voice(text: str, speaker: dict, trace)
+  }
+  class Piece {
+    tag : str | None
+    text : str
+  }
+  class PresenceTracker {
+    DEFAULTS : dict
+    listener : Callable[[dict], None] | None
+    state : dict
+    snapshot() dict
+    update() bool
+  }
+  class ReplyGenerator {
+    declutter(reply: str) str
+    speak_about(fact: str, user_text: str, must: bool, question: bool, direct: bool)
+  }
+  class ResidentAgent {
+    busy : bool
+    last_end : float
+    cancel() None
+    handle_event(kind: str, text: str, origin: str, urgent: bool) None
+    handle_user(text: str, use_memory: bool) None
+    preempt(kind: str, text: str, origin: str) None
+    reset(forget: bool) None
+  }
+  class Retrieval {
+    query
+    t0
+    task
+    cancel() None
+  }
+  class SentenceSplitter {
+    min_chars : int
+    feed(delta: str) list[str]
+    flush() list[str]
+  }
+  class SpeechOutput {
+    current_segment() str
+    is_speaking() bool
+    speak(utterance_id: str, text: str, sticker: str | None, priority: int) None
+    stop(utterance_id: str | None) None
+  }
+  class SpeechSelector {
+    presence
+    text
+    voice
+    attach(hub, modules) None
+    current_segment() str
+    is_speaking() bool
+    live_count() int
+    on_event(data: dict) None
+    speak(utterance_id: str, text: str, sticker: str | None, priority: int) None
+    stop(utterance_id: str | None) None
+    supports_streaming() bool
+    when_audible(utterance_id: str, callback) None
+  }
+  class TagStream {
+    feed(delta: str) list[Piece]
+    flush() list[Piece]
+  }
+  class Tagged {
+    sticker : str | None
+  }
+  class TextOnlySpeech {
+    presence
+    current_segment() str
+    is_speaking() bool
+    speak(utterance_id: str, text: str, sticker: str | None, priority: int) None
+    stop(utterance_id: str | None) None
+    supports_streaming() bool
+  }
+  class UserInput {
+    channel
+    sender : dict | None
+    text : str
+    trace : Optional[object]
+    ts : float
+  }
+  class VoiceModuleSpeech {
+    START_TIMEOUT_S : float
+    hub : NoneType
+    modules : NoneType
+    presence
+    attach(hub, modules) None
+    available() bool
+    connection()
+    current_segment() str
+    is_speaking() bool
+    live_count() int
+    on_event(data: dict) None
+    speak(utterance_id: str, text: str, sticker: str | None, priority: int) None
+    stop(utterance_id: str | None) None
+    supports_streaming() bool
+    when_audible(utterance_id: str, callback: Callable[[], None]) None
+  }
+  UserInput --> Channel : channel
+  Companion --> PresenceTracker : presence
+  TextOnlySpeech --> PresenceTracker : presence
+  VoiceModuleSpeech --> PresenceTracker : presence
+  Companion --> TextOnlySpeech : speech
+  ContextBuilder --* Companion : context_builder
+  ReplyGenerator --* Companion : reply_generator
+  ResidentAgent --* Companion : resident
+  ConversationService --* Companion : conversation

@@ -1,0 +1,17 @@
+@startuml classes_services.tracing
+set namespaceSeparator none
+class "Trace" as services.tracing.latency_trace.Trace {
+  audio : bool
+  core_done : bool
+  created
+  id
+  marks : dict[str, float]
+  pending : int
+  source : str
+  speak_sent : bool
+  timer : NoneType
+  written : bool
+  mark(stage: str, at: float | None) -> None
+  wire() -> dict
+}
+@enduml

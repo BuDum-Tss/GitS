@@ -1,0 +1,604 @@
+@startuml packages_overview
+set namespaceSeparator none
+package "dashboard" as dashboard {
+}
+package "dashboard.context" as dashboard.context {
+}
+package "dashboard.presenters" as dashboard.presenters {
+}
+package "dashboard.routes_attention" as dashboard.routes_attention {
+}
+package "dashboard.routes_memory" as dashboard.routes_memory {
+}
+package "dashboard.routes_peers" as dashboard.routes_peers {
+}
+package "dashboard.routes_system" as dashboard.routes_system {
+}
+package "environments" as environments {
+}
+package "environments.base" as environments.base {
+}
+package "environments.builtin" as environments.builtin {
+}
+package "environments.registry" as environments.registry {
+}
+package "environments.sources" as environments.sources {
+}
+package "host" as host {
+}
+package "host.gamenet" as host.gamenet {
+}
+package "host.nowindow" as host.nowindow {
+}
+package "host.settings" as host.settings {
+}
+package "host.supervisor" as host.supervisor {
+}
+package "host.tray" as host.tray {
+}
+package "host.tray_autostart" as host.tray_autostart {
+}
+package "host.tray_launch" as host.tray_launch {
+}
+package "interfaces.contracts" as interfaces.contracts {
+}
+package "kernel" as kernel {
+}
+package "kernel.event" as kernel.event {
+}
+package "kernel.hard_rules" as kernel.hard_rules {
+}
+package "kernel.impulses" as kernel.impulses {
+}
+package "kernel.model_json" as kernel.model_json {
+}
+package "kernel.scoring" as kernel.scoring {
+}
+package "search" as search {
+}
+package "search.embedder" as search.embedder {
+}
+package "search.index" as search.index {
+}
+package "search.normalize" as search.normalize {
+}
+package "search.rewrite" as search.rewrite {
+}
+package "search.service" as search.service {
+}
+package "services.attention" as services.attention {
+}
+package "services.attention.announce" as services.attention.announce {
+}
+package "services.attention.core" as services.attention.core {
+}
+package "services.attention.decision_log" as services.attention.decision_log {
+}
+package "services.attention.dedupe" as services.attention.dedupe {
+}
+package "services.attention.digest" as services.attention.digest {
+}
+package "services.attention.dispatcher" as services.attention.dispatcher {
+}
+package "services.attention.event_sink" as services.attention.event_sink {
+}
+package "services.attention.focus_stack" as services.attention.focus_stack {
+}
+package "services.attention.inbox" as services.attention.inbox {
+}
+package "services.attention.input_classifier" as services.attention.input_classifier {
+}
+package "services.attention.items" as services.attention.items {
+}
+package "services.attention.jobs" as services.attention.jobs {
+}
+package "services.attention.normalizer" as services.attention.normalizer {
+}
+package "services.attention.pipeline" as services.attention.pipeline {
+}
+package "services.attention.questions" as services.attention.questions {
+}
+package "services.attention.rules" as services.attention.rules {
+}
+package "services.attention.service" as services.attention.service {
+}
+package "services.attention.speech_coordinator" as services.attention.speech_coordinator {
+}
+package "services.attention.speech_queue" as services.attention.speech_queue {
+}
+package "services.character" as services.character {
+}
+package "services.character.character" as services.character.character {
+}
+package "services.character.character_memory" as services.character.character_memory {
+}
+package "services.character.character_switch" as services.character.character_switch {
+}
+package "services.character.prompts" as services.character.prompts {
+}
+package "services.character.relationships" as services.character.relationships {
+}
+package "services.classifier" as services.classifier {
+}
+package "services.classifier.decide" as services.classifier.decide {
+}
+package "services.conversation" as services.conversation {
+}
+package "services.conversation.approvals" as services.conversation.approvals {
+}
+package "services.conversation.companion" as services.conversation.companion {
+}
+package "services.conversation.context_builder" as services.conversation.context_builder {
+}
+package "services.conversation.conversation_io" as services.conversation.conversation_io {
+}
+package "services.conversation.repeat" as services.conversation.repeat {
+}
+package "services.conversation.reply_generator" as services.conversation.reply_generator {
+}
+package "services.conversation.resident" as services.conversation.resident {
+}
+package "services.conversation.service" as services.conversation.service {
+}
+package "services.conversation.speech_out" as services.conversation.speech_out {
+}
+package "services.conversation.speech_text" as services.conversation.speech_text {
+}
+package "services.conversation.stems" as services.conversation.stems {
+}
+package "services.conversation.stickers" as services.conversation.stickers {
+}
+package "services.event_handlers" as services.event_handlers {
+}
+package "services.event_handlers.desktop" as services.event_handlers.desktop {
+}
+package "services.event_handlers.game" as services.event_handlers.game {
+}
+package "services.event_handlers.voice" as services.event_handlers.voice {
+}
+package "services.memory_service" as services.memory_service {
+}
+package "services.memory_service.adapters" as services.memory_service.adapters {
+}
+package "services.memory_service.capture" as services.memory_service.capture {
+}
+package "services.memory_service.character_seed" as services.memory_service.character_seed {
+}
+package "services.memory_service.diary" as services.memory_service.diary {
+}
+package "services.memory_service.episode_cutter" as services.memory_service.episode_cutter {
+}
+package "services.memory_service.episode_recall" as services.memory_service.episode_recall {
+}
+package "services.memory_service.episode_routes" as services.memory_service.episode_routes {
+}
+package "services.memory_service.episode_service" as services.memory_service.episode_service {
+}
+package "services.memory_service.episode_store" as services.memory_service.episode_store {
+}
+package "services.memory_service.episode_summary" as services.memory_service.episode_summary {
+}
+package "services.memory_service.episodes" as services.memory_service.episodes {
+}
+package "services.memory_service.fact_store" as services.memory_service.fact_store {
+}
+package "services.memory_service.graph" as services.memory_service.graph {
+}
+package "services.memory_service.migration" as services.memory_service.migration {
+}
+package "services.memory_service.plan_due" as services.memory_service.plan_due {
+}
+package "services.memory_service.scope" as services.memory_service.scope {
+}
+package "services.memory_service.sleep" as services.memory_service.sleep {
+}
+package "services.memory_service.sleep_scheduler" as services.memory_service.sleep_scheduler {
+}
+package "services.memory_service.user" as services.memory_service.user {
+}
+package "services.peers" as services.peers {
+}
+package "services.peers.hub" as services.peers.hub {
+}
+package "services.peers.outbound" as services.peers.outbound {
+}
+package "services.peers.panel" as services.peers.panel {
+}
+package "services.peers.registry" as services.peers.registry {
+}
+package "services.peers.requests" as services.peers.requests {
+}
+package "services.reflection" as services.reflection {
+}
+package "services.reflection.origin" as services.reflection.origin {
+}
+package "services.reflection.plan_nudge" as services.reflection.plan_nudge {
+}
+package "services.reflection.reflection" as services.reflection.reflection {
+}
+package "services.reflection.service" as services.reflection.service {
+}
+package "services.reflection.store" as services.reflection.store {
+}
+package "services.reflection.thoughts" as services.reflection.thoughts {
+}
+package "services.reflection.timer" as services.reflection.timer {
+}
+package "services.reflection.work_loop" as services.reflection.work_loop {
+}
+package "services.runtime" as services.runtime {
+}
+package "services.runtime.analysis" as services.runtime.analysis {
+}
+package "services.runtime.fast_brain" as services.runtime.fast_brain {
+}
+package "services.runtime.llm_gate" as services.runtime.llm_gate {
+}
+package "services.runtime.pi_llm" as services.runtime.pi_llm {
+}
+package "services.runtime.pi_runtime" as services.runtime.pi_runtime {
+}
+package "services.runtime.web_search" as services.runtime.web_search {
+}
+package "services.runtime.web_tools" as services.runtime.web_tools {
+}
+package "services.spaces" as services.spaces {
+}
+package "services.spaces.lease" as services.spaces.lease {
+}
+package "services.spaces.link" as services.spaces.link {
+}
+package "services.spaces.manager" as services.spaces.manager {
+}
+package "services.spaces.model" as services.spaces.model {
+}
+package "services.spaces.node_panel" as services.spaces.node_panel {
+}
+package "services.spaces.profile_manager" as services.spaces.profile_manager {
+}
+package "services.tasks" as services.tasks {
+}
+package "services.tasks.migration" as services.tasks.migration {
+}
+package "services.tasks.model" as services.tasks.model {
+}
+package "services.tasks.planner" as services.tasks.planner {
+}
+package "services.tasks.reminders" as services.tasks.reminders {
+}
+package "services.tasks.service" as services.tasks.service {
+}
+package "services.tasks.store" as services.tasks.store {
+}
+package "services.tasks.wiring" as services.tasks.wiring {
+}
+package "services.tools" as services.tools {
+}
+package "services.tools.router" as services.tools.router {
+}
+package "services.tools.routes" as services.tools.routes {
+}
+package "services.tools.safety" as services.tools.safety {
+}
+package "services.tools.tool_search" as services.tools.tool_search {
+}
+package "services.tracing" as services.tracing {
+}
+package "services.tracing.events_log" as services.tracing.events_log {
+}
+package "services.tracing.flow_spec" as services.tracing.flow_spec {
+}
+package "services.tracing.flow_trace" as services.tracing.flow_trace {
+}
+package "services.tracing.journal" as services.tracing.journal {
+}
+package "services.tracing.latency_trace" as services.tracing.latency_trace {
+}
+package "services.tracing.reply_trace" as services.tracing.reply_trace {
+}
+package "services.tracing.salience" as services.tracing.salience {
+}
+package "services.tracing.tool_trace" as services.tracing.tool_trace {
+}
+dashboard --> dashboard.context
+dashboard --> dashboard.routes_attention
+dashboard --> dashboard.routes_memory
+dashboard --> dashboard.routes_peers
+dashboard --> dashboard.routes_system
+dashboard --> host
+dashboard --> services.memory_service
+dashboard --> services.tracing
+dashboard.context --> host
+dashboard.presenters --> services.character.relationships
+dashboard.routes_attention --> dashboard.context
+dashboard.routes_memory --> dashboard.context
+dashboard.routes_memory --> dashboard.routes_system
+dashboard.routes_memory --> services.conversation
+dashboard.routes_memory --> services.tasks
+dashboard.routes_memory --> services.tracing
+dashboard.routes_peers --> dashboard.context
+dashboard.routes_peers --> services.peers
+dashboard.routes_peers --> services.peers.hub
+dashboard.routes_system --> dashboard.context
+dashboard.routes_system --> host
+dashboard.routes_system --> services.character
+dashboard.routes_system --> services.memory_service
+dashboard.routes_system --> services.tracing
+environments.builtin --> environments.base
+environments.builtin --> host
+environments.builtin --> services.conversation.stems
+environments.builtin --> services.reflection
+environments.builtin --> services.runtime
+environments.builtin --> services.spaces
+environments.builtin --> services.tasks
+environments.builtin --> services.tasks.service
+environments.builtin --> services.tracing
+environments.registry --> environments.base
+environments.registry --> host
+environments.sources --> environments.base
+host.settings --> services.tracing
+host.supervisor --> services.character
+host.supervisor --> services.tracing
+host.tray --> host
+host.tray --> services.character
+search --> search.index
+search --> search.service
+search.embedder --> search.normalize
+search.embedder --> services.tools
+search.index --> search.normalize
+search.rewrite --> interfaces.contracts
+search.service --> interfaces.contracts
+search.service --> search.index
+search.service --> search.rewrite
+services.attention --> services.attention.core
+services.attention --> services.attention.event_sink
+services.attention --> services.attention.inbox
+services.attention --> services.attention.items
+services.attention --> services.attention.service
+services.attention.announce --> services.attention
+services.attention.announce --> services.attention.core
+services.attention.announce --> services.attention.decision_log
+services.attention.announce --> services.attention.digest
+services.attention.announce --> services.attention.items
+services.attention.announce --> services.attention.speech_coordinator
+services.attention.announce --> services.attention.speech_queue
+services.attention.core --> host
+services.attention.decision_log --> services.attention.core
+services.attention.decision_log --> services.tools
+services.attention.decision_log --> services.tracing
+services.attention.digest --> services.attention.core
+services.attention.dispatcher --> kernel
+services.attention.dispatcher --> services.attention.core
+services.attention.dispatcher --> services.attention.decision_log
+services.attention.dispatcher --> services.attention.digest
+services.attention.dispatcher --> services.attention.focus_stack
+services.attention.dispatcher --> services.attention.items
+services.attention.dispatcher --> services.attention.speech_coordinator
+services.attention.dispatcher --> services.tools
+services.attention.dispatcher --> services.tracing
+services.attention.event_sink --> services.attention
+services.attention.focus_stack --> services.attention.core
+services.attention.inbox --> services.attention.core
+services.attention.input_classifier --> services.attention.core
+services.attention.input_classifier --> services.classifier
+services.attention.items --> kernel.event
+services.attention.items --> services.attention
+services.attention.items --> services.attention.core
+services.attention.jobs --> services.attention.core
+services.attention.jobs --> services.attention.dispatcher
+services.attention.jobs --> services.attention.items
+services.attention.jobs --> services.tracing
+services.attention.normalizer --> kernel
+services.attention.normalizer --> kernel.event
+services.attention.normalizer --> services.attention.core
+services.attention.normalizer --> services.tracing
+services.attention.pipeline --> kernel
+services.attention.pipeline --> services.attention.announce
+services.attention.pipeline --> services.attention.core
+services.attention.pipeline --> services.attention.decision_log
+services.attention.pipeline --> services.attention.dispatcher
+services.attention.pipeline --> services.attention.items
+services.attention.pipeline --> services.attention.normalizer
+services.attention.pipeline --> services.attention.questions
+services.attention.questions --> services.attention.core
+services.attention.questions --> services.attention.focus_stack
+services.attention.questions --> services.attention.speech_coordinator
+services.attention.questions --> services.conversation.conversation_io
+services.attention.service --> environments.base
+services.attention.service --> host
+services.attention.service --> kernel
+services.attention.service --> kernel.event
+services.attention.service --> services.attention.announce
+services.attention.service --> services.attention.core
+services.attention.service --> services.attention.decision_log
+services.attention.service --> services.attention.digest
+services.attention.service --> services.attention.dispatcher
+services.attention.service --> services.attention.focus_stack
+services.attention.service --> services.attention.inbox
+services.attention.service --> services.attention.input_classifier
+services.attention.service --> services.attention.items
+services.attention.service --> services.attention.jobs
+services.attention.service --> services.attention.normalizer
+services.attention.service --> services.attention.pipeline
+services.attention.service --> services.attention.questions
+services.attention.service --> services.attention.rules
+services.attention.service --> services.attention.speech_coordinator
+services.attention.service --> services.attention.speech_queue
+services.attention.service --> services.character.relationships
+services.attention.service --> services.classifier
+services.attention.service --> services.conversation
+services.attention.service --> services.memory_service
+services.attention.service --> services.tracing
+services.attention.speech_coordinator --> services.attention.core
+services.attention.speech_coordinator --> services.attention.speech_queue
+services.attention.speech_coordinator --> services.conversation.conversation_io
+services.attention.speech_coordinator --> services.tracing
+services.attention.speech_queue --> services.tracing
+services.character.character --> host
+services.character.character_memory --> services.character.character
+services.character.character_switch --> services.character
+services.character.character_switch --> services.memory_service
+services.character.character_switch --> services.tracing
+services.character.prompts --> services.character
+services.character.prompts --> services.conversation.stickers
+services.classifier.decide --> services.tracing
+services.conversation.approvals --> host
+services.conversation.approvals --> services.tracing
+services.conversation.companion --> host
+services.conversation.companion --> services.character
+services.conversation.companion --> services.character.relationships
+services.conversation.companion --> services.conversation
+services.conversation.companion --> services.conversation.context_builder
+services.conversation.companion --> services.conversation.conversation_io
+services.conversation.companion --> services.conversation.reply_generator
+services.conversation.companion --> services.conversation.resident
+services.conversation.companion --> services.conversation.service
+services.conversation.companion --> services.conversation.speech_out
+services.conversation.companion --> services.conversation.speech_text
+services.conversation.companion --> services.conversation.stems
+services.conversation.companion --> services.memory_service
+services.conversation.companion --> services.runtime.fast_brain
+services.conversation.companion --> services.tracing
+services.conversation.context_builder --> services.memory_service
+services.conversation.context_builder --> services.runtime
+services.conversation.context_builder --> services.tracing
+services.conversation.conversation_io --> services.tracing
+services.conversation.reply_generator --> services.character
+services.conversation.reply_generator --> services.conversation
+services.conversation.reply_generator --> services.runtime
+services.conversation.reply_generator --> services.tracing
+services.conversation.resident --> host
+services.conversation.resident --> interfaces.contracts
+services.conversation.resident --> services.character
+services.conversation.resident --> services.conversation.stickers
+services.conversation.resident --> services.runtime
+services.conversation.resident --> services.runtime.pi_runtime
+services.conversation.resident --> services.tracing
+services.conversation.service --> services.conversation.conversation_io
+services.conversation.service --> services.memory_service
+services.conversation.service --> services.tools
+services.conversation.service --> services.tracing
+services.conversation.speech_out --> services.tracing
+services.conversation.stems --> services.character
+services.event_handlers.game --> services.tracing
+services.event_handlers.voice --> services.tracing
+services.memory_service --> services.memory_service.adapters
+services.memory_service --> services.memory_service.capture
+services.memory_service --> services.memory_service.episode_service
+services.memory_service --> services.memory_service.graph
+services.memory_service --> services.memory_service.user
+services.memory_service.adapters --> services.character
+services.memory_service.adapters --> services.memory_service
+services.memory_service.capture --> services.runtime
+services.memory_service.character_seed --> services.character
+services.memory_service.character_seed --> services.memory_service.graph
+services.memory_service.diary --> interfaces.contracts
+services.memory_service.diary --> kernel.model_json
+services.memory_service.episode_cutter --> interfaces.contracts
+services.memory_service.episode_cutter --> services.tracing
+services.memory_service.episode_recall --> interfaces.contracts
+services.memory_service.episode_service --> search
+services.memory_service.episode_service --> search.embedder
+services.memory_service.episode_service --> services.character
+services.memory_service.episode_service --> services.memory_service.diary
+services.memory_service.episode_service --> services.memory_service.episode_cutter
+services.memory_service.episode_service --> services.memory_service.episode_recall
+services.memory_service.episode_service --> services.memory_service.episode_store
+services.memory_service.episode_service --> services.memory_service.episode_summary
+services.memory_service.episode_service --> services.memory_service.sleep
+services.memory_service.episode_service --> services.memory_service.sleep_scheduler
+services.memory_service.episode_service --> services.tracing
+services.memory_service.episode_summary --> interfaces.contracts
+services.memory_service.episode_summary --> kernel
+services.memory_service.episode_summary --> kernel.model_json
+services.memory_service.graph --> host
+services.memory_service.graph --> search.embedder
+services.memory_service.graph --> search.index
+services.memory_service.graph --> search.service
+services.memory_service.graph --> services.character
+services.memory_service.graph --> services.conversation
+services.memory_service.graph --> services.memory_service.fact_store
+services.memory_service.graph --> services.runtime
+services.memory_service.graph --> services.tracing
+services.memory_service.migration --> services.memory_service
+services.memory_service.migration --> services.memory_service.adapters
+services.memory_service.sleep --> interfaces.contracts
+services.memory_service.sleep --> services.memory_service.diary
+services.memory_service.sleep --> services.memory_service.episode_summary
+services.memory_service.sleep_scheduler --> services.memory_service.sleep
+services.memory_service.user --> services.character
+services.peers.hub --> host
+services.peers.hub --> services.peers.outbound
+services.peers.hub --> services.tracing
+services.peers.outbound --> services.peers.hub
+services.peers.outbound --> services.tracing
+services.peers.registry --> environments.base
+services.peers.registry --> host
+services.peers.registry --> services.peers.hub
+services.peers.requests --> services.attention
+services.peers.requests --> services.character
+services.peers.requests --> services.peers.hub
+services.peers.requests --> services.runtime
+services.peers.requests --> services.tracing
+services.reflection.reflection --> interfaces.contracts
+services.reflection.reflection --> kernel
+services.reflection.reflection --> kernel.event
+services.reflection.reflection --> kernel.hard_rules
+services.reflection.reflection --> kernel.model_json
+services.reflection.reflection --> services.attention
+services.reflection.reflection --> services.reflection
+services.reflection.service --> kernel.event
+services.reflection.service --> services.attention
+services.reflection.service --> services.character
+services.reflection.service --> services.reflection
+services.reflection.service --> services.reflection.plan_nudge
+services.reflection.service --> services.reflection.reflection
+services.reflection.service --> services.reflection.store
+services.reflection.service --> services.reflection.timer
+services.reflection.timer --> interfaces.contracts
+services.reflection.timer --> kernel
+services.reflection.timer --> kernel.event
+services.reflection.work_loop --> kernel.event
+services.reflection.work_loop --> services.tasks
+services.runtime.analysis --> host
+services.runtime.analysis --> services.character
+services.runtime.analysis --> services.runtime
+services.runtime.analysis --> services.tools
+services.runtime.analysis --> services.tracing
+services.runtime.fast_brain --> services.runtime
+services.runtime.fast_brain --> services.tracing
+services.runtime.pi_llm --> host
+services.runtime.pi_llm --> services.runtime.pi_runtime
+services.runtime.pi_runtime --> host
+services.runtime.pi_runtime --> interfaces.contracts
+services.runtime.web_search --> interfaces.contracts
+services.runtime.web_search --> services.runtime
+services.runtime.web_search --> services.runtime.pi_runtime
+services.runtime.web_search --> services.tracing
+services.spaces.link --> services.peers.hub
+services.spaces.manager --> services.spaces
+services.spaces.profile_manager --> host
+services.tasks.migration --> services.tasks
+services.tasks.planner --> interfaces.contracts
+services.tasks.planner --> services.tasks
+services.tasks.reminders --> interfaces.contracts
+services.tasks.reminders --> services.tasks
+services.tasks.service --> interfaces.contracts
+services.tasks.service --> services.tasks
+services.tasks.wiring --> services.character
+services.tasks.wiring --> services.tasks.migration
+services.tasks.wiring --> services.tasks.planner
+services.tasks.wiring --> services.tasks.reminders
+services.tasks.wiring --> services.tasks.service
+services.tasks.wiring --> services.tasks.store
+services.tasks.wiring --> services.tracing
+services.tools.router --> environments.base
+services.tools.router --> host
+services.tools.router --> services.conversation
+services.tools.router --> services.tracing
+services.tracing.flow_spec --> services.tracing.flow_trace
+services.tracing.flow_trace --> services.tracing
+services.tracing.journal --> services.tracing
+services.tracing.latency_trace --> host
+services.tracing.latency_trace --> services.tracing
+@enduml

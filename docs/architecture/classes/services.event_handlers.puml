@@ -1,0 +1,3 @@
+@startuml classes_services.event_handlers
+set namespaceSeparator none
+@enduml

@@ -1,0 +1,24 @@
+classDiagram
+  class DashboardContext {
+    attention : Optional[Any]
+    bg_tasks : set
+    character : Optional[Any]
+    chat_callback : Callable[[str], Any] | None
+    chat_log : list
+    graph : Optional[Any]
+    hub : Optional[Any]
+    impulses : Optional[Any]
+    is_local_json : Callable[[web.Request], bool]
+    memory_dir : Path
+    modules : Optional[Any]
+    presence : Optional[Any]
+    profiles : Optional[Any]
+    registry : Optional[Any]
+    router : Optional[Any]
+    settings : Any
+    supervisor : Optional[Any]
+    tasks : Callable[[], Any] | None
+    workspace : Optional[Any]
+  }
+  class _Facade {
+  }

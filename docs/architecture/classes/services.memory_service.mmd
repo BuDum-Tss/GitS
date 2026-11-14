@@ -1,0 +1,292 @@
+classDiagram
+  class Candidate {
+    events : list
+    first_id : int
+    id : str
+    last_id : int
+    peak_id : int
+    reason : str
+    salience : float
+    stream : str
+  }
+  class CutCfg {
+    decay : float
+    decay_run : int
+    dense_events : int
+    max_events : int
+    max_tokens : int
+    pause_s : float
+    peak : float
+    summary_sentences : tuple
+    from_settings(raw: dict | None) 'CutCfg'
+  }
+  class DayWriter {
+    allow
+    character
+    diary_prompt
+    digest_prompt
+    llm
+    notes
+    search
+    store
+    diary(day: str) tuple[bool, int, bool]
+    digest(day: str) tuple[bool, int, bool]
+  }
+  class EpisodeCutter {
+    character
+    clock
+    first_upto : NoneType
+    settings
+    source
+    store
+    cfg() dom.CutCfg
+    run() dict
+  }
+  class EpisodeRecall {
+    search
+    source : NoneType
+    store
+    diary(limit: int) list[dict]
+    expand(episode_id: str) dict | None
+    find(query: str) list[dict]
+    listing() list[dict]
+    recall_episode(episode_id: str) str
+    recent_tail(n: int) list[dict]
+    render(ep: dict) str
+  }
+  class EpisodeService {
+    attention
+    clock
+    companion
+    embedder : LmStudioEmbedder
+    hooks : list
+    recall : EpisodeRecall
+    scheduler : SleepScheduler | None
+    settings
+    source
+    store : EpisodeStore
+    attach_scheduler() SleepScheduler
+    parts() SimpleNamespace
+    snapshot(limit: int) dict
+    start() None
+    stop() None
+  }
+  class EpisodeStore {
+    path : str
+    add_calm(day: str, n: int, kinds: dict, first_id: int, last_id: int) None
+    add_episode(ep: dict, events: list[dict]) bool
+    close() None
+    counts() dict
+    days() dict[str, int]
+    diary(limit: int) list[dict]
+    diary_days() set[str]
+    digest(day: str) dict | None
+    digests(limit: int) list[dict]
+    episodes_of_day(day: str) list[dict]
+    episodes_of_event(event_id: int) list[str]
+    events_of(episode_id: str) list[dict]
+    get(episode_id: str) dict | None
+    get_meta(key: str, default)
+    put_diary(day: str, text: str, character: str, sources: list[str]) None
+    select() list[dict]
+    set_digest(day: str, text: str, episodes: int) None
+    set_meta(key: str, value) None
+    update(episode_id: str) None
+  }
+  class EpisodeSummarizer {
+    allow
+    heavy : NoneType
+    llm
+    prompt
+    settings : NoneType
+    summarize(ep: dict, events: list[dict]) SummaryResult
+  }
+  class Fact {
+    fact : str
+    importance : int
+    object : str
+    relation : str
+    subject : str
+  }
+  class FactExtractor {
+    extract(speaker: str, text: str) list[Fact]
+  }
+  class FactStore {
+    add(subject: str, relation: str, obj: str, fact: str, when: float, group: str) tuple[str, bool]
+    count(group: str | None) int
+    delete(uuid: str) bool
+    delete_memory(group: str, mem_id: str) list[str]
+    forget_by_words(group: str, keys: list[str], need: int) list[str]
+    get(uuids: list[str]) dict[str, dict]
+    groups_with_entities(group: str, names: list[str]) list[str]
+    has_canon(group: str, subject: str, relation: str) bool
+    import_row(row: dict) bool
+    mark(uuid: str, mem_id: str, mtype: str, about: str, weight: float, source: str) None
+    profile_facts(group: str, profile: str, limit: int) list[dict]
+    purge(relations: tuple, group: str, before: float) list[str]
+    replace_relation(subject: str, relation: str, group: str) list[str]
+    retire(subject: str, relations: tuple, group: str, now: float) int
+    seed_rows(group: str) dict[str, tuple[str, str]]
+    self_memories(group: str, subject: str) list[dict]
+    snapshot(group: str, limit: int) dict
+    stats(group: str) dict
+  }
+  class GraphMemory {
+    backend
+    extractor
+    scope_of : NoneType
+    scopes_of : NoneType
+    context_block(query: str) str
+    enqueue(speaker: str, text: str, ts: float | None, source: str | None, owner: bool)
+    explain(query: str) dict
+    forget(uuid: str) bool
+    forget_matching(text: str, strict: bool) int
+    group() str
+    pending() int
+    profile_block() str
+    profile_facts(profile: str, limit: int) list[dict]
+    remember(text: str, importance: int, subject: str) bool
+    run()
+    search(query: str, limit: int, include_old: bool) list[dict]
+    search_groups(query: str) list[str]
+    self_memories(query: str, n: int) list[dict]
+    set_character(char_id: str) None
+    snapshot() dict
+    stats() dict
+    status_text() str
+    step() bool
+    sync_colonists(pawns: list[dict], colony: str, force: bool) int
+  }
+  class MemoryCapture {
+    owner_name() str
+    queue_graph(text: str)
+    remember_text(text: str, hint_kind: str | None) list[str]
+    set_quiet(minutes)
+    store_memories(data) list[str]
+  }
+  class Rec {
+    actor : str
+    boundary : bool
+    data : dict
+    id : int
+    kind : str
+    reason : str
+    salience : float
+    stream : str
+    text : str
+    ts : float
+  }
+  class SleepPlan {
+    budget_tokens : int | None
+    mode : str
+  }
+  class SleepRunner {
+    clock
+    cutter
+    days
+    embed_down : bool
+    hooks : list
+    notify : NoneType
+    search
+    settings
+    source
+    spent : int
+    store
+    summarizer
+    writer
+    run(plan: dom.SleepPlan, should_stop: Callable[[], bool]) dict
+  }
+  class SleepScheduler {
+    busy
+    clock
+    grace_s : float
+    idle_seconds
+    interrupted_after_s : float | None
+    last_report : dict | None
+    last_user_ts
+    on_change : Callable[[], None] | None
+    on_state : Callable[[str], None] | None
+    plan : dom.SleepPlan | None
+    poll_s : float
+    runner
+    settings
+    state : str
+    store
+    watch_s : float
+    decide() dom.SleepPlan | None
+    force() bool
+    interrupt(reason: str) None
+    should_stop() bool
+    start(plan: dom.SleepPlan) asyncio.Task
+    start_loop() None
+    status() dict
+    stop() None
+    tick() bool
+  }
+  class SqliteBackend {
+    embedder : LmStudioEmbedder
+    path : Path
+    search_service : HybridSearch
+    store
+    add_fact(f: Fact, when: datetime, group: str) str
+    delete(uuid: str, group: str)
+    delete_memory(group: str, mem_id: str)
+    forget_words(group: str, keys: list[str], need: int) int
+    groups_with_entities(group: str, names: list[str]) list[str]
+    has_canon(group: str, subject: str, relation: str) bool
+    healthy() tuple[bool, str]
+    mark_memory(group: str, uuid: str, mem_id: str, mtype: str, about: str, weight: float, source: str)
+    profile_facts(group: str, profile: str, limit: int) list[dict]
+    purge_retired(days: float, group: str)
+    remember_sync(f: Fact, when: float, group: str) bool
+    retire(subject: str, relations: tuple, group: str)
+    scores(query: str, facts: list[str]) list[float]
+    search(query: str, limit: int, group: str, groups: list[str] | None) list[dict]
+    seed_rows(group: str) dict[str, tuple[str, str]]
+    self_memories(group: str, subject: str) list[dict]
+    snapshot(limit: int, group: str) dict
+    stats(group: str) dict
+    upsert_fact(f: Fact, when: datetime, group: str)
+  }
+  class SummaryResult {
+    data : dict | None
+    ok : bool
+    problems : list
+    tokens : int
+    unavailable : bool
+  }
+  class UserMemory {
+    add_activity(app: str, category: str, summary: str)
+    add_dialogue(role: str, text: str)
+    context_block(dialogue: int) str
+    meta(key: str, default)
+    rebind(memory_dir) None
+    recent_activity(n: int) list[dict]
+    recent_dialogue(n: int) list[dict]
+    set_meta(key: str, value)
+  }
+  class UserMemoryAdapter {
+    loop : asyncio.AbstractEventLoop | None
+    add_activity(app: str, category: str, summary: str) None
+    add_dialogue(role: str, text: str) None
+    add_fact(text: str, kind: str, importance: int, due_days: float | None) bool
+    context_block(dialogue: int) str
+    enqueue_for_graph(speaker: str, text: str, source: str | None, owner: bool) None
+    facts() list[dict]
+    forget_matching(text: str) int
+    graph_block(query: str) str
+    graph_status() str | None
+    meta(key: str, default: Any) Any
+    profile_block() str
+    rebind(memory_dir: Any) None
+    recall(query: str, k: int) list[dict]
+    recent_activity(n: int) list[dict]
+    recent_dialogue(n: int) list[dict]
+    self_block(query: str) str
+    set_meta(key: str, value: Any) None
+  }
+  GraphMemory --> FactExtractor : extractor
+  GraphMemory --> SqliteBackend : backend
+  SleepPlan --* SleepScheduler : plan
+  FactStore --* SqliteBackend : store
+  SleepScheduler --* EpisodeService : scheduler

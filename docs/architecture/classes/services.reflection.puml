@@ -1,0 +1,64 @@
+@startuml classes_services.reflection
+set namespaceSeparator none
+class "ImpulseTimer" as services.reflection.timer.ImpulseTimer {
+  clock
+  emit
+  late_s : float
+  store
+  add(due: float, text: str) -> dict
+  fire_due() -> int
+  poke() -> None
+  start() -> None
+  stop() -> None
+}
+class "Intent" as services.reflection.reflection.Intent {
+  in_s : float
+  kind : str
+  text : str
+  as_dict() -> dict
+}
+class "JsonReminders" as services.reflection.store.JsonReminders {
+  add(due: float, text: str) -> dict
+  get(reminder_id: str) -> dict | None
+  pending() -> list[dict]
+  set_status(reminder_id: str, status: str) -> None
+}
+class "JsonThoughts" as services.reflection.store.JsonThoughts {
+  append(thought: dict) -> None
+  recent(n: int) -> list[dict]
+  update(thought_id: str) -> bool
+}
+class "PlanNudger" as services.reflection.plan_nudge.PlanNudger {
+  add
+  clock
+  every_s : float
+  lead_s : float
+  tasks
+  start() -> None
+  stop() -> None
+  sync() -> int
+}
+class "ReflectionService" as services.reflection.reflection.ReflectionService {
+  clock
+  context : NoneType
+  journal
+  llm
+  memory
+  plan : NoneType
+  prompt
+  remind : NoneType
+  running : int
+  settings : NoneType
+  speak : NoneType
+  writer
+  consolidate(window: int) -> dict
+  limits() -> dict
+  reflect(event: Event) -> dict
+}
+class "WorkLoop" as services.reflection.work_loop.WorkLoop {
+  spec() -> tuple[str, dict] | None
+  start() -> None
+  stop() -> None
+  tick() -> bool
+}
+@enduml

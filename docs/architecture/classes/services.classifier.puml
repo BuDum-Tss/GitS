@@ -1,0 +1,13 @@
+@startuml classes_services.classifier
+set namespaceSeparator none
+class "Decider" as services.classifier.decide.Decider {
+  last_error : NoneType, str | None
+  last_ms : float | None
+  classify(text: str, questions: dict) -> dict | None
+}
+class "InputClass" as services.classifier.decide.InputClass {
+  intent : str | None
+  intent_conf : float
+  needs_memory : bool | None
+}
+@enduml

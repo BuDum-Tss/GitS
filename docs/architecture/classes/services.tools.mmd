@@ -1,0 +1,33 @@
+classDiagram
+  class HardMatch {
+    answer : str | None
+    detail : str
+    fact : str
+    kind : str
+  }
+  class HardRules {
+    version : int
+    load(path: Path | None) 'HardRules'
+    match(text: str, pending_question: bool) HardMatch | None
+  }
+  class RouteDecision {
+    already_done : list[str]
+    echelon : str
+    reason : str
+    routes : list[str]
+    rule : str | None
+    add(route: str) 'RouteDecision'
+    has(route: str) bool
+  }
+  class Router {
+    after_tool : NoneType
+    auto_ok
+    registry
+    call(tool_id: str, args: dict) tuple[bool, str, str | None]
+    run_tool(tool_id: str, args: dict) tuple[bool, str]
+    run_tool_ex(tool_id: str, args: dict) tuple[bool, str, str | None]
+  }
+  class ToolEmbeddings {
+    path : Path
+    rank(query: str, tools: list, envs: dict, k: int) list | None
+  }

@@ -1,0 +1,15 @@
+classDiagram
+  class Trace {
+    audio : bool
+    core_done : bool
+    created
+    id
+    marks : dict[str, float]
+    pending : int
+    source : str
+    speak_sent : bool
+    timer : NoneType
+    written : bool
+    mark(stage: str, at: float | None) None
+    wire() dict
+  }

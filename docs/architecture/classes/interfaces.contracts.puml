@@ -1,0 +1,182 @@
+@startuml classes_interfaces.contracts
+set namespaceSeparator none
+class "AgentRuntime" as interfaces.contracts.AgentRuntime {
+  can_steer : bool
+  abort() -> None
+  close() -> None
+  reset(forget: bool) -> None
+  run(prompt: str) -> AsyncIterator[RuntimeEvent]
+  start(system: str, tools: list[ToolSpec]) -> None
+  steer(text: str) -> bool
+}
+class "Approver" as interfaces.contracts.Approver {
+  ask(kind: str, question: str, options: list[str] | None, timeout_s: float, source: str) -> tuple[str, str]
+  formulating() -> bool
+  has_pending() -> bool
+  request(text: str, announce: Any, danger: str | None) -> bool
+  try_answer(text: str) -> bool
+}
+class "Classifier" as interfaces.contracts.Classifier {
+  last_ms : float | None
+  classify(text: str, questions: dict) -> dict | None
+}
+class "Clock" as interfaces.contracts.Clock {
+}
+class "Embedder" as interfaces.contracts.Embedder {
+  embed(texts: list[str], query: bool) -> list[list[float]]
+}
+class "EndEvent" as interfaces.contracts.EndEvent {
+  error : str | None
+  status : str
+  usage : dict
+}
+class "EventAttention" as interfaces.contracts.EventAttention {
+  decider : Any
+  add_silent_kinds(kinds: Any) -> None
+  attach_reflection(service: Any) -> None
+  buffer_view() -> dict
+  classify_input(text: str) -> Any
+  clear_rules(rule_id: str | None) -> str
+  connect() -> None
+  context_events(limit: int) -> str
+  digest_counts() -> dict[str, int]
+  discard_speech(cand: Any, why: str) -> None
+  enqueue_fact(fact: str, user_text: str, must: bool, question: bool) -> Any
+  enqueue_say(text: str, sticker: str | None, priority: int | None) -> Any
+  is_silent(kind: str) -> bool
+  looks_like_stop(text: str) -> bool
+  on_job_update(peer_id: str, job: dict) -> None
+  on_user_input(text: str) -> None
+  quiet_now() -> bool
+  rebind_rules(memory_dir: Any) -> None
+  reflect_speech(event: Any, intent: Any) -> str
+  register_handler(kind: str, handler: Any) -> None
+  register_handlers(handlers: dict) -> None
+  register_hook(kind: str, hook: Any) -> None
+  reset_for_character() -> int
+  rules_text() -> str
+  set_alert_handler(fn: Any) -> None
+  set_env_of(fn: Any) -> None
+  set_node_watch(fn: Any) -> None
+  set_rule() -> str
+  set_think_handler(fn: Any) -> None
+  set_user_speaking(speaking: bool) -> None
+  settings_now() -> dict
+  settle() -> None
+  snapshot() -> dict
+  spawn(coro: Any) -> Any
+  start() -> None
+  stop() -> None
+  stop_speech(why: str) -> int
+  submit(peer_id: str, event: dict) -> None
+  submit_announce(peer_id: str, text: str) -> None
+  submit_question(q: Any) -> Any
+  submit_self(event: Any) -> None
+  submit_speech(peer_id: str, say: dict) -> None
+  take_digest(module: str | None) -> str
+  top_focus() -> Any
+}
+class "EventLog" as interfaces.contracts.EventLog {
+  log(kind: str, text: str) -> None
+  log_nowait(kind: str, text: str) -> None
+}
+class "EventSink" as interfaces.contracts.EventSink {
+  on_job_update(peer_id: str, job: dict) -> None
+  submit(peer_id: str, event: dict) -> None
+  submit_question(peer_id: str, job_id: str, question_id: str, question: dict) -> tuple[Any, str]
+  submit_speech(peer_id: str, say: dict) -> None
+}
+class "EventSource" as interfaces.contracts.EventSource {
+  after(after_id: int, limit: int, kinds: set | None) -> list[dict]
+  delete_ids(ids: list[int]) -> int
+  last_id() -> int
+}
+class "FactGraph" as interfaces.contracts.FactGraph {
+  context_block(query: str) -> Any
+  enqueue(speaker: str, text: str, ts: float | None) -> None
+  search(query: str, limit: int, include_old: bool) -> Any
+  self_memories(query: str, n: int) -> Any
+  status_text() -> str
+  sync_colonists(pawns: list[dict], colony: str, force: bool) -> Any
+}
+class "LanguageModel" as interfaces.contracts.LanguageModel {
+  ask(system: str, user: str) -> str
+}
+class "MemoryReader" as interfaces.contracts.MemoryReader {
+  context_block(dialogue: int) -> str
+  facts() -> list[dict]
+  graph_block(query: str) -> str
+  graph_status() -> str | None
+  meta(key: str, default: Any) -> Any
+  profile_block() -> str
+  recall(query: str, k: int) -> list[dict]
+  recent_activity(n: int) -> list[dict]
+  recent_dialogue(n: int) -> list[dict]
+  self_block(query: str) -> str
+}
+class "MemoryWriter" as interfaces.contracts.MemoryWriter {
+  add_activity(app: str, category: str, summary: str) -> None
+  add_dialogue(role: str, text: str) -> None
+  add_fact(text: str, kind: str, importance: int, due_days: float | None) -> bool
+  enqueue_for_graph(speaker: str, text: str, source: str | None, owner: bool) -> None
+  forget_matching(text: str) -> int
+  rebind(memory_dir: Any) -> None
+  set_meta(key: str, value: Any) -> None
+}
+class "PeopleDirectory" as interfaces.contracts.PeopleDirectory {
+  adjust(subject: str, delta: float, reason: str) -> float
+  describe(subject: str) -> str
+  ensure_person(key: str, name: str, source: str) -> bool
+  get(subject: str) -> dict | None
+  mark_dead(subject: str, cause: str) -> None
+  note(key: str, text: str) -> None
+  sync_colonists(pawns: list[dict]) -> None
+}
+class "Planner" as interfaces.contracts.Planner {
+  plan(goal: str, workspace_ctx: dict) -> list[dict]
+}
+class "ReminderRepository" as interfaces.contracts.ReminderRepository {
+  add(due: float, text: str) -> dict
+  get(reminder_id: str) -> dict | None
+  pending() -> list[dict]
+  set_status(reminder_id: str, status: str) -> None
+}
+class "RequestHandler" as interfaces.contracts.RequestHandler {
+  handle(conn: Any, msg_type: str, body: dict) -> Any
+}
+class "SettingsProvider" as interfaces.contracts.SettingsProvider {
+  load() -> dict
+  quiet_active(cfg: dict | None) -> bool
+  update() -> dict
+}
+class "StreamingLanguageModel" as interfaces.contracts.StreamingLanguageModel {
+  ask_stream(system: str, user: str)
+}
+class "TaskRepository" as interfaces.contracts.TaskRepository {
+  delete(task_id: str) -> None
+  get(task_id: str) -> dict | None
+  list() -> list[dict]
+  save(task: dict) -> None
+}
+class "TextEvent" as interfaces.contracts.TextEvent {
+  text : str
+}
+class "ThoughtJournal" as interfaces.contracts.ThoughtJournal {
+  append(thought: dict) -> None
+  recent(n: int) -> list[dict]
+  update(thought_id: str) -> bool
+}
+class "ToolEvent" as interfaces.contracts.ToolEvent {
+  args : dict
+  name : str
+}
+class "ToolInvoker" as interfaces.contracts.ToolInvoker {
+  call(tool_id: str, args: dict) -> tuple[bool, str, str | None]
+}
+class "ToolSpec" as interfaces.contracts.ToolSpec {
+  description : str
+  handler : Callable
+  name : str
+  parameters : dict
+}
+@enduml

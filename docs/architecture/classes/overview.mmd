@@ -1,0 +1,401 @@
+classDiagram
+  class AgentRuntime {
+  }
+  class Announcer {
+  }
+  class Approver {
+  }
+  class Attention {
+  }
+  class AttentionContext {
+  }
+  class AttentionEventSink {
+  }
+  class Candidate {
+  }
+  class Channel {
+  }
+  class Character {
+  }
+  class CharacterError {
+  }
+  class CharacterSwitch {
+  }
+  class Classifier {
+  }
+  class Clock {
+  }
+  class Companion {
+  }
+  class ContextBuilder {
+  }
+  class ConversationIO {
+  }
+  class ConversationService {
+  }
+  class CoreRequests {
+  }
+  class CutCfg {
+  }
+  class DashboardContext {
+  }
+  class DayWriter {
+  }
+  class Decider {
+  }
+  class DecisionLog {
+  }
+  class Digest {
+  }
+  class Dispatcher {
+  }
+  class Embedder {
+  }
+  class EndEvent {
+  }
+  class Environment {
+  }
+  class EpisodeCutter {
+  }
+  class EpisodeRecall {
+  }
+  class EpisodeService {
+  }
+  class EpisodeStore {
+  }
+  class EpisodeSummarizer {
+  }
+  class Event {
+  }
+  class EventAttention {
+  }
+  class EventLog {
+  }
+  class EventPipeline {
+  }
+  class EventSink {
+  }
+  class EventSource {
+  }
+  class Fact {
+  }
+  class FactExtractor {
+  }
+  class FactGraph {
+  }
+  class FactStore {
+  }
+  class FastLLM {
+  }
+  class FetchError {
+  }
+  class Focus {
+  }
+  class FocusStack {
+  }
+  class GraphMemory {
+  }
+  class HardMatch {
+  }
+  class HardRules {
+  }
+  class HardRules {
+  }
+  class HashEmbedder {
+  }
+  class Hit {
+  }
+  class HybridIndex {
+  }
+  class HybridSearch {
+  }
+  class ImpulseTimer {
+  }
+  class Inbox {
+  }
+  class InputClass {
+  }
+  class InputClassifier {
+  }
+  class Intent {
+  }
+  class Item {
+  }
+  class ItemStore {
+  }
+  class JobTracker {
+  }
+  class JsonReminders {
+  }
+  class JsonThoughts {
+  }
+  class LanguageModel {
+  }
+  class LeaseAdapter {
+  }
+  class LlmPlanner {
+  }
+  class LmStudioEmbedder {
+  }
+  class MemoryCapture {
+  }
+  class MemoryReader {
+  }
+  class MemoryWriter {
+  }
+  class NodePanel {
+  }
+  class Normalizer {
+  }
+  class NullPresence {
+  }
+  class NullSpeech {
+  }
+  class Outbound {
+  }
+  class PeerConnection {
+  }
+  class PeerError {
+  }
+  class PeerHub {
+  }
+  class PeerRecord {
+  }
+  class PeerRegistry {
+  }
+  class PeerSpec {
+  }
+  class PeopleDirectory {
+  }
+  class PiLlmClient {
+  }
+  class PiRuntime {
+  }
+  class Piece {
+  }
+  class PlanNudger {
+  }
+  class PlannedPeer {
+  }
+  class PlannedRecord {
+  }
+  class Planner {
+  }
+  class PresenceTracker {
+  }
+  class Profile {
+  }
+  class ProfileManager {
+  }
+  class Question {
+  }
+  class QuestionService {
+  }
+  class Reason {
+  }
+  class Rec {
+  }
+  class ReflectionService {
+  }
+  class Registry {
+  }
+  class Relationships {
+  }
+  class RelationshipsAdapter {
+  }
+  class ReminderRepository {
+  }
+  class ReplyGenerator {
+  }
+  class RequestHandler {
+  }
+  class ResidentAgent {
+  }
+  class Retrieval {
+  }
+  class RouteDecision {
+  }
+  class Router {
+  }
+  class Rule {
+  }
+  class RuleStore {
+  }
+  class SearchConfig {
+  }
+  class SentenceSplitter {
+  }
+  class SettingsProvider {
+  }
+  class SleepPlan {
+  }
+  class SleepRunner {
+  }
+  class SleepScheduler {
+  }
+  class SourceError {
+  }
+  class SpeechCandidate {
+  }
+  class SpeechCoordinator {
+  }
+  class SpeechOutput {
+  }
+  class SpeechQueue {
+  }
+  class SpeechSelector {
+  }
+  class SqliteBackend {
+  }
+  class Step {
+  }
+  class StreamingLanguageModel {
+  }
+  class SummaryResult {
+  }
+  class Supervisor {
+  }
+  class TagStream {
+  }
+  class Tagged {
+  }
+  class Task {
+  }
+  class TaskError {
+  }
+  class TaskReminders {
+  }
+  class TaskRepository {
+  }
+  class TaskService {
+  }
+  class TaskStore {
+  }
+  class TextEvent {
+  }
+  class TextOnlySpeech {
+  }
+  class ThoughtJournal {
+  }
+  class Tool {
+  }
+  class ToolEmbeddings {
+  }
+  class ToolError {
+  }
+  class ToolEvent {
+  }
+  class ToolInvoker {
+  }
+  class ToolSpec {
+  }
+  class Trace {
+  }
+  class UserInput {
+  }
+  class UserMemory {
+  }
+  class UserMemoryAdapter {
+  }
+  class VoiceModuleSpeech {
+  }
+  class WorkLoop {
+  }
+  class WorkspaceLink {
+  }
+  class WorkspaceManager {
+  }
+  class WorkspaceSpec {
+  }
+  class _Facade {
+  }
+  class _JobQuestion {
+  }
+  class _LogSink {
+  }
+  class _ModuleIds {
+  }
+  class _Proc {
+  }
+  class _Space {
+  }
+  class _Via {
+  }
+  class _WorkspaceIds {
+  }
+  Registry --> Environment : envs
+  EpisodeService --> LmStudioEmbedder : embedder
+  SqliteBackend --> LmStudioEmbedder : embedder
+  HybridSearch --> SearchConfig : cfg
+  FocusStack --> Focus : stack
+  ItemStore --> Item : items
+  ItemStore --> Item : by_key
+  FocusStack --> Digest : digest
+  ItemStore --> Digest : digest
+  RuleStore --> Rule : rules
+  Digest --> SpeechCoordinator : speech
+  FocusStack --> SpeechCoordinator : speech
+  ItemStore --> SpeechCoordinator : speech
+  SpeechQueue --> SpeechCandidate : items
+  UserInput --> Channel : channel
+  Companion --> PresenceTracker : presence
+  TextOnlySpeech --> PresenceTracker : presence
+  VoiceModuleSpeech --> PresenceTracker : presence
+  Companion --> TextOnlySpeech : speech
+  GraphMemory --> FactExtractor : extractor
+  GraphMemory --> SqliteBackend : backend
+  PeerRegistry --> PeerRecord : records
+  PeerRegistry --> PlannedRecord : planned
+  LeaseAdapter --> _Space : spaces
+  HybridSearch --* SqliteBackend : search_service
+  Announcer --* Attention : announcer
+  AttentionContext --* Attention : ctx
+  DecisionLog --* Attention : decision_log
+  Digest --* Attention : digest_
+  Dispatcher --* Attention : dispatcher
+  FocusStack --* Attention : focus_
+  Inbox --* Attention : inbox
+  InputClassifier --* Attention : classifier
+  ItemStore --* Attention : store
+  JobTracker --* Attention : jobs
+  Normalizer --* Attention : normalizer
+  EventPipeline --* Attention : pipeline
+  HardRules --* Attention : hard_rules
+  QuestionService --* Attention : questions
+  _Via --* Attention : companion
+  _Via --* Attention : io
+  _Via --* Attention : decider
+  _Via --* Attention : hub
+  _Via --* Attention : modules
+  _Via --* Attention : profiles
+  _Via --* Attention : rules
+  _Via --* Attention : presence
+  _Via --* Attention : kind_handlers
+  _Via --* Attention : kind_hooks
+  _Via --* Attention : on_think
+  _Via --* Attention : silent_kinds
+  _Via --* Attention : last_decision
+  _Via --* Attention : decisions
+  _Via --* Attention : speech
+  SpeechCoordinator --* Attention : coordinator
+  SpeechQueue --* SpeechCoordinator : speech
+  ContextBuilder --* Companion : context_builder
+  ReplyGenerator --* Companion : reply_generator
+  ResidentAgent --* Companion : resident
+  ConversationService --* Companion : conversation
+  MemoryCapture --* Companion : memory_capture
+  SleepPlan --* SleepScheduler : plan
+  FactStore --* SqliteBackend : store
+  SleepScheduler --* EpisodeService : scheduler
+  TaskReminders --* TaskService : reminders
+  PeerSpec --o _Proc : spec
+  HybridIndex --o HybridSearch : index
+  AttentionContext --o DecisionLog : ctx
+  AttentionContext --o Digest : ctx
+  AttentionContext --o FocusStack : ctx
+  AttentionContext --o InputClassifier : ctx
+  AttentionContext --o ItemStore : ctx
+  AttentionContext --o Normalizer : ctx
+  AttentionContext --o SpeechCoordinator : ctx
+  Channel --o QuestionService : channel
+  TaskStore --o TaskService : store

@@ -1,0 +1,59 @@
+classDiagram
+  class Environment {
+    description : str
+    enabled : bool
+    id : str
+    module : str
+    status : Callable[[], tuple[bool, str]] | None
+    title : str
+    tools : list[Tool]
+    state() tuple[bool, str]
+  }
+  class Registry {
+    embedder : NoneType
+    envs : dict[str, Environment]
+    focus : NoneType
+    load_errors : dict[str, str]
+    node_of : NoneType
+    active_tools() list[Tool]
+    add(env: Environment)
+    describe() str
+    get(tool_id: str) Tool | None
+    load_manifests(directory: Path)
+    search(text: str, k: int) list[Tool]
+    search_async(text: str, k: int) list[Tool]
+    search_hidden(text: str, k: int) list[Tool]
+    snapshot() list[dict]
+    tool_visible(env: Environment, tool: Tool, focus: set[str] | None) bool
+  }
+  class SourceError {
+  }
+  class Tool {
+    always : bool
+    availability : str
+    call : Callable[[dict], Awaitable[str]] | None
+    check : Callable[[dict], Awaitable[str | None]] | None
+    danger : Callable[[dict], str | None] | None
+    danger_check : bool
+    description : str
+    env : str
+    id : str
+    informative : bool
+    job : bool
+    keywords : tuple
+    name : str
+    node : str | None
+    params : dict
+    risk : str
+    self_confirming : bool
+    timeout_s : int
+    signature() str
+  }
+  class ToolError {
+    code : str
+  }
+  class _ModuleIds {
+  }
+  class _WorkspaceIds {
+  }
+  Registry --> Environment : envs

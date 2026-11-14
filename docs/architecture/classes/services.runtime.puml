@@ -1,0 +1,24 @@
+@startuml classes_services.runtime
+set namespaceSeparator none
+class "FastLLM" as services.runtime.fast_brain.FastLLM {
+  ask(system: str, user: str) -> str
+  ask_stream(system: str, user: str)
+}
+class "<color:red>FetchError</color>" as services.runtime.web_tools.FetchError {
+}
+class "PiLlmClient" as services.runtime.pi_llm.PiLlmClient {
+  ask(system: str, user: str, timeout: float, image_b64: str | None) -> str
+  ask_stream(system: str, user: str, timeout: float)
+  close() -> None
+}
+class "PiRuntime" as services.runtime.pi_runtime.PiRuntime {
+  can_steer : bool
+  restored : int
+  abort() -> None
+  close() -> None
+  reset(forget: bool) -> None
+  run(prompt: str) -> AsyncIterator[RuntimeEvent]
+  start(system: str, tools: list[ToolSpec]) -> None
+  steer(text: str) -> bool
+}
+@enduml

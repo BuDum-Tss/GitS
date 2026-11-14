@@ -1,0 +1,152 @@
+classDiagram
+  class CoreRequests {
+    attention : NoneType
+    episodes : NoneType
+    hub : NoneType
+    memory_reader : NoneType
+    memory_writer : NoneType
+    privacy_terms : NoneType
+    router : NoneType
+    tasks : NoneType
+    handle(conn: PeerConnection, msg_type: str, body: Any) Any
+  }
+  class Outbound {
+    broadcast(topic: str, data: dict) None
+    broadcast_presence(data: dict) None
+    notify(topic: str, data: dict) None
+    safe_send_topic(conn, topic: str, data: dict) None
+    send_job_answer(peer_id: str, job_id: str, question_id: str, answer) bool
+    send_topic(peer_id: str, topic: str, data: dict) None
+    stop() None
+  }
+  class PeerConnection {
+    close_reason : str | None
+    closed : bool
+    connected_at
+    id : str
+    inbox : Queue
+    instance : str
+    last_enabled : bool | None
+    last_settings : dict | None
+    manifest : dict
+    pid : int
+    spec : Manifest
+    tasks : set[asyncio.Task]
+    warned_kinds : set[str]
+    ws : WebSocketResponse
+    close(code: int, reason: str) None
+    fail_pending(message: str) None
+    request(msg_type: str, body: dict | None, timeout: float) Any
+    resolve(env: Envelope) None
+    send(msg_type: str, body: dict | None, re: str | None) None
+    send_envelope(env: Envelope) None
+    spawn(coro) asyncio.Task
+  }
+  class PeerError {
+    code : str
+    message : str
+  }
+  class PeerHub {
+    allow : list
+    hello_timeout : float
+    modules
+    outbound : Outbound
+    presence : NoneType
+    requests : NoneType
+    sink : NoneType
+    token
+    token_file : NoneType
+    answer_job(peer_id: str, job_id: str, question_id: str, answer: Any) str | None
+    attach(app: web.Application) None
+    broadcast(topic: str, data: dict) None
+    broadcast_presence(data: dict) None
+    connection(peer_id: str) PeerConnection | None
+    connections() list[PeerConnection]
+    handle(request: web.Request) web.StreamResponse
+    is_connected(peer_id: str) bool
+    notify(topic: str, data: dict) None
+    refresh() None
+    send_topic(peer_id: str, topic: str, data: dict) None
+    start() None
+    stop() None
+  }
+  class PeerRecord {
+    connected : bool
+    connected_at : float | None
+    control_url : str
+    declared_ownership : str | None
+    declared_role : str | None
+    default_enabled : bool
+    description : str
+    description_override : str
+    dev : bool
+    external : bool
+    id : str
+    instance : str | None
+    jobs : dict
+    last_disconnect_reason : str | None
+    manifest : dict | None
+    ownership : str | None
+    panel : dict | None
+    panel_blocks : dict | None
+    pid : int | None
+    role : str
+    state : dict | None
+    title : str
+    title_override : str
+    version : str
+  }
+  class PeerRegistry {
+    context_for : Callable[[str], str]
+    envs
+    events : deque
+    hub : NoneType
+    is_noise : staticmethod
+    leases : NoneType
+    on_state : NoneType
+    planned : dict[str, PlannedRecord]
+    records : dict[str, PeerRecord]
+    supervisor : NoneType
+    cancel_job(peer_id: str, job_id: str) str
+    dashboard_rows(dev_mode: bool) list[dict]
+    declare(peer_id: str) PeerRecord
+    declare_planned(peer_id: str) PlannedRecord
+    describe(rec: PeerRecord) dict
+    events_report(module: str | None, limit: int) str
+    get(peer_id: str) PeerRecord | None
+    invalidate() None
+    is_enabled(peer_id: str, cfg: dict | None) bool
+    job_id_from(text: str) str | None
+    jobs_all() list[dict]
+    manifest_of(peer_id: str) dict | None
+    module_settings(peer_id: str, cfg: dict | None) dict
+    node(peer_id: str) str | None
+    note_event(peer_id: str, event: dict) None
+    notes(with_state: bool) list[str]
+    on_connected(conn) PeerRecord
+    on_disconnected(peer_id: str, reason: str) None
+    refresh_leases() None
+    render(value, job: bool) str
+    rows_by_role(role: str, dev_mode: bool) list[dict]
+    set_panel(peer_id: str, body: dict) bool
+    set_state(peer_id: str, summary: str, data: dict, node: str | None) None
+    snapshot() list[dict]
+    state_data(peer_id: str) dict | None
+    status_of(rec: PeerRecord) tuple[str, str]
+    status_report() str
+    update_job(peer_id: str, body: dict) dict | None
+    wait_job(peer_id: str, job_id: str, timeout: float) dict
+  }
+  class PlannedRecord {
+    id : str
+    title : str
+    tz : str
+  }
+  class _JobQuestion {
+    answer : Optional[Any]
+    ready : bool
+    sent : bool
+    task : asyncio.Task | None
+  }
+  PeerRegistry --> PeerRecord : records
+  PeerRegistry --> PlannedRecord : planned

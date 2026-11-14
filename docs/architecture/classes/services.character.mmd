@@ -1,0 +1,52 @@
+classDiagram
+  class Character {
+    aliases : tuple[str, ...]
+    anchor : str
+    defaults : dict
+    emotions : dict
+    folder : Path
+    gender : str
+    id : str
+    language : str
+    name : str
+    voice : dict
+    world : str
+    card() dict[str, Any]
+    memory_dir(base: Path | None) Path
+    path() Path
+    voice_reference() Path | None
+  }
+  class CharacterError {
+  }
+  class CharacterSwitch {
+    attention
+    companion
+    graph
+    hub
+    mem_root : Path
+    rel
+    speech_wait_s : float
+    switch(char_id: str) dict
+    tool(char_id: str) str
+  }
+  class Relationships {
+    adjust(subject: str, delta: float, reason: str) float
+    describe(subject: str) str
+    ensure_person(key: str, name: str, source: str) bool
+    get(subject: str) dict | None
+    mark_dead(subject: str, cause: str)
+    note(key: str, text: str)
+    people_terms() list[str]
+    rebind(memory_dir) None
+    summary(limit: int) str
+    sync_colonists(pawns: list[dict])
+  }
+  class RelationshipsAdapter {
+    adjust(subject: str, delta: float, reason: str) float
+    describe(subject: str) str
+    ensure_person(key: str, name: str, source: str) bool
+    get(subject: str) dict | None
+    mark_dead(subject: str, cause: str) None
+    note(key: str, text: str) None
+    sync_colonists(pawns: list[dict]) None
+  }

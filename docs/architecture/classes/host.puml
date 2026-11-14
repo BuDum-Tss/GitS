@@ -1,0 +1,76 @@
+@startuml classes_host
+set namespaceSeparator none
+class "PeerSpec" as host.supervisor.PeerSpec {
+  args : list[str]
+  autostart : bool
+  command : str
+  control_token_env : str
+  control_url : str
+  cwd : str
+  description : str
+  dev : bool
+  enabled : bool
+  external : bool
+  health_url : str
+  id : str
+  ownership : str | None
+  restart : str
+  role : str
+  skip_when_env : dict[str, list[str]]
+  title : str
+  unmanaged : bool
+}
+class "PlannedPeer" as host.supervisor.PlannedPeer {
+  id : str
+  title : str
+  tz : str
+}
+class "Supervisor" as host.supervisor.Supervisor {
+  agent_dir : Path
+  core_url
+  gits_root : Path
+  health_interval : float
+  logs_dir : Path
+  memory_dir : NoneType, Path
+  poll_manual : float
+  python : str
+  pythonpath : list
+  shutdown_wait : float
+  specs
+  state
+  token
+  apply(peer_id: str) -> None
+  log_path(peer_id: str) -> Path
+  pythonw() -> str
+  resolve(peer_id: str) -> tuple[list[str], Path] | str
+  restart(peer_id: str) -> None
+  should_run(peer_id: str) -> bool
+  start() -> None
+  status(peer_id: str) -> dict | None
+  stop(peer_id: str) -> None
+  stop_all() -> None
+}
+class "_LogSink" as host.supervisor._LogSink {
+  add(line: str) -> None
+  close() -> None
+  flush() -> None
+}
+class "_Proc" as host.supervisor._Proc {
+  alive : bool
+  desired : bool
+  external : bool
+  failures : deque[float]
+  healthy : bool
+  last_error : str
+  proc : asyncio.subprocess.Process | None
+  reason : str
+  restarts : int
+  sink : _LogSink | None
+  spec
+  status : str
+  tail : deque[str]
+  task : asyncio.Task | None
+  text : str
+}
+host.supervisor.PeerSpec --o host.supervisor._Proc : spec
+@enduml

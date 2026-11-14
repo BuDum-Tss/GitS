@@ -1,0 +1,35 @@
+@startuml classes_services.tools
+set namespaceSeparator none
+class "HardMatch" as services.tools.routes.HardMatch {
+  answer : str | None
+  detail : str
+  fact : str
+  kind : str
+}
+class "HardRules" as services.tools.routes.HardRules {
+  version : int
+  load(path: Path | None) -> 'HardRules'
+  match(text: str, pending_question: bool) -> HardMatch | None
+}
+class "RouteDecision" as services.tools.routes.RouteDecision {
+  already_done : list[str]
+  echelon : str
+  reason : str
+  routes : list[str]
+  rule : str | None
+  add(route: str) -> 'RouteDecision'
+  has(route: str) -> bool
+}
+class "Router" as services.tools.router.Router {
+  after_tool : NoneType
+  auto_ok
+  registry
+  call(tool_id: str, args: dict) -> tuple[bool, str, str | None]
+  run_tool(tool_id: str, args: dict) -> tuple[bool, str]
+  run_tool_ex(tool_id: str, args: dict) -> tuple[bool, str, str | None]
+}
+class "ToolEmbeddings" as services.tools.tool_search.ToolEmbeddings {
+  path : Path
+  rank(query: str, tools: list, envs: dict, k: int) -> list | None
+}
+@enduml

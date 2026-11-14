@@ -1,0 +1,128 @@
+classDiagram
+  class LeaseAdapter {
+    spaces : dict[str, _Space]
+    acquire(workspace: str, purpose: str) dict
+    busy_reason(workspace: str, holder: dict | None) str
+    catalog() list[dict]
+    holds(workspace: str) bool
+    info(workspace: str) dict | None
+    manages(workspace: str) bool
+    manifest_of(workspace: str) dict | None
+    refresh(workspace: str | None) None
+    register(workspace: str, control_url: str, control_token: str) None
+    release(workspace: str) dict
+    release_all() None
+    view(workspace: str) dict | None
+  }
+  class NodePanel {
+    block() str
+    refresh() None
+    target() tuple[str, dict] | None
+  }
+  class Profile {
+    activate : dict
+    attention : dict
+    description : str
+    focus_modules : tuple[str, ...]
+    id : str
+    memory_scopes : tuple[str, ...]
+    planned : bool
+    priority : int
+    sticky_s : float
+    title : str
+    tone : str
+    workspace : str
+  }
+  class ProfileManager {
+    current_id : str
+    history : deque
+    on_change : NoneType
+    override : str | None
+    poke
+    profiles : dict
+    sleeping : Callable[[], bool]
+    subgraph : NoneType
+    auto_id() str
+    choices() list[str]
+    current() Profile
+    evaluate() str
+    focus_modules() set[str]
+    graph() dict
+    hint() str
+    info() dict
+    manual_choice() str | None
+    run(interval: float)
+    set_override(mode: str | None) str | None
+    states() list[dict]
+  }
+  class Reason {
+    ALL : tuple
+    BLOCKED : str
+    CRITICAL : str
+    DISCONNECT : str
+    DONE : str
+    FORCED : tuple
+    SCHEDULE : str
+    SELF : str
+    START : str
+    USER : str
+  }
+  class WorkspaceLink {
+    checkpoints : dict[str, dict]
+    clock
+    connect_wait_s : float
+    connection_of
+    holder : NoneType, dict | None
+    leases : NoneType
+    poll_s : float
+    activate(module: str, goal: str) dict
+    forget(module: str) None
+    release(reason: str, force: bool) dict
+    resume(module: str) dict
+  }
+  class WorkspaceManager {
+    current : str
+    goal : str
+    history : deque[dict]
+    on_change : NoneType
+    reason : str
+    refresh_leases : Callable[[], Awaitable] | None
+    since
+    specs : dict[str, dom.WorkspaceSpec]
+    check() None
+    enter(ws: str, reason: str, goal: str) dict
+    leave(reason: str, goal: str) dict
+    on_module_gone(peer_id: str) None
+    on_sleep_state(state: str) None
+    refresh_modules(items) None
+    register_manifest(peer_id: str, manifest: dict | None, title: str) dom.WorkspaceSpec | None
+    register_module(peer_id: str, title: str, purpose: str) dom.WorkspaceSpec
+    run(interval: float) None
+    snapshot() dict[str, Any]
+    spec() dom.WorkspaceSpec
+    sync() None
+  }
+  class WorkspaceSpec {
+    done_when : str
+    entry : tuple[str, ...]
+    id : str
+    interruptible : bool
+    keywords : tuple[str, ...]
+    kind : str
+    purpose : str
+    safe_points : tuple[str, ...]
+    title : str
+    when_to_use : str
+  }
+  class _Space {
+    checked : float
+    client : LeaseClient | None
+    error : str
+    info : dict | None
+    lease_id : str | None
+    problems : list
+    purpose : str
+    url : str
+    workspace : str
+  }
+  LeaseAdapter --> _Space : spaces

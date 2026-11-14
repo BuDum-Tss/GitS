@@ -1,0 +1,446 @@
+classDiagram
+  class Announcer {
+    ctx
+    decisions
+    digest
+    recent : dict[tuple[str, str], dict]
+    speech
+    store
+    announce(item: Item) None
+    fact(item: Item, short: bool) str
+    submit(peer_id: str, text: str) None
+  }
+  class Attention {
+    announcer
+    classifier
+    companion
+    coordinator
+    ctx
+    decider
+    decision_log
+    decisions
+    digest_
+    dispatcher
+    focus_
+    hard_rules
+    hub
+    inbox
+    io
+    jobs
+    kind_handlers
+    kind_hooks
+    last_decision
+    modules
+    normalizer
+    on_think
+    pipeline
+    presence
+    profiles
+    questions
+    rules
+    silent_kinds
+    speech
+    store
+    add_silent_kinds(kinds) None
+    attach_reflection(service) None
+    buffer_view() dict
+    classify_input(text: str) decide.InputClass | None
+    clear_rules(rule_id: str | None) str
+    connect() None
+    context_events(limit: int) str
+    digest_counts() dict[str, int]
+    discard_speech(cand, why: str) None
+    enqueue_fact(fact: str, user_text: str, must: bool, question: bool) SpeechCandidate
+    enqueue_say(text: str, sticker: str | None, priority: int | None) SpeechCandidate
+    is_announce_event(kind: str, body: dict) bool
+    is_silent(kind: str) bool
+    looks_like_stop(text: str) bool
+    on_job_update(peer_id: str, job: dict) None
+    on_user_input(text: str) None
+    quiet_now() bool
+    rebind_rules(memory_dir) None
+    reflect_speech(event: Event, intent) str
+    register_handler(kind: str, handler: Callable) None
+    register_handlers(handlers: dict[str, Callable]) None
+    register_hook(kind: str, hook: Callable) None
+    reset_for_character() int
+    rules_text() str
+    set_alert_handler(fn: Callable[[Item], bool] | None) None
+    set_env_of(fn: Callable[[], Any]) None
+    set_node_watch(fn: Callable[[str], dict]) None
+    set_rule() str
+    set_think_handler(fn: Callable[[Item], Any] | None) None
+    set_user_speaking(speaking: bool) None
+    settings_now() dict
+    settle() None
+    snapshot() dict
+    spawn(coro) asyncio.Task
+    start() None
+    stop() None
+    stop_speech(why: str) int
+    submit(peer_id: str, event: dict) None
+    submit_announce(peer_id: str, text: str) None
+    submit_question(q: Question) Any
+    submit_self(event: dict) None
+    submit_speech(peer_id: str, say: dict) None
+    take_digest(module: str | None) str
+    tick() None
+    top_focus() Focus
+  }
+  class AttentionContext {
+    approver
+    autopump
+    clock
+    companion
+    decider
+    decisions : deque
+    env_of : Callable[[], Any]
+    hub : NoneType
+    idle
+    io
+    kind_handlers : dict[str, Callable]
+    kind_hooks : dict[str, Callable]
+    last_decision : dict | None
+    last_user_text : str
+    log
+    modules : NoneType
+    node_watch : Callable[[str], dict]
+    on_alert : Callable[[Item], bool] | None
+    on_think : Callable[[Item], Any] | None, Callable[[Item], None] | None
+    people
+    presence
+    profiles : NoneType
+    rules
+    settings
+    settings_provider
+    silent_kinds : set[str]
+    tasks : set[asyncio.Task]
+    writer
+    att(cfg: dict | None) dict
+    emit_info(peer_id: str, kind: str) dict | None
+    module_title(peer_id: str) str
+    quiet(cfg: dict) bool
+    sender_name(sender: dict | None) str | None
+    spawn(coro) asyncio.Task
+  }
+  class AttentionEventSink {
+    attention
+    presence : NoneType
+    recorder : NoneType
+    on_job_update(peer_id: str, job: dict) None
+    submit(peer_id: str, event: dict) None
+    submit_question(peer_id: str, job_id: str, question_id: str, question: dict) tuple[Any, str]
+    submit_speech(peer_id: str, say: dict) None
+  }
+  class DecisionLog {
+    ctx
+    write(item: Item, att: dict) None
+  }
+  class Digest {
+    batches : deque[dict]
+    ctx
+    entries : list[dict]
+    env_of : Callable[[], str | None]
+    history : deque[dict]
+    speech
+    add(item: Item) None
+    counts() dict[str, int]
+    note(item: Item, state: str) None
+    peek(limit: int) str
+    take(module: str | None, limit: int | None, via: str) str
+    update_entry(item: Item) None
+    view(now: float) dict
+    weights() list[float]
+  }
+  class Dispatcher {
+    ctx
+    decisions
+    digest
+    focus
+    speech
+    act(item: Item, decision: str) None
+    alerted(item: Item) bool
+    decide(urgency: int, cfg: dict, att: dict) str
+    finish(item: Item, cfg: dict, att: dict) None
+    react(item: Item, topic: str, source: str) None
+    speech_item(item: Item, text: str, say: dict, peer_id: str, mode: str, ttl: float | None, cfg: dict, att: dict) None
+    think_route(item: Item, decision: str) bool
+  }
+  class EventPipeline {
+    announcer
+    ctx
+    decisions
+    dispatcher
+    normalizer
+    rules
+    store
+    submit(peer_id: str, event: dict) None
+    submit_speech(peer_id: str, say: dict) None
+  }
+  class Focus {
+    id : str
+    kind : str
+    last_active : float
+    priority : int
+    resumable : bool
+    source : str
+    started : float
+    topic : str
+  }
+  class FocusStack {
+    ctx
+    digest : NoneType
+    reaction_focus : dict[str, str]
+    speech : NoneType
+    stack : list[Focus]
+    pop(focus_id: str) None
+    pop_reaction(item_id: str) None
+    publish() None
+    push(kind: str, topic: str, source: str, priority: int, resumable: bool) Focus
+    reset() None
+    tick(now: float) None
+    top() Focus
+    touch_conversation(topic: str | None) None
+  }
+  class HardRules {
+    ctx
+    decisions
+    dispatcher
+    questions
+    apply(item: Item, cfg: dict, att: dict, to_conversation: bool, declared: int | None) bool
+  }
+  class Inbox {
+    ctx
+    digest
+    focus
+    last_wake : float
+    speech
+    blocker(now: float) str
+    ready(now: float) bool
+    tick(now: float) bool
+  }
+  class InputClassifier {
+    ctx
+    classify_input(text: str, stop_speech) decide.InputClass | None
+  }
+  class Item {
+    addressed_to_me : bool | None
+    count : int
+    created : float
+    data : dict
+    decision : str
+    dedupe_key : str | None
+    expires : float | None
+    first_contact : bool
+    id : str
+    kind : str
+    memorable : bool
+    memory_done : bool
+    module : str
+    needs_reply : bool
+    origin : str
+    priority : float
+    reply_channel : dict | None
+    sender : dict | None
+    spoken : bool
+    text : str
+    trace : Optional[Any]
+    updated : float
+    urgency : int | None
+    urgency_hint : int | None
+  }
+  class ItemStore {
+    by_key : dict[tuple[str, str], Item]
+    ctx
+    digest : NoneType
+    items : dict[str, Item]
+    speech : NoneType
+    merge_duplicate(item: Item, now: float) bool
+    register(item: Item) None
+  }
+  class JobTracker {
+    ctx
+    dispatcher
+    states : dict[tuple[str, str], tuple]
+    store
+    describe(peer_id: str, job: dict, state, stage) tuple[int, str]
+    on_update(peer_id: str, job: dict) None
+  }
+  class Normalizer {
+    ctx
+    assign_urgency(item: Item, declared: int | None, env: str | None) None
+    is_owner_address(item: Item) bool
+    make_item(peer_id: str, ev: dict, now: float) Item
+    make_speech_item(peer_id: str, say: dict, text: str, now: float) tuple[Item, str, float | None]
+    note_sender(item: Item) None
+    shift_urgency(item: Item, info: dict | None, focused: bool, watch: dict | None) None
+  }
+  class NullPresence {
+    state : dict
+    snapshot() dict
+    update() bool
+  }
+  class NullSpeech {
+    current_segment() str
+    is_speaking() bool
+    speak(utterance_id, text, sticker, priority) None
+    stop(utterance_id) None
+  }
+  class Question {
+    context : dict
+    job_id : str | None
+    kind : str
+    options : list[str] | None
+    question : str
+    question_id : str | None
+    source : str
+    timeout_s : float
+    urgency_hint : int | None
+  }
+  class QuestionService {
+    channel : Channel | None, NoneType
+    ctx
+    focus
+    speech
+    announce_in_module(fact: str, module: str) None
+    chat_module() str | None
+    submit(q: Question) Any
+  }
+  class Rule {
+    created_from : str
+    effect : str
+    id : str
+    kind : str | None
+    module : str | None
+    sender : str | None
+    until : float
+    covers(other: 'Rule') bool
+    describe(now: float) str
+    matches(module: str, kind: str, sender_name: str | None) bool
+    public(now: float) dict
+  }
+  class RuleStore {
+    path : NoneType, Path
+    rules : list[Rule]
+    active() list[Rule]
+    add() tuple[Rule | None, int]
+    clear(rule_id: str | None) int
+    load() None
+    muted(module: str, kind: str, sender_name: str | None) Rule | None
+    purge() int
+    rebind(path: Path | str) None
+    save() None
+    stance(module: str, kind: str, sender_name: str | None) str | None
+  }
+  class SpeechCandidate {
+    channel : Optional[Any]
+    created : float
+    done : str
+    expires : float
+    family : str
+    id : str
+    item_id : str | None
+    key : str | None
+    mode : str
+    must : bool
+    priority : int
+    question : bool
+    source : str
+    sticker : str | None
+    text : str
+    trace : Optional[Any]
+    user_text : str
+    resolve(spoken: bool) None
+  }
+  class SpeechCoordinator {
+    ctx
+    digest
+    focus
+    items
+    speech
+    bind_trace(cand: SpeechCandidate) None
+    dropped(cand: SpeechCandidate, reason: str) None
+    enqueue_fact(fact: str, user_text: str, must: bool, question: bool) SpeechCandidate
+    enqueue_say(text: str, sticker: str | None, priority: int | None) SpeechCandidate
+    kick() None
+    play(cand: SpeechCandidate) str | None
+    played(cand: SpeechCandidate) None
+    pump() None
+    speak_about(fact: str, user_text: str, must: bool, question: bool, direct: bool)
+  }
+  class SpeechQueue {
+    current : SpeechCandidate | None
+    current_utterance : str | None
+    dropped : list[tuple[str, str, str]]
+    items : list[SpeechCandidate]
+    last_initiative : float
+    playing : NoneType, SpeechCandidate | None
+    speech
+    add(cand: SpeechCandidate) SpeechCandidate
+    best() SpeechCandidate | None
+    blocked_by(cand: SpeechCandidate) str | None
+    busy() bool
+    discard(cand: SpeechCandidate, reason: str) bool
+    expire() list[SpeechCandidate]
+    gap_applies(cand: SpeechCandidate) bool
+    idle() None
+    min_gap() float
+    new() SpeechCandidate
+    pump(margin: int) SpeechCandidate | None
+    self_initiated(cand: SpeechCandidate) bool
+    snapshot() list[dict]
+    stop_all(below: int) int
+    urgent_waiting() bool
+  }
+  class _Via {
+    component
+    field
+  }
+  FocusStack --> Focus : stack
+  ItemStore --> Item : items
+  ItemStore --> Item : by_key
+  FocusStack --> Digest : digest
+  ItemStore --> Digest : digest
+  RuleStore --> Rule : rules
+  Digest --> SpeechCoordinator : speech
+  FocusStack --> SpeechCoordinator : speech
+  ItemStore --> SpeechCoordinator : speech
+  SpeechQueue --> SpeechCandidate : items
+  Announcer --* Attention : announcer
+  AttentionContext --* Attention : ctx
+  DecisionLog --* Attention : decision_log
+  Digest --* Attention : digest_
+  Dispatcher --* Attention : dispatcher
+  FocusStack --* Attention : focus_
+  Inbox --* Attention : inbox
+  InputClassifier --* Attention : classifier
+  ItemStore --* Attention : store
+  JobTracker --* Attention : jobs
+  Normalizer --* Attention : normalizer
+  EventPipeline --* Attention : pipeline
+  HardRules --* Attention : hard_rules
+  QuestionService --* Attention : questions
+  _Via --* Attention : companion
+  _Via --* Attention : io
+  _Via --* Attention : decider
+  _Via --* Attention : hub
+  _Via --* Attention : modules
+  _Via --* Attention : profiles
+  _Via --* Attention : rules
+  _Via --* Attention : presence
+  _Via --* Attention : kind_handlers
+  _Via --* Attention : kind_hooks
+  _Via --* Attention : on_think
+  _Via --* Attention : silent_kinds
+  _Via --* Attention : last_decision
+  _Via --* Attention : decisions
+  _Via --* Attention : speech
+  SpeechCoordinator --* Attention : coordinator
+  SpeechQueue --* SpeechCoordinator : speech
+  AttentionContext --o DecisionLog : ctx
+  AttentionContext --o Digest : ctx
+  AttentionContext --o FocusStack : ctx
+  AttentionContext --o InputClassifier : ctx
+  AttentionContext --o ItemStore : ctx
+  AttentionContext --o Normalizer : ctx
+  AttentionContext --o SpeechCoordinator : ctx

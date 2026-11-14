@@ -1,0 +1,11 @@
+classDiagram
+  class Decider {
+    last_error : NoneType, str | None
+    last_ms : float | None
+    classify(text: str, questions: dict) dict | None
+  }
+  class InputClass {
+    intent : str | None
+    intent_conf : float
+    needs_memory : bool | None
+  }

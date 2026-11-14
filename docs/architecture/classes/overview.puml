@@ -1,0 +1,403 @@
+@startuml classes_overview
+set namespaceSeparator none
+class "AgentRuntime" as interfaces.contracts.AgentRuntime {
+}
+class "Announcer" as services.attention.announce.Announcer {
+}
+class "Approver" as interfaces.contracts.Approver {
+}
+class "Attention" as services.attention.service.Attention {
+}
+class "AttentionContext" as services.attention.core.AttentionContext {
+}
+class "AttentionEventSink" as services.attention.event_sink.AttentionEventSink {
+}
+class "Candidate" as services.memory_service.episodes.Candidate {
+}
+class "Channel" as services.conversation.conversation_io.Channel {
+}
+class "Character" as services.character.character.Character {
+}
+class "<color:red>CharacterError</color>" as services.character.character.CharacterError {
+}
+class "CharacterSwitch" as services.character.character_switch.CharacterSwitch {
+}
+class "Classifier" as interfaces.contracts.Classifier {
+}
+class "Clock" as interfaces.contracts.Clock {
+}
+class "Companion" as services.conversation.companion.Companion {
+}
+class "ContextBuilder" as services.conversation.context_builder.ContextBuilder {
+}
+class "ConversationIO" as services.conversation.conversation_io.ConversationIO {
+}
+class "ConversationService" as services.conversation.service.ConversationService {
+}
+class "CoreRequests" as services.peers.requests.CoreRequests {
+}
+class "CutCfg" as services.memory_service.episodes.CutCfg {
+}
+class "DashboardContext" as dashboard.context.DashboardContext {
+}
+class "DayWriter" as services.memory_service.diary.DayWriter {
+}
+class "Decider" as services.classifier.decide.Decider {
+}
+class "DecisionLog" as services.attention.decision_log.DecisionLog {
+}
+class "Digest" as services.attention.digest.Digest {
+}
+class "Dispatcher" as services.attention.dispatcher.Dispatcher {
+}
+class "Embedder" as interfaces.contracts.Embedder {
+}
+class "EndEvent" as interfaces.contracts.EndEvent {
+}
+class "Environment" as environments.base.Environment {
+}
+class "EpisodeCutter" as services.memory_service.episode_cutter.EpisodeCutter {
+}
+class "EpisodeRecall" as services.memory_service.episode_recall.EpisodeRecall {
+}
+class "EpisodeService" as services.memory_service.episode_service.EpisodeService {
+}
+class "EpisodeStore" as services.memory_service.episode_store.EpisodeStore {
+}
+class "EpisodeSummarizer" as services.memory_service.episode_summary.EpisodeSummarizer {
+}
+class "Event" as kernel.event.Event {
+}
+class "EventAttention" as interfaces.contracts.EventAttention {
+}
+class "EventLog" as interfaces.contracts.EventLog {
+}
+class "EventPipeline" as services.attention.pipeline.EventPipeline {
+}
+class "EventSink" as interfaces.contracts.EventSink {
+}
+class "EventSource" as interfaces.contracts.EventSource {
+}
+class "Fact" as services.memory_service.graph.Fact {
+}
+class "FactExtractor" as services.memory_service.graph.FactExtractor {
+}
+class "FactGraph" as interfaces.contracts.FactGraph {
+}
+class "FactStore" as services.memory_service.fact_store.FactStore {
+}
+class "FastLLM" as services.runtime.fast_brain.FastLLM {
+}
+class "<color:red>FetchError</color>" as services.runtime.web_tools.FetchError {
+}
+class "Focus" as services.attention.core.Focus {
+}
+class "FocusStack" as services.attention.focus_stack.FocusStack {
+}
+class "GraphMemory" as services.memory_service.graph.GraphMemory {
+}
+class "HardMatch" as services.tools.routes.HardMatch {
+}
+class "HardRules" as services.attention.pipeline.HardRules {
+}
+class "HardRules" as services.tools.routes.HardRules {
+}
+class "HashEmbedder" as search.embedder.HashEmbedder {
+}
+class "Hit" as search.index.Hit {
+}
+class "HybridIndex" as search.index.HybridIndex {
+}
+class "HybridSearch" as search.service.HybridSearch {
+}
+class "ImpulseTimer" as services.reflection.timer.ImpulseTimer {
+}
+class "Inbox" as services.attention.inbox.Inbox {
+}
+class "InputClass" as services.classifier.decide.InputClass {
+}
+class "InputClassifier" as services.attention.input_classifier.InputClassifier {
+}
+class "Intent" as services.reflection.reflection.Intent {
+}
+class "Item" as services.attention.core.Item {
+}
+class "ItemStore" as services.attention.items.ItemStore {
+}
+class "JobTracker" as services.attention.jobs.JobTracker {
+}
+class "JsonReminders" as services.reflection.store.JsonReminders {
+}
+class "JsonThoughts" as services.reflection.store.JsonThoughts {
+}
+class "LanguageModel" as interfaces.contracts.LanguageModel {
+}
+class "LeaseAdapter" as services.spaces.lease.LeaseAdapter {
+}
+class "LlmPlanner" as services.tasks.planner.LlmPlanner {
+}
+class "LmStudioEmbedder" as search.embedder.LmStudioEmbedder {
+}
+class "MemoryCapture" as services.memory_service.capture.MemoryCapture {
+}
+class "MemoryReader" as interfaces.contracts.MemoryReader {
+}
+class "MemoryWriter" as interfaces.contracts.MemoryWriter {
+}
+class "NodePanel" as services.spaces.node_panel.NodePanel {
+}
+class "Normalizer" as services.attention.normalizer.Normalizer {
+}
+class "NullPresence" as services.attention.core.NullPresence {
+}
+class "NullSpeech" as services.attention.core.NullSpeech {
+}
+class "Outbound" as services.peers.outbound.Outbound {
+}
+class "PeerConnection" as services.peers.hub.PeerConnection {
+}
+class "<color:red>PeerError</color>" as services.peers.hub.PeerError {
+}
+class "PeerHub" as services.peers.hub.PeerHub {
+}
+class "PeerRecord" as services.peers.registry.PeerRecord {
+}
+class "PeerRegistry" as services.peers.registry.PeerRegistry {
+}
+class "PeerSpec" as host.supervisor.PeerSpec {
+}
+class "PeopleDirectory" as interfaces.contracts.PeopleDirectory {
+}
+class "PiLlmClient" as services.runtime.pi_llm.PiLlmClient {
+}
+class "PiRuntime" as services.runtime.pi_runtime.PiRuntime {
+}
+class "Piece" as services.conversation.stickers.Piece {
+}
+class "PlanNudger" as services.reflection.plan_nudge.PlanNudger {
+}
+class "PlannedPeer" as host.supervisor.PlannedPeer {
+}
+class "PlannedRecord" as services.peers.registry.PlannedRecord {
+}
+class "Planner" as interfaces.contracts.Planner {
+}
+class "PresenceTracker" as services.conversation.speech_out.PresenceTracker {
+}
+class "Profile" as services.spaces.profile_manager.Profile {
+}
+class "ProfileManager" as services.spaces.profile_manager.ProfileManager {
+}
+class "Question" as services.attention.core.Question {
+}
+class "QuestionService" as services.attention.questions.QuestionService {
+}
+class "Reason" as services.spaces.model.Reason {
+}
+class "Rec" as services.memory_service.episodes.Rec {
+}
+class "ReflectionService" as services.reflection.reflection.ReflectionService {
+}
+class "Registry" as environments.registry.Registry {
+}
+class "Relationships" as services.character.relationships.Relationships {
+}
+class "RelationshipsAdapter" as services.character.relationships.RelationshipsAdapter {
+}
+class "ReminderRepository" as interfaces.contracts.ReminderRepository {
+}
+class "ReplyGenerator" as services.conversation.reply_generator.ReplyGenerator {
+}
+class "RequestHandler" as interfaces.contracts.RequestHandler {
+}
+class "ResidentAgent" as services.conversation.resident.ResidentAgent {
+}
+class "Retrieval" as services.conversation.context_builder.Retrieval {
+}
+class "RouteDecision" as services.tools.routes.RouteDecision {
+}
+class "Router" as services.tools.router.Router {
+}
+class "Rule" as services.attention.rules.Rule {
+}
+class "RuleStore" as services.attention.rules.RuleStore {
+}
+class "SearchConfig" as search.index.SearchConfig {
+}
+class "SentenceSplitter" as services.conversation.speech_text.SentenceSplitter {
+}
+class "SettingsProvider" as interfaces.contracts.SettingsProvider {
+}
+class "SleepPlan" as services.memory_service.episodes.SleepPlan {
+}
+class "SleepRunner" as services.memory_service.sleep.SleepRunner {
+}
+class "SleepScheduler" as services.memory_service.sleep_scheduler.SleepScheduler {
+}
+class "<color:red>SourceError</color>" as environments.sources.SourceError {
+}
+class "SpeechCandidate" as services.attention.speech_queue.SpeechCandidate {
+}
+class "SpeechCoordinator" as services.attention.speech_coordinator.SpeechCoordinator {
+}
+class "SpeechOutput" as services.conversation.speech_out.SpeechOutput {
+}
+class "SpeechQueue" as services.attention.speech_queue.SpeechQueue {
+}
+class "SpeechSelector" as services.conversation.speech_out.SpeechSelector {
+}
+class "SqliteBackend" as services.memory_service.graph.SqliteBackend {
+}
+class "Step" as services.tasks.model.Step {
+}
+class "StreamingLanguageModel" as interfaces.contracts.StreamingLanguageModel {
+}
+class "SummaryResult" as services.memory_service.episode_summary.SummaryResult {
+}
+class "Supervisor" as host.supervisor.Supervisor {
+}
+class "TagStream" as services.conversation.stickers.TagStream {
+}
+class "Tagged" as services.conversation.stickers.Tagged {
+}
+class "Task" as services.tasks.model.Task {
+}
+class "<color:red>TaskError</color>" as services.tasks.service.TaskError {
+}
+class "TaskReminders" as services.tasks.reminders.TaskReminders {
+}
+class "TaskRepository" as interfaces.contracts.TaskRepository {
+}
+class "TaskService" as services.tasks.service.TaskService {
+}
+class "TaskStore" as services.tasks.store.TaskStore {
+}
+class "TextEvent" as interfaces.contracts.TextEvent {
+}
+class "TextOnlySpeech" as services.conversation.speech_out.TextOnlySpeech {
+}
+class "ThoughtJournal" as interfaces.contracts.ThoughtJournal {
+}
+class "Tool" as environments.base.Tool {
+}
+class "ToolEmbeddings" as services.tools.tool_search.ToolEmbeddings {
+}
+class "<color:red>ToolError</color>" as environments.base.ToolError {
+}
+class "ToolEvent" as interfaces.contracts.ToolEvent {
+}
+class "ToolInvoker" as interfaces.contracts.ToolInvoker {
+}
+class "ToolSpec" as interfaces.contracts.ToolSpec {
+}
+class "Trace" as services.tracing.latency_trace.Trace {
+}
+class "UserInput" as services.conversation.conversation_io.UserInput {
+}
+class "UserMemory" as services.memory_service.user.UserMemory {
+}
+class "UserMemoryAdapter" as services.memory_service.adapters.UserMemoryAdapter {
+}
+class "VoiceModuleSpeech" as services.conversation.speech_out.VoiceModuleSpeech {
+}
+class "WorkLoop" as services.reflection.work_loop.WorkLoop {
+}
+class "WorkspaceLink" as services.spaces.link.WorkspaceLink {
+}
+class "WorkspaceManager" as services.spaces.manager.WorkspaceManager {
+}
+class "WorkspaceSpec" as services.spaces.model.WorkspaceSpec {
+}
+class "_Facade" as dashboard._Facade {
+}
+class "_JobQuestion" as services.peers.hub._JobQuestion {
+}
+class "_LogSink" as host.supervisor._LogSink {
+}
+class "_ModuleIds" as environments.builtin._ModuleIds {
+}
+class "_Proc" as host.supervisor._Proc {
+}
+class "_Space" as services.spaces.lease._Space {
+}
+class "_Via" as services.attention.service._Via {
+}
+class "_WorkspaceIds" as environments.builtin._WorkspaceIds {
+}
+environments.registry.Registry --> environments.base.Environment : envs
+services.memory_service.episode_service.EpisodeService --> search.embedder.LmStudioEmbedder : embedder
+services.memory_service.graph.SqliteBackend --> search.embedder.LmStudioEmbedder : embedder
+search.service.HybridSearch --> search.index.SearchConfig : cfg
+services.attention.focus_stack.FocusStack --> services.attention.core.Focus : stack
+services.attention.items.ItemStore --> services.attention.core.Item : items
+services.attention.items.ItemStore --> services.attention.core.Item : by_key
+services.attention.focus_stack.FocusStack --> services.attention.digest.Digest : digest
+services.attention.items.ItemStore --> services.attention.digest.Digest : digest
+services.attention.rules.RuleStore --> services.attention.rules.Rule : rules
+services.attention.digest.Digest --> services.attention.speech_coordinator.SpeechCoordinator : speech
+services.attention.focus_stack.FocusStack --> services.attention.speech_coordinator.SpeechCoordinator : speech
+services.attention.items.ItemStore --> services.attention.speech_coordinator.SpeechCoordinator : speech
+services.attention.speech_queue.SpeechQueue --> services.attention.speech_queue.SpeechCandidate : items
+services.conversation.conversation_io.UserInput --> services.conversation.conversation_io.Channel : channel
+services.conversation.companion.Companion --> services.conversation.speech_out.PresenceTracker : presence
+services.conversation.speech_out.TextOnlySpeech --> services.conversation.speech_out.PresenceTracker : presence
+services.conversation.speech_out.VoiceModuleSpeech --> services.conversation.speech_out.PresenceTracker : presence
+services.conversation.companion.Companion --> services.conversation.speech_out.TextOnlySpeech : speech
+services.memory_service.graph.GraphMemory --> services.memory_service.graph.FactExtractor : extractor
+services.memory_service.graph.GraphMemory --> services.memory_service.graph.SqliteBackend : backend
+services.peers.registry.PeerRegistry --> services.peers.registry.PeerRecord : records
+services.peers.registry.PeerRegistry --> services.peers.registry.PlannedRecord : planned
+services.spaces.lease.LeaseAdapter --> services.spaces.lease._Space : spaces
+search.service.HybridSearch --* services.memory_service.graph.SqliteBackend : search_service
+services.attention.announce.Announcer --* services.attention.service.Attention : announcer
+services.attention.core.AttentionContext --* services.attention.service.Attention : ctx
+services.attention.decision_log.DecisionLog --* services.attention.service.Attention : decision_log
+services.attention.digest.Digest --* services.attention.service.Attention : digest_
+services.attention.dispatcher.Dispatcher --* services.attention.service.Attention : dispatcher
+services.attention.focus_stack.FocusStack --* services.attention.service.Attention : focus_
+services.attention.inbox.Inbox --* services.attention.service.Attention : inbox
+services.attention.input_classifier.InputClassifier --* services.attention.service.Attention : classifier
+services.attention.items.ItemStore --* services.attention.service.Attention : store
+services.attention.jobs.JobTracker --* services.attention.service.Attention : jobs
+services.attention.normalizer.Normalizer --* services.attention.service.Attention : normalizer
+services.attention.pipeline.EventPipeline --* services.attention.service.Attention : pipeline
+services.attention.pipeline.HardRules --* services.attention.service.Attention : hard_rules
+services.attention.questions.QuestionService --* services.attention.service.Attention : questions
+services.attention.service._Via --* services.attention.service.Attention : companion
+services.attention.service._Via --* services.attention.service.Attention : io
+services.attention.service._Via --* services.attention.service.Attention : decider
+services.attention.service._Via --* services.attention.service.Attention : hub
+services.attention.service._Via --* services.attention.service.Attention : modules
+services.attention.service._Via --* services.attention.service.Attention : profiles
+services.attention.service._Via --* services.attention.service.Attention : rules
+services.attention.service._Via --* services.attention.service.Attention : presence
+services.attention.service._Via --* services.attention.service.Attention : kind_handlers
+services.attention.service._Via --* services.attention.service.Attention : kind_hooks
+services.attention.service._Via --* services.attention.service.Attention : on_think
+services.attention.service._Via --* services.attention.service.Attention : silent_kinds
+services.attention.service._Via --* services.attention.service.Attention : last_decision
+services.attention.service._Via --* services.attention.service.Attention : decisions
+services.attention.service._Via --* services.attention.service.Attention : speech
+services.attention.speech_coordinator.SpeechCoordinator --* services.attention.service.Attention : coordinator
+services.attention.speech_queue.SpeechQueue --* services.attention.speech_coordinator.SpeechCoordinator : speech
+services.conversation.context_builder.ContextBuilder --* services.conversation.companion.Companion : context_builder
+services.conversation.reply_generator.ReplyGenerator --* services.conversation.companion.Companion : reply_generator
+services.conversation.resident.ResidentAgent --* services.conversation.companion.Companion : resident
+services.conversation.service.ConversationService --* services.conversation.companion.Companion : conversation
+services.memory_service.capture.MemoryCapture --* services.conversation.companion.Companion : memory_capture
+services.memory_service.episodes.SleepPlan --* services.memory_service.sleep_scheduler.SleepScheduler : plan
+services.memory_service.fact_store.FactStore --* services.memory_service.graph.SqliteBackend : store
+services.memory_service.sleep_scheduler.SleepScheduler --* services.memory_service.episode_service.EpisodeService : scheduler
+services.tasks.reminders.TaskReminders --* services.tasks.service.TaskService : reminders
+host.supervisor.PeerSpec --o host.supervisor._Proc : spec
+search.index.HybridIndex --o search.service.HybridSearch : index
+services.attention.core.AttentionContext --o services.attention.decision_log.DecisionLog : ctx
+services.attention.core.AttentionContext --o services.attention.digest.Digest : ctx
+services.attention.core.AttentionContext --o services.attention.focus_stack.FocusStack : ctx
+services.attention.core.AttentionContext --o services.attention.input_classifier.InputClassifier : ctx
+services.attention.core.AttentionContext --o services.attention.items.ItemStore : ctx
+services.attention.core.AttentionContext --o services.attention.normalizer.Normalizer : ctx
+services.attention.core.AttentionContext --o services.attention.speech_coordinator.SpeechCoordinator : ctx
+services.conversation.conversation_io.Channel --o services.attention.questions.QuestionService : channel
+services.tasks.store.TaskStore --o services.tasks.service.TaskService : store
+@enduml

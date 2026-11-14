@@ -1,0 +1,20 @@
+@startuml classes_kernel
+set namespaceSeparator none
+class "Event" as kernel.event.Event {
+  data : dict
+  depth : int
+  is_self : bool
+  item_id : str
+  kind : str
+  memorable : bool
+  module : str
+  needs_reply : bool
+  origin : str
+  priority : float
+  sender : dict | None
+  text : str
+  trusted : bool
+  ts : float
+  urgency : int | None
+}
+@enduml

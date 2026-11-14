@@ -1,0 +1,79 @@
+@startuml classes_services.tasks
+set namespaceSeparator none
+class "LlmPlanner" as services.tasks.planner.LlmPlanner {
+  llm
+  prompt
+  timeout : float
+  plan(goal: str, workspace_ctx: dict) -> list[dict]
+}
+class "Step" as services.tasks.model.Step {
+  status : str
+  text : str
+  from_dict(d: Any) -> 'Step'
+  to_dict() -> dict
+}
+class "Task" as services.tasks.model.Task {
+  checkpoint : dict | None
+  created : float
+  due : float | None
+  goal : str
+  id : str
+  is_open : bool
+  kind : str
+  meta : dict
+  origin : str
+  parent : str | None
+  priority : int
+  status : str
+  steps : tuple[Step, ...]
+  updated : float
+  workspace : str
+  from_dict(d: dict) -> 'Task'
+  to_dict() -> dict
+}
+class "<color:red>TaskError</color>" as services.tasks.service.TaskError {
+}
+class "TaskReminders" as services.tasks.reminders.TaskReminders {
+  repo
+  add(due: float, text: str) -> dict
+  get(reminder_id: str) -> dict | None
+  pending() -> list[dict]
+  set_status(reminder_id: str, status: str) -> None
+}
+class "TaskService" as services.tasks.service.TaskService {
+  clock
+  planner : NoneType
+  reminders : Optional[Any]
+  repo
+  store
+  activate(task_id: str) -> dom.Task
+  active(workspace: str | None) -> dom.Task | None
+  checkpoint(workspace: str, goal: str) -> dict
+  close(task_id: str) -> dom.Task
+  create(goal: str) -> dom.Task
+  current_workspace() -> str
+  due_for_nudge(lead_s: float, kinds: tuple[str, ...]) -> list[dom.Task]
+  finish_step(task_id: str, index: int | None) -> dom.Task
+  get(task_id: str) -> dom.Task | None
+  list_tasks(workspace: str | None) -> list[dom.Task]
+  mark_nudged(task_id: str) -> None
+  on_workspace_change(rec: dict) -> None
+  plan(task_id: str) -> dom.Task
+  resume(workspace: str) -> dom.Task | None
+  set_status(task_id: str, status: str) -> dom.Task
+  snapshot(workspace: str | None) -> dict
+  split(task_id: str) -> list[dom.Task]
+  upsert_plan(plan_id: str, text: str, due: float | None) -> dom.Task
+}
+class "TaskStore" as services.tasks.store.TaskStore {
+  close() -> None
+  delete(task_id: str) -> None
+  get(task_id: str) -> dict | None
+  get_meta(key: str, default)
+  list() -> list[dict]
+  save(task: dict) -> None
+  set_meta(key: str, value) -> None
+}
+services.tasks.reminders.TaskReminders --* services.tasks.service.TaskService : reminders
+services.tasks.store.TaskStore --o services.tasks.service.TaskService : store
+@enduml

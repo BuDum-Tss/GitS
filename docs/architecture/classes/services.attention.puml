@@ -1,0 +1,448 @@
+@startuml classes_services.attention
+set namespaceSeparator none
+class "Announcer" as services.attention.announce.Announcer {
+  ctx
+  decisions
+  digest
+  recent : dict[tuple[str, str], dict]
+  speech
+  store
+  announce(item: Item) -> None
+  fact(item: Item, short: bool) -> str
+  submit(peer_id: str, text: str) -> None
+}
+class "Attention" as services.attention.service.Attention {
+  announcer
+  classifier
+  companion
+  coordinator
+  ctx
+  decider
+  decision_log
+  decisions
+  digest_
+  dispatcher
+  focus_
+  hard_rules
+  hub
+  inbox
+  io
+  jobs
+  kind_handlers
+  kind_hooks
+  last_decision
+  modules
+  normalizer
+  on_think
+  pipeline
+  presence
+  profiles
+  questions
+  rules
+  silent_kinds
+  speech
+  store
+  add_silent_kinds(kinds) -> None
+  attach_reflection(service) -> None
+  buffer_view() -> dict
+  classify_input(text: str) -> decide.InputClass | None
+  clear_rules(rule_id: str | None) -> str
+  connect() -> None
+  context_events(limit: int) -> str
+  digest_counts() -> dict[str, int]
+  discard_speech(cand, why: str) -> None
+  enqueue_fact(fact: str, user_text: str, must: bool, question: bool) -> SpeechCandidate
+  enqueue_say(text: str, sticker: str | None, priority: int | None) -> SpeechCandidate
+  is_announce_event(kind: str, body: dict) -> bool
+  is_silent(kind: str) -> bool
+  looks_like_stop(text: str) -> bool
+  on_job_update(peer_id: str, job: dict) -> None
+  on_user_input(text: str) -> None
+  quiet_now() -> bool
+  rebind_rules(memory_dir) -> None
+  reflect_speech(event: Event, intent) -> str
+  register_handler(kind: str, handler: Callable) -> None
+  register_handlers(handlers: dict[str, Callable]) -> None
+  register_hook(kind: str, hook: Callable) -> None
+  reset_for_character() -> int
+  rules_text() -> str
+  set_alert_handler(fn: Callable[[Item], bool] | None) -> None
+  set_env_of(fn: Callable[[], Any]) -> None
+  set_node_watch(fn: Callable[[str], dict]) -> None
+  set_rule() -> str
+  set_think_handler(fn: Callable[[Item], Any] | None) -> None
+  set_user_speaking(speaking: bool) -> None
+  settings_now() -> dict
+  settle() -> None
+  snapshot() -> dict
+  spawn(coro) -> asyncio.Task
+  start() -> None
+  stop() -> None
+  stop_speech(why: str) -> int
+  submit(peer_id: str, event: dict) -> None
+  submit_announce(peer_id: str, text: str) -> None
+  submit_question(q: Question) -> Any
+  submit_self(event: dict) -> None
+  submit_speech(peer_id: str, say: dict) -> None
+  take_digest(module: str | None) -> str
+  tick() -> None
+  top_focus() -> Focus
+}
+class "AttentionContext" as services.attention.core.AttentionContext {
+  approver
+  autopump
+  clock
+  companion
+  decider
+  decisions : deque
+  env_of : Callable[[], Any]
+  hub : NoneType
+  idle
+  io
+  kind_handlers : dict[str, Callable]
+  kind_hooks : dict[str, Callable]
+  last_decision : dict | None
+  last_user_text : str
+  log
+  modules : NoneType
+  node_watch : Callable[[str], dict]
+  on_alert : Callable[[Item], bool] | None
+  on_think : Callable[[Item], Any] | None, Callable[[Item], None] | None
+  people
+  presence
+  profiles : NoneType
+  rules
+  settings
+  settings_provider
+  silent_kinds : set[str]
+  tasks : set[asyncio.Task]
+  writer
+  att(cfg: dict | None) -> dict
+  emit_info(peer_id: str, kind: str) -> dict | None
+  module_title(peer_id: str) -> str
+  quiet(cfg: dict) -> bool
+  sender_name(sender: dict | None) -> str | None
+  spawn(coro) -> asyncio.Task
+}
+class "AttentionEventSink" as services.attention.event_sink.AttentionEventSink {
+  attention
+  presence : NoneType
+  recorder : NoneType
+  on_job_update(peer_id: str, job: dict) -> None
+  submit(peer_id: str, event: dict) -> None
+  submit_question(peer_id: str, job_id: str, question_id: str, question: dict) -> tuple[Any, str]
+  submit_speech(peer_id: str, say: dict) -> None
+}
+class "DecisionLog" as services.attention.decision_log.DecisionLog {
+  ctx
+  write(item: Item, att: dict) -> None
+}
+class "Digest" as services.attention.digest.Digest {
+  batches : deque[dict]
+  ctx
+  entries : list[dict]
+  env_of : Callable[[], str | None]
+  history : deque[dict]
+  speech
+  add(item: Item) -> None
+  counts() -> dict[str, int]
+  note(item: Item, state: str) -> None
+  peek(limit: int) -> str
+  take(module: str | None, limit: int | None, via: str) -> str
+  update_entry(item: Item) -> None
+  view(now: float) -> dict
+  weights() -> list[float]
+}
+class "Dispatcher" as services.attention.dispatcher.Dispatcher {
+  ctx
+  decisions
+  digest
+  focus
+  speech
+  act(item: Item, decision: str) -> None
+  alerted(item: Item) -> bool
+  decide(urgency: int, cfg: dict, att: dict) -> str
+  finish(item: Item, cfg: dict, att: dict) -> None
+  react(item: Item, topic: str, source: str) -> None
+  speech_item(item: Item, text: str, say: dict, peer_id: str, mode: str, ttl: float | None, cfg: dict, att: dict) -> None
+  think_route(item: Item, decision: str) -> bool
+}
+class "EventPipeline" as services.attention.pipeline.EventPipeline {
+  announcer
+  ctx
+  decisions
+  dispatcher
+  normalizer
+  rules
+  store
+  submit(peer_id: str, event: dict) -> None
+  submit_speech(peer_id: str, say: dict) -> None
+}
+class "Focus" as services.attention.core.Focus {
+  id : str
+  kind : str
+  last_active : float
+  priority : int
+  resumable : bool
+  source : str
+  started : float
+  topic : str
+}
+class "FocusStack" as services.attention.focus_stack.FocusStack {
+  ctx
+  digest : NoneType
+  reaction_focus : dict[str, str]
+  speech : NoneType
+  stack : list[Focus]
+  pop(focus_id: str) -> None
+  pop_reaction(item_id: str) -> None
+  publish() -> None
+  push(kind: str, topic: str, source: str, priority: int, resumable: bool) -> Focus
+  reset() -> None
+  tick(now: float) -> None
+  top() -> Focus
+  touch_conversation(topic: str | None) -> None
+}
+class "HardRules" as services.attention.pipeline.HardRules {
+  ctx
+  decisions
+  dispatcher
+  questions
+  apply(item: Item, cfg: dict, att: dict, to_conversation: bool, declared: int | None) -> bool
+}
+class "Inbox" as services.attention.inbox.Inbox {
+  ctx
+  digest
+  focus
+  last_wake : float
+  speech
+  blocker(now: float) -> str
+  ready(now: float) -> bool
+  tick(now: float) -> bool
+}
+class "InputClassifier" as services.attention.input_classifier.InputClassifier {
+  ctx
+  classify_input(text: str, stop_speech) -> decide.InputClass | None
+}
+class "Item" as services.attention.core.Item {
+  addressed_to_me : bool | None
+  count : int
+  created : float
+  data : dict
+  decision : str
+  dedupe_key : str | None
+  expires : float | None
+  first_contact : bool
+  id : str
+  kind : str
+  memorable : bool
+  memory_done : bool
+  module : str
+  needs_reply : bool
+  origin : str
+  priority : float
+  reply_channel : dict | None
+  sender : dict | None
+  spoken : bool
+  text : str
+  trace : Optional[Any]
+  updated : float
+  urgency : int | None
+  urgency_hint : int | None
+}
+class "ItemStore" as services.attention.items.ItemStore {
+  by_key : dict[tuple[str, str], Item]
+  ctx
+  digest : NoneType
+  items : dict[str, Item]
+  speech : NoneType
+  merge_duplicate(item: Item, now: float) -> bool
+  register(item: Item) -> None
+}
+class "JobTracker" as services.attention.jobs.JobTracker {
+  ctx
+  dispatcher
+  states : dict[tuple[str, str], tuple]
+  store
+  describe(peer_id: str, job: dict, state, stage) -> tuple[int, str]
+  on_update(peer_id: str, job: dict) -> None
+}
+class "Normalizer" as services.attention.normalizer.Normalizer {
+  ctx
+  assign_urgency(item: Item, declared: int | None, env: str | None) -> None
+  is_owner_address(item: Item) -> bool
+  make_item(peer_id: str, ev: dict, now: float) -> Item
+  make_speech_item(peer_id: str, say: dict, text: str, now: float) -> tuple[Item, str, float | None]
+  note_sender(item: Item) -> None
+  shift_urgency(item: Item, info: dict | None, focused: bool, watch: dict | None) -> None
+}
+class "NullPresence" as services.attention.core.NullPresence {
+  state : dict
+  snapshot() -> dict
+  update() -> bool
+}
+class "NullSpeech" as services.attention.core.NullSpeech {
+  current_segment() -> str
+  is_speaking() -> bool
+  speak(utterance_id, text, sticker, priority) -> None
+  stop(utterance_id) -> None
+}
+class "Question" as services.attention.core.Question {
+  context : dict
+  job_id : str | None
+  kind : str
+  options : list[str] | None
+  question : str
+  question_id : str | None
+  source : str
+  timeout_s : float
+  urgency_hint : int | None
+}
+class "QuestionService" as services.attention.questions.QuestionService {
+  channel : Channel | None, NoneType
+  ctx
+  focus
+  speech
+  announce_in_module(fact: str, module: str) -> None
+  chat_module() -> str | None
+  submit(q: Question) -> Any
+}
+class "Rule" as services.attention.rules.Rule {
+  created_from : str
+  effect : str
+  id : str
+  kind : str | None
+  module : str | None
+  sender : str | None
+  until : float
+  covers(other: 'Rule') -> bool
+  describe(now: float) -> str
+  matches(module: str, kind: str, sender_name: str | None) -> bool
+  public(now: float) -> dict
+}
+class "RuleStore" as services.attention.rules.RuleStore {
+  path : NoneType, Path
+  rules : list[Rule]
+  active() -> list[Rule]
+  add() -> tuple[Rule | None, int]
+  clear(rule_id: str | None) -> int
+  load() -> None
+  muted(module: str, kind: str, sender_name: str | None) -> Rule | None
+  purge() -> int
+  rebind(path: Path | str) -> None
+  save() -> None
+  stance(module: str, kind: str, sender_name: str | None) -> str | None
+}
+class "SpeechCandidate" as services.attention.speech_queue.SpeechCandidate {
+  channel : Optional[Any]
+  created : float
+  done : str
+  expires : float
+  family : str
+  id : str
+  item_id : str | None
+  key : str | None
+  mode : str
+  must : bool
+  priority : int
+  question : bool
+  source : str
+  sticker : str | None
+  text : str
+  trace : Optional[Any]
+  user_text : str
+  resolve(spoken: bool) -> None
+}
+class "SpeechCoordinator" as services.attention.speech_coordinator.SpeechCoordinator {
+  ctx
+  digest
+  focus
+  items
+  speech
+  bind_trace(cand: SpeechCandidate) -> None
+  dropped(cand: SpeechCandidate, reason: str) -> None
+  enqueue_fact(fact: str, user_text: str, must: bool, question: bool) -> SpeechCandidate
+  enqueue_say(text: str, sticker: str | None, priority: int | None) -> SpeechCandidate
+  kick() -> None
+  play(cand: SpeechCandidate) -> str | None
+  played(cand: SpeechCandidate) -> None
+  pump() -> None
+  speak_about(fact: str, user_text: str, must: bool, question: bool, direct: bool)
+}
+class "SpeechQueue" as services.attention.speech_queue.SpeechQueue {
+  current : SpeechCandidate | None
+  current_utterance : str | None
+  dropped : list[tuple[str, str, str]]
+  items : list[SpeechCandidate]
+  last_initiative : float
+  playing : NoneType, SpeechCandidate | None
+  speech
+  add(cand: SpeechCandidate) -> SpeechCandidate
+  best() -> SpeechCandidate | None
+  blocked_by(cand: SpeechCandidate) -> str | None
+  busy() -> bool
+  discard(cand: SpeechCandidate, reason: str) -> bool
+  expire() -> list[SpeechCandidate]
+  gap_applies(cand: SpeechCandidate) -> bool
+  idle() -> None
+  min_gap() -> float
+  new() -> SpeechCandidate
+  pump(margin: int) -> SpeechCandidate | None
+  self_initiated(cand: SpeechCandidate) -> bool
+  snapshot() -> list[dict]
+  stop_all(below: int) -> int
+  urgent_waiting() -> bool
+}
+class "_Via" as services.attention.service._Via {
+  component
+  field
+}
+services.attention.focus_stack.FocusStack --> services.attention.core.Focus : stack
+services.attention.items.ItemStore --> services.attention.core.Item : items
+services.attention.items.ItemStore --> services.attention.core.Item : by_key
+services.attention.focus_stack.FocusStack --> services.attention.digest.Digest : digest
+services.attention.items.ItemStore --> services.attention.digest.Digest : digest
+services.attention.rules.RuleStore --> services.attention.rules.Rule : rules
+services.attention.digest.Digest --> services.attention.speech_coordinator.SpeechCoordinator : speech
+services.attention.focus_stack.FocusStack --> services.attention.speech_coordinator.SpeechCoordinator : speech
+services.attention.items.ItemStore --> services.attention.speech_coordinator.SpeechCoordinator : speech
+services.attention.speech_queue.SpeechQueue --> services.attention.speech_queue.SpeechCandidate : items
+services.attention.announce.Announcer --* services.attention.service.Attention : announcer
+services.attention.core.AttentionContext --* services.attention.service.Attention : ctx
+services.attention.decision_log.DecisionLog --* services.attention.service.Attention : decision_log
+services.attention.digest.Digest --* services.attention.service.Attention : digest_
+services.attention.dispatcher.Dispatcher --* services.attention.service.Attention : dispatcher
+services.attention.focus_stack.FocusStack --* services.attention.service.Attention : focus_
+services.attention.inbox.Inbox --* services.attention.service.Attention : inbox
+services.attention.input_classifier.InputClassifier --* services.attention.service.Attention : classifier
+services.attention.items.ItemStore --* services.attention.service.Attention : store
+services.attention.jobs.JobTracker --* services.attention.service.Attention : jobs
+services.attention.normalizer.Normalizer --* services.attention.service.Attention : normalizer
+services.attention.pipeline.EventPipeline --* services.attention.service.Attention : pipeline
+services.attention.pipeline.HardRules --* services.attention.service.Attention : hard_rules
+services.attention.questions.QuestionService --* services.attention.service.Attention : questions
+services.attention.service._Via --* services.attention.service.Attention : companion
+services.attention.service._Via --* services.attention.service.Attention : io
+services.attention.service._Via --* services.attention.service.Attention : decider
+services.attention.service._Via --* services.attention.service.Attention : hub
+services.attention.service._Via --* services.attention.service.Attention : modules
+services.attention.service._Via --* services.attention.service.Attention : profiles
+services.attention.service._Via --* services.attention.service.Attention : rules
+services.attention.service._Via --* services.attention.service.Attention : presence
+services.attention.service._Via --* services.attention.service.Attention : kind_handlers
+services.attention.service._Via --* services.attention.service.Attention : kind_hooks
+services.attention.service._Via --* services.attention.service.Attention : on_think
+services.attention.service._Via --* services.attention.service.Attention : silent_kinds
+services.attention.service._Via --* services.attention.service.Attention : last_decision
+services.attention.service._Via --* services.attention.service.Attention : decisions
+services.attention.service._Via --* services.attention.service.Attention : speech
+services.attention.speech_coordinator.SpeechCoordinator --* services.attention.service.Attention : coordinator
+services.attention.speech_queue.SpeechQueue --* services.attention.speech_coordinator.SpeechCoordinator : speech
+services.attention.core.AttentionContext --o services.attention.decision_log.DecisionLog : ctx
+services.attention.core.AttentionContext --o services.attention.digest.Digest : ctx
+services.attention.core.AttentionContext --o services.attention.focus_stack.FocusStack : ctx
+services.attention.core.AttentionContext --o services.attention.input_classifier.InputClassifier : ctx
+services.attention.core.AttentionContext --o services.attention.items.ItemStore : ctx
+services.attention.core.AttentionContext --o services.attention.normalizer.Normalizer : ctx
+services.attention.core.AttentionContext --o services.attention.speech_coordinator.SpeechCoordinator : ctx
+@enduml
