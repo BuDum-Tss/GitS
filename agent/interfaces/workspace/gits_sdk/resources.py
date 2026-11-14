@@ -8,6 +8,8 @@
 `GITS_CHARACTER_ID` (его выставляет супервизор при запуске модуля), иначе `DEFAULT_ID`. Модуль не импортирует `agent/`, поэтому
 `id` читается из core/character.yaml простым разбором строки без yaml.
 
+Память персонажа лежит в его папке: `resources/<Имя>/memory/` (`default_memory_dir`).
+
 Том персонажа (Docker, один контейнер на персонажа): переменная `CHARACTER_HOME` (абсолютный путь) задаёт саму папку персонажа,
 в ней лежит `core/character.yaml`, ресурсы модулей (`<модуль>/`) и память ядра в `memory/`. Без переменной всё работает как раньше.
 """
@@ -37,6 +39,19 @@ def home_memory_dir() -> Path | None:
     """Папка памяти тома: `CHARACTER_HOME/memory` или None."""
     home = character_home()
     return home / "memory" if home is not None else None
+
+
+def default_memory_dir() -> Path:
+    """Папка памяти: `MEMORY_DIR`; иначе `CHARACTER_HOME/memory` (том); иначе `resources/<персонаж>/memory` (персонаж из
+    `GITS_CHARACTER_ID`, по умолчанию `DEFAULT_ID`); нет папки персонажа: `./memory`."""
+    env = os.environ.get("MEMORY_DIR", "").strip()
+    if env:
+        return Path(env)
+    home = home_memory_dir()
+    if home is not None:
+        return home
+    folder = character_folders().get(os.environ.get("GITS_CHARACTER_ID") or DEFAULT_ID)
+    return folder / "memory" if folder is not None else Path("./memory")
 
 
 def card_id(folder: Path) -> str | None:

@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 import psutil
+from gits_sdk import resources
 
 import game_launcher
 
@@ -30,7 +31,7 @@ _RU = {"хром": "chrome", "гугл хром": "chrome", "телеграм": 
 
 
 def _file() -> Path:
-    base = os.getenv("MEMORY_DIR") or str(Path(__file__).resolve().parents[2] / "agent" / "memory")
+    base = os.getenv("MEMORY_DIR") or str(resources.default_memory_dir())
     return Path(base) / "apps.json"
 
 

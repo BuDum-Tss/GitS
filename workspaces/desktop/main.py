@@ -14,6 +14,7 @@ GITS = HERE.parent.parent
 # SDK до установки пакета gits-sdk; свои файлы модуля первыми. Внутренностей ядра (agent/) модуль не импортирует (ТЗ 31)
 sys.path[:0] = [str(HERE), str(GITS / "agent" / "interfaces" / "workspace")]
 
+from gits_sdk import resources  # noqa: E402
 from gits_sdk.envcompat import env  # noqa: E402
 
 from dotenv import load_dotenv  # noqa: E402
@@ -26,8 +27,8 @@ from manifest import build_manifest  # noqa: E402
 
 
 def memory_dir() -> str:
-    """Папка памяти ядра: MEMORY_DIR (её передаёт супервизор), иначе agent/memory рядом с ядром."""
-    return os.getenv("MEMORY_DIR") or str(GITS / "agent" / "memory")
+    """Папка памяти ядра: MEMORY_DIR (её передаёт супервизор), иначе папка памяти персонажа (resources/<Имя>/memory)."""
+    return os.getenv("MEMORY_DIR") or str(resources.default_memory_dir())
 
 
 async def amain() -> int:

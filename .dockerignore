@@ -15,7 +15,6 @@
 !.env.example
 **/.env
 agent/secrets.env
-agent/memory
 logs
 workspaces/desktop/models
 models

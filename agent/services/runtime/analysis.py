@@ -8,10 +8,10 @@
 """
 import json
 import logging
-import os
 import time
 from pathlib import Path
 
+from host import settings
 from services.character import character
 from services.tracing import events_log
 from services.tracing import flow_trace
@@ -31,7 +31,7 @@ SYSTEM_PROMPT = """Ты — аналитик системы {name} (ассист
 
 Как работать:
 1. Прочитай досье (путь будет в запросе), затем при необходимости сырые данные: выгрузка событий (путь в запросе,
-   по строке JSON на событие), agent/memory/core.log (хвост), agent/memory/current_run.json и
+   по строке JSON на событие), resources/<Имя>/memory/core.log (хвост), resources/<Имя>/memory/current_run.json и
    experiment_log.json (решения и действия по тикам, судьбы пешек), goals.json, tasks.json, lessons.json.
    Если причина в поведении системы, посмотри код (agent/*.py, agent/environments, mod/AgentBridge/Source).
 2. Восстанови цепочку: что было известно в момент решения, что она сделала, чем кончилось. Отдели подтверждённое
@@ -101,7 +101,7 @@ async def _runner(prompt: str) -> str:
 
 
 def _mem() -> Path:
-    return Path(os.getenv("MEMORY_DIR") or (Path(__file__).resolve().parents[2] / "memory"))
+    return Path(settings.memory_dir())
 
 
 def _load(name, default):

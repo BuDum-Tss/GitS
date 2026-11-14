@@ -6,6 +6,7 @@
 Снимок игры берётся с экрана: окно RimWorld должно быть видно и на переднем плане.
 """
 import os
+from gits_sdk import resources
 import time
 from pathlib import Path
 
@@ -22,8 +23,8 @@ class ShotError(Exception):
 
 
 def _dir() -> Path:
-    """Папка снимков: MEMORY_DIR/screenshots (общая с модулем Telegram, TG-6); без MEMORY_DIR - agent/memory рядом с ядром."""
-    base = os.getenv("MEMORY_DIR") or str(Path(__file__).resolve().parents[2] / "agent" / "memory")
+    """Папка снимков: MEMORY_DIR/screenshots (общая с модулем Telegram, TG-6); без MEMORY_DIR - память персонажа."""
+    base = os.getenv("MEMORY_DIR") or str(resources.default_memory_dir())
     d = Path(base) / "screenshots"
     d.mkdir(parents=True, exist_ok=True)
     return d

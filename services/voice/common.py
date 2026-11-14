@@ -6,6 +6,7 @@
 import os
 import tempfile
 from pathlib import Path
+from gits_sdk import resources
 from gits_sdk.envcompat import env
 
 GITS_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -16,8 +17,8 @@ FAKE_ENV = "GITS_VOICE_FAKE"            # 1: синтез, воспроизве�
 
 
 def default_memory_dir() -> str:
-    """Папка памяти ядра: MEMORY_DIR (её передаёт супервизор), иначе agent/memory рядом с ядром."""
-    return os.getenv("MEMORY_DIR") or str(GITS_ROOT / "agent" / "memory")
+    """Папка памяти ядра: MEMORY_DIR (её передаёт супервизор), иначе память персонажа в resources/<Имя>/memory."""
+    return os.getenv("MEMORY_DIR") or str(resources.default_memory_dir())
 
 
 def secrets_file() -> Path:

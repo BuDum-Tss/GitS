@@ -1,7 +1,6 @@
 mod/AgentBridge/bin/
 mod/AgentBridge/obj/
 mod/AgentBridge/Assemblies/
-agent/memory/
 agent/_*.log
 agent/__pycache__/
 *.pyc
@@ -11,7 +10,7 @@ agent/.env
 workspaces/desktop/models/
 
 # скриншоты экрана могут содержать личное
-agent/memory/screenshots/
+resources/*/memory/screenshots/
 
 # веса Fish Speech (2.5 ГБ), качаются отдельно
 models/

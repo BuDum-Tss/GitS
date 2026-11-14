@@ -1,5 +1,6 @@
 """Общее для модуля Twitch: пути, секреты, нарезка сообщений чата, чистка секретов из текста ошибок."""
 import os
+from gits_sdk import resources
 import re
 import time
 from pathlib import Path
@@ -10,8 +11,8 @@ GITS_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 def default_memory_dir() -> str:
-    """Папка памяти ядра: MEMORY_DIR (её передаёт супервизор), иначе agent/memory рядом с ядром."""
-    return os.getenv("MEMORY_DIR") or str(GITS_ROOT / "agent" / "memory")
+    """Папка памяти ядра: MEMORY_DIR (её передаёт супервизор), иначе папка памяти персонажа (resources/<Имя>/memory)."""
+    return os.getenv("MEMORY_DIR") or str(resources.default_memory_dir())
 
 
 def secrets_file() -> Path:

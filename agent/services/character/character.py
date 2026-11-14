@@ -118,11 +118,15 @@ def list_ids() -> list[str]:
 
 
 def memory_dir(char_id: str = DEFAULT_ID, base: Path | None = None) -> Path:
-    """Папка памяти персонажа (CHR-10): для персонажа по умолчанию — корень памяти ядра, для других — memory/characters/<id>/."""
-    root = Path(base) if base is not None else settings.memory_dir()
-    if in_container():                  # том: один персонаж, его память это сама папка памяти ядра (CHARACTER_HOME/memory)
-        return root
-    return root if char_id == DEFAULT_ID else root / "characters" / char_id
+    """Папка памяти персонажа (CHR-10): `resources/<Имя>/memory`. В томе (`CHARACTER_HOME`) это `CHARACTER_HOME/memory`.
+    Явная `base` (тесты, перенос): для персонажа по умолчанию сама `base`, для других `base/characters/<id>/`."""
+    if base is not None and not in_container():
+        root = Path(base)
+        return root if char_id == DEFAULT_ID else root / "characters" / char_id
+    if base is not None or in_container():
+        return Path(base) if base is not None else settings.memory_dir()
+    folder = _folders().get(char_id)
+    return folder / "memory" if folder is not None else settings.memory_dir()
 
 
 # ── активный персонаж (в памяти процесса; ядро читает настройку при старте и при переключении) ─────────────────────────

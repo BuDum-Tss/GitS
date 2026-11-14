@@ -5,7 +5,7 @@
 
 Если бот и канал один аккаунт, достаточно `broadcaster` (бот возьмёт его токен). Нужны TWITCH_CLIENT_ID и TWITCH_CLIENT_SECRET
 в .env (dev.twitch.tv/console, Redirect URL приложения: http://localhost:3000). Токены сохраняются в папке памяти
-(MEMORY_DIR, по умолчанию agent/memory) в twitch_tokens.json.
+(MEMORY_DIR, по умолчанию resources/<Имя>/memory) в twitch_tokens.json.
 """
 import asyncio
 import os

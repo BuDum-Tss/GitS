@@ -297,7 +297,7 @@ async def _run(config: dict):
     mem_dir = config["memory_dir"]
     settings.init(mem_dir)
     character.init()                    # ТЗ 05: персонаж из настроек (его папка, имя, память)
-    char_dir = character.memory_dir(character.active().id, Path(mem_dir))   # личная память активного персонажа (CHR-10)
+    char_dir = character.memory_dir(character.active().id)   # личная память активного персонажа (CHR-10)
     rel = Relationships(char_dir)
     presence = speech_out.PresenceTracker()
     # речь: модуль voice, пока он подключён и включён (VOICE-15), иначе только текст в чате и в presence
@@ -331,7 +331,7 @@ async def _run(config: dict):
     http_api.set_graph(graph)
     http_api.set_tasks(lambda: getattr(companion, "tasks", None))
     layer.character_switch = CharacterSwitch(companion=companion, rel=rel, graph=graph, attention=layer.attention,
-                                             hub=layer.hub, mem_root=Path(mem_dir))
+                                             hub=layer.hub)
     http_api.set_character(layer.character_switch)
     graph.set_character(character.active().id)           # новые факты пишутся в группу активного персонажа
     asyncio.create_task(graph.run())

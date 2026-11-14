@@ -46,7 +46,7 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_NAME = "Assistant"
 NO_WINDOW = subprocess.CREATE_NO_WINDOW
 
-MEMORY_DIR = os.getenv("MEMORY_DIR", str(AGENT_DIR / "memory"))
+MEMORY_DIR = settings.default_memory_dir()
 settings.init(MEMORY_DIR)
 
 
