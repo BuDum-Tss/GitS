@@ -27,7 +27,9 @@ def test_montage_is_one_shared_container_in_root_compose_and_waits_for_lease():
     assert svc["image"].startswith("${MONTAGE_IMAGE:-gits-montage:dev")
     assert svc["build"]["context"] == "." and "espeech" in compose["services"]
     core = yaml.safe_load(CORE_COMPOSE.read_text(encoding="utf-8"))
-    assert set(core["services"]) == {"core"} and set(core["volumes"]) == {"memory"}      # в compose ядра монтажа нет
+    assert set(core["services"]) == {"core"} and set(core["volumes"]) == {"memory", "montage_work"}     # сервиса монтажа в compose ядра нет
+    assert core["volumes"]["montage_work"]["external"] is True                                  # том монтажа чужой: ядро его только читает
+    assert "montage_work:/work:ro" in core["services"]["core"]["volumes"]                       # ссылки «Открыть» читают файлы задач
     assert compose["name"] == core["name"] == "gits"                          # один проект: общая сеть gits_default, имя montage резолвится из ядра
     assert "networks" not in compose and "networks" not in core and "network_mode" not in svc
     peers = yaml.safe_load((ROOT / "agent" / "peers.container.yaml").read_text(encoding="utf-8"))

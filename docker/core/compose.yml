@@ -51,9 +51,15 @@ services:
       # папка персонажа с хоста (core/, voice/, pet/, ...), а память в именованном томе поверх: SQLite WAL на bind-mount Windows ненадёжен
       - ${CHARACTER_DIR:-../../resources/GlaDOS}:/data
       - memory:/data/memory
+      # файлы задач монтажа (план, история, черновики): ядро раздаёт их по ссылкам «Открыть» по тем же путям, что видит монтаж
+      - montage_work:/work:ro
+      - ${CHARACTER_DIR:-../../resources/GlaDOS}:/characters/glados:ro
       # auth.json pi с хоста (запись нужна: pi обновляет токены входа); путь меняет GITS_PI_AUTH_FILE
       - ${GITS_PI_AUTH_FILE:-../../services/agent-runtime/auth.json}:/run/pi/auth.json
 
 volumes:
   memory:
     name: gits-${CHARACTER_ID:-glados}-memory
+  montage_work:
+    external: true
+    name: gits-montage-work
