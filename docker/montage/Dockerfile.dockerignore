@@ -2,6 +2,7 @@
 # Белый список: в образ идут только sdk и окружение монтажа; остальное репозитория не нужно.
 *
 !agent/interfaces/workspace
+!agent/clients/gui/vendor/tailwind.css
 !workspaces/montage
 
 # окружения и зависимости хоста (npm ci и pip ставят своё внутри образа)

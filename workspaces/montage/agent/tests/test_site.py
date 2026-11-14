@@ -18,6 +18,21 @@ class FakeManager:
         return {"url": "http://127.0.0.1:8791", "job_id": job_id}
 
 
+async def test_site_stays_available_without_lease(job):
+    store, j = job
+    site = Site(None, port=0, persistent=True)
+    async with TestClient(TestServer(site.app)) as c:
+        idle = await (await c.get("/")).text()
+        assert "никто не использует" in idle and "daisyui@4.12.14" in idle
+        assert (await c.get("/static/ui/vendor/tailwind.css")).status == 200
+        site.manager = FakeManager(store)
+        assert j.job_id in await (await c.get("/")).text()
+        await site.stop()
+        site.manager = None
+        idle_job = await (await c.get(f"/job/{j.job_id}")).text()
+        assert "никто не использует" in idle_job and j.job_id not in idle_job
+
+
 @pytest.fixture
 def job(tmp_path):
     store = JobStore(tmp_path)

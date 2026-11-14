@@ -5,7 +5,7 @@
 `acquire` приносит адрес и токен ядра хозяина: модуль строит клиента и подключается к нему; `release` или обрыв WebSocket
 (у аренды нет срока и продления). `release` при идущих операциях (фоновые рендеры, озвучка, финал) НЕ отменяет их: аренда переходит
 в `releasing` (`on_release` возвращает `False`), связь с ядром остаётся, операции доделываются, и когда активных не осталось, модуль
-сам завершает освобождение (`finish_release`): клиент отключается, сайт гаснет, состояние хозяина забывается. Хозяин может вернуться
+сам завершает освобождение (`finish_release`): клиент отключается, сайт показывает свободный модуль. Хозяин может вернуться
 (`acquire` тем же персонажем). `workspace.afk` аренду не трогает вовсе: окружение остаётся за хозяином, операции идут. Рабочие
 единицы (папки роликов) лежат на диске в папке хозяина и переживают возврат аренды: при повторном входе `recover` их возвращает.
 Обрыв связи с ядром отменяет работающие операции и освобождает аренду сразу.
@@ -22,6 +22,7 @@ from gits_sdk.control import ControlServer, Lease
 
 from layout import DEFAULT, Layout
 from manifest import ENV_OUT_DIR, MANIFEST
+from montage_site import Site
 
 log = logging.getLogger("montage.lease")
 
@@ -48,6 +49,7 @@ class LeaseHost:
         self.characters_root = Path(characters_root) if characters_root else None
         self.connect_timeout = connect_timeout
         self.server: ControlServer | None = None
+        self.site: Site | None = None
         self.client = self.manager = self.task = None
         self.lease: Lease | None = None
         self._out_dir_before: str | None = None
@@ -64,6 +66,8 @@ class LeaseHost:
         self._closing = False
         client, manager = self.build_fn(layout, url=lease.core_url, token=lease.token)
         self.client, self.manager, self.lease = client, manager, lease
+        if self.site is not None:
+            manager.site = self.site
 
         @client.on_disconnect
         async def lost():                          # WebSocket оборвался: аренда отпускается (отдельной задачей, не из потока клиента)
@@ -76,6 +80,8 @@ class LeaseHost:
         except Exception as e:
             await self._teardown()
             raise RuntimeError("не удалось подключиться к ядру хозяина") from e
+        if self.site is not None and self.lease is lease:
+            self.site.manager = manager
         log.info("аренда: подключён к ядру хозяина %s", lease.character)
 
     def active_jobs(self) -> int:
@@ -104,6 +110,8 @@ class LeaseHost:
     async def _teardown(self, cancel: bool = True) -> None:
         """Отменить идущие операции (если cancel), отключить клиента, забыть состояние хозяина."""
         self._closing = True
+        if self.site is not None:
+            self.site.manager = None
         client, manager, task = self.client, self.manager, self.task
         self.client = self.manager = self.task = self.lease = None
         if manager is not None:
@@ -137,6 +145,7 @@ async def serve(build_fn, run_fn, *, env=None) -> int:
     server = ControlServer(id="montage", token=env[ENV_CONTROL_TOKEN], ownership="shared", manifest=MANIFEST,
                            on_acquire=host.acquire, on_release=host.release, jobs=host.active_jobs)
     host.server = server
+    host.site = Site(None, persistent=True)
     await server.start("0.0.0.0", int(env.get(ENV_CONTROL_PORT) or DEFAULT_PORT))
     stop = asyncio.Event()
     try:
@@ -146,7 +155,9 @@ async def serve(build_fn, run_fn, *, env=None) -> int:
     except (NotImplementedError, RuntimeError, ValueError):               # Windows: остановка по Ctrl+C
         pass
     try:
+        await host.site.start()
         await stop.wait()
     finally:
         await server.stop()
+        await host.site.close()
     return 0

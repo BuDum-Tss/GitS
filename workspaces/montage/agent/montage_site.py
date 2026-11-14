@@ -51,22 +51,22 @@ INTRO_MEDIA = {
     "IntroVertical": ("5fb907f9c7bca416514b1ea768a38ab8", "Aperture_Boot_vertical_dark.mp4"),
     "IntroVerticalLight": ("be853705e93c450ae74b3d3a7615ad65", "Aperture_Boot_vertical_light.mp4"),
 }
-STYLE = """body{font:15px/1.5 system-ui,sans-serif;margin:0;background:#f4f4f2;color:#1b1b1b}
-header{background:#111;color:#fff;padding:14px 24px;display:flex;gap:24px;align-items:baseline;flex-wrap:wrap}
-header a{color:#fff;text-decoration:none}main{max-width:1100px;margin:0 auto;padding:20px 24px}
-nav a{margin-right:16px;color:#c55a00;text-decoration:none}nav a.on{font-weight:700;border-bottom:2px solid #c55a00}
-table{border-collapse:collapse;width:100%;background:#fff}td,th{border:1px solid #d8d8d4;padding:6px 10px;text-align:left;vertical-align:top}
-th{background:#ececE8}pre{background:#fff;border:1px solid #d8d8d4;padding:12px;overflow:auto;white-space:pre-wrap}
-.btn{display:inline-block;background:#c55a00;color:#fff;padding:8px 16px;text-decoration:none;border-radius:4px}
+STYLE = """main{max-width:1440px;margin:0 auto;padding:20px 24px}
+h1,h2,h3{font-weight:700;margin:1rem 0 .65rem}
+h1{font-size:1.75rem}h2{font-size:1.35rem}h3{font-size:1.15rem}
+nav a.on{font-weight:700;border-bottom:2px solid currentColor}
+main table{border-collapse:collapse;width:100%}main td,main th{border-bottom:1px solid oklch(var(--b3));padding:8px 12px;text-align:left;vertical-align:top}
+pre{background:oklch(var(--b1));border:1px solid oklch(var(--b3));padding:12px;overflow:auto;white-space:pre-wrap}
 .now{background:#fff3e6;border-left:4px solid #c55a00;padding:8px 12px;margin:8px 0}.warn{background:#fff0c2;border:1px solid #d4a800;padding:8px 12px;font-weight:700}
 .plan{list-style:none;padding:0;margin:6px 0}.plan li{padding:2px 0}.plan .active{font-weight:700;color:#c55a00}.plan .done{color:#4a7a4a}.plan .skipped{color:#8a8a85}.bad{color:#b00020;font-weight:700}
-.muted{color:#6b6b66}.bar{height:10px;background:#c55a00;border-radius:2px;min-width:2px}video,img{max-width:100%}
+.muted{opacity:.7}.bar{height:10px;background:oklch(var(--p));border-radius:2px;min-width:2px}video,img{max-width:100%}
 .browser{display:grid;grid-template-columns:minmax(190px,1fr) minmax(0,3fr);gap:20px;margin-top:20px}
 .file-nav{max-height:75vh;overflow:auto;background:white;padding:12px;border:1px solid #d8d8d4}
 .file-nav a{display:block;margin:0;padding:6px;overflow-wrap:anywhere}.file-nav a[aria-current]{background:#fff3e6}
 .preview{min-width:0;background:white;border:1px solid #d8d8d4;padding:16px;overflow-wrap:anywhere}
 .preview iframe{width:100%;height:65vh;border:0}.preview img,.preview video{max-height:65vh;object-fit:contain}
 .font-sample{font-size:clamp(20px,4vw,42px)}@media(max-width:650px){.browser{grid-template-columns:1fr}.file-nav{max-height:25vh}}"""
+DASHBOARD_CSS = Path(__file__).resolve().parents[3] / "agent/clients/gui/vendor/tailwind.css"
 
 
 def _e(value) -> str:
@@ -75,10 +75,14 @@ def _e(value) -> str:
 
 def _page(title: str, owner: str, body: str) -> web.Response:
     owner_text = f"хозяин: {_e(owner)}" if owner else "хозяина нет"
-    text = (f"<!doctype html><html lang=ru><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+    text = (f"<!doctype html><html lang=ru data-theme=light><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css'>"
+            "<link rel='stylesheet' href='/static/ui/vendor/tailwind.css'>"
             "<link rel='stylesheet' href='/design/components/bundle.css'>"
-            f"<title>{_e(title)}</title><style>{STYLE}</style><header><a href='/'><b class='ap-heading'>Монтаж</b></a>"
-            f"<span>{owner_text}</span></header><main>{body}</main></html>")
+            f"<title>{_e(title)}</title><style>{STYLE}</style><body class='bg-base-200'>"
+            "<div class='navbar bg-base-100 border-b border-base-300 px-4'>"
+            "<a href='/' class='btn btn-ghost text-lg'>Монтаж</a>"
+            f"<span class='badge badge-outline'>{owner_text}</span></div><main>{body}</main></body></html>")
     return web.Response(text=text, content_type="text/html")
 
 
@@ -202,17 +206,29 @@ def _live_script(job_id: str) -> str:
 class Site:
     """HTTP-сервер сайта. `manager` даёт задачи (`store`), хозяина (`layout.owner`) и запуск Studio (`launch_studio`)."""
 
-    def __init__(self, manager, *, host: str | None = None, port: int | None = None):
+    def __init__(self, manager, *, host: str | None = None, port: int | None = None, persistent: bool = False):
         self.manager = manager
         raw = os.environ.get(SITE_PORT_ENV, "").strip()
         self.port = port if port is not None else site_port()
         self.host = host or ("0.0.0.0" if raw else "127.0.0.1")        # в контейнере порт публикует compose
         self._runner: web.AppRunner | None = None
-        self.app = web.Application()
+        self.persistent = persistent
+
+        @web.middleware
+        async def lease_required(request, handler):
+            if self.manager is None and request.path != "/static/ui/vendor/tailwind.css":
+                return _page("Монтаж свободен", "", "<div class='alert'>Сейчас модуль монтажа никто не использует.</div>")
+            return await handler(request)
+
+        self.app = web.Application(middlewares=[lease_required])
         self.app.add_routes([web.get("/", self.index), web.get("/job/{job}", self.job),
                              web.get("/job/{job}/studio", self.studio), web.get("/job/{job}/live", self.live),
                              web.get("/job/{job}/raw/{path:.*}", self.raw), web.get("/job/{job}/view/{path:.*}", self.view),
-                             web.get("/design/{path:.*}", self.design)])
+                             web.get("/design/{path:.*}", self.design),
+                             web.get("/static/ui/vendor/tailwind.css", self.dashboard_css)])
+
+    async def dashboard_css(self, request):
+        return web.FileResponse(DASHBOARD_CSS)
 
     @property
     def owner(self) -> str:
@@ -233,6 +249,10 @@ class Site:
         log.info("сайт монтажа: %s", self.url())
 
     async def stop(self) -> None:
+        if not self.persistent:
+            await self.close()
+
+    async def close(self) -> None:
         if self._runner is not None:
             await self._runner.cleanup()
             self._runner = None
@@ -355,8 +375,43 @@ class Site:
             for rel in list_files(job.folder, technical=True) if rel not in visible
         )
         details = f"<details><summary>Служебные файлы</summary><ul>{technical}</ul></details>" if technical else ""
-        design = self._file_links(job, "design")
+        design = self._design_sections(job)
         return f"{design}<h2>Файлы проекта</h2><table><tr><th>Файл</th><th>Размер</th></tr>{''.join(items)}</table>{details}"
+
+    def _design_sections(self, job) -> str:
+        root = self.manager.layout.character / "design"
+        sections: dict[str, list[Path]] = {}
+        for path in list_files(root, technical=True):
+            section = path.parts[0] if len(path.parts) > 1 else "Обзор"
+            sections.setdefault(section, []).append(path)
+        titles = {"assets": "Медиа", "components": "Компоненты", "fonts": "Шрифты"}
+        links, panels = [], []
+        for index, (section, files) in enumerate(sections.items()):
+            label = titles.get(section, section)
+            anchor = f"design-section-{index}"
+            links.append(f"<li><a href='#{anchor}'>{_e(label)}</a></li>")
+            groups: dict[Path, list[Path]] = {}
+            for path in files:
+                groups.setdefault(path.parent, []).append(path)
+            rows = []
+            for folder, entries in groups.items():
+                readme = safe_file(root, (folder / "README.md").as_posix())
+                description = _read_text(readme).strip().split("\n\n", 1)[0][:360] if readme else ""
+                if folder != Path("."):
+                    rows.append(f"<tr><th colspan='3'>{_e(folder.name)}<div class='muted'>{_e(description)}</div></th></tr>")
+                for path in entries:
+                    rel = path.as_posix()
+                    url = f"/job/{quote(job.job_id)}/view/design/{quote(rel)}"
+                    kind = mimetypes.guess_type(rel)[0] or path.suffix.lstrip(".").upper()
+                    name = folder.name if path.name == "preview.html" else path.name
+                    rows.append(f"<tr><td>{_e(name)}</td><td><a class='btn btn-ghost btn-xs' href='{url}'>Открыть</a></td>"
+                                f"<td class='muted'>{_e(kind)}</td></tr>")
+            panels.append(f"<section id='{anchor}'><h3>{_e(label)}</h3><table class='table table-sm'>"
+                          "<thead><tr><th>Название</th><th>Просмотр</th><th>Тип</th></tr></thead>"
+                          f"<tbody>{''.join(rows)}</tbody></table></section>")
+        return (f"<h2>Библиотека Aperture</h2><div class='browser'><nav aria-label='Разделы дизайна'>"
+                f"<ul class='menu bg-base-100 rounded-box'>{''.join(links)}</ul></nav>"
+                f"<div class='card bg-base-100'><div class='card-body'>{''.join(panels)}</div></div></div>") if panels else ""
 
     def _file_links(self, job, scope: str, selected: str = "") -> str:
         if scope == "design":
