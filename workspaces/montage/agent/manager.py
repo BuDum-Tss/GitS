@@ -161,7 +161,7 @@ class Manager:
             if not p.is_absolute():
                 found = self.layout.resolve_resource(s)                  # короткое имя своего ресурса: design/assets/Intro/...
                 if found is None:
-                    raise ToolError(f"путь должен быть абсолютным или именем своего ресурса (смотри инструмент resources): {s}",
+                    raise ToolError(f"путь должен быть абсолютным или вида resources/... (смотри инструмент resources): {s}",
                                     code="invalid")
                 p = found
             if not p.exists():
@@ -206,15 +206,79 @@ class Manager:
         story = read_json(job.plan_dir / "story.json")
         return validate_plan(plan, self.cmds._plan_context(job, story if isinstance(story, dict) else None))
 
-    def resources_text(self) -> str:
-        """Свои ресурсы монтажа с готовыми путями для `work.create.sources` (пути в том месте, где работает модуль)."""
-        files = self.layout.list_resources()
-        if not files:
+    # русские названия известных папок design/assets; новые папки попадают в каталог под своим именем
+    _GROUP_NAMES = {"room": "Комната", "intro": "Интро", "pet": "Питомец", "hud": "Рамки/HUD", "frames": "Рамки/HUD",
+                    "robots": "Чертежи роботов", "footage": "Кадры игры", "fonts": "Шрифты", "sfx": "Звуки",
+                    "pictograms": "Пиктограммы"}
+    _STYLE_GROUP = "Регламент стиля"
+
+    @classmethod
+    def _group_of(cls, path: str) -> str:
+        """Группа файла по его папке: resources/design/assets/<Папка>/..., resources/assets/<папка>/...; файлы вне папок: регламент."""
+        parts = path.split("/")[1:]
+        if parts[:2] == ["design", "assets"] and len(parts) > 3:
+            key = parts[2]
+        elif parts[:1] in (["assets"], ["design"]) and len(parts) > 2:
+            key = parts[1]
+        else:
+            return cls._STYLE_GROUP
+        return cls._GROUP_NAMES.get(key.lower(), key)
+
+    @staticmethod
+    def _short_names(names: list[str]) -> str:
+        """Имена через запятую; одинаковое начало и расширение сворачиваются: `Aperture_Boot_{dark,light}.mp4`."""
+        if len(names) > 2:
+            exts = {n.rpartition(".")[2] for n in names}
+            stems = [n.rpartition(".")[0] for n in names]
+            pre = os.path.commonprefix(stems)
+            if len(exts) == 1 and len(pre) >= 5 and all(len(x) > len(pre) for x in stems):
+                return pre + "{" + ",".join(x[len(pre):] for x in stems) + "}." + exts.pop()
+        return ", ".join(names)
+
+    def _fit(self, folders: dict[str, list[str]], total: int, limit: int = 200) -> str:
+        """Строка группы: `папка/имя, имя`; не влезает в limit: первые имена и «… (всего N)»."""
+        keep = {f: list(n) for f, n in folders.items()}
+        while True:
+            text = "; ".join(f"{f}{self._short_names(n)}" for f, n in keep.items())
+            if len(text) <= limit or all(len(n) <= 1 for n in keep.values()):
+                return text
+            big = max(keep, key=lambda f: len(keep[f]))
+            keep[big] = keep[big][:max(1, len(keep[big]) * 2 // 3 - 1)]
+            text = "; ".join(f"{f}{self._short_names(n)}" for f, n in keep.items())
+            if len(text) <= limit - 20:
+                return text + f", … (всего {total})"
+
+    def _catalog(self) -> dict[str, list[tuple[str, int]]]:
+        groups: dict[str, list[tuple[str, int]]] = {}
+        for path, size in self.layout.catalog_files():
+            groups.setdefault(self._group_of(path), []).append((path, size))
+        order = [self._STYLE_GROUP, *self._GROUP_NAMES.values()]
+        return {k: groups[k] for k in sorted(groups, key=lambda g: (order.index(g) if g in order else len(order), g))}
+
+    def resources_text(self, group: str | None = None) -> str:
+        """Свои ресурсы монтажа. Без параметра: компактное оглавление по группам (пути в форме раздела files: `resources/...`);
+        с group: полный список файлов группы с размерами."""
+        groups = self._catalog()
+        if not groups:
             return "Ресурсов монтажа у неё нет."
-        lines = ["Ресурсы монтажа (путь годится в sources как есть; читать файлы можно инструментом files в разделе resources):"]
-        lines += [f"{p.as_posix()} ({size // 1024 or 1} КБ)" for p, size in files]
-        lines.append("Регламент стиля: " + self.layout.style.as_posix() + ". Интро, комната, стикеры питомца, рамки, чертежи роботов, "
-                     "шрифты и звуки лежат в design/assets, assets/fonts, assets/sfx.")
+        if group is not None and str(group).strip():
+            want = str(group).strip().casefold()
+            name = next((k for k in groups if k.casefold() == want), None)
+            if name is None:
+                raise ToolError(f"нет группы {group}; группы: {', '.join(groups)}", code="invalid")
+            lines = [f"{name}: {len(groups[name])} файл(ов); пути годятся и в files (раздел resources), и в sources инструмента work:"]
+            lines += [f"{p} ({size // 1024 or 1} КБ)" if size >= 1024 else f"{p} ({size} Б)" for p, size in groups[name]]
+            return "\n".join(lines)
+        lines = ["Ресурсы монтажа; пути как в files, в sources work годятся они и абсолютные. Полный список: resources с group=<имя>."]
+        for name, items in groups.items():
+            folders: dict[str, list[str]] = {}
+            for path, _ in items:
+                folder, _, fname = path.rpartition("/")
+                if fname == "README.md" and "design/assets/" in folder:               # описание папки: в списке группы
+                    continue
+                folders.setdefault(folder + "/", []).append(fname)
+            text = self._fit(folders, len(items))
+            lines.append(f"{name}: {text}")
         return "\n".join(lines)
 
     def _find(self, job_id: str) -> Job:

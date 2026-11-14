@@ -70,7 +70,7 @@ class Layout:
         parts = s.split("/")
         if parts[0] == "resources" and len(parts) > 2 and parts[2] == "montage":
             parts = parts[3:]
-        elif parts[0] == "montage":
+        elif parts[0] in ("resources", "montage"):               # resources/design/...: раздел files, корень = папка montage персонажа
             parts = parts[1:]
         if not parts or ".." in parts:
             return None
@@ -90,6 +90,20 @@ class Layout:
             out.append((p, p.stat().st_size))
             if len(out) >= limit:
                 break
+        return out
+
+    def catalog_files(self) -> list[tuple[str, int]]:
+        """Все файлы ресурсов персонажа в форме раздела files (`resources/...`, от папки montage) и размер: без превью, кода и сборки."""
+        base = self.character
+        out: list[tuple[str, int]] = []
+        if not base.is_dir():
+            return out
+        for p in sorted(base.rglob("*")):
+            rel = p.relative_to(base).parts
+            if (not p.is_file() or rel[0] in ("out", "node_modules") or "components" in rel or "node_modules" in rel
+                    or p.suffix.lower() in (".html", ".css")):
+                continue
+            out.append(("resources/" + "/".join(rel), p.stat().st_size))
         return out
 
     def missing_fonts(self) -> list[str]:

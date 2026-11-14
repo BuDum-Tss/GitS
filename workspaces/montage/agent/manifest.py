@@ -91,7 +91,7 @@ def _tools() -> list[dict]:
                 "brief": {"type": "string", "required": False, "description": "create: что за ролик, своими словами пользователя"},
                 "title": {"type": "string", "required": False, "description": "create: название (по умолчанию из брифа)"},
                 "sources": {"type": "array", "required": False,
-                            "description": "create: абсолютные пути файлов или папок с исходниками; свои ресурсы: пути из инструмента resources"},
+                            "description": "create: пути файлов или папок с исходниками: абсолютные или resources/... (свои ресурсы, как их отдаёт инструмент resources)"},
                 "source_kind": {"type": "string", "enum": list(SOURCE_KINDS), "required": False,
                                 "description": "create: вид исходников; если не задан, определяется по файлам"},
                 "platform": {"type": "string", "enum": list(PLATFORMS), "required": False, "description": "create: площадка; по умолчанию none"},
@@ -119,9 +119,10 @@ def _tools() -> list[dict]:
         },
         {
             "name": "resources",
-            "description": "Какие у неё есть ресурсы для монтажа (интро-заставки, комната, стикеры питомца, рамки, чертежи, шрифты, "
-                           "звуки) и их пути: годятся в sources инструмента work (create). Те же файлы читает files в разделе resources.",
-            "params": {},
+            "description": "Её ресурсы для монтажа (интро, комната, питомец, рамки, чертежи, шрифты, звуки) с путями resources/... "
+                           "(годятся в files и в sources work). Сначала вызови без параметров: это оглавление; потом group=<имя> за списком.",
+            "params": {"group": {"type": "string", "required": False,
+                                 "description": "имя группы из оглавления (Комната, Питомец, Интро...): полный список её файлов с размерами"}},
             "risk": "auto",
             "availability": "always",
             "informative": True,
