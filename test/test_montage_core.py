@@ -1,7 +1,7 @@
 """Модуль монтажа в ядре (ТЗ 20, MON-34): запись в peers.yaml, поиск папки модуля, профиль editing."""
 from pathlib import Path
 
-from services.spaces.profile_manager import load_profiles
+from services.spaces.focus import load_config
 from host.supervisor import Supervisor, load_planned, load_specs
 
 TOKEN = "ab" * 32
@@ -28,7 +28,6 @@ def test_montage_command_is_built_from_the_repo_folder(tmp_path):
     assert env["GITS_ID"] == "montage" and env["GITS_TOKEN"] == TOKEN
 
 
-def test_editing_profile_is_real():
-    editing = load_profiles()["editing"]
-    assert editing.planned is False and editing.focus_modules == ("montage", "desktop")
-    assert editing.memory_scopes == ("montage",)
+def test_montage_space_config_is_real():
+    montage = load_config()[0]["montage"]
+    assert montage.focus == ("montage", "desktop") and montage.memory_scopes == ("montage",)

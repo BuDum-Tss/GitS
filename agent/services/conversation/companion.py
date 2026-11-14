@@ -68,7 +68,7 @@ class Companion:
         self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
         self.environment_note = lambda: ""                      # () -> строка о текущей среде модуля (ставит ядро)
         self.workspace_of = lambda: "assistant"                # () -> текущая среда (WorkspaceManager.current, ставит ядро)
-        self.profile_hint = lambda: ""                         # () -> подсказка тона профиля (ProfileManager.hint)
+        self.profile_hint = lambda: ""                         # () -> подсказка тона текущей среды (SpaceFocus.hint)
         self._rel = rel
         self._people = people if people is not None else RelationshipsAdapter(lambda: self._rel)
         self._llm = llm if llm is not None else FastLLM()

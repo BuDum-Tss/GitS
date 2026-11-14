@@ -21,7 +21,6 @@ DEFAULTS = {
     "pi_thinking": "minimal",   # глубина размышления среды pi: minimal / low / medium / high
     "pi_model_heavy": "gpt-6-sol",   # модель среды pi для тяжёлой работы с кодом (помощник на ПК, монтаж)
     "game_model": "haiku",      # модель игровых ходов и планирования: haiku (быстро, дёшево) / sonnet (думает глубже, дороже)
-    "profile": "auto",          # профиль: auto (сама выбирает) или id профиля из agent/profiles/ (ТЗ 02)
     "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); переключает ядро (core.set_character), не правьте вручную
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (распознавание локальное, GigaAM)

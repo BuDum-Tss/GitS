@@ -50,8 +50,8 @@ class Tool:
     danger: Callable[[dict], str | None] | None = None
     # универсальный запасной инструмент (Claude-помощник): попадает к планировщику при любом отборе
     always: bool = False
-    # видимость планировщику (ТЗ 02, CORE-10): always - в любом профиле; profile - только когда модуль окружения входит
-    # в модули фокуса активного профиля
+    # видимость планировщику (ТЗ 02, CORE-10): always - в любой среде; profile - только когда модуль окружения входит
+    # в модули фокуса текущей среды (services/spaces/focus.py)
     availability: str = "always"
     node: str | None = None       # ТЗ 33: узел рабочего места, в котором виден инструмент (None - всегда)
     timeout_s: int = 150          # сколько маршрутизатор ждёт результат шага (у инструментов модулей - из манифеста)
@@ -126,7 +126,7 @@ class Environment:
     tools: list[Tool] = field(default_factory=list)
     enabled: bool = True
     # модуль окружения: у окружений модулей это id модуля; инструменты availability=profile видны, только когда модуль
-    # входит в модули фокуса активного профиля (services/spaces/profile_manager.py)
+    # входит в модули фокуса текущей среды (services/spaces/focus.py)
     module: str = "core"
     # () -> (доступно ли сейчас, пояснение)
     status: Callable[[], tuple[bool, str]] | None = None

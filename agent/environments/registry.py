@@ -35,7 +35,7 @@ class Registry:
     def __init__(self):
         self.envs: dict[str, Environment] = {}
         self.load_errors: dict[str, str] = {}
-        # () -> модули фокуса активного профиля (profile_manager); None: фокуса нет, видно всё (тесты)
+        # () -> модули фокуса текущей среды (SpaceFocus.focus_modules); None: фокуса нет, видно всё (тесты)
         self.focus = None
         self.embedder = None   # tool_search.ToolEmbeddings: отбор по смыслу (CORE-36); None - только по основам слов
         # (id модуля) -> текущий узел рабочего места, о котором сообщил модуль (ТЗ 33); None: узел неизвестен, видны все

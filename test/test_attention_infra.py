@@ -389,7 +389,7 @@ async def test_wire_modules_connects_attention_everywhere(tmp_path):
     companion = WiredCompanion()
     layer = core_service.wire_modules(companion, Registry(), specs=[])
     att = layer.attention
-    assert companion.attention is att and att.hub is layer.hub and att.modules is layer.modules and att.profiles is layer.profiles
+    assert companion.attention is att and att.hub is layer.hub and att.modules is layer.modules
     assert layer.hub.attention is att and layer.requests.attention is att
     registry = layer.modules.envs
     assert registry.get("attention.set_rule") is not None and registry.get("attention.digest") is not None

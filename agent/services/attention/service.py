@@ -101,7 +101,6 @@ class Attention:
     decider = _Via("ctx", "decider")
     hub = _Via("ctx", "hub")                          # PeerHub: соединения для доставки вопросов, ставит ядро
     modules = _Via("ctx", "modules")                  # PeerRegistry: манифесты, включённость
-    profiles = _Via("ctx", "profiles")                # ProfileManager: веса профиля
     rules = _Via("ctx", "rules")
     presence = _Via("ctx", "presence")
     kind_handlers = _Via("ctx", "kind_handlers")      # kind -> async (Item) -> None: служебные события (ТЗ 11, RW-9)
@@ -174,14 +173,12 @@ class Attention:
 
     # ── подключение: так ядро собирает сервис (остальное ядро не трогает компоненты и контекст напрямую) ────────────
 
-    def connect(self, *, hub=None, modules=None, profiles=None) -> None:
-        """Соединения участников (доставка вопросов), реестр участников (манифесты, включённость), профили (веса)."""
+    def connect(self, *, hub=None, modules=None) -> None:
+        """Соединения участников (доставка вопросов), реестр участников (манифесты, включённость)."""
         if hub is not None:
             self.hub = hub
         if modules is not None:
             self.modules = modules
-        if profiles is not None:
-            self.profiles = profiles
 
     def set_node_watch(self, fn: Callable[[str], dict]) -> None:
         """ТЗ 33: тема -> сдвиг срочности для текущего узла участника."""

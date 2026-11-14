@@ -5,7 +5,7 @@
   - компаньон (companion): разговор, память, проактивность, граф памяти;
   - дашборд (порт 8766, только localhost): состояние, чат, настройки;
   - шина модулей (ТЗ 02): модули подключаются сами по WebSocket (/ws в том же приложении), супервизор запускает и
-    перезапускает их процессы из agent/peers.yaml, профили в agent/profiles/ решают, какие инструменты видны. Telegram
+    перезапускает их процессы из agent/peers.yaml, тон, видимые инструменты и области памяти среды лежат в services/spaces/space_config.yaml. Telegram
     (канал, бот, её аккаунт) это модуль workspaces/telegram (ТЗ 10): в процессе ядра его кода нет. Игра RimWorld это модуль rimworld
     из отдельного репозитория rimworld-module (ТЗ 11): приказы идут его инструментом order, состояние и события приходят по шине.
     Весь звук (микрофон, распознавание, узнавание голосов, синтез, воспроизведение, слух системного звука) это модуль voice
@@ -29,7 +29,7 @@ from services.memory_service import scope as graph_scope
 from services.reflection import service as impulse_service
 from services.memory_service import migration as memory_migration
 from services.tasks import wiring as task_wiring
-from services.spaces import profile_manager
+from services.spaces.focus import SpaceFocus
 from host import settings
 from gits_sdk import protocol as P
 from services.conversation import speech_out
@@ -114,10 +114,10 @@ def wire_modules(companion, registry, *, specs=None,
     companion.attention = attention                      # речь идёт через очередь внимания (ТЗ 03, ATT-13)
     requests = CoreRequests(attention=attention, memory_reader=getattr(companion, "memory_reader", None),
                             memory_writer=getattr(companion, "memory_writer", None))
-    holder: dict = {}                                    # profiles появится ниже, а реестру и шине он нужен уже при создании
-    modules = PeerRegistry(registry, on_state=lambda: (holder["profiles"].poke(), holder["workspaces"].check()))
+    holder: dict = {}                                    # менеджер сред и фокус появятся ниже, а реестру и шине нужны уже при создании
+    modules = PeerRegistry(registry, on_state=lambda: holder["workspaces"].check())
     hub = PeerHub(modules, sink=AttentionEventSink(attention, presence, recorder=_module_event_recorder(modules, attention)), requests=requests,
-                    presence=presence, profile_source=lambda: holder["profiles"].info())
+                    presence=presence, profile_source=lambda: holder["focus"].info())
     hub.attention = attention                            # только для диагностики и тестов: шина работает через sink (ARC-7)
     io.hub = hub
     attention.connect(hub=hub, modules=modules)
@@ -138,7 +138,8 @@ def wire_modules(companion, registry, *, specs=None,
     def on_workspace_change(rec: dict) -> None:
         if link.holder is not None and rec.get("to") != link.holder["module"]:
             link.forget(link.holder["module"])             # среда модуля кончилась: слот свободен
-        holder["profiles"].poke()                          # профиль среды (тон, инструменты) следует за средой
+        events_log.log("profile", f"{rec.get('from')} -> {rec.get('to')}", old=rec.get("from"), new=rec.get("to"))
+        hub.notify("profile", holder["focus"].info())      # тон и видимые инструменты следуют за средой
 
     workspaces = WorkspaceManager(
         activate=enter_module,
@@ -164,31 +165,10 @@ def wire_modules(companion, registry, *, specs=None,
     attention.register_hook("desktop.activity", make_activity_hook(companion))
     attention.register_hook("rimworld.run_ended", make_run_lost_hook())
 
-    async def live_subgraph(profile):
-        """Подграф профиля от первого модуля фокуса с graph: true (запрос graph.get, CORE-22, RW-19); None, если такого нет."""
-        for peer_id in profile.focus_modules:
-            rec = modules.get(peer_id)
-            conn = hub.connection(peer_id)
-            if rec is None or conn is None or not (rec.manifest or {}).get("graph") or not modules.is_enabled(peer_id):
-                continue
-            return await conn.request("graph.get", {}, timeout=SUBGRAPH_TIMEOUT_S)
-        return None
-
-    def foreground():
-        return desktop_state(modules).get("foreground_app")
-
-    def on_profile_change(old: str, new: str):
-        events_log.log("profile", f"{old} -> {new}", old=old, new=new)                # CORE-20
-        hub.notify("profile", holder["profiles"].info())
-
-    profiles = profile_manager.ProfileManager(foreground_app=foreground, module_state=modules.state_data,
-                                              workspace_of=lambda: workspaces.current,
-                                              on_change=on_profile_change, subgraph=live_subgraph)
-    holder["profiles"] = profiles
-    attention.connect(profiles=profiles)
-    profiles.evaluate()
-    registry.focus = profiles.focus_modules
-    companion.profile_hint = profiles.hint
+    focus = SpaceFocus(workspaces, streamer=lambda: bool(settings.load().get("streamer")))
+    holder["focus"] = focus
+    registry.focus = focus.focus_modules
+    companion.profile_hint = focus.hint
     companion.workspace_of = lambda: workspaces.current
 
     def environment_note() -> str:
@@ -238,7 +218,7 @@ def wire_modules(companion, registry, *, specs=None,
                                 switch=lambda cid: layer.character_switch.tool(cid),   # ТЗ 05, CHR-7
                                 workspaces=workspaces)                                  # ТЗ 32: workspace.switch, workspace.status
 
-    layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, profiles=profiles,
+    layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, focus=focus,
                             supervisor=sup, presence=presence, tasks=[], link=link,
                             workspaces=workspaces)
 
@@ -246,7 +226,6 @@ def wire_modules(companion, registry, *, specs=None,
         await hub.start()                                # токен в файл и фоновая сверка настроек
         await leases.refresh()                           # описание и состояние арендуемых пространств (без таймеров: дальше по запросу)
         await attention.start()                          # планировщик речи, сроки фокуса, чистка правил
-        layer.tasks.append(asyncio.get_running_loop().create_task(profiles.run()))
         layer.tasks.append(asyncio.get_running_loop().create_task(workspaces.run()))
         await sup.start()
 
@@ -345,10 +324,10 @@ async def _run(config: dict):
         companion._owner_name(), rel.people_terms(), [f["text"] for f in memory.facts()])      # core.privacy_terms (TG-12)
     graph = GraphMemory(mem_dir, busy=lambda: _time.time() - companion._last_user_ts < 20 or companion.is_speaking())
     companion.graph = graph
-    graph.scopes_of = lambda: list(layer.profiles.current().memory_scopes)        # ТЗ 04, KB-12/13: области графа по профилю
+    graph.scopes_of = layer.focus.memory_scopes        # ТЗ 04, KB-12/13: области графа по текущей среде
     graph.scope_of = graph_scope.make_scope_of(
         layer.attention.decider, graph.scopes_of,
-        lambda s: next((p.description or p.title for p in layer.profiles.profiles.values() if s in p.memory_scopes), s))
+        layer.focus.scope_title)
     http_api.set_graph(graph)
     http_api.set_tasks(lambda: getattr(companion, "tasks", None))
     layer.character_switch = CharacterSwitch(companion=companion, rel=rel, graph=graph, attention=layer.attention,
@@ -360,7 +339,7 @@ async def _run(config: dict):
         companion.memory_writer.loop = loop             # планы из рабочих потоков ставятся задачами в цикл ядра
     except AttributeError:
         pass
-    builtin.register(registry, companion, memory, profiles=layer.profiles)
+    builtin.register(registry, companion, memory)
 
     companion.router = Router(registry, companion.ask_permission)     # вопрос о разрешении формулирует модель по факту
 
@@ -385,7 +364,7 @@ async def _run(config: dict):
     layer.requests.router = companion.router            # core.tool.call от модулей идёт тем же путём, что просьбы
     http_api.set_router(companion.router)              # POST /api/menu_click идёт инструментом desktop.menu_click (DESK-14)
     http_api.set_registry(registry)
-    http_api.set_modes(layer.profiles)
+    http_api.set_focus(layer.focus)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
     layer.requests.tasks = companion.tasks = task_wiring.build(companion, layer.workspaces)    # ТЗ 32, WS-8: общие задачи, напоминания себе и планы
     await _migrate_memory(companion, graph, Path(companion._dir))      # старая memories.json -> граф и задачи (один раз)
@@ -411,9 +390,6 @@ async def _run(config: dict):
     await episodes.start()
     episodes.scheduler.on_state = layer.workspaces.on_sleep_state      # ТЗ 32: сон это среда sleep
     episode_routes.set_service(episodes)
-    if episodes.scheduler is not None:                    # сон это состояние ассистента: профиль sleep, пока идёт разбор памяти
-        layer.profiles.sleeping = lambda: episodes.scheduler.state == "sleeping"
-        episodes.scheduler.on_change = layer.profiles.poke
     layer.requests.episodes = episodes                    # core.memory.episodes
     await impulses.plans.start()                         # планы пользователя -> напоминания себе (без опроса модели, ТЗ 30)
 

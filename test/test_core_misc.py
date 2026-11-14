@@ -1,14 +1,11 @@
 """Мелочи ТЗ 02: настройки peers (CORE-40, прежний ключ modules переносится), инструмент set_profile, видимость старых манифестов, планировщик и задачи."""
 import asyncio
 
-import pytest
 from hub_helpers import FakeCompanion
 
 from host import settings
 from environments import builtin
-from environments.base import ToolError
 from environments.registry import Registry
-from services.spaces.profile_manager import ProfileManager
 from services.tools.router import Router
 from services.memory_service.user import UserMemory
 
@@ -87,32 +84,13 @@ def test_peer_entry_reads_only_peers_key():
     assert settings.peer_entry(cfg, "c") is None
 
 
-def test_profile_setting_default_is_auto():
-    assert settings.load()["profile"] == "auto"
+def test_profile_setting_is_gone():
+    assert "profile" not in settings.DEFAULTS
 
 
 class _Dummy:
     def __getattr__(self, name):
         return None
-
-
-async def test_set_profile_tool_is_rebuilt_on_profiles(tmp_path):
-    reg = Registry()
-    pm = ProfileManager(foreground_app=lambda: None)
-    pm.evaluate()
-    builtin.register(reg, FakeCompanion(), UserMemory(str(tmp_path)), profiles=pm)
-    tool = reg.get("assistant.set_profile")
-    assert tool.params["mode"]["enum"] == pm.choices() and "planned" not in tool.description
-    assert set(tool.params["mode"]["enum"]) == {"auto", "assistant", "work", "rimworld", "editing", "sleep"}
-    assert sum(t.name == "set_profile" for e in reg.envs.values() for t in e.tools) == 1      # не дублируется
-    assert await tool.call({"mode": "work"}) == "профиль: Работа и код"
-    assert settings.load()["profile"] == "work" and pm.current_id == "work"
-    assert "автоматически" in await tool.call({"mode": "auto"})
-    with pytest.raises(ToolError):
-        await tool.call({"mode": "minecraft"})                  # ещё не написан
-    ok, _name, info, _code = await Router(reg, FakeCompanion().say)._step(
-        {"tool": "assistant.set_profile", "args": {"mode": "game"}}, {"assistant.set_profile": tool})
-    assert not ok and "одним из" in info                        # enum из файлов профилей, прежних значений в нём нет
 
 
 def test_core_tools_exist_and_are_always_visible():
@@ -233,3 +211,9 @@ def test_pet_settings_migrate_from_core_settings_to_peers_pet(tmp_path):
     assert "pet_visible" not in saved and saved["peers"]["pet"]["pinned"] is True        # файл переписан
     settings.update(peers={"pet": {"visible": True}})
     assert settings.load()["peers"]["pet"]["visible"] is True and settings.load()["peers"]["pet"]["x"] == 120
+
+
+def test_profile_tool_is_gone_and_scope_follows_the_workspace():
+    reg = Registry()
+    builtin.register(reg, FakeCompanion(), UserMemory("."))
+    assert reg.get("assistant.set_profile") is None

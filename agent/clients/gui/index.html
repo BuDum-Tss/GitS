@@ -96,7 +96,6 @@
           <div id="now-box" class="rounded-box border border-base-300 p-3">
             <div class="flex flex-wrap items-center gap-2">
               <span id="st-env" class="badge badge-primary" title="В какой среде она сейчас"></span>
-              <span id="st-profile" class="badge badge-ghost" title="Профиль: тон и набор инструментов"></span>
               <span id="st-speech" class="badge badge-ghost badge-sm"></span>
               <span id="st-game" class="badge badge-ghost badge-sm"></span>
               <span class="ml-auto flex items-center gap-2">
@@ -523,41 +522,35 @@ function showArch() {
   else setTimeout(() => ARCHV.api.fit(), 0);
 }
 
-// ── профили ──
+// ── фокус среды ──
 const MD = {data: null, caps: [], bound: false};
-// модули текущего режима: по ним фильтруются окружения в «Возможностях»
+// модули текущей среды: по ним фильтруются окружения в «Возможностях»
 function viewModules() {
-  const n = MD.data && MD.data.nodes.find(x => x.id === MD.data.current);
-  return n ? n.modules : ['core'];
+  return MD.data ? ['core', ...(MD.data.focus_modules || [])] : ['core'];
 }
 function stateLine(g) {
-  const sub = g.subgraphs && g.subgraphs[g.current];
-  const live = sub && sub.nodes.find(n => n.current && !n.root);
-  if (live) return live.label + (live.title ? ': ' + live.title : '');
   return g.current === 'sleep' ? 'Идёт разбор памяти' : '';
 }
 const agoText = ts => { const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60)); return m < 1 ? 'только что' : m < 90 ? `${m} мин назад` : `${Math.round(m / 60)} ч назад`; };
-// карточка «Состояние»: только чтение (среда, профиль, речь, игра, цель, последняя смена среды)
+// карточка «Состояние»: только чтение (среда, речь, игра, цель, последняя смена среды)
 const ST = {last: null};
 function renderNow() {
   const g = MD.data, st = ST.last, w = WS.last;
   if (!g) return;
-  const cur = g.nodes.find(n => n.id === g.current) || {};
   const sleeping = g.current === 'sleep';
   $('st-env').textContent = w ? w.title : 'Ассистент';
-  $('st-profile').textContent = 'профиль: ' + (cur.label || g.current || '—');
   const pr = (st && st.presence) || {};
   $('st-speech').textContent = pr.speaking ? 'говорит' : (pr.busy ? 'занята' : 'молчит');
   $('st-game').textContent = st && st.connected ? `игра: ${st.colony_name || 'онлайн'}${st.mode && st.mode.label ? ', ' + st.mode.label : ''}` : 'игра не запущена';
   $('now-goal').textContent = w && w.current !== 'assistant'
     ? `Цель: ${w.goal || '—'}${w.since ? ` (с ${new Date(w.since * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})})` : ''}`
     : (sleeping ? 'Спит: идёт разбор памяти.' : 'Наблюдает за компьютером, на связи.');
-  $('now-meta').textContent = stateLine(g) || cur.title || '';
+  $('now-meta').textContent = stateLine(g) || g.title || '';
   const last = w && (w.history || []).slice(-1)[0];
   $('now-last').textContent = last ? `Последняя смена среды: ${last.from} → ${last.to} (${last.reason}), ${agoText(last.ts)}` : '';
 }
 async function loadModes() {
-  const g = await (await fetch('/api/modes')).json();
+  const g = await (await fetch('/api/space')).json();
   MD.data = g;
   if ($('tab-status').classList.contains('hidden')) return;
   renderNow();

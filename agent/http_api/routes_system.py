@@ -170,35 +170,12 @@ async def handle_api_capabilities(request: web.Request) -> web.Response:
     return web.json_response({"environments": ctx.registry.snapshot(), "errors": ctx.registry.load_errors})
 
 
-async def handle_api_modes(request: web.Request) -> web.Response:
-    """Граф профилей: состояния, переходы, подграфы (живые - от модулей профиля)."""
-    if ctx.profiles is None:
-        return web.json_response({"nodes": [], "edges": [], "current": None})
-    g = await ctx.profiles.graph()
-    g["flags"] = {"streamer": bool(ctx.settings.load().get("streamer"))}   # стример: не профиль, а переключатель состояния
-    g["sleep"] = episode_routes.sleep_status()                              # сон памяти: состояние «Сон» и его ход
-    return web.json_response(g)
-
-
-async def handle_api_mode_post(request: web.Request) -> web.Response:
-    """Ручной выбор состояния: {"mode": "rimworld"}, {"mode": "auto"} (пишет настройку profile) или {"mode": "sleep"} (уснуть сейчас)."""
-    body, err = await raw_json_body(request)
-    if err:
-        return err
-    if ctx.profiles is None:
-        return web.json_response({"error": "режимы не подключены"}, status=503)
-    mode = body.get("mode")
-    if mode == "sleep":                                       # сон это состояние: «уснуть сейчас», ввод и разговор не будят
-        if not episode_routes.force_sleep():
-            return web.json_response({"error": "сон недоступен: эпизоды не подключены или сон как раз прерывают"}, status=503)
-        ctx.profiles.evaluate()
-        return web.json_response({"current": ctx.profiles.current_id, "override": ctx.profiles.override})
-    if mode not in (None, "", "auto"):
-        episode_routes.wake("состояние выбрано вручную")      # любое другое состояние будит
-    problem = ctx.profiles.set_override(mode)
-    if problem:
-        return web.json_response({"error": problem}, status=400)
-    return web.json_response({"current": ctx.profiles.current_id, "override": ctx.profiles.override})
+async def handle_api_focus(request: web.Request) -> web.Response:
+    """Фокус текущей среды: её id и название, модули, чьи инструменты видны, переключатель стримера и ход сна памяти."""
+    info = ctx.focus.info() if ctx.focus is not None else {"id": "assistant", "title": "Ассистент", "focus_modules": []}
+    return web.json_response({"current": info["id"], "title": info["title"], "focus_modules": info["focus_modules"],
+                              "flags": {"streamer": bool(ctx.settings.load().get("streamer"))},
+                              "sleep": episode_routes.sleep_status()})
 
 
 async def handle_api_menu_click(request: web.Request) -> web.Response:
@@ -267,8 +244,7 @@ ROUTES = [
     ("POST", "/api/rating", handle_api_rating),
     ("GET", "/api/decisions", handle_api_decisions),
     ("GET", "/api/capabilities", handle_api_capabilities),
-    ("GET", "/api/modes", handle_api_modes),
+    ("GET", "/api/space", handle_api_focus),
     ("POST", "/api/appraisal_label", handle_api_appraisal_label),
     ("POST", "/api/menu_click", handle_api_menu_click),
-    ("POST", "/api/mode", handle_api_mode_post),
 ]

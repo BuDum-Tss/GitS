@@ -120,7 +120,7 @@ def make_layer(tmp_path):
 def test_profile_idle_and_activity_come_from_the_desktop_state(tmp_path):
     layer = make_layer(tmp_path)
     comp = layer.attention.companion
-    assert layer.profiles._foreground() is None and comp.idle_seconds() == 0.0 and comp.screen_activity() is None
+    assert layer.modules.state_data("desktop") is None and comp.idle_seconds() == 0.0 and comp.screen_activity() is None
     manifest = {"id": "desktop", "role": "workspace", "ownership": "shared", "title": "Компьютер", "description": "Экран", "version": "1.0.0", "tools": []}
     layer.modules.declare("desktop")
     layer.modules.on_connected(SimpleNamespace(id="desktop", manifest=manifest, instance="i1", pid=1,
@@ -128,7 +128,7 @@ def test_profile_idle_and_activity_come_from_the_desktop_state(tmp_path):
     activity = {"app": "code", "category": "coding", "summary": "пишет код", "ts": 1.0, "since": 1.0}
     layer.modules.set_state("desktop", "код; простой 700 с", {"foreground_app": "code", "sensitive": False,
                                                               "idle_s": 700.0, "activity": activity})
-    assert layer.profiles._foreground() == "code"
+    assert layer.modules.state_data("desktop")["foreground_app"] == "code"
     assert comp.idle_seconds() == 700.0 and comp.screen_activity() == activity
 
 

@@ -21,7 +21,7 @@ async def serve(tmp_path, specs=()):
     http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
     http_api.set_presence(companion.presence)
     http_api.set_registry(registry)
-    http_api.set_modes(layer.profiles)
+    http_api.set_focus(layer.focus)
     runner = web.AppRunner(http_api.build_app())
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", port).start()
@@ -73,15 +73,9 @@ async def test_dashboard_module_settings_mode_approval_and_job_endpoints(tmp_pat
             await post("/api/jobs/cfg/j-00000000/answer", {"question_id": "q", "answer": True}, 400)
             assert await get("/api/jobs") == []
 
-            # профили: ручной выбор, неготовый профиль отклоняется, auto возвращает автоматику (CORE-22)
-            g = await get("/api/modes")
-            assert g["current"] == "assistant" and g["override"] is None
-            await post("/api/mode", {"mode": "work"})
-            g = await get("/api/modes")
-            assert g["current"] == "work" and g["override"] == "work" and settings.load()["profile"] == "work"
-            await post("/api/mode", {"mode": "minecraft"}, 400)
-            await post("/api/mode", {"mode": "auto"})
-            assert (await get("/api/modes"))["current"] == "assistant"
+            # фокус среды: текущая среда и видимые модули
+            g = await get("/api/space")
+            assert g["current"] == "assistant" and "desktop" in g["focus_modules"] and "streamer" in g["flags"]
 
             # вопросы: кнопки choice и text в /api/approval (CORE-30)
             ask = asyncio.create_task(approvals.ask("choice", "Какой?", ["красный", "синий"], source="cfg"))
@@ -113,7 +107,7 @@ async def test_dashboard_module_settings_mode_approval_and_job_endpoints(tmp_pat
 async def test_core_dashboard_routes_remain_after_old_game_channels_were_removed():
     app = http_api.build_app()
     routes = {(r.method, r.resource.canonical) for r in app.router.routes() if r.resource is not None}
-    for r in (("GET", "/api/modes"), ("POST", "/api/mode"), ("GET", "/api/state"), ("POST", "/api/chat"),
+    for r in (("GET", "/api/space"), ("GET", "/api/state"), ("POST", "/api/chat"),
               ("POST", "/api/approval"), ("POST", "/api/appraisal_label")):
         assert r in routes, r
     assert ("GET", "/api/workspaces") in routes and ("GET", "/api/services") in routes and ("GET", "/api/modules") not in routes and ("POST", "/api/peers/{id}/enabled") in routes

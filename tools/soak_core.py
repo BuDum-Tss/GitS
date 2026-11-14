@@ -246,7 +246,7 @@ class Soak:
         http_api.set_attention(self.layer.attention)
         http_api.set_presence(presence)
         http_api.set_registry(registry)
-        http_api.set_modes(self.layer.profiles)
+        http_api.set_focus(self.layer.focus)
         loop = asyncio.get_running_loop()
         http_api.ctx.chat_callback = lambda msg: loop.create_task(self.layer.io.from_dashboard(msg))
         self.runner = web.AppRunner(http_api.build_app(), shutdown_timeout=2)

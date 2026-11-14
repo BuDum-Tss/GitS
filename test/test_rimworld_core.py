@@ -89,19 +89,6 @@ class Wired:
         await asyncio.wait_for(waiter(), timeout)
 
 
-# ── RW-19, CORE-22: подграф профиля через graph.get ─────────────────────────────────────────────
-
-async def test_profile_subgraph_comes_from_the_game_module(tmp_path, monkeypatch):
-    async with Wired(tmp_path, monkeypatch) as w:
-        before = (await w.layer.profiles.graph())["subgraphs"]["rimworld"]
-        assert before["live"] is False                                                     # модуля нет: запасной граф ядра
-        client = w.client()
-        async with running_client(client, _core_of(w)):
-            live = (await w.layer.profiles.graph())["subgraphs"]["rimworld"]
-            assert live["live"] is True and live["current"] == "build"
-            assert {n["id"] for n in live["nodes"]} == {"agent", "build"}
-
-
 # ── RW-9: список колонистов обновляет отношения и граф памяти ───────────────────────────────────
 
 async def test_colonists_event_updates_relationships_and_graph(tmp_path):
@@ -170,7 +157,7 @@ def test_old_game_agent_channels_are_gone():
     for path in ("/api/say", "/api/speech_status", "/api/emotion", "/api/event", "/api/tool", "/api/web_search",
                  "/api/claude_usage"):
         assert not {m for m, p in routes if p == path}, path
-    for kept in (("GET", "/api/modes"), ("GET", "/api/state"), ("POST", "/api/appraisal_label"), ("POST", "/api/menu_click")):
+    for kept in (("GET", "/api/space"), ("GET", "/api/state"), ("POST", "/api/appraisal_label"), ("POST", "/api/menu_click")):
         assert kept in routes, kept
     assert not (AGENT / "game_bridge.py").exists()
     assert not (AGENT / "environments" / "manifests" / "rimworld.json").exists()

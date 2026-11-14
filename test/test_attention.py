@@ -71,7 +71,6 @@ class Rig:
         self.att = Attention(self.companion, self.io, clock=self.clock, decider=self.decider,
                              settings_source=lambda: self.cfg, rules_file=tmp_path / "rules.json",
                              idle_source=lambda: self.idle, autopump=False)
-        self.att.profiles = FakeProfiles(weights)
         self.modules = FakeModules()
         self.att.modules = self.modules
 

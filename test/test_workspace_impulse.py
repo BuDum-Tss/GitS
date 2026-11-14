@@ -130,7 +130,7 @@ async def test_game_start_does_not_change_the_workspace(world):
     await game.client.event("rimworld.game_started", "Игра RimWorld запущена.", urgency_hint=1)
     await asyncio.sleep(0.4)
     assert world.workspaces.current == ASSISTANT and game.calls == []
-    assert world.profiles.current_id != "rimworld"
+    assert world.focus.info()["id"] != "rimworld"
 
 
 async def test_user_message_enters_the_module_workspace_and_the_profile_follows(world):
@@ -139,7 +139,7 @@ async def test_user_message_enters_the_module_workspace_and_the_profile_follows(
     assert "Rimworld" in res
     assert (world.workspaces.current, world.workspaces.reason) == ("rimworld", Reason.USER)
     assert game.calls == ["workspace.enter"]
-    assert world.profiles.current_id == "rimworld"                               # тон и инструменты следуют за средой
+    assert world.focus.info()["id"] == "rimworld"                               # тон и инструменты следуют за средой
     assert world.link.holder["module"] == "rimworld"
     status = await tool(world, "workspace.status").call({})
     assert "Rimworld" in status

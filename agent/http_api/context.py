@@ -31,7 +31,7 @@ class DashboardContext:
     supervisor: Any = None         # Supervisor
     presence: Any = None           # PresenceTracker
     registry: Any = None           # реестр окружений
-    profiles: Any = None           # ProfileManager
+    focus: Any = None              # SpaceFocus (текущая среда: видимые модули)
     router: Any = None             # Router (POST /api/menu_click)
     graph: Any = None              # GraphMemory
     tasks: Callable[[], Any] | None = None   # () -> TaskService (цели и планы во вкладке «Память»)

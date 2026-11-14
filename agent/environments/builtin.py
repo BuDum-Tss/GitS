@@ -28,9 +28,8 @@ def _tool(env, name, description, params, call, risk="auto", keywords=(), self_c
                 informative=informative)
 
 
-def register(registry, companion, memory, profiles=None):
-    """Собрать и добавить встроенные окружения. Все объекты живут в одном процессе ядра.
-    profiles - ProfileManager (services/spaces/profile_manager.py): нужен инструменту assistant.set_profile."""
+def register(registry, companion, memory):
+    """Собрать и добавить встроенные окружения. Все объекты живут в одном процессе ядра."""
 
     # ── сама ассистентка: её настройки и память ───────────────────────────────
 
@@ -41,16 +40,6 @@ def register(registry, companion, memory, profiles=None):
     async def set_vision(a):
         settings.update(vision=a["enabled"])
         return "зрение включено" if a["enabled"] else "зрение выключено, на экран больше не смотрит"
-
-    profile_ids = profiles.choices() if profiles is not None else ["auto"]
-
-    async def set_profile(a):
-        if profiles is None:
-            raise ToolError("профили не подключены")
-        err = profiles.set_override(a["mode"])
-        if err:
-            raise ToolError(err)
-        return "профиль выбирается автоматически" if a["mode"] == "auto" else f"профиль: {profiles.current().title}"
 
     async def set_streamer(a):
         settings.update(streamer=a["enabled"])
@@ -248,10 +237,6 @@ def register(registry, companion, memory, profiles=None):
             _tool("assistant", "set_vision", "Включить или выключить зрение: слежение за активным окном на экране.",
                   {"enabled": bool_p("true - смотреть на экран, false - не смотреть")}, set_vision,
                   keywords=("зрение", "экран", "смотри", "отвернись", "подглядывай")),
-            _tool("assistant", "set_profile", "Выбрать профиль (чем она сейчас занята): " + " / ".join(profile_ids) + ". "
-                  "auto: сама определяет по окну и играм. Для просьб «я работаю, веди себя тише», «режим игры», «определяй сама».",
-                  {"mode": {"type": "string", "description": " / ".join(profile_ids), "enum": profile_ids}},
-                  set_profile, keywords=("режим", "работаю", "работа", "играю", "тише", "профиль")),
             _tool("assistant", "set_streamer", "Включить или выключить РЕЖИМ СТРИМЕРА: в игре она вслух ведёт стрим (что видит, "
                   "о чём думает, планы, цель, задачи). Для просьб «начинай стрим», «комментируй игру», «режим стримера», «хватит стримить».",
                   {"enabled": bool_p("true - включить режим стримера, false - выключить")}, set_streamer,

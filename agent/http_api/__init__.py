@@ -33,7 +33,7 @@ from .routes_peers import (  # noqa: F401
     handle_api_workspaces)
 from .routes_system import (  # noqa: F401
     handle_api_appraisal_label, handle_api_capabilities, handle_api_character_post, handle_api_decisions,
-    handle_api_events, handle_api_latency, handle_api_menu_click, handle_api_mode_post, handle_api_modes,
+    handle_api_events, handle_api_latency, handle_api_menu_click, handle_api_focus,
     handle_api_rating, handle_api_settings_post, handle_api_state, handle_root)
 
 logger = logging.getLogger("dashboard")
@@ -54,8 +54,8 @@ def set_registry(registry):
     ctx.registry = registry
 
 
-def set_modes(manager):
-    ctx.profiles = manager
+def set_focus(focus):
+    ctx.focus = focus
 
 
 def set_router(router):
