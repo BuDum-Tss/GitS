@@ -22,6 +22,15 @@
     body.dragging-split { cursor: col-resize; user-select: none; }
   }
   .bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .resource-tree, .resource-tree ul { list-style: none; margin: 0; padding: 0; }
+  .resource-tree ul { margin-left: .65rem; padding-left: .65rem; border-left: 1px solid oklch(var(--b3)); }
+  .resource-tree summary, .resource-tree a { display: block; padding: .2rem .4rem; border-radius: .25rem; overflow-wrap: anywhere; }
+  .resource-tree summary { cursor: pointer; list-style: none; }
+  .resource-tree summary::-webkit-details-marker { display: none; }
+  .resource-tree summary::before { content: '›'; display: inline-block; width: 1rem; }
+  .resource-tree details[open] > summary::before { transform: rotate(90deg); }
+  .resource-tree a { padding-left: 1.4rem; }
+  .resource-tree summary:hover, .resource-tree a:hover { background: oklch(var(--b2)); }
 </style>
   <script src="/static/ui/vendor/cytoscape.min.js"></script>
 </head>
@@ -350,11 +359,10 @@
       <div id="tab-resources" class="card bg-base-100 shadow-sm min-h-0 hidden flex flex-col">
         <div class="card-body scroll-y">
           <div class="flex gap-2 items-center">
-            <button id="resources-up" class="btn btn-sm" type="button" disabled>Вверх</button>
-            <span id="resources-path" class="font-mono">/</span>
+            <span class="font-semibold">Общие ресурсы</span>
             <button id="resources-refresh" class="btn btn-ghost btn-sm" type="button">Обновить</button>
           </div>
-          <ul id="resources-list" class="menu w-full" aria-live="polite"></ul>
+          <ul id="resources-list" class="resource-tree w-full"></ul>
         </div>
       </div>
 
@@ -471,45 +479,55 @@ document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   if (tab.dataset.tab === 'status') { loadModes().catch(() => {}); loadWorkspace().catch(() => {}); loadBuffer().catch(() => {}); }
   if (paneOf(tab.dataset.tab) === 'peers') { setPeerRole(tab.dataset.tab === 'services' ? 'service' : 'workspace'); loadModules().catch(() => {}); }
   if (tab.dataset.tab === 'memory') { loadFacts().catch(() => {}); loadThoughts().catch(() => {}); }
-  if (tab.dataset.tab === 'resources') { loadResources(''); }
+  if (tab.dataset.tab === 'resources') { loadResourceBranch('', $('resources-list')); }
 });
 
-let resourceFolder = '';
-let resourceRequest = 0;
-async function loadResources(folder) {
-  const request = ++resourceRequest;
-  resourceFolder = folder;
-  $('resources-path').textContent = '/' + folder;
-  $('resources-up').disabled = !folder;
-  const list = $('resources-list');
-  list.textContent = 'Загрузка…';
+const openResourceFolders = new Set();
+async function loadResourceBranch(folder, list) {
+  const message = document.createElement('li');
+  message.className = 'opacity-60 px-2';
+  message.textContent = 'Загрузка…';
+  list.replaceChildren(message);
   try {
     const response = await fetch('/api/resources?' + new URLSearchParams({folder}));
     if (!response.ok) throw new Error('resources');
     const entries = await response.json();
-    if (request !== resourceRequest) return;
-    list.textContent = entries.length ? '' : 'Папка пуста';
+    if (!message.isConnected) return;
+    if (!entries.length) { message.textContent = 'Папка пуста'; return; }
+    list.replaceChildren();
     for (const entry of entries) {
       const row = document.createElement('li');
-      const item = document.createElement(entry.directory ? 'button' : 'a');
-      item.textContent = entry.name + (entry.directory ? '/' : '');
       if (entry.directory) {
-        item.type = 'button';
-        item.onclick = () => loadResources(entry.path);
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        const children = document.createElement('ul');
+        summary.textContent = entry.name;
+        details.append(summary, children);
+        row.append(details);
+        details.open = openResourceFolders.has(entry.path);
+        details.ontoggle = () => {
+          if (details.open) {
+            openResourceFolders.add(entry.path);
+            if (!children.hasChildNodes()) loadResourceBranch(entry.path, children);
+          } else {
+            openResourceFolders.delete(entry.path);
+          }
+        };
       } else {
+        const item = document.createElement('a');
+        item.textContent = entry.name;
         item.href = '/api/resource-file?' + new URLSearchParams({path: entry.path});
         item.target = '_blank';
         item.rel = 'noopener noreferrer';
+        row.append(item);
       }
-      row.append(item);
       list.append(row);
     }
   } catch {
-    if (request === resourceRequest) list.textContent = 'Не удалось открыть папку';
+    message.textContent = 'Не удалось открыть папку';
   }
 }
-$('resources-up').onclick = () => loadResources(resourceFolder.split('/').slice(0, -1).join('/'));
-$('resources-refresh').onclick = () => loadResources(resourceFolder);
+$('resources-refresh').onclick = () => loadResourceBranch('', $('resources-list'));
 
 // ── графы на Cytoscape.js: цвета берутся из темы DaisyUI, поэтому графы вписаны в интерфейс ──
 const THEME = {key: '', c: {}};
