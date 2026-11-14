@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import socket
 import time
 import urllib.request
@@ -28,10 +29,29 @@ class StudioError(RuntimeError):
     """Studio не поднялся (текст для агента и журнала)."""
 
 
+PORTS_ENV = "MONTAGE_STUDIO_PORTS"    # "8790-8794": порты Studio в контейнере (compose публикует их на хост), без переменной любой свободный
+
+
+def _port_range() -> range | None:
+    raw = os.environ.get(PORTS_ENV, "").strip()
+    try:
+        lo, _, hi = raw.partition("-")
+        return range(int(lo), int(hi or lo) + 1) if raw else None
+    except ValueError:
+        return None
+
+
 def free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])
+    """Свободный порт Studio: из диапазона `MONTAGE_STUDIO_PORTS` (чтобы его можно было опубликовать из контейнера) или любой."""
+    ports = _port_range()
+    for port in (ports or [0]):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("0.0.0.0" if ports else "127.0.0.1", port))
+            except OSError:
+                continue
+            return int(s.getsockname()[1])
+    raise StudioError(f"нет свободного порта Studio в {os.environ.get(PORTS_ENV)}: закрой лишние Studio")
 
 
 def _answers(url: str) -> bool:

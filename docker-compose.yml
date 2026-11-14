@@ -101,10 +101,14 @@ services:
       # рабочая память (папки задач jobs/<персонаж>, обучающий журнал) в общем томе, а не в слое контейнера
       MEMORY_DIR: /work
       MONTAGE_JOBS_DIR: /work/jobs
+      # Remotion Studio задач: порты из этого диапазона опубликованы на хост (ниже), адрес Studio http://127.0.0.1:<порт>
+      MONTAGE_STUDIO_PORTS: "8790-8794"
       # вход pi по подписке (секрет): путь внутри контейнера; сам файл монтируется ниже, в образ он не копируется
       GITS_PI_AUTH: /run/pi/auth.json
     expose:
       - "8780"
+    ports:
+      - "127.0.0.1:8790-8794:8790-8794"
     healthcheck:
       test: ["CMD", "python", "-c", "import os,urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:8780/status', headers={'Authorization': 'Bearer ' + os.environ['GITS_CONTROL_TOKEN']}), timeout=3)"]
       interval: 15s
