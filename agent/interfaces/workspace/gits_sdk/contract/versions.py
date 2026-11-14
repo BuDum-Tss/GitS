@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .. import protocol as P
 
-CONTRACT_VERSION = "3.0"
+CONTRACT_VERSION = "3.1"
 PROTOCOL = P.PROTOCOL
 
 # версия контракта, в которой появился элемент (поле `since` у Message): "1.0" - исходный состав ТЗ 01
@@ -47,6 +47,8 @@ HISTORY = (
             "workspace.resume без изменений"),
     ("3.0", "PROTOCOL 3, только pi: удалены запросы core.claude_usage и core.claude.locate, тема battery и поле battery в welcome "
             "(батарейки Claude нет), клиентские методы claude_usage, claude_locate, поле client.battery и модуль claude_path"),
+    ("3.1", "core.tts и tts.synthesize: необязательное поле volume_path в ответе (файл относительно папки персонажа: участники "
+            "в контейнерах обмениваются файлами через общий том персонажа, `shared/tts/`)"),
 )
 
 # Устаревшее: (элемент, дата удаления, чем заменить)

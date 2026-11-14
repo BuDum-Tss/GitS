@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import secrets
+import shutil
 import time
 import wave
 from collections import deque
@@ -85,12 +86,14 @@ def _wav_ms(path: Path) -> int:
 
 class VoiceModule:
     def __init__(self, client: ServiceClient, *, fake: bool | None = None, player=None, stt=None,
-                 tmp_dir: Path | None = None, synth=None):
+                 tmp_dir: Path | None = None, synth=None, shared_dir: Path | None = None):
         """fake (или GITS_VOICE_FAKE=1): синтез пишет тишину, воспроизведение только ждёт, микрофон и слух не запускаются.
         player / stt / synth(текст, папка) -> путь подменяют части в тестах."""
         self.client = client
         self.fake = common.fake_mode() if fake is None else fake
         self.tmp = Path(tmp_dir) if tmp_dir is not None else common.temp_dir()
+        # готовые звуки для других участников (монтаж в контейнере): общий том персонажа, а не временная папка хоста
+        self.shared = Path(shared_dir) if shared_dir is not None else (None if tmp_dir is not None else common.shared_tts_dir())
         self._synth_blocking = synth or (fake_synth_file if self.fake else self._synth_file)
         self.stt = stt or STTClient(on_change=self._stt_changed)
         self.outbox = Outbox(client)
@@ -153,6 +156,8 @@ class VoiceModule:
     async def _sweep_loop(self) -> None:
         while True:
             removed = await asyncio.to_thread(common.sweep_dir, self.tmp)
+            if self.shared is not None:
+                removed += await asyncio.to_thread(common.sweep_dir, self.shared)
             if removed:
                 log.info(f"временная папка: удалено старых файлов {removed}")
             await asyncio.sleep(SWEEP_EVERY_S)
@@ -285,25 +290,26 @@ class VoiceModule:
         src = await self._synth(text)                                  # блокирующий синтез уходит в поток
         if not src:
             raise ToolError("синтез речи не удался", code="unavailable")
-        await asyncio.to_thread(self.tmp.mkdir, parents=True, exist_ok=True)
+        out_dir = self.shared or self.tmp
+        await asyncio.to_thread(out_dir.mkdir, parents=True, exist_ok=True)
         name = "tts_" + secrets.token_hex(6)
-        wav = self.tmp / (name + ".wav")
+        wav = out_dir / (name + ".wav")
         try:
             if str(src).lower().endswith(".wav"):
-                await asyncio.to_thread(Path(src).replace, wav)
+                await asyncio.to_thread(shutil.move, str(src), str(wav))        # временная папка и том могут быть на разных дисках
                 src = None
             else:
                 import opus_encoder
                 await opus_encoder.audio_file_to_wav_file(str(src), str(wav))
             duration = await asyncio.to_thread(_wav_ms, wav)
             if fmt == "wav":
-                return {"path": str(wav), "duration_ms": duration}
+                return self._answer(wav, duration)
             import opus_encoder
             data = await opus_encoder.audio_file_to_ogg_opus(str(wav))
-            ogg = self.tmp / (name + ".ogg")
+            ogg = out_dir / (name + ".ogg")
             await asyncio.to_thread(ogg.write_bytes, data)
             await asyncio.to_thread(self._unlink, wav)
-            return {"path": str(ogg), "duration_ms": duration}
+            return self._answer(ogg, duration)
         except ToolError:
             raise
         except Exception as e:
@@ -311,6 +317,16 @@ class VoiceModule:
         finally:
             if src:
                 await asyncio.to_thread(self._unlink, src)
+
+    def _answer(self, file: Path, duration: int) -> dict:
+        """Ответ tts.synthesize: путь у хоста и, если файл лежит в общем томе персонажа, путь относительно папки персонажа."""
+        out = {"path": str(file), "duration_ms": duration}
+        if self.shared is not None:
+            try:
+                out["volume_path"] = file.relative_to(self.shared.parents[1]).as_posix()      # shared/tts/<имя>
+            except ValueError:
+                pass
+        return out
 
     # ── обработчики ядра ─────────────────────────────────────────────────────
 

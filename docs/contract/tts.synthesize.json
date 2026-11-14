@@ -53,6 +53,10 @@
         "type": "integer",
         "description": "длительность, мс",
         "minimum": 0
+      },
+      "volume_path": {
+        "type": "string",
+        "description": "файл относительно папки персонажа (лежит в `shared/tts/` тома)"
       }
     },
     "additionalProperties": true,

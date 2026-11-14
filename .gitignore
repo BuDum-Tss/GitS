@@ -41,6 +41,7 @@ services/agent-runtime/memory/
 
 # память персонажа в томе контейнера (CHARACTER_HOME/memory), в репозиторий не входит
 resources/*/memory/
+resources/*/shared/
 
 # готовые ролики монтажа (MONTAGE_OUT_DIR в контейнере: CHARACTER_HOME/montage/out)
 resources/*/montage/out/

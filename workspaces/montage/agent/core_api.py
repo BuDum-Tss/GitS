@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from pathlib import Path
 from typing import Protocol
 
 from gits_sdk import WorkspaceClient, ToolError
@@ -28,8 +30,9 @@ class CoreAPI(Protocol):
 class ClientCore:
     """Реализация поверх WorkspaceClient."""
 
-    def __init__(self, client: WorkspaceClient):
+    def __init__(self, client: WorkspaceClient, volume: Callable[[], Path | None] = lambda: None):
         self.client = client
+        self._volume = volume
 
     @property
     def settings(self) -> dict:
@@ -40,19 +43,29 @@ class ClientCore:
         """Общие настройки ядра (`shared_settings` манифеста): `pi_model_heavy`, `pi_thinking`."""
         return self.client.settings
 
-    @property
-    def sleeping(self) -> bool:
-        return bool((self.client.battery or {}).get("sleeping"))
-
     async def tts(self, text: str, emotion: str = "neutral") -> dict:
         """core.tts -> {"path", "duration_ms"}: синтез её голосом в файл (модуль голоса, ТЗ 12)."""
         try:
             res = await self.client.tts(text, emotion, "wav", timeout=TTS_TIMEOUT_S)
         except (KeyError, TypeError, ValueError) as e:
             raise ToolError("ядро вернуло неверный ответ на core.tts", code="internal") from e
+        shared = self._volume_file(res.volume_path)
+        if shared is not None:                      # общий том персонажа: тот же файл, но по пути этого контейнера
+            return {"path": str(shared), "duration_ms": res.duration_ms}
         if not res.path:
             raise ToolError("ядро вернуло неверный ответ на core.tts", code="internal")
         return {"path": res.path, "duration_ms": res.duration_ms}
+
+    def _volume_file(self, rel: str | None) -> Path | None:
+        """Файл из общего тома персонажа по пути относительно его папки; нет такого или путь выходит за том: None."""
+        root = self._volume()
+        if not rel or root is None:
+            return None
+        parts = rel.replace("\\", "/").lstrip("/").split("/")
+        if ".." in parts:
+            return None
+        p = Path(root).joinpath(*parts)
+        return p if p.is_file() else None
 
     async def persona(self) -> dict:
         return (await self.client.persona()).raw

@@ -13,10 +13,12 @@ class TtsResult:
     """`core.tts`: звуковой файл, синтезированный участником шины голоса."""
     path: str
     duration_ms: int
+    volume_path: str | None = None      # тот же файл относительно папки персонажа (общий том), если голос его туда положил
 
     @classmethod
     def from_wire(cls, v: dict) -> TtsResult:
-        return cls(path=str(v["path"]), duration_ms=int(v["duration_ms"]))
+        rel = v.get("volume_path")
+        return cls(path=str(v["path"]), duration_ms=int(v["duration_ms"]), volume_path=str(rel) if rel else None)
 
 
 @dataclass(frozen=True)

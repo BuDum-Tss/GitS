@@ -2,7 +2,7 @@
 
 Файл создан скриптом `agent/interfaces/workspace/tools/gen_contract_doc.py` из `agent/interfaces/workspace/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `agent/interfaces/workspace/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора участника шины: `docs/MODULES.md`, код контракта: `agent/interfaces/workspace/gits_sdk/contract/`.
 
-Версия протокола `PROTOCOL = 3`, версия контракта `3.0`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
+Версия протокола `PROTOCOL = 3`, версия контракта `3.1`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
 ## Версии и совместимость
 
@@ -30,6 +30,7 @@
 - `1.11`: фаза 1 переименования «модуль -> workspace / service» (аддитивно): поля манифеста role и ownership, поля id и role в hello (прежнее module_id шлётся рядом), адрес входа /ws рядом с /module/ws (доступен с фазы 2), переменные GITS_ID и GITS_TOKEN (GITS_MODULE_ID и GITS_MODULE_TOKEN остаются алиасами), HTTP-интерфейс управления workspace с ownership shared: аренда без срока и продления (GET /status, GET /info, POST /acquire, /release; аренда кончается по release или при обрыве WebSocket участника), поля среды workspace.when_to_use и keywords
 - `2.0`: фаза 4 переименования, PROTOCOL 2: удалены алиасы фаз 1-3 (ModuleClient, module_id в hello и в ответе ядра, адрес /module/ws, переменные GITS_MODULE_ID и GITS_MODULE_TOKEN, раздел modules: в peers.yaml, /api/modules); role в манифесте и hello и ownership у workspace обязательны (без них reject). Запросы workspace.enter, workspace.exit, workspace.resume без изменений
 - `3.0`: PROTOCOL 3, только pi: удалены запросы core.claude_usage и core.claude.locate, тема battery и поле battery в welcome (батарейки Claude нет), клиентские методы claude_usage, claude_locate, поле client.battery и модуль claude_path
+- `3.1`: core.tts и tts.synthesize: необязательное поле volume_path в ответе (файл относительно папки персонажа: участники в контейнерах обмениваются файлами через общий том персонажа, `shared/tts/`)
 
 Устаревшее: `emotion` до 2027-01-01, заменить на тег стикера в тексте ответа; сообщение игнорируется ядром
 
@@ -115,6 +116,7 @@
 |---|---|---|---|---|
 | `path` | string | да | - | путь к звуковому файлу |
 | `duration_ms` | integer | да | от 0 | длительность, мс |
+| `volume_path` | string | нет | - | тот же файл относительно папки персонажа (том персонажа): участник в контейнере собирает свой путь сам, путь `path` ему не виден |
 
 Пример:
 
@@ -814,6 +816,7 @@
 |---|---|---|---|---|
 | `path` | string | да | - | путь к файлу |
 | `duration_ms` | integer | да | от 0 | длительность, мс |
+| `volume_path` | string | нет | - | файл относительно папки персонажа (лежит в `shared/tts/` тома) |
 
 Пример:
 

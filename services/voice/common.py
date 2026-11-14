@@ -31,6 +31,19 @@ def temp_dir() -> Path:
     return Path(env("GITS_VOICE_TMP") or Path(tempfile.gettempdir()) / TEMP_DIR_NAME)
 
 
+def shared_tts_dir() -> Path | None:
+    """Папка синтеза в общем томе персонажа (`shared/tts/`): её видят и участники в контейнерах (монтаж). None: тома нет
+    или задана своя временная папка (GITS_VOICE_TMP: тесты и изолированный запуск)."""
+    if env("GITS_VOICE_TMP"):
+        return None
+    try:
+        d = resources.character_dir() / "shared" / "tts"
+        d.mkdir(parents=True, exist_ok=True)
+    except (FileNotFoundError, OSError):
+        return None
+    return d
+
+
 def fake_mode() -> bool:
     return os.getenv(FAKE_ENV, "").strip().lower() in ("1", "true", "yes", "on")
 

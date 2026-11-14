@@ -53,6 +53,10 @@
         "type": "integer",
         "description": "длительность, мс",
         "minimum": 0
+      },
+      "volume_path": {
+        "type": "string",
+        "description": "тот же файл относительно папки персонажа (том персонажа): участник в контейнере собирает свой путь сам, путь `path` ему не виден"
       }
     },
     "additionalProperties": true,

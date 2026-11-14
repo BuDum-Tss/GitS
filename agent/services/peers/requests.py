@@ -118,7 +118,10 @@ class CoreRequests:
                                                        "format": body.get("format", "wav")}, timeout=TTS_TIMEOUT_S)
         if contract.validate_response("tts.synthesize", value):
             raise PeerError("internal", "модуль голоса вернул неверный ответ на tts.synthesize")
-        return {"path": value["path"], "duration_ms": value["duration_ms"]}
+        out = {"path": value["path"], "duration_ms": value["duration_ms"]}
+        if value.get("volume_path"):
+            out["volume_path"] = value["volume_path"]
+        return out
     # ── core.tool.call ───────────────────────────────────────────────────────
 
     async def _tool_call(self, conn: PeerConnection, body: Any) -> dict:

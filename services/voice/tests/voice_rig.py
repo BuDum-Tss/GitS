@@ -102,8 +102,10 @@ class FakeSTT:
 class Rig:
     """FakeCore + настоящий клиент + VoiceModule с подменёнными синтезом, воспроизведением и STT."""
 
-    def __init__(self, tmp_path, *, settings=None, module_settings=None, player=None, stt=None, synth=None, hold=False):
+    def __init__(self, tmp_path, *, settings=None, module_settings=None, player=None, stt=None, synth=None, hold=False,
+                 shared_dir=None):
         self.tmp = Path(tmp_path)
+        self._shared_dir = shared_dir
         self.mem = self.tmp / "memory"
         self.mem.mkdir(parents=True, exist_ok=True)
         self.core = FakeCore(settings={**SHARED, **(settings or {})}, module_settings=module_settings)
@@ -123,7 +125,7 @@ class Rig:
             raise AssertionError("в стенде синтез идёт через FakeSynth")
 
         self.mod = VoiceModule(self.client, fake=False, player=self.player, stt=self.stt,
-                               tmp_dir=self.tmp / "voice_tmp", synth=synth)
+                               tmp_dir=self.tmp / "voice_tmp", synth=synth, shared_dir=self._shared_dir)
         self.mod.speaker._synth = self.synth_calc      # синтез сегмента для озвучки
         self._task = asyncio.create_task(self.client.run())
         await self.core.wait_connected()

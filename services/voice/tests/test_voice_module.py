@@ -137,6 +137,15 @@ async def test_tts_synthesize_wav_goes_to_the_temp_dir_with_duration(tmp_path):
         assert os.path.basename(res["path"]).startswith("tts_")
 
 
+async def test_tts_synthesize_goes_to_the_shared_volume_with_a_relative_path(tmp_path):
+    shared = tmp_path / "char" / "shared" / "tts"
+    async with Rig(tmp_path, shared_dir=shared) as rig:
+        rig.mod._synth_blocking = lambda text, directory: make_wav(tmp_path / "raw.wav", 400)
+        res = await rig.core.request("tts.synthesize", {"text": "Привет", "format": "wav"})
+        assert res["path"].startswith(str(shared)) and os.path.exists(res["path"])
+        assert res["volume_path"] == "shared/tts/" + os.path.basename(res["path"])
+
+
 async def test_tts_synthesize_ogg_uses_the_opus_encoder_and_removes_wav(tmp_path, monkeypatch):
     async def fake_ogg(path):
         assert path.endswith(".wav") and os.path.exists(path)

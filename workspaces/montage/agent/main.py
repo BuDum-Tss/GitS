@@ -106,7 +106,7 @@ def build(layout: Layout = DEFAULT, *, client: WorkspaceClient | None = None, ru
     """Собрать модуль: (клиент, менеджер). Параметры позволяют подставить заглушки (тесты, живой прогон против FakeCore);
     url и token: адрес и токен ядра (при аренде они приходят в acquire, иначе берутся из окружения)."""
     client = client or WorkspaceClient(build_manifest(serve_dirs(layout.jobs)), url=url, token=token)
-    core = ClientCore(client)
+    core = ClientCore(client, volume=lambda: layout.character.parent)     # папка персонажа: общий том с ядром и голосом
     store = JobStore(layout.jobs)
     if renderer is None:
         from render import RemotionRenderer
