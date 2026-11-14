@@ -2,6 +2,8 @@
 import copy
 import os
 
+from montage_site import site_url
+
 SOURCE_KINDS = ("talking_head", "rimworld_run", "narrated", "generic")
 PLATFORMS = ("shorts", "reels", "telegram", "youtube", "none")
 FORMATS = ("vertical", "horizontal", "square")
@@ -153,14 +155,12 @@ MANIFEST = {
         "title": "Монтаж",
         "icon": "film",
         "order": 40,
+        # у среды свой сайт (сценарий, монтажный лист, файлы, Studio); в дашборде только сводка и ссылка на него
         "links": [
-            {"id": "studio", "label": "Сайт монтажа (сценарий, файлы, Studio)", "kind": "tool", "tool": "open_studio",
-             "args_from": "job", "open_result_url": True},
-            {"id": "folder", "label": "Папка роликов", "kind": "reveal_path", "path_from": "output_dir"},
-            {"id": "jobs", "label": "Папка задач", "kind": "reveal_path", "path_from": "jobs_dir"},
+            {"id": "site", "label": "Сайт монтажа", "kind": "url", "url": site_url()},
         ],
         # одобрение по этапам (TZ 15b): кнопки этапа истории и плана, черновика и вопросы агента (answer_question)
-        "actions": ["open_studio", "approve_plan", "rework_plan", "reject_plan", "approve_draft", "rework_draft",
+        "actions": ["approve_plan", "rework_plan", "reject_plan", "approve_draft", "rework_draft",
                     "answer_question"],
     },
 }

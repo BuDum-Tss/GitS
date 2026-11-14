@@ -35,11 +35,6 @@ def wire(client: WorkspaceClient, manager: Manager) -> None:
     async def open_studio(args):
         return await manager.open_site(str(args.get("job_id") or ""))
 
-    @client.panel_action("open_studio")
-    async def panel_open_studio(args):
-        value = await manager.open_site(str(args.get("job_id") or ""))
-        return {"ok": True, "open_url": value["url"], "message": "Сайт монтажа открыт"}
-
     # одобрение по этапам (TZ 15b): каждая кнопка - свой id действия, проверка вопроса в менеджере
     def decision(action: str):
         async def handler(args):
@@ -123,6 +118,10 @@ def build(layout: Layout = DEFAULT, *, client: WorkspaceClient | None = None, ru
 async def run(client: WorkspaceClient, manager: Manager) -> int:
     """Подключение к ядру и работа: восстановление задач, очередь."""
     manager.start_worker()
+    try:
+        await manager.site.start()                       # у среды свой сайт: поднимается при входе, гаснет в manager.stop
+    except OSError as e:
+        log.warning("сайт монтажа не поднялся: %s", e)
     background: list[asyncio.Task] = []
 
     async def after_connect():

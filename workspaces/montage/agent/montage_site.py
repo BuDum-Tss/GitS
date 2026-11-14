@@ -16,9 +16,19 @@ from aiohttp import web
 
 log = logging.getLogger("montage.site")
 
-SITE_PORT_ENV = "MONTAGE_SITE_PORT"       # порт сайта в контейнере (compose публикует его на хост); без переменной свободный порт
+SITE_PORT_ENV = "MONTAGE_SITE_PORT"       # порт сайта в контейнере (compose публикует его на хост)
+DEFAULT_SITE_PORT = 8790                  # без переменной тот же порт: ссылка в манифесте должна быть известна заранее
+
+
+def site_port() -> int:
+    raw = os.environ.get(SITE_PORT_ENV, "").strip()
+    return int(raw) if raw.isdigit() else DEFAULT_SITE_PORT
+
+
+def site_url() -> str:
+    return f"http://127.0.0.1:{site_port()}/"
 TEXT_LIMIT = 400_000                      # больше этого текст не показывается целиком
-SKIP_DIRS = {"node_modules", ".git", "__pycache__"}
+SKIP_DIRS = {"node_modules", ".git", "__pycache__", ".claude"}        # .claude: сотни файлов навыков Remotion, не работа задачи
 TEXT_EXT = {".md", ".txt", ".json", ".jsonl", ".ts", ".tsx", ".js", ".css", ".html", ".srt", ".yaml", ".yml", ".svg", ".sh",
             ".ps1", ".py", ".lock", ".config"}
 SECTIONS = (("Сценарий", "story"), ("Монтажный лист", "sheet"), ("План", "plan"), ("Файлы", "files"))
@@ -118,7 +128,7 @@ class Site:
     def __init__(self, manager, *, host: str | None = None, port: int | None = None):
         self.manager = manager
         raw = os.environ.get(SITE_PORT_ENV, "").strip()
-        self.port = port if port is not None else (int(raw) if raw.isdigit() else 0)
+        self.port = port if port is not None else site_port()
         self.host = host or ("0.0.0.0" if raw else "127.0.0.1")        # в контейнере порт публикует compose
         self._runner: web.AppRunner | None = None
         self.app = web.Application()

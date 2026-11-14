@@ -400,8 +400,8 @@ class Manager:
         return {"ok": True, "message": ap.action_done_message(action, answer)}
 
     def panel_blocks(self) -> list[dict]:
-        """Пространство «Монтаж» в дашборде (TZ 15, TAB-9): сводка, таблица задач с кнопками, согласие с вами, последний
-        готовый ролик (видео, отчёт проверки). Читает файлы: звать через to_thread."""
+        """Пространство «Монтаж» в дашборде: только сводка и кнопки одобрения ждущих задач. Остальное (ролики, файлы,
+        сценарий, монтажный лист, Studio) на сайте среды (`montage_site`). Читает файлы: звать через to_thread."""
         jobs = sorted(self._all_jobs(), key=lambda j: -float(j.data.get("created") or 0))
         states = [j.data.get("state") for j in jobs]
         stats = rm.agreement(self.store.verdicts())
@@ -418,31 +418,6 @@ class Manager:
             q = j.data.get("question") or {}
             if j.data.get("state") == "waiting_user" and q and self.pipeline.waiting_question(j.job_id) == q.get("question_id"):
                 blocks.extend(ap.waiting_blocks(j, q))
-        rows = []
-        for j in jobs[:PANEL_ROWS]:
-            d = j.data
-            actions = []
-            if (j.plan_dir / "plan.json").is_file() and not j.finished:
-                actions.append({"id": "open_studio", "label": "Studio", "args": {"job_id": j.job_id}})
-            rows.append({"cells": [str(d.get("title") or j.job_id)[:120], ap.stage_name(d.get("stage")),
-                                   f"{round(float(d.get('progress') or 0) * 100)} %", str(d.get("state") or "")],
-                         "actions": actions[:3]})
-        blocks.append({"type": "table", "title": "Ролики", "columns": ["Ролик", "Стадия", "Прогресс", "Состояние"],
-                       "rows": rows} if rows else
-                      {"type": "text", "title": "Ролики", "text": "Задач монтажа пока нет."})
-        agree = rm.agreement_text(stats) + (f". {why}" if why else "")
-        blocks.append({"type": "text", "title": "Согласие с вами", "text": agree[:900]})
-        done = next((j for j in jobs if j.data.get("state") == "done" and (j.artifact("final") or j.artifact("preview"))),
-                    None)
-        if done is not None:
-            name = os.path.basename(done.artifact("final") or done.artifact("preview") or "")
-            blocks.append({"type": "video", "title": f"Ролик: {str(done.data.get('title'))[:80]}",
-                           "artifact": {"job": done.job_id, "name": name}})
-            report = done.artifact("qa_report_final")
-            if report and os.path.isfile(report):
-                text = Path(report).read_text(encoding="utf-8", errors="replace")[:REPORT_EXCERPT_MAX]
-                if text.strip():
-                    blocks.append({"type": "text", "title": "Отчёт проверки", "text": text})
         return blocks
 
     async def publish_panel(self) -> None:

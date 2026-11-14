@@ -55,9 +55,9 @@ def test_panel_is_declared_and_valid_with_serve_dirs(tmp_path):
     assert validate_manifest(m, warnings) == [] and warnings == []
     spec = Manifest.from_dict(m)
     assert spec.panel is not None and spec.panel.title == "Монтаж"
-    assert [link.id for link in spec.panel.links] == ["studio", "folder", "jobs"]
-    assert spec.panel.links[0].tool == "open_studio" and spec.panel.links[0].args_from == "job"
-    assert spec.panel.actions == ["open_studio", "approve_plan", "rework_plan", "reject_plan", "approve_draft",
-                                  "rework_draft", "answer_question"]
+    assert [link.id for link in spec.panel.links] == ["site"]                     # у среды свой сайт, в дашборде только ссылка
+    assert spec.panel.links[0].kind == "url" and spec.panel.links[0].url.startswith("http://127.0.0.1:")
+    assert spec.panel.actions == ["approve_plan", "rework_plan", "reject_plan", "approve_draft", "rework_draft",
+                                  "answer_question"]
     assert len(spec.panel.serve_dirs) == 2 and all(d for d in spec.panel.serve_dirs)
     assert build_manifest()["panel"].get("serve_dirs") is None          # без каталогов раздача не объявлена

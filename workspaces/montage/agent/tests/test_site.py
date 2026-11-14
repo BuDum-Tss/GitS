@@ -31,6 +31,8 @@ def job(tmp_path):
         "sfx": [{"at_ms": 2500, "name": "chime_up", "volume": 0.1}]}), encoding="utf-8")
     (j.work / "node_modules").mkdir(parents=True)
     (j.work / "node_modules" / "x.js").write_text("secret", encoding="utf-8")
+    (j.work / ".claude" / "skills").mkdir(parents=True)
+    (j.work / ".claude" / "skills" / "a.ts").write_text("x", encoding="utf-8")
     (j.work / "src").mkdir(exist_ok=True)
     (j.work / "src" / "Main.tsx").write_text("export const A = 1", encoding="utf-8")
     return store, j
@@ -47,7 +49,7 @@ async def test_pages_files_and_studio_redirect(job):
         sheet = await (await c.get(f"/job/{j.job_id}?s=sheet")).text()
         assert "ПРОТОКОЛ" in sheet and "chime_up" in sheet and "0:30.00" in sheet
         files = await (await c.get(f"/job/{j.job_id}?s=files")).text()
-        assert "work/src/Main.tsx" in files and "node_modules" not in files
+        assert "work/src/Main.tsx" in files and "node_modules" not in files and ".claude" not in files
         view = await (await c.get(f"/job/{j.job_id}/view/work/src/Main.tsx")).text()
         assert "export const A" in view
         assert (await c.get(f"/job/{j.job_id}/raw/work/node_modules/x.js")).status == 404

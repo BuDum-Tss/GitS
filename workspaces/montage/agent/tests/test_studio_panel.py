@@ -138,16 +138,13 @@ def make_job(manager, title="Ролик про куб", state="queued", plan=Fal
     return job
 
 
-async def test_panel_lists_jobs_with_studio_and_approve_buttons(tmp_path):
+async def test_panel_is_only_a_summary_without_job_table(tmp_path):
     client, manager = manager_for(tmp_path)
-    queued = make_job(manager, "Первый", "queued", plan=True)
-    asking = make_job(manager, "Второй", "waiting_user", plan=True)
+    make_job(manager, "Первый", "queued", plan=True)
+    make_job(manager, "Второй", "waiting_user", plan=True)
     blocks = manager.panel_blocks()
-    assert [b["type"] for b in blocks][:3] == ["stats", "table", "text"]
-    rows = {r["cells"][0]: r for r in blocks[1]["rows"]}
-    assert [a["id"] for a in rows["Первый"]["actions"]] == ["open_studio"]     # есть план, ждать ответа не надо
-    assert [a["id"] for a in rows["Второй"]["actions"]] == ["open_studio"]     # ждёт ответа, но не одобрен: без кнопки «Одобрить»
-    assert queued.job_id != asking.job_id
+    assert [b["type"] for b in blocks] == ["stats"]                           # ролики, файлы и Studio на сайте среды
+    assert {i["label"] for i in blocks[0]["items"]} >= {"В работе", "Ждут ответа", "Готово"}
 
 
 async def test_open_studio_needs_a_plan_and_announces_the_first_start(tmp_path, monkeypatch):
@@ -173,24 +170,6 @@ async def test_open_studio_needs_a_plan_and_announces_the_first_start(tmp_path, 
     assert "Remotion Studio" in events[0][1] and "рендера не будет" in events[0][1]
     await manager.open_studio(job.job_id)                          # повторный вызов: адрес тот же, без нового объявления
     assert len(events) == 1                                        # объявлено один раз
-
-
-async def test_done_job_shows_video_and_report_excerpt(tmp_path):
-    client, manager = manager_for(tmp_path)
-    job = make_job(manager, "Готовый", "done", plan=True)
-    final = job.renders / "final.mp4"
-    final.write_bytes(b"0" * 10)
-    job.qa.mkdir(parents=True, exist_ok=True)
-    report = job.qa / "report_final.md"
-    report.write_text("# Отчёт\nзамечаний нет " * 10, encoding="utf-8")
-    job.add_artifact(final, "final")
-    job.add_artifact(report, "qa_report_final")
-    manager.store.save(job)
-    blocks = manager.panel_blocks()
-    video = next(b for b in blocks if b["type"] == "video")
-    assert video["artifact"] == {"job": job.job_id, "name": "final.mp4"}
-    report_block = next(b for b in blocks if b.get("title") == "Отчёт проверки")
-    assert report_block["text"].startswith("# Отчёт") and len(report_block["text"]) <= 2500
 
 
 def test_state_data_carries_folders_for_panel_links(tmp_path):
