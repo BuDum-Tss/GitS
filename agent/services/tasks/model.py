@@ -146,6 +146,29 @@ def finish_step(task: Task, index: int | None, now: float, status: str = STEP_DO
     return with_status(out, DONE, now) if all(s.status != STEP_PENDING for s in steps) else out
 
 
+def find_step(task: Task, ref: Any) -> int | None:
+    """Индекс шага по номеру с 1 или по точному тексту (без регистра); None, если такого нет."""
+    s = str(ref).strip()
+    if s.isdigit():
+        n = int(s)
+        return n - 1 if 1 <= n <= len(task.steps) else None
+    return next((i for i, st in enumerate(task.steps) if st.text.lower() == s.lower()), None)
+
+
+def mark_step(task: Task, index: int, status: str, now: float) -> Task:
+    """Шаг получает статус (pending, done, skipped); задача остаётся открытой, закрывает её тот, кто ведёт."""
+    if not (0 <= index < len(task.steps)) or status not in (STEP_PENDING, STEP_DONE, STEP_SKIPPED):
+        return task
+    steps = tuple(replace(s, status=status) if i == index else s for i, s in enumerate(task.steps))
+    return replace(task, steps=steps, updated=now)
+
+
+def append_step(task: Task, text: str, now: float) -> Task:
+    """Шаг в конец плана (пустой, дубль и сверх `STEPS_MAX` не добавляются)."""
+    steps = make_steps([*(s.to_dict() for s in task.steps), text])
+    return task if len(steps) == len(task.steps) else replace(task, steps=steps, updated=now)
+
+
 def progress(task: Task) -> tuple[int, int]:
     """(выполнено, всего) по шагам."""
     return sum(1 for s in task.steps if s.status != STEP_PENDING), len(task.steps)

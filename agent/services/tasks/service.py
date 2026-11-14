@@ -167,6 +167,33 @@ class TaskService:
             await self._refresh_parents(done.id)
         return done
 
+    async def update_step(self, task_id: str, ref: Any = None, *, status: str = dom.STEP_DONE, add: str = "") -> tuple[dom.Task, int]:
+        """Отметить шаг (номер с 1 или точный текст) и/или добавить шаг в конец. Задача остаётся открытой, даже когда все шаги
+        сделаны: закрывает её агент (`close`). Возвращает задачу и индекс затронутого шага."""
+        t = await self._need(task_id)
+        if not t.is_open:
+            raise TaskError(f"задача уже закрыта ({t.status})")
+        idx = -1
+        if str(add or "").strip():
+            if len(t.steps) >= dom.STEPS_MAX:
+                raise TaskError(f"шагов уже {dom.STEPS_MAX}, больше нельзя")
+            t2 = dom.append_step(t, str(add), self.clock())
+            if t2 is t:
+                raise TaskError("такой шаг уже есть или он пустой")
+            t, idx = t2, len(t2.steps) - 1
+        if ref not in (None, ""):
+            if status not in (dom.STEP_PENDING, dom.STEP_DONE, dom.STEP_SKIPPED):
+                raise TaskError("статус шага: done, skipped или pending")
+            idx = dom.find_step(t, ref)
+            if idx is None:
+                raise TaskError(f"нет шага «{ref}»: в задаче {len(t.steps)} шагов")
+            t = dom.mark_step(t, idx, status, self.clock())
+        elif idx < 0:
+            raise TaskError("укажи шаг (step) или новый шаг (add)")
+        await self._save(t)
+        self._emit("step", t, progress=list(dom.progress(t)), index=idx)
+        return t, idx
+
     async def _refresh_parents(self, task_id: str) -> None:
         """Пересчитать статус родителей вверх по цепочке (родитель берёт состояние подзадач)."""
         seen: set[str] = set()
@@ -223,9 +250,21 @@ class TaskService:
         self._emit("resumed", t)
         return t
 
+    async def carry_plans(self, src: str, dst: str) -> int:
+        """План, заведённый до входа в среду (в `assistant`), переезжает в эту среду: она видит его через `core.tasks`. Берутся открытые
+        обычные задачи со шагами без родителя; уходящая из среды `assistant` без шагов и задачи других сред остаются на месте."""
+        if src != ASSISTANT or dst == ASSISTANT:
+            return 0
+        moved = [t for t in await self._all(workspace=src, statuses=dom.OPEN) if t.kind == dom.KIND_TASK and t.steps and not t.parent]
+        for t in moved:
+            await self._save(replace(t, workspace=dst, updated=self.clock()))
+            self._emit("carried", replace(t, workspace=dst), source=src)
+        return len(moved)
+
     def on_workspace_change(self, rec: dict) -> None:
         """Хук `WorkspaceManager.on_change`: checkpoint уходящей среды, возобновление входящей (в фоне, цикл не ждёт диск)."""
         async def _run() -> None:
+            await self.carry_plans(rec["from"], rec["to"])
             await self.checkpoint(rec["from"], rec.get("goal", ""))
             await self.resume(rec["to"])
         try:
@@ -261,5 +300,5 @@ class TaskService:
         ws = workspace or self.current_workspace()
         found = await self.list_tasks(ws, kinds=(dom.KIND_TASK, dom.KIND_PLAN))
         act = dom.pick_active(found, ws)
-        return {"workspace": ws, "active": act.to_dict() if act else None,
+        return {"workspace": ws, "active": {**act.to_dict(), "progress": list(dom.progress(act))} if act else None,
                 "tasks": [{**t.to_dict(), "progress": list(dom.progress(t))} for t in found]}

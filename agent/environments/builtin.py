@@ -18,6 +18,7 @@ from .base import Environment, Tool, ToolError
 
 
 # настройки, которые модули меняют инструментом core.set_setting (TG-13): белый список, остальное только человек.
+STEP_CHARS = 120                              # длина шага плана, который агент задаёт сам
 MODULE_SETTINGS = ("telegram", "telegram_after_run", "telegram_voice", "telegram_confirm", "autoplay")
 
 
@@ -190,8 +191,37 @@ def register(registry, companion, memory):
                 raise ToolError("срок в минутах должен быть числом")
         t = await _task_call(svc.create(str(a.get("goal") or ""), origin=task_dom.USER if a.get("origin") == "user" else task_dom.SELF,
                                         priority=a.get("priority") or task_dom.PRIORITY_DEFAULT, due=due, plan=bool(a.get("plan", True)),
-                                        steps=a.get("steps") or ()))
+                                        steps=_step_texts(a.get("steps"))))
         return "задача создана: " + _task_line(t)
+
+    def _step_texts(raw):
+        if raw in (None, ""):
+            return ()
+        if isinstance(raw, str):
+            raw = [p for p in raw.splitlines()]
+        if not isinstance(raw, (list, tuple)):
+            raise ToolError("steps должен быть списком строк")
+        return [str(s).strip()[:STEP_CHARS] for s in raw if str(s).strip()][:task_dom.STEPS_MAX]
+
+    async def task_step(a):
+        svc = _tasks()
+        ref, add = a.get("step"), str(a.get("add") or "").strip()
+        status = str(a.get("status") or task_dom.STEP_DONE)
+        t, idx = await _task_call(svc.update_step(str(a.get("id") or ""), ref, status=status, add=add[:STEP_CHARS]))
+        total, step = len(t.steps), t.steps[idx]
+        label = {task_dom.STEP_DONE: "сделан", task_dom.STEP_SKIPPED: "пропущен", task_dom.STEP_PENDING: "снова в плане"}[step.status]
+        if add and ref in (None, ""):
+            line = f"Шаг {idx + 1} из {total} «{step.text}»: добавлен"
+        else:
+            line = f"Шаг {idx + 1} из {total} «{step.text}»: {label}"
+        nxt = task_dom.next_step(t)
+        if nxt is not None:
+            line += f"; дальше: «{nxt.text}»"
+        elif total:
+            line += "; все шаги отмечены, закрой задачу assistant.close_task"
+        if a.get("note"):
+            line += f" ({str(a['note'])[:120]})"
+        return line
 
     async def close_task(a):
         svc = _tasks()
@@ -284,11 +314,22 @@ def register(registry, companion, memory):
                   {"goal": {"type": "string", "description": "цель одной фразой"},
                    "in_minutes": {"type": "number", "required": False, "description": "срок через сколько минут"},
                    "priority": {"type": "integer", "required": False, "description": "важность 1-5, по умолчанию 3"},
+                   "steps": {"type": "array", "items": {"type": "string"}, "required": False,
+                             "description": "свои шаги, коротко (до 12 по 120 символов); если даны, планировщик не вызывается"},
                    "plan": {"type": "boolean", "required": False, "description": "разбить на шаги (по умолчанию да)"},
                    "origin": {"type": "string", "enum": ["user", "self"], "required": False,
                               "description": "user - просьба пользователя, self - её собственное дело"}},
                   create_task, keywords=("задача", "заведи", "запланируй", "сделай по шагам", "цель", "разбей")),
-            _tool("assistant", "close_task", "Закрыть задачу по id: done (выполнена), failed (не вышло) или cancelled (отменена).",
+            _tool("assistant", "task_step", "Отметить шаг задачи по ходу работы (пользователь видит план): done (сделан), skipped "
+                  "(пропущен) или pending (вернуть). Можно добавить новый шаг в конец (add). Когда все шаги сделаны, задача остаётся "
+                  "открытой: закрой её assistant.close_task.",
+                  {"id": {"type": "string", "description": "id задачи"},
+                   "step": {"type": "string", "required": False, "description": "номер шага с 1 или его точный текст"},
+                   "status": {"type": "string", "enum": ["done", "skipped", "pending"], "required": False, "description": "по умолчанию done"},
+                   "add": {"type": "string", "required": False, "description": "новый шаг в конец плана (до 12 шагов)"},
+                   "note": {"type": "string", "required": False, "description": "коротко, что получилось"}},
+                  task_step, keywords=("шаг", "отметь шаг", "план", "задача", "сделано", "пропусти шаг")),
+            _tool("assistant", "close_task","Закрыть задачу по id: done (выполнена), failed (не вышло) или cancelled (отменена).",
                   {"id": {"type": "string", "description": "id задачи из списка задач"},
                    "status": {"type": "string", "enum": ["done", "failed", "cancelled"], "required": False, "description": "по умолчанию done"},
                    "note": {"type": "string", "required": False, "description": "коротко почему"}},
