@@ -26,7 +26,7 @@ def test_layout_for_owner(tmp_path):
     base = layout_for(tmp_path)
     own = base.for_owner("glados", tmp_path / "chars")
     assert own.character == tmp_path / "chars" / "glados" / "montage"
-    assert own.jobs == base.jobs / "glados" and own.assets == own.character / "assets"
+    assert own.jobs == own.character / "jobs" and own.assets == own.character / "assets"
     for bad in ("", "..", "a/b", "a\b", "../x"):
         with pytest.raises(ValueError):
             base.for_owner(bad, tmp_path)

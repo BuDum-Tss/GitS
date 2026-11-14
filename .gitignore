@@ -48,3 +48,4 @@ resources/*/shared/
 
 # готовые ролики монтажа (MONTAGE_OUT_DIR в контейнере: CHARACTER_HOME/montage/out)
 resources/*/montage/out/
+resources/*/montage/jobs/

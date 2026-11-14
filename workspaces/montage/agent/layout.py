@@ -29,7 +29,8 @@ class Layout:
         модуль не видит. Id персонажа проверяется (он приходит в теле acquire)."""
         if not _CHARACTER_ID.fullmatch(character or ""):
             raise ValueError("неверный id персонажа")
-        return replace(self, characters_root=Path(characters_root), owner=character, jobs=self.jobs / character)
+        root = Path(characters_root)
+        return replace(self, characters_root=root, owner=character, jobs=root / character / "montage" / "jobs")
 
     @property
     def template(self) -> Path:
