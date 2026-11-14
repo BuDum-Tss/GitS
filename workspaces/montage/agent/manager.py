@@ -23,6 +23,7 @@ from jobs import FINISHED, Job, JobStore
 from layout import Layout
 from manifest import FORMATS, PLATFORMS, SOURCE_KINDS, VOICEOVERS, resolve_output_dir
 from pipeline import EDITS, Pipeline
+from montage_site import Site
 from studio import StudioError, StudioPool
 
 log = logging.getLogger("montage.manager")
@@ -60,6 +61,7 @@ class Manager:
         self._jobs: dict[str, Job] = {}
         self._cancelled: set[str] = set()
         self._worker: asyncio.Task | None = None
+        self.site = Site(self)                          # сайт монтажа: сценарий, монтажный лист, файлы, кнопка Studio
         self.studios = StudioPool()                     # Remotion Studio по задачам (TZ 15, TAB-4)
         self._reaper: asyncio.Task | None = None
         self._panel: asyncio.Task | None = None
@@ -250,6 +252,7 @@ class Manager:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
         await self.studios.stop_all()
+        await self.site.stop()
         if kill and self.current:
             job = self._jobs.get(self.current)
             if job:
@@ -338,6 +341,12 @@ class Manager:
         self.pipeline.deliver_answer(job_id, question_id, answer)
 
     # ================================================================================================ Studio и одобрения (TZ 15)
+
+    async def open_site(self, job_id: str) -> dict:
+        """Сайт задачи (сценарий, монтажный лист, файлы, кнопка Remotion Studio): поднимает сервер при первом обращении."""
+        job = self._find(job_id)
+        await self.site.start()
+        return {"url": self.site.url(job.job_id), "job_id": job.job_id}
 
     async def open_studio(self, job_id: str) -> dict:
         """Remotion Studio задачи: поднимает (если его нет) и отдаёт адрес. Новый запуск объявляется событием montage.launch

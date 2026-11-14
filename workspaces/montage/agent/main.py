@@ -33,12 +33,12 @@ def wire(client: WorkspaceClient, manager: Manager) -> None:
 
     @client.tool("open_studio")
     async def open_studio(args):
-        return await manager.open_studio(str(args.get("job_id") or ""))
+        return await manager.open_site(str(args.get("job_id") or ""))
 
     @client.panel_action("open_studio")
     async def panel_open_studio(args):
-        value = await manager.open_studio(str(args.get("job_id") or ""))
-        return {"ok": True, "open_url": value["url"], "message": "Studio открыт"}
+        value = await manager.open_site(str(args.get("job_id") or ""))
+        return {"ok": True, "open_url": value["url"], "message": "Сайт монтажа открыт"}
 
     # одобрение по этапам (TZ 15b): каждая кнопка - свой id действия, проверка вопроса в менеджере
     def decision(action: str):

@@ -49,7 +49,7 @@ def test_montage_service_environment_and_volumes():
     assert env["MEMORY_DIR"] == "/work" and env["MONTAGE_JOBS_DIR"].startswith("/work/")
     assert "8780" in [str(p) for p in svc["expose"]]
     assert not any("8780" in str(p) for p in svc.get("ports", []))              # порт управления не публикуется на хост
-    assert svc["ports"] == ["127.0.0.1:8790-8794:8790-8794"] and env["MONTAGE_STUDIO_PORTS"] == "8790-8794"   # Studio: только на петлю хоста
+    assert svc["ports"] == ["127.0.0.1:8790-8794:8790-8794"] and env["MONTAGE_STUDIO_PORTS"] == "8791-8794" and env["MONTAGE_SITE_PORT"] == "8790"   # сайт и Studio: только на петлю хоста
     assert "/status" in " ".join(svc["healthcheck"]["test"])
     core_env = _env(yaml.safe_load(CORE_COMPOSE.read_text(encoding="utf-8"))["services"]["core"])
     assert core_env["GITS_CORE_PUBLIC_URL"] == "ws://${CHARACTER_ID:-glados}-core:8766/ws"

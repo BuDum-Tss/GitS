@@ -123,8 +123,8 @@ MANIFEST = {
         },
         {
             "name": "open_studio",
-            "description": "Открыть ролик задачи в Remotion Studio (просмотр плана и кадров, без рендера). Студия гаснет "
-                           "через 30 минут без обращения. Для просьб «покажи монтаж», «открой студию».",
+            "description": "Открыть сайт монтажа задачи: сценарий, монтажный лист, план, все файлы и кнопка Remotion Studio "
+                           "(просмотр без рендера, гаснет через 30 минут без обращения). Для просьб «покажи монтаж», «открой студию».",
             "params": {"job_id": {"type": "string", "description": "id задачи"}},
             "risk": "auto",
             "availability": "always",
@@ -154,7 +154,7 @@ MANIFEST = {
         "icon": "film",
         "order": 40,
         "links": [
-            {"id": "studio", "label": "Открыть в Remotion Studio", "kind": "tool", "tool": "open_studio",
+            {"id": "studio", "label": "Сайт монтажа (сценарий, файлы, Studio)", "kind": "tool", "tool": "open_studio",
              "args_from": "job", "open_result_url": True},
             {"id": "folder", "label": "Папка роликов", "kind": "reveal_path", "path_from": "output_dir"},
             {"id": "jobs", "label": "Папка задач", "kind": "reveal_path", "path_from": "jobs_dir"},
