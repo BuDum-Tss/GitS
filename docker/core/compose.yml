@@ -39,17 +39,20 @@ services:
       RIMWORLD_API: ${RIMWORLD_API:-http://host.docker.internal:8765}
       GITS_RIMWORLD_URL: ${GITS_RIMWORLD_URL:-http://host.docker.internal:8765}
       # вход pi по подписке (среда исполнения агента): файл auth.json с хоста, не в образе
-      GITS_PI_AUTH: /run/secrets/pi_auth.json
+      GITS_PI_AUTH: /run/pi/auth.json
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${CORE_PORT:-8766}:8766"
+    # папка входа pi в памяти, доступной пользователю gits: pi кладёт рядом с auth.json файл блокировки (.lock)
+    tmpfs:
+      - /run/pi:uid=1000,gid=1000,mode=0700
     volumes:
       # папка персонажа с хоста (core/, voice/, pet/, ...), а память в именованном томе поверх: SQLite WAL на bind-mount Windows ненадёжен
       - ${CHARACTER_DIR:-../../resources/GlaDOS}:/data
       - memory:/data/memory
       # auth.json pi с хоста (запись нужна: pi обновляет токены входа); путь меняет GITS_PI_AUTH_FILE
-      - ${GITS_PI_AUTH_FILE:-../../services/agent-runtime/auth.json}:/run/secrets/pi_auth.json
+      - ${GITS_PI_AUTH_FILE:-../../services/agent-runtime/auth.json}:/run/pi/auth.json
 
 volumes:
   memory:
