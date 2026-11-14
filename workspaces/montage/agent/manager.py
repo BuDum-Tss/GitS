@@ -187,7 +187,7 @@ class Manager:
                    "format": args.get("format"), "duration_s": duration, "voiceover": voiceover}
         if request["source_kind"] is None and not paths:
             request["source_kind"] = "narrated"
-        if not request["format"] and request["platform"] in ("shorts", "reels", "telegram"):
+        if not request["format"] and request["platform"] in ("shorts", "reels"):
             request["format"] = "vertical"
         return paths, request
 

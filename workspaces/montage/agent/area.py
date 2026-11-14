@@ -21,7 +21,7 @@ AREA_ROOT = "jobs"
 WRITABLE = ["*/plan"]                                    # агент пишет только идею, сценарий и монтажный лист (имена ниже)
 PLAN_FILES = ("idea.md", "story.md", "plan.json")
 PLAN_JSON = "plan.json"
-READONLY = ["template", "resources", "*/sources", "*/transcript", "*/renders", "*/qa", "*/work"]
+READONLY = ["template/demo/plan.*.json", "resources", "*/sources", "*/transcript", "*/renders", "*/qa", "*/work/public"]
 HIDDEN = ["node_modules", ".git", ".claude"]
 SKILLS_MOUNT = "skills"
 SKILL_DESCRIPTION_MAX = 300
@@ -104,8 +104,15 @@ class MontageTools(WorkspaceTools):
                 path.unlink(missing_ok=True)
             else:
                 path.write_bytes(old)
-            lines = "\n".join(f"- {p}" for p in problems[:25])
-            raise ToolError(f"монтажный лист не принят (файл не записан), ошибок {len(problems)}:\n{lines}", code="invalid")
+            shown = problems[:20]
+            lines = "\n".join(f"- {p[:150]}" + ("…" if len(p) > 150 else "") for p in shown)
+            remaining = len(problems) - len(shown)
+            tail = f"\nЕщё ошибок: {remaining}. Исправь показанные поля и повтори запись." if remaining else ""
+            raise ToolError(
+                f"монтажный лист {jid}/plan/plan.json не принят (файл не записан), ошибок {len(problems)}:\n"
+                f"{lines}{tail}\nПримеры: template/demo/plan.horizontal.json и template/demo/plan.vertical.json.",
+                code="invalid",
+            )
         return out
 
     def _op_write(self, args: dict) -> dict:
@@ -142,7 +149,8 @@ class MontageTools(WorkspaceTools):
         if out["path"] == ".":                                  # точки монтирования видны в корне как обычные каталоги
             have = {e["name"] for e in out["entries"]}
             virtual = [{"name": n, "type": "dir", "writable": False} for n in self.sandbox.mounts
-                       if n != SKILLS_MOUNT and n not in have and self.sandbox.can_read((n,))]
+                       if n != SKILLS_MOUNT and n not in have
+                       and (self.sandbox.can_read((n,)) or self.sandbox.is_waypoint((n,)))]
             out["entries"] = virtual + out["entries"]
         return out
 

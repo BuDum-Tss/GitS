@@ -147,9 +147,12 @@ class ResidentAgent:
                 catalog = getattr(host, "workspace_catalog", lambda: "")()
                 if catalog:
                     text += "\n" + catalog
-            if len(text) > RESULT_CHARS and not (ok and file_read):
+            plan_rejection = (tool_id == "montage.files" and params.get("op") in ("write", "replace")
+                              and code == "invalid" and str(params.get("path", "")).endswith("/plan/plan.json"))
+            limit = 4096 if plan_rejection else RESULT_CHARS
+            if len(text) > limit and not (ok and file_read):
                 total = len(text)
-                text = text[:RESULT_CHARS] + f"\n[ответ обрезан: показано {RESULT_CHARS} из {total} символов; уточни запрос, чтобы получить нужную часть]"
+                text = text[:limit] + f"\n[ответ обрезан: показано {limit} из {total} символов; уточни запрос, чтобы получить нужную часть]"
             return ok, text
 
         self._specs = [

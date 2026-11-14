@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+- Issue #3 (MON): предпросмотр файлов и компонентов Aperture на сайте монтажа. HTML и анимации открываются изолированно, шрифты показываются на редактируемом образце, видео и изображения открываются рядом со списком файлов.
+
 ### Changed (контракт workspace 3.2: монтирует сама ГЛаДОС)
 - Окружение «Монтаж» по `docs/WORKSPACE_CONTRACT.md`: вместо конвейера стадий и субагента pi ГЛаДОС монтирует сама. Манифест: инструменты `skills`, `files`, `run` (из SDK `WorkspaceTools`), `work` (`create`, `list`, `status`, `cancel`: рабочая единица это ролик `j-xxxxxxxx` с копией шаблона), `site`, `resources`; блок `workspace` с `brief`, `skills` (навыки Remotion и новый `montage-regulation`), `area` (writable `*/work/src`, `*/work/public`, `*/plan`; readonly шаблон, ресурсы персонажа, `sources`, `transcript`, `renders`, `qa`, `work`; hidden `node_modules`, `.git`, `.claude`), `commands`, `site`. Убраны инструменты `start`, `status`, `revise`, `cancel`, `open_studio` (Studio остаётся кнопкой на сайте), настройки стадий и приёмки, общие настройки pi.
 - Команды (`agent/commands.py`, список разрешённых, аргументы проверяются): `intake`, `transcribe`, `voiceover` (её голос через `core.tts`, кэш `plan/voiceover_cache.json`), `render` (черновик, фон), `still`, `compositions`, `check` (план по `plan_schema`, схема Remotion, `tsc`, закадр, ремесло, кадры и звук свежего черновика; отчёт `qa/report.md`, хэш плана и итог в `job.json`), `final` (фон, необратимая; отказывает `unavailable` без свежей успешной `check`). Долгие операции идут как `job` с `job.update` и событиями `montage.done` / `montage.failed` (формулировки фактов прежние), `montage.launch` перед финалом.

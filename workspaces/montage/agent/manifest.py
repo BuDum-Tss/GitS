@@ -12,8 +12,8 @@ from layout import ROOT
 from montage_site import site_url
 
 SOURCE_KINDS = ("talking_head", "rimworld_run", "narrated", "generic")
-PLATFORMS = ("shorts", "reels", "telegram", "youtube", "none")
-FORMATS = ("vertical", "horizontal", "square")
+PLATFORMS = ("shorts", "reels", "youtube", "none")
+FORMATS = ("vertical", "horizontal")
 VOICEOVERS = ("none", "character", "keep")
 VOICEOVER_ALIASES = {"glados": "character"}     # прежнее имя режима (ТЗ 05, CHR-4): старые задания читаются так же
 
@@ -72,8 +72,13 @@ def _standard_tools() -> list[dict]:
             t["description"] += _RUN_NOTE
             t["params"]["args"]["description"] = "аргументы: id единицы, затем (для still) номер кадра"
         if t["name"] == "files":
-            t["description"] = ("Файлы области: op list, read, write, replace, delete, move. Писать можно только plan/idea.md, "
-                                "plan/story.md, plan/plan.json (лист проверяется при записи); остальное только читать.")
+            t["description"] = ("Чтение файлов и запись идеи, сценария и plan.json. В плане время в миллисекундах: "
+                                "20 секунд = duration_ms: 20000. Перед записью прочитай пример из template/demo: "
+                                "plan.horizontal.json или plan.vertical.json.")
+            t["params"]["content"]["description"] = (
+                "plan.json: version: 1, title, format {width,height,fps}, duration_ms, segments, captions. "
+                "Звук: отдельные поля voiceover, music, sfx."
+            )
         t["keywords"] = [*t.get("keywords", []), *_KEYWORDS]
     return tools
 
@@ -94,9 +99,10 @@ def _tools() -> list[dict]:
                             "description": "create: пути файлов или папок с исходниками: абсолютные или resources/... (свои ресурсы, как их отдаёт инструмент resources)"},
                 "source_kind": {"type": "string", "enum": list(SOURCE_KINDS), "required": False,
                                 "description": "create: вид исходников; если не задан, определяется по файлам"},
-                "platform": {"type": "string", "enum": list(PLATFORMS), "required": False, "description": "create: площадка; по умолчанию none"},
-                "format": {"type": "string", "enum": list(FORMATS), "required": False, "description": "create: формат кадра; по умолчанию по площадке"},
-                "duration_s": {"type": "integer", "required": False, "description": "create: целевая длительность, секунд"},
+                "format": {"type": "string", "enum": list(FORMATS), "required": False,
+                           "description": "create: ориентация кадра; точные размеры задаются в монтажном листе"},
+                "duration_s": {"type": "integer", "required": False,
+                               "description": "create: целевая длительность в секундах. В plan.json используй duration_ms."},
                 "voiceover": {"type": "string", "enum": [*VOICEOVERS, *VOICEOVER_ALIASES], "required": False,
                               "description": "create: закадр: none, character (голос персонажа) или keep (оставить голос исходника)"},
                 "set": {"type": "string", "enum": ["working", "waiting_user"], "required": False,

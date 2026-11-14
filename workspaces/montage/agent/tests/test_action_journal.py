@@ -29,7 +29,7 @@ async def test_actions_are_logged_for_skill_files_denial_and_run(tmp_path):
     rig = Rig(tmp_path)
     jid = await rig.create()
     await rig.tool("skills", {"name": "montage-regulation"})
-    await rig.files("read", "template/package.json")
+    await rig.files("read", "template/demo/plan.horizontal.json")
     await rig.files("write", f"{jid}/plan/idea.md", content="Идея про куб")
     with pytest.raises(ToolError):
         await rig.files("write", f"{jid}/sources/x.mp4", content="x")
@@ -39,7 +39,7 @@ async def test_actions_are_logged_for_skill_files_denial_and_run(tmp_path):
     texts = [r["text"] for r in rows]
     assert any(t.startswith("Создала единицу") for t in texts)
     assert "Читает навык montage-regulation" in " ".join(texts)                           # навык: единица текущая после create
-    assert any(t.startswith("Читает template/package.json (") for t in texts)
+    assert any(t.startswith("Читает template/demo/plan.horizontal.json (") for t in texts)
     assert f"Записала {jid}/plan/idea.md (+1 строка)" in texts
     denied = [r for r in rows if not r["ok"]]
     assert denied and denied[0]["text"].startswith("Отказано") and denied[0]["tool"] == "files" and denied[0]["error"].startswith("denied")
@@ -126,9 +126,9 @@ async def test_panel_shows_the_latest_action_and_the_plan_step(tmp_path):
     assert [b["type"] for b in blocks] == ["stats", "text"] and blocks[1]["title"] == "Последнее действие"
     assert "Действий пока нет" in blocks[1]["text"]
     await rig.create()
-    await rig.files("read", "template/package.json")
+    await rig.files("read", "template/demo/plan.horizontal.json")
     blocks = rig.manager.panel_blocks()
-    assert "читает template/package.json" in blocks[1]["text"] and ":" in blocks[1]["text"].split(" · ")[0]
+    assert "читает template/demo/plan.horizontal.json" in blocks[1]["text"] and ":" in blocks[1]["text"].split(" · ")[0]
     rig.core.task_data = PLAN
     await rig.manager.journal.plan(fresh=True)
     assert "Шаг 2 из 4: Сценарий" in rig.manager.panel_blocks()[1]["text"]

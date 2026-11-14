@@ -29,7 +29,7 @@ def test_workspace_block_has_brief_skills_area_commands_site():
     assert all(s.description and s.path == f"skills/{s.name}" for s in spec.skills)
     area = spec.area
     assert area.writable == ["*/plan"]                      # агент пишет только идею, сценарий и монтажный лист
-    assert {"template", "resources", "*/sources", "*/renders", "*/qa"} <= set(area.readonly)
+    assert {"template/demo/plan.*.json", "resources", "*/sources", "*/renders", "*/qa"} <= set(area.readonly)
     assert {"node_modules", ".git", ".claude"} == set(area.hidden)
     assert [c.id for c in spec.commands] == ["intake", "transcribe", "voiceover", "render", "still", "compositions", "check", "final"]
     assert spec.command("render").background and spec.command("final").background and spec.command("final").irreversible
@@ -61,7 +61,8 @@ def test_tools():
     assert work["params"]["op"]["enum"] == ["create", "list", "status", "cancel"]
     assert {"монтаж", "смонтируй", "ролик", "видео", "шортс", "рилс", "клип", "субтитры", "нарезка"} <= set(work["keywords"])
     assert work["params"]["sources"]["type"] == "array"
-    assert work["params"]["platform"]["enum"] == ["shorts", "reels", "telegram", "youtube", "none"]
+    assert "platform" not in work["params"]
+    assert work["params"]["format"]["enum"] == ["vertical", "horizontal"]
     assert tools["site"]["informative"] is True and tools["resources"]["informative"] is True
 
 

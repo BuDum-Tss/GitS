@@ -35,7 +35,7 @@ from workspace import custom_components, sync_media
 log = logging.getLogger("montage.commands")
 
 Progress = Callable[[float, str], Awaitable[None]]
-FORMAT_OF_PLATFORM = {"shorts": "vertical", "reels": "vertical", "telegram": "vertical", "youtube": "horizontal"}
+FORMAT_OF_PLATFORM = {"shorts": "vertical", "reels": "vertical", "youtube": "horizontal"}
 EXTRA_ARGS = {"still": ("frame",)}               # необязательные аргументы после id единицы; у остальных команд их нет
 FRAME_RE = re.compile(r"^\d{1,7}$")
 PREVIEW_SCALE, PREVIEW_CRF, FINAL_CRF = 0.5, 28, 16
@@ -88,7 +88,8 @@ class Commands:
         await asyncio.to_thread(self.store.save, job)
 
     def _platform(self, job: Job) -> str:
-        return job.request.get("platform") or "none"
+        platform = job.request.get("platform")
+        return "none" if platform in (None, "", "telegram") else platform
 
     def _info(self, job: Job) -> dict:
         return read_json(job.sources / "info.json") or {"files": []}

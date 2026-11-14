@@ -12,7 +12,7 @@ from montage_site import Site, safe_file, sheet_rows
 class FakeManager:
     def __init__(self, store, owner="glados"):
         self.store = store
-        self.layout = SimpleNamespace(owner=owner)
+        self.layout = SimpleNamespace(owner=owner, character=store.dir / "character")
 
     async def open_studio(self, job_id):
         return {"url": "http://127.0.0.1:8791", "job_id": job_id}
@@ -52,7 +52,10 @@ async def test_pages_files_and_studio_redirect(job):
         sheet = await (await c.get(f"/job/{j.job_id}?s=sheet")).text()
         assert "ПРОТОКОЛ" in sheet and "chime_up" in sheet and "0:30.00" in sheet
         files = await (await c.get(f"/job/{j.job_id}?s=files")).text()
-        assert "work/src/Main.tsx" in files and "node_modules" not in files and ".claude" not in files
+        project, technical = files.split("<details><summary>Служебные файлы</summary>")
+        assert "plan/story.md" in project and "work/src/Main.tsx" not in project
+        assert "work/src/Main.tsx" in technical and "job.json" in technical
+        assert "node_modules" not in files and ".claude" not in files
         view = await (await c.get(f"/job/{j.job_id}/view/work/src/Main.tsx")).text()
         assert "export const A" in view
         assert (await c.get(f"/job/{j.job_id}/raw/work/node_modules/x.js")).status == 404
@@ -60,6 +63,36 @@ async def test_pages_files_and_studio_redirect(job):
         assert (await c.get("/job/j-nope")).status == 404
         r = await c.get(f"/job/{j.job_id}/studio", allow_redirects=False)
         assert r.status == 302 and r.headers["Location"].endswith(":8791")
+
+
+async def test_visual_preview_and_isolated_html(job):
+    store, j = job
+    manager = FakeManager(store)
+    design = manager.layout.character / "design"
+    design.mkdir(parents=True)
+    (design / "preview.html").write_text('<link rel="stylesheet" href="style.css">', encoding="utf-8")
+    (design / "style.css").write_text("body { color: red }", encoding="utf-8")
+    (design / "heading.ttf").write_bytes(b"font")
+    (design / "icon.svg").write_text("<svg/>", encoding="utf-8")
+    intro = design / "components" / "Intro"
+    intro.mkdir(parents=True)
+    (intro / "preview.html").write_text('<video src="/_blob/529b6ede200adc229d8cc149e3962526"></video>', encoding="utf-8")
+    site = Site(manager, port=0)
+    async with TestClient(TestServer(site.app)) as c:
+        url = f"/job/{j.job_id}/view/design"
+        page = await (await c.get(f"{url}/preview.html")).text()
+        assert "sandbox='allow-scripts'" in page and "allow-same-origin" not in page
+        assert "aria-current='page'" in page and "/design/heading.ttf" in page
+        assert "<img " in await (await c.get(f"{url}/icon.svg")).text()
+        assert "PreviewFont" in await (await c.get(f"{url}/heading.ttf")).text()
+        raw = await c.get("/design/preview.html")
+        assert "sandbox allow-scripts" in raw.headers["Content-Security-Policy"]
+        assert "style.css" in await raw.text()
+        assert "color: red" in await (await c.get("/design/style.css")).text()
+        intro_html = await (await c.get("/design/components/Intro/preview.html")).text()
+        assert "/design/components/bundle.css" in intro_html
+        assert "/design/assets/Intro/Aperture_Boot_dark.mp4" in intro_html
+        assert (await c.get("/design/..%2Fsecret.txt")).status == 404
 
 
 def test_sheet_rows_sorted_by_time_and_safe_file(job):

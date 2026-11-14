@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 import logging
@@ -39,6 +40,17 @@ SECTIONS = (("Идея", "idea"), ("Сценарий", "story"), ("Монтаж�
 DEFAULT_SECTION = "idea"
 ACTIONS_SHOWN = 300                       # сколько последних действий на вкладке
 LIVE_EVERY_MS = 3000                      # автообновление вкладки «Действия» и плана действий
+PREVIEW_CSP = ("sandbox allow-scripts; default-src 'none'; "
+               "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+               "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; "
+               "connect-src 'none'; base-uri 'none'; form-action 'none'")
+FONT_EXT = {".ttf", ".otf", ".woff", ".woff2"}
+INTRO_MEDIA = {
+    "Intro": ("529b6ede200adc229d8cc149e3962526", "Aperture_Boot_dark.mp4"),
+    "IntroLight": ("feab921e68fdee2b3b4e5187f09c4256", "Aperture_Boot_light.mp4"),
+    "IntroVertical": ("5fb907f9c7bca416514b1ea768a38ab8", "Aperture_Boot_vertical_dark.mp4"),
+    "IntroVerticalLight": ("be853705e93c450ae74b3d3a7615ad65", "Aperture_Boot_vertical_light.mp4"),
+}
 STYLE = """body{font:15px/1.5 system-ui,sans-serif;margin:0;background:#f4f4f2;color:#1b1b1b}
 header{background:#111;color:#fff;padding:14px 24px;display:flex;gap:24px;align-items:baseline;flex-wrap:wrap}
 header a{color:#fff;text-decoration:none}main{max-width:1100px;margin:0 auto;padding:20px 24px}
@@ -48,7 +60,13 @@ th{background:#ececE8}pre{background:#fff;border:1px solid #d8d8d4;padding:12px;
 .btn{display:inline-block;background:#c55a00;color:#fff;padding:8px 16px;text-decoration:none;border-radius:4px}
 .now{background:#fff3e6;border-left:4px solid #c55a00;padding:8px 12px;margin:8px 0}.warn{background:#fff0c2;border:1px solid #d4a800;padding:8px 12px;font-weight:700}
 .plan{list-style:none;padding:0;margin:6px 0}.plan li{padding:2px 0}.plan .active{font-weight:700;color:#c55a00}.plan .done{color:#4a7a4a}.plan .skipped{color:#8a8a85}.bad{color:#b00020;font-weight:700}
-.muted{color:#6b6b66}.bar{height:10px;background:#c55a00;border-radius:2px;min-width:2px}video,img{max-width:100%}"""
+.muted{color:#6b6b66}.bar{height:10px;background:#c55a00;border-radius:2px;min-width:2px}video,img{max-width:100%}
+.browser{display:grid;grid-template-columns:minmax(190px,1fr) minmax(0,3fr);gap:20px;margin-top:20px}
+.file-nav{max-height:75vh;overflow:auto;background:white;padding:12px;border:1px solid #d8d8d4}
+.file-nav a{display:block;margin:0;padding:6px;overflow-wrap:anywhere}.file-nav a[aria-current]{background:#fff3e6}
+.preview{min-width:0;background:white;border:1px solid #d8d8d4;padding:16px;overflow-wrap:anywhere}
+.preview iframe{width:100%;height:65vh;border:0}.preview img,.preview video{max-height:65vh;object-fit:contain}
+.font-sample{font-size:clamp(20px,4vw,42px)}@media(max-width:650px){.browser{grid-template-columns:1fr}.file-nav{max-height:25vh}}"""
 
 
 def _e(value) -> str:
@@ -58,7 +76,8 @@ def _e(value) -> str:
 def _page(title: str, owner: str, body: str) -> web.Response:
     owner_text = f"хозяин: {_e(owner)}" if owner else "хозяина нет"
     text = (f"<!doctype html><html lang=ru><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-            f"<title>{_e(title)}</title><style>{STYLE}</style><header><a href='/'><b>Монтаж</b></a>"
+            "<link rel='stylesheet' href='/design/components/bundle.css'>"
+            f"<title>{_e(title)}</title><style>{STYLE}</style><header><a href='/'><b class='ap-heading'>Монтаж</b></a>"
             f"<span>{owner_text}</span></header><main>{body}</main></html>")
     return web.Response(text=text, content_type="text/html")
 
@@ -71,11 +90,18 @@ def _ms(value) -> str:
     return f"{int(total // 60)}:{total % 60:05.2f}"
 
 
-def list_files(root: Path, limit: int = 2000) -> list[Path]:
+def list_files(root: Path, limit: int = 2000, *, technical: bool = False) -> list[Path]:
     """Файлы задачи (без node_modules и служебного) относительно её папки, по алфавиту."""
     out: list[Path] = []
     for base, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        folder = Path(base).relative_to(root)
+        if not technical and folder == Path("."):
+            dirs[:] = [d for d in dirs if d in {"plan", "sources", "renders", "transcript", "qa", "work"}]
+            continue
+        if not technical and folder == Path("work"):
+            dirs[:] = [d for d in dirs if d == "public"]
+            continue
         for name in sorted(files):
             out.append(Path(base, name).relative_to(root))
             if len(out) >= limit:
@@ -185,7 +211,8 @@ class Site:
         self.app = web.Application()
         self.app.add_routes([web.get("/", self.index), web.get("/job/{job}", self.job),
                              web.get("/job/{job}/studio", self.studio), web.get("/job/{job}/live", self.live),
-                             web.get("/job/{job}/raw/{path:.*}", self.raw), web.get("/job/{job}/view/{path:.*}", self.view)])
+                             web.get("/job/{job}/raw/{path:.*}", self.raw), web.get("/job/{job}/view/{path:.*}", self.view),
+                             web.get("/design/{path:.*}", self.design)])
 
     @property
     def owner(self) -> str:
@@ -310,7 +337,8 @@ class Site:
     def _s_files(self, job) -> str:
         jid = quote(job.job_id)
         items = []
-        for rel in list_files(job.folder):
+        project_files = list_files(job.folder)
+        for rel in project_files:
             posix = rel.as_posix()
             q = quote(posix)
             kind = mimetypes.guess_type(posix)[0] or ""
@@ -321,7 +349,32 @@ class Site:
             except OSError:
                 size = ""
             items.append(f"<tr><td><a href='{link}'>{_e(posix)}</a></td><td class=muted>{size}</td></tr>")
-        return f"<table><tr><th>Файл</th><th>Размер</th></tr>{''.join(items)}</table>"
+        visible = set(project_files)
+        technical = "".join(
+            f"<li><a href='/job/{jid}/raw/{quote(rel.as_posix())}'>{_e(rel.as_posix())}</a></li>"
+            for rel in list_files(job.folder, technical=True) if rel not in visible
+        )
+        details = f"<details><summary>Служебные файлы</summary><ul>{technical}</ul></details>" if technical else ""
+        design = self._file_links(job, "design")
+        return f"<table><tr><th>Файл</th><th>Размер</th></tr>{''.join(items)}</table>{details}{design}"
+
+    def _file_links(self, job, scope: str, selected: str = "") -> str:
+        if scope == "design":
+            root = self.manager.layout.character / "design"
+            files = list_files(root, technical=True)
+            files = [p for p in files if p.suffix.lower() in FONT_EXT | {".html", ".svg", ".gif", ".png", ".jpg", ".webp", ".mp4", ".webm"}]
+            prefix = "design/"
+            title = "Библиотека Aperture"
+        else:
+            files = list_files(job.folder)
+            prefix = ""
+            title = "Файлы проекта"
+        links = []
+        for file in files:
+            rel = prefix + file.as_posix()
+            current = " aria-current='page'" if rel == selected else ""
+            links.append(f"<a href='/job/{quote(job.job_id)}/view/{quote(rel)}'{current}>{_e(file.as_posix())}</a>")
+        return f"<nav class='file-nav' aria-label='{title}'><strong>{title}</strong>{''.join(links)}</nav>" if links else ""
 
     async def studio(self, request: web.Request) -> web.Response:
         job = self._job(request)
@@ -332,25 +385,61 @@ class Site:
     async def view(self, request: web.Request) -> web.Response:
         job = self._job(request)
         rel = request.match_info["path"]
-        path = safe_file(job.folder, rel)
+        design = rel.startswith("design/")
+        path = safe_file(self.manager.layout.character / "design", rel.removeprefix("design/")) if design else safe_file(job.folder, rel)
         if path is None:
             raise web.HTTPNotFound(text="файла нет")
-        raw = f"/job/{quote(job.job_id)}/raw/{quote(rel)}"
+        raw = "/" + quote(rel) if design else f"/job/{quote(job.job_id)}/raw/{quote(rel)}"
         kind = mimetypes.guess_type(rel)[0] or ""
         if kind.startswith("video/"):
             body = f"<video controls src='{raw}'></video>"
         elif kind.startswith("audio/"):
             body = f"<audio controls src='{raw}'></audio>"
-        elif kind.startswith("image/") and path.suffix.lower() != ".svg":
-            body = f"<img src='{raw}'>"
+        elif kind.startswith("image/"):
+            body = f"<img src='{raw}' alt='{_e(path.name)}'>"
+        elif path.suffix.lower() == ".html":
+            body = f"<iframe sandbox='allow-scripts' referrerpolicy='no-referrer' title='{_e(path.name)}' src='{raw}'></iframe>"
+        elif path.suffix.lower() in FONT_EXT:
+            body = (f"<style>@font-face{{font-family:PreviewFont;src:url('{raw}')}}"
+                    ".font-sample{font-family:PreviewFont,sans-serif}</style>"
+                    "<p class='font-sample' contenteditable='true' aria-label='Образец шрифта'>"
+                    "Лаборатория Aperture · The quick brown fox<br>Аа Бб Вв Дд Яя · 0123456789</p>")
         else:
-            body = f"<pre>{_e(_read_text(path))}</pre>"
+            body = f"<pre>{_e(await asyncio.to_thread(_read_text, path))}</pre>"
         back = f"/job/{quote(job.job_id)}?s=files"
-        return _page(rel, self.owner, f"<p><a href='{back}'>← файлы</a> · <a href='{raw}'>скачать</a></p><h2>{_e(rel)}</h2>{body}")
+        links = await asyncio.to_thread(self._file_links, job, "design" if design else "project", rel)
+        return _page(rel, self.owner, f"<p><a href='{back}'>← файлы</a> · <a href='{raw}' download>скачать</a></p>"
+                     f"<div class='browser'>{links}<section class='preview'><h2>{_e(rel)}</h2>{body}</section></div>")
 
     async def raw(self, request: web.Request):
         job = self._job(request)
         path = safe_file(job.folder, request.match_info["path"])
         if path is None:
             raise web.HTTPNotFound(text="файла нет")
-        return web.FileResponse(path)
+        return self._asset_response(path)
+
+    async def design(self, request: web.Request):
+        rel = request.match_info["path"]
+        path = safe_file(self.manager.layout.character / "design", rel)
+        if path is None:
+            raise web.HTTPNotFound(text="файла нет")
+        if rel.startswith("components/") and path.name == "preview.html":
+            markup = await asyncio.to_thread(_read_text, path)
+            if path.parent.name in INTRO_MEDIA:
+                blob, filename = INTRO_MEDIA[path.parent.name]
+                markup = markup.replace(f"/_blob/{blob}", f"/design/assets/Intro/{filename}")
+            return web.Response(
+                text=("<!doctype html><meta charset=utf-8>"
+                      "<meta name=viewport content='width=device-width,initial-scale=1'>"
+                      "<link rel='stylesheet' href='/design/components/bundle.css'>" + markup),
+                content_type="text/html",
+                headers={"Content-Security-Policy": PREVIEW_CSP, "X-Content-Type-Options": "nosniff"},
+            )
+        return self._asset_response(path)
+
+    @staticmethod
+    def _asset_response(path: Path):
+        headers = {"Content-Security-Policy": PREVIEW_CSP, "X-Content-Type-Options": "nosniff"}
+        if path.suffix.lower() in FONT_EXT:
+            headers["Access-Control-Allow-Origin"] = "null"
+        return web.FileResponse(path, headers=headers)

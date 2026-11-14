@@ -23,7 +23,8 @@ agent/interfaces/workspace/tests
 # рабочие папки задач, готовые ролики и демо
 workspaces/montage/jobs
 workspaces/montage/template/out
-workspaces/montage/template/demo
+workspaces/montage/template/demo/*
+!workspaces/montage/template/demo/plan.*.json
 workspaces/montage/template/.remotion
 workspaces/montage/template/public/media
 workspaces/montage/template/public/vo

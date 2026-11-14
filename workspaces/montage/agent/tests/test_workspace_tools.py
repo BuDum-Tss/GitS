@@ -120,7 +120,11 @@ async def test_files_read_template_and_resources_and_list_root(tmp_path):
     names = [e["name"] for e in root["entries"]]
     assert "template" in names and "resources" in names and jid in names and "skills" not in names
     assert "node_modules" not in [e["name"] for e in (await rig.files("list", "template"))["entries"]]
-    assert (await rig.files("read", "template/package.json"))["content"].lstrip().startswith("{")
+    assert (await rig.files("read", "template/demo/plan.horizontal.json"))["content"].lstrip().startswith("{")
+    assert await code_of(rig.files("read", "template/package.json")) == "denied"
+    assert await code_of(rig.files("read", f"{jid}/work/src/schema.ts")) == "denied"
+    work_entries = (await rig.files("list", f"{jid}/work"))["entries"]
+    assert [entry["name"] for entry in work_entries] == ["public"]
     style = await rig.files("read", "resources/APERTURE_STYLE.md")
     assert style["size"] > 0 and style["content"]
     assert {e["name"] for e in (await rig.files("list", "resources"))["entries"]} >= {"assets", "design"}
