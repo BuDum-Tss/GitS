@@ -144,7 +144,7 @@ async def test_panel_is_only_a_summary_without_job_table(tmp_path):
     make_job(manager, "Второй", "waiting_user", plan=True)
     make_job(manager, "Третий", "done", plan=True)
     blocks = manager.panel_blocks()
-    assert [b["type"] for b in blocks] == ["stats"]                           # ролики, файлы и Studio на сайте среды; кнопок одобрения нет
+    assert [b["type"] for b in blocks] == ["stats", "text"]                           # ролики, файлы и Studio на сайте среды; кнопок одобрения нет
     counts = {i["label"]: i["value"] for i in blocks[0]["items"]}
     assert counts["В работе"] == 1 and counts["Ждут ответа"] == 1 and counts["Готово"] == 1 and counts["Операции"] == 0
     assert "Режим приёмки" not in counts

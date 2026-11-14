@@ -217,7 +217,7 @@ class Commands:
             if cached and cached.get("hash") == digest and wav.is_file():
                 v["duration_ms"] = int(cached["duration_ms"])
                 continue
-            await progress(k / len(vos), f"синтезирую реплику {k + 1} из {len(vos)}")
+            await progress(k / len(vos), f"реплика {k + 1} из {len(vos)}")
             out = await synthesize_to(self.core, job, v["id"], v["text"], v.get("emotion") or "neutral")
             v["duration_ms"] = out["duration_ms"]
             made += 1
@@ -239,7 +239,7 @@ class Commands:
         self._plan_path(job)
         await asyncio.to_thread(sync_media, job.folder)
         out = job.renders / "preview.mp4"
-        spent = await self._render(job, out, scale=PREVIEW_SCALE, crf=PREVIEW_CRF, progress=progress, text="черновик")
+        spent = await self._render(job, out, scale=PREVIEW_SCALE, crf=PREVIEW_CRF, progress=progress, text="Рендер черновика")
         job.data["preview_render_s"] = round(spent, 1)
         job.add_artifact(out, "preview")
         await self._save(job)
@@ -270,6 +270,7 @@ class Commands:
         черновик, его кадры и звук (qa.py). Отчёт `qa/report.md` и `qa/report.json`; хэш плана и итог запоминаются в единице:
         по ним `final` решает, пускать ли финальный рендер."""
         path = self._plan_path(job)
+        await progress(0.1, "форма и правила монтажного листа")
         raw = path.read_bytes()
         plan_hash = hashlib.sha256(raw).hexdigest()
         try:
@@ -300,6 +301,7 @@ class Commands:
                 for v in plan.get("voiceover") or []:
                     if not (job.work / "public" / "vo" / f"{v['id']}.wav").is_file():
                         problems.append(f"закадр {v['id']}: нет файла public/vo/{v['id']}.wav (run voiceover)")
+                await progress(0.3, "типы и вставки проекта")
                 problems += [f"tsc: {x}" for x in await self.renderer.tsc(job.work)]
         findings = [qa_mod.Finding("plan", "error", p) for p in problems]
         checked: dict = {"plan": True}
@@ -313,7 +315,7 @@ class Commands:
                 findings += qa_mod.craft_plan_checks(plan, story, words, self._platform(job))
                 findings.append(qa_mod.Finding("preview", "warning", "черновик старше плана: кадры и звук не проверены, перерендери (run render)"))
             else:
-                await progress(0.5, "проверяю кадры и звук черновика")
+                await progress(0.5, "кадры и звук черновика")
                 tech, tech_checked = await self.qa.technical(job, plan, words, story, preview, draft=True, scale=PREVIEW_SCALE,
                                                              platform=self._platform(job))
                 findings += tech
@@ -368,11 +370,11 @@ class Commands:
         except Exception as e:
             log.info("событие montage.launch не отправлено: %s", e)
         await asyncio.to_thread(sync_media, job.folder)
-        await self._render(job, raw, scale=None, crf=FINAL_CRF, progress=progress, text="финал", span=(0.0, 0.85))
-        await progress(0.88, "выравниваю громкость")
+        await self._render(job, raw, scale=None, crf=FINAL_CRF, progress=progress, text="Рендер финала", span=(0.0, 0.85))
+        await progress(0.88, "Финал: выравниваю громкость")
         await media.loudnorm(raw, final)
         raw.unlink(missing_ok=True)
-        await progress(0.93, "проверяю финал")
+        await progress(0.93, "Финал: проверяю готовый файл")
         words = read_json(job.transcript / "words.json") or []
         story = read_json(job.plan_dir / "story.json")
         findings, checked = await self.qa.technical(job, plan, words, story, final, draft=False, scale=1.0, platform=platform)

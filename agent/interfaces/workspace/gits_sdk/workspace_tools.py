@@ -11,11 +11,14 @@
 """
 from __future__ import annotations
 
+import difflib
 import fnmatch
 import inspect
+import logging
 import mimetypes
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -26,6 +29,10 @@ WRITE_LIMIT = 4 * 1024 * 1024     # самая большая запись од�
 LIST_LIMIT = 500
 RUN_ARGS_MAX, RUN_ARG_LEN_MAX = 50, 2000
 FILE_OPS = ("list", "read", "write", "replace", "delete", "move")
+
+log = logging.getLogger("gits_sdk.workspace_tools")
+ACTION_TEXT_MAX = 300
+ACTION_TARGET_MAX = 200
 
 Executor = Callable[[WorkspaceCommand, list, bool, Path], Any]   # (команда, аргументы, фон, рабочий каталог) -> результат или job_id
 
@@ -137,6 +144,72 @@ class Sandbox:
         return "/".join(path.relative_to(self.root).parts)
 
 
+# ---------------------------------------------------------------------------------------------------- журнал действий (раздел 7а)
+
+def plural_ru(n: int, one: str, few: str, many: str) -> str:
+    """Слово после числа: 1 строка, 2 строки, 5 строк."""
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
+def human_size(n: Any) -> str:
+    """Размер файла для человека: 512 Б, 3 КБ, 1.2 МБ."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return ""
+    if n < 1024:
+        return f"{n} Б"
+    if n < 1024 * 1024:
+        return f"{round(n / 1024)} КБ"
+    return f"{n / 1024 / 1024:.1f} МБ"
+
+
+def count_lines(text: str) -> int:
+    return text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+
+
+def action_record(tool: str, op: str = "", target: str = "", ok: bool = True, error: str | None = None, text: str = "") -> dict:
+    """Запись журнала действий `{ts, tool, op, target, ok, error, text}` (раздел 7а контракта). Содержимого файлов в ней нет:
+    только путь, размер и краткий итог. Окружение для своих инструментов (`work`, `site`, `resources`) строит запись тем же
+    помощником, чтобы формат был общий."""
+    return {"ts": round(time.time(), 3), "tool": str(tool), "op": str(op or ""), "target": str(target or "")[:ACTION_TARGET_MAX],
+            "ok": bool(ok), "error": (str(error)[:ACTION_TEXT_MAX] if error else None), "text": str(text or "")[:ACTION_TEXT_MAX]}
+
+
+def error_text(e: BaseException) -> str:
+    code = getattr(e, "code", None)
+    message = getattr(e, "message", None) or str(e)
+    return f"{code}: {message}" if code else f"{type(e).__name__}: {message}"
+
+
+FILE_VERBS = {"list": "посмотреть каталог", "read": "прочитать", "write": "записать", "replace": "заменить текст в",
+              "delete": "удалить", "move": "перенести"}
+
+
+def failure_text(e: BaseException, what: str) -> str:
+    """Человеческий текст отказа или ошибки. `what`: что она пыталась сделать («прочитать work/src/A.tsx»)."""
+    message = getattr(e, "message", None) or str(e)
+    if getattr(e, "code", None) == "denied":
+        return f"Отказано: нельзя {what}" + (f" ({message})" if message else "")
+    return f"Не вышло: {what}: {message}"
+
+
+def similar_names(name: str, names: Iterable[str], limit: int = 8) -> list[str]:
+    """Самые похожие на `name` имена: вхождение подстроки или общая часть имени, затем близкие по написанию."""
+    low = name.casefold().strip()
+    names = list(names)
+    found = [n for n in names if low and (low in n.casefold() or n.casefold() in low)]
+    parts = [p for p in low.replace("_", "-").split("-") if len(p) >= 3]
+    found += [n for n in names if n not in found and any(p in n.casefold() for p in parts)]
+    found += [n for n in difflib.get_close_matches(low, names, n=limit, cutoff=0.5) if n not in found]
+    return found[:limit]
+
+
 def _read_file(path: Path, shown: str, limit: int, offset: int = 0) -> dict:
     """Содержимое файла: текст с обрезкой (`truncated`, `size`) или метаданные для двоичного."""
     try:
@@ -172,29 +245,128 @@ def _str_arg(args: dict, key: str, *, required: bool = True) -> str | None:
 class WorkspaceTools:
     """Обработчики стандартных инструментов окружения: `skills`, `files`, `run`.
 
+    `on_action(запись)` (необязательный, обычная или async функция) зовётся после каждого вызова: успешного, отказа и ошибки;
+    запись `{ts, tool, op, target, ok, error, text}` по-русски, без содержимого файлов (`action_record`). Ошибка в `on_action`
+    вызов инструмента не ломает.
+
     `sandbox` область; `skills` навыки (`WorkspaceSkill`, путь относительно корня песочницы); `commands` разрешённые
     команды (`WorkspaceCommand`); `executor` функция запуска `(команда, args, background, cwd) -> результат` (синхронная
     или async); для фона она возвращает `job_id` (строка или словарь с `job_id`)."""
 
     def __init__(self, sandbox: Sandbox, skills: Iterable[WorkspaceSkill] = (), commands: Iterable[WorkspaceCommand] = (),
-                 executor: Executor | None = None, read_limit: int = READ_LIMIT):
+                 executor: Executor | None = None, read_limit: int = READ_LIMIT,
+                 on_action: Callable[[dict], Any] | None = None):
         self.sandbox = sandbox
         self.skill_list = list(skills)
         self.commands = {c.id: c for c in commands}
         self.executor = executor
         self.read_limit = read_limit
+        self.on_action = on_action
+
+    # -- журнал действий
+
+    async def emit_action(self, record: dict) -> None:
+        """Отдать запись в `on_action`; сбой обработчика только в лог."""
+        if self.on_action is None:
+            return
+        try:
+            out = self.on_action(record)
+            if inspect.isawaitable(out):
+                await out
+        except Exception as e:
+            log.warning("on_action: %s", e)
+
+    async def _audit(self, tool: str, args: Any, call: Callable[[Any], Any]) -> dict:
+        try:
+            out = await call(args)
+        except Exception as e:
+            await self.emit_action(self._safe_record(tool, args, None, e))
+            raise
+        await self.emit_action(self._safe_record(tool, args, out, None))
+        return out
+
+    def _safe_record(self, tool: str, args: Any, out: dict | None, err: BaseException | None) -> dict:
+        try:
+            return getattr(self, "_record_" + tool)(args if isinstance(args, dict) else {}, out, err)
+        except Exception as e:                      # описание действия не должно ломать вызов
+            return action_record(tool, "", "", err is None, error_text(err) if err else None, f"{tool}: (описание недоступно: {e})")
+
+    def _record_skills(self, args: dict, out: dict | None, err: BaseException | None) -> dict:
+        name = args.get("name") if isinstance(args.get("name"), str) else ""
+        file = args.get("file") if isinstance(args.get("file"), str) else ""
+        target = name + (f"/{file}" if file and name else "")
+        op = "read" if name else "list"
+        if err is not None:
+            what = f"читать навык {name}" + (f", файл {file}" if file else "") if name else "посмотреть список навыков"
+            return action_record("skills", op, target, False, error_text(err), failure_text(err, what))
+        if not name:
+            return action_record("skills", op, "", True, None, "Смотрит список навыков")
+        size = human_size((out or {}).get("size"))
+        text = f"Читает файл {file} навыка {name}" if file else f"Читает навык {name}"
+        return action_record("skills", op, target, True, None, text + (f" ({size})" if size else ""))
+
+    def _record_files(self, args: dict, out: dict | None, err: BaseException | None) -> dict:
+        op = args.get("op") if isinstance(args.get("op"), str) else ""
+        path = (out or {}).get("path") or (args.get("path") if isinstance(args.get("path"), str) else "") or "."
+        dest = args.get("dest") if isinstance(args.get("dest"), str) else ""
+        target = path + (f" -> {dest}" if op == "move" and dest else "")
+        if err is not None:
+            what = f"{FILE_VERBS.get(op, 'выполнить «' + op + '» над')} {target}"
+            return action_record("files", op, target, False, error_text(err), failure_text(err, what))
+        out = out or {}
+        if op == "list":
+            text = f"Смотрит каталог {path}"
+        elif op == "read":
+            size = human_size(out.get("size"))
+            text = f"Читает {path}" + (f" ({size})" if size else "") + (", двоичный" if out.get("binary") else "")
+        elif op == "write":
+            n = count_lines(args.get("content") if isinstance(args.get("content"), str) else "")
+            text = f"Записала {path} ({'+' if out.get('created') else ''}{n} {plural_ru(n, 'строка', 'строки', 'строк')})"
+        elif op == "replace":
+            n = int(out.get("replaced") or 1)
+            text = f"Заменила текст в {path}" + (f" ({n} {plural_ru(n, 'место', 'места', 'мест')})" if n > 1 else "")
+        elif op == "delete":
+            text = f"Удалила {path}"
+        elif op == "move":
+            text = f"Перенесла {out.get('from') or args.get('path')} в {out.get('path') or dest}"
+            target = f"{out.get('from') or args.get('path')} -> {out.get('path') or dest}"
+        else:
+            text = f"Файлы: {op} {path}"
+        return action_record("files", op, target, True, None, text)
+
+    def _record_run(self, args: dict, out: dict | None, err: BaseException | None) -> dict:
+        cid = args.get("command") if isinstance(args.get("command"), str) else ""
+        cargs = [str(a) for a in args.get("args") or []] if isinstance(args.get("args"), list) else []
+        command = self.commands.get(cid)
+        title = command.title if command is not None and command.title else cid
+        shown = (" " + " ".join(cargs))[:120] if cargs else ""
+        target = (cid + shown)[:ACTION_TARGET_MAX]
+        background = bool((out or {}).get("background")) if out else bool(args.get("background"))
+        op = "background" if background else "run"
+        if err is not None:
+            return action_record("run", op, target, False, error_text(err), failure_text(err, f"запустить команду «{title}»{shown}"))
+        if background:
+            text = f"Запустила в фоне: {title}{shown}, операция {(out or {}).get('job_id')}"
+        else:
+            result = (out or {}).get("result")
+            note = result.get("text") if isinstance(result, dict) and isinstance(result.get("text"), str) else ""
+            text = f"Выполнила: {title}{shown}" + (f": {note}" if note else "")
+        return action_record("run", op, target, True, None, text)
 
     # -- skills
 
     async def skills(self, args: dict | None = None) -> dict:
-        """Без параметров список навыков; `name` текст SKILL.md; `name` и `file` файл внутри навыка."""
-        args = args or {}
+        """Без параметров список навыков с описаниями; `name` текст SKILL.md; `name` и `file` файл внутри навыка. Неточное
+        имя даёт ошибку `unknown` с точными и самыми похожими именами."""
+        return await self._audit("skills", args or {}, self._skills)
+
+    async def _skills(self, args: dict) -> dict:
         name = _str_arg(args, "name", required=False)
         if not name:
             return {"ok": True, "result": [{"name": s.name, "description": s.description} for s in self.skill_list]}
         skill = next((s for s in self.skill_list if s.name == name), None)
         if skill is None:
-            raise ToolError(f"навыка «{name}» нет", code="unknown")
+            raise self._unknown_skill(name)
         file = _str_arg(args, "file", required=False) or "SKILL.md"
         skill_root = Sandbox(self.sandbox.root, readonly=[skill.path], hidden=self.sandbox.hidden).resolve(skill.path).resolve()
         target = Sandbox(skill_root, readonly=["."], hidden=self.sandbox.hidden).resolve(file)
@@ -204,10 +376,21 @@ class WorkspaceTools:
         out["skill"] = name
         return out
 
+    def _unknown_skill(self, name: str) -> ToolError:
+        names = [s.name for s in self.skill_list]
+        similar = similar_names(name, names)
+        message = f"навыка «{name}» нет. Точные имена: {', '.join(names) or 'навыков нет'}."
+        if similar:
+            message += f" Похожие: {', '.join(similar)}."
+        return ToolError(message, code="unknown")
+
     # -- files
 
     async def files(self, args: dict) -> dict:
         """`op`: list, read, write, replace (точная замена строки), delete, move; `path` в области, запись только в writable."""
+        return await self._audit("files", args, self._files)
+
+    async def _files(self, args: dict) -> dict:
         op = _str_arg(args, "op")
         if op not in FILE_OPS:
             raise ToolError(f"op: одно из {list(FILE_OPS)}", code="invalid")
@@ -340,6 +523,9 @@ class WorkspaceTools:
 
     async def run(self, args: dict) -> dict:
         """Запуск команды из списка разрешённых. Фон: сразу `job_id`; иначе результат исполнителя."""
+        return await self._audit("run", args, self._run)
+
+    async def _run(self, args: dict) -> dict:
         command, cargs, background = self._prepare_run(args)
         if self.executor is None:
             raise ToolError("исполнитель команд не подключён", code="unavailable")

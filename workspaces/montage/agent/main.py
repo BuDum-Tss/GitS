@@ -31,15 +31,17 @@ def wire(client: WorkspaceClient, manager: Manager) -> None:
 
     @client.tool("work")
     async def work(args):
-        return await manager.work(args)
+        return await manager.journal.audited("work", args, manager.work)
 
     @client.tool("site")
     async def site(args):
-        return await manager.site_tool(args)
+        return await manager.journal.audited("site", args, manager.site_tool)
 
     @client.tool("resources")
     async def resources(args):
-        return {"text": manager.resources_text()}
+        async def call(_args):
+            return {"text": manager.resources_text()}
+        return await manager.journal.audited("resources", args, call)
 
     # окружение агента (контракт 3.2, раздел 7): запросы workspace.enter / afk / exit / resume
     @client.on_request("workspace.enter")

@@ -18,7 +18,9 @@ from layout import Layout
 
 # где что лежит относительно корня области (папка единиц хозяина); те же значения идут в манифест (`workspace.area`)
 AREA_ROOT = "jobs"
-WRITABLE = ["*/work/src", "*/work/public", "*/plan"]
+WRITABLE = ["*/plan"]                                    # агент пишет только идею, сценарий и монтажный лист (имена ниже)
+PLAN_FILES = ("idea.md", "story.md", "plan.json")
+PLAN_JSON = "plan.json"
 READONLY = ["template", "resources", "*/sources", "*/transcript", "*/renders", "*/qa", "*/work"]
 HIDDEN = ["node_modules", ".git", ".claude"]
 SKILLS_MOUNT = "skills"
@@ -61,6 +63,10 @@ class MontageSandbox(Sandbox):
                 continue
         return super().rel(path)
 
+    def can_write(self, parts: tuple[str, ...]) -> bool:
+        """Запись только в `<id>/plan/idea.md`, `story.md`, `plan.json`: другие имена в plan/ и весь остальной код ролика закрыты."""
+        return len(parts) == 3 and parts[1].casefold() == "plan" and parts[2] in PLAN_FILES and super().can_write(parts)
+
     def mount_root(self, name: str) -> Path | None:
         return self.mounts.get(name)
 
@@ -68,14 +74,53 @@ class MontageSandbox(Sandbox):
 class MontageTools(WorkspaceTools):
     """Стандартные инструменты окружения (`skills`, `files`, `run`) поверх песочницы с точками монтирования."""
 
-    async def skills(self, args: dict | None = None) -> dict:
-        args = args or {}
+    def __init__(self, *a, plan_validator=None, **kw):
+        super().__init__(*a, **kw)
+        self.plan_validator = plan_validator                   # (id единицы, текст plan.json) -> список ошибок
+
+    def _plan_target(self, args: dict) -> tuple[str, Path] | None:
+        rel = args.get("path")
+        if not isinstance(rel, str) or self.plan_validator is None:
+            return None
+        parts = self.sandbox.parts(rel)
+        if len(parts) == 3 and parts[1] == "plan" and parts[2] == PLAN_JSON and self.sandbox.can_write(parts):
+            return parts[0], self.sandbox.resolve(rel, write=True)
+        return None
+
+    def _guarded_plan_write(self, args: dict, op):
+        """Запись монтажного листа с проверкой схемы: неверный лист откатывается, ошибки возвращаются списком."""
+        target = self._plan_target(args)
+        if target is None:
+            return op(args)
+        jid, path = target
+        old = path.read_bytes() if path.is_file() else None
+        out = op(args)
+        try:
+            problems = self.plan_validator(jid, path.read_text(encoding="utf-8"))
+        except Exception as e:
+            problems = [f"проверка не выполнена: {e}"]
+        if problems:
+            if old is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(old)
+            lines = "\n".join(f"- {p}" for p in problems[:25])
+            raise ToolError(f"монтажный лист не принят (файл не записан), ошибок {len(problems)}:\n{lines}", code="invalid")
+        return out
+
+    def _op_write(self, args: dict) -> dict:
+        return self._guarded_plan_write(args, super()._op_write)
+
+    def _op_replace(self, args: dict) -> dict:
+        return self._guarded_plan_write(args, super()._op_replace)
+
+    async def _skills(self, args: dict) -> dict:
         name = _str_arg(args, "name", required=False)
         if not name:
             return {"ok": True, "result": [{"name": s.name, "description": s.description} for s in self.skill_list]}
         skill = next((s for s in self.skill_list if s.name == name), None)
         if skill is None:
-            raise ToolError(f"навыка «{name}» нет", code="unknown")
+            raise self._unknown_skill(name)
         file = _str_arg(args, "file", required=False) or "SKILL.md"
         parts = tuple(p for p in skill.path.replace("\\", "/").split("/") if p)
         mount = self.sandbox.mount_root(parts[0]) if parts else None

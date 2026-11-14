@@ -25,6 +25,7 @@ from env_state import WorkspaceState
 from gits_sdk import ToolError
 from gits_sdk.protocol import JOB_ID_RE, WorkspaceCommand
 from jobs import Job, JobStore, default_title
+from journal import Journal, hms, plan_state, active_task
 from layout import Layout
 from manifest import BRIEF, COMMANDS, FORMATS, MANIFEST, PLATFORMS, SOURCE_KINDS, VOICEOVERS, normalize_voiceover, resolve_output_dir
 from montage_site import Site
@@ -86,8 +87,9 @@ class Manager:
         self.env = WorkspaceState()                     # окружение агента «Монтаж» (ТЗ 32, контракт 3.2)
         self.on_idle = None                             # () -> None: активных операций не осталось (аренда ждёт этого, lease_host)
         # стандартные инструменты workspace: песочница по области, навыки модуля, разрешённые команды, исполнитель
+        self.journal = Journal(self)                    # журнал действий агента (раздел 7а контракта)
         self.tools = MontageTools(make_sandbox(layout), skills=discover_skills(layout.skills), commands=COMMANDS,
-                                  executor=self.execute)
+                                  executor=self.execute, on_action=self.journal.record, plan_validator=self.validate_plan_text)
 
     # ================================================================================================ настройки и состояние
 
@@ -188,6 +190,21 @@ class Manager:
         if not request["format"] and request["platform"] in ("shorts", "reels", "telegram"):
             request["format"] = "vertical"
         return paths, request
+
+    def validate_plan_text(self, job_id: str, text: str) -> list[str]:
+        """Проверка монтажного листа при записи агентом (форма и правила plan_schema, как в `check`): список ошибок."""
+        import json
+        from commands import read_json
+        from plan_schema import validate_plan
+        try:
+            plan = json.loads(text)
+        except ValueError as e:
+            return [f"plan.json не является JSON: {e}"]
+        if not isinstance(plan, dict):
+            return ["plan.json должен быть JSON-объектом"]
+        job = self._find(job_id)
+        story = read_json(job.plan_dir / "story.json")
+        return validate_plan(plan, self.cmds._plan_context(job, story if isinstance(story, dict) else None))
 
     def resources_text(self) -> str:
         """Свои ресурсы монтажа с готовыми путями для `work.create.sources` (пути в том месте, где работает модуль)."""
@@ -290,6 +307,7 @@ class Manager:
             await self.cancel_run(run.run_id)
         await asyncio.to_thread(media.kill_processes_under, job.folder)
         await asyncio.to_thread(self.store.log, job, "cancelled")
+        await self.journal.touch(job, "единица отменена", force=True)
         await self.studios.stop(job.job_id)
         await self.publish_state()
         return job
@@ -355,6 +373,7 @@ class Manager:
                                                          "background": run.background}
         await asyncio.to_thread(self.store.save, job)
         await asyncio.to_thread(self.store.log, job, "run", command=run.command, job_id=run.run_id, status="start")
+        await self.journal.send_unit(job, force=True)
 
     async def _end(self, run: Run, job: Job, status: str, *, text: str = "", result: dict | None = None,
                    error: dict | None = None) -> None:
@@ -373,6 +392,7 @@ class Manager:
         await asyncio.to_thread(self.store.save, job)
         await asyncio.to_thread(self.store.log, job, "run", command=run.command, job_id=run.run_id, status=status,
                                 **({"error": error} if error else {}))
+        await self.journal.finished(run, job, status, text, error)
         if run.background:
             fields: dict = {"title": self._title(run, job), "state": status, "text": text[:300] or None}
             if status == "done":
@@ -416,7 +436,8 @@ class Manager:
                                        text="жду очереди рендера" if heavy else None)
 
             async def progress(frac: float, text: str) -> None:
-                await self.core.job_update(run.run_id, progress=round(max(0.0, min(1.0, frac)), 3), text=text[:300])
+                full = await self.journal.step(job, run.run_id, run.command, frac, text)
+                await self.core.job_update(run.run_id, progress=round(max(0.0, min(1.0, frac)), 3), text=full[:300])
             async with self._heavy if heavy else contextlib.nullcontext():
                 if heavy:
                     await self.core.job_update(run.run_id, state="running", text=None)
@@ -440,7 +461,7 @@ class Manager:
 
     async def _inline(self, run: Run, job: Job, command: WorkspaceCommand, parsed: dict) -> dict:
         async def progress(frac: float, text: str) -> None:
-            return None
+            await self.journal.step(job, run.run_id, run.command, frac, text)
         try:
             await self._begin(run, job)
             result = await asyncio.wait_for(self.cmds.run(run.command, job, parsed, progress), command.timeout_s)
@@ -542,7 +563,7 @@ class Manager:
 
     # ================================================================================================ сводка для ядра и дашборда
 
-    def panel_blocks(self) -> list[dict]:
+    def panel_blocks(self, plan: dict | None = None) -> list[dict]:
         """Пространство «Монтаж» в дашборде: только сводка (кнопок одобрения нет: согласия идут вопросами ядра). Ролики, файлы,
         сценарий, монтажный лист и Studio на сайте окружения (`montage_site`, ссылка в `panel.links`). Читает файлы: звать через to_thread."""
         jobs = self._all_jobs()
@@ -551,25 +572,41 @@ class Manager:
             {"label": "В работе", "value": sum(1 for j in jobs if j.open and j.state != "waiting_user")},
             {"label": "Ждут ответа", "value": states.count("waiting_user")},
             {"label": "Готово", "value": states.count("done")},
-            {"label": "Операции", "value": len(self._runs)}]}]
+            {"label": "Операции", "value": len(self._runs)}]},
+            {"type": "text", "title": "Последнее действие", "text": self._last_action_text(jobs, plan)}]
+
+    def _last_action_text(self, jobs: list[Job], plan: dict | None = None) -> str:
+        """Строка «Последнее действие»: самое свежее по единицам (время и текст), ниже «Шаг n из N» из плана агента (core.tasks)."""
+        best = max((j.data["now"] for j in jobs if isinstance(j.data.get("now"), dict) and j.data["now"].get("at")),
+                   key=lambda n: n["at"], default=None)
+        if best is None and not jobs:
+            env = self.store.read_env_actions(1)
+            best = {"at": env[-1].get("ts"), "text": env[-1].get("text")} if env else None
+        lines = [f"{hms(best['at'])} · {best['text']}" if best else "Действий пока нет."]
+        summary = plan_state(active_task(plan if plan is not None else self.journal.cached_plan))
+        if summary and summary["n"]:
+            lines.append(f"Шаг {summary['n']} из {summary['total']}: {summary['text']}")
+        return "\n".join(lines)
 
     async def publish_panel(self) -> None:
         client = getattr(self.core, "client", None)
         if client is None:
             return
         try:
-            blocks = await asyncio.to_thread(self.panel_blocks)
+            plan = await self.journal.plan()
+            blocks = await asyncio.to_thread(self.panel_blocks, plan)
             await client.panel.set(blocks)
         except Exception as e:
             log.debug("пространство не обновлено: %s", e)
 
     async def publish_state(self) -> None:
-        runs = [{"job_id": r.run_id, "command": r.command, "unit": r.job_id} for r in self._runs.values()]
+        snapshot = list(self._runs.values())                      # пока читаются файлы, операция может закончиться и уйти из _runs
+        runs = [{"job_id": r.run_id, "command": r.command, "unit": r.job_id} for r in snapshot]
         jobs = await asyncio.to_thread(self._all_jobs)
         open_units = [j for j in jobs if j.open]
         summary = f"единиц в работе {len(open_units)}, операций идёт {len(runs)}"
         if runs:
-            first = self._runs[runs[0]["job_id"]]
+            first = snapshot[0]
             unit = self._jobs.get(first.job_id)
             summary += f": {RUN_TITLES.get(first.command, first.command).lower()}" + (f" «{unit.data['title']}»" if unit else "")
         data = {"units": [self.describe(j) for j in open_units][-UNITS_SHOWN:], "runs": runs,

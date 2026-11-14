@@ -120,7 +120,8 @@ class JobStore:
             (folder / sub).mkdir(parents=True, exist_ok=True)
         now = time.time()
         data = {"job_id": job_id, "title": title or default_title(request), "created": now, "updated": now,
-                "state": "new", "request": dict(request), "artifacts": [], "runs": {}, "check": None, "error": None}
+                "state": "new", "request": dict(request), "artifacts": [], "runs": {}, "check": None, "error": None,
+                "now": None, "step_name": None}
         job = Job(folder, data)
         self.save(job)
         return job
@@ -179,6 +180,32 @@ class JobStore:
                 continue
         return rows
 
+    def read_actions(self, job: Job, limit: int = 300) -> list[dict]:
+        """Последние `limit` записей-действий (`kind` = `action`) единицы, по времени от старых к новым."""
+        try:
+            lines = job.log_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        return _actions_of(lines, limit)
+
+    # ---- общий журнал окружения: действия, у которых нет единицы (до `work create`)
+
+    @property
+    def env_log_path(self) -> Path:
+        return self.dir / "env_log.jsonl"
+
+    def log_env(self, kind: str, **fields) -> None:
+        row = {"ts": round(time.time(), 3), "kind": kind, **fields}
+        with self._lock, open(self.env_log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    def read_env_actions(self, limit: int = 300) -> list[dict]:
+        try:
+            lines = self.env_log_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        return _actions_of(lines, limit)
+
     # ---- уборка (MON-11)
 
     def cleanup(self, keep: int) -> list[str]:
@@ -190,6 +217,18 @@ class JobStore:
             _rmtree(job.folder)
             removed.append(job.job_id)
         return removed
+
+
+def _actions_of(lines: list[str], limit: int) -> list[dict]:
+    rows = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("kind") == "action":
+            rows.append(row)
+    return rows[-limit:]
 
 
 def _rmtree(folder: Path) -> None:

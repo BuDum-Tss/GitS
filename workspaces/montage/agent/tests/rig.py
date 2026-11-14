@@ -69,6 +69,8 @@ class Rig:
         return [u.get("state") for u in self.core.updates if u["job_id"] == run_id and u.get("state")]
 
     async def write_plan(self, job_id: str, plan: dict, story: dict | None = None) -> None:
-        await self.files("write", f"{job_id}/plan/plan.json", content=json.dumps(plan, ensure_ascii=False))
+        """Монтажный лист и историю кладёт сама система (в тестах команд): минуя песочницу агента и её проверку листа."""
+        folder = self.unit(job_id).plan_dir
+        (folder / "plan.json").write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
         if story is not None:
-            await self.files("write", f"{job_id}/plan/story.json", content=json.dumps(story, ensure_ascii=False))
+            (folder / "story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")

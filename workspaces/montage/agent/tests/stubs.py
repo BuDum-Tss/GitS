@@ -70,6 +70,7 @@ class StubCore:
         self.events: list[dict] = []
         self.tts_calls: list[str] = []
         self.persona_card = "Сухая учтивость, научный протокол."
+        self.task_data: dict | Exception = {"workspace": "montage", "active": None, "tasks": []}     # ответ core.tasks
 
     async def tts(self, text, emotion="neutral"):
         self.tts_calls.append(text)
@@ -91,6 +92,11 @@ class StubCore:
 
     async def resend_jobs(self):
         return 0
+
+    async def tasks(self):
+        if isinstance(self.task_data, Exception):
+            raise self.task_data
+        return self.task_data
 
     def states(self, job_id: str) -> list[tuple]:
         return [(u.get("state"), u.get("stage")) for u in self.updates if u["job_id"] == job_id]

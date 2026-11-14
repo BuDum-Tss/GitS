@@ -44,8 +44,11 @@ async def test_pages_files_and_studio_redirect(job):
     async with TestClient(TestServer(site.app)) as c:
         index = await (await c.get("/")).text()
         assert "хозяин: glados" in index and "Ролик про наблюдателя" in index
-        story = await (await c.get(f"/job/{j.job_id}")).text()
+        story = await (await c.get(f"/job/{j.job_id}?s=story")).text()
         assert "Сценарий &lt;b&gt;№1" in story and "Remotion Studio" in story        # текст экранируется
+        main = await (await c.get(f"/job/{j.job_id}")).text()
+        assert "Идеи пока нет" in main and all(t in main for t in ("Идея", "Сценарий", "Монтажный лист", "Действия", "Файлы"))
+        assert "Агент ещё не завёл план действий" in main and "Сейчас:" in main
         sheet = await (await c.get(f"/job/{j.job_id}?s=sheet")).text()
         assert "ПРОТОКОЛ" in sheet and "chime_up" in sheet and "0:30.00" in sheet
         files = await (await c.get(f"/job/{j.job_id}?s=files")).text()
@@ -75,9 +78,11 @@ async def test_plan_and_story_pages_fall_back_to_json_when_the_agent_wrote_no_ma
     (j.plan_dir / "plan.json").write_text(json.dumps(make_plan(), ensure_ascii=False), encoding="utf-8")
     site = Site(FakeManager(store), port=0)
     async with TestClient(TestServer(site.app)) as c:
-        story = await (await c.get(f"/job/{j.job_id}")).text()
+        story = await (await c.get(f"/job/{j.job_id}?s=story")).text()
         assert "Логлайн" in story and "ГЛаДОС фиксирует нарушение" in story
-        plan = await (await c.get(f"/job/{j.job_id}?s=plan")).text()
-        assert "План монтажа" in plan and "Протокол нарушен." in plan
+        sheet = await (await c.get(f"/job/{j.job_id}?s=sheet")).text()
+        assert "Монтажного листа" not in sheet or "Протокол нарушен." in sheet
         (j.plan_dir / "plan.json").unlink()
-        assert "Плана пока нет" in await (await c.get(f"/job/{j.job_id}?s=plan")).text()
+        assert "Монтажного листа пока нет" in await (await c.get(f"/job/{j.job_id}?s=sheet")).text()
+        (j.plan_dir / "idea.md").write_text("Идея <i>куба</i>", encoding="utf-8")
+        assert "Идея &lt;i&gt;куба" in await (await c.get(f"/job/{j.job_id}?s=idea")).text()

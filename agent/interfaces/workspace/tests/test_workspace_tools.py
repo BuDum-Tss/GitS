@@ -401,3 +401,73 @@ def test_3_1_elements_stay_compatible_with_3_2():
     # манифест 3.1 (без новых полей) проходит проверку 3.2 без предупреждений
     warnings: list[str] = []
     assert P.validate_manifest(manifest({"id": "demo", "title": "Демо", "purpose": "x"}), warnings) == [] and warnings == []
+
+
+# ---------------------------------------------------------------- журнал действий (контракт, раздел 7а)
+
+@pytest.fixture
+def journal(tools):
+    rows: list[dict] = []
+    tools.on_action = rows.append
+    return rows
+
+
+async def test_on_action_records_skill_files_and_run_in_russian(tools, journal):
+    await tools.skills({"name": "s1"})
+    await tools.skills({"name": "s1", "file": "ref/a.md"})
+    await tools.skills({})
+    await tools.files({"op": "read", "path": "jobs/j1/work/src/a.txt"})
+    await tools.files({"op": "write", "path": "jobs/j1/plan/p.md", "content": "один\nдва\nтри\n"})
+    await tools.files({"op": "write", "path": "jobs/j1/plan/p.md", "content": "один\n"})
+    await tools.files({"op": "replace", "path": "jobs/j1/plan/p.md", "old": "один", "new": "раз"})
+    await tools.files({"op": "move", "path": "jobs/j1/plan/p.md", "dest": "jobs/j1/plan/q.md"})
+    await tools.files({"op": "delete", "path": "jobs/j1/plan/q.md"})
+    await tools.run({"command": "still", "args": ["j1", "5"]})
+    await tools.run({"command": "render", "args": ["j1"]})
+    texts = [r["text"] for r in journal]
+    assert texts[0].startswith("Читает навык s1") and texts[1].startswith("Читает файл ref/a.md навыка s1") and texts[2] == "Смотрит список навыков"
+    assert texts[3].startswith("Читает jobs/j1/work/src/a.txt (") and "Б)" in texts[3]
+    assert texts[4] == "Записала jobs/j1/plan/p.md (+3 строки)" and texts[5] == "Записала jobs/j1/plan/p.md (1 строка)"
+    assert texts[6].startswith("Заменила текст в jobs/j1/plan/p.md") and texts[7] == "Перенесла jobs/j1/plan/p.md в jobs/j1/plan/q.md"
+    assert texts[8] == "Удалила jobs/j1/plan/q.md"
+    assert texts[9].startswith("Выполнила: Кадр j1 5") and texts[10].startswith("Запустила в фоне: Рендер j1")
+    assert all(set(r) == {"ts", "tool", "op", "target", "ok", "error", "text"} and r["ok"] and r["error"] is None for r in journal)
+    assert [r["tool"] for r in journal[:3]] == ["skills"] * 3 and journal[4]["op"] == "write" and journal[10]["op"] == "background"
+    assert not any("один" in str(r.values()) or "два" in str(r.values()) for r in journal)      # содержимое файлов в запись не попадает
+
+
+async def test_on_action_records_denials_and_errors_and_never_breaks_the_call(tools, journal):
+    await fail(tools.files({"op": "write", "path": "jobs/j1/out/x.txt", "content": "x"}), "denied")
+    await fail(tools.files({"op": "read", "path": "jobs/j1/work/src/нет.txt"}), "unknown")
+    await fail(tools.run({"command": "rm"}), "denied")
+    await fail(tools.skills({"name": "нет"}), "unknown")
+    assert [r["ok"] for r in journal] == [False] * 4
+    assert journal[0]["text"].startswith("Отказано: нельзя записать") and journal[0]["error"].startswith("denied")
+    assert journal[1]["text"].startswith("Не вышло: прочитать") and journal[1]["error"].startswith("unknown")
+    assert journal[2]["text"].startswith("Отказано") and journal[3]["tool"] == "skills"
+
+    def broken(record):
+        raise RuntimeError("сломан")
+    tools.on_action = broken
+    assert (await tools.files({"op": "read", "path": "jobs/j1/work/src/a.txt"}))["ok"]       # ошибка в on_action вызов не ломает
+
+    seen = []
+
+    async def async_hook(record):
+        seen.append(record["tool"])
+    tools.on_action = async_hook
+    await tools.skills({})
+    assert seen == ["skills"]
+
+
+async def test_unknown_skill_lists_exact_and_similar_names(tools):
+    tools.skill_list += [WorkspaceSkill("remotion-create", "c", "skills/s1"), WorkspaceSkill("remotion-render", "r", "skills/s1"),
+                         WorkspaceSkill("remotion-best-practices", "b", "skills/s1")]
+    with pytest.raises(ToolError) as e:
+        await tools.skills({"name": "remotion"})
+    assert e.value.code == "unknown"
+    msg = e.value.message
+    assert "Точные имена: s1, remotion-create, remotion-render, remotion-best-practices" in msg
+    assert "Похожие: remotion-create, remotion-render, remotion-best-practices" in msg
+    listed = (await tools.skills({}))["result"]
+    assert listed[0] == {"name": "s1", "description": "Первый навык"}               # без name: список с описаниями

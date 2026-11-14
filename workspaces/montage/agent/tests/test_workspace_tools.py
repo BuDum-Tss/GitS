@@ -70,13 +70,26 @@ async def test_work_create_checks(tmp_path, monkeypatch):
 async def test_files_write_in_writable_and_deny_elsewhere(tmp_path):
     rig = Rig(tmp_path)
     jid = await rig.create()
-    # writable: plan, work/src, work/public
-    for path in (f"{jid}/plan/plan.json", f"{jid}/work/src/custom/Mine.tsx", f"{jid}/work/public/vo/a.txt"):
-        res = await rig.files("write", path, content="{}")
+    # writable: только три файла в plan/: идея, сценарий, монтажный лист (лист проверяется по схеме)
+    plan_text = json.dumps(make_plan(voiceover=False), ensure_ascii=False)
+    for path, text in ((f"{jid}/plan/idea.md", "Идея ролика."), (f"{jid}/plan/story.md", "Сцена 1."), (f"{jid}/plan/plan.json", plan_text)):
+        res = await rig.files("write", path, content=text)
         assert res["ok"] and res["created"] is True
-    assert (await rig.files("read", f"{jid}/plan/plan.json"))["content"] == "{}"
-    rep = await rig.files("replace", f"{jid}/work/src/custom/Mine.tsx", old="{}", new="// моя вставка")
+    assert (await rig.files("read", f"{jid}/plan/idea.md"))["content"] == "Идея ролика."
+    rep = await rig.files("replace", f"{jid}/plan/idea.md", old="ролика", new="про куб")
     assert rep["replaced"] == 1
+    # код ролика и любые другие имена в plan/ закрыты
+    for path in (f"{jid}/work/src/custom/Mine.tsx", f"{jid}/work/src/Main.tsx", f"{jid}/work/public/vo/a.txt",
+                 f"{jid}/plan/story.json", f"{jid}/plan/plan.md", f"{jid}/plan/other.txt"):
+        assert await code_of(rig.files("write", path, content="x")) == "denied", path
+    # неверный монтажный лист отвергается с понятным списком ошибок, прежний файл остаётся
+    with pytest.raises(ToolError) as bad:
+        await rig.files("write", f"{jid}/plan/plan.json", content='{"version": 2}')
+    assert bad.value.code == "invalid" and "не принят" in bad.value.message and "- " in bad.value.message
+    assert (await rig.files("read", f"{jid}/plan/plan.json"))["content"] == plan_text
+    assert await code_of(rig.files("write", f"{jid}/plan/plan.json", content="не json")) == "invalid"
+    assert await code_of(rig.files("replace", f"{jid}/plan/plan.json", old='"version": 1', new='"version": 7')) == "invalid"
+    assert (await rig.files("read", f"{jid}/plan/plan.json"))["content"] == plan_text
     # readonly: sources, renders, qa, transcript, work, template, resources
     job = rig.unit(jid)
     for folder, name in ((job.sources, "sources"), (job.renders, "renders"), (job.qa, "qa"), (job.transcript, "transcript")):
@@ -112,7 +125,7 @@ async def test_files_read_template_and_resources_and_list_root(tmp_path):
     assert style["size"] > 0 and style["content"]
     assert {e["name"] for e in (await rig.files("list", "resources"))["entries"]} >= {"assets", "design"}
     unit_view = {e["name"]: e["writable"] for e in (await rig.files("list", jid))["entries"]}
-    assert unit_view["plan"] is True and unit_view["sources"] is False and "job.json" not in unit_view
+    assert unit_view["plan"] is False and unit_view["sources"] is False and "job.json" not in unit_view
 
 
 async def test_files_follow_the_template_symlink_only_inside_the_area(tmp_path):
@@ -132,12 +145,13 @@ async def test_files_follow_the_template_symlink_only_inside_the_area(tmp_path):
 async def test_files_delete_and_move_need_consent_check(tmp_path):
     rig = Rig(tmp_path)
     jid = await rig.create()
-    await rig.files("write", f"{jid}/plan/a.md", content="a")
-    moved = await rig.files("move", f"{jid}/plan/a.md", dest=f"{jid}/plan/b.md")
-    assert moved["path"] == f"{jid}/plan/b.md" and (rig.unit(jid).plan_dir / "b.md").is_file()
-    assert await rig.manager.tools.check_files({"op": "delete", "path": f"{jid}/plan/b.md"})         # ядро спросит согласие
+    await rig.files("write", f"{jid}/plan/idea.md", content="a")
+    moved = await rig.files("move", f"{jid}/plan/idea.md", dest=f"{jid}/plan/story.md")
+    assert moved["path"] == f"{jid}/plan/story.md" and (rig.unit(jid).plan_dir / "story.md").is_file()
+    assert await code_of(rig.files("move", f"{jid}/plan/story.md", dest=f"{jid}/plan/b.md")) == "denied"   # чужое имя в plan/
+    assert await rig.manager.tools.check_files({"op": "delete", "path": f"{jid}/plan/story.md"})         # ядро спросит согласие
     assert await rig.manager.tools.check_files({"op": "read", "path": "x"}) is None
-    assert (await rig.files("delete", f"{jid}/plan/b.md"))["deleted"] is True
+    assert (await rig.files("delete", f"{jid}/plan/story.md"))["deleted"] is True
     assert await code_of(rig.files("move", f"{jid}/sources/x", dest=f"{jid}/plan/x")) == "denied"
 
 
@@ -154,6 +168,10 @@ async def test_skills_list_and_read_by_parts(tmp_path):
     assert "Ремесло монтажа" in craft["content"]
     assert (await rig.tool("skills", {"name": "montage-regulation", "file": "qa-rubric.md"}))["ok"]
     assert await code_of(rig.tool("skills", {"name": "нет-такого"})) == "unknown"
+    with pytest.raises(ToolError) as near:                                  # неточное имя: точные и похожие имена
+        await rig.tool("skills", {"name": "remotion"})
+    assert near.value.code == "unknown" and "Точные имена" in near.value.message and "Похожие: remotion-best-practices" in near.value.message
+    assert "remotion-create" in near.value.message
     assert await code_of(rig.tool("skills", {"name": "montage-regulation", "file": "../../remotion-markup/SKILL.md"})) == "denied"
     assert await code_of(rig.tool("skills", {"name": "montage-regulation", "file": "нет.md"})) == "unknown"
 
@@ -239,7 +257,7 @@ async def test_render_in_background_reports_job_updates_and_done_event(tmp_path)
     states = rig.states_of(run_id)
     assert states[0] == "queued" and "running" in states and states[-1] == "done"
     assert any(u["job_id"] == run_id and 0 < u.get("progress", 0) <= 1 and "черновик" in (u.get("text") or "") for u in rig.core.updates)
-    assert rig.core.updates[0]["title"].startswith("Черновик: ")
+    assert [u for u in rig.core.updates if u["job_id"] == run_id][0]["title"].startswith("Черновик: ")
     assert (rig.unit(jid).renders / "preview.mp4").is_file()
     assert rig.renderer.renders == [{"scale": 0.5, "crf": 28, "out": "preview.mp4"}]
     done = rig.events("montage.done")
@@ -340,7 +358,7 @@ async def test_check_reports_plan_problems_and_blocks_final(tmp_path):
     assert "не пройдена" in (await rig.wait_run(res["job_id"]))["error"]["message"]
     assert await code_of(rig.run("check", "j-00000000")) == "unknown"
     # план не JSON
-    await rig.files("write", f"{jid}/plan/plan.json", content="не json")
+    (rig.unit(jid).plan_dir / "plan.json").write_text("не json", encoding="utf-8")                 # агент так записать не может: кладём как система
     assert (await rig.run("check", jid))["result"]["passed"] is False
 
 

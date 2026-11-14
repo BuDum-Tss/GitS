@@ -23,7 +23,7 @@ def test_job_folder_layout_and_job_json(tmp_path):
     data = json.loads((job.folder / "job.json").read_text(encoding="utf-8"))
     assert {"job_id", "title", "created", "updated", "state", "request", "runs", "check", "artifacts", "error"} <= set(data)
     assert data["state"] == "new" and data["runs"] == {} and data["check"] is None
-    assert "stage" not in data and "question" not in data                         # стадий и вопросов у единицы больше нет
+    assert "stage" not in data and "question" not in data and "steps" not in data                         # стадий и вопросов у единицы больше нет
 
 
 def test_save_is_atomic_and_thread_safe(tmp_path):

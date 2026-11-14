@@ -44,9 +44,9 @@ def resolve_output_dir(value: str | None = None) -> str:
 
 _KEYWORDS = ("монтаж", "смонтируй", "ролик", "видео", "шортс", "рилс", "клип", "субтитры", "нарезка")
 
-BRIEF = ("Монтаж роликов: Remotion, ffmpeg, озвучка её голосом. Каждый ролик это рабочая единица (инструмент work): "
-         "файлы правишь инструментом files, команды (приём, расшифровка, озвучка, черновик, проверка, финал) запускаешь через run. "
-         "Порядок работы и правила: навык montage-regulation.")
+BRIEF = ("Монтаж роликов, каждый ролик это единица (work). Ты пишешь только идею (plan/idea.md), сценарий (plan/story.md) и "
+         "монтажный лист (plan/plan.json); сборку делают команды run. Сначала прочитай навык montage-regulation (skills "
+         "name=montage-regulation). Следуй своему плану действий (задача со шагами); если плана нет, составь его до work create.")
 
 # разрешённые команды (`run`): исчерпывающий список, оболочки нет; первый аргумент каждой это id единицы (ролика)
 COMMANDS = [
@@ -71,6 +71,9 @@ def _standard_tools() -> list[dict]:
         if t["name"] == "run":
             t["description"] += _RUN_NOTE
             t["params"]["args"]["description"] = "аргументы: id единицы, затем (для still) номер кадра"
+        if t["name"] == "files":
+            t["description"] = ("Файлы области: op list, read, write, replace, delete, move. Писать можно только plan/idea.md, "
+                                "plan/story.md, plan/plan.json (лист проверяется при записи); остальное только читать.")
         t["keywords"] = [*t.get("keywords", []), *_KEYWORDS]
     return tools
 

@@ -75,7 +75,7 @@ async def test_work_through_the_real_protocol_with_background_final(tmp_path):
         # файлы: запись плана и истории в область через настоящий вызов инструмента
         import json
         await core.call_tool("files", {"op": "write", "path": f"{jid}/plan/plan.json", "content": json.dumps(make_plan(), ensure_ascii=False)})
-        await core.call_tool("files", {"op": "write", "path": f"{jid}/plan/story.json", "content": json.dumps(STORY, ensure_ascii=False)})
+        (tmp_path / "jobs" / jid / "plan" / "story.json").write_text(json.dumps(STORY, ensure_ascii=False), encoding="utf-8")   # историю кладёт система
         with pytest.raises(ToolError) as e:
             await core.call_tool("files", {"op": "write", "path": f"{jid}/renders/x.mp4", "content": "x"})
         assert e.value.code == "denied"
@@ -99,7 +99,9 @@ async def test_work_through_the_real_protocol_with_background_final(tmp_path):
         # MON-33: state
         await core.wait_for(lambda: core.states["montage"]["data"]["runs"] == [], 10)
         assert core.states["montage"]["data"]["units"] == []                  # единица закрыта (done): в открытых её нет
-        assert [j["job_id"] for j in await core.job_list()] == [vo, fin]
+        listed_jobs = {j["job_id"]: j for j in await core.job_list()}
+        assert {vo, fin, jid} <= set(listed_jobs)                              # главная строка: сама единица; операции вложенные
+        assert listed_jobs[jid]["state"] == "done" and listed_jobs[jid]["title"]
         listed = await core.call_tool("work", {"op": "list"})
         assert [u["id"] for u in listed["result"]] == [jid]
 
@@ -214,3 +216,27 @@ async def test_unfinished_units_come_back_after_restart_with_interrupted_runs(tm
         assert store.load(job.job_id).data["runs"]["render"]["status"] == "interrupted"
         res = await core.workspace("enter", {"workspace": "montage"})
         assert [u["id"] for u in res["units"]] == [job.job_id]                    # закрытые единицы во вводную не попадают
+
+
+async def test_publish_state_survives_run_finishing_during_file_read(tmp_path, monkeypatch):
+    """Операция заканчивается, пока publish_state читает файлы: раньше KeyError ронял команду и рвал связь с ядром."""
+    import asyncio
+    from types import SimpleNamespace
+    import manager as manager_mod
+    mgr = manager_mod.Manager.__new__(manager_mod.Manager)
+    run = SimpleNamespace(run_id="r-1", command="render", job_id="j-1")
+    mgr._runs = {"r-1": run}
+    mgr._jobs = {}
+
+    def all_jobs():
+        mgr._runs.clear()                                          # операция закончилась во время чтения
+        return []
+    mgr._all_jobs = all_jobs
+    mgr.env = SimpleNamespace(status=lambda: {}, releasing=False)
+    mgr.layout = SimpleNamespace(jobs=tmp_path)
+    mgr.setting = lambda key: None
+    mgr.core = SimpleNamespace(client=None)
+    mgr.on_idle = None
+    mgr.site = SimpleNamespace(stop=lambda: asyncio.sleep(0))
+    mgr.describe = lambda j: {}
+    await mgr.publish_state()

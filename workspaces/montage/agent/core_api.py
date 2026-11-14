@@ -25,6 +25,7 @@ class CoreAPI(Protocol):
     async def job_update(self, job_id: str, **fields) -> bool: ...
     async def event(self, kind: str, text: str, **fields) -> bool: ...
     async def resend_jobs(self) -> int: ...
+    async def tasks(self) -> dict: ...
 
 
 class ClientCore:
@@ -78,3 +79,7 @@ class ClientCore:
 
     async def resend_jobs(self) -> int:
         return await self.client.resend_jobs()
+
+    async def tasks(self) -> dict:
+        """core.tasks: задачи текущей среды (цель, шаги, прогресс) из дерева задач ядра."""
+        return await self.client.tasks()

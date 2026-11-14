@@ -10,11 +10,13 @@ import json
 import logging
 import mimetypes
 import os
+import time
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from aiohttp import web
 
+from journal import active_task, hms, plan_steps
 from plan_tools import plan_markdown, story_markdown
 
 log = logging.getLogger("montage.site")
@@ -34,7 +36,10 @@ TEXT_LIMIT = 400_000                      # больше этого текст �
 SKIP_DIRS = {"node_modules", ".git", "__pycache__", ".claude"}        # .claude: сотни файлов навыков Remotion, не работа задачи
 TEXT_EXT = {".md", ".txt", ".json", ".jsonl", ".ts", ".tsx", ".js", ".css", ".html", ".srt", ".yaml", ".yml", ".svg", ".sh",
             ".ps1", ".py", ".lock", ".config"}
-SECTIONS = (("Сценарий", "story"), ("Монтажный лист", "sheet"), ("План", "plan"), ("Файлы", "files"))
+SECTIONS = (("Идея", "idea"), ("Сценарий", "story"), ("Монтажный лист", "sheet"), ("Действия", "actions"), ("Файлы", "files"))
+DEFAULT_SECTION = "idea"
+ACTIONS_SHOWN = 300                       # сколько последних действий на вкладке
+LIVE_EVERY_MS = 3000                      # автообновление вкладки «Действия» и плана действий
 STYLE = """body{font:15px/1.5 system-ui,sans-serif;margin:0;background:#f4f4f2;color:#1b1b1b}
 header{background:#111;color:#fff;padding:14px 24px;display:flex;gap:24px;align-items:baseline;flex-wrap:wrap}
 header a{color:#fff;text-decoration:none}main{max-width:1100px;margin:0 auto;padding:20px 24px}
@@ -42,6 +47,8 @@ nav a{margin-right:16px;color:#c55a00;text-decoration:none}nav a.on{font-weight:
 table{border-collapse:collapse;width:100%;background:#fff}td,th{border:1px solid #d8d8d4;padding:6px 10px;text-align:left;vertical-align:top}
 th{background:#ececE8}pre{background:#fff;border:1px solid #d8d8d4;padding:12px;overflow:auto;white-space:pre-wrap}
 .btn{display:inline-block;background:#c55a00;color:#fff;padding:8px 16px;text-decoration:none;border-radius:4px}
+.now{background:#fff3e6;border-left:4px solid #c55a00;padding:8px 12px;margin:8px 0}.warn{background:#fff0c2;border:1px solid #d4a800;padding:8px 12px;font-weight:700}
+.plan{list-style:none;padding:0;margin:6px 0}.plan li{padding:2px 0}.plan .active{font-weight:700;color:#c55a00}.plan .done{color:#4a7a4a}.plan .skipped{color:#8a8a85}.bad{color:#b00020;font-weight:700}
 .muted{color:#6b6b66}.bar{height:10px;background:#c55a00;border-radius:2px;min-width:2px}video,img{max-width:100%}"""
 
 
@@ -125,6 +132,48 @@ def _read_text(path: Path) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
+def _now_text(job, *, with_label: bool = False) -> str:
+    """Строка «Сейчас» единицы (из `now` в job.json), экранированная."""
+    now = job.data.get("now") if isinstance(job.data.get("now"), dict) else None
+    if not now or not now.get("text"):
+        text = "ждёт ответа пользователя" if job.state == "waiting_user" else "действий пока нет"
+        return f"Сейчас: {_e(text)}" if with_label else _e(text)
+    body = f"{_e(now.get('text'))} <span class=muted>({_e(hms(now.get('at')))})</span>"
+    return f"Сейчас: {body}" if with_label else body
+
+
+def _action_rows(rows: list[dict]) -> str:
+    """Строки таблицы действий (свежие сверху, как переданы): время по часам, инструмент, текст, значок ok или ошибка."""
+    out = []
+    for r in rows:
+        ok = r.get("ok", True)
+        icon = "<span title='ok'>&#10003;</span>" if ok else f"<span class=bad title='{_e(r.get('error') or 'ошибка')}'>&#10007;</span>"
+        tool = f"{r.get('tool') or ''}" + (f" {r.get('op')}" if r.get("op") and r.get("op") != r.get("tool") else "")
+        out.append(f"<tr><td>{_e(hms(r.get('ts')))}</td><td>{_e(tool)}</td><td>{_e(r.get('text'))}</td><td>{icon}</td></tr>")
+    return "".join(out)
+
+
+def _plan_block(task: dict | None, error: str | None) -> str:
+    """«План действий» чек-листом: ✓ сделано, ▶ идёт, ○ впереди, – пропущено. Плана нет: заметная пометка."""
+    steps = plan_steps(task)
+    if not steps:
+        note = "Агент ещё не завёл план действий" + (f" (план сейчас не читается: {error})" if error else "")
+        return f"<h3>План действий</h3><p class=warn>{_e(note)}</p>"
+    icons = {"done": "&#10003;", "active": "&#9654;", "pending": "&#9675;", "skipped": "&ndash;"}
+    items = "".join(f"<li class={s['status']}>{icons[s['status']]} {_e(s['text'])}</li>" for s in steps)
+    goal = f" <span class=muted>{_e(task.get('goal'))}</span>" if task and task.get("goal") else ""
+    return f"<h3>План действий{goal}</h3><ul class=plan>{items}</ul>"
+
+
+def _live_script(job_id: str) -> str:
+    """Небольшой скрипт автообновления (без библиотек); без него страница работает по перезагрузке. Данные экранирует сервер."""
+    return ("<script>(function(){var u='/job/" + quote(job_id) + "/live';function g(i){return document.getElementById(i)}"
+            "function t(){fetch(u).then(function(r){return r.json()}).then(function(d){"
+            "if(g('now'))g('now').innerHTML=d.now;if(g('plan'))g('plan').innerHTML=d.plan;"
+            "if(g('rows')&&d.rows)g('rows').innerHTML=d.rows;}).catch(function(){})}"
+            f"setInterval(t,{LIVE_EVERY_MS});}})();</script>")
+
+
 class Site:
     """HTTP-сервер сайта. `manager` даёт задачи (`store`), хозяина (`layout.owner`) и запуск Studio (`launch_studio`)."""
 
@@ -136,7 +185,7 @@ class Site:
         self._runner: web.AppRunner | None = None
         self.app = web.Application()
         self.app.add_routes([web.get("/", self.index), web.get("/job/{job}", self.job),
-                             web.get("/job/{job}/studio", self.studio),
+                             web.get("/job/{job}/studio", self.studio), web.get("/job/{job}/live", self.live),
                              web.get("/job/{job}/raw/{path:.*}", self.raw), web.get("/job/{job}/view/{path:.*}", self.view)])
 
     @property
@@ -173,23 +222,46 @@ class Site:
     async def index(self, request: web.Request) -> web.Response:
         rows = "".join(
             f"<tr><td><a href='/job/{quote(j.job_id)}'>{_e(j.data.get('title') or j.job_id)}</a></td><td>{_e(j.job_id)}</td>"
-            f"<td>{_e(j.state)}</td></tr>" for j in self.manager.store.all())
-        body = ("<h1>Ролики</h1><table><tr><th>Ролик</th><th>Единица</th><th>Состояние</th></tr>"
-                f"{rows or '<tr><td colspan=3>Роликов пока нет.</td></tr>'}</table>")
+            f"<td>{_e(j.state)}</td><td>{_now_text(j)}</td></tr>" for j in self.manager.store.all())
+        body = ("<h1>Ролики</h1><table><tr><th>Ролик</th><th>Единица</th><th>Состояние</th><th>Сейчас</th></tr>"
+                f"{rows or '<tr><td colspan=4>Роликов пока нет.</td></tr>'}</table>")
+        env = self.manager.store.read_env_actions(20) if hasattr(self.manager.store, "read_env_actions") else []
+        if env:
+            body += "<h2>Действия вне роликов</h2><table>" + _action_rows(list(reversed(env))) + "</table>"
         return _page("Монтаж", self.owner, body)
 
     async def job(self, request: web.Request) -> web.Response:
         job = self._job(request)
-        section = request.query.get("s", "story")
+        section = request.query.get("s", DEFAULT_SECTION)
+        if section not in {key for _, key in SECTIONS}:
+            section = DEFAULT_SECTION
         jid = quote(job.job_id)
         nav = "".join(f"<a class='{'on' if key == section else ''}' href='/job/{jid}?s={key}'>{label}</a>"
                       for label, key in SECTIONS)
         studio = ""
         if (job.plan_dir / "plan.json").is_file():
             studio = f" <a class=btn href='/job/{jid}/studio'>Открыть в Remotion Studio</a>"
+        plan_html = await self._plan_html()
         head = (f"<h1>{_e(job.data.get('title') or job.job_id)}</h1><p class=muted>{_e(job.job_id)} · "
-                f"{_e(job.state)}{studio}</p><nav>{nav}</nav><hr>")
-        return _page(str(job.data.get("title") or job.job_id), self.owner, head + getattr(self, f"_s_{section}", self._s_story)(job))
+                f"{_e(job.state)}{studio}</p><p class=now id=now>{_now_text(job, with_label=True)}</p>"
+                f"<div id=plan>{plan_html}</div><nav>{nav}</nav><hr>")
+        script = _live_script(job.job_id)
+        return _page(str(job.data.get("title") or job.job_id), self.owner,
+                     head + getattr(self, f"_s_{section}", self._s_idea)(job) + script)
+
+    async def _plan_html(self) -> str:
+        """Блок «План действий»: активная задача и её шаги из `core.tasks` (план хранит ядро, не окружение)."""
+        journal = getattr(self.manager, "journal", None)
+        if journal is None:
+            return _plan_block(None, None)
+        data = await journal.plan()
+        return _plan_block(active_task(data), journal.plan_error if data is None else None)
+
+    async def live(self, request: web.Request) -> web.Response:
+        """Данные для автообновления страницы единицы (раз в 3 секунды): строка «Сейчас», план действий, таблица действий."""
+        job = self._job(request)
+        rows = _action_rows(list(reversed(self.manager.store.read_actions(job, ACTIONS_SHOWN))))
+        return web.json_response({"now": _now_text(job, with_label=True), "plan": await self._plan_html(), "rows": rows})
 
     def _doc(self, job, name: str, empty: str) -> str:
         path = job.plan_dir / name
@@ -205,11 +277,16 @@ class Site:
         except (OSError, ValueError, KeyError, TypeError):
             return f"<p class=muted>{empty}</p>"
 
+    def _s_idea(self, job) -> str:
+        return self._doc(job, "idea.md", "Идеи пока нет: агент её ещё не написала.")
+
+    def _s_actions(self, job) -> str:
+        rows = _action_rows(list(reversed(self.manager.store.read_actions(job, ACTIONS_SHOWN))))
+        return ("<table><thead><tr><th>Время</th><th>Инструмент</th><th>Действие</th><th></th></tr></thead>"
+                f"<tbody id=rows>{rows or '<tr><td colspan=4 class=muted>Действий пока нет.</td></tr>'}</tbody></table>")
+
     def _s_story(self, job) -> str:
         return self._doc_or_json(job, "story.md", "story.json", story_markdown, "Сценария пока нет.")
-
-    def _s_plan(self, job) -> str:
-        return self._doc_or_json(job, "plan.md", "plan.json", plan_markdown, "Плана пока нет.")
 
     def _s_sheet(self, job) -> str:
         path = job.plan_dir / "plan.json"

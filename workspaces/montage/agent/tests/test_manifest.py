@@ -28,7 +28,7 @@ def test_workspace_block_has_brief_skills_area_commands_site():
     assert "montage-regulation" in names and {"remotion-markup", "remotion-render", "remotion-captions"} <= set(names)
     assert all(s.description and s.path == f"skills/{s.name}" for s in spec.skills)
     area = spec.area
-    assert area.writable == ["*/work/src", "*/work/public", "*/plan"]
+    assert area.writable == ["*/plan"]                      # агент пишет только идею, сценарий и монтажный лист
     assert {"template", "resources", "*/sources", "*/renders", "*/qa"} <= set(area.readonly)
     assert {"node_modules", ".git", ".claude"} == set(area.hidden)
     assert [c.id for c in spec.commands] == ["intake", "transcribe", "voiceover", "render", "still", "compositions", "check", "final"]
