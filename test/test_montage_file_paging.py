@@ -11,3 +11,11 @@ def test_montage_file_page_resumes_on_utf8_byte_boundary():
     assert "offset=4105" in page
     assert "\ufffd" not in page
 
+
+def test_skill_page_preserves_start_guide_beyond_generic_limit():
+    args = {"name": "montage-regulation", "file": "START.md"}
+    result = {"path": "START.md", "content": "x" * 4200}
+    page = format_tool_result("montage.skills", args, result)
+    assert "x" * 4096 in page
+    assert "montage.skills с тем же name и file и offset=4096" in page
+

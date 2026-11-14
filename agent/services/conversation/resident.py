@@ -150,7 +150,7 @@ class ResidentAgent:
             plan_rejection = (tool_id == "montage.files" and params.get("op") in ("write", "replace")
                               and code == "invalid" and str(params.get("path", "")).endswith("/plan/plan.json"))
             limit = 4096 if plan_rejection else RESULT_CHARS
-            if len(text) > limit and not (ok and file_read):
+            if len(text) > limit and not (ok and (file_read or (tool_id == "montage.skills" and params.get("name")))):
                 total = len(text)
                 text = text[:limit] + f"\n[ответ обрезан: показано {limit} из {total} символов; уточни запрос, чтобы получить нужную часть]"
             return ok, text

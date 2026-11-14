@@ -25,7 +25,9 @@ FILE_PAGE_BYTES = 4096
 
 def format_tool_result(tool_id: str, args: dict, result) -> str:
     text = str(result)
-    if tool_id != "montage.files" or args.get("op") != "read":
+    file_read = tool_id == "montage.files" and args.get("op") == "read"
+    skill_read = tool_id == "montage.skills" and args.get("name")
+    if not (file_read or skill_read):
         return text[:RESULT_CHARS]
     try:
         page = result if isinstance(result, dict) else json.loads(text)
@@ -39,7 +41,8 @@ def format_tool_result(tool_id: str, args: dict, result) -> str:
     message = f"{page.get('path', args.get('path'))} (offset={offset})\n{chunk}"
     if chunk != content or page.get("truncated"):
         next_offset = offset + len(chunk.encode("utf-8"))
-        message += f"\n[Продолжение: вызови montage.files с тем же path и offset={next_offset}.]"
+        same = "name и file" if skill_read else "path"
+        message += f"\n[Продолжение: вызови {tool_id} с тем же {same} и offset={next_offset}.]"
     return message
 
 
