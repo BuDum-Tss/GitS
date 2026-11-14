@@ -122,7 +122,11 @@ class Manager:
         for s in sources:
             p = Path(os.path.expandvars(s))
             if not p.is_absolute():
-                raise ToolError(f"путь должен быть абсолютным: {s}", code="bad_request")
+                found = self.layout.resolve_resource(s)                  # короткое имя своего ресурса: design/assets/Intro/...
+                if found is None:
+                    raise ToolError(f"путь должен быть абсолютным или именем своего ресурса (смотри инструмент resources): {s}",
+                                    code="bad_request")
+                p = found
             if not p.exists():
                 raise ToolError(f"нет такого файла или папки: {s}", code="bad_request")
             if not os.access(p, os.R_OK):
@@ -142,6 +146,17 @@ class Manager:
         if request["source_kind"] is None and not paths:
             request["source_kind"] = "narrated"
         return paths, request
+
+    def resources_text(self) -> str:
+        """Свои ресурсы монтажа с готовыми путями для `start.sources` (пути в том месте, где работает модуль)."""
+        files = self.layout.list_resources()
+        if not files:
+            return "Ресурсов монтажа у неё нет."
+        lines = ["Ресурсы монтажа (путь годится в sources как есть):"]
+        lines += [f"{p.as_posix()} ({size // 1024 or 1} КБ)" for p, size in files]
+        lines.append("Регламент стиля: " + self.layout.style.as_posix() + ". Интро, комната, стикеры питомца, рамки, чертежи роботов, "
+                     "шрифты и звуки лежат в design/assets, assets/fonts, assets/sfx.")
+        return "\n".join(lines)
 
     async def start(self, args: dict) -> dict:
         _, request = await asyncio.to_thread(self.preflight, args)

@@ -21,7 +21,7 @@ RimWorld) ядро находит по `host.docker.internal`; адреса ме
 
 ## Монтаж (необязательно, общий контейнер `montage`)
 Монтаж (`workspaces/montage`) это пространство: ОДИН общий контейнер `montage` на всех персонажей (образ `gits-montage:dev`, `docker/montage/Dockerfile`; описан в корневом `docker-compose.yml` рядом с espeech, а не в compose ядра):
-Python 3.12, Node 20, ffmpeg/ffprobe, шрифты, chrome-headless-shell для Remotion (скачан при сборке `npx remotion browser ensure`),
+Python 3.12, Node 22, ffmpeg/ffprobe, шрифты, chrome-headless-shell для Remotion (скачан при сборке `npx remotion browser ensure`),
 зависимости шаблона (`npm ci`) и среда агента pi. Агент берёт его в аренду и возвращает, как семафор:
 
 - при старте контейнер к ядру НЕ подключается: поднимает интерфейс управления на порту 8780 (только сеть compose, на хост не

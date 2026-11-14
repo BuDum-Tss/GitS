@@ -1,12 +1,12 @@
 # Окружение монтажа GitS в контейнере (образ gits-montage): отдельный контейнер, подключается к ядру по WebSocket (GITS_CORE_URL).
 # Сборка из корня репозитория: docker build -f docker/montage/Dockerfile -t gits-montage:dev .
 # Контекст фильтрует docker/montage/Dockerfile.dockerignore (корневой .dockerignore для этого образа не используется).
-# В образе: Python 3.12, Node 20, ffmpeg/ffprobe, шрифты, библиотеки headless Chrome, chrome-headless-shell для Remotion,
+# В образе: Python 3.12, Node 22, ffmpeg/ffprobe, шрифты, библиотеки headless Chrome, chrome-headless-shell для Remotion,
 # зависимости шаблона (npm ci) и среда агента pi (services/agent-runtime). Секреты (auth.json pi, ключи) в образ не копируются:
 # вход pi подаётся томом/переменной GITS_PI_AUTH при запуске (см. docker/core/README.md, раздел «Монтаж»).
 
-# --- зависимости среды pi (Node 20); заодно источник node и npm для итогового образа ---
-FROM node:20-slim AS agent-runtime
+# --- зависимости среды pi (Node 22); заодно источник node и npm для итогового образа ---
+FROM node:22-slim AS agent-runtime
 WORKDIR /app/services/agent-runtime
 COPY services/agent-runtime/package.json services/agent-runtime/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxcomposite1 libxdamage1 libatk-bridge2.0-0 libpango-1.0-0 libcairo2 libcups2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Node 20 и npm/npx (npx нужен Remotion и окружению: media.find_npx)
+# Node 22 и npm/npx (npx нужен Remotion и окружению: media.find_npx)
 COPY --from=agent-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=agent-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \

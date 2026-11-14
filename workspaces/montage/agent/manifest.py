@@ -66,7 +66,7 @@ MANIFEST = {
             "description": "Смонтировать видео, ролик, шортс или клип из файлов: субтитры, графика, её закадровый голос. "
                            "Долго, результат придёт позже.",
             "params": {
-                "sources": {"type": "array", "description": "абсолютные пути файлов или папок с исходниками"},
+                "sources": {"type": "array", "description": "абсолютные пути файлов или папок с исходниками; свои ресурсы: пути из инструмента resources"},
                 "brief": {"type": "string", "description": "что за ролик, своими словами пользователя"},
                 "source_kind": {"type": "string", "enum": list(SOURCE_KINDS), "required": False,
                                 "description": "вид исходников; если не задан, определяется по файлам"},
@@ -93,6 +93,16 @@ MANIFEST = {
             "availability": "always",
             "informative": True,
             "keywords": list(_KEYWORDS),
+        },
+        {
+            "name": "resources",
+            "description": "Какие у неё есть ресурсы для монтажа (интро-заставки, комната, стикеры питомца, рамки, чертежи, шрифты, "
+                           "звуки) и их пути: годятся в sources инструмента start.",
+            "params": {},
+            "risk": "auto",
+            "availability": "always",
+            "informative": True,
+            "keywords": [*_KEYWORDS, "ресурсы", "заставка", "интро", "материалы", "что у тебя есть"],
         },
         {
             "name": "revise",

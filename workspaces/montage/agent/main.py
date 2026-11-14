@@ -66,6 +66,10 @@ def wire(client: WorkspaceClient, manager: Manager) -> None:
     async def status(args):
         return await manager.status(args)
 
+    @client.tool("resources")
+    async def resources(args):
+        return {"text": manager.resources_text()}
+
     @client.tool("revise")
     async def revise(args):
         return await manager.revise(args)

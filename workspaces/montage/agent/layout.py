@@ -72,6 +72,35 @@ class Layout:
         """Обучающий журнал решений человека (MON-QA-5): вне папок задач, переживает уборку."""
         return self.jobs / "qa_verdicts.jsonl"
 
+    def resolve_resource(self, raw: str) -> Path | None:
+        """Путь к ресурсу персонажа по короткому имени: `design/assets/Intro/x.mp4`, `montage/design/...` или `resources/<Имя>/montage/...`
+        (так их называет агент). Нет такого файла: None."""
+        s = raw.replace("\\", "/").strip().lstrip("/")
+        parts = s.split("/")
+        if parts[0] == "resources" and len(parts) > 2 and parts[2] == "montage":
+            parts = parts[3:]
+        elif parts[0] == "montage":
+            parts = parts[1:]
+        if not parts or ".." in parts:
+            return None
+        p = self.character.joinpath(*parts)
+        return p if p.exists() else None
+
+    def list_resources(self, limit: int = 120) -> list[tuple[Path, int]]:
+        """Файлы ресурсов персонажа для монтажа (папка montage без подготовленных превью и кода): путь и размер."""
+        out: list[tuple[Path, int]] = []
+        base = self.character
+        if not base.is_dir():
+            return out
+        for p in sorted(base.rglob("*")):
+            rel = p.relative_to(base).parts
+            if not p.is_file() or "out" in rel[:1] or "components" in rel or p.suffix.lower() in (".html", ".css", ".json"):
+                continue
+            out.append((p, p.stat().st_size))
+            if len(out) >= limit:
+                break
+        return out
+
     def missing_fonts(self) -> list[str]:
         fonts = self.assets / "fonts"
         return [name for name in REQUIRED_FONTS if not (fonts / name).is_file()]

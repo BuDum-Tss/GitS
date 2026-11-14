@@ -32,7 +32,7 @@ def test_manifest_matches_spec():
 
 def test_tools():
     tools = {t["name"]: t for t in MANIFEST["tools"]}
-    assert set(tools) == {"start", "status", "revise", "cancel", "open_studio"}      # open_studio: TZ 15, TAB-4
+    assert set(tools) == {"start", "status", "resources", "revise", "cancel", "open_studio"}      # open_studio: TZ 15, TAB-4
     assert all(t["availability"] == "always" for t in tools.values())
     start = tools["start"]
     assert start["risk"] == "ask" and start["job"] is True and start["announce"] is True        # MON-5a

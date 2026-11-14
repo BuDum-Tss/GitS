@@ -2,8 +2,8 @@
 # Сборка из корня репозитория: docker build -f docker/core/Dockerfile -t gits-core:dev .
 # В образе нет GPU, звука и окон: голос, питомец и «Компьютер» остаются на хосте и подключаются к ядру по WebSocket.
 
-# --- зависимости среды pi (Node 20) ---
-FROM node:20-slim AS agent-runtime
+# --- зависимости среды pi (Node 22) ---
+FROM node:22-slim AS agent-runtime
 WORKDIR /app/services/agent-runtime
 COPY services/agent-runtime/package.json services/agent-runtime/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
@@ -21,7 +21,7 @@ ENV PYTHONUNBUFFERED=1 \
     GITS_DASHBOARD_HOST=0.0.0.0 \
     GITS_PEERS_FILE=agent/peers.container.yaml
 
-# Node 20 для среды pi: бинарник из образа node (npm в рантайме не нужен)
+# Node 22 для среды pi: бинарник из образа node (npm в рантайме не нужен)
 COPY --from=agent-runtime /usr/local/bin/node /usr/local/bin/node
 
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin gits \
