@@ -28,6 +28,38 @@ async def memories_view() -> list[dict]:
     return items
 
 
+_NOW_RANK = {task_dom.ACTIVE: 0, task_dom.PENDING: 1, task_dom.WAITING: 2, task_dom.BLOCKED: 3}
+
+
+def _task_view(t) -> dict:
+    return {"id": t.id, "goal": t.goal, "workspace": t.workspace, "status": t.status, "priority": t.priority,
+            "steps": [s.to_dict() for s in t.steps], "progress": list(task_dom.progress(t))}
+
+
+def now_tasks_view(found: list, workspace: str) -> dict:
+    """Текущая задача агента по всем средам: идущая, затем ожидающие/отложенные по приоритету, сроку и свежести; остальные открытые отдельно."""
+    items = [t for t in found if t.is_open and t.kind != task_dom.KIND_REMINDER]
+    parents_open = {t.parent for t in items if t.parent}
+    leaves = [t for t in items if t.id not in parents_open]
+    leaves.sort(key=lambda t: (_NOW_RANK.get(t.status, 9), -t.priority, t.due if t.due is not None else float("inf"), -t.updated))
+    act = leaves[0] if leaves else None
+    rest = [t for t in leaves[1:]]
+    return {"active": _task_view(act) if act else None,
+            "open": [{k: v for k, v in _task_view(t).items() if k != "steps"} for t in rest], "workspace": workspace}
+
+
+async def handle_api_tasks_now(request: web.Request) -> web.Response:
+    """Вкладка «Состояние»: текущая задача и её шаги независимо от окружения."""
+    tasks = ctx.tasks() if ctx.tasks is not None else None
+    if tasks is None:
+        return web.json_response({"active": None, "open": []})
+    try:
+        found = await tasks.list_tasks("*")
+        return web.json_response(now_tasks_view(found, tasks.current_workspace()))
+    except Exception:
+        return web.json_response({"active": None, "open": []})
+
+
 async def handle_api_core(request: web.Request) -> web.Response:
     """Всё, что показывает UI помимо игры: разговор, зрение, память, вопрос о разрешении."""
     return web.json_response(presenters.core_payload(
@@ -126,6 +158,7 @@ ROUTES = [
     ("GET", "/api/reply_context", handle_api_reply_context),
     ("POST", "/api/chat", handle_api_chat_post),
     ("GET", "/api/core", handle_api_core),
+    ("GET", "/api/tasks/now", handle_api_tasks_now),
     ("POST", "/api/approval", handle_api_approval),
     ("POST", "/api/memory/forget", handle_api_forget),
     ("GET", "/api/graph", handle_api_graph),

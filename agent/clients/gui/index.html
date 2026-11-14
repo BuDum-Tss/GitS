@@ -108,6 +108,15 @@
             <div id="now-last" class="text-xs opacity-60 mt-1"></div>
           </div>
 
+          <div id="task-box" class="rounded-box border border-base-300 p-3">
+            <div class="font-medium mb-2">Задача и шаги</div>
+            <div id="task-now"></div>
+            <details id="task-others" class="mt-2 hidden">
+              <summary class="text-xs opacity-70 cursor-pointer" id="task-others-sum"></summary>
+              <div id="task-others-list" class="mt-1 text-xs"></div>
+            </details>
+          </div>
+
           <div id="buf-box">
             <div class="flex flex-wrap items-center gap-2">
               <div class="font-medium">Буфер событий</div>
@@ -549,6 +558,46 @@ function renderNow() {
   const last = w && (w.history || []).slice(-1)[0];
   $('now-last').textContent = last ? `Последняя смена среды: ${last.from} → ${last.to} (${last.reason}), ${agoText(last.ts)}` : '';
 }
+// карточка «Задача и шаги»: текущая задача агента по всем средам, перерисовка только при изменении
+const TASKNOW = {sig: ''};
+function taskProgress(p) {
+  const [d, n] = p || [0, 0];
+  return n ? `<progress class="progress progress-primary w-full h-1.5 mt-1" value="${esc(d)}" max="${esc(n)}"></progress>` : '';
+}
+async function loadTaskNow() {
+  const r = await fetch('/api/tasks/now');
+  if (!r.ok) return;
+  const d = await r.json();
+  const a = d.active;
+  let html;
+  if (!a) {
+    html = '<div class="text-xs opacity-50">Задачи нет. Для дела из нескольких шагов она сначала составит план.</div>';
+  } else {
+    const steps = a.steps || [], [done, total] = a.progress || [0, steps.length];
+    const cur = steps.findIndex(s => s.status === 'pending');
+    const items = steps.map((s, i) => {
+      const mark = s.status === 'done' ? '✓' : s.status === 'skipped' ? '–' : (i === cur ? '▶' : '○');
+      const cls = s.status === 'done' ? 'line-through opacity-50' : s.status === 'skipped' ? 'opacity-40' : (i === cur ? 'font-medium' : 'opacity-70');
+      return `<li class="flex gap-2 text-sm ${cls}"><span class="w-4 text-center">${mark}</span><span>${esc(s.text)}</span></li>`;
+    }).join('');
+    const stepText = total ? `шаг ${Math.min(done + 1, total)} из ${total}` : 'без шагов';
+    html = `<div class="flex flex-wrap items-center gap-2"><span class="text-sm font-medium">${esc(a.goal)}</span>`
+      + `<span class="badge badge-ghost badge-sm">${esc(a.workspace)}</span><span class="text-xs opacity-70 ml-auto">${esc(stepText)}</span></div>`
+      + taskProgress(a.progress) + (items ? `<ul class="mt-2 space-y-0.5">${items}</ul>` : '');
+  }
+  const others = (d.open || []).map(t => `<div class="flex flex-wrap items-center gap-2 py-0.5"><span>${esc(t.goal)}</span>`
+    + `<span class="badge badge-ghost badge-xs">${esc(t.workspace)}</span><span class="opacity-60">${esc((t.progress || [0, 0])[0])}/${esc((t.progress || [0, 0])[1])}</span></div>`).join('');
+  const sig = html + '|' + others;
+  if (sig === TASKNOW.sig) return;
+  TASKNOW.sig = sig;
+  $('task-now').innerHTML = html;
+  $('task-others').classList.toggle('hidden', !others);
+  $('task-others-sum').textContent = `Другие открытые задачи (${(d.open || []).length})`;
+  $('task-others-list').innerHTML = others;
+}
+setInterval(() => { if (!$('tab-status').classList.contains('hidden')) loadTaskNow().catch(() => {}); }, 2000);
+loadTaskNow().catch(() => {});
+
 async function loadModes() {
   const g = await (await fetch('/api/space')).json();
   MD.data = g;
