@@ -371,7 +371,9 @@ class WorkspaceTools:
         skill_root = Sandbox(self.sandbox.root, readonly=[skill.path], hidden=self.sandbox.hidden).resolve(skill.path).resolve()
         target = Sandbox(skill_root, readonly=["."], hidden=self.sandbox.hidden).resolve(file)
         if not target.is_file():
-            raise ToolError(f"в навыке «{name}» нет файла «{file}»", code="unknown")
+            files = sorted(p.relative_to(skill_root).as_posix() for p in skill_root.rglob("*") if p.is_file())[:30]
+            raise ToolError(f"в навыке «{name}» нет файла «{file}». Файлы навыка: {', '.join(files) or 'нет'} (текст навыка: без file, это SKILL.md)",
+                            code="unknown")
         out = _read_file(target, file, self.read_limit, _offset(args))
         out["skill"] = name
         return out
@@ -565,7 +567,7 @@ class WorkspaceTools:
             cmd_param["enum"] = sorted(self.commands)
         foreground = [c.timeout_s for c in self.commands.values() if not c.background and c.timeout_s]
         run_timeout = min(max(foreground), 120) if foreground else 30
-        return [
+        tools = [
             {"name": "skills", "description": "Навыки окружения: без параметров список, name даёт текст навыка, name и file файл внутри навыка.",
              "params": {"name": {"type": "string", "description": "имя навыка"},
                         "file": {"type": "string", "description": "файл внутри навыка"},
@@ -591,6 +593,10 @@ class WorkspaceTools:
              "keywords": ["запустить", "команда", "рендер", "run"], "timeout_s": run_timeout,
              "danger_check": any(c.irreversible for c in self.commands.values()), **common},
         ]
+        for tool in tools:                                       # параметр без `required` ядро считает обязательным: опциональные помечаем явно
+            for param in tool["params"].values():
+                param.setdefault("required", False)
+        return tools
 
     def attach(self, client: Any) -> None:
         """Повесить обработчики на клиента (инструменты должны быть в его манифесте, см. `declare_tools`)."""

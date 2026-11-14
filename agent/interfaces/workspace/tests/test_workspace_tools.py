@@ -471,3 +471,14 @@ async def test_unknown_skill_lists_exact_and_similar_names(tools):
     assert "Похожие: remotion-create, remotion-render, remotion-best-practices" in msg
     listed = (await tools.skills({}))["result"]
     assert listed[0] == {"name": "s1", "description": "Первый навык"}               # без name: список с описаниями
+
+
+def test_declared_tools_mark_only_real_parameters_required(tmp_path):
+    """Параметр без `required` ядро считает обязательным: опциональные должны быть помечены явно (агент не мог читать файлы)."""
+    from gits_sdk import Sandbox, WorkspaceTools
+    from gits_sdk.workspace_tools import WorkspaceCommand
+    tools = WorkspaceTools(Sandbox(tmp_path, writable=["plan"]), commands=[WorkspaceCommand(id="render", title="r")],
+                           executor=None).declare_tools()
+    required = {t["name"]: sorted(k for k, v in t["params"].items() if v.get("required")) for t in tools}
+    assert required == {"skills": [], "files": ["op"], "run": ["command"]}
+    assert all("required" in v for t in tools for v in t["params"].values())
