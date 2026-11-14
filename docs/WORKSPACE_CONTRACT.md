@@ -21,7 +21,7 @@
   "id": "montage", "title": "Монтаж", "purpose": "...", "entry": ["user_message"],
   "brief": "Монтаж роликов: Remotion, ffmpeg, озвучка её голосом.",
   "skills": [{"name": "remotion-markup", "description": "...", "path": "skills/remotion-markup"}],
-  "area": {"root": "work", "writable": ["jobs/*/work/src", "jobs/*/plan"], "readonly": ["template", "resources"], "hidden": ["node_modules", ".git"]},
+  "area": {"root": "work", "writable": ["jobs/*/plan"], "readonly": ["template", "resources"], "hidden": ["node_modules", ".git"]},
   "commands": [{"id": "render", "title": "Рендер ролика", "background": true, "timeout_s": 3600},
                {"id": "still", "title": "Кадр", "timeout_s": 120}],
   "site": {"url": "http://127.0.0.1:8790/"}
@@ -113,7 +113,7 @@
 
 | Окружение | Рабочая область | Команды | Навыки |
 |---|---|---|---|
-| Монтаж | задачи роликов, шаблон Remotion, ресурсы персонажа | `render`, `still`, `compositions`, `check`, `tts` | Remotion, регламент монтажа, дизайн «Лаборатория» |
+| Монтаж | задачи роликов; агент пишет только идею, сценарий и монтажный лист (`plan/idea.md`, `story.md`, `plan.json`), код ролика не правит, сборка по листу командами | `intake`, `transcribe`, `voiceover`, `render`, `still`, `compositions`, `check`, `final` | Remotion (справка о возможностях шаблона), регламент монтажа, дизайн «Лаборатория» |
 | RimWorld | журнал колонии, заметки, настройки | команды игры (по просьбе), чтение состояния | правила колонии, словарь |
 | Помощник на ПК | рабочая папка пользователя, список разрешённых программ | разрешённые приложения | справка по приложениям |
 
