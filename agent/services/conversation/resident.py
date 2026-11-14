@@ -132,7 +132,10 @@ class ResidentAgent:
                 catalog = getattr(host, "workspace_catalog", lambda: "")()
                 if catalog:
                     text += "\n" + catalog
-            return ok, text[:RESULT_CHARS]
+            if len(text) > RESULT_CHARS:                           # обрезанное не должно выглядеть как полный ответ
+                total = len(text)
+                text = text[:RESULT_CHARS] + f"\n[ответ обрезан: показано {RESULT_CHARS} из {total} символов; уточни запрос, чтобы получить нужную часть]"
+            return ok, text
 
         self._specs = [
             ToolSpec("find_tools", "Найти инструменты по смыслу запроса (все окружения и модули). Возвращает id, описание и "
