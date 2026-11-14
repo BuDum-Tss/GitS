@@ -34,6 +34,35 @@ def _confirmed(value: Any) -> bool:
     return isinstance(value, dict) and value.get("ok") is True
 
 
+ENTRY_BRIEF_MAX, ENTRY_SKILLS_MAX, ENTRY_SKILL_DESC_MAX, ENTRY_UNITS_MAX = 800, 30, 160, 10
+
+
+def _entry_of(value: Any) -> dict:
+    """Вводная из ответа модуля на workspace.enter (brief, skills, units, site) с ограничением длины; пустая, если её нет."""
+    if not isinstance(value, dict):
+        return {}
+    out: dict = {}
+    brief = value.get("brief")
+    if isinstance(brief, str) and brief.strip():
+        out["brief"] = brief.strip()[:ENTRY_BRIEF_MAX]
+    skills = []
+    for s in (value.get("skills") if isinstance(value.get("skills"), list) else [])[:ENTRY_SKILLS_MAX]:
+        if isinstance(s, dict) and str(s.get("name") or "").strip():
+            skills.append({"name": str(s["name"]).strip()[:80], "description": str(s.get("description") or "")[:ENTRY_SKILL_DESC_MAX]})
+    if skills:
+        out["skills"] = skills
+    units = []
+    for u in (value.get("units") if isinstance(value.get("units"), list) else [])[:ENTRY_UNITS_MAX]:
+        if isinstance(u, dict) and str(u.get("id") or "").strip():
+            units.append({"id": str(u["id"])[:80], "title": str(u.get("title") or "")[:120], "state": str(u.get("state") or "")[:40]})
+    if units:
+        out["units"] = units
+    site = value.get("site")
+    if isinstance(site, str) and site.strip():
+        out["site"] = site.strip()[:300]
+    return out
+
+
 class WorkspaceLink:
     def __init__(self, *, connection_of: Callable[[str], Any], clock: Callable[[], float] = time.time,
                  leases: Any = None, connect_wait_s: float = CONNECT_WAIT_S, poll_s: float = 0.1):
@@ -43,6 +72,7 @@ class WorkspaceLink:
         self.holders: dict[str, dict] = {}          # закреплённые за ней модули (в фокусе и в AFK): {"module", "task_id", "goal", "since"}
         self.focus: str | None = None               # модуль в фокусе (остальные закреплённые в AFK)
         self.checkpoints: dict[str, dict] = {}      # модуль -> приостановленная задача
+        self.entries: dict[str, dict] = {}          # модуль -> вводная из ответа на workspace.enter
 
     @property
     def holder(self) -> dict | None:
@@ -109,7 +139,12 @@ class WorkspaceLink:
             return {"ok": False, "reason": "модуль не принял среду"}
         self.holders[module] = {"module": module, "task_id": task_id, "goal": goal[:200], "since": self.clock()}
         self.focus = module
-        return {"ok": True}
+        entry = _entry_of(value)
+        if entry:
+            self.entries[module] = entry
+        else:
+            self.entries.pop(module, None)
+        return {"ok": True, "entry": entry} if entry else {"ok": True}
 
     async def afk(self, module: str) -> dict:
         """Снять фокус с модуля, не отпуская: слот и аренда остаются, модулю уходит `workspace.afk`. Модуль без обработчика или
@@ -160,6 +195,7 @@ class WorkspaceLink:
 
     def _drop(self, module: str) -> None:
         self.holders.pop(module, None)
+        self.entries.pop(module, None)
         if self.focus == module:
             self.focus = None
 

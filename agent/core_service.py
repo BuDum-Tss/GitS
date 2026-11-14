@@ -62,6 +62,17 @@ from services.tools.router import Router
 logger = logging.getLogger("core")
 
 DASHBOARD_PORT = 8766
+
+
+def entry_intro(entry, limit: int = 600) -> str:
+    """Короткая вводная окружения для заметки о среде: brief и точные имена навыков (не длиннее limit)."""
+    if not isinstance(entry, dict):
+        return ""
+    intro = str(entry.get("brief") or "")
+    names = ", ".join(str(s.get("name")) for s in entry.get("skills") or [] if isinstance(s, dict) and s.get("name"))
+    if names:
+        intro += (" " if intro else "") + f"Навыки (skills, точные имена): {names}."
+    return intro[:limit]
 SUBGRAPH_TIMEOUT_S = 1.5       # CORE-22: подграф профиля от модуля для дашборда
 
 
@@ -180,7 +191,10 @@ def wire_modules(companion, registry, *, specs=None,
         rec = modules.records.get(ws)
         summary = ((rec.state or {}).get("summary") or "").strip() if rec is not None and rec.connected else ""
         goal = f" Цель: {workspaces.goal}." if workspaces.goal else ""
-        return f"Ты сейчас в среде «{spec.title if spec else ws}».{goal}" + (f" Сводка: {summary}." if summary else "")
+        note = f"Ты сейчас в среде «{spec.title if spec else ws}».{goal}" + (f" Сводка: {summary}." if summary else "")
+        entry = workspaces.entry.get(ws) if ws in workspaces.held else None
+        intro = entry_intro(entry)
+        return note + (" Вводная: " + intro if intro else "")
     companion.environment_note = environment_note
 
     def workspace_catalog() -> str:

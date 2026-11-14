@@ -52,6 +52,7 @@ class WorkspaceManager:
         self.specs: dict[str, dom.WorkspaceSpec] = dict(dom.BUILTIN)
         self._activate, self._release, self._afk = activate, release, afk
         self.held: dict[str, dict] = {}      # закреплённые за агентом окружения модулей (фокус и AFK): id -> {goal, since, afk}
+        self.entry: dict[str, dict] = {}     # вводная модуля из ответа на workspace.enter: id -> {brief, skills, units, site}
         self.on_dropped = on_dropped
         self._interruptible, self._connected = interruptible, connected
         self._status_of = status_of
@@ -139,6 +140,7 @@ class WorkspaceManager:
         if not ok:
             return {"ok": False, "error": why}
         already = False
+        entry = None
         if spec.kind == dom.KIND_MODULE:
             if not self._connected(ws) and not self._leased(ws):     # общее пространство подключится при аренде
                 return {"ok": False, "error": f"модуль «{spec.title}» не подключён"}
@@ -150,12 +152,17 @@ class WorkspaceManager:
                         out.update(busy=True, holder=res.get("holder"))
                     return out
                 already = ws in self.held and bool(res.get("already", True))
+                entry = res.get("entry") if isinstance(res.get("entry"), dict) and res.get("entry") else None
+                if entry:
+                    self.entry[ws] = entry
+                else:
+                    self.entry.pop(ws, None)
             held = self.held.get(ws) or {"since": self._now()}
             self.held[ws] = {**held, "goal": goal or held.get("goal", ""), "afk": False}
         if cur.kind == dom.KIND_MODULE and self.current in self.held:
             await self._to_afk(self.current)                           # прежнее окружение не отпускается: уходит в AFK
         self._set(ws, reason, goal)
-        return {"ok": True, "workspace": ws, **({"already": True} if already else {})}
+        return {"ok": True, "workspace": ws, **({"already": True} if already else {}), **({"entry": entry} if entry else {})}
 
     async def _to_afk(self, ws: str) -> None:
         """Окружение остаётся за агентом, фокус с него снят: модулю идёт `workspace.afk`."""
@@ -205,7 +212,8 @@ class WorkspaceManager:
             if not res.get("ok", False) and reason not in dom.Reason.FORCED:
                 return {"ok": False, "error": str(res.get("reason") or res.get("error") or "модуль не отдал среду")}
         del self.held[ws]
-        view = self._lease_view(ws) or {}
+        self.entry.pop(ws, None)
+        view =self._lease_view(ws) or {}
         if view.get("releasing") and self.refresh_leases is not None:
             try:
                 await self.refresh_leases()                            # сколько операций ещё идёт, знает только сервис
@@ -236,6 +244,7 @@ class WorkspaceManager:
     def on_module_gone(self, peer_id: str) -> None:
         """Модуль отключился: если агент был в его среде, возврат в базовую (checkpoint остаётся у менеджера фокуса)."""
         was = self.held.pop(peer_id, None)
+        self.entry.pop(peer_id, None)
         if self.current == peer_id:
             self._set(dom.exit_target(dom.Reason.DISCONNECT), dom.Reason.DISCONNECT, "", note=peer_id)
         elif was is not None and self.on_dropped is not None:

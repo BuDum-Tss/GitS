@@ -395,6 +395,26 @@ def _why_no_workspace(workspaces, modules, ws: str) -> str:
     return f"у модуля «{title}» нет своей среды"
 
 
+def _entry_text(entry) -> str:
+    """Вводная модуля при входе (brief, навыки, единицы, сайт) для ответа агенту; пусто, если её нет."""
+    if not isinstance(entry, dict):
+        return ""
+    lines = []
+    if entry.get("brief"):
+        lines.append(str(entry["brief"]))
+    skills = [s for s in entry.get("skills") or [] if isinstance(s, dict) and s.get("name")]
+    if skills:
+        lines.append("Навыки (читай инструментом skills, name — точное имя): "
+                     + "; ".join(f"{s['name']} — {s.get('description') or ''}".rstrip(" —") for s in skills))
+    units = [u for u in entry.get("units") or [] if isinstance(u, dict) and u.get("id")]
+    if units:
+        lines.append("Открытые единицы: " + "; ".join(
+            f"{u['id']} «{u.get('title') or ''}»" + (f" ({u['state']})" if u.get("state") else "") for u in units))
+    if entry.get("site"):
+        lines.append(f"Сайт: {entry['site']}")
+    return "\n".join(lines)
+
+
 def _workspace_tools(workspaces, modules=None) -> list[Tool]:
     """ТЗ 32, WS-5/WS-10/WS-16 и docs/WORKSPACE_CONTRACT.md (раздел 7): `workspace.enter` (занять окружение), `workspace.afk`
     (отойти, не отпуская), `workspace.exit` (выйти и отпустить) и `workspace.status`. Вход в среду модуля идёт только по импульсу:
@@ -422,7 +442,9 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
         if not res.get("ok"):
             raise ToolError(str(res.get("error") or "не удалось войти в среду"), code="unavailable")
         spec = workspaces.specs[ws]
-        return f"сейчас в среде «{spec.title}»" + (" (уже была за ней, аренда прежняя)" if res.get("already") else "")
+        text = f"сейчас в среде «{spec.title}»" + (" (уже была за ней, аренда прежняя)" if res.get("already") else "")
+        intro = _entry_text(res.get("entry"))
+        return f"{text}\n{intro}"[:1800] if intro else text
 
     def target(a) -> str:
         """Окружение из аргумента или текущее; в обычной среде без окружения указывать нечего."""
