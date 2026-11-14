@@ -1,0 +1,185 @@
+{
+ "v": 3,
+ "layout": "files",
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-11T08:55:00Z"
+ },
+ "title": "Лаборатория Aperture",
+ "namespace": "ApertureLab",
+ "libraries": [],
+ "sections": {},
+ "groups": [
+  "Intro",
+  "Room",
+  "Pet",
+  "HUD",
+  "Footage",
+  "Robots"
+ ],
+ "assetGroups": {
+  "Footage": {
+   "name": "Footage",
+   "tile": "l",
+   "order": [
+    "rimworld-colony.jpg"
+   ],
+   "files": {
+    "rimworld-colony.jpg": {
+     "name": "rimworld-colony.jpg",
+     "blob": "25798027436dba71304bbc58dcb1dfd4",
+     "size": 69505,
+     "type": "image/jpeg"
+    }
+   }
+  },
+  "Room": {
+   "name": "Room",
+   "tile": "l",
+   "order": [
+    "glados-room.webp"
+   ],
+   "files": {
+    "glados-room.webp": {
+     "name": "glados-room.webp",
+     "blob": "caed1e612ab53837c994da35f7a03894",
+     "size": 56388,
+     "type": "image/webp"
+    }
+   }
+  },
+  "Pet": {
+   "name": "Pet",
+   "tile": "s",
+   "order": [
+    "pet-idle.png",
+    "pet-thinking.png",
+    "pet-angry.png",
+    "pet-happy.png",
+    "pet-question.png",
+    "pet-surprised.png"
+   ],
+   "files": {
+    "pet-idle.png": {
+     "name": "pet-idle.png",
+     "blob": "3ecce824aad7df659f80781e46c2c15c",
+     "size": 45750,
+     "type": "image/png"
+    },
+    "pet-thinking.png": {
+     "name": "pet-thinking.png",
+     "blob": "ac74d3c880d4944a013af5c0d1580ca9",
+     "size": 56103,
+     "type": "image/png"
+    },
+    "pet-angry.png": {
+     "name": "pet-angry.png",
+     "blob": "f7f72aaee90268835ccf9e2dc394ad93",
+     "size": 49763,
+     "type": "image/png"
+    },
+    "pet-happy.png": {
+     "name": "pet-happy.png",
+     "blob": "72353204b689ebf6c398d54c437bdbb5",
+     "size": 45237,
+     "type": "image/png"
+    },
+    "pet-question.png": {
+     "name": "pet-question.png",
+     "blob": "9aee8f5e5592e9732810f66bd602e4a1",
+     "size": 58039,
+     "type": "image/png"
+    },
+    "pet-surprised.png": {
+     "name": "pet-surprised.png",
+     "blob": "1c79622012608852c0061e1d9bc37584",
+     "size": 71537,
+     "type": "image/png"
+    }
+   }
+  },
+  "HUD": {
+   "name": "HUD",
+   "tile": "l",
+   "order": [
+    "hud-frame.svg"
+   ],
+   "files": {
+    "hud-frame.svg": {
+     "name": "hud-frame.svg",
+     "blob": "252e361a123a616a6f8ce11fadc460e7",
+     "size": 1887,
+     "type": "image/svg+xml"
+    }
+   }
+  },
+  "Intro": {
+   "name": "Intro",
+   "tile": "l",
+   "order": [
+    "Aperture_Boot_dark.mp4",
+    "Aperture_Boot_light.mp4",
+    "Aperture_Boot_vertical_dark.mp4",
+    "Aperture_Boot_vertical_light.mp4"
+   ],
+   "files": {
+    "Aperture_Boot_dark.mp4": {
+     "name": "Aperture_Boot_dark.mp4",
+     "blob": "529b6ede200adc229d8cc149e3962526",
+     "size": 414474,
+     "type": "video/mp4"
+    },
+    "Aperture_Boot_light.mp4": {
+     "name": "Aperture_Boot_light.mp4",
+     "blob": "feab921e68fdee2b3b4e5187f09c4256",
+     "size": 414790,
+     "type": "video/mp4"
+    },
+    "Aperture_Boot_vertical_dark.mp4": {
+     "name": "Aperture_Boot_vertical_dark.mp4",
+     "blob": "5fb907f9c7bca416514b1ea768a38ab8",
+     "size": 433749,
+     "type": "video/mp4"
+    },
+    "Aperture_Boot_vertical_light.mp4": {
+     "name": "Aperture_Boot_vertical_light.mp4",
+     "blob": "be853705e93c450ae74b3d3a7615ad65",
+     "size": 432820,
+     "type": "video/mp4"
+    }
+   }
+  },
+  "Robots": {
+   "name": "Robots",
+   "tile": "l",
+   "order": [
+    "pbody.svg",
+    "atlas.svg"
+   ],
+   "files": {
+    "pbody.svg": {
+     "name": "pbody.svg",
+     "blob": "d7a01822c31d3a2c10bbae6723a3519b",
+     "size": 226012,
+     "type": "image/svg+xml"
+    },
+    "atlas.svg": {
+     "name": "atlas.svg",
+     "blob": "8b308447a04362556c4f707cb0d555fb",
+     "size": 300510,
+     "type": "image/svg+xml"
+    }
+   }
+  }
+ },
+ "blobs": {},
+ "docs": {
+  "sections": []
+ },
+ "lastChange": {
+  "by": "Анна",
+  "at": "2026-10-24T19:00:00Z",
+  "via": "Claude Code",
+  "note": "Чертежи роботов P-body и Atlas (SVG, currentColor) для схем"
+ }
+}

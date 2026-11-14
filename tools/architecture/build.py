@@ -4,7 +4,6 @@
 Пишет:
   agent/clients/gui/architecture-data.js        данные для вкладки «Схема» GUI и для страницы docs;
   docs/architecture-clean.html                страница с той же схемой и пояснениями (сущности, проблемы кода, план);
-  docs/architecture-clean.drawio              редактируемая версия для diagrams.net (всё раскрыто).
 Тест `test/test_architecture_spec.py` следит, что файлы совпадают со спецификацией.
 """
 import html
@@ -16,7 +15,6 @@ from tools.architecture import spec, texts
 ROOT = Path(__file__).resolve().parents[2]
 DATA_JS = ROOT / "agent" / "clients" / "gui" / "architecture-data.js"
 DOCS_HTML = ROOT / "docs" / "architecture-clean.html"
-DOCS_DRAWIO = ROOT / "docs" / "architecture-clean.drawio"
 
 esc = html.escape
 
@@ -25,10 +23,6 @@ def render_data_js() -> str:
     body = json.dumps(spec.data(), ensure_ascii=False, indent=1)
     return ("// Создано tools/architecture/build.py из tools/architecture/spec.py. Не править вручную.\n"
             f"window.ARCH_DATA = {body};\n")
-
-
-def render_drawio() -> str:
-    return spec.drawio(set(spec.PRESETS[-1][2]))
 
 
 def _legend() -> str:
@@ -60,7 +54,7 @@ def render_docs_html() -> str:
 </head><body class="bg-base-200">
 <div class="max-w-screen-2xl mx-auto p-4">
 <h1 class="text-2xl font-bold">Архитектура ядра GitS</h1>
-<p class="opacity-70 max-w-4xl my-2">Сначала только основа: блоки по слоям сверху вниз. <b>Нажмите на блок</b>: он развернётся на месте и покажет свои части, а справа откроется описание. Двойной клик по развёрнутому блоку сворачивает его. Блоки можно перетаскивать, холст сдвигается мышью и масштабируется колесом, границу между схемой и описанием можно двигать. Та же схема есть во вкладке «Схема» GUI агента. Агент реагирует на события и на внутренние импульсы (напоминания, которые он назначил себе); таймера болтовни нет. Редактируемая версия: <code>architecture-clean.drawio</code> (diagrams.net).</p>
+<p class="opacity-70 max-w-4xl my-2">Сначала только основа: блоки по слоям сверху вниз. <b>Нажмите на блок</b>: он развернётся на месте и покажет свои части, а справа откроется описание. Двойной клик по развёрнутому блоку сворачивает его. Блоки можно перетаскивать, холст сдвигается мышью и масштабируется колесом, границу между схемой и описанием можно двигать. Та же схема есть во вкладке «Схема» GUI агента. Агент реагирует на события и на внутренние импульсы (напоминания, которые он назначил себе); таймера болтовни нет.</p>
 
 <div id="arch-root" class="flex flex-col" style="height:calc(100vh - 170px);min-height:560px"></div>
 
@@ -99,9 +93,8 @@ agent/interfaces/workspace/gits_sdk/contract/   публичные контра�
 def write_all() -> None:
     DATA_JS.write_text(render_data_js(), encoding="utf-8")
     DOCS_HTML.write_text(render_docs_html(), encoding="utf-8")
-    DOCS_DRAWIO.write_text(render_drawio(), encoding="utf-8")
 
 
 if __name__ == "__main__":
     write_all()
-    print("записано:", DATA_JS.relative_to(ROOT), DOCS_HTML.relative_to(ROOT), DOCS_DRAWIO.relative_to(ROOT))
+    print("записано:", DATA_JS.relative_to(ROOT), DOCS_HTML.relative_to(ROOT))

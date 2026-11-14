@@ -18,7 +18,6 @@ def test_spec_edges_point_to_known_nodes():
 def test_generated_files_match_spec():
     assert build.DATA_JS.read_text(encoding="utf-8") == build.render_data_js()
     assert build.DOCS_HTML.read_text(encoding="utf-8") == build.render_docs_html()
-    assert build.DOCS_DRAWIO.read_text(encoding="utf-8") == build.render_drawio()
 
 
 def test_gui_has_scheme_tab():

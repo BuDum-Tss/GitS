@@ -1,4 +1,4 @@
-"""Спецификация схемы архитектуры ядра (единственный источник): группы, компоненты, связи, слои. Из неё строятся данные для GUI и docs/architecture-clean.drawio (build.py)."""
+"""Спецификация схемы архитектуры ядра (единственный источник): группы, компоненты, связи, слои. Из неё строятся данные для GUI и docs/architecture-clean.html (build.py)."""
 import html
 import textwrap
 
@@ -430,41 +430,6 @@ def board_html(pid, expand):
     inner = "".join(svg) + "".join(parts) + top
     return inner, W, H, steps, boxes, nodes
 
-
-def drawio(expand):
-    from xml.sax.saxutils import escape as xe
-    nodes, boxes, gboxes, W, H, edges = build(expand)
-    cells = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>']
-    for g in GROUPS:
-        if g["id"] in gboxes:
-            b = gboxes[g["id"]]
-            cells.append(f'<mxCell id="{g["id"]}" value="{xe(g["title"])}" style="swimlane;whiteSpace=wrap;html=1;startSize=34;fillColor=#f7f8fa;strokeColor=#b6bdc8;fontStyle=1;fontSize=13;align=left;spacingLeft=8;" vertex="1" parent="1">'
-                         f'<mxGeometry x="{b.x}" y="{b.y}" width="{b.w}" height="{b.h}" as="geometry"/></mxCell>')
-    for nid, (n, macro) in nodes.items():
-        b = boxes[nid]
-        fg, bg = LAYERS[n["tag"]][1], LAYERS[n["tag"]][2]
-        lines = "".join(f'&lt;br&gt;{xe(s)}' for _, s in (macro_lines(n, b.w) if macro else node_lines(n, b.w)))
-        val = f'&lt;b&gt;{xe(n["t"])}&lt;/b&gt; [{LAYERS[n["tag"]][0]}]' + ('&lt;i&gt; нужно выделить&lt;/i&gt;' if n["new"] else '') + lines
-        parent = OWNER.get(nid) if (not macro and OWNER.get(nid) in gboxes) else None
-        if parent:
-            gb = gboxes[parent]
-            geo = f'x="{b.x - gb.x}" y="{b.y - gb.y}"'
-            par = parent
-        else:
-            geo = f'x="{b.x}" y="{b.y}"'
-            par = "1"
-        dashed = "dashed=1;" if n["new"] else ""
-        cells.append(f'<mxCell id="{nid}" value="{val}" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=6;fontSize=10;fillColor={bg};strokeColor={fg};{dashed}" vertex="1" parent="{par}">'
-                     f'<mxGeometry {geo} width="{b.w}" height="{b.h}" as="geometry"/></mxCell>')
-    k = 0
-    for e in edges:
-        k += 1
-        col, dash = EDGE[e["kind"]][1], EDGE[e["kind"]][2]
-        label = (f'{e["step"]}. ' if e["step"] is not None else '') + (e["label"] or '')
-        cells.append(f'<mxCell id="e{k}" value="{xe(label)}" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor={col};' + ('dashed=1;' if dash else '')
-                     + f'fontSize=9;" edge="1" parent="1" source="{e["a"]}" target="{e["b"]}"><mxGeometry relative="1" as="geometry"/></mxCell>')
-    return ('<mxfile host="app.diagrams.net"><diagram name="Архитектура ядра GitS: всё вместе" id="arch2"><mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" '
-            f'connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="{int(W)}" pageHeight="{int(H)}" math="0" shadow="0"><root>' + "".join(cells) + '</root></mxGraphModel></diagram></mxfile>')
 
 
 # ── строки раскладки (сверху вниз) и подписи стрелок между свёрнутыми блоками ──
