@@ -42,7 +42,7 @@ EXCLUSIVE = ("intake", "transcribe", "voiceover", "render", "check", "final")   
 HEAVY = ("render", "final")                                                      # рендеры идут по одному на весь контейнер
 RUN_TITLES = {"intake": "Приём исходников", "transcribe": "Расшифровка", "voiceover": "Озвучка", "render": "Черновик",
               "still": "Кадр", "compositions": "Композиции", "check": "Проверка", "final": "Финальный рендер"}
-WORK_OPS = ("create", "list", "status", "cancel")
+WORK_OPS = ("create", "list", "status", "update", "cancel")
 
 
 def total_size(paths: list[Path]) -> int:
@@ -343,6 +343,20 @@ class Manager:
             await asyncio.to_thread(self.store.save, job)
             await self.publish_state()
         return {"ok": True, **await asyncio.to_thread(self.unit_status, job)}
+
+    async def _work_update(self, args: dict) -> dict:
+        job = self._find(str(args.get("id") or ""))
+        voiceover = normalize_voiceover(args.get("voiceover"))
+        if voiceover not in VOICEOVERS:
+            raise ToolError("update: укажи voiceover: none, character или keep", code="invalid")
+        if job.state in ("done", "cancelled") or self._unit_runs(job.job_id):
+            raise ToolError("Изменение доступно для незакрытой единицы без идущих операций.", code="unavailable")
+        if job.request.get("voiceover") != voiceover:
+            job.request["voiceover"] = voiceover
+            job.data.pop("check", None)
+            await asyncio.to_thread(self.store.save, job)
+            await self.publish_state()
+        return {"ok": True, "id": job.job_id, "voiceover": voiceover}
 
     async def _work_cancel(self, args: dict) -> dict:
         job = await self.cancel_unit(str(args.get("id") or ""))

@@ -89,10 +89,11 @@ def _tools() -> list[dict]:
         {
             "name": "work",
             "description": "Рабочие единицы монтажа (ролики): create (бриф, исходники, площадка; создаёт папку с копией шаблона), list, "
-                           "status (состояние, файлы, итоги запусков, ссылка на сайт), cancel (остановить операции и закрыть единицу).",
+                           "status (состояние, файлы, итоги запусков, ссылка на сайт), update (сменить режим закадра существующего ролика), "
+                           "cancel (остановить операции и закрыть единицу).",
             "params": {
-                "op": {"type": "string", "enum": ["create", "list", "status", "cancel"], "required": True, "description": "действие"},
-                "id": {"type": "string", "required": False, "description": "id единицы (status, cancel)"},
+                "op": {"type": "string", "enum": ["create", "list", "status", "update", "cancel"], "required": True, "description": "действие"},
+                "id": {"type": "string", "required": False, "description": "id единицы (status, update, cancel)"},
                 "brief": {"type": "string", "required": False, "description": "create: что за ролик, своими словами пользователя"},
                 "title": {"type": "string", "required": False, "description": "create: название (по умолчанию из брифа)"},
                 "sources": {"type": "array", "required": False,
@@ -104,7 +105,7 @@ def _tools() -> list[dict]:
                 "duration_s": {"type": "integer", "required": False,
                                "description": "create: целевая длительность в секундах. В plan.json используй duration_ms."},
                 "voiceover": {"type": "string", "enum": [*VOICEOVERS, *VOICEOVER_ALIASES], "required": False,
-                              "description": "create: закадр: none, character (голос персонажа) или keep (оставить голос исходника)"},
+                              "description": "create/update: закадр: none, character (голос персонажа) или keep (оставить голос исходника)"},
                 "set": {"type": "string", "enum": ["working", "waiting_user"], "required": False,
                         "description": "status: пометить единицу (waiting_user: жду ответа пользователя)"},
             },

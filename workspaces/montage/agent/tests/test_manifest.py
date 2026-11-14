@@ -58,7 +58,7 @@ def test_tools():
     assert tools["files"]["danger_check"] is True and tools["run"]["danger_check"] is True      # удаление и final спрашивают согласие
     assert "final" in tools["run"]["params"]["command"]["enum"]
     work = tools["work"]
-    assert work["params"]["op"]["enum"] == ["create", "list", "status", "cancel"]
+    assert work["params"]["op"]["enum"] == ["create", "list", "status", "update", "cancel"]
     assert {"монтаж", "смонтируй", "ролик", "видео", "шортс", "рилс", "клип", "субтитры", "нарезка"} <= set(work["keywords"])
     assert work["params"]["sources"]["type"] == "array"
     assert "platform" not in work["params"]

@@ -381,3 +381,12 @@ async def test_check_includes_frames_of_a_fresh_preview_and_warns_about_a_missin
     assert bad["passed"] is False and bad["problems"] == [finding.line()] and rig.qa.calls == [{"draft": True, "video": "preview.mp4"}]
     ok = (await rig.run("check", jid))["result"]
     assert ok["passed"] is True and ok["errors"] == 0
+
+async def test_update_voiceover_of_existing_unit(tmp_path):
+    rig = Rig(tmp_path)
+    jid = await rig.create(voiceover="none")
+    result = await rig.tool("work", {"op": "update", "id": jid, "voiceover": "glados"})
+    assert result["voiceover"] == "character"
+    assert rig.unit(jid).request["voiceover"] == "character"
+    status = await rig.tool("work", {"op": "status", "id": jid})
+    assert status["request"]["voiceover"] == "character"

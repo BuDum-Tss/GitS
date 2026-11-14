@@ -292,7 +292,9 @@ class Commands:
             problems += validate_plan(plan, self._plan_context(job, story))
             r = job.request
             if plan.get("voiceover") and normalize_voiceover(r.get("voiceover")) in ("none", "keep"):
-                problems.append(f"voiceover: закадр не запрошен (voiceover = {r.get('voiceover')}), массив должен быть пустым")
+                problems.append(f"voiceover: режим {r.get('voiceover')} несовместим с репликами плана. "
+                                f"Если нужен закадр, вызови work op=update, id={job.job_id}, voiceover=character, затем run voiceover. "
+                                "Если закадр не нужен, убери реплики из плана.")
             if not problems:
                 problems += await self.renderer.validate_plan(job.work, path)
             if not problems:
