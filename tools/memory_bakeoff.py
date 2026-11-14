@@ -2,7 +2,7 @@
 
 Не полный бейкофф: MemPalace, LightRAG и Graphiti здесь не запускаются. Стенд гоняет синтетическую обезличенную выборку
 (`memory_bakeoff_data.py`: люди, предпочтения, события, истории, устаревшие факты, вопросы без ответа) через варианты
-гибридного индекса `agent/search` и считает recall@5, долю верных ответов на устаревшие факты, долю пустых ответов там,
+гибридного индекса `agent/services/memory_service/search` и считает recall@5, долю верных ответов на устаревшие факты, долю пустых ответов там,
 где ответа нет, и задержку p50/p95. Эмбеддер: `hash` (детерминированный, без сети; знает только совпадения слов) или
 `lmstudio` (EmbeddingGemma, нужен запущенный LM Studio).
 
@@ -15,8 +15,8 @@ import statistics
 import sys
 import time
 
-from search.embedder import HashEmbedder, LmStudioEmbedder
-from search.index import HybridIndex, SearchConfig
+from services.memory_service.search.embedder import HashEmbedder, LmStudioEmbedder
+from services.memory_service.search.index import HybridIndex, SearchConfig
 from tools.memory_bakeoff_data import CORPUS, QUESTIONS
 
 DAY = 86400.0

@@ -16,8 +16,8 @@
 **/.env
 agent/secrets.env
 agent/memory
-agent/logs
-agent/models
+logs
+workspaces/desktop/models
 agent/resources
 test
 agent/_*.log

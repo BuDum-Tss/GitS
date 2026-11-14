@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from search.normalize import fts_body, fts_query
+from services.memory_service.search.normalize import fts_body, fts_query
 
 RRF_K = 60
 

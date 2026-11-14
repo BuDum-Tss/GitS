@@ -6,7 +6,7 @@ import pytest
 from services.memory_service import graph as gm
 from services.memory_service.fact_store import FactStore
 from services.memory_service.graph import COLONIST_RELATIONS, Fact, SqliteBackend
-from search.embedder import HashEmbedder
+from services.memory_service.search.embedder import HashEmbedder
 
 T0 = datetime(2026, 10, 1, tzinfo=timezone.utc)
 

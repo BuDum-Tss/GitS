@@ -20,8 +20,8 @@ from services.memory_service.sleep import SleepRunner
 from services.memory_service.sleep_scheduler import SleepScheduler
 from services.memory_service import episodes as dom
 from services.memory_service.episode_service import EpisodeService, summary_event
-from search import HybridIndex, HybridSearch, SearchConfig
-from search.embedder import HashEmbedder
+from services.memory_service.search import HybridIndex, HybridSearch, SearchConfig
+from services.memory_service.search.embedder import HashEmbedder
 
 T0 = 1_800_000_000.0           # фиксированное «сегодня» тестов
 MIN = 60.0

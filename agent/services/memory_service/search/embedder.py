@@ -6,7 +6,7 @@
 import hashlib
 import math
 
-from search.normalize import tokens
+from services.memory_service.search.normalize import tokens
 
 
 class HashEmbedder:

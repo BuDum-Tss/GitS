@@ -109,12 +109,12 @@ def is_sensitive(win: dict) -> bool:
 
 
 _ocr_engine = None
-# модели OCR лежат в agent/models/ocr (не в git); GITS_OCR_DIR переопределяет путь
-_OCR_DIR = Path(os.getenv("GITS_OCR_DIR") or GITS_ROOT / "agent" / "models" / "ocr")
+# модели OCR лежат в workspaces/desktop/models/ocr (не в git); GITS_OCR_DIR переопределяет путь
+_OCR_DIR = Path(os.getenv("GITS_OCR_DIR") or Path(__file__).resolve().parent / "models" / "ocr")
 
 
 def _engine():
-    """RapidOCR с русской моделью распознавания (agent/models/ocr), если она скачана.
+    """RapidOCR с русской моделью распознавания (workspaces/desktop/models/ocr), если она скачана.
     Встроенная модель китайско-английская и читает кириллицу как похожую латиницу."""
     global _ocr_engine
     if _ocr_engine is None:
@@ -137,7 +137,7 @@ def _engine():
                 _tr.TextRecognizer._dict_patched = True
             _ocr_engine = RapidOCR(rec_model_path=str(rec), rec_keys_path=str(keys))
         else:
-            logger.warning("Русская модель OCR не найдена (agent/models/ocr): кириллица читается плохо")
+            logger.warning("Русская модель OCR не найдена (workspaces/desktop/models/ocr): кириллица читается плохо")
             _ocr_engine = RapidOCR()
     return _ocr_engine
 

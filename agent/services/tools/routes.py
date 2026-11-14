@@ -1,6 +1,6 @@
 """Маршруты событий и жёсткие правила до модели (ТЗ 25, FAST-1, FAST-2).
 
-Вход события один: нормализация и дедупликация -> жёсткие правила (`HardRules`, YAML `routes/hard_rules.yaml`, без ML) ->
+Вход события один: нормализация и дедупликация -> жёсткие правила (`HardRules`, YAML `services/tools/hard_rules.yaml`, без ML) ->
 диспетчер (GLiNER и правила, Gemma только для неоднозначного, ТЗ 18) -> `routes[]`. Маршруты:
   reflex  мгновенное действие без разговора (оборвать речь, ответить на вопрос о разрешении, реакция D4); результат
           идёт в `already_done`, чтобы маршрут `chat` не повторял действие;
@@ -27,7 +27,7 @@ DECISION_ROUTES = {
     "R1": (CHAT,), "R2": (REFLEX,), "R3": (IGNORE,), "R4": (REFLEX, CHAT),
 }
 
-HARD_RULES_FILE = Path(__file__).resolve().parents[2] / "routes" / "hard_rules.yaml"
+HARD_RULES_FILE = Path(__file__).resolve().with_name("hard_rules.yaml")
 
 
 @dataclass
@@ -160,7 +160,7 @@ _cache: HardRules | None = None
 
 
 def hard_rules() -> HardRules:
-    """Правила из `routes/hard_rules.yaml` (читаются один раз; `reload()` перечитывает)."""
+    """Правила из `services/tools/hard_rules.yaml` (читаются один раз; `reload()` перечитывает)."""
     global _cache
     if _cache is None:
         _cache = HardRules.load()

@@ -406,7 +406,7 @@ def _why_no_workspace(workspaces, modules, ws: str) -> str:
     if not modules.is_enabled(ws):
         return f"модуль «{title}» выключен: его надо включить во вкладке «Модули»"
     if not getattr(rec, "manifest", None):
-        return f"модуль «{title}» ещё не подключился к ядру (не запущен или упал при старте); смотри журнал agent/logs/modules/{ws}.log"
+        return f"модуль «{title}» ещё не подключился к ядру (не запущен или упал при старте); смотри журнал logs/modules/{ws}.log"
     return f"у модуля «{title}» нет своей среды"
 
 

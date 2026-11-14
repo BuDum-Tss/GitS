@@ -28,9 +28,9 @@ from host import settings
 from services.conversation import stems as stemlib
 from gits_sdk.envcompat import env
 from services.memory_service.fact_store import FactStore, iso
-from search.embedder import LmStudioEmbedder
-from search.index import HybridIndex, SearchConfig, cosine
-from search.service import HybridSearch
+from services.memory_service.search.embedder import LmStudioEmbedder
+from services.memory_service.search.index import HybridIndex, SearchConfig, cosine
+from services.memory_service.search.service import HybridSearch
 
 logger = logging.getLogger("graph_memory")
 

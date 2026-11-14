@@ -5,8 +5,8 @@ import asyncio
 import logging
 
 from interfaces.contracts import Embedder, LanguageModel
-from search.index import Hit, HybridIndex, SearchConfig
-from search.rewrite import rewrite_query
+from services.memory_service.search.index import Hit, HybridIndex, SearchConfig
+from services.memory_service.search.rewrite import rewrite_query
 
 logger = logging.getLogger("hybrid_search")
 

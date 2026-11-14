@@ -42,7 +42,7 @@ COPY agent agent
 COPY workspaces/telegram workspaces/telegram
 COPY workspaces/streamer workspaces/streamer
 
-RUN mkdir -p agent/logs && chown -R gits:gits agent/logs
+RUN mkdir -p logs && chown -R gits:gits logs
 USER gits
 
 VOLUME ["/data"]

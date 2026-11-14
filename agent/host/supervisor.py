@@ -12,7 +12,7 @@
 политике `restart`, а если порт уже занят работающим сервисом (запущен не супервизором), второй экземпляр не запускает и только
 следит за здоровьем. Токен ядра сервису не передаётся.
 
-Вывод процесса (stdout и stderr вместе) пишется в `agent/logs/modules/<id>.log` (5 МБ, три файла). Токен ядра процессу
+Вывод процесса (stdout и stderr вместе) пишется в `logs/modules/<id>.log` (5 МБ, три файла). Токен ядра процессу
 передаётся в `GITS_TOKEN`, id в `GITS_ID`, в журналы он не попадает: похожие на токены места в выводе вырезаются. Модулю также
 передаётся `MEMORY_DIR`: абсолютный путь к папке памяти ядра (модули хранят свои данные там же, ТЗ 10).
 """
@@ -41,7 +41,7 @@ AGENT_DIR = Path(__file__).resolve().parents[1]
 GITS_ROOT = AGENT_DIR.parent
 PEERS_YAML = AGENT_DIR / "peers.yaml"
 ENV_PEERS_FILE = "GITS_PEERS_FILE"           # другой файл участников (контейнер: agent/peers.container.yaml); относительный путь от корня репозитория
-LOGS_DIR = AGENT_DIR / "logs" / "modules"
+LOGS_DIR = GITS_ROOT / "logs" / "modules"
 
 RESTART_DELAYS = (2, 5, 15, 60)       # CORE-15
 CRASH_LIMIT, CRASH_WINDOW_S = 5, 600  # пять падений за десять минут - перестаём

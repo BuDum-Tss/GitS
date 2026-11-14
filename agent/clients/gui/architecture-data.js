@@ -185,7 +185,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "до моделей: R1 владелец → разговор, R2 ответ на вопрос, R3 mute, R4 критичное, «замолчи»",
      "out": "RuleResult",
-     "now": "выделен (R3): services/attention/pipeline.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в kernel/hard_rules.py; жёсткие правила обращений владельца (ТЗ 25): services/tools/routes.py + routes/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
+     "now": "выделен (R3): services/attention/pipeline.py HardRules; чистые правила «замолчи» и «похоже на просьбу» в kernel/hard_rules.py; жёсткие правила обращений владельца (ТЗ 25): services/tools/routes.py + services/tools/hard_rules.yaml, до любых моделей: «замолчи» (в том числе обрывок), ответ на вопрос о разрешении, экстренные слова"
     },
     {
      "id": "cls",
@@ -221,7 +221,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "маршруты события и обращения: reflex (с already_done), chat, task, ignore, think; таблица D0-D4 и R1-R4 → маршруты; жёсткие правила из YAML",
      "out": "RouteDecision",
-     "now": "есть (ТЗ 25): services/tools/routes.py, routes/hard_rules.yaml"
+     "now": "есть (ТЗ 25): services/tools/routes.py, services/tools/hard_rules.yaml"
     }
    ]
   },

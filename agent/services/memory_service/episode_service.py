@@ -21,8 +21,8 @@ from services.memory_service.episode_summary import EpisodeSummarizer
 from services.memory_service.sleep import SleepRunner
 from services.memory_service.sleep_scheduler import SleepScheduler
 import services.memory_service.episodes as dom
-from search import HybridIndex, HybridSearch, SearchConfig
-from search.embedder import LmStudioEmbedder
+from services.memory_service.search import HybridIndex, HybridSearch, SearchConfig
+from services.memory_service.search.embedder import LmStudioEmbedder
 
 SUMMARY_KIND = "episode.summary"
 

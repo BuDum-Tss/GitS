@@ -2,10 +2,10 @@
 стенд memory_bakeoff. Эмбеддер и модель: детерминированные заглушки, сеть не нужна."""
 from services.conversation.context_builder import ContextBuilder
 from interfaces.contracts import Embedder
-from search import HybridIndex, HybridSearch, SearchConfig
-from search.embedder import HashEmbedder
-from search.normalize import fts_query, stem, tokens
-from search.rewrite import rewrite_query
+from services.memory_service.search import HybridIndex, HybridSearch, SearchConfig
+from services.memory_service.search.embedder import HashEmbedder
+from services.memory_service.search.normalize import fts_query, stem, tokens
+from services.memory_service.search.rewrite import rewrite_query
 from tools.memory_bakeoff import run_all
 
 DAY = 86400.0
