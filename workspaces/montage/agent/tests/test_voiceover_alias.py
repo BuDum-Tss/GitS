@@ -10,6 +10,6 @@ def test_old_mode_name_is_read_as_character():
 
 
 def test_schema_accepts_both_names_and_the_new_list_is_the_canonical_one():
-    enum = next(t for t in MANIFEST["tools"] if t["name"] == "start")["params"]["voiceover"]["enum"]
+    enum = next(t for t in MANIFEST["tools"] if t["name"] == "work")["params"]["voiceover"]["enum"]
     assert {"none", "character", "keep", "glados"} <= set(enum)
     assert "glados" not in VOICEOVERS

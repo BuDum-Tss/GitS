@@ -1,8 +1,7 @@
 # Контекст сборки gits-montage (файл рядом с Dockerfile имеет приоритет над корневым .dockerignore).
-# Белый список: в образ идут только sdk, среда агента pi и окружение монтажа; остальное репозитория не нужно.
+# Белый список: в образ идут только sdk и окружение монтажа; остальное репозитория не нужно.
 *
 !agent/interfaces/workspace
-!services/agent-runtime
 !workspaces/montage
 
 # окружения и зависимости хоста (npm ci и pip ставят своё внутри образа)
@@ -18,9 +17,6 @@
 **/.env
 **/.env.*
 **/*.env
-services/agent-runtime/auth.json
-services/agent-runtime/memory
-services/agent-runtime/test
 workspaces/montage/.claude/settings.local.json
 agent/interfaces/workspace/tests
 

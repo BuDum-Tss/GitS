@@ -9,7 +9,7 @@ import lease_host
 import main as main_mod
 from layout import Layout
 from manifest import MANIFEST
-from tests.stubs import FakeRenderer, FakeRunner, StubQA, layout_for
+from tests.stubs import FakeRenderer, StubQA, layout_for
 
 pytestmark = pytest.mark.usefixtures("fast")
 TOKEN = "control-token"
@@ -37,7 +37,7 @@ async def make_host(tmp_path, root=None):
     built = []
 
     def build_fn(layout: Layout, *, url, token):
-        client, manager = main_mod.build(layout, url=url, token=token, runner=FakeRunner(), renderer=FakeRenderer(), qa=StubQA())
+        client, manager = main_mod.build(layout, url=url, token=token, renderer=FakeRenderer(), qa=StubQA(), site_port=0)
         built.append((layout, client, manager))
         return client, manager
 
@@ -107,6 +107,13 @@ async def test_acquire_fails_when_core_unreachable(tmp_path, monkeypatch):
         await server.stop()
 
 
+def _running(manager, run_id="j-run"):
+    """Операция идёт: запись в реестре менеджера (настоящая фоновая операция проверена в test_workspace_tools)."""
+    from manager import Run
+    manager._runs[run_id] = Run(run_id=run_id, job_id="j-00000000", command="render", background=True)
+    return run_id
+
+
 async def _wait(pred, n=200):
     for _ in range(n):
         if pred():
@@ -122,7 +129,7 @@ async def test_release_with_active_job_keeps_lease_then_finishes(tmp_path):
             lc = LeaseClient(server.url, TOKEN)
             got = await lc.acquire(character="glados", core_url=core.url, token="core-token", purpose="montage")
             _, client, manager = built[0]
-            manager.queue.append("j-fake")                                       # идёт задача
+            _running(manager, "j-fake")                                           # идёт операция
             cancelled = []
 
             async def fake_cancel(job_id):
@@ -135,7 +142,7 @@ async def test_release_with_active_job_keeps_lease_then_finishes(tmp_path):
             assert client.connected and cancelled == []                          # связь осталась, задачи не отменены
             with pytest.raises(LeaseBusy):
                 await lc.acquire(character="other", core_url=core.url, token="core-token")
-            manager.queue.clear()                                                # задача кончилась
+            manager._runs.clear()                                                # операция кончилась
             manager.on_idle()
             assert await _wait(lambda: not client.connected)
             assert await _wait(lambda: server.lease is None)
@@ -151,11 +158,11 @@ async def test_same_character_returns_while_releasing(tmp_path):
             lc = LeaseClient(server.url, TOKEN)
             got = await lc.acquire(character="glados", core_url=core.url, token="core-token", purpose="montage")
             _, client, manager = built[0]
-            manager.queue.append("j-fake")
+            _running(manager, "j-fake")
             await lc.release(got["lease_id"])
             back = await lc.acquire(character="glados", core_url=core.url, token="core-token", purpose="montage")
             assert back["lease_id"] == got["lease_id"] and "releasing" not in (await lc.status())["holder"]
-            manager.queue.clear()
+            manager._runs.clear()
             manager.on_idle()                                                    # возврат отменил выход: освобождения нет
             await asyncio.sleep(0.2)
             assert client.connected and (await lc.status())["state"] == "busy"
@@ -171,7 +178,7 @@ async def test_core_drop_cancels_active_jobs_even_while_releasing(tmp_path):
             got = await lc.acquire(character="glados", core_url=core.url, token="core-token")
             await core.wait_connected()
             _, client, manager = built[0]
-            manager.queue.append("j-fake")
+            _running(manager, "j-fake")
             cancelled = []
 
             async def fake_cancel(job_id):
@@ -186,55 +193,9 @@ async def test_core_drop_cancels_active_jobs_even_while_releasing(tmp_path):
             await server.stop()
 
 
-# ---------------------------------------------------------------- задачи, ждущие ответа, аренду не держат
+# ---------------------------------------------------------------- единицы на диске переживают возврат аренды; afk аренду не трогает
 
-def _waiting(manager, job_id="j-wait"):
-    import types
-    manager._jobs[job_id] = types.SimpleNamespace(data={"state": "waiting_user"})
-    return job_id
-
-
-async def test_release_with_only_waiting_jobs_frees_at_once_and_does_not_cancel(tmp_path):
-    async with FakeCore(token="core-token") as core:
-        host, server, built = await make_host(tmp_path)
-        try:
-            lc = LeaseClient(server.url, TOKEN)
-            got = await lc.acquire(character="glados", core_url=core.url, token="core-token")
-            _, client, manager = built[0]
-            manager.queue.append(_waiting(manager))
-            assert manager.active_jobs() == 0
-            cancelled = []
-
-            async def fake_cancel(job_id):
-                cancelled.append(job_id)
-            manager.cancel = fake_cancel
-            assert (await lc.release(got["lease_id"]))["released"] is True
-            assert cancelled == [] and (await lc.status())["state"] == "free"
-        finally:
-            await server.stop()
-
-
-async def test_pending_release_finishes_when_last_running_job_starts_waiting(tmp_path):
-    async with FakeCore(token="core-token") as core:
-        host, server, built = await make_host(tmp_path)
-        try:
-            lc = LeaseClient(server.url, TOKEN)
-            got = await lc.acquire(character="glados", core_url=core.url, token="core-token")
-            _, client, manager = built[0]
-            job = manager.store.create({"sources": [], "brief": "ролик", "platform": "none"})
-            manager._jobs[job.job_id] = job
-            manager.queue.append(job.job_id)
-            job.data["state"] = "running"
-            assert (await lc.release(got["lease_id"]))["pending"] == "jobs"
-            job.data["state"] = "waiting_user"                                    # задача задала вопрос и ждёт ответа
-            await manager.publish_state()                                         # состояние опубликовано: активных нет
-            assert await _wait(lambda: server.lease is None)
-            assert (await lc.status())["state"] == "free"
-        finally:
-            await server.stop()
-
-
-async def test_core_drop_cancels_running_but_keeps_waiting_jobs(tmp_path):
+async def test_core_drop_cancels_running_operations_but_keeps_units(tmp_path):
     async with FakeCore(token="core-token") as core:
         host, server, built = await make_host(tmp_path)
         try:
@@ -242,8 +203,8 @@ async def test_core_drop_cancels_running_but_keeps_waiting_jobs(tmp_path):
             await lc.acquire(character="glados", core_url=core.url, token="core-token")
             await core.wait_connected()
             _, client, manager = built[0]
-            manager.queue.append("j-run")
-            manager.queue.append(_waiting(manager))
+            unit = manager.store.create({"sources": [], "brief": "ролик", "platform": "none"})
+            _running(manager, "j-run")
             cancelled = []
 
             async def fake_cancel(job_id):
@@ -252,25 +213,25 @@ async def test_core_drop_cancels_running_but_keeps_waiting_jobs(tmp_path):
             for conn in list(core._conns):
                 await conn.ws.close()
             assert await _wait(lambda: server.lease is None)
-            assert cancelled == ["j-run"]
+            assert cancelled == ["j-run"] and manager.store.load(unit.job_id) is not None
         finally:
             await server.stop()
 
 
-async def test_parked_waiting_job_returns_on_next_entry(tmp_path):
+async def test_unit_returns_on_next_entry_and_afk_keeps_the_lease(tmp_path):
     async with FakeCore(token="core-token") as core:
         host, server, built = await make_host(tmp_path, root=tmp_path / "chars")
         try:
             lc = LeaseClient(server.url, TOKEN)
             got = await lc.acquire(character="glados", core_url=core.url, token="core-token")
             _, client, manager = built[0]
-            job = manager.store.create({"sources": [], "brief": "ролик", "platform": "none"})
-            job.data["state"] = "waiting_user"
-            manager.store.save(job)                                               # ждёт ответа на диске в папке хозяина
-            assert manager.active_jobs() == 0 or job.job_id not in manager.running_job_ids()
-            assert (await lc.release(got["lease_id"]))["released"] is True
+            await core.wait_connected()
+            res = await core.request("workspace.afk", {"reason": "render"})            # отошла: аренда и связь на месте
+            assert res["ok"] and client.connected and (await lc.status())["state"] == "busy"
+            unit = manager.store.create({"sources": [], "brief": "ролик", "platform": "none"})
+            assert (await lc.release(got["lease_id"]))["released"] is True             # операций нет: освобождается сразу
             await lc.acquire(character="glados", core_url=core.url, token="core-token")
             manager2 = built[1][2]
-            assert await _wait(lambda: job.job_id in manager2._jobs)             # recover вернул припаркованную задачу
+            assert await _wait(lambda: unit.job_id in manager2._jobs)                  # recover вернул единицу
         finally:
             await server.stop()

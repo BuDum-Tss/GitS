@@ -1,6 +1,7 @@
-"""Remotion: проверка типов, проверка плана схемой шаблона, кадры и рендер (ТЗ 20, стадии build, preview, final).
+"""Remotion: проверка типов, проверка плана схемой шаблона, кадры, композиции и рендер (команды окружения `render`, `still`,
+`compositions`, `check`, `final`).
 
-Команды из `docs/PIPELINE.md`; запускаются в `jobs/<id>/work/`. Интерфейс `Renderer` позволяет тестам подставить заглушку.
+Команды из `docs/PIPELINE.md`; запускаются в `jobs/<id>/work/` с фиксированными аргументами (произвольной оболочки нет). Интерфейс `Renderer` позволяет тестам подставить заглушку.
 """
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ class Renderer(Protocol):
     async def render(self, work: Path, props: Path, out: Path, *, scale: float | None, crf: int,
                      on_progress: Callable[[float], None] | None = None) -> None: ...
     async def still(self, work: Path, props: Path, frame: int, out: Path) -> None: ...
+    async def compositions(self, work: Path) -> list[str]: ...
 
 
 def _clip(text: str, n: int = 1500) -> str:
@@ -86,3 +88,10 @@ class RemotionRenderer:
                                    f"--frame={frame}"], cwd=work, timeout=STILL_TIMEOUT_S)
         if not res.ok or not out.is_file():
             raise RenderError("кадр Remotion не получился: " + _clip(res.err or res.out))
+
+    async def compositions(self, work: Path) -> list[str]:
+        """`npx remotion compositions src/index.ts`: строки списка композиций проекта."""
+        res = await media.run_cmd([self.npx, "remotion", "compositions", "src/index.ts"], cwd=work, timeout=STILL_TIMEOUT_S)
+        if not res.ok:
+            raise RenderError("список композиций Remotion не получен: " + _clip(res.err or res.out))
+        return [ln.strip() for ln in res.out.splitlines() if ln.strip()][-30:]

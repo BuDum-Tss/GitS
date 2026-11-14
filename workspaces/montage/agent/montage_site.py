@@ -1,6 +1,7 @@
-"""Сайт монтажа: одна страница на задачу вместо голого Remotion Studio. Показывает хозяина аренды (чьи это ролики), сценарий,
-монтажный лист (из plan.json), план, все файлы задачи (исходники, расшифровка, рабочая копия, рендеры, QA) и кнопку
-«Remotion Studio». Только чтение: файлы не меняются, рендера и запуска конвейера нет. Адрес сайта отдаёт `open_studio`.
+"""Сайт монтажа: одна страница на рабочую единицу (ролик). Показывает хозяина аренды (чьи это ролики), сценарий, монтажный лист
+(из plan.json), план, все файлы единицы (исходники, расшифровка, рабочая копия, рендеры, QA) и кнопку «Remotion Studio». Только
+чтение: файлы не меняются, рендера и запуска команд нет. Поднимается при входе в окружение (`workspace.enter`) и работает в AFK;
+адрес отдаёт инструмент `site`.
 """
 from __future__ import annotations
 
@@ -13,6 +14,8 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from aiohttp import web
+
+from plan_tools import plan_markdown, story_markdown
 
 log = logging.getLogger("montage.site")
 
@@ -164,15 +167,15 @@ class Site:
     def _job(self, request: web.Request):
         job = self.manager.store.load(request.match_info["job"])
         if job is None:
-            raise web.HTTPNotFound(text="задачи нет")
+            raise web.HTTPNotFound(text="единицы нет")
         return job
 
     async def index(self, request: web.Request) -> web.Response:
         rows = "".join(
             f"<tr><td><a href='/job/{quote(j.job_id)}'>{_e(j.data.get('title') or j.job_id)}</a></td><td>{_e(j.job_id)}</td>"
-            f"<td>{_e(j.stage)}</td><td>{_e(j.state)}</td></tr>" for j in self.manager.store.all())
-        body = ("<h1>Ролики</h1><table><tr><th>Ролик</th><th>Задача</th><th>Стадия</th><th>Состояние</th></tr>"
-                f"{rows or '<tr><td colspan=4>Задач пока нет.</td></tr>'}</table>")
+            f"<td>{_e(j.state)}</td></tr>" for j in self.manager.store.all())
+        body = ("<h1>Ролики</h1><table><tr><th>Ролик</th><th>Единица</th><th>Состояние</th></tr>"
+                f"{rows or '<tr><td colspan=3>Роликов пока нет.</td></tr>'}</table>")
         return _page("Монтаж", self.owner, body)
 
     async def job(self, request: web.Request) -> web.Response:
@@ -184,7 +187,7 @@ class Site:
         studio = ""
         if (job.plan_dir / "plan.json").is_file():
             studio = f" <a class=btn href='/job/{jid}/studio'>Открыть в Remotion Studio</a>"
-        head = (f"<h1>{_e(job.data.get('title') or job.job_id)}</h1><p class=muted>{_e(job.job_id)} · {_e(job.stage)} · "
+        head = (f"<h1>{_e(job.data.get('title') or job.job_id)}</h1><p class=muted>{_e(job.job_id)} · "
                 f"{_e(job.state)}{studio}</p><nav>{nav}</nav><hr>")
         return _page(str(job.data.get("title") or job.job_id), self.owner, head + getattr(self, f"_s_{section}", self._s_story)(job))
 
@@ -192,11 +195,21 @@ class Site:
         path = job.plan_dir / name
         return f"<pre>{_e(_read_text(path))}</pre>" if path.is_file() else f"<p class=muted>{empty}</p>"
 
+    def _doc_or_json(self, job, name: str, json_name: str, render, empty: str) -> str:
+        """Текст из `<имя>.md`, а если его нет (агент пишет только json), то человекочитаемый вид из `<имя>.json`."""
+        if (job.plan_dir / name).is_file():
+            return self._doc(job, name, empty)
+        try:
+            doc = json.loads((job.plan_dir / json_name).read_text(encoding="utf-8"))
+            return f"<pre>{_e(render(doc))}</pre>"
+        except (OSError, ValueError, KeyError, TypeError):
+            return f"<p class=muted>{empty}</p>"
+
     def _s_story(self, job) -> str:
-        return self._doc(job, "story.md", "Сценария пока нет.")
+        return self._doc_or_json(job, "story.md", "story.json", story_markdown, "Сценария пока нет.")
 
     def _s_plan(self, job) -> str:
-        return self._doc(job, "plan.md", "Плана пока нет.")
+        return self._doc_or_json(job, "plan.md", "plan.json", plan_markdown, "Плана пока нет.")
 
     def _s_sheet(self, job) -> str:
         path = job.plan_dir / "plan.json"

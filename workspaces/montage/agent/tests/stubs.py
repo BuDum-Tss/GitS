@@ -1,4 +1,4 @@
-"""Заглушки для тестов конвейера: ядро, агент, Remotion и контроль качества. Без сети, модели и Chromium; ffmpeg
+"""Заглушки для тестов окружения: ядро, Remotion и контроль качества. Без сети, модели и Chromium; ffmpeg
 настоящий там, где стадии его вызывают (loudnorm, проверка файлов), файлы крошечные."""
 from __future__ import annotations
 
@@ -8,13 +8,11 @@ import json
 import shutil
 import tempfile
 import wave
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 
 import media
 import qa as qa_mod
-from stage_runner import StageResult
 from layout import Layout
 
 
@@ -63,7 +61,7 @@ def fast_prepare_work(job_dir: Path, layout) -> Path:
 
 
 class StubCore:
-    """Ядро для конвейера: записывает вызовы, синтез — тишина нужной длины (0,06 с на символ)."""
+    """Ядро для команд: записывает вызовы, синтез — тишина нужной длины (0,06 с на символ)."""
 
     def __init__(self, tmp: Path, settings: dict | None = None):
         self.tmp = tmp
@@ -132,53 +130,6 @@ def make_plan(*, platform="shorts", duration=12000, voiceover=True, captions=Tru
     return plan
 
 
-Responder = Callable[..., Awaitable[StageResult] | StageResult]
-
-
-class FakeRunner:
-    """Агент без модели: на каждую стадию пишет ожидаемые файлы. `override[stage]` — функция(env, prompt, call_no) вместо
-    стандартного поведения; `calls` — журнал вызовов."""
-
-    def __init__(self, plan_factory: Callable[[], dict] = make_plan, story: dict | None = None):
-        self.plan_factory = plan_factory
-        self.story = story or STORY
-        self.calls: list[dict] = []
-        self.override: dict[str, Callable] = {}
-        self.review_replies: list[dict] = []
-        self.tokens = 1000
-        self.fail_stage: dict[str, int] = {}              # стадия -> сколько раз подряд упасть
-
-    async def run(self, env, stage, prompt, *, model, max_turns, readonly=False, fresh=False):
-        n = sum(1 for c in self.calls if c["stage"] == stage) + 1
-        self.calls.append({"stage": stage, "model": model, "prompt": prompt, "readonly": readonly, "fresh": fresh, "n": n})
-        if self.fail_stage.get(stage, 0) > 0:
-            self.fail_stage[stage] -= 1
-            from stage_runner import StageFailed
-            raise StageFailed("заглушка: агент упал")
-        text = "готово"
-        if stage in self.override:
-            r = self.override[stage](env, prompt, n)
-            r = await r if asyncio.iscoroutine(r) else r
-            if isinstance(r, StageResult):
-                return r
-            text = r or text
-        elif stage == "clarify":
-            (env.job.plan_dir / "clarify.json").write_text(json.dumps({"platform": "shorts", "duration_s": 12}), encoding="utf-8")
-        elif stage == "story":
-            (env.job.plan_dir / "story.json").write_text(json.dumps(self.story, ensure_ascii=False), encoding="utf-8")
-            (env.job.plan_dir / "story.md").write_text("# История\n", encoding="utf-8")
-        elif stage == "plan":
-            plan = self.plan_factory()
-            plan["voiceover"] = plan["voiceover"] if env.job.request.get("voiceover") in ("glados", "character") else []
-            (env.job.plan_dir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
-            (env.job.plan_dir / "plan.md").write_text("# План\n", encoding="utf-8")
-        elif stage == "review":
-            reply = self.review_replies.pop(0) if self.review_replies else {
-                "criteria": {"readability": {"score": 5, "issues": []}}, "overall": 5, "verdict": "pass"}
-            text = json.dumps(reply, ensure_ascii=False)
-        return StageResult(text=text, tokens=self.tokens, session_id="sess-1", turns=3)
-
-
 class FakeRenderer:
     """Remotion без Chromium: настоящий крошечный ролик нужной длительности (ffmpeg), если не сказано иначе."""
 
@@ -214,6 +165,9 @@ class FakeRenderer:
     async def still(self, work, props, frame, out):
         self.stills.append(frame)
         out.write_bytes(b"png")
+
+    async def compositions(self, work):
+        return ["Main  30  1080x1920  300 (10.00 sec)"]
 
 
 class StubQA:

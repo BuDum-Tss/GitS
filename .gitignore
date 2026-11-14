@@ -16,6 +16,9 @@ resources/*/memory/screenshots/
 models/
 
 .claude/
+!workspaces/montage/.claude/
+workspaces/montage/.claude/skills/*
+!workspaces/montage/.claude/skills/montage-regulation/
 .venv/
 
 

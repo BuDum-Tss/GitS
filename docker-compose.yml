@@ -104,8 +104,6 @@ services:
       # Remotion Studio задач: порты из этого диапазона опубликованы на хост (ниже), адрес Studio http://127.0.0.1:<порт>
       MONTAGE_SITE_PORT: "8790"                      # сайт монтажа (сценарий, монтажный лист, файлы)
       MONTAGE_STUDIO_PORTS: "8791-8794"
-      # вход pi по подписке (секрет): путь внутри контейнера; сам файл монтируется ниже, в образ он не копируется
-      GITS_PI_AUTH: /run/pi/auth.json
     expose:
       - "8780"
     ports:
@@ -115,15 +113,10 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-    # папка входа pi в памяти, доступной пользователю gits: pi кладёт рядом с auth.json файл блокировки (.lock)
-    tmpfs:
-      - /run/pi:uid=1000,gid=1000,mode=0700
     volumes:
       - ./resources/GlaDOS:/characters/glados
       - montage_work:/work
-      # auth.json pi с хоста, тот же файл, что у ядра (запись нужна: pi обновляет токены входа); путь меняет GITS_PI_AUTH_FILE
-      - ${GITS_PI_AUTH_FILE:-./services/agent-runtime/auth.json}:/run/pi/auth.json
-      # исходники для монтажа: пути в запросе start должны быть путями контейнера, поэтому кладите файлы в /inbox:
+      # исходники для монтажа: пути в запросе work.create должны быть путями контейнера, поэтому кладите файлы в /inbox:
       # - ${MONTAGE_INBOX_DIR}:/inbox:ro
 
 volumes:

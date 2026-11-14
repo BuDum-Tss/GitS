@@ -8,7 +8,6 @@ import pytest
 
 import media
 import qa
-import review_mode as rm
 from layout import DEFAULT
 from tests.stubs import STORY, make_plan
 
@@ -230,7 +229,7 @@ def test_semantic_answer_parsing_and_fix_notes():
     assert any("мелко" in n and "4.0 с" in n for n in qa.semantic_fix_notes(sem))
     assert qa.parse_semantic("нет json") is None
     assert qa.parse_semantic('{"criteria": {}, "overall": 5}')["verdict"] == "pass"
-    rubric = (DEFAULT.prompts / "qa_rubric.md").read_text(encoding="utf-8")
+    rubric = (DEFAULT.skills / "montage-regulation" / "qa-rubric.md").read_text(encoding="utf-8")
     assert all(name in rubric for name in qa.CRITERIA)                                    # рубрика покрывает критерии MON-QA-2 и CRAFT-3
 
 
@@ -242,40 +241,3 @@ def test_report_files_are_written(tmp_path):
     assert doc["summary"]["technical_errors"] == 1 and doc["fixed"] == ["круг 1: исправлено"]
     md = mp.read_text(encoding="utf-8")
     assert "чёрный кадр" in md and "Исправлено автоматически" in md and not out.passed
-
-
-# ------------------------------------------------------------------------------------------------ режимы приёмки (MON-QA-5, QA-6)
-
-def verdicts(n, agree):
-    rows = []
-    for k in range(n):
-        ok = k < agree
-        rows.append({"stage": "review", "answer": "готово", "qa": {"passed": ok}})            # человек всегда «готово»; автопроверка pass = согласие
-    return rows
-
-
-def test_agreement_counts_pass_ready_pairs():
-    stats = rm.agreement(verdicts(20, 17) + [{"stage": "plan_approval", "answer": "утвердить", "qa": {}}])
-    assert (stats["decisions"], stats["agreed"]) == (20, 17) and rm.agreement_text(stats) == "согласие с вами: 17/20, 85 %"
-    both_fix = rm.agreement([{"stage": "review", "answer": "правки", "qa": {"passed": False}}])
-    assert both_fix["agreed"] == 1
-
-
-def test_auto_mode_needs_twenty_decisions_and_ninety_percent():
-    ok, why = rm.auto_allowed(rm.agreement(verdicts(19, 19)))
-    assert not ok and "19 из 20" in why
-    ok, why = rm.auto_allowed(rm.agreement(verdicts(20, 17)))
-    assert not ok and "85 %" in why and "90" in why
-    assert rm.auto_allowed(rm.agreement(verdicts(20, 18)))[0]
-    assert rm.effective_mode("auto", rm.agreement(verdicts(5, 5)))[0] == "auto_then_human"
-    assert rm.effective_mode("auto", rm.agreement(verdicts(30, 29)))[0] == "auto"
-    assert rm.effective_mode("human", {"decisions": 0, "agreed": 0, "share": 0})[0] == "human"
-    assert rm.effective_mode("что-то", {"decisions": 0, "agreed": 0, "share": 0})[0] == "human"
-
-
-def test_auto_skips_human_review_only_when_everything_is_clean():
-    clean = {"technical_errors": 0, "semantic_overall": 4, "semantic_verdict": "pass"}
-    assert rm.skip_human_review("auto", clean)
-    assert not rm.skip_human_review("auto", {**clean, "semantic_overall": 3})
-    assert not rm.skip_human_review("auto", {**clean, "technical_errors": 1})
-    assert not rm.skip_human_review("auto_then_human", clean) and not rm.skip_human_review("human", clean)

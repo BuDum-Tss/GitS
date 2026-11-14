@@ -1,7 +1,14 @@
-"""Манифест модуля монтажа (ТЗ 20, раздел 5: MON-5, MON-6). Описания инструментов читает планировщик ядра."""
+"""Манифест окружения «Монтаж» (ТЗ 20, раздел 5; docs/WORKSPACE_CONTRACT.md 3.2). Монтирует сама ГЛаДОС: окружение даёт ей
+инструменты (`skills`, `files`, `run`, `work`, `site`, `resources`), навыки, рабочую область, команды и сайт. Описания инструментов
+читает планировщик ядра."""
 import copy
 import os
 
+from gits_sdk import Sandbox
+from gits_sdk.protocol import WorkspaceCommand
+
+import area
+from layout import ROOT
 from montage_site import site_url
 
 SOURCE_KINDS = ("talking_head", "rimworld_run", "narrated", "generic")
@@ -37,136 +44,143 @@ def resolve_output_dir(value: str | None = None) -> str:
 
 _KEYWORDS = ("монтаж", "смонтируй", "ролик", "видео", "шортс", "рилс", "клип", "субтитры", "нарезка")
 
-MANIFEST = {
-    "id": "montage",
-    "role": "workspace",
-    "ownership": "shared",
-    "title": "Монтаж",
-    "description": "Монтаж роликов из файлов: расшифровка, план, её закадровый голос, графика Aperture, субтитры, "
-                   "черновик и финальный рендер. Задачи долгие, результат приходит позже.",
-    "version": "0.1.0",
-    "subscribe": ["settings", "module"],
-    "shared_settings": ["dnd", "quiet_until", "pi_model_heavy", "pi_thinking"],
-    "settings_schema": {
-        "approve_plan": {"type": "boolean", "title": "Спрашивать утверждение плана монтажа", "default": True},
-        "auto_final": {"type": "boolean", "title": "Рендерить финал без вопроса «готово / правки»", "default": False},
-        "plan_model": {"type": "string", "title": "Модель для истории и плана", "default": "opus",
-                       "enum": ["opus", "sonnet"]},
-        "build_model": {"type": "string", "title": "Модель для сборки проекта Remotion", "default": "sonnet",
-                        "enum": ["opus", "sonnet"]},
-        "output_dir": {"type": "string", "title": "Папка готовых роликов", "default": default_output_dir()},
-        "keep_jobs": {"type": "integer", "title": "Сколько завершённых задач хранить", "default": 10, "min": 1,
-                      "max": 100},
-        "max_turns_stage": {"type": "integer", "title": "Лимит шагов агента на стадию", "default": 80, "min": 10,
-                            "max": 300},
-        "review_mode": {"type": "string", "title": "Режим приёмки черновика (auto только при ≥ 20 решениях и согласии ≥ 90 %)",
-                        "default": "human", "enum": ["human", "auto_then_human", "auto"]},
-    },
-    "tools": [
+BRIEF = ("Монтаж роликов: Remotion, ffmpeg, озвучка её голосом. Каждый ролик это рабочая единица (инструмент work): "
+         "файлы правишь инструментом files, команды (приём, расшифровка, озвучка, черновик, проверка, финал) запускаешь через run. "
+         "Порядок работы и правила: навык montage-regulation.")
+
+# разрешённые команды (`run`): исчерпывающий список, оболочки нет; первый аргумент каждой это id единицы (ролика)
+COMMANDS = [
+    WorkspaceCommand("intake", "Приём исходников единицы: копирование, проверка, перекодирование", background=True, timeout_s=3600),
+    WorkspaceCommand("transcribe", "Слова для субтитров (журнал речи забега)", timeout_s=600),
+    WorkspaceCommand("voiceover", "Озвучка реплик плана её голосом", background=True, timeout_s=1800),
+    WorkspaceCommand("render", "Черновик ролика (половинный размер, renders/preview.mp4)", background=True, timeout_s=10800),
+    WorkspaceCommand("still", "Кадр плана: renders/still_<кадр>.png (аргумент: номер кадра)", timeout_s=300),
+    WorkspaceCommand("compositions", "Список композиций проекта Remotion", timeout_s=300),
+    WorkspaceCommand("check", "Проверка плана и кадров черновика перед финалом (отчёт qa/report.md)", timeout_s=600),
+    WorkspaceCommand("final", "Финальный рендер в выходную папку (без свежей проверки check отказ)", background=True, timeout_s=10800,
+                     irreversible=True),
+]
+
+_RUN_NOTE = " Первый аргумент: id единицы (инструмент work); у still вторым номер кадра."
+
+
+def _standard_tools() -> list[dict]:
+    """Инструменты `skills`, `files`, `run` из SDK (описания и риски общие у всех окружений)."""
+    tools = area.MontageTools(Sandbox(ROOT, readonly=["."]), commands=COMMANDS).declare_tools()
+    for t in tools:
+        if t["name"] == "run":
+            t["description"] += _RUN_NOTE
+            t["params"]["args"]["description"] = "аргументы: id единицы, затем (для still) номер кадра"
+        t["keywords"] = [*t.get("keywords", []), *_KEYWORDS]
+    return tools
+
+
+def _tools() -> list[dict]:
+    return [
+        *_standard_tools(),
         {
-            "name": "start",
-            "description": "Смонтировать видео, ролик, шортс или клип из файлов: субтитры, графика, её закадровый голос. "
-                           "Долго, результат придёт позже.",
+            "name": "work",
+            "description": "Рабочие единицы монтажа (ролики): create (бриф, исходники, площадка; создаёт папку с копией шаблона), list, "
+                           "status (состояние, файлы, итоги запусков, ссылка на сайт), cancel (остановить операции и закрыть единицу).",
             "params": {
-                "sources": {"type": "array", "description": "абсолютные пути файлов или папок с исходниками; свои ресурсы: пути из инструмента resources"},
-                "brief": {"type": "string", "description": "что за ролик, своими словами пользователя"},
+                "op": {"type": "string", "enum": ["create", "list", "status", "cancel"], "required": True, "description": "действие"},
+                "id": {"type": "string", "required": False, "description": "id единицы (status, cancel)"},
+                "brief": {"type": "string", "required": False, "description": "create: что за ролик, своими словами пользователя"},
+                "title": {"type": "string", "required": False, "description": "create: название (по умолчанию из брифа)"},
+                "sources": {"type": "array", "required": False,
+                            "description": "create: абсолютные пути файлов или папок с исходниками; свои ресурсы: пути из инструмента resources"},
                 "source_kind": {"type": "string", "enum": list(SOURCE_KINDS), "required": False,
-                                "description": "вид исходников; если не задан, определяется по файлам"},
-                "platform": {"type": "string", "enum": list(PLATFORMS), "required": False,
-                             "description": "площадка; по умолчанию none"},
-                "format": {"type": "string", "enum": list(FORMATS), "required": False,
-                           "description": "формат кадра; по умолчанию по площадке"},
-                "duration_s": {"type": "integer", "required": False, "description": "целевая длительность, секунд"},
+                                "description": "create: вид исходников; если не задан, определяется по файлам"},
+                "platform": {"type": "string", "enum": list(PLATFORMS), "required": False, "description": "create: площадка; по умолчанию none"},
+                "format": {"type": "string", "enum": list(FORMATS), "required": False, "description": "create: формат кадра; по умолчанию по площадке"},
+                "duration_s": {"type": "integer", "required": False, "description": "create: целевая длительность, секунд"},
                 "voiceover": {"type": "string", "enum": [*VOICEOVERS, *VOICEOVER_ALIASES], "required": False,
-                              "description": "закадр: none, character (голос персонажа) или keep (оставить голос исходника)"},
+                              "description": "create: закадр: none, character (голос персонажа) или keep (оставить голос исходника)"},
+                "set": {"type": "string", "enum": ["working", "waiting_user"], "required": False,
+                        "description": "status: пометить единицу (waiting_user: жду ответа пользователя)"},
             },
-            "risk": "ask",
+            "risk": "auto",
             "availability": "always",
-            "timeout_s": 30,
+            "timeout_s": 60,
             "keywords": list(_KEYWORDS),
-            "job": True,
-            "announce": True,
         },
         {
-            "name": "status",
-            "description": "Состояние задач монтажа: что в очереди, что выполняется, на какой стадии.",
-            "params": {"job_id": {"type": "string", "required": False, "description": "id задачи; без него все"}},
+            "name": "site",
+            "description": "Адрес сайта монтажа (ролики, сценарий, монтажный лист, файлы, кнопка Remotion Studio) и страница ролика: "
+                           "ссылка для пользователя.",
+            "params": {"id": {"type": "string", "required": False, "description": "id единицы; без него адрес сайта"}},
             "risk": "auto",
             "availability": "always",
             "informative": True,
-            "keywords": list(_KEYWORDS),
+            "keywords": [*_KEYWORDS, "сайт", "ссылка", "студия", "studio", "remotion"],
         },
         {
             "name": "resources",
             "description": "Какие у неё есть ресурсы для монтажа (интро-заставки, комната, стикеры питомца, рамки, чертежи, шрифты, "
-                           "звуки) и их пути: годятся в sources инструмента start.",
+                           "звуки) и их пути: годятся в sources инструмента work (create). Те же файлы читает files в разделе resources.",
             "params": {},
             "risk": "auto",
             "availability": "always",
             "informative": True,
             "keywords": [*_KEYWORDS, "ресурсы", "заставка", "интро", "материалы", "что у тебя есть"],
         },
-        {
-            "name": "revise",
-            "description": "Правки к черновику или готовому ролику: задача возвращается на стадию сборки.",
-            "params": {"job_id": {"type": "string", "description": "id задачи"},
-                       "notes": {"type": "string", "description": "что изменить, своими словами пользователя"}},
-            "risk": "auto",
-            "availability": "always",
-            "keywords": list(_KEYWORDS),
-        },
-        {
-            "name": "cancel",
-            "description": "Отменить задачу монтажа.",
-            "params": {"job_id": {"type": "string", "description": "id задачи"}},
-            "risk": "auto",
-            "availability": "always",
-            "keywords": list(_KEYWORDS),
-        },
-        {
-            "name": "open_studio",
-            "description": "Открыть сайт монтажа задачи: сценарий, монтажный лист, план, все файлы и кнопка Remotion Studio "
-                           "(просмотр без рендера, гаснет через 30 минут без обращения). Для просьб «покажи монтаж», «открой студию».",
-            "params": {"job_id": {"type": "string", "description": "id задачи"}},
-            "risk": "auto",
-            "availability": "always",
-            "timeout_s": 120,
-            "keywords": list(_KEYWORDS) + ["студия", "studio", "remotion"],
-        },
-    ],
+    ]
+
+
+def _workspace_block() -> dict:
+    return {"id": "montage", "title": "Монтаж", "purpose": "монтаж роликов: приём, план, озвучка, черновик, проверка, финал, правки",
+            "entry": ["user_message", "self_impulse", "critical"], "interruptible": True,
+            "safe_points": ["между командами окружения"], "signals_in": ["telegram.*"],
+            "done_when": "агент вышел из окружения (workspace.exit) и операций не осталось",
+            "when_to_use": "когда просят смонтировать ролик, шортс или клип из видеофайлов, наложить субтитры и графику, "
+                           "озвучить закадровым голосом или поправить готовый монтаж",
+            "keywords": ["монтаж", "ролик", "шортс", "рилс", "клип", "субтитры", "видео"],
+            "brief": BRIEF,
+            "skills": [s.to_dict() for s in area.discover_skills(ROOT / ".claude" / "skills")],
+            "area": {"root": area.AREA_ROOT, "writable": list(area.WRITABLE), "readonly": list(area.READONLY),
+                     "hidden": list(area.HIDDEN)},
+            "commands": [c.to_dict() for c in COMMANDS],
+            "site": {"url": site_url()}}
+
+
+MANIFEST = {
+    "id": "montage",
+    "role": "workspace",
+    "ownership": "shared",
+    "title": "Монтаж",
+    "description": "Монтаж роликов из файлов: рабочая область, навыки Remotion и регламент, приём, расшифровка, её закадровый голос, "
+                   "черновик, проверка и финальный рендер. Монтирует сама ГЛаДОС; долгие команды идут в фоне, итог приходит позже.",
+    "version": "0.2.0",
+    "subscribe": ["settings", "module"],
+    "shared_settings": ["dnd", "quiet_until"],
+    "settings_schema": {
+        "output_dir": {"type": "string", "title": "Папка готовых роликов", "default": default_output_dir()},
+        "keep_jobs": {"type": "integer", "title": "Сколько завершённых единиц хранить", "default": 10, "min": 1, "max": 100},
+    },
+    "tools": _tools(),
     "emits": [
         {"kind": "montage.launch", "description": "Запущен долгий рендер (факт: что рендерится и оценка времени)",
          "default_urgency": 2},
-        {"kind": "montage.done", "description": "Ролик готов", "default_urgency": 3},
-        {"kind": "montage.failed", "description": "Задача монтажа не удалась", "default_urgency": 3},
+        {"kind": "montage.done", "description": "Операция монтажа закончена (черновик, озвучка, финальный ролик)", "default_urgency": 3},
+        {"kind": "montage.failed", "description": "Операция монтажа не удалась", "default_urgency": 3},
     ],
     "state": True,
-    # среда агента (ТЗ 32, WS-4): в неё входят по сообщению пользователя («давай монтировать»), по самоимпульсу или по
-    # критическому сигналу; закончена, когда задачи, начатые при ней, готовы
-    "workspace": {"id": "montage", "title": "Монтаж", "purpose": "монтаж роликов: нарезка, склейка, озвучка, выгрузка, правки",
-                  "entry": ["user_message", "self_impulse", "critical"], "interruptible": True,
-                  "safe_points": ["между стадиями задачи"], "signals_in": ["telegram.*"],
-                  "done_when": "задачи, начатые при среде, готовы или отменены",
-                  "when_to_use": "когда просят смонтировать ролик, шортс или клип из видеофайлов, наложить субтитры и графику, "
-                                 "озвучить закадровым голосом или поправить готовый монтаж",
-                  "keywords": ["монтаж", "ролик", "шортс", "рилс", "клип", "субтитры", "видео"]},
-    # пространство в дашборде (TZ 15, TAB-4, TAB-9): ссылки и кнопки; блоки присылает менеджер (panel.set)
+    # окружение агента (ТЗ 32, WS-4; контракт 3.2): вход по сообщению пользователя, по самоимпульсу или по критическому сигналу
+    "workspace": _workspace_block(),
+    # пространство в дашборде (TZ 15, TAB-4, TAB-9): только сводка и ссылка на сайт; блоки присылает менеджер (panel.set)
     "panel": {
         "title": "Монтаж",
         "icon": "film",
         "order": 40,
-        # у среды свой сайт (сценарий, монтажный лист, файлы, Studio); в дашборде только сводка и ссылка на него
         "links": [
             {"id": "site", "label": "Сайт монтажа", "kind": "url", "url": site_url()},
         ],
-        # одобрение по этапам (TZ 15b): кнопки этапа истории и плана, черновика и вопросы агента (answer_question)
-        "actions": ["approve_plan", "rework_plan", "reject_plan", "approve_draft", "rework_draft",
-                    "answer_question"],
     },
 }
 
+
 def serve_dirs(jobs_dir, output_dir: str | None = None) -> list[str]:
-    """Каталоги, из которых ядро раздаёт файлы задач и открывает папки (panel.serve_dirs, TZ 15). Выбираются при
+    """Каталоги, из которых ядро раздаёт файлы единиц и открывает папки (panel.serve_dirs, TZ 15). Выбираются при
     запуске: если пользователь потом сменит `output_dir`, модуль перезапускают (манифест принимается один раз)."""
     out = resolve_output_dir(output_dir)
     return [os.path.abspath(str(jobs_dir)), os.path.abspath(out)]

@@ -1,8 +1,10 @@
-"""Задачи монтажа на диске (ТЗ 20, раздел 6, MON-8, MON-11): `job.json`, журнал `log.jsonl`, восстановление, уборка.
+"""Рабочие единицы монтажа на диске (ролики; ТЗ 20 раздел 6, docs/WORKSPACE_CONTRACT.md раздел 4): `job.json`, журнал `log.jsonl`,
+уборка.
 
-Папка задачи `jobs/<job_id>/`: job.json, sources/, transcript/, plan/, work/, renders/, qa/, log.jsonl. Файлы пишутся
-атомарно (временный файл и замена): падение процесса посреди записи не портит job.json. Запись небольшая, но правило
-репозитория (всё асинхронно) соблюдается вызывающим кодом через `asyncio.to_thread`.
+Папка единицы `jobs/<id>/`: job.json, sources/, transcript/, plan/, work/, renders/, qa/, log.jsonl. Состояния: `new`, `working`,
+`waiting_user`, `done`, `failed`, `cancelled`. Файлы пишутся атомарно (временный файл и замена): падение процесса посреди записи
+не портит job.json. Запись небольшая, но правило репозитория (всё асинхронно) соблюдается вызывающим кодом через `asyncio.to_thread`.
+Результат последней проверки `check` (хэш плана и итог) лежит в `data["check"]`: по нему `final` решает, пускать ли финальный рендер.
 """
 from __future__ import annotations
 
@@ -17,14 +19,10 @@ from pathlib import Path
 
 from gits_sdk import protocol as P
 
-STAGES = ("intake", "clarify", "transcribe", "story", "plan", "plan_approval", "voiceover", "build", "preview", "review",
-          "final", "done")
+STATES = ("new", "working", "waiting_user", "done", "failed", "cancelled")
 FINISHED = ("done", "failed", "cancelled")
+CLOSED = ("done", "cancelled")                      # единица закрыта: открытые (new, working, waiting_user, failed) ещё в работе
 SUBDIRS = ("sources", "transcript", "plan", "work", "renders", "qa")
-
-# какая доля общего прогресса приходится на начало стадии (прогресс внутри стадии добавляет конвейер)
-STAGE_PROGRESS = {"intake": 0.0, "clarify": 0.05, "transcribe": 0.1, "story": 0.15, "plan": 0.25, "plan_approval": 0.35,
-                  "voiceover": 0.4, "build": 0.45, "preview": 0.65, "review": 0.8, "final": 0.85, "done": 1.0}
 
 
 class Job:
@@ -43,16 +41,16 @@ class Job:
         return self.data["state"]
 
     @property
-    def stage(self) -> str:
-        return self.data["stage"]
-
-    @property
     def request(self) -> dict:
         return self.data["request"]
 
     @property
     def finished(self) -> bool:
         return self.state in FINISHED
+
+    @property
+    def open(self) -> bool:
+        return self.state not in CLOSED
 
     def path(self, *parts: str) -> Path:
         return self.folder.joinpath(*parts)
@@ -122,9 +120,7 @@ class JobStore:
             (folder / sub).mkdir(parents=True, exist_ok=True)
         now = time.time()
         data = {"job_id": job_id, "title": title or default_title(request), "created": now, "updated": now,
-                "state": "queued", "stage": "intake", "progress": 0.0, "request": dict(request), "question": None,
-                "answers": [], "revisions": [], "agent": {"session_id": None, "tokens": 0}, "artifacts": [],
-                "error": None}
+                "state": "new", "request": dict(request), "artifacts": [], "runs": {}, "check": None, "error": None}
         job = Job(folder, data)
         self.save(job)
         return job
@@ -145,7 +141,8 @@ class JobStore:
         return sorted(jobs, key=lambda j: j.data.get("created", 0))
 
     def unfinished(self) -> list[Job]:
-        return [j for j in self.all() if not j.finished]
+        """Открытые единицы: не закрытые (`done`, `cancelled`)."""
+        return [j for j in self.all() if j.open]
 
     def save(self, job: Job) -> None:
         with self._lock:
@@ -162,7 +159,7 @@ class JobStore:
                         raise
                     time.sleep(0.05 * (attempt + 1))
 
-    # ---- журнал задачи (MON-9, MON-17): стадии, вызовы инструментов агента, ошибки; без содержимого файлов
+    # ---- журнал единицы (MON-9, MON-17): запуски команд, ошибки; без содержимого файлов
 
     def log(self, job: Job, kind: str, **fields) -> None:
         row = {"ts": round(time.time(), 3), "kind": kind, **fields}
@@ -181,25 +178,6 @@ class JobStore:
             except ValueError:
                 continue
         return rows
-
-    # ---- обучающий журнал (MON-QA-5)
-
-    def append_verdict(self, record: dict) -> None:
-        with open(self.dir / "qa_verdicts.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-    def verdicts(self) -> list[dict]:
-        try:
-            lines = (self.dir / "qa_verdicts.jsonl").read_text(encoding="utf-8").splitlines()
-        except OSError:
-            return []
-        out = []
-        for line in lines:
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                continue
-        return out
 
     # ---- уборка (MON-11)
 

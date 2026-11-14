@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Changed (контракт workspace 3.2: монтирует сама ГЛаДОС)
+- Окружение «Монтаж» по `docs/WORKSPACE_CONTRACT.md`: вместо конвейера стадий и субагента pi ГЛаДОС монтирует сама. Манифест: инструменты `skills`, `files`, `run` (из SDK `WorkspaceTools`), `work` (`create`, `list`, `status`, `cancel`: рабочая единица это ролик `j-xxxxxxxx` с копией шаблона), `site`, `resources`; блок `workspace` с `brief`, `skills` (навыки Remotion и новый `montage-regulation`), `area` (writable `*/work/src`, `*/work/public`, `*/plan`; readonly шаблон, ресурсы персонажа, `sources`, `transcript`, `renders`, `qa`, `work`; hidden `node_modules`, `.git`, `.claude`), `commands`, `site`. Убраны инструменты `start`, `status`, `revise`, `cancel`, `open_studio` (Studio остаётся кнопкой на сайте), настройки стадий и приёмки, общие настройки pi.
+- Команды (`agent/commands.py`, список разрешённых, аргументы проверяются): `intake`, `transcribe`, `voiceover` (её голос через `core.tts`, кэш `plan/voiceover_cache.json`), `render` (черновик, фон), `still`, `compositions`, `check` (план по `plan_schema`, схема Remotion, `tsc`, закадр, ремесло, кадры и звук свежего черновика; отчёт `qa/report.md`, хэш плана и итог в `job.json`), `final` (фон, необратимая; отказывает `unavailable` без свежей успешной `check`). Долгие операции идут как `job` с `job.update` и событиями `montage.done` / `montage.failed` (формулировки фактов прежние), `montage.launch` перед финалом.
+- `workspace.enter` отдаёт `brief`, навыки, открытые единицы и сайт; новый `workspace.afk` ничего не отпускает; `workspace.exit` при идущих операциях ждёт их конца (новые нельзя, аренда `releasing`). Сайт поднимается при входе и работает в AFK. Панель дашборда только сводка и ссылка на сайт. Состояния единицы: `new`, `working`, `waiting_user`, `done`, `failed`, `cancelled`.
+- Навык-регламент `.claude/skills/montage-regulation/` (порядок работы, правила шаблона и надписей, обязательная проверка перед финалом, показ плана и черновика через вопросы ядра, `craft.md`, `qa-rubric.md`). Образ `docker/montage`: моста pi (`services/agent-runtime`) и секрета входа нет, Node остаётся для Remotion.
+
+### Removed (контракт 3.2)
+- `pipeline.py`, `stage_runner.py`, `pi_runner.py`, `agent_tools.py`, `sandbox.py` (песочница оболочки), `review_mode.py`, `approval_panel.py`, `prompts/`, `tools/live_run.py` и их тесты; обучающий журнал `qa_verdicts.jsonl`, режимы приёмки, кнопки одобрения панели. Согласия идут вопросами ядра (`core.ask`).
+
 ### Removed
 - Справочник и опыт ядра больше не используются (решение владельца): убраны инструмент `kb_lookup`, загрузка регламента в `montage.style` (`Manager.sync_kb`, `kb_loop`), вывод опыта по правкам (`Pipeline._experience`, промпт `stage_experience.md`) и поле манифеста `knowledge`. Регламент остаётся в системном промпте `editor_system.md`.
 

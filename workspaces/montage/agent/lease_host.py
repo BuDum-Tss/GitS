@@ -3,11 +3,12 @@
 Без `GITS_CORE_URL` и с `GITS_CONTROL_TOKEN` (или `GITS_LEASE_MODE=1`) модуль при старте к ядру НЕ подключается: поднимает сервер
 управления (`gits_sdk.control.ControlServer`, порт `GITS_CONTROL_PORT`, по умолчанию 8780) и ждёт аренды.
 `acquire` приносит адрес и токен ядра хозяина: модуль строит клиента и подключается к нему; `release` или обрыв WebSocket
-(у аренды нет срока и продления). `release` при незаконченных задачах НЕ отменяет их: аренда переходит в `releasing`
-(`on_release` возвращает `False`), связь с ядром остаётся, задачи доделываются, и когда активных не осталось, модуль сам
-завершает освобождение. Активные это выполняющиеся и стоящие в очереди; задачи, ждущие ответа (`waiting_user`), аренду не держат:
-они паркуются (остаются на диске в папке хозяина), а при повторном входе `recover` возвращает их и вопрос задаётся снова (`finish_release`): клиент отключается, состояние хозяина забывается. Хозяин может вернуться
-(`acquire` тем же персонажем). Обрыв связи с ядром отменяет работающие задачи (ждущие ответа остаются) и освобождает аренду сразу.
+(у аренды нет срока и продления). `release` при идущих операциях (фоновые рендеры, озвучка, финал) НЕ отменяет их: аренда переходит
+в `releasing` (`on_release` возвращает `False`), связь с ядром остаётся, операции доделываются, и когда активных не осталось, модуль
+сам завершает освобождение (`finish_release`): клиент отключается, сайт гаснет, состояние хозяина забывается. Хозяин может вернуться
+(`acquire` тем же персонажем). `workspace.afk` аренду не трогает вовсе: окружение остаётся за хозяином, операции идут. Рабочие
+единицы (папки роликов) лежат на диске в папке хозяина и переживают возврат аренды: при повторном входе `recover` их возвращает.
+Обрыв связи с ядром отменяет работающие операции и освобождает аренду сразу.
 Ресурсы хозяина: при `GITS_CHARACTERS_ROOT` берутся из `<root>/<персонаж>/montage` (`Layout.for_owner`), других персонажей
 модуль не видит. Без токена управления модуль работает как раньше: подключается к ядру при старте (хостовый запуск, тесты).
 """
@@ -81,11 +82,11 @@ class LeaseHost:
         return self.manager.active_jobs() if self.manager is not None else 0
 
     async def release(self, lease: Lease) -> bool | None:
-        """`release`: есть активные задачи: False (аренда ждёт). Конец задач (`finished`), обрыв связи и остановка: сразу
-        (при обрыве и остановке задачи отменяются)."""
+        """`release`: есть идущие операции: False (аренда ждёт). Конец операций (`finished`), обрыв связи и остановка: сразу
+        (при обрыве и остановке операции отменяются)."""
         if lease.why in ("release", "finished") and self.active_jobs() > 0:
             self.manager.on_idle = self._on_idle
-            log.info("аренда: хозяин %s вышел, задач в работе %d: жду конца", lease.character, self.active_jobs())
+            log.info("аренда: хозяин %s вышел, операций в работе %d: жду конца", lease.character, self.active_jobs())
             return False
         await self._teardown(cancel=lease.why not in ("release", "finished"))
         log.info("аренда отпущена (хозяин %s)", lease.character)
@@ -101,17 +102,17 @@ class LeaseHost:
             asyncio.get_running_loop().create_task(self.server.connection_lost(lease.lease_id))
 
     async def _teardown(self, cancel: bool = True) -> None:
-        """Отменить идущие задачи (если cancel), отключить клиента, забыть состояние хозяина."""
+        """Отменить идущие операции (если cancel), отключить клиента, забыть состояние хозяина."""
         self._closing = True
         client, manager, task = self.client, self.manager, self.task
         self.client = self.manager = self.task = self.lease = None
         if manager is not None:
             manager.on_idle = None
-            for job_id in (manager.running_job_ids() if cancel else []):          # ждущие ответа не отменяются: паркуются
+            for job_id in (manager.running_job_ids() if cancel else []):
                 try:
                     await manager.cancel(job_id)
                 except Exception:
-                    log.exception("не удалось отменить задачу %s при возврате аренды", job_id)
+                    log.exception("не удалось отменить операцию %s при возврате аренды", job_id)
         if client is not None:
             await client.stop()
         if task is not None:

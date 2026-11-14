@@ -2,14 +2,11 @@
 # Сборка из корня репозитория: docker build -f docker/montage/Dockerfile -t gits-montage:dev .
 # Контекст фильтрует docker/montage/Dockerfile.dockerignore (корневой .dockerignore для этого образа не используется).
 # В образе: Python 3.12, Node 22, ffmpeg/ffprobe, шрифты, библиотеки headless Chrome, chrome-headless-shell для Remotion,
-# зависимости шаблона (npm ci) и среда агента pi (services/agent-runtime). Секреты (auth.json pi, ключи) в образ не копируются:
-# вход pi подаётся томом/переменной GITS_PI_AUTH при запуске (см. docker/core/README.md, раздел «Монтаж»).
+# зависимости шаблона (npm ci). Своих агентов окружение не запускает (монтирует сама ГЛаДОС через ядро), моста pi и секретов
+# входа модели в образе нет: модель работает у ядра.
 
-# --- зависимости среды pi (Node 22); заодно источник node и npm для итогового образа ---
-FROM node:22-slim AS agent-runtime
-WORKDIR /app/services/agent-runtime
-COPY services/agent-runtime/package.json services/agent-runtime/package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+# --- источник node и npm для итогового образа (Node 22 нужен Remotion) ---
+FROM node:22-slim AS node
 
 # --- окружение ---
 FROM python:3.12-slim
@@ -32,8 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Node 22 и npm/npx (npx нужен Remotion и окружению: media.find_npx)
-COPY --from=agent-runtime /usr/local/bin/node /usr/local/bin/node
-COPY --from=agent-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
@@ -57,8 +54,6 @@ RUN npm ci --no-audit --no-fund && npm cache clean --force \
 
 WORKDIR /app
 COPY --chown=gits:gits agent/interfaces/workspace agent/interfaces/workspace
-COPY --from=agent-runtime --chown=gits:gits /app/services/agent-runtime/node_modules services/agent-runtime/node_modules
-COPY --chown=gits:gits services/agent-runtime services/agent-runtime
 COPY --chown=gits:gits workspaces/montage workspaces/montage
 
 VOLUME ["/data", "/work"]

@@ -63,15 +63,6 @@ class Layout:
     def references(self) -> Path:
         return self.root / "references"
 
-    @property
-    def prompts(self) -> Path:
-        return self.root / "agent" / "prompts"
-
-    @property
-    def verdicts(self) -> Path:
-        """Обучающий журнал решений человека (MON-QA-5): вне папок задач, переживает уборку."""
-        return self.jobs / "qa_verdicts.jsonl"
-
     def resolve_resource(self, raw: str) -> Path | None:
         """Путь к ресурсу персонажа по короткому имени: `design/assets/Intro/x.mp4`, `montage/design/...` или `resources/<Имя>/montage/...`
         (так их называет агент). Нет такого файла: None."""

@@ -1,7 +1,8 @@
-"""Точка входа модуля монтажа (ТЗ 20): `python main.py` из папки agent/. Ядро GitS запускает модуль само (peers.yaml).
+"""Точка входа окружения «Монтаж» (ТЗ 20): `python main.py` из папки agent/. Ядро GitS запускает модуль само (peers.yaml).
 
-Подключается к ядру по контракту модулей (SDK `gits_sdk`), объявляет инструменты `start`, `status`, `revise`, `cancel`,
-ведёт очередь задач и конвейер. Ничего не публикует (закон ТЗ 20): публикует ядро по просьбе пользователя.
+Подключается к ядру по контракту модулей (SDK `gits_sdk`) и даёт ГЛаДОС окружение (docs/WORKSPACE_CONTRACT.md): инструменты
+`skills`, `files`, `run`, `work`, `site`, `resources`, навыки, рабочую область, команды и сайт. Своих агентов не запускает:
+монтирует сама ГЛаДОС. Ничего не публикует (закон ТЗ 20): публикует ядро по просьбе пользователя.
 """
 import asyncio
 import logging
@@ -13,41 +14,41 @@ sys.path[:0] = [str(HERE)]
 
 from gits_sdk import WorkspaceClient  # noqa: E402
 
-import approval_panel as ap  # noqa: E402
+from commands import Commands  # noqa: E402
 from core_api import ClientCore  # noqa: E402
 from jobs import JobStore  # noqa: E402
 from layout import DEFAULT, Layout  # noqa: E402
 from manager import Manager  # noqa: E402
 from manifest import build_manifest, serve_dirs  # noqa: E402
-from pipeline import Pipeline  # noqa: E402
 
 log = logging.getLogger("montage")
 
 
 def wire(client: WorkspaceClient, manager: Manager) -> None:
-    """Подключить обработчики инструментов, ответов, отмены и тем ядра к менеджеру."""
+    """Подключить обработчики инструментов, окружения, отмены и тем ядра к менеджеру."""
 
-    @client.tool("start")
-    async def start(args):
-        return await manager.start(args)
+    manager.tools.attach(client)                 # skills, files, run: песочница, навыки и команды из манифеста
 
-    @client.tool("open_studio")
-    async def open_studio(args):
-        return await manager.open_site(str(args.get("job_id") or ""))
+    @client.tool("work")
+    async def work(args):
+        return await manager.work(args)
 
-    # одобрение по этапам (TZ 15b): каждая кнопка - свой id действия, проверка вопроса в менеджере
-    def decision(action: str):
-        async def handler(args):
-            return await manager.panel_decide(action, args if isinstance(args, dict) else {})
-        return handler
+    @client.tool("site")
+    async def site(args):
+        return await manager.site_tool(args)
 
-    for action in ap.ACTIONS:
-        client.panel_action(action)(decision(action))
+    @client.tool("resources")
+    async def resources(args):
+        return {"text": manager.resources_text()}
 
-    # среда агента (ТЗ 32, WS-4): запросы workspace.enter / exit / resume
+    # окружение агента (контракт 3.2, раздел 7): запросы workspace.enter / afk / exit / resume
     @client.on_request("workspace.enter")
     async def ws_enter(body):
         return await manager.enter_workspace(body or {})
+
+    @client.on_request("workspace.afk")
+    async def ws_afk(body):
+        return await manager.afk_workspace(body or {})
 
     @client.on_request("workspace.exit")
     async def ws_exit(body):
@@ -56,27 +57,6 @@ def wire(client: WorkspaceClient, manager: Manager) -> None:
     @client.on_request("workspace.resume")
     async def ws_resume(body):
         return await manager.enter_workspace({**(body or {}), "restored": True})
-
-    @client.tool("status")
-    async def status(args):
-        return await manager.status(args)
-
-    @client.tool("resources")
-    async def resources(args):
-        return {"text": manager.resources_text()}
-
-    @client.tool("revise")
-    async def revise(args):
-        return await manager.revise(args)
-
-    @client.tool("cancel")
-    async def cancel(args):
-        await manager.cancel(str(args.get("job_id") or ""))
-        return {"cancelled": True}
-
-    @client.on_job_answer
-    async def answer(job_id, question_id, value):
-        manager.answer(job_id, question_id, value)
 
     @client.on_job_cancel
     async def job_cancel(job_id):
@@ -96,8 +76,8 @@ def wire(client: WorkspaceClient, manager: Manager) -> None:
         await manager.stop()
 
 
-def build(layout: Layout = DEFAULT, *, client: WorkspaceClient | None = None, runner=None, renderer=None, qa=None,
-          url: str | None = None, token: str | None = None):
+def build(layout: Layout = DEFAULT, *, client: WorkspaceClient | None = None, renderer=None, qa=None,
+          url: str | None = None, token: str | None = None, site_port: int | None = None):
     """Собрать модуль: (клиент, менеджер). Параметры позволяют подставить заглушки (тесты, живой прогон против FakeCore);
     url и token: адрес и токен ядра (при аренде они приходят в acquire, иначе берутся из окружения)."""
     client = client or WorkspaceClient(build_manifest(serve_dirs(layout.jobs)), url=url, token=token)
@@ -106,22 +86,15 @@ def build(layout: Layout = DEFAULT, *, client: WorkspaceClient | None = None, ru
     if renderer is None:
         from render import RemotionRenderer
         renderer = RemotionRenderer()
-    if runner is None:
-        from pi_runner import PiRunner
-        runner = PiRunner(layout, settings=lambda: getattr(core, "runtime_settings", None) or {})
-    pipeline = Pipeline(store, core, runner, layout, renderer, qa)
-    manager = Manager(store, core, pipeline, layout)
+    commands = Commands(store, core, layout, renderer, qa)
+    manager = Manager(store, core, commands, layout, site_port=site_port)
     wire(client, manager)
     return client, manager
 
 
 async def run(client: WorkspaceClient, manager: Manager) -> int:
-    """Подключение к ядру и работа: восстановление задач, очередь."""
+    """Подключение к ядру и работа: восстановление единиц, сводка. Сайт поднимается при входе в окружение (`workspace.enter`)."""
     manager.start_worker()
-    try:
-        await manager.site.start()                       # у среды свой сайт: поднимается при входе, гаснет в manager.stop
-    except OSError as e:
-        log.warning("сайт монтажа не поднялся: %s", e)
     background: list[asyncio.Task] = []
 
     async def after_connect():

@@ -1,4 +1,4 @@
-"""Среда агента «Монтаж» (ТЗ 32, WS-4): запросы workspace.enter / exit / resume против FakeCore."""
+"""Окружение «Монтаж» (ТЗ 32, WS-4; контракт 3.2): состояние фокуса и запросы workspace.enter / afk / exit / resume против FakeCore."""
 import pytest
 
 from env_state import WorkspaceState
@@ -7,23 +7,19 @@ from tests.test_manager import Env, core_with_handlers
 pytestmark = pytest.mark.usefixtures("fast")
 
 
-def test_environment_ends_only_when_the_work_started_in_it_is_done():
+def test_environment_does_not_end_by_itself_when_operations_finish():
     ws = WorkspaceState()
-    ws.enter("собрать ролик", "t1", busy=False)
-    assert not ws.finish_if_done(busy=False) and ws.active          # зашли с пустой очередью: ждём работы, не уходим
-    ws.note_job()
-    assert not ws.finish_if_done(busy=True)
-    assert ws.finish_if_done(busy=False) and not ws.active          # работа кончилась: среда закончена
     assert ws.status() == {"done": True, "interruptible": True}
-
-
-def test_busy_queue_at_entry_counts_as_the_environment_work_and_unsafe_stage_blocks_exit():
-    ws = WorkspaceState()
-    ws.enter(busy=True)
-    assert ws.status("build") == {"done": False, "interruptible": False}
-    assert ws.status("plan_approval")["interruptible"] is True
-    ws.exit()
-    assert ws.status("build")["interruptible"] is True              # вне среды выходить не из чего
+    ws.enter("собрать ролик", "t1")
+    assert ws.status() == {"done": False, "interruptible": True}          # операции кончились или нет, пока не вышла: окружение её
+    ws.go_afk()
+    assert ws.status()["done"] is True and ws.afk and not ws.releasing    # AFK: фокус снят, окружение за ней
+    ws.enter()                                                            # возврат: цель прежняя
+    assert ws.active and not ws.afk and ws.goal == "собрать ролик"
+    out = ws.exit()
+    assert out["ok"] and out["checkpoint"]["goal"] == "собрать ролик" and ws.releasing and not ws.active
+    ws.enter("ещё ролик", "t2")                                           # повторный вход отменяет отпускание
+    assert not ws.releasing and ws.goal == "ещё ролик"
 
 
 async def test_core_enters_exits_and_resumes(tmp_path):
@@ -41,3 +37,6 @@ async def test_core_enters_exits_and_resumes(tmp_path):
         res = await core.request(resume, {"task_id": "t1", "goal": "собрать ролик", "checkpoint": {}})
         assert res["ok"]
         await core.wait_for(lambda: status()["done"] is False, 5)
+        res = await core.request("workspace.afk", {"reason": "render"})
+        assert res["ok"]
+        await core.wait_for(lambda: status()["done"] is True, 5)

@@ -51,7 +51,6 @@ def test_layout_paths_in_container(monkeypatch, tmp_path):
     assert layout.assets == home / "montage" / "assets"
     assert layout.style == home / "montage" / "APERTURE_STYLE.md"
     assert layout.jobs == tmp_path / "work" / "jobs"                      # рабочая папка в томе, не рядом с кодом
-    assert layout.verdicts.parent == layout.jobs
 
 
 def test_tool_lookup_uses_path(monkeypatch, tmp_path):

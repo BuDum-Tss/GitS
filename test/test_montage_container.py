@@ -67,27 +67,28 @@ def test_hub_allow_covers_compose_network():
     assert any(ipaddress.ip_address("172.20.0.3") in n for n in nets)         # типовая подсеть compose
 
 
-def test_pi_secret_is_mounted_from_the_host_into_a_writable_folder_and_never_baked():
+def test_montage_has_no_pi_bridge_or_pi_secret():
+    """Монтирует сама ГЛаДОС через ядро: моста pi, его входа и tmpfs для него у окружения нет."""
     svc = _compose()["services"]["montage"]
-    assert any(v.endswith(":/run/pi/auth.json") for v in svc["volumes"])                  # файл входа с хоста, как у ядра
-    assert svc["environment"]["GITS_PI_AUTH"] == "/run/pi/auth.json"
-    assert any(x.startswith("/run/pi:") and "uid=1000" in x for x in svc["tmpfs"])        # рядом нужен файл блокировки (.lock)
-    assert "COPY" not in "".join(ln for ln in DOCKERFILE.read_text(encoding="utf-8").splitlines() if "auth.json" in ln)
+    assert not any("auth.json" in v or "/run/pi" in v for v in svc["volumes"])
+    assert "GITS_PI_AUTH" not in svc["environment"] and "tmpfs" not in svc
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert "agent-runtime" not in text and "COPY" not in "".join(ln for ln in text.splitlines() if "auth.json" in ln)
 
 
 def test_dockerfile_has_toolchain_and_non_root_user():
     text = DOCKERFILE.read_text(encoding="utf-8")
     for needle in ("python:3.12-slim", "node:22-slim", "ffmpeg", "npm ci", "npx remotion browser ensure",
-                   "services/agent-runtime", "USER gits", "MONTAGE_OUT_DIR=/data/montage/out"):
+                   "USER gits", "MONTAGE_OUT_DIR=/data/montage/out"):
         assert needle in text, needle
 
 
 def test_dockerignore_keeps_secrets_and_host_artifacts_out():
     lines = [ln.strip() for ln in IGNORE.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
     assert lines[0] == "*"                                                     # белый список
-    for needed in ("**/.venv", "**/node_modules", "**/.env", "services/agent-runtime/auth.json",
-                   "services/agent-runtime/memory", "workspaces/montage/jobs"):
+    for needed in ("**/.venv", "**/node_modules", "**/.env", "workspaces/montage/jobs"):
         assert needed in lines, needed
+    assert "!services/agent-runtime" not in lines                             # моста pi в образе монтажа нет
     assert "!resources" not in lines and "!agent" not in lines                # персонаж и память не попадают в образ
 
 

@@ -64,3 +64,20 @@ def test_sheet_rows_sorted_by_time_and_safe_file(job):
     plan = json.loads((j.plan_dir / "plan.json").read_text(encoding="utf-8"))
     assert [r["track"] for r in sheet_rows(plan)] == ["голос", "вставка", "звук"]
     assert safe_file(j.folder, "plan/../../x") is None and safe_file(j.folder, "plan/story.md") is not None
+
+
+async def test_plan_and_story_pages_fall_back_to_json_when_the_agent_wrote_no_markdown(job):
+    """Агент пишет plan.json и story.json; человеческий вид сайт строит сам, если plan.md и story.md нет."""
+    from tests.stubs import STORY, make_plan
+    store, j = job
+    (j.plan_dir / "story.md").unlink()
+    (j.plan_dir / "story.json").write_text(json.dumps(STORY, ensure_ascii=False), encoding="utf-8")
+    (j.plan_dir / "plan.json").write_text(json.dumps(make_plan(), ensure_ascii=False), encoding="utf-8")
+    site = Site(FakeManager(store), port=0)
+    async with TestClient(TestServer(site.app)) as c:
+        story = await (await c.get(f"/job/{j.job_id}")).text()
+        assert "Логлайн" in story and "ГЛаДОС фиксирует нарушение" in story
+        plan = await (await c.get(f"/job/{j.job_id}?s=plan")).text()
+        assert "План монтажа" in plan and "Протокол нарушен." in plan
+        (j.plan_dir / "plan.json").unlink()
+        assert "Плана пока нет" in await (await c.get(f"/job/{j.job_id}?s=plan")).text()

@@ -14,9 +14,9 @@ def root() -> Path:
 @pytest.fixture()
 def fast(monkeypatch):
     """Быстрые замены дорогих на этой машине шагов: копия шаблона, junction, loudnorm."""
+    import manager
     import media
-    import pipeline
     from tests import stubs
-    monkeypatch.setattr(pipeline, "prepare_work", stubs.fast_prepare_work)
+    monkeypatch.setattr(manager, "prepare_work", stubs.fast_prepare_work)
     monkeypatch.setattr(media, "loudnorm", stubs.fast_loudnorm)
     monkeypatch.setattr(media, "extract_frame", stubs.fast_extract_frame)

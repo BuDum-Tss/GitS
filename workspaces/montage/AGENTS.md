@@ -5,9 +5,10 @@
 
 ## Что это за проект
 `montage-module`: модуль `montage` ядра GitS. Монтирует ролики из исходников в стиле Aperture Science и в характере
-ГЛаДОС: расшифровка, история и план, закадр её голосом, сборка в Remotion, черновик, правки, финал. Монтажом занимается
-агент на Claude Agent SDK со скиллами Remotion; Python-часть (`agent/`) ведёт задачу, песочницу и связь с ядром по
-контракту модулей (`C:\MyProjects\GitS\docs\MODULE_CONTRACT.md`). Ядро и разговор принадлежат GitS: сюда
+ГЛаДОС: расшифровка, история и план, закадр её голосом, сборка в Remotion, черновик, правки, финал. Монтирует сама ГЛаДОС
+(резидентный агент ядра), а не субагент: модуль это окружение по `docs/WORKSPACE_CONTRACT.md` (инструменты `skills`, `files`,
+`run`, `work`, `site`, `resources`, навыки Remotion и регламент `montage-regulation`, песочница области, команды, сайт);
+Python-часть (`agent/`) ведёт рабочие единицы (ролики), команды и связь с ядром по контракту модулей (`C:\MyProjects\GitS\docs\MODULE_CONTRACT.md`). Ядро и разговор принадлежат GitS: сюда
 ассистентское не добавлять. Python 3.12+, `asyncio`; Node 18+ и Remotion для рендера; ffmpeg.
 
 Полная постановка: `C:\MyProjects\GitS\docs\tz\20-montage-module.md` (конвейер), `21-aperture-style.md` (стиль),
@@ -44,26 +45,25 @@
 | Путь | Назначение | Состояние |
 |---|---|---|
 | `agent/main.py` | точка входа: `WorkspaceClient`, подключение обработчиков (`wire`), восстановление при подключении | готов |
-| `agent/manifest.py` | манифест модуля: инструменты `start`, `status`, `revise`, `cancel`, настройки, `announce` у `start` | готов |
-| `agent/manager.py` | очередь (одна задача за раз), проверки `start` (MON-5), отмена, правки, `state` (MON-33) | готов |
-| `agent/pipeline.py` | стадии `intake`, `clarify`, `transcribe`, `story`, `plan`, `plan_approval`, `voiceover`, `build`, `preview`, `review`, `final`; вопросы, батарейка, автоисправление по QA | готов |
-| `agent/jobs.py`, `agent/layout.py`, `agent/workspace.py` | `jobs/<id>/` (job.json, log.jsonl, уборка), пути репозитория, рабочая копия шаблона | готовы |
-| `agent/intake.py`, `agent/media.py`, `agent/render.py` | проверка и перекодирование файлов, ffmpeg/ffprobe, Remotion (tsc, проверка плана, still, render) | готовы |
-| `agent/claude_runner.py`, `agent/agent_tools.py`, `agent/sandbox.py` | агент на Claude Agent SDK, свои инструменты агента, песочница `can_use_tool` | готовы |
+| `agent/manifest.py` | манифест: инструменты `skills`, `files`, `run`, `work`, `site`, `resources`, блок `workspace` (brief, навыки, область, команды, сайт), настройки | готов |
+| `agent/area.py` | песочница области (SDK `Sandbox` с точками монтирования `template`, `resources`, `skills`), `MontageTools`, поиск навыков | готов |
+| `agent/manager.py` | рабочие единицы (`work`), запуск команд и фоновые операции (`job.update`, `montage.done`/`failed`), `workspace.enter`/`afk`/`exit`, сайт, `state` (MON-33) | готов |
+| `agent/commands.py` | команды `intake`, `transcribe`, `voiceover`, `render`, `still`, `compositions`, `check`, `final` (финал отказывает без свежей успешной `check`) | готов |
+| `agent/jobs.py`, `agent/layout.py`, `agent/workspace.py` | `jobs/<id>/` (job.json, log.jsonl, уборка; состояния new, working, waiting_user, done, failed, cancelled), пути репозитория, рабочая копия шаблона | готовы |
+| `agent/intake.py`, `agent/media.py`, `agent/render.py` | проверка и перекодирование файлов, ffmpeg/ffprobe, Remotion (tsc, проверка плана, still, compositions, render) | готовы |
+| `agent/plan_tools.py` | озвучка реплик (`core.tts`), подгонка закадра, текстовый вид истории и плана для сайта | готов |
 | `agent/plan_schema.py` | проверка `plan.json` и `story.json`; виды вставок берутся из `template/plan.schema.json` | готов |
 | `agent/transcribe.py`, `agent/srt.py` | слова из журнала речи (MON-26a), файл .srt для роликов без вжигаемых субтитров; живая речь (распознавание слов) отложена | готовы |
-| `agent/qa.py`, `agent/review_mode.py` | технические проверки и проверки ремесла, смысловая проверка, отчёт, режимы приёмки | готовы |
-| `agent/studio.py` | Remotion Studio по задаче (ТЗ 15, TAB-4): один Studio на задачу на свободном порту 127.0.0.1, гаснет с задачей и после 30 минут без обращений |
-| `agent/approval_panel.py` | одобрение по этапам в пространстве (ТЗ 15b): подпись этапа, файлы истории и плана, видео черновика, кнопки этапа; ответ идёт через `Pipeline.deliver_answer` |
-| `agent/core_api.py` | всё, что конвейер берёт у ядра (`core.tts`, `core.persona`, ...), интерфейс для заглушек | готов |
-| `agent/prompts/` | `editor_system.md`, `stage_*.md`, `qa_rubric.md` | готовы |
+| `agent/qa.py` | технические проверки и проверки ремесла, отчёт `qa/report.md` (вызывает `check`) | готов |
+| `agent/studio.py`, `agent/montage_site.py` | Remotion Studio по единице (ТЗ 15, TAB-4; кнопка на сайте) и сайт монтажа: ролики, сценарий, монтажный лист, файлы; поднимается при входе, работает в AFK |
+| `agent/core_api.py` | всё, что команды берут у ядра (`core.tts`, ...), интерфейс для заглушек | готов |
 | `template/` | проект Remotion: композиция `Main`, схема `src/schema.ts`, токены `src/style/tokens.ts` (равны `design/tokens.json` дизайн-системы v2), сцены `components/` (`Intro`, `Blueprint`, `GladosRoom`, `Sign`, `FootageFrame`, `Icon`), математика сцен `src/sceneMath.ts`, ассеты `public/scenes`, `public/pet`, `public/hud`, демо | готов |
 | `template/qa_zones.json` | зоны компонентов для проверок качества, строится из токенов (`npm run gen:qa-zones`) | готов |
 | `resources/<Имя>/montage/assets/fonts/`, `resources/<Имя>/montage/assets/sfx/`, `resources/<Имя>/montage/assets/pictograms/` | шрифты IBM Plex (OFL), синтезированные звуки, свои пиктограммы | готовы |
 | `resources/<Имя>/montage/APERTURE_STYLE.md`, `docs/EDITING_CRAFT.md` | регламент стиля и руководство по ремеслу (входят в системный промпт монтажёра) | готовы |
-| `docs/PIPELINE.md` | как устроен конвейер (для людей) | готов |
-| `.claude/skills/` | закреплённые копии скиллов Remotion (источник и дата в `README.md`) | готовы |
-| `references/` | эталоны владельца (ТЗ 22 CRAFT-5): заметки `*.md`/`*.txt`, агент читает их перед `story`; может быть пустой | пусто |
+| `docs/PIPELINE.md` | устройство шаблона и команд (раздел о стадиях устарел: порядок работы в навыке `montage-regulation`) | готов |
+| `.claude/skills/` | закреплённые копии скиллов Remotion (источник и дата в `README.md`) и навык-регламент `montage-regulation` (порядок работы, правила, `craft.md`, `qa-rubric.md`); агент читает их инструментом `skills` | готовы |
+| `references/` | эталоны владельца (ТЗ 22 CRAFT-5): заметки `*.md`/`*.txt`; вне области агента, может быть пустой | пусто |
 | `jobs/` | рабочие папки задач (в `.gitignore`) | — |
 
 ## Как добавить компонент графики

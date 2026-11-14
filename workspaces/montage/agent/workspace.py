@@ -1,10 +1,9 @@
-"""Рабочая копия шаблона в `jobs/<id>/work/` (ТЗ 20, раздел 6).
+"""Рабочая копия шаблона в `jobs/<id>/work/` (ТЗ 20, раздел 6; создаётся инструментом `work`, операция `create`).
 
 Копируется только то, что нужно агенту и рендеру: `src/`, `scripts/`, `public/fonts`, `public/sfx`, конфигурация и
 `qa_zones.json`; демо-материалов нет. `node_modules` не копируется: junction (на Windows) или символьная ссылка на
-`template/node_modules`. Папка `.claude/skills` модуля копируется в `work/.claude/skills`, откуда её берёт агент
-(`setting_sources=["project"]`). Исходники и слова расшифровки подключаются ссылками (жёсткая ссылка, а на другом диске
-копия). Повторный вызов ничего не затирает в `src/`: правки агента (свои компоненты в `src/custom/`) сохраняются.
+`template/node_modules`. Навыки модуля в рабочую копию не копируются: агент читает их инструментом `skills`. Исходники и слова
+расшифровки подключаются ссылками (жёсткая ссылка, а на другом диске копия). Повторный вызов ничего не затирает в `src/`: правки агента (свои компоненты в `src/custom/`) сохраняются.
 """
 from __future__ import annotations
 
@@ -68,9 +67,6 @@ def prepare_work(job_dir: Path, layout: Layout) -> Path:
             shutil.copytree(tpl / "public" / sub, work / "public" / sub)
     for sub in ("media", "vo", "transcript"):
         (work / "public" / sub).mkdir(parents=True, exist_ok=True)
-    skills = work / ".claude" / "skills"
-    if layout.skills.is_dir() and not skills.is_dir():
-        shutil.copytree(layout.skills, skills)
     make_dir_link(work / "node_modules", tpl / "node_modules")
     sync_media(job_dir)
     return work

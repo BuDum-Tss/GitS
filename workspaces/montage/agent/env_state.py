@@ -1,46 +1,39 @@
-"""Среда агента «Монтаж» (ТЗ 32, WS-4): входит ли агент в монтаж сейчас. Чистое состояние без ввода-вывода.
+"""Окружение «Монтаж» (ТЗ 32, WS-4; docs/WORKSPACE_CONTRACT.md раздел 7): в фокусе ли оно у агента. Чистое состояние без ввода-вывода.
 
-Ядро вводит агента в среду запросом `workspace.enter`, только по сообщению пользователя, по
-самоимпульсу или по критическому сигналу. Рендер идёт и без среды: фоновая задача модуля фокуса не требует. Статус для ядра
-(`state.data.status`): `done` (среда не занята: не входили или задачи кончились) и можно ли выйти сейчас. Среда кончается
-сама, когда задачи, начатые при ней, закончились: ядро видит `done` и возвращает агента в assistant.
+Ядро шлёт `workspace.enter` (занять и начать работу), `workspace.afk` (фокус снят, окружение остаётся за ней, операции идут),
+`workspace.exit` (выход с отпусканием) и после перезапуска ядра `workspace.resume`. Окружение само не кончается: когда операции
+закончились, она продолжает работать в нём, пока не выйдет (exit) или не отойдёт (afk). Статус для ядра (`state.data.status`):
+`done` (окружение не в фокусе) и можно ли выйти сейчас.
 """
 from __future__ import annotations
-
-# стадии, в которых выходить небезопасно: идёт сборка или рендер, пользователь ждёт результат
-UNSAFE_STAGES = ("build", "final")
 
 
 class WorkspaceState:
     def __init__(self) -> None:
-        self.active = False
-        self.had_work = False          # при среде была поставлена или шла задача: когда она кончится, среда закончена
+        self.active = False            # окружение в фокусе у агента
+        self.afk = False               # агент отошёл, не отпуская
+        self.releasing = False         # агент вышла (exit): новые операции начинать нельзя, идут оставшиеся
         self.goal = ""
         self.task_id = ""
 
-    def enter(self, goal: str = "", task_id: str = "", busy: bool = False, restored: bool = False) -> dict:
-        self.active, self.goal, self.task_id = True, goal, task_id
-        self.had_work = busy
+    def enter(self, goal: str = "", task_id: str = "", restored: bool = False) -> dict:
+        """Вход (и возврат из AFK, и повтор после перезапуска ядра): отпускание отменяется."""
+        self.active, self.afk, self.releasing = True, False, False
+        if goal or not self.goal:
+            self.goal = goal
+        self.task_id = task_id or self.task_id
         return {"ok": True, "restored": restored}
+
+    def go_afk(self) -> dict:
+        """Отошла, не отпуская: фокус снят, всё остальное на месте."""
+        was = self.active
+        self.active, self.afk = False, True
+        return {"ok": True, "checkpoint": {"goal": self.goal, "was_active": was, "afk": True}}
 
     def exit(self, checkpoint: dict | None = None) -> dict:
         was = self.active
-        self.active = False
-        self.had_work = False
+        self.active, self.afk, self.releasing = False, False, True
         return {"ok": True, "checkpoint": checkpoint or {"goal": self.goal, "was_active": was}}
 
-    def note_job(self) -> None:
-        """Задача поставлена или идёт, пока агент в среде."""
-        if self.active:
-            self.had_work = True
-
-    def finish_if_done(self, busy: bool) -> bool:
-        """Все задачи среды кончились: среда закончена (done). True, если состояние изменилось."""
-        if self.active and self.had_work and not busy:
-            self.active, self.had_work = False, False
-            return True
-        return False
-
-    def status(self, stage: str | None = None) -> dict:
-        return {"done": not self.active,
-                "interruptible": not (self.active and stage in UNSAFE_STAGES)}
+    def status(self) -> dict:
+        return {"done": not self.active, "interruptible": True}

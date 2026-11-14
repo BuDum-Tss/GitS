@@ -22,7 +22,7 @@ RimWorld) ядро находит по `host.docker.internal`; адреса ме
 ## Монтаж (необязательно, общий контейнер `montage`)
 Монтаж (`workspaces/montage`) это пространство: ОДИН общий контейнер `montage` на всех персонажей (образ `gits-montage:dev`, `docker/montage/Dockerfile`; описан в корневом `docker-compose.yml` рядом с espeech, а не в compose ядра):
 Python 3.12, Node 22, ffmpeg/ffprobe, шрифты, chrome-headless-shell для Remotion (скачан при сборке `npx remotion browser ensure`),
-зависимости шаблона (`npm ci`) и среда агента pi. Агент берёт его в аренду и возвращает, как семафор:
+зависимости шаблона (`npm ci`); своих агентов окружение не запускает, монтирует сама ГЛаДОС. Агент берёт его в аренду и возвращает, как семафор:
 
 - при старте контейнер к ядру НЕ подключается: поднимает интерфейс управления на порту 8780 (только сеть compose, на хост не
   публикуется) и ждёт: `GET /status` (свободно или занято, кем), `GET /info` (для чего монтаж и когда в него переходить: ядро читает
@@ -59,7 +59,7 @@ Python 3.12, Node 22, ffmpeg/ffprobe, шрифты, chrome-headless-shell для
 (`docker compose --env-file .env up -d montage`). Хозяин аренды видит только свою папку.
 
 Образ собирается сам или заранее: `docker build -f docker/montage/Dockerfile -t gits-montage:dev .`. Контекст сборки фильтрует
-`docker/montage/Dockerfile.dockerignore` (в образ идут только `sdk`, `services/agent-runtime`, `workspaces/montage` без `.venv`, `node_modules`,
+`docker/montage/Dockerfile.dockerignore` (в образ идут только `sdk` и `workspaces/montage` без `.venv`, `node_modules`,
 `jobs`, секретов).
 
 Данные: ресурсы персонажа (шрифты, звуки, стиль) монтаж берёт из тома хозяина аренды: папка персонажа монтируется в
@@ -67,9 +67,8 @@ Python 3.12, Node 22, ffmpeg/ffprobe, шрифты, chrome-headless-shell для
 Готовые ролики лежат в `montage/out` этой папки (в `.gitignore`). Рабочая память участника шины (папки задач `jobs/<id>/`, обучающий журнал)
 лежит в общем именованном томе `gits-montage-work` на `/work` (`MEMORY_DIR=/work`, `MONTAGE_JOBS_DIR=/work/jobs`; внутри разделена по персонажам: `jobs/<персонаж>`), не в слое контейнера.
 
-Вход pi по подписке: `auth.json` в образ не копируется. В `compose.yml` секция закомментирована: раскомментировать `GITS_PI_AUTH` и том
-`${GITS_PI_AUTH_FILE}:/run/secrets/pi_auth.json:ro` и задать `GITS_PI_AUTH_FILE` (путь к файлу на хосте; значения по умолчанию нет). Секреты `.env` монтажу не передаются.
-Исходники: запрос `start` принимает пути внутри контейнера, поэтому файлы кладут в папку, смонтированную в контейнер (пример `/inbox` закомментирован в compose).
+Секретов входа модели у монтажа нет (модель работает у ядра), секреты `.env` монтажу не передаются.
+Исходники: инструмент `work` (`create`) принимает пути внутри контейнера, поэтому файлы кладут в папку, смонтированную в контейнер (пример `/inbox` закомментирован в compose).
 
 Chrome внутри контейнера работает от пользователя `gits` (uid 1000, не root). Если рендер Remotion жалуется на песочницу, проверьте
 `docker logs`; Remotion запускает chrome-headless-shell сам с нужными флагами.

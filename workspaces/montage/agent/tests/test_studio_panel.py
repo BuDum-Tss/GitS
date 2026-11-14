@@ -1,5 +1,5 @@
-"""Remotion Studio задач и пространство «Монтаж» (ТЗ 15, TAB-4, TAB-9): один Studio на задачу, гашение с задачей и по
-простою, объявление запуска событием montage.launch, кнопки одобрения, блоки панели. Процессы и сеть подменены."""
+"""Remotion Studio единиц и пространство «Монтаж» (ТЗ 15, TAB-4, TAB-9): один Studio на единицу, гашение с ней и по
+простою, объявление запуска событием montage.launch, сводка панели без кнопок одобрения. Процессы и сеть подменены."""
 import asyncio
 import json
 import os
@@ -10,7 +10,7 @@ from gits_sdk import WorkspaceClient, ToolError
 import main as main_mod
 from manifest import build_manifest
 from studio import StudioError, StudioPool
-from tests.stubs import FakeRenderer, FakeRunner, StubQA, layout_for
+from tests.stubs import FakeRenderer, StubQA, layout_for
 
 
 class FakeProc:
@@ -125,11 +125,11 @@ async def test_stop_all_clears_everything(tmp_path):
 def manager_for(tmp_path):
     layout = layout_for(tmp_path)
     client = WorkspaceClient(build_manifest())
-    client, manager = main_mod.build(layout, client=client, runner=FakeRunner(), renderer=FakeRenderer(), qa=StubQA())
+    client, manager = main_mod.build(layout, client=client, renderer=FakeRenderer(), qa=StubQA(), site_port=0)
     return client, manager
 
 
-def make_job(manager, title="Ролик про куб", state="queued", plan=False):
+def make_job(manager, title="Ролик про куб", state="new", plan=False):
     job = manager.store.create({"brief": title, "sources": []}, title=title)
     job.data["state"] = state
     if plan:
@@ -140,19 +140,22 @@ def make_job(manager, title="Ролик про куб", state="queued", plan=Fal
 
 async def test_panel_is_only_a_summary_without_job_table(tmp_path):
     client, manager = manager_for(tmp_path)
-    make_job(manager, "Первый", "queued", plan=True)
+    make_job(manager, "Первый", "working", plan=True)
     make_job(manager, "Второй", "waiting_user", plan=True)
+    make_job(manager, "Третий", "done", plan=True)
     blocks = manager.panel_blocks()
-    assert [b["type"] for b in blocks] == ["stats"]                           # ролики, файлы и Studio на сайте среды
-    assert {i["label"] for i in blocks[0]["items"]} >= {"В работе", "Ждут ответа", "Готово"}
+    assert [b["type"] for b in blocks] == ["stats"]                           # ролики, файлы и Studio на сайте среды; кнопок одобрения нет
+    counts = {i["label"]: i["value"] for i in blocks[0]["items"]}
+    assert counts["В работе"] == 1 and counts["Ждут ответа"] == 1 and counts["Готово"] == 1 and counts["Операции"] == 0
+    assert "Режим приёмки" not in counts
 
 
 async def test_open_studio_needs_a_plan_and_announces_the_first_start(tmp_path, monkeypatch):
     client, manager = manager_for(tmp_path)
-    no_plan = make_job(manager, "Без плана", "queued", plan=False)
+    no_plan = make_job(manager, "Без плана", "new", plan=False)
     with pytest.raises(ToolError):
         await manager.open_studio(no_plan.job_id)
-    job = make_job(manager, "С планом", "queued", plan=True)
+    job = make_job(manager, "С планом", "new", plan=True)
     events = []
 
     async def record(kind, text, **fields):
