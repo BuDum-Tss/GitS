@@ -560,7 +560,15 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
         return "Задачи модулей:\n" + "\n".join(lines)
 
     async def modules_status(a):
-        return modules.status_report()
+        report = modules.status_report()
+        ids = []
+        if workspaces is not None:
+            workspaces.sync()
+            ids = [s.id for s in workspaces.specs.values() if s.kind == "module" and s.id != workspaces.current]
+        if ids:                                               # «не подключён» у модуля с окружением значит «ты в него не входила»
+            report += ("\nМодули с окружением (" + ", ".join(ids) + ") подключаются, когда ты в них входишь: "
+                       "workspace.enter(workspace=<id>, goal=<цель>), «не подключён» тут не значит «сломан».")
+        return report
 
     async def module_events(a):
         return modules.events_report(a.get("module"), a.get("limit") or 15)
