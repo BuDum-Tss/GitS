@@ -136,19 +136,20 @@ def wire_modules(companion, registry, *, specs=None,
         return await link.activate(ws, goal)
 
     def on_workspace_change(rec: dict) -> None:
-        if link.holder is not None and rec.get("to") != link.holder["module"]:
-            link.forget(link.holder["module"])             # среда модуля кончилась: слот свободен
+        if rec.get("reason") in ("done", "blocked", "disconnect") and rec.get("from") in link.holders:
+            link.forget(rec["from"])                       # среда модуля кончилась сама: слот и аренда свободны (AFK и exit слот не трогают)
         events_log.log("profile", f"{rec.get('from')} -> {rec.get('to')}", old=rec.get("from"), new=rec.get("to"))
         hub.notify("profile", holder["focus"].info())      # тон и видимые инструменты следуют за средой
 
     workspaces = WorkspaceManager(
         activate=enter_module,
-        release=lambda ws, reason, force: link.release(reason=reason, force=force),
+        release=lambda ws, reason, force: link.release(reason=reason, force=force, module=ws),
+        afk=link.afk,
         interruptible=lambda ws: bool((_module_status(modules, ws) or {}).get("interruptible", True)),
         connected=hub.is_connected, status_of=lambda ws: _module_status(modules, ws),
         leased=leases.manages, lease_view=leases.view,
         modules_of=lambda: _workspace_manifests(modules, leases),
-        on_change=on_workspace_change,
+        on_change=on_workspace_change, on_dropped=link.forget,
         log=lambda kind, **data: _log_workspace(kind, data))
     holder["workspaces"] = workspaces
     workspaces.refresh_leases = leases.refresh
@@ -187,7 +188,7 @@ def wire_modules(companion, registry, *, specs=None,
         workspaces.sync()
         rows = [f"- {s.id}: {s.title}. {s.when_to_use or s.purpose}".rstrip() for s in workspaces.specs.values()
                 if s.kind == "module" and s.id != workspaces.current]
-        return ("Инструменты других сред появятся после входа: workspace.switch(workspace=<id>, goal=<цель>), потом ищи заново. "
+        return ("Инструменты других сред появятся после входа: workspace.enter(workspace=<id>, goal=<цель>), потом ищи заново. "
                 "Среды:\n" + "\n".join(rows)) if rows else ""
     companion.workspace_catalog = workspace_catalog
     companion.events_block = attention.context_events        # ждущие события очереди видны в контексте ответа
@@ -225,7 +226,7 @@ def wire_modules(companion, registry, *, specs=None,
     modules.supervisor = sup
     builtin.register_core_tools(registry, modules, attention,
                                 switch=lambda cid: layer.character_switch.tool(cid),   # ТЗ 05, CHR-7
-                                workspaces=workspaces)                                  # ТЗ 32: workspace.switch, workspace.status
+                                workspaces=workspaces)                                  # ТЗ 32: workspace.enter / exit / afk, workspace.status
 
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, focus=focus,
                             supervisor=sup, presence=presence, tasks=[], link=link,
@@ -273,7 +274,8 @@ def _log_lease(kind: str, data: dict) -> None:
 def _log_workspace(kind: str, data: dict) -> None:
     events_log.log_nowait("workspace", f"{data.get('from')} -> {data.get('to')}", type=kind, **data)
     if kind == "switch" and data.get("reason") in AUTO_SWITCH_REASONS:
-        tool_trace.note("external", "workspace.switch", f"{data.get('from')} -> {data.get('to')} ({data.get('reason')})")
+        tool_trace.note("external", "workspace.exit" if data.get("to") == "assistant" else "workspace.enter",
+                        f"{data.get('from')} -> {data.get('to')} ({data.get('reason')})")
 
 
 def _module_event_recorder(modules, attention):
@@ -368,7 +370,7 @@ async def _run(config: dict):
                        if spec.kind == "module" and wanted and (sid.lower() in wanted or spec.title.lower() in wanted)), None)
         if ws is not None and ws in layer.workspaces.specs:
             res = await layer.workspaces.enter(ws, "user", str(args.get("reason") or "")[:200])
-            tool_trace.note("external", "workspace.switch", f"{ws}: {'ok' if res.get('ok') else res.get('error')}")
+            tool_trace.note("external", "workspace.enter", f"{ws}: {'ok' if res.get('ok') else res.get('error')}")
     companion.router.after_tool = enter_after_launch
     layer.requests.router = companion.router            # core.tool.call от модулей идёт тем же путём, что просьбы
     http_api.set_router(companion.router)              # POST /api/menu_click идёт инструментом desktop.menu_click (DESK-14)

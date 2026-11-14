@@ -2,7 +2,7 @@
 связь с модулем) и модули-заглушки на клиенте SDK; игры, моделей и Claude нет.
 
 Что проверяется: запуск игры не меняет среду, а лишь сигнал; вход по сообщению пользователя и по самоимпульсу (инструмент
-`workspace.switch`); возврат в assistant по `done`, `blocked` и отключению; критический сигнал во время монтажа (и отказ в
+`workspace.enter`); возврат в assistant по `done`, `blocked` и отключению; критический сигнал во время монтажа (и отказ в
 небезопасной точке)."""
 import asyncio
 
@@ -34,7 +34,7 @@ class Stub:
                                    token=layer.hub.token)
         self.id, self.calls = peer_id, []
         self.interruptible, self.blocked, self.done = True, None, False
-        for name in ("workspace.enter", "workspace.exit", "workspace.resume"):
+        for name in ("workspace.enter", "workspace.exit", "workspace.resume", "workspace.afk"):
             self.client.on_request(name)(self._handler(name))
         self.task = None
 
@@ -99,7 +99,7 @@ async def wait(pred, timeout=5.0):
 
 async def enter_montage(layer, mont, **args):
     """Войти в монтаж по просьбе пользователя."""
-    await tool(layer, "workspace.switch").call({"workspace": "montage", **args})
+    await tool(layer, "workspace.enter").call({"workspace": "montage", **args})
     await mont.report()
 
 
@@ -135,7 +135,7 @@ async def test_game_start_does_not_change_the_workspace(world):
 
 async def test_user_message_enters_the_module_workspace_and_the_profile_follows(world):
     game = await world.add("rimworld")
-    res = await tool(world, "workspace.switch").call({"workspace": "rimworld", "goal": "зайти в колонию"})
+    res = await tool(world, "workspace.enter").call({"workspace": "rimworld", "goal": "зайти в колонию"})
     assert "Rimworld" in res
     assert (world.workspaces.current, world.workspaces.reason) == ("rimworld", Reason.USER)
     assert game.calls == ["workspace.enter"]
@@ -147,35 +147,62 @@ async def test_user_message_enters_the_module_workspace_and_the_profile_follows(
 
 async def test_self_impulse_enters_with_reason_self_and_an_ordinary_permission(world):
     await world.add("montage")
-    switch = tool(world, "workspace.switch")
+    enter = tool(world, "workspace.enter")
     args = {"workspace": "montage", "goal": "собрать ролик"}
-    assert switch.danger(args) is None                                           # по просьбе пользователя разрешение не нужно
+    assert enter.danger(args) is None                                           # по просьбе пользователя разрешение не нужно
     with impulse_origin.as_self():
-        assert "собственному импульсу" in switch.danger(args)                    # по самоимпульсу роутер спросит разрешение
-        await switch.call(args)
+        assert "собственному импульсу" in enter.danger(args)                    # по самоимпульсу роутер спросит разрешение
+        await enter.call(args)
     assert (world.workspaces.current, world.workspaces.reason) == ("montage", Reason.SELF)
 
 
-async def test_switch_refuses_sleep_and_unknown_workspaces(world):
-    switch = tool(world, "workspace.switch")
+async def test_enter_refuses_sleep_and_unknown_workspaces(world):
+    enter = tool(world, "workspace.enter")
     for ws in ("sleep", "minecraft"):
         with pytest.raises(ToolError):
-            await switch.call({"workspace": ws})
+            await enter.call({"workspace": ws})
     assert world.workspaces.current == ASSISTANT
 
 
-async def test_switch_to_a_declared_but_unconnected_module_explains_why(world):
+async def test_enter_to_a_declared_but_unconnected_module_explains_why(world):
     world.modules.declare("rimworld", title="RimWorld")
-    switch = tool(world, "workspace.switch")
-    assert "rimworld" in switch.params["workspace"]["enum"]                      # планировщик не упирается в «одно из [assistant]»
+    enter = tool(world, "workspace.enter")
+    assert "rimworld" in enter.params["workspace"]["enum"]                      # планировщик не упирается в «одно из [assistant]»
     with pytest.raises(ToolError) as e:
-        await switch.call({"workspace": "rimworld"})
+        await enter.call({"workspace": "rimworld"})
     assert "RimWorld" in str(e.value) and "не подключился" in str(e.value)
     world.modules.is_enabled = lambda mid, cfg=None: False
     with pytest.raises(ToolError) as e:
-        await switch.call({"workspace": "rimworld"})
+        await enter.call({"workspace": "rimworld"})
     assert "выключен" in str(e.value) and "Модули" in str(e.value)
     assert world.workspaces.current == ASSISTANT
+
+
+async def test_exit_afk_and_enter_send_their_messages_to_the_module(world):
+    mont = await world.add("montage")
+    rim = await world.add("rimworld")
+    enter, exit_, afk = (tool(world, f"workspace.{n}") for n in ("enter", "exit", "afk"))
+    await enter.call({"workspace": "montage", "goal": "ролик"})
+    await enter.call({"workspace": "rimworld", "goal": "колония"})       # монтаж не отпускается: уходит в AFK
+    assert mont.calls == ["workspace.enter", "workspace.afk"] and world.workspaces.current == "rimworld"
+    assert set(world.workspaces.held) == {"montage", "rimworld"} and world.link.focus == "rimworld"
+    assert "уже была за ней" in await enter.call({"workspace": "montage"})
+    assert mont.calls[-1] == "workspace.enter" and rim.calls[-1] == "workspace.afk"
+    await afk.call({})
+    assert world.workspaces.current == ASSISTANT and set(world.link.holders) == {"montage", "rimworld"}
+    await exit_.call({"workspace": "rimworld"})
+    assert rim.calls[-1] == "workspace.exit" and set(world.workspaces.held) == {"montage"}
+    await exit_.call({"workspace": "montage"})
+    assert mont.calls[-1] == "workspace.exit" and not world.workspaces.held and not world.link.holders
+
+
+async def test_enter_refuses_the_assistant_and_exit_needs_a_workspace(world):
+    await world.add("rimworld")
+    with pytest.raises(ToolError):
+        await tool(world, "workspace.enter").call({"workspace": ASSISTANT})
+    for name in ("exit", "afk"):
+        with pytest.raises(ToolError):
+            await tool(world, f"workspace.{name}").call({})
 
 
 # ── возврат в assistant ──────────────────────────────────────────────────────
@@ -202,7 +229,7 @@ async def test_blocked_returns_to_assistant(world):
 
 async def test_module_disconnect_returns_to_assistant(world):
     game = await world.add("rimworld")
-    await tool(world, "workspace.switch").call({"workspace": "rimworld"})
+    await tool(world, "workspace.enter").call({"workspace": "rimworld"})
     await game.stop()
     await wait(lambda: world.workspaces.current == ASSISTANT, 8)
     assert world.workspaces.reason == Reason.DISCONNECT

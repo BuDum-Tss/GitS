@@ -334,10 +334,17 @@ _c_ws_enter = Message(
     request=(F("workspace", "string", False, "среда (id участника шины)"),
              F("goal", "string", False, "цель"), F("task_id", "string", False, "id задачи"),
              F("reason", "string", False, "причина входа: user, self, critical")),
-    response=(F("ok", "boolean", False, "принято"), F("error", "string", False, "причина отказа")),
+    response=(F("ok", "boolean", False, "принято"), F("error", "string", False, "причина отказа"),
+              F("brief", "string", False, "вводная для агента (1-3 предложения), контракт 3.2", max=P.WS_BRIEF_MAX),
+              F("skills", "array", False, "навыки окружения: [{name, description}], контракт 3.2", items="object"),
+              F("units", "array", False, "открытые рабочие единицы: [{id, title, state}], контракт 3.2", items="object"),
+              F("site", "object", False, "сайт окружения: {url}, контракт 3.2")),
     errors=("bad_request", "unknown", "unavailable", "denied", "internal"),
     valid=({"workspace": "rimworld", "goal": "зайти в колонию", "reason": "user"}, {}), invalid=({"goal": 5},),
-    response_valid=({"ok": True}, {"ok": False, "error": "занята"}, {}), response_invalid=({"ok": "да"},),
+    response_valid=({"ok": True}, {"ok": False, "error": "занята"}, {},
+                    {"ok": True, "brief": "Монтаж роликов.", "skills": [{"name": "remotion", "description": "Remotion"}],
+                     "units": [{"id": "j-0123abcd", "state": "working"}], "site": {"url": "http://127.0.0.1:8790/"}}),
+    response_invalid=({"ok": "да"}, {"brief": 5}, {"skills": "нет"}, {"site": "http://127.0.0.1/"}),
 )
 _c_ws_exit = Message(
     "workspace.exit", C2M, REQUEST,
@@ -350,6 +357,20 @@ _c_ws_exit = Message(
               F("error", "string", False, "причина отказа")),
     errors=("unknown", "unavailable", "internal"),
     valid=({"reason": "done", "force": True, "checkpoint": True}, {}), invalid=({"force": "да"},),
+    response_valid=({"ok": True, "checkpoint": {}}, {"ok": False, "error": "занята"}), response_invalid=({"checkpoint": 3},),
+)
+_c_ws_afk = Message(
+    "workspace.afk", C2M, REQUEST,
+    "Ядро выводит агента из среды без отпускания: фокус снимается, окружение остаётся за ней, операции и сайт продолжают "
+    "работать (контракт 3.2). Тело и ответ те же, что у workspace.exit.",
+    since="3.2",
+    request=(F("reason", "string", False, "причина"), F("task_id", "string", False, "id задачи"),
+             F("force", "boolean", False, "принудительно"), F("event_id", "string", False, "id события"),
+             F("checkpoint", "boolean", False, "нужен checkpoint")),
+    response=(F("ok", "boolean", False, "принято"), F("checkpoint", "object", False, "состояние для возобновления"),
+              F("error", "string", False, "причина отказа")),
+    errors=("unknown", "unavailable", "internal"),
+    valid=({"reason": "render", "checkpoint": True}, {}), invalid=({"force": "да"},),
     response_valid=({"ok": True, "checkpoint": {}}, {"ok": False, "error": "занята"}), response_invalid=({"checkpoint": 3},),
 )
 _c_ws_resume = Message(
@@ -476,7 +497,7 @@ CORE_REQUEST_MESSAGES = (_ask, _tts, _tool_call, _recall, _remember, _persona, _
 MODULE_NOTE_MESSAGES = (_hello, _event, _say, _emotion, _state, _job_update, _panel_set, _log)
 MODULE_REQUEST_MESSAGES = (_c_tool_call, _c_tool_check, _c_job_cancel, _c_job_list, _c_graph_get, _c_deliver, _c_tts,
                            _c_panel_action,
-                           _c_ws_enter, _c_ws_exit, _c_ws_resume)
+                           _c_ws_enter, _c_ws_exit, _c_ws_afk, _c_ws_resume)
 CORE_NOTE_MESSAGES = (_welcome, _reject, _job_answer, _speak, _speak_stop, _shutdown)
 TOPIC_MESSAGES = (_t_presence, _t_settings, _t_profile, _t_character, _t_module)
 

@@ -41,9 +41,9 @@
 | Инструмент | Что делает | Риск |
 |---|---|---|
 | `skills` | Без параметров — список навыков; `name` — текст навыка; `name` + `file` — файл внутри навыка | auto |
-| `files` | `op`: `list`, `read`, `write`, `replace` (точная замена строки), `delete`, `move`; `path` в `area` | auto внутри `writable`, confirm для `delete` |
+| `files` | `op`: `list`, `read`, `write`, `replace` (точная замена строки), `delete`, `move`; `path` в `area` | auto внутри `writable`, ask для `delete` |
 | `resources` | Ресурсы персонажа и окружения: шрифты, звуки, дизайн, шаблоны (список или файл) | auto |
-| `run` | `command` из `commands`, `args`. `background` → возвращает `job_id` и сразу | auto, confirm для действий с пометкой `irreversible` |
+| `run` | `command` из `commands`, `args`. `background` → возвращает `job_id` и сразу | auto, ask для действий с пометкой `irreversible` |
 | `work` | Рабочие единицы окружения (для монтажа — ролик): `create`, `list`, `status`, `cancel` | auto |
 | `site` | Адрес сайта и страницы объекта (для ссылки пользователю) | auto |
 
@@ -75,7 +75,7 @@
 
 ## 7. Вход, выход и AFK
 
-Три действия агента (`workspace.switch` убирается); модулю ядро шлёт соответствующие сообщения `workspace.enter`, `workspace.exit`, `workspace.afk` (после перезапуска ядра `workspace.resume`):
+Три действия агента (прежний `workspace.switch` заменён на `workspace.enter`); модулю ядро шлёт соответствующие сообщения `workspace.enter`, `workspace.exit`, `workspace.afk` (после перезапуска ядра `workspace.resume`):
 
 - **`workspace.enter(workspace, goal)`** — занять окружение и начать в нём работать: ядро берёт аренду, переводит фокус, запоминает причину (`user` или `self`, при самоимпульсе нужно обычное разрешение). Повторный `enter` в окружение, которое уже за ней (после AFK), возвращает в него без новой аренды (`already`).
 - **`workspace.exit(workspace?)`** — выйти и **отпустить**: фокус снимается, аренда возвращается. Если в окружении остались работающие операции, отпускание ждёт их конца (аренда в состоянии `releasing`, как сейчас), новые операции начинать нельзя.
@@ -103,7 +103,7 @@
 
 1. SDK: новые поля блока `workspace` в `protocol.py` (`brief`, `skills`, `area`, `commands`, `site`), проверка при `validate_manifest`, разбор в `Manifest` (необязательные); контракт `3.2`.
 2. SDK: помощники для модулей: `Sandbox` (проверка путей и команд), `WorkspaceTools` (инструменты `skills`, `files`, `run`, `work`) — окружение подключает их, а не пишет заново.
-3. Ядро: `workspace.switch` убрать, инструмент агента `workspace.enter(workspace, goal)` делает то же (аренда, фокус, причина, вводная); `workspace.exit` (выход с отпусканием, ждёт конца операций) и новый `workspace.afk` (выход без отпускания); обновить подсказки агента (`resident.py`, `core_service.py`, самоимпульс) и `WS-16` в `WORKSPACE_MODULES.md`.
+3. Ядро (сделано): `workspace.switch` убран, инструмент агента `workspace.enter(workspace, goal)` делает то же (аренда, фокус, причина, вводная); `workspace.exit` (выход с отпусканием, ждёт конца операций) и новый `workspace.afk` (выход без отпускания); обновить подсказки агента (`resident.py`, `core_service.py`, самоимпульс) и `WS-16` в `WORKSPACE_MODULES.md`.
 4. Монтаж: инструменты workspace поверх существующих `layout`, `sandbox`, `studio`, `montage_site`; конвейер стадий заменяется регламентом-навыком и командой `check`; субагент pi из конвейера убирается.
 5. Тесты: SDK (схема, песочница, инструменты), монтаж (запись в `writable`, отказ вне `area`, `run` в фоне, финальный рендер без проверки), ядро (вводная).
 

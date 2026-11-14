@@ -109,7 +109,8 @@ def reconnect_delay(attempt: int) -> float:
 
 # ---------------------------------------------------------------- коды ошибок (MOD-9)
 
-ERROR_CODES = ("bad_request", "unknown", "denied", "unavailable", "timeout", "cancelled", "internal")
+ERROR_CODES = ("bad_request", "unknown", "denied", "unavailable", "timeout", "cancelled", "internal",
+               "busy", "invalid")   # busy и invalid: контракт 3.2, инструменты workspace (операция занята, неверные аргументы)
 
 
 class ProtocolError(ValueError):
@@ -159,7 +160,7 @@ MODULE_TO_CORE = frozenset(MODULE_TO_CORE_NOTES) | frozenset(CORE_REQUESTS)
 CORE_TO_MODULE_REQUESTS = ("tool.call", "tool.check", "job.cancel", "job.list", "graph.get", "deliver",
                            "tts.synthesize", "panel.action",
                            # среды агента (ТЗ 32, WS-4)
-                           "workspace.enter", "workspace.exit", "workspace.resume")
+                           "workspace.enter", "workspace.exit", "workspace.afk", "workspace.resume")
 CORE_TO_MODULE_NOTES = ("welcome", "reject", "job.answer", "speak", "speak.stop", "topic", "shutdown", "result")
 CORE_TO_MODULE = frozenset(CORE_TO_MODULE_REQUESTS) | frozenset(CORE_TO_MODULE_NOTES)
 
@@ -615,6 +616,8 @@ def validate_manifest(manifest: Any, warnings: list[str] | None = None) -> list[
     _check_nodes(manifest, problems)
     if "panel" in manifest and warnings is not None:
         warnings.extend(parse_panel(manifest)[1])
+    if warnings is not None and isinstance(manifest.get("workspace"), dict):
+        warnings.extend(parse_workspace_spec(manifest["workspace"])[1])
     return problems
 
 
@@ -747,9 +750,226 @@ def _check_workspace(manifest: dict, problems: list[str]) -> None:
     if "work_interval_s" in ws and (not _is_int(ws["work_interval_s"]) or not 30 <= ws["work_interval_s"] <= 3600):
         problems.append("workspace.work_interval_s: целое 30–3600 секунд")
     extra = set(ws) - {"id", "title", "purpose", "entry", "interruptible", "safe_points", "signals_in", "done_when",
-                       "autonomous", "work_interval_s", "default_goal", "when_to_use", "keywords"}
+                       "autonomous", "work_interval_s", "default_goal", "when_to_use", "keywords",
+                       "brief", "skills", "area", "commands", "site"}
     if extra:
         problems.append(f"workspace: неизвестные поля {sorted(extra)}")
+
+
+# ---------------------------------------------------------------- расширение блока workspace (контракт 3.2)
+
+WS_BRIEF_MAX = 400
+WS_SKILLS_MAX = 40
+WS_COMMANDS_MAX = 40
+WS_AREA_PATHS_MAX = 40
+WS_TEXT_MAX = 300
+WS_SKILL_NAME_RE = re.compile(r"^[a-z0-9_-]{1,64}$")
+WS_COMMAND_ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+WS_TIMEOUT_MAX_S = 86400
+WS_AREA_KEYS = ("root", "writable", "readonly", "hidden")
+
+
+def _rel_path_problem(where: str, value: Any) -> str | None:
+    """Путь области: непустая относительная строка без `..`, без диска и абсолютного начала."""
+    if not isinstance(value, str) or not value.strip() or len(value) > 300:
+        return f"{where}: непустая строка до 300 символов"
+    norm = value.replace("\\", "/")
+    if norm.startswith("/") or re.match(r"^[A-Za-z]:", norm) or os.path.isabs(value):
+        return f"{where}: путь должен быть относительным"
+    if ".." in norm.split("/"):
+        return f"{where}: «..» в пути запрещено"
+    return None
+
+
+def workspace_field_problems(ws: dict) -> dict[str, list[str]]:
+    """Проблемы необязательных полей workspace 3.2 (`brief`, `skills`, `area`, `commands`, `site`): поле -> список проблем."""
+    out: dict[str, list[str]] = {}
+
+    def add(key: str, text: str | None) -> None:
+        if text:
+            out.setdefault(key, []).append(text)
+
+    if "brief" in ws and (not isinstance(ws["brief"], str) or not ws["brief"].strip() or len(ws["brief"]) > WS_BRIEF_MAX):
+        add("brief", f"workspace.brief: непустая строка до {WS_BRIEF_MAX} символов")
+    if "skills" in ws:
+        skills = ws["skills"]
+        if not isinstance(skills, list) or len(skills) > WS_SKILLS_MAX:
+            add("skills", f"workspace.skills: список до {WS_SKILLS_MAX} навыков")
+        else:
+            names: set[str] = set()
+            for i, sk in enumerate(skills):
+                where = f"workspace.skills[{i}]"
+                if not isinstance(sk, dict):
+                    add("skills", f"{where}: объект {{name, description, path}}")
+                    continue
+                name = sk.get("name")
+                if not isinstance(name, str) or not WS_SKILL_NAME_RE.match(name):
+                    add("skills", f"{where}.name: строчные латинские, цифры, «_» и «-»")
+                elif name in names:
+                    add("skills", f"{where}.name: «{name}» повторяется")
+                else:
+                    names.add(name)
+                if not isinstance(sk.get("description"), str) or not sk["description"].strip() or len(sk["description"]) > WS_TEXT_MAX:
+                    add("skills", f"{where}.description: непустая строка до {WS_TEXT_MAX} символов")
+                add("skills", _rel_path_problem(f"{where}.path", sk.get("path")))
+    if "area" in ws:
+        area = ws["area"]
+        if not isinstance(area, dict):
+            add("area", "workspace.area: должен быть объектом")
+        else:
+            extra = set(area) - set(WS_AREA_KEYS)
+            if extra:
+                add("area", f"workspace.area: неизвестные поля {sorted(extra)}")
+            if "root" in area:
+                add("area", _rel_path_problem("workspace.area.root", area["root"]))
+            for key in ("writable", "readonly", "hidden"):
+                if key not in area:
+                    continue
+                items = area[key]
+                if not isinstance(items, list) or len(items) > WS_AREA_PATHS_MAX:
+                    add("area", f"workspace.area.{key}: список путей до {WS_AREA_PATHS_MAX}")
+                    continue
+                for i, item in enumerate(items):
+                    add("area", _rel_path_problem(f"workspace.area.{key}[{i}]", item))
+    if "commands" in ws:
+        cmds = ws["commands"]
+        if not isinstance(cmds, list) or len(cmds) > WS_COMMANDS_MAX:
+            add("commands", f"workspace.commands: список до {WS_COMMANDS_MAX} команд")
+        else:
+            ids: set[str] = set()
+            for i, c in enumerate(cmds):
+                where = f"workspace.commands[{i}]"
+                if not isinstance(c, dict):
+                    add("commands", f"{where}: объект {{id, title}}")
+                    continue
+                cid = c.get("id")
+                if not isinstance(cid, str) or not WS_COMMAND_ID_RE.match(cid):
+                    add("commands", f"{where}.id: идентификатор «[a-z][a-z0-9_]*»")
+                elif cid in ids:
+                    add("commands", f"{where}.id: «{cid}» повторяется")
+                else:
+                    ids.add(cid)
+                if not isinstance(c.get("title"), str) or not c["title"].strip() or len(c["title"]) > WS_TEXT_MAX:
+                    add("commands", f"{where}.title: непустая строка до {WS_TEXT_MAX} символов")
+                for flag in ("background", "irreversible"):
+                    if flag in c and not isinstance(c[flag], bool):
+                        add("commands", f"{where}.{flag}: true или false")
+                if "timeout_s" in c and (not _is_int(c["timeout_s"]) or not 1 <= c["timeout_s"] <= WS_TIMEOUT_MAX_S):
+                    add("commands", f"{where}.timeout_s: целое 1–{WS_TIMEOUT_MAX_S}")
+    if "site" in ws:
+        site = ws["site"]
+        if not isinstance(site, dict) or not _is_loopback_url(site.get("url")):
+            add("site", "workspace.site: объект {url} с http(s) адресом на 127.0.0.1 или localhost")
+    return out
+
+
+@dataclass
+class WorkspaceSkill:
+    """Навык окружения: папка с `SKILL.md` внутри рабочей области или образа."""
+
+    name: str
+    description: str
+    path: str
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "description": self.description, "path": self.path}
+
+
+@dataclass
+class WorkspaceArea:
+    """Рабочая область окружения: где агент читает и пишет (пути относительны корню окружения)."""
+
+    root: str = ""
+    writable: list[str] = field(default_factory=list)
+    readonly: list[str] = field(default_factory=list)
+    hidden: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        out: dict = {}
+        if self.root:
+            out["root"] = self.root
+        for key in ("writable", "readonly", "hidden"):
+            if getattr(self, key):
+                out[key] = list(getattr(self, key))
+        return out
+
+
+@dataclass
+class WorkspaceCommand:
+    """Разрешённое действие запуска (`run`): произвольной оболочки нет."""
+
+    id: str
+    title: str
+    background: bool = False
+    timeout_s: int | None = None
+    irreversible: bool = False
+
+    def to_dict(self) -> dict:
+        out: dict = {"id": self.id, "title": self.title}
+        if self.background:
+            out["background"] = True
+        if self.timeout_s is not None:
+            out["timeout_s"] = self.timeout_s
+        if self.irreversible:
+            out["irreversible"] = True
+        return out
+
+
+@dataclass
+class WorkspaceSpec:
+    """Необязательные поля блока `workspace` контракта 3.2. Пустые поля в `to_dict` не выводятся."""
+
+    brief: str = ""
+    skills: list[WorkspaceSkill] = field(default_factory=list)
+    area: WorkspaceArea | None = None
+    commands: list[WorkspaceCommand] = field(default_factory=list)
+    site_url: str = ""
+
+    def command(self, command_id: str) -> WorkspaceCommand | None:
+        return next((c for c in self.commands if c.id == command_id), None)
+
+    def skill(self, name: str) -> WorkspaceSkill | None:
+        return next((s for s in self.skills if s.name == name), None)
+
+    def to_dict(self) -> dict:
+        out: dict = {}
+        if self.brief:
+            out["brief"] = self.brief
+        if self.skills:
+            out["skills"] = [s.to_dict() for s in self.skills]
+        if self.area is not None and self.area.to_dict():
+            out["area"] = self.area.to_dict()
+        if self.commands:
+            out["commands"] = [c.to_dict() for c in self.commands]
+        if self.site_url:
+            out["site"] = {"url": self.site_url}
+        return out
+
+
+def parse_workspace_spec(ws: Any) -> tuple[WorkspaceSpec | None, list[str]]:
+    """Разобрать поля 3.2 блока `workspace`. Неверное поле отбрасывается с предупреждением, остальные остаются
+    (окружение не отклоняется). Нет ни одного поля: (None, [])."""
+    if not isinstance(ws, dict):
+        return None, []
+    problems = workspace_field_problems(ws)
+    warnings = [f"поле workspace.{key} отброшено: " + "; ".join(items) for key, items in problems.items()]
+    spec = WorkspaceSpec()
+    if "brief" in ws and "brief" not in problems:
+        spec.brief = ws["brief"].strip()
+    if "skills" in ws and "skills" not in problems:
+        spec.skills = [WorkspaceSkill(s["name"], s["description"], s["path"]) for s in ws["skills"]]
+    if "area" in ws and "area" not in problems:
+        a = ws["area"]
+        spec.area = WorkspaceArea(root=a.get("root", ""), writable=list(a.get("writable") or []),
+                                  readonly=list(a.get("readonly") or []), hidden=list(a.get("hidden") or []))
+    if "commands" in ws and "commands" not in problems:
+        spec.commands = [WorkspaceCommand(c["id"], c["title"], bool(c.get("background", False)), c.get("timeout_s"),
+                                          bool(c.get("irreversible", False))) for c in ws["commands"]]
+    if "site" in ws and "site" not in problems:
+        spec.site_url = ws["site"]["url"]
+    if not spec.to_dict():
+        return None, warnings
+    return spec, warnings
 
 
 @dataclass
@@ -1228,6 +1448,8 @@ class Manifest:
     panel: PanelSpec | None = None                      # пространство модуля (TZ 15); None - вкладки нет
     panel_warnings: list[str] = field(default_factory=list)   # почему panel отброшен (для журнала ядра)
     workspace: dict | None = None                       # ТЗ 32, WS-4: среда агента, которую объявляет модуль
+    workspace_spec: WorkspaceSpec | None = None         # контракт 3.2: разобранные brief, skills, area, commands, site
+    workspace_warnings: list[str] = field(default_factory=list)   # какие поля workspace 3.2 отброшены и почему
     role: str = ""                                      # workspace | service (обязательно в манифесте)
     ownership: str | None = None                        # shared | owned (обязательно у workspace; у service None)
     nodes: list[dict] = field(default_factory=list)     # ТЗ 33: дерево узлов рабочего места (пусто: плоский список)
@@ -1240,6 +1462,7 @@ class Manifest:
         if problems:
             raise ManifestError("манифест не прошёл проверку: " + "; ".join(problems), problems)
         panel, panel_warnings = parse_panel(d)
+        ws_spec, ws_warnings = parse_workspace_spec(d["workspace"]) if isinstance(d.get("workspace"), dict) else (None, [])
         return cls(
             id=d["id"], title=d["title"], description=d["description"], version=d["version"],
             capabilities=list(d.get("capabilities") or []), subscribe=list(d.get("subscribe") or []),
@@ -1250,6 +1473,7 @@ class Manifest:
             graph=bool(d.get("graph", False)), state=bool(d.get("state", False)),
             panel=panel, panel_warnings=panel_warnings,
             workspace=dict(d["workspace"]) if d.get("workspace") else None,
+            workspace_spec=ws_spec, workspace_warnings=ws_warnings,
             role=d.get("role"), ownership=d.get("ownership"), event_prefixes=list(d.get("event_prefixes") or []))
 
     @property

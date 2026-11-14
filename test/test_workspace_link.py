@@ -20,6 +20,43 @@ def link_for(mod):
     return WorkspaceLink(connection_of=lambda m: mod if m == "rimworld" else None)
 
 
+async def test_afk_keeps_the_slot_and_enter_returns_without_a_new_task():
+    mod = Module()
+    link = link_for(mod)
+    await link.activate("rimworld", "колония")
+    task_id = link.holder["task_id"]
+    assert (await link.afk("rimworld"))["ok"]
+    assert link.holder is None and link.focus is None and "rimworld" in link.holders and link.afk_modules() == ["rimworld"]
+    res = await link.activate("rimworld", "")
+    assert res["ok"] and res["already"] and link.holder["task_id"] == task_id and link.holder["goal"] == "колония"
+    assert mod.names == ["workspace.enter", "workspace.afk", "workspace.enter"]
+    assert (await link.afk("telegram")) == {"ok": True, "already": True}
+
+
+async def test_afk_works_with_a_module_that_has_no_afk_handler():
+    from services.peers.hub import PeerError
+
+    class Old(Module):
+        async def request(self, name, body, timeout=0):
+            if name == "workspace.afk":
+                raise PeerError("unknown", "нет такого запроса")
+            return await super().request(name, body, timeout)
+
+    link = link_for(Old())
+    await link.activate("rimworld", "x")
+    assert (await link.afk("rimworld"))["ok"] and link.focus is None
+
+
+async def test_release_of_an_afk_module_leaves_the_focus_on_another():
+    mods = {"rimworld": Module(), "montage": Module()}
+    link = WorkspaceLink(connection_of=mods.get)
+    await link.activate("rimworld", "a")
+    await link.activate("montage", "b")
+    assert link.focus == "montage"
+    assert (await link.release("user", module="rimworld"))["ok"]
+    assert set(link.holders) == {"montage"} and link.focus == "montage"
+
+
 async def test_activate_release_resume_cycle():
     mod = Module()
     link = link_for(mod)

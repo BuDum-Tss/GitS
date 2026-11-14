@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .. import protocol as P
 
-CONTRACT_VERSION = "3.1"
+CONTRACT_VERSION = "3.2"
 PROTOCOL = P.PROTOCOL
 
 # версия контракта, в которой появился элемент (поле `since` у Message): "1.0" - исходный состав ТЗ 01
@@ -49,6 +49,9 @@ HISTORY = (
             "(батарейки Claude нет), клиентские методы claude_usage, claude_locate, поле client.battery и модуль claude_path"),
     ("3.1", "core.tts и tts.synthesize: необязательное поле volume_path в ответе (файл относительно папки персонажа: участники "
             "в контейнерах обмениваются файлами через общий том персонажа, `shared/tts/`)"),
+    ("3.2", "рабочее окружение агента (docs/WORKSPACE_CONTRACT.md): необязательные поля блока workspace манифеста brief, skills, "
+            "area, commands, site (неверные поля не отклоняют модуль, а попадают в предупреждения); запрос workspace.afk (выход "
+            "без отпускания аренды, тело как у workspace.exit); ответ на workspace.enter может нести brief, skills, units, site"),
 )
 
 # Устаревшее: (элемент, дата удаления, чем заменить)

@@ -20,8 +20,12 @@ def make(**kw):
         calls.append(("release", ws, reason, force))
         return {"ok": True}
 
+    async def afk(ws):
+        calls.append(("afk", ws))
+        return {"ok": True}
+
     clock = {"t": 100.0}
-    mgr = WorkspaceManager(activate=kw.pop("activate", activate), release=kw.pop("release", release),
+    mgr = WorkspaceManager(activate=kw.pop("activate", activate), release=kw.pop("release", release), afk=kw.pop("afk", afk),
                            now=lambda: clock["t"], **kw)
     mgr.register_module("rimworld", "RimWorld")
     mgr.register_module("montage", "Монтаж")
@@ -208,3 +212,84 @@ async def test_core_wiring_has_workspaces_and_release_holder_without_slot():
     snap = layer.workspaces.snapshot()
     assert snap["current"] == ASSISTANT and {a["id"] for a in snap["available"]} == {ASSISTANT, SLEEP}     # среды модулей - из манифестов
     assert (await layer.link.release()) == {"ok": True, "already": True}
+
+
+# ── enter / afk / exit: фокус один, закреплённых несколько ───────────────────
+
+async def test_enter_another_workspace_puts_the_previous_one_to_afk_without_release():
+    mgr, calls, _ = make()
+    await mgr.enter("rimworld", Reason.USER, "колония")
+    res = await mgr.enter("montage", Reason.USER, "ролик")
+    assert res == {"ok": True, "workspace": "montage"} and mgr.current == "montage"
+    assert calls == [("activate", "rimworld", "колония"), ("activate", "montage", "ролик"), ("afk", "rimworld")]
+    assert set(mgr.held) == {"rimworld", "montage"} and mgr.held["rimworld"]["afk"] and not mgr.held["montage"]["afk"]
+    held = {h["id"]: h for h in mgr.snapshot()["held"]}
+    assert held["rimworld"]["afk"] is True and held["montage"]["afk"] is False
+
+
+async def test_afk_drops_focus_keeps_the_workspace_held_and_enter_returns_as_already():
+    mgr, calls, _ = make()
+    await mgr.enter("montage", Reason.USER, "ролик")
+    res = await mgr.afk(None, Reason.USER)
+    assert res["ok"] and mgr.current == ASSISTANT and "montage" in mgr.held and mgr.held["montage"]["afk"]
+    assert calls[-1] == ("afk", "montage") and not any(c[0] == "release" for c in calls)
+    assert mgr.history[-1]["note"] == "afk"
+    assert (await mgr.afk("montage", Reason.USER)) == {"ok": True, "already": True, "workspace": "montage"}    # уже в AFK
+    res = await mgr.enter("montage", Reason.USER, "")                   # возврат: окружение уже за ней
+    assert res == {"ok": True, "workspace": "montage", "already": True} and mgr.current == "montage"
+    assert mgr.held["montage"]["goal"] == "ролик" and not mgr.held["montage"]["afk"]
+
+
+async def test_afk_and_exit_outside_a_workspace_are_refused():
+    mgr, calls, _ = make()
+    assert not (await mgr.afk())["ok"] and not (await mgr.exit())["ok"]
+    assert not (await mgr.exit("rimworld"))["ok"]                          # не закреплено
+    assert calls == []
+
+
+async def test_exit_releases_and_waits_only_through_the_module_not_the_manager():
+    view = {"releasing": True, "jobs": 2}
+    mgr, calls, _ = make(lease_view=lambda ws: view)
+    await mgr.enter("montage", Reason.USER, "ролик")
+    res = await mgr.exit(None, Reason.USER)
+    assert res == {"ok": True, "workspace": "montage", "releasing": True, "jobs": 2}
+    assert calls[-1] == ("release", "montage", Reason.USER, True)
+    assert mgr.current == ASSISTANT and not mgr.held
+
+
+async def test_exit_of_an_afk_workspace_keeps_the_focus_where_it_is():
+    mgr, calls, _ = make()
+    await mgr.enter("rimworld", Reason.USER, "колония")
+    await mgr.enter("montage", Reason.USER, "ролик")
+    res = await mgr.exit("rimworld", Reason.USER)
+    assert res["ok"] and mgr.current == "montage" and set(mgr.held) == {"montage"}
+    assert calls[-1] == ("release", "rimworld", Reason.USER, True)
+
+
+async def test_refused_exit_keeps_the_workspace_held():
+    async def refuse(ws, reason, force):
+        return {"ok": False, "reason": "не могу"}
+
+    mgr, _, _ = make(release=refuse)
+    await mgr.enter("rimworld", Reason.SELF, "колония")
+    res = await mgr.exit("rimworld", Reason.SELF)
+    assert not res["ok"] and "не могу" in res["error"] and "rimworld" in mgr.held and mgr.current == "rimworld"
+
+
+async def test_unsafe_point_blocks_afk_for_self_but_not_for_the_user():
+    state = {"safe": False}
+    mgr, _, _ = make(interruptible=lambda ws: state["safe"])
+    await mgr.enter("montage", Reason.USER, "ролик")
+    assert not (await mgr.afk(None, Reason.SELF))["ok"] and mgr.current == "montage"
+    assert (await mgr.afk(None, Reason.USER))["ok"] and mgr.current == ASSISTANT
+
+
+async def test_disconnected_afk_workspace_is_dropped():
+    connected = {"rimworld": True, "montage": True}
+    dropped = []
+    mgr, _, _ = make(connected=lambda ws: connected.get(ws, True), on_dropped=dropped.append)
+    await mgr.enter("rimworld", Reason.USER, "колония")
+    await mgr.enter("montage", Reason.USER, "ролик")
+    connected["rimworld"] = False
+    mgr.check()
+    assert "rimworld" not in mgr.held and dropped == ["rimworld"] and mgr.current == "montage"

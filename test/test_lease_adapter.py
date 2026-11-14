@@ -1,4 +1,4 @@
-"""Аренда общих пространств в ядре: LeaseAdapter на настоящем ControlServer (петля), WorkspaceLink, workspace.switch/status,
+"""Аренда общих пространств в ядре: LeaseAdapter на настоящем ControlServer (петля), WorkspaceLink, workspace.enter/exit/afk/status,
 дашборд. Docker не нужен; у аренды нет срока и продления."""
 import asyncio
 import json
@@ -204,14 +204,15 @@ async def test_unleased_modules_work_as_before():
 def manager_for(ad, conns):
     link = link_for(ad, conns)
     mgr = WorkspaceManager(
-        activate=link.activate, release=lambda ws, reason, force: link.release(reason=reason, force=force),
+        activate=link.activate, afk=link.afk,
+        release=lambda ws, reason, force: link.release(reason=reason, force=force, module=ws),
         connected=lambda ws: ws in conns, leased=ad.manages, lease_view=ad.view,
         modules_of=lambda: [("montage", ad.manifest_of("montage"), "Монтаж")] if ad.manifest_of("montage") else [])
     mgr.refresh_leases = ad.refresh
     return mgr
 
 
-async def test_switch_describes_space_and_reports_busy_in_plain_words(space):
+async def test_enter_describes_space_and_reports_busy_in_plain_words(space):
     conns = space.conns
     await adapter_for(space, "other").acquire("montage", "чужая цель")
     conns.pop("montage")
@@ -223,12 +224,12 @@ async def test_switch_describes_space_and_reports_busy_in_plain_words(space):
     assert "Монтаж" in status and "делать ролики" in status and "просят смонтировать видео" in status
     assert "занято персонажем other" in status and "чужая цель" in status
     with pytest.raises(Exception) as e:
-        await tools["switch"].call({"workspace": "montage", "goal": "ролик"})
+        await tools["enter"].call({"workspace": "montage", "goal": "ролик"})
     assert "занято" in str(e.value) and "other" in str(e.value) and "чужая цель" in str(e.value)
     assert mgr.current == dom.ASSISTANT
 
 
-async def test_switch_into_free_space_takes_lease_without_prior_connection(space):
+async def test_enter_into_free_space_takes_lease_without_prior_connection(space):
     ad = adapter_for(space)
     await ad.refresh()                                                  # ядро читает описание при старте
     mgr = manager_for(ad, space.conns)
@@ -310,7 +311,7 @@ async def test_exit_with_active_jobs_keeps_lease_mine_then_finishes(space):
     assert ad.view("montage")["state"] == "free" and not ad.holds("montage") and "montage" not in conns
 
 
-async def test_switch_back_into_releasing_space_and_status_text(space):
+async def test_enter_back_into_releasing_space_and_status_text(space):
     ad, conns = adapter_for(space), space.conns
     await ad.refresh()
     mgr = manager_for(ad, conns)
@@ -336,3 +337,52 @@ async def test_dashboard_shows_releasing_badge_data(space):
     await ad.refresh()
     v = ad.view("montage")
     assert (v["state"], v["releasing"], v["jobs"]) == ("mine", True, 3)
+
+
+# ── инструменты агента enter / afk / exit / status над настоящим сервисом пространства ──
+
+async def test_enter_tool_takes_lease_and_repeated_enter_after_afk_has_no_new_lease(space):
+    ad = adapter_for(space)
+    await ad.refresh()
+    mgr = manager_for(ad, space.conns)
+    tools = {t.name: t for t in _workspace_tools(mgr)}
+    assert "сейчас в среде «Монтаж»" in await tools["enter"].call({"workspace": "montage", "goal": "ролик"})
+    lease_id = space.server.lease.lease_id
+    assert len(space.acquired) == 1 and mgr.current == "montage"
+    assert "AFK" in await tools["afk"].call({})                         # отошла: фокуса нет, аренда на месте
+    assert mgr.current == dom.ASSISTANT and space.server.lease.lease_id == lease_id and "montage" in mgr.held
+    assert space.mod.names == ["workspace.enter", "workspace.afk"]
+    status = await tools["status"].call({})
+    assert "в AFK" in status and "Монтаж" in status and "занято мной" in status and "ролик" in status
+    text = await tools["enter"].call({"workspace": "montage"})          # возврат: без новой аренды
+    assert "уже была за ней" in text and len(space.acquired) == 1 and space.server.lease.lease_id == lease_id
+    assert mgr.current == "montage" and space.mod.names == ["workspace.enter", "workspace.afk", "workspace.enter"]
+
+
+async def test_exit_tool_releases_lease_and_with_jobs_reports_waiting(space):
+    ad = adapter_for(space)
+    await ad.refresh()
+    mgr = manager_for(ad, space.conns)
+    tools = {t.name: t for t in _workspace_tools(mgr)}
+    await tools["enter"].call({"workspace": "montage", "goal": "ролик"})
+    assert "аренда возвращена" in await tools["exit"].call({})
+    assert space.server.lease is None and mgr.current == dom.ASSISTANT and not mgr.held
+    await tools["enter"].call({"workspace": "montage", "goal": "ещё ролик"})
+    space.jobs = 2                                                      # идёт рендер
+    await tools["afk"].call({})
+    text = await tools["exit"].call({"workspace": "montage"})           # выход из AFK-окружения
+    assert "идут операции (2)" in text and space.server.lease is not None and space.server.lease.releasing
+    assert "моё, дорабатывает задачи (2)" in await tools["status"].call({})
+    with pytest.raises(Exception) as e:
+        await tools["exit"].call({})                                    # в обычной среде выходить некуда
+    assert "не в окружении" in str(e.value)
+
+
+async def test_status_lists_free_busy_and_afk_spaces_separately(space):
+    ad = adapter_for(space)
+    await ad.refresh()
+    mgr = manager_for(ad, space.conns)
+    tools = {t.name: t for t in _workspace_tools(mgr)}
+    status = await tools["status"].call({})
+    assert status.startswith("Фокус: среда «Ассистент»") and "Свободные среды" in status and "свободно" in status
+    assert "AFK" not in status.split("Свободные среды")[0]

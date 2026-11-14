@@ -396,24 +396,60 @@ def _why_no_workspace(workspaces, modules, ws: str) -> str:
 
 
 def _workspace_tools(workspaces, modules=None) -> list[Tool]:
-    """ТЗ 32, WS-5/WS-10: сменить среду агента и узнать текущую. Вход в среду модуля идёт только по импульсу: по просьбе
-    пользователя (риск auto, причина `user`) или по самоимпульсу из размышления (причина `self`, перед входом обычное разрешение)."""
+    """ТЗ 32, WS-5/WS-10/WS-16 и docs/WORKSPACE_CONTRACT.md (раздел 7): `workspace.enter` (занять окружение), `workspace.afk`
+    (отойти, не отпуская), `workspace.exit` (выйти и отпустить) и `workspace.status`. Вход в среду модуля идёт только по импульсу:
+    по просьбе пользователя (риск auto, причина `user`) или по самоимпульсу из размышления (причина `self`, перед входом обычное
+    разрешение). Фокус один, закреплённых за агентом окружений может быть несколько (остальные в AFK)."""
     from services.reflection import origin as impulse_origin
     from services.spaces import model as dom
 
     def reason() -> str:
         return dom.Reason.SELF if impulse_origin.current() == impulse_origin.SELF else dom.Reason.USER
 
-    async def switch(a):
+    def title_of(ws: str) -> str:
+        spec = workspaces.specs.get(ws)
+        return spec.title if spec is not None else ws
+
+    async def enter(a):
         ws = str(a["workspace"])
         workspaces.sync()
+        if ws == dom.ASSISTANT:
+            raise ToolError("assistant это обычная среда без окружения: отойти из окружения - workspace.afk, закончить в нём - workspace.exit",
+                            code="bad_request")
         if ws not in workspaces.specs:
             raise ToolError(_why_no_workspace(workspaces, modules, ws), code="unavailable")
         res = await workspaces.enter(ws, reason(), str(a.get("goal") or "")[:200])
         if not res.get("ok"):
-            raise ToolError(str(res.get("error") or "не удалось сменить среду"), code="unavailable")
+            raise ToolError(str(res.get("error") or "не удалось войти в среду"), code="unavailable")
         spec = workspaces.specs[ws]
-        return f"сейчас в среде «{spec.title}»" + (" (уже была в ней)" if res.get("already") else "")
+        return f"сейчас в среде «{spec.title}»" + (" (уже была за ней, аренда прежняя)" if res.get("already") else "")
+
+    def target(a) -> str:
+        """Окружение из аргумента или текущее; в обычной среде без окружения указывать нечего."""
+        ws = str(a.get("workspace") or "").strip() or workspaces.current
+        if ws == dom.ASSISTANT:
+            raise ToolError("сейчас ты не в окружении: выходить некуда (закреплённые за тобой смотри в workspace.status)", code="bad_request")
+        return ws
+
+    async def exit_(a):
+        ws = target(a)
+        res = await workspaces.exit(ws, reason())
+        if not res.get("ok"):
+            raise ToolError(str(res.get("error") or "не удалось выйти из среды"), code="unavailable")
+        if res.get("releasing"):
+            return (f"вышла из среды «{title_of(ws)}»; в ней ещё идут операции" + (f" ({res['jobs']})" if res.get("jobs") else "") + f", аренда вернётся, когда они закончатся, "
+                    "новые начинать нельзя")
+        return f"вышла из среды «{title_of(ws)}», аренда возвращена"
+
+    async def afk(a):
+        ws = target(a)
+        res = await workspaces.afk(ws, reason())
+        if not res.get("ok"):
+            raise ToolError(str(res.get("error") or "не удалось отойти из среды"), code="unavailable")
+        if res.get("already"):
+            return f"среда «{title_of(ws)}» уже в AFK: за тобой, фокуса на ней нет"
+        return (f"отошла из среды «{title_of(ws)}» (AFK): аренда и рабочая область остаются за тобой, операции идут дальше, "
+                f"вернуться: workspace.enter({ws})")
 
     def danger(a) -> str | None:
         workspaces.sync()
@@ -441,34 +477,68 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
         if refresh is not None:
             await refresh()                                   # состояние аренды читается у сервисов, ядро его не хранит
         snap = workspaces.snapshot()
-        line = f"Сейчас в среде «{snap['title']}» (причина: {snap['reason']})" + (f", цель: {snap['goal']}" if snap["goal"] else "") + "."
-        rows = []
+        held = {h["id"]: h for h in snap.get("held", [])}
+        if snap["current"] in held:
+            line = f"Фокус: среда «{snap['title']}» (причина: {snap['reason']})" + (f", цель: {snap['goal']}" if snap["goal"] else "") + "."
+        else:
+            line = f"Фокус: среда «{snap['title']}» (окружения нет, обычный разговор)."
+        afk_rows, free_rows, busy_rows = [], [], []
         for x in snap["available"]:
-            if x["id"] == snap["current"] or x["id"] == "sleep":
+            if x["id"] in (snap["current"], "sleep", dom.ASSISTANT):
                 continue
+            lease = x.get("lease")
             parts = [f"«{x['title']}» ({x['id']})"]
+            if x["id"] in held:                                # закреплено за ней, но фокуса нет (AFK)
+                if held[x["id"]].get("goal"):
+                    parts.append(f"цель: {held[x['id']]['goal']}")
+                parts.append(lease_text(lease) or "аренда за мной")
+                parts.append("вернуться: workspace.enter, закончить: workspace.exit")
+                afk_rows.append("; ".join(p for p in parts if p))
+                continue
             if x.get("purpose"):
                 parts.append(f"для чего: {x['purpose']}")
             if x.get("when_to_use"):
                 parts.append(f"когда переходить: {x['when_to_use']}")
-            state = lease_text(x.get("lease"))
+            state = lease_text(lease)
             parts.append(state or ("" if x["connected"] else "не подключена"))
-            rows.append("; ".join(p for p in parts if p))
-        return line + (" Другие среды:" + "".join("\n- " + r for r in rows) if rows else "")
+            row = "; ".join(p for p in parts if p)
+            (busy_rows if lease and lease.get("state") == "busy" else free_rows).append(row)
+        out = [line]
+        for title, rows in (("Закреплены за тобой, в AFK (аренда и работа продолжаются)", afk_rows),
+                            ("Свободные среды", free_rows), ("Заняты другими", busy_rows)):
+            if rows:
+                out.append(title + ":" + "".join("\n- " + r for r in rows))
+        return "\n".join(out)
 
     ids = _WorkspaceIds(workspaces, modules)
+    ws_param = {"type": "string", "enum": ids, "required": False,
+                "description": "id окружения; без него текущее (закреплённые за тобой смотри в workspace.status)"}
     return [
-        Tool(id="workspace.switch", env="core", name="switch",
-             description="Сменить среду агента: войти в игру («зайди в колонию», «давай поиграем»), в монтаж («давай монтировать») "
-                         "или вернуться в обычную среду assistant. Какие есть пространства, для чего они и свободны ли, показывает workspace.status. В среду модуля входят только по просьбе или собственному решению, "
-                         "запуск игры сам её не включает. Если модуль не подключён или выключен, инструмент вернёт причину: перескажи её как есть.",
-             params={"workspace": {"type": "string", "enum": ids, "description": "id среды: assistant, rimworld, montage"},
+        Tool(id="workspace.enter", env="core", name="enter",
+             description="Занять окружение и начать в нём работать: войти в игру («зайди в колонию», «давай поиграем») или в монтаж "
+                         "(«давай монтировать»). Берёт его в аренду, переводит на него фокус; повторный вход в окружение, которое уже за тобой "
+                         "(после workspace.afk), возвращает в него без новой аренды. Прежнее окружение не отпускается: уходит в AFK. "
+                         "Какие есть пространства, для чего они и свободны ли, показывает workspace.status. В окружение входят только по просьбе "
+                         "или собственному решению, запуск игры сам его не включает. Если модуль не подключён или выключен, инструмент вернёт "
+                         "причину: перескажи её как есть.",
+             params={"workspace": {"type": "string", "enum": ids, "description": "id окружения: rimworld, montage"},
                      "goal": {"type": "string", "required": False, "description": "цель входа одной фразой"}},
-             risk="auto", danger=danger, call=switch, availability="always",
+             risk="auto", danger=danger, call=enter, availability="always",
              keywords=("зайди", "заходи", "войди", "давай поиграем", "поиграем", "в колонию", "в игру", "давай монтировать",
                        "вернись", "среда")),
+        Tool(id="workspace.exit", env="core", name="exit",
+             description="Закончить работу в окружении совсем: выйти и ОТПУСТИТЬ аренду. Если там ещё идут операции, ждёт их конца (аренда "
+                         "вернётся сама, новые начинать нельзя). Не для долгой операции, которую ты ждёшь: тогда workspace.afk.",
+             params={"workspace": ws_param}, risk="auto", call=exit_, availability="always",
+             keywords=("выйди", "выходи", "закончила", "хватит играть", "закончили монтаж", "вернись", "среда")),
+        Tool(id="workspace.afk", env="core", name="afk",
+             description="Отойти из окружения, не отпуская: фокус снят, аренда и рабочая область остаются за тобой, операции идут (например, "
+                         "долгий рендер). Итог придёт событием, вернуться можно workspace.enter. Закончила совсем: workspace.exit.",
+             params={"workspace": ws_param}, risk="auto", call=afk, availability="always",
+             keywords=("отойди", "afk", "пока рендерится", "жди рендер", "среда")),
         Tool(id="workspace.status", env="core", name="status",
-             description="В какой среде сейчас агент, почему и какие есть другие. Для вопросов «чем ты занята», «где ты сейчас».",
+             description="В какой среде фокус агента, какие окружения закреплены за ней (в AFK), какие свободны и какие заняты другими. "
+                         "Для вопросов «чем ты занята», «где ты сейчас».",
              params={}, risk="auto", call=status, informative=True, availability="always",
              keywords=("чем занята", "где ты", "в какой среде", "что делаешь", "среда")),
     ]

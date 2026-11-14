@@ -356,7 +356,7 @@ def test_result_ok_and_error():
 
 def test_error_codes_are_closed_set():
     assert set(P.ERROR_CODES) == {"bad_request", "unknown", "denied", "unavailable", "timeout", "cancelled",
-                                  "internal"}
+                                  "internal", "busy", "invalid"}
     assert P.result_error("m-1", "weird", "x").body["error"]["code"] == "internal"
     assert ToolError("x", code="weird").code == "internal"
     assert ToolError("x").code in P.ERROR_CODES

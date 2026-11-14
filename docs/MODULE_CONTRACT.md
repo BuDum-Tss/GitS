@@ -2,7 +2,7 @@
 
 Файл создан скриптом `agent/interfaces/workspace/tools/gen_contract_doc.py` из `agent/interfaces/workspace/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `agent/interfaces/workspace/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора участника шины: `docs/MODULES.md`, код контракта: `agent/interfaces/workspace/gits_sdk/contract/`.
 
-Версия протокола `PROTOCOL = 3`, версия контракта `3.1`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
+Версия протокола `PROTOCOL = 3`, версия контракта `3.2`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
 ## Версии и совместимость
 
@@ -31,6 +31,7 @@
 - `2.0`: фаза 4 переименования, PROTOCOL 2: удалены алиасы фаз 1-3 (ModuleClient, module_id в hello и в ответе ядра, адрес /module/ws, переменные GITS_MODULE_ID и GITS_MODULE_TOKEN, раздел modules: в peers.yaml, /api/modules); role в манифесте и hello и ownership у workspace обязательны (без них reject). Запросы workspace.enter, workspace.exit, workspace.resume без изменений
 - `3.0`: PROTOCOL 3, только pi: удалены запросы core.claude_usage и core.claude.locate, тема battery и поле battery в welcome (батарейки Claude нет), клиентские методы claude_usage, claude_locate, поле client.battery и модуль claude_path
 - `3.1`: core.tts и tts.synthesize: необязательное поле volume_path в ответе (файл относительно папки персонажа: участники в контейнерах обмениваются файлами через общий том персонажа, `shared/tts/`)
+- `3.2`: рабочее окружение агента (docs/WORKSPACE_CONTRACT.md): необязательные поля блока workspace манифеста brief, skills, area, commands, site (неверные поля не отклоняют модуль, а попадают в предупреждения); запрос workspace.afk (выход без отпускания аренды, тело как у workspace.exit); ответ на workspace.enter может нести brief, skills, units, site
 
 Устаревшее: `emotion` до 2027-01-01, заменить на тег стикера в тексте ответа; сообщение игнорируется ядром
 
@@ -880,6 +881,10 @@
 |---|---|---|---|---|
 | `ok` | boolean | нет | - | принято |
 | `error` | string | нет | - | причина отказа |
+| `brief` | string | нет | до 400 симв. | вводная для агента (1-3 предложения), контракт 3.2 |
+| `skills` | array[object] | нет | - | навыки окружения: [{name, description}], контракт 3.2 |
+| `units` | array[object] | нет | - | открытые рабочие единицы: [{id, title, state}], контракт 3.2 |
+| `site` | object | нет | - | сайт окружения: {url}, контракт 3.2 |
 
 Пример:
 
@@ -923,6 +928,41 @@
 {
   "reason": "done",
   "force": true,
+  "checkpoint": true
+}
+```
+
+### `workspace.afk`
+
+Ядро выводит агента из среды без отпускания: фокус снимается, окружение остаётся за ней, операции и сайт продолжают работать (контракт 3.2). Тело и ответ те же, что у workspace.exit.
+
+направление: core->module, вид: request, статус: **stable**, с версии 3.2.
+
+Коды ошибок: `unknown`, `unavailable`, `internal`.
+
+Тело:
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `reason` | string | нет | - | причина |
+| `task_id` | string | нет | - | id задачи |
+| `force` | boolean | нет | - | принудительно |
+| `event_id` | string | нет | - | id события |
+| `checkpoint` | boolean | нет | - | нужен checkpoint |
+
+Ответ (`result.value`):
+
+| Поле | Тип | Обязательно | Ограничения | Описание |
+|---|---|---|---|---|
+| `ok` | boolean | нет | - | принято |
+| `checkpoint` | object | нет | - | состояние для возобновления |
+| `error` | string | нет | - | причина отказа |
+
+Пример:
+
+```json
+{
+  "reason": "render",
   "checkpoint": true
 }
 ```

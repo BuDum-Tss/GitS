@@ -400,7 +400,7 @@ window.ARCH_DATA = {
      "new": false,
      "do": "в какой среде агент сейчас: assistant, sleep и среды окружений из их манифестов (rimworld, montage); причина, цель, история. В среду окружения входят только по импульсу (сообщение, самоимпульс); события чужих сред среду не переключают, они идут в очередь речи и сводку",
      "out": "Workspace",
-     "now": "services/spaces/manager.py (ТЗ 32): поверх WorkspaceLink, сон приходит от планировщика сна; инструменты workspace.switch и workspace.status, признак самоимпульса services/reflection/origin.py"
+     "now": "services/spaces/manager.py (ТЗ 32): поверх WorkspaceLink, сон приходит от планировщика сна; инструменты workspace.enter / exit / afk и workspace.status, признак самоимпульса services/reflection/origin.py"
     },
     {
      "id": "wsdom",
@@ -1106,7 +1106,7 @@ window.ARCH_DATA = {
    "resident",
    "wsm",
    "ctl",
-   "workspace.switch"
+   "workspace.enter / exit / afk"
   ],
   [
    "fmgr",

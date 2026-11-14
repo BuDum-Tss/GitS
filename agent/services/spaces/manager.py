@@ -7,6 +7,10 @@
 Среды модулей объявляет манифест (поле `workspace`, `register_manifest`). События чужих сред среду не переключают: они идут
 в обычную очередь речи и сводку. Конец задачи, блокировка и отключение модуля возвращают в `assistant` (`check`).
 
+Фокус один (`current`), а закреплённых за агентом окружений модулей может быть несколько (`held`): `enter` берёт окружение и
+переводит фокус, прежнее окружение не отпускается и уходит в AFK; `afk` снимает фокус без отпускания аренды; `exit` отпускает
+(отпускает только он, а также потеря связи с модулем). Правила в `docs/WORKSPACE_CONTRACT.md`, раздел 7.
+
 Среда модуля включается только по импульсу (`user`, `self`) или по критическому сигналу; запуск игры, окно и состояние модуля её не
 включают. `sleep` включает планировщик сна (`on_sleep_state`): если агент в среде модуля, сон идёт фоном и среду не меняет
 (открытый вопрос 2 ТЗ 32). Команды пользователя «ляг спать» пока нет.
@@ -26,10 +30,12 @@ GRACE_S = 5.0                  # после входа статусу модул
 
 Activate = Callable[[str, str], Awaitable[dict]]
 Release = Callable[[str, str, bool], Awaitable[dict]]
+Afk = Callable[[str], Awaitable[dict]]
 
 
 class WorkspaceManager:
     def __init__(self, *, activate: Activate | None = None, release: Release | None = None,
+                 afk: Afk | None = None,
                  interruptible: Callable[[str], bool] = lambda ws: True,
                  connected: Callable[[str], bool] = lambda ws: True,
                  modules_of: Callable[[], Any] = lambda: (),
@@ -38,12 +44,15 @@ class WorkspaceManager:
                  lease_view: Callable[[str], dict | None] = lambda ws: None,
                  now: Callable[[], float] = time.time,
                  on_change: Callable[[dict], None] | None = None,
+                 on_dropped: Callable[[str], None] | None = None,
                  log: Callable[..., None] | None = None):
-        """activate/release - обмен с модулем среды; interruptible(ws) - безопасная ли точка у среды модуля;
+        """activate/release/afk - обмен с модулем среды (afk(module) шлёт `workspace.afk`, аренду не трогает); interruptible(ws) - безопасная ли точка у среды модуля;
         modules_of() - (id, манифест, название) модулей, чьи среды объявлены; connected(ws) - подключён ли модуль; status_of(ws) - status из state модуля (blocked, done);
-        on_change(запись) - после смены среды; log(тип, **поля) - журнал."""
+        on_change(запись) - после смены среды; on_dropped(ws) - закреплённое окружение в AFK потеряно (модуль отключился); log(тип, **поля) - журнал."""
         self.specs: dict[str, dom.WorkspaceSpec] = dict(dom.BUILTIN)
-        self._activate, self._release = activate, release
+        self._activate, self._release, self._afk = activate, release, afk
+        self.held: dict[str, dict] = {}      # закреплённые за агентом окружения модулей (фокус и AFK): id -> {goal, since, afk}
+        self.on_dropped = on_dropped
         self._interruptible, self._connected = interruptible, connected
         self._status_of = status_of
         self._leased, self._lease_view = leased, lease_view
@@ -129,6 +138,7 @@ class WorkspaceManager:
         ok, why = dom.can_exit(cur, self._interruptible(self.current), reason)
         if not ok:
             return {"ok": False, "error": why}
+        already = False
         if spec.kind == dom.KIND_MODULE:
             if not self._connected(ws) and not self._leased(ws):     # общее пространство подключится при аренде
                 return {"ok": False, "error": f"модуль «{spec.title}» не подключён"}
@@ -139,15 +149,80 @@ class WorkspaceManager:
                     if res.get("busy"):
                         out.update(busy=True, holder=res.get("holder"))
                     return out
-        elif cur.kind == dom.KIND_MODULE and self._release is not None:
-            res = await self._release(self.current, reason, reason in dom.Reason.FORCED)
+                already = ws in self.held and bool(res.get("already", True))
+            held = self.held.get(ws) or {"since": self._now()}
+            self.held[ws] = {**held, "goal": goal or held.get("goal", ""), "afk": False}
+        if cur.kind == dom.KIND_MODULE and self.current in self.held:
+            await self._to_afk(self.current)                           # прежнее окружение не отпускается: уходит в AFK
+        self._set(ws, reason, goal)
+        return {"ok": True, "workspace": ws, **({"already": True} if already else {})}
+
+    async def _to_afk(self, ws: str) -> None:
+        """Окружение остаётся за агентом, фокус с него снят: модулю идёт `workspace.afk`."""
+        self.held[ws]["afk"] = True
+        if self._afk is not None:
+            try:
+                await self._afk(ws)
+            except Exception as e:
+                logger.warning(f"AFK «{ws}»: {e}")
+
+    async def afk(self, ws: str | None = None, reason: str = dom.Reason.USER) -> dict:
+        """Снять фокус с окружения, не отпуская аренду (долгая операция идёт, вернуться можно через `enter`).
+        Без аргумента - текущее. Окружение, уже стоящее в AFK, возвращается как `already`."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            ws = ws or self.current
+            if ws not in self.held:
+                return {"ok": False, "error": "это окружение не закреплено за ней" if ws in self.specs else f"нет такой среды: {ws}"}
+            if ws != self.current:
+                return {"ok": True, "already": True, "workspace": ws}
+            ok, why = dom.can_exit(self.specs[ws], self._interruptible(ws), reason)
+            if not ok:
+                return {"ok": False, "error": why}
+            await self._to_afk(ws)
+            self._set(dom.exit_target(reason), reason, "", note="afk")
+            return {"ok": True, "workspace": ws}
+
+    async def exit(self, ws: str | None = None, reason: str = dom.Reason.USER) -> dict:
+        """Выйти из окружения и отпустить аренду (без аргумента - текущее). Идущие операции отпускание ждёт у самого модуля:
+        аренда остаётся в состоянии `releasing` (`releasing: True` в ответе). Отказ модуля без force оставляет всё как есть."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            return await self._exit(ws or self.current, reason)
+
+    async def _exit(self, ws: str, reason: str) -> dict:
+        if ws not in self.held:
+            return {"ok": False, "error": "это окружение не закреплено за ней" if ws in self.specs else f"нет такой среды: {ws}"}
+        is_focus = ws == self.current
+        if is_focus:
+            ok, why = dom.can_exit(self.specs[ws], self._interruptible(ws), reason)
+            if not ok:
+                return {"ok": False, "error": why}
+        if self._release is not None:
+            res = await self._release(ws, reason, reason in dom.Reason.FORCED)
             if not res.get("ok", False) and reason not in dom.Reason.FORCED:
                 return {"ok": False, "error": str(res.get("reason") or res.get("error") or "модуль не отдал среду")}
-        self._set(ws, reason, goal)
-        return {"ok": True, "workspace": ws}
+        del self.held[ws]
+        view = self._lease_view(ws) or {}
+        if view.get("releasing") and self.refresh_leases is not None:
+            try:
+                await self.refresh_leases()                            # сколько операций ещё идёт, знает только сервис
+                view = self._lease_view(ws) or view
+            except Exception as e:
+                logger.warning(f"Состояние аренды «{ws}»: {e}")
+        out = {"ok": True, "workspace": ws, "releasing": bool(view.get("releasing")), "jobs": int(view.get("jobs") or 0)}
+        if is_focus:
+            self._set(dom.exit_target(reason), reason, "", note="exit")
+        elif self._log is not None:
+            self._log("exit", **{"from": ws, "to": self.current, "reason": reason, "goal": "", "note": "exit"})
+        return out
 
     async def leave(self, reason: str = dom.Reason.DONE, goal: str = "") -> dict:
-        """Выйти из текущей среды в базовую (конец задачи, блокировка, отключение, просьба пользователя)."""
+        """Выйти из текущей среды в базовую с отпусканием (кнопка «выйти», просьба пользователя). Из базовой среды выходить некуда."""
+        if self.current in self.held:
+            return await self.exit(self.current, reason)
         return await self.enter(dom.exit_target(reason), reason, goal)
 
     # ── сон: решает планировщик сна (ТЗ 27) ───────────────────────────────────
@@ -160,11 +235,19 @@ class WorkspaceManager:
 
     def on_module_gone(self, peer_id: str) -> None:
         """Модуль отключился: если агент был в его среде, возврат в базовую (checkpoint остаётся у менеджера фокуса)."""
+        was = self.held.pop(peer_id, None)
         if self.current == peer_id:
             self._set(dom.exit_target(dom.Reason.DISCONNECT), dom.Reason.DISCONNECT, "", note=peer_id)
+        elif was is not None and self.on_dropped is not None:
+            try:
+                self.on_dropped(peer_id)                              # окружение в AFK потеряно вместе с модулем
+            except Exception as e:
+                logger.warning(f"Потеря окружения «{peer_id}»: {e}")
 
     def check(self) -> None:
         """Состояние модулей изменилось: модуль текущей среды отключился, сообщил блокировку или конец задачи (`done`) - вернуться в базовую среду. Checkpoint при этом ведёт менеджер фокуса."""
+        for ws in [w for w in self.held if w != self.current and not self._connected(w)]:
+            self.on_module_gone(ws)                                    # закреплённое окружение в AFK: модуль ушёл
         if self.spec().kind != dom.KIND_MODULE:
             return
         if not self._connected(self.current):
@@ -174,8 +257,10 @@ class WorkspaceManager:
             return
         st = self._status_of(self.current) or {}
         if st.get("blocked"):
+            self.held.pop(self.current, None)
             self._set(dom.exit_target(dom.Reason.BLOCKED), dom.Reason.BLOCKED, "", note=str(st["blocked"])[:160])
         elif st.get("done"):
+            self.held.pop(self.current, None)
             self._set(dom.exit_target(dom.Reason.DONE), dom.Reason.DONE, "", note=self.current)
 
     async def run(self, interval: float = 2.0) -> None:
@@ -195,6 +280,8 @@ class WorkspaceManager:
         return {
             "current": self.current, "title": spec.title, "kind": spec.kind, "purpose": spec.purpose,
             "reason": self.reason, "goal": self.goal, "since": self.since,
+            "held": [{"id": ws, "title": self.specs[ws].title if ws in self.specs else ws, "goal": h.get("goal", ""),
+                      "since": h.get("since"), "afk": ws != self.current} for ws, h in self.held.items()],
             "available": [{"id": s.id, "title": s.title, "kind": s.kind, "entry": list(s.entry),
                            "purpose": s.purpose, "when_to_use": s.when_to_use, "lease": self._lease_view(s.id),
                            "connected": s.kind == dom.KIND_BUILTIN or bool(self._connected(s.id))}
