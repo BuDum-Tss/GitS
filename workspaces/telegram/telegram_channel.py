@@ -292,6 +292,28 @@ class TelegramChannel:
             return None
         return self._safe(str(res.get("text", ""))) if res else None
 
+    async def publish_video(self, path: Path, caption: str) -> str:
+        if not self.configured():
+            return "not_configured"
+        if not self.privacy.ready:
+            return "unavailable"
+        if not await self.ensure_verified():
+            return "not_verified"
+        safe = self._safe(caption) if caption else ""
+        if caption and not safe:
+            return "unsafe"
+        if not await self._confirm(f"Видео {path.name}\n{safe}", ASK_TIMEOUT_S):
+            return "declined"
+        try:
+            with path.open("rb") as video:
+                await self._upload("sendVideo", {"chat_id": self._channel, "caption": safe, "supports_streaming": "true"},
+                                   {"video": (path.name, video, "video/mp4")})
+        except (OSError, httpx.HTTPError, RuntimeError):
+            self.log("не удалось загрузить видео Telegram", error=True)
+            return "failed"
+        await self._record_post(safe, f"опубликовано видео {path.name}")
+        return "ok"
+
     async def publish(self, text: str, photos: list[Path], voice: bool | None = None) -> tuple[str, str]:
         """Опубликовать готовое: текст и/или снимки. Статусы как у post_on_request, плюс empty и unavailable."""
         if not self.configured():

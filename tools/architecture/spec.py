@@ -31,10 +31,11 @@ GROUPS = [
          summary="Участники шины: окружения workspace (Telegram, Стример (Twitch и OBS), экран, игра, монтаж), сервисы service (голос, питомец) и чат дашборда. Присылают события и выполняют команды.", out="Event", nodes=[
         N("voice", "voice", "I", "микрофон, VAD, локальное распознавание речи (GigaAM, запасной faster-whisper; говорящих не различает, реплика от владельца); озвучка (ESpeech, запасные Fish Speech и edge-tts)", "Event voice.utterance", "services/voice"),
         N("desk", "desktop", "I", "экран, активность, мышь и клавиатура, Модуль кода", "Event desktop.*, job.update", "workspaces/desktop"),
-        N("tg", "telegram", "I", "бот, её аккаунт, посты канала", "Event telegram.*", "workspaces/telegram"),
+        N("tg", "telegram", "I", "бот, её аккаунт, посты канала; публикация MP4 из каталога core.resources", "Event telegram.*", "workspaces/telegram"),
         N("strm", "streamer", "I", "ведение трансляции: чат и события Twitch, ответы, модерация; сцены, запись и субтитры OBS (obs-websocket)", "Event twitch.*, obs.*", "workspaces/streamer: подсистемы twitch/ и obs/"),
         N("rim", "rimworld", "I", "игровой агент: ходы, комментатор, запись забега", "Event raid, death, colonists", "workspaces/rimworld"),
         N("mont", "montage", "I", "конвейер роликов: Remotion + ffmpeg, агент Claude", "job.update, вопросы", "workspaces/montage"),
+        N("sharedfiles", "Ресурсы персонажа", "I", "общая папка shared и готовые экспорты montage/out доступны через core.resources независимо от фокуса", "идентификаторы файлов", "agent/interfaces/workspace/gits_sdk/resources.py"),
         N("repair", "Самоисправление GitS", "I", "хост читает очередь багов, создаёт GitHub Issues и запускает классический Pi в контейнере; проверяет патч, коммитит и обновляет образы", "коммит и результат в Issue", "docker/self-improvement"),
         N("dash", "Дашборд и чат", "I", "чат, настройки, пульт, оценки", "UserInput как Event", "dashboard/: роутеры по темам (routes_*.py) и презентеры; настройки через SettingsProvider; схема потока данных (services/tracing/flow_trace.py, services/tracing/flow_spec.py, /api/flow; ошибки GLiNER, Claude и выходов отдельно; настройка «Только ядро»)"),
     ]),
@@ -131,6 +132,8 @@ OWNER = {n["id"]: g["id"] for g in GROUPS for n in g["nodes"]}
 BYID = {g["id"]: g for g in GROUPS}
 
 EDGES = [
+    ("mont", "sharedfiles", "flow", "готовое видео", None),
+    ("tg", "sharedfiles", "r", "MP4 для публикации", None),
     ("exec", "repair", "flow", "core.bug_report", None),
     ("voice", "hub", "flow", "Event", None), ("desk", "hub", "flow", None, None), ("tg", "hub", "flow", None, None), ("strm", "hub", "flow", None, None),
     ("hub", "preg", "use", "кто подключён", None), ("rim", "hub", "flow", None, None), ("mont", "hub", "flow", "job.update", None), ("dash", "hub", "flow", "UserInput", None),

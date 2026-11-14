@@ -54,6 +54,34 @@ def default_memory_dir() -> Path:
     return folder / "memory" if folder is not None else Path("./memory")
 
 
+def shared_catalog(query: str = "") -> list[str]:
+    """Файлы обмена и готовые экспорты монтажа текущего персонажа."""
+    files = []
+    for prefix, root in _shared_roots().items():
+        for path in root.iterdir() if root.is_dir() else ():
+            identifier = f"{prefix}/{path.name}"
+            if query.casefold() in identifier.casefold() and shared_file(identifier):
+                try:
+                    files.append((path.stat().st_mtime, identifier))
+                except FileNotFoundError:
+                    continue
+    return [identifier for _, identifier in sorted(files, reverse=True)]
+
+
+def _shared_roots() -> dict[str, Path]:
+    home = character_home() or character_dir()
+    return {"shared": home / "shared", "montage": home / "montage" / "out"}
+
+
+def shared_file(identifier: str) -> Path | None:
+    prefix, _, name = identifier.partition("/")
+    root = _shared_roots().get(prefix)
+    if root is None or not name or name.startswith(".") or "/" in name or "\\" in name or ":" in name:
+        return None
+    path = root / name
+    return path if path.is_file() and not path.is_symlink() else None
+
+
 def card_id(folder: Path) -> str | None:
     """id из core/character.yaml папки или None."""
     try:

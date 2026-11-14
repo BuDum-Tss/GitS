@@ -17,6 +17,7 @@ from services.tasks.service import TaskError
 from services.tasks import model as task_dom
 from .base import Environment, Tool, ToolError
 from .bug_report import repair_status, report_bug
+from gits_sdk.resources import shared_catalog
 
 
 # настройки, которые модули меняют инструментом core.set_setting (TG-13): белый список, остальное только человек.
@@ -700,6 +701,10 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
     ]
 
     workspace_tools = [] if workspaces is None else _workspace_tools(workspaces, modules)     # ТЗ 32: среды агента
+    async def resources(a):
+        found = await asyncio.to_thread(shared_catalog, a.get("query") or "")
+        return "\n".join(found[:8]) or "Подходящих общих файлов пока нет."
+
     repair_tools = []
     if os.environ.get("GITS_REPAIR_QUEUE"):
         repair_tools.append(_tool(
@@ -725,6 +730,10 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
         description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "
                     "«не отвлекай / выдели» и сводка накопившегося. Общие настройки Telegram для модулей.",
         tools=attention_tools + workspace_tools + repair_tools + [
+            _tool("core", "resources", "Общие файлы персонажа и готовые ролики монтажа. Доступно в любом окружении. "
+                  "Идентификатор MP4 можно передать в telegram.publish_video после перехода в Telegram.",
+                  {"query": {"type": "string", "required": False, "description": "часть имени файла или группы"}},
+                  resources, informative=True, keywords=("ресурсы", "файлы", "ролик", "видео", "экспорт")),
             _tool("core", "jobs", "Перечень задач всех модулей: модуль, название, состояние, стадия, прогресс. "
                   "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",
                   {}, jobs, informative=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),

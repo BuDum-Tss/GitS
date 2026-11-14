@@ -30,6 +30,10 @@ _VOICE = {"type": "boolean", "required": False,
 _LIMIT = "сколько {}, по умолчанию {}"
 
 TOOLS = [
+    _tool("publish_video", "Опубликовать готовый MP4 в Telegram-канал. Идентификатор файла возьми из core.resources.",
+          {"resource": {"type": "string", "description": "идентификатор из core.resources"},
+           "caption": {"type": "string", "required": False, "description": "подпись к видео, до 1024 символов"}},
+          risk="public", self_confirming=True, informative=True, timeout_s=120, keywords=("видео", "ролик", "опубликуй")),
     _tool("post", "Написать и опубликовать пост в Telegram-канал на заданную тему (если тема не названа, приветственный пост).",
           {"topic": {"type": "string", "description": "о чём пост, своими словами пользователя", "required": False},
            "voice": dict(_VOICE)},

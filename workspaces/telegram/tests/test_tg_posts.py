@@ -333,3 +333,22 @@ async def test_every_mins_falls_back_to_environment(tmp_path, monkeypatch):
         assert rig.mod.channel.every_mins() == 60                                # настройка не менялась: запасной вариант
     async with Rig(tmp_path / "c", monkeypatch, module_settings={"every_mins": 90}) as rig:
         assert rig.mod.channel.every_mins() == 90                                # настройка модуля важнее переменной
+
+async def test_publish_montage_video_by_shared_resource(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHARACTER_HOME", str(tmp_path))
+    out = tmp_path / "montage" / "out"
+    out.mkdir(parents=True)
+    (out / "final.mp4").write_bytes(b"mp4 fixture")
+    async with Rig(tmp_path, monkeypatch) as rig:
+        received = []
+
+        async def upload(method, data, files):
+            received.append((method, data["caption"], files["video"][1].read()))
+            return {"message_id": 1}
+
+        rig.mod.channel._upload = upload
+        result = await rig.core.call_tool("publish_video", {"resource": "montage/final.mp4", "caption": "Тест"})
+        assert result["published"]
+        assert received == [("sendVideo", "Тест", b"mp4 fixture")]
+        with pytest.raises(ToolError):
+            await rig.core.call_tool("publish_video", {"resource": "montage/../final.mp4"})

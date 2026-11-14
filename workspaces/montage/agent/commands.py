@@ -411,5 +411,10 @@ class Commands:
         target = out_dir / f"final_{platform}.mp4"
         if target.exists():
             target = out_dir / f"final_{platform}_{job_id}.mp4"
-        shutil.copyfile(final, target)
+        pending = target.with_name(f".{target.name}.{job_id}.tmp")
+        try:
+            shutil.copyfile(final, pending)
+            pending.replace(target)
+        finally:
+            pending.unlink(missing_ok=True)
         return target

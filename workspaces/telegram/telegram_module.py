@@ -292,6 +292,24 @@ class TelegramModule:
             await asyncio.to_thread(ch.draft.clear)
             return "опубликовано из черновика" + (f" (со снимками: {len(photos)})" if photos else "") + (f": «{text}»" if text else "")
 
+        @c.tool("publish_video")
+        async def publish_video(args):
+            from gits_sdk.resources import shared_file
+
+            path = await asyncio.to_thread(shared_file, _text_arg(args, "resource"))
+            if path is None or path.suffix.lower() != ".mp4":
+                raise ToolError("Нужен MP4 из core.resources.", code="bad_request")
+            caption = str(args.get("caption") or "").strip()
+            if len(caption) > 1024:
+                raise ToolError("Подпись длиннее 1024 символов.", code="bad_request")
+            if await asyncio.to_thread(lambda: path.stat().st_size) > 50_000_000:
+                raise ToolError("Видео превышает лимит Telegram Bot API 50 МБ.", code="bad_request")
+            status = await ch.publish_video(path, caption)
+            if status != "ok":
+                msg, code = POST_FAILURES.get(status, ("публикация не удалась", "unavailable"))
+                raise ToolError(msg, code=code)
+            return {"published": True, "resource": args["resource"]}
+
         # ── её аккаунт ──
         @c.tool("chats")
         async def chats(args):

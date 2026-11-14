@@ -33,7 +33,7 @@ window.ARCH_DATA = {
      "t": "telegram",
      "tag": "I",
      "new": false,
-     "do": "бот, её аккаунт, посты канала",
+     "do": "бот, её аккаунт, посты канала; публикация MP4 из каталога core.resources",
      "out": "Event telegram.*",
      "now": "workspaces/telegram"
     },
@@ -63,6 +63,15 @@ window.ARCH_DATA = {
      "do": "конвейер роликов: Remotion + ffmpeg, агент Claude",
      "out": "job.update, вопросы",
      "now": "workspaces/montage"
+    },
+    {
+     "id": "sharedfiles",
+     "t": "Ресурсы персонажа",
+     "tag": "I",
+     "new": false,
+     "do": "общая папка shared и готовые экспорты montage/out доступны через core.resources независимо от фокуса",
+     "out": "идентификаторы файлов",
+     "now": "agent/interfaces/workspace/gits_sdk/resources.py"
     },
     {
      "id": "repair",
@@ -709,6 +718,18 @@ window.ARCH_DATA = {
   }
  ],
  "edges": [
+  [
+   "mont",
+   "sharedfiles",
+   "flow",
+   "готовое видео"
+  ],
+  [
+   "tg",
+   "sharedfiles",
+   "r",
+   "MP4 для публикации"
+  ],
   [
    "exec",
    "repair",

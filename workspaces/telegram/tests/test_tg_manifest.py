@@ -4,7 +4,7 @@ from tg_rig import Rig
 from gits_sdk import protocol as P
 from manifest import MANIFEST, build_manifest
 
-TABLE = {"post", "draft_show", "draft_write", "draft_edit", "draft_append", "draft_replace", "draft_attach",
+TABLE = {"post", "publish_video", "draft_show", "draft_write", "draft_edit", "draft_append", "draft_replace", "draft_attach",
          "draft_detach", "draft_clear", "draft_publish", "chats", "read", "unread", "send", "set_periodic",
          "set_after_run"}
 
@@ -37,7 +37,7 @@ def test_tool_table():
         assert t[name]["risk"] == "auto" and t[name]["informative"] is True
     for name in ("set_periodic", "set_after_run"):
         assert t[name]["risk"] == "auto"
-    for name in TABLE - {"post", "draft_publish", "send"}:
+    for name in TABLE - {"post", "publish_video", "draft_publish", "send"}:
         assert t[name]["risk"] == "auto"
 
 
