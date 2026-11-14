@@ -24,8 +24,6 @@
   .bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>
   <script src="/static/ui/vendor/cytoscape.min.js"></script>
-  <script src="/static/ui/architecture-data.js"></script>
-  <script src="/static/ui/architecture.js"></script>
 </head>
 <body class="bg-base-200">
 <div class="flex flex-col h-full">
@@ -82,11 +80,10 @@
       <div role="tablist" class="tabs tabs-boxed bg-base-100 shadow-sm">
         <a role="tab" class="tab tab-active" data-tab="status">Состояние</a>
         <a role="tab" class="tab" data-tab="memory">Память</a>
-        <a role="tab" class="tab" data-tab="thoughts" title="Журнал мыслей и напоминания себе">Мысли</a>
         <a role="tab" class="tab" data-tab="workspaces" title="Окружения: рабочие места агента (игры, мессенджеры, монтаж, компьютер)">Окружения</a>
         <a role="tab" class="tab" data-tab="services" title="Сервисы: голос, питомец, классификатор, синтез речи">Сервисы</a>
         <a role="tab" class="tab" data-tab="events">События</a>
-        <a role="tab" class="tab" data-tab="arch" title="Схема архитектуры ядра">Схема</a>
+        <a role="tab" class="tab" data-tab="resources">Ресурсы</a>
         <a role="tab" class="tab" data-tab="settings" title="Настройки" aria-label="Настройки" style="flex:0 0 auto;width:2rem;padding:0;margin-left:auto"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
       </div>
 
@@ -216,10 +213,11 @@
             <a role="tab" class="tab" data-mtab="plan">Цели <span id="mt-n-plan" class="opacity-60 ml-1 text-xs"></span></a>
             <a role="tab" class="tab" data-mtab="eps">Эпизоды</a>
             <a role="tab" class="tab" data-mtab="facts">Факты</a>
+            <a role="tab" class="tab" data-mtab="thoughts">Мысли</a>
           </div>
           <details id="mem-howto" class="rounded-box border border-base-300 p-3">
             <summary class="cursor-pointer font-medium">Как устроена память</summary>
-            <p class="text-sm opacity-80 mt-2">Память состоит из четырёх частей: профиль владельца (с его пожеланиями к ней), цели и планы, эпизоды из жизни и важные факты. В память идёт только то,
+            <p class="text-sm opacity-80 mt-2">Здесь хранятся профиль владельца, цели и планы, эпизоды, важные факты и журнал мыслей. В память идёт только то,
               что она сама сочла важным; мелочь и сиюминутное не записываются. Всё хранится локально, в папке памяти персонажа; наружу ничего не уходит.</p>
             <div class="grid gap-2 mt-2 md:grid-cols-2">
                 <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
@@ -281,6 +279,20 @@
             <div id="diary" class="space-y-2 text-sm"></div>
           </div>
           </div>
+          <div id="mem-thoughts" data-mpane="thoughts" class="hidden space-y-4">
+          <div>
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="font-medium">Журнал мыслей</div>
+              <span id="thoughts-n" class="badge badge-ghost badge-sm"></span>
+            </div>
+            <div class="text-xs opacity-70 mt-1">Её размышления по событиям и напоминаниям. Вслух они не звучат: говорит она только через очередь речи и не при «не отвлекать».</div>
+            <div id="thoughts-list" class="space-y-2 mt-2"></div>
+          </div>
+          <div>
+            <div class="font-medium">Напоминания себе</div>
+            <div id="reminders-list" class="space-y-1 mt-2 text-sm"></div>
+          </div>
+          </div>
           <div data-mpane="facts">
           <div>
             <div class="font-medium mb-2">Отношения</div>
@@ -320,24 +332,6 @@
         </div>
       </div>
 
-      <!-- Мысли (ТЗ 30, IMP-6): журнал размышлений и напоминания, которые она назначила себе -->
-      <div id="tab-thoughts" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
-        <div class="card-body gap-4">
-          <div>
-            <div class="flex flex-wrap items-center gap-3">
-              <div class="font-medium">Журнал мыслей</div>
-              <span id="thoughts-n" class="badge badge-ghost badge-sm"></span>
-            </div>
-            <div class="text-xs opacity-70 mt-1">Её размышления по событиям и напоминаниям. Вслух они не звучат: говорит она только через очередь речи и не при «не отвлекать».</div>
-            <div id="thoughts-list" class="space-y-2 mt-2"></div>
-          </div>
-          <div>
-            <div class="font-medium">Напоминания себе</div>
-            <div id="reminders-list" class="space-y-1 mt-2 text-sm"></div>
-          </div>
-        </div>
-      </div>
-
       <!-- Окружения и сервисы (один набор карточек, две вкладки по роли участника шины) и задачи -->
       <div id="tab-peers" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-4">
@@ -353,8 +347,15 @@
 
       <!-- Настройки -->
       <!-- Схема архитектуры ядра: Cytoscape, данные из static/ui/architecture-data.js (создаёт tools/architecture/build.py) -->
-      <div id="tab-arch" class="card bg-base-100 shadow-sm min-h-0 hidden flex flex-col">
-        <div id="arch-root" class="card-body gap-2 p-3 min-h-0 flex flex-col flex-1"></div>
+      <div id="tab-resources" class="card bg-base-100 shadow-sm min-h-0 hidden flex flex-col">
+        <div class="card-body scroll-y">
+          <div class="flex gap-2 items-center">
+            <button id="resources-up" class="btn btn-sm" type="button" disabled>Вверх</button>
+            <span id="resources-path" class="font-mono">/</span>
+            <button id="resources-refresh" class="btn btn-ghost btn-sm" type="button">Обновить</button>
+          </div>
+          <ul id="resources-list" class="menu w-full" aria-live="polite"></ul>
+        </div>
       </div>
 
       <div id="tab-settings" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
@@ -458,21 +459,57 @@ function showMemPane(name) {
   document.querySelectorAll('[data-mtab]').forEach(t => t.classList.toggle('tab-active', t.dataset.mtab === name));
   document.querySelectorAll('[data-mpane]').forEach(p => p.classList.toggle('hidden', p.dataset.mpane !== name));
 }
-document.querySelectorAll('[data-mtab]').forEach(t => t.onclick = () => showMemPane(t.dataset.mtab));
+document.querySelectorAll('[data-mtab]').forEach(t => t.onclick = () => { showMemPane(t.dataset.mtab); loadThoughts().catch(() => {}); });
 let savedPane = 'user'; try { savedPane = localStorage.getItem('memPane') || 'user'; } catch (e) {}
-showMemPane(['user', 'plan', 'eps', 'facts'].includes(savedPane) ? savedPane : 'user');
+showMemPane(['user', 'plan', 'eps', 'facts', 'thoughts'].includes(savedPane) ? savedPane : 'user');
 
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('tab-active', t === tab));
   const paneOf = n => (n === 'workspaces' || n === 'services') ? 'peers' : n;
-  ['status', 'memory', 'thoughts', 'peers', 'events', 'arch', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== paneOf(tab.dataset.tab)));
+  ['status', 'memory', 'peers', 'events', 'resources', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== paneOf(tab.dataset.tab)));
   if (tab.dataset.tab === 'status') { loadModes().catch(() => {}); loadWorkspace().catch(() => {}); loadBuffer().catch(() => {}); }
   if (paneOf(tab.dataset.tab) === 'peers') { setPeerRole(tab.dataset.tab === 'services' ? 'service' : 'workspace'); loadModules().catch(() => {}); }
-  if (tab.dataset.tab === 'thoughts') { loadThoughts().catch(() => {}); }
-  if (tab.dataset.tab === 'memory') { loadFacts().catch(() => {}); }
-  if (tab.dataset.tab === 'arch') { showArch(); }
+  if (tab.dataset.tab === 'memory') { loadFacts().catch(() => {}); loadThoughts().catch(() => {}); }
+  if (tab.dataset.tab === 'resources') { loadResources(''); }
 });
+
+let resourceFolder = '';
+let resourceRequest = 0;
+async function loadResources(folder) {
+  const request = ++resourceRequest;
+  resourceFolder = folder;
+  $('resources-path').textContent = '/' + folder;
+  $('resources-up').disabled = !folder;
+  const list = $('resources-list');
+  list.textContent = 'Загрузка…';
+  try {
+    const response = await fetch('/api/resources?' + new URLSearchParams({folder}));
+    if (!response.ok) throw new Error('resources');
+    const entries = await response.json();
+    if (request !== resourceRequest) return;
+    list.textContent = entries.length ? '' : 'Папка пуста';
+    for (const entry of entries) {
+      const row = document.createElement('li');
+      const item = document.createElement(entry.directory ? 'button' : 'a');
+      item.textContent = entry.name + (entry.directory ? '/' : '');
+      if (entry.directory) {
+        item.type = 'button';
+        item.onclick = () => loadResources(entry.path);
+      } else {
+        item.href = '/api/resource-file?' + new URLSearchParams({path: entry.path});
+        item.target = '_blank';
+        item.rel = 'noopener noreferrer';
+      }
+      row.append(item);
+      list.append(row);
+    }
+  } catch {
+    if (request === resourceRequest) list.textContent = 'Не удалось открыть папку';
+  }
+}
+$('resources-up').onclick = () => loadResources(resourceFolder.split('/').slice(0, -1).join('/'));
+$('resources-refresh').onclick = () => loadResources(resourceFolder);
 
 // ── графы на Cytoscape.js: цвета берутся из темы DaisyUI, поэтому графы вписаны в интерфейс ──
 const THEME = {key: '', c: {}};
@@ -524,12 +561,6 @@ function syncGraph(cy, els) {
 function fitGraph(cy) { cy.fitting = true; cy.resize(); cy.fit(undefined, 28); cy.fitting = false; }
 
 // ── схема архитектуры ядра (вкладка «Схема»): граф монтируется при первом показе, цвета берутся из темы ──
-const ARCHV = {api: null};
-function showArch() {
-  if (!window.ARCH) { $('arch-root').innerHTML = '<div class="p-4 opacity-60">Не загрузилась схема (static/ui/architecture.js).</div>'; return; }
-  if (!ARCHV.api) ARCHV.api = ARCH.mount($('arch-root'), {colors: () => themeColors()});
-  else setTimeout(() => ARCHV.api.fit(), 0);
-}
 
 // ── фокус среды ──
 const MD = {data: null, caps: [], bound: false};
@@ -1292,7 +1323,7 @@ function thoughtCard(t) {
   </div>`;
 }
 async function loadThoughts() {
-  if ($('tab-thoughts').classList.contains('hidden')) return;
+  if ($('tab-memory').classList.contains('hidden') || $('mem-thoughts').classList.contains('hidden')) return;
   const D = await fetch('/api/thoughts?n=50').then(r => r.json());
   const ts = D.thoughts || [], rs = D.reminders || [];
   $('thoughts-n').textContent = `мыслей: ${ts.length}`;

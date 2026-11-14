@@ -58,8 +58,8 @@ def shared_catalog(query: str = "") -> list[str]:
     """Файлы обмена и готовые экспорты монтажа текущего персонажа."""
     files = []
     for prefix, root in _shared_roots().items():
-        for path in root.iterdir() if root.is_dir() else ():
-            identifier = f"{prefix}/{path.name}"
+        for path in root.rglob("*") if root.is_dir() else ():
+            identifier = f"{prefix}/{path.relative_to(root).as_posix()}"
             if query.casefold() in identifier.casefold() and shared_file(identifier):
                 try:
                     files.append((path.stat().st_mtime, identifier))
@@ -74,12 +74,37 @@ def _shared_roots() -> dict[str, Path]:
 
 
 def shared_file(identifier: str) -> Path | None:
-    prefix, _, name = identifier.partition("/")
+    path = _shared_path(identifier)
+    return path if path is not None and path.is_file() else None
+
+
+def _shared_path(identifier: str) -> Path | None:
+    prefix, _, relative = identifier.partition("/")
     root = _shared_roots().get(prefix)
-    if root is None or not name or name.startswith(".") or "/" in name or "\\" in name or ":" in name:
+    parts = relative.split("/") if relative else []
+    if root is None or any(not part or part.startswith(".") or "\\" in part or ":" in part for part in parts):
         return None
-    path = root / name
-    return path if path.is_file() and not path.is_symlink() else None
+    path = root.joinpath(*parts)
+    try:
+        if root.is_symlink() or path.resolve() != root.resolve().joinpath(*parts):
+            return None
+    except (OSError, RuntimeError):
+        return None
+    return path
+
+
+def shared_entries(folder: str = "") -> list[dict] | None:
+    if not folder:
+        return [{"name": name, "path": name, "directory": True} for name in _shared_roots()]
+    root = _shared_path(folder)
+    if root is None or ("/" in folder and not root.is_dir()):
+        return None
+    entries = []
+    for child in root.iterdir() if root.is_dir() else ():
+        identifier = f"{folder}/{child.name}"
+        if _shared_path(identifier) is not None and (child.is_file() or child.is_dir()):
+            entries.append({"name": child.name, "path": identifier, "directory": child.is_dir()})
+    return sorted(entries, key=lambda row: (not row["directory"], row["name"].casefold()))
 
 
 def card_id(folder: Path) -> str | None:

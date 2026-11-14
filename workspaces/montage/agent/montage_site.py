@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
 import json
 import logging
@@ -65,12 +66,44 @@ pre{background:oklch(var(--b1));border:1px solid oklch(var(--b3));padding:12px;o
 .file-nav a{display:block;margin:0;padding:6px;overflow-wrap:anywhere}.file-nav a[aria-current]{background:#fff3e6}
 .preview{min-width:0;background:white;border:1px solid #d8d8d4;padding:16px;overflow-wrap:anywhere}
 .preview iframe{width:100%;height:65vh;border:0}.preview img,.preview video{max-height:65vh;object-fit:contain}
-.font-sample{font-size:clamp(20px,4vw,42px)}@media(max-width:650px){.browser{grid-template-columns:1fr}.file-nav{max-height:25vh}}"""
+.font-sample{font-size:clamp(20px,4vw,42px)}
+.design-table{table-layout:fixed;overflow-wrap:anywhere}.design-table th:first-child{width:24%}
+.design-table th:nth-child(2){width:26%}.design-scroll{overflow-x:auto}.design-table{min-width:630px}
+.inline-preview{height:180px;min-height:90px;max-height:80vh;resize:vertical;overflow:auto;border:1px solid oklch(var(--b3));border-radius:.5rem}
+.inline-preview iframe,.inline-preview img,.inline-preview video{display:block;width:100%;height:100%;border:0;object-fit:contain}
+.inline-preview audio{max-width:100%}.inline-preview pre{margin:0}.inline-preview .font-sample{padding:.6rem}
+@media(max-width:650px){.browser{grid-template-columns:1fr}.file-nav{max-height:25vh}}"""
 DASHBOARD_CSS = Path(__file__).resolve().parents[3] / "agent/clients/gui/vendor/tailwind.css"
 
 
 def _e(value) -> str:
     return html.escape(str(value if value is not None else ""))
+
+
+def _preview_markup(path: Path, raw: str, *, inline: bool = False) -> str:
+    kind = mimetypes.guess_type(path.name)[0] or ""
+    suffix = path.suffix.lower()
+    if kind.startswith("video/"):
+        return f"<video controls playsinline preload='none' src='{raw}'></video>"
+    if kind.startswith("audio/"):
+        return f"<audio controls preload='none' src='{raw}'></audio>"
+    if kind.startswith("image/"):
+        return f"<img loading='lazy' src='{raw}' alt='{_e(path.name)}'>"
+    if suffix == ".html":
+        return (f"<iframe loading='lazy' sandbox='allow-scripts' referrerpolicy='no-referrer' "
+                f"title='{_e(path.name)}' src='{raw}'></iframe>")
+    if suffix in FONT_EXT:
+        family = "PreviewFont" + hashlib.sha256(raw.encode()).hexdigest()[:12]
+        return (f"<style>@font-face{{font-family:{family};src:url('{raw}')}}</style>"
+                f"<p class='font-sample' style='font-family:{family},sans-serif' contenteditable='true' "
+                "aria-label='Образец шрифта'>Лаборатория Aperture · The quick brown fox<br>Аа Бб Вв Дд Яя · 0123456789</p>")
+    if inline and suffix not in TEXT_EXT:
+        return "<p class='muted'>Предпросмотр недоступен</p>"
+    if inline:
+        with path.open(encoding="utf-8", errors="replace") as file:
+            snippet = file.read(1201)
+        return f"<pre>{_e(snippet[:1200])}{'…' if len(snippet) > 1200 else ''}</pre>"
+    return f"<pre>{_e(_read_text(path))}</pre>"
 
 
 def _page(title: str, owner: str, body: str) -> web.Response:
@@ -397,18 +430,27 @@ class Site:
             for folder, entries in groups.items():
                 readme = safe_file(root, (folder / "README.md").as_posix())
                 description = _read_text(readme).strip().split("\n\n", 1)[0][:360] if readme else ""
-                if folder != Path("."):
-                    rows.append(f"<tr><th colspan='3'>{_e(folder.name)}<div class='muted'>{_e(description)}</div></th></tr>")
+                if folder != Path(".") and section == "assets":
+                    rows.append(f"<tr><th colspan='3'>{_e(folder.name)}</th></tr>")
                 for path in entries:
                     rel = path.as_posix()
                     url = f"/job/{quote(job.job_id)}/view/design/{quote(rel)}"
                     kind = mimetypes.guess_type(rel)[0] or path.suffix.lstrip(".").upper()
                     name = folder.name if path.name == "preview.html" else path.name
-                    rows.append(f"<tr><td>{_e(name)}</td><td><a class='btn btn-ghost btn-xs' href='{url}'>Открыть</a></td>"
-                                f"<td class='muted'>{_e(kind)}</td></tr>")
-            panels.append(f"<section id='{anchor}'><h3>{_e(label)}</h3><table class='table table-sm'>"
-                          "<thead><tr><th>Название</th><th>Просмотр</th><th>Тип</th></tr></thead>"
-                          f"<tbody>{''.join(rows)}</tbody></table></section>")
+                    target = safe_file(root, rel)
+                    if target is None:
+                        continue
+                    try:
+                        preview = _preview_markup(target, f"/design/{quote(rel)}", inline=True)
+                    except OSError:
+                        preview = "<p class='muted'>Файл недоступен</p>"
+                    rows.append(f"<tr><td><a class='link' href='{url}'>{_e(name)}</a>"
+                                f"<div class='muted'>{_e(kind)}</div></td><td>{_e(description) or '—'}</td>"
+                                f"<td><div class='inline-preview'>{preview}</div></td></tr>")
+            panels.append(f"<section id='{anchor}'><h3>{_e(label)}</h3><div class='design-scroll'>"
+                          "<table class='table table-sm design-table'>"
+                          "<thead><tr><th>Название</th><th>Описание</th><th>Просмотр</th></tr></thead>"
+                          f"<tbody>{''.join(rows)}</tbody></table></div></section>")
         return (f"<h2>Библиотека Aperture</h2><div class='browser'><nav aria-label='Разделы дизайна'>"
                 f"<ul class='menu bg-base-100 rounded-box'>{''.join(links)}</ul></nav>"
                 f"<div class='card bg-base-100'><div class='card-body'>{''.join(panels)}</div></div></div>") if panels else ""
@@ -444,22 +486,7 @@ class Site:
         if path is None:
             raise web.HTTPNotFound(text="файла нет")
         raw = "/" + quote(rel) if design else f"/job/{quote(job.job_id)}/raw/{quote(rel)}"
-        kind = mimetypes.guess_type(rel)[0] or ""
-        if kind.startswith("video/"):
-            body = f"<video controls src='{raw}'></video>"
-        elif kind.startswith("audio/"):
-            body = f"<audio controls src='{raw}'></audio>"
-        elif kind.startswith("image/"):
-            body = f"<img src='{raw}' alt='{_e(path.name)}'>"
-        elif path.suffix.lower() == ".html":
-            body = f"<iframe sandbox='allow-scripts' referrerpolicy='no-referrer' title='{_e(path.name)}' src='{raw}'></iframe>"
-        elif path.suffix.lower() in FONT_EXT:
-            body = (f"<style>@font-face{{font-family:PreviewFont;src:url('{raw}')}}"
-                    ".font-sample{font-family:PreviewFont,sans-serif}</style>"
-                    "<p class='font-sample' contenteditable='true' aria-label='Образец шрифта'>"
-                    "Лаборатория Aperture · The quick brown fox<br>Аа Бб Вв Дд Яя · 0123456789</p>")
-        else:
-            body = f"<pre>{_e(await asyncio.to_thread(_read_text, path))}</pre>"
+        body = await asyncio.to_thread(_preview_markup, path, raw)
         back = f"/job/{quote(job.job_id)}?s=files"
         links = await asyncio.to_thread(self._file_links, job, "design" if design else "project", rel)
         return _page(rel, self.owner, f"<p><a href='{back}'>← файлы</a> · <a href='{raw}' download>скачать</a></p>"

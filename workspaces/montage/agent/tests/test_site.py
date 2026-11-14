@@ -99,6 +99,8 @@ async def test_visual_preview_and_isolated_html(job):
         files = await (await c.get(f"/job/{j.job_id}?s=files")).text()
         assert files.index("Библиотека Aperture") < files.index("Служебные файлы")
         assert f"{url}/design-system.json" in files
+        assert "<th>Название</th><th>Описание</th><th>Просмотр</th>" in files
+        assert "class='inline-preview'><iframe" in files
         page = await (await c.get(f"{url}/preview.html")).text()
         assert "sandbox='allow-scripts'" in page and "allow-same-origin" not in page
         assert "aria-current='page'" in page and "/design/heading.ttf" in page

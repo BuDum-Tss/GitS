@@ -20,7 +20,7 @@ def test_generated_files_match_spec():
     assert build.DOCS_HTML.read_text(encoding="utf-8") == build.render_docs_html()
 
 
-def test_gui_has_scheme_tab():
+def test_dashboard_has_resources_tab_without_architecture_tab():
     html = (ROOT / "agent" / "clients" / "gui" / "index.html").read_text(encoding="utf-8")
-    assert 'data-tab="arch"' in html and 'id="tab-arch"' in html
-    assert "architecture-data.js" in html and "architecture.js" in html
+    assert 'data-tab="resources"' in html and 'id="tab-resources"' in html
+    assert 'data-tab="arch"' not in html

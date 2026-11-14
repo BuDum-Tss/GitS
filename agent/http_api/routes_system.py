@@ -230,7 +230,28 @@ async def handle_api_settings_post(request: web.Request) -> web.Response:
                                                     if k in settings.DEFAULTS and k != "character"}))
 
 
+async def handle_resources(request: web.Request) -> web.Response:
+    from gits_sdk.resources import shared_entries
+
+    entries = await asyncio.to_thread(shared_entries, request.query.get("folder", ""))
+    if entries is None:
+        raise web.HTTPNotFound()
+    return web.json_response(entries)
+
+
+async def handle_resource_file(request: web.Request) -> web.StreamResponse:
+    from gits_sdk.resources import shared_file
+
+    path = await asyncio.to_thread(shared_file, request.query.get("path", ""))
+    if path is None:
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={"Content-Security-Policy": "sandbox; default-src 'none'",
+                                           "X-Content-Type-Options": "nosniff"})
+
+
 ROUTES = [
+    ("GET", "/api/resources", handle_resources),
+    ("GET", "/api/resource-file", handle_resource_file),
     ("GET", "/", handle_root),
     ("GET", "/api/state", handle_api_state),
     ("POST", "/api/settings", handle_api_settings_post),

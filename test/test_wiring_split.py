@@ -119,6 +119,7 @@ PUBLIC_ROUTES = {
     ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("POST", "/api/notify"), ("GET", "/api/jobs"), ("POST", "/api/jobs/{module}/{job_id}/cancel"),
     ("POST", "/api/jobs/{module}/{job_id}/answer"), ("GET", "/api/reply_context"),
     ("GET", "/api/tasks/now"),
+    ("GET", "/api/resources"), ("GET", "/api/resource-file"),
 }
 
 
