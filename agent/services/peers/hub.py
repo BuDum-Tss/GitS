@@ -16,6 +16,7 @@ import hmac
 import ipaddress
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -192,6 +193,15 @@ class _JobQuestion:
         self.sent = False
 
 
+def _saved_token(path: Path) -> str | None:
+    """Токен из прежнего запуска (64 hex-символа) или None: в контейнере его не меняют при каждом старте ядра."""
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return value if re.fullmatch(r"[0-9a-f]{64}", value) else None
+
+
 class PeerHub:
     def __init__(self, modules, *, sink=None, requests=None, token: str | None = None, token_file: Path | None = None,
                  settings_source: Callable[[], dict] = settings.load,
@@ -211,6 +221,7 @@ class PeerHub:
                      if P.is_container(environ) else "")
         if P.is_container(environ) and token_file is None and not (token or env_token):
             token_file = Path(settings.memory_dir()) / "module_token"
+            token = _saved_token(token_file)          # переживает перезапуск контейнера: участники на хосте не теряют вход
         token = token or env_token or None
         self._token_from_env = bool(env_token) and token == env_token
         self.modules: PeerRegistry = modules

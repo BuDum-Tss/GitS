@@ -160,3 +160,17 @@ def test_tray_does_not_start_in_container(tmp_path):
     assert not tray_launch.ensure_tray(env={"GITS_CONTAINER": "1"}, platform="win32", here=tmp_path,
                                        spawn=lambda *a, **k: calls.append(a))
     assert calls == []
+
+
+def test_container_hub_reuses_the_saved_token_after_restart(tmp_path, monkeypatch):
+    from host import settings
+    from services.peers.hub import PeerHub
+    from services.peers.registry import PeerRegistry
+    monkeypatch.setattr(settings, "memory_dir", lambda: str(tmp_path))
+    env = {"GITS_CONTAINER": "1"}
+    first = PeerHub(PeerRegistry(None), environ=env)
+    assert len(first.token) == 64
+    (tmp_path / "module_token").write_text(first.token, encoding="utf-8")
+    assert PeerHub(PeerRegistry(None), environ=env).token == first.token            # после перезапуска тот же
+    (tmp_path / "module_token").write_text("битый", encoding="utf-8")
+    assert PeerHub(PeerRegistry(None), environ=env).token != first.token            # мусор в файле не берётся

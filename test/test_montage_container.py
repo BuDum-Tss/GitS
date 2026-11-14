@@ -63,17 +63,17 @@ def test_hub_allow_covers_compose_network():
     assert any(ipaddress.ip_address("172.20.0.3") in n for n in nets)         # типовая подсеть compose
 
 
-def test_pi_secret_is_not_baked_or_mounted_by_default():
-    text = COMPOSE.read_text(encoding="utf-8")
+def test_pi_secret_is_mounted_from_the_host_into_a_writable_folder_and_never_baked():
     svc = _compose()["services"]["montage"]
-    assert not any("pi_auth" in v or "auth.json" in v for v in svc["volumes"])    # секция закомментирована
-    assert "# - ${GITS_PI_AUTH_FILE}:/run/secrets/pi_auth.json:ro" in text
+    assert any(v.endswith(":/run/pi/auth.json") for v in svc["volumes"])                  # файл входа с хоста, как у ядра
+    assert svc["environment"]["GITS_PI_AUTH"] == "/run/pi/auth.json"
+    assert any(x.startswith("/run/pi:") and "uid=1000" in x for x in svc["tmpfs"])        # рядом нужен файл блокировки (.lock)
     assert "COPY" not in "".join(ln for ln in DOCKERFILE.read_text(encoding="utf-8").splitlines() if "auth.json" in ln)
 
 
 def test_dockerfile_has_toolchain_and_non_root_user():
     text = DOCKERFILE.read_text(encoding="utf-8")
-    for needle in ("python:3.12-slim", "node:20-slim", "ffmpeg", "npm ci", "npx remotion browser ensure",
+    for needle in ("python:3.12-slim", "node:22-slim", "ffmpeg", "npm ci", "npx remotion browser ensure",
                    "services/agent-runtime", "USER gits", "MONTAGE_OUT_DIR=/data/montage/out"):
         assert needle in text, needle
 

@@ -112,6 +112,9 @@ class ResidentAgent:
             hidden = reg.search_hidden(query) if hasattr(reg, "search_hidden") else []
             lines += [f"- {t.signature()}  [узел «{t.node}»: сначала open(\"{t.node}\")]" for t in hidden]       # скрытые действия других узлов
             lines = lines or ["ничего подходящего не нашлось"]
+            catalog = getattr(host, "workspace_catalog", lambda: "")()
+            if catalog and len(lines) < 3:                    # мало нашлось: нужный модуль может быть в другой среде
+                lines.append(catalog)
             return True, "\n".join(lines)[:RESULT_CHARS * 3]
 
         async def call_tool(args: dict) -> tuple[bool, str]:

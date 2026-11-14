@@ -128,3 +128,13 @@ async def test_runtime_is_created_once_and_reset_goes_to_it():
     assert len(made) == 1                                   # одна сессия на все обращения
     await agent.reset()
     assert agent._runtime.resets == [True]                  # сброс идёт в среду, объект остаётся
+
+
+async def test_find_tools_points_to_other_workspaces_when_little_is_found():
+    host = FakeHost()
+    host.workspace_catalog = lambda: "Инструменты других сред появятся после входа: workspace.switch.\n- montage: Монтаж видео."
+    agent = resident.ResidentAgent(host, runtime=FakeRuntime())
+    ok, text = await agent._tool_specs()[0].handler({"query": "монтаж ролика"})
+    assert ok and "ничего подходящего" in text and "workspace.switch" in text and "montage" in text
+    ok, text = await resident.ResidentAgent(FakeHost(), runtime=FakeRuntime())._tool_specs()[0].handler({"query": "монтаж"})
+    assert "workspace.switch" not in text                  # без каталога сред ничего не добавляется

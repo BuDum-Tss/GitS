@@ -181,6 +181,15 @@ def wire_modules(companion, registry, *, specs=None,
         goal = f" Цель: {workspaces.goal}." if workspaces.goal else ""
         return f"Ты сейчас в среде «{spec.title if spec else ws}».{goal}" + (f" Сводка: {summary}." if summary else "")
     companion.environment_note = environment_note
+
+    def workspace_catalog() -> str:
+        """Среды, куда можно войти: инструменты модулей появляются в списке только после входа (find_tools подсказывает это)."""
+        workspaces.sync()
+        rows = [f"- {s.id}: {s.title}. {s.when_to_use or s.purpose}".rstrip() for s in workspaces.specs.values()
+                if s.kind == "module" and s.id != workspaces.current]
+        return ("Инструменты других сред появятся после входа: workspace.switch(workspace=<id>, goal=<цель>), потом ищи заново. "
+                "Среды:\n" + "\n".join(rows)) if rows else ""
+    companion.workspace_catalog = workspace_catalog
     companion.events_block = attention.context_events        # ждущие события очереди видны в контексте ответа
     companion.module_notes = modules.notes                # что умеют подключённые модули и в каком они состоянии
     companion.idle_seconds = lambda: float(desktop_state(modules).get("idle_s") or 0.0)     # простой (ТЗ 14, DESK-7)
