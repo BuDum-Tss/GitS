@@ -257,7 +257,7 @@ AUTO_SWITCH_REASONS = ("schedule", "done", "blocked", "critical", "disconnect") 
 
 def _log_lease(kind: str, data: dict) -> None:
     """Журнал аренды пространств: факт без токенов (acquired, released, busy, unavailable)."""
-    events_log.log_nowait("workspace", f"аренда {kind}: {data.get('workspace')}", type="lease", kind=kind,
+    events_log.log_nowait("workspace", f"аренда {kind}: {data.get('workspace')}", type="lease", lease=kind,
                           **{k: v for k, v in data.items() if k in ("workspace", "reason", "holder")})
 
 
