@@ -314,7 +314,7 @@ window.ARCH_DATA = {
    "title": "Размышление",
    "tag": "A",
    "new": false,
-   "summary": "Внутренний диалог агента: получает напоминание, итог разговора или эпизода либо пачку из входящей очереди, думает, читая память, и решает: сказать, сделать, напомнить себе или записать. Он же переносит созревшие мысли в долговременную память.",
+   "summary": "Внутренний диалог агента: получает напоминание, итог разговора или эпизода либо пачку из входящей очереди, думает, читая память, и решает: сказать, сделать, напомнить себе или записать.",
    "out": "Intent",
    "nodes": [
     {
@@ -322,18 +322,9 @@ window.ARCH_DATA = {
      "t": "ReflectionService",
      "tag": "A",
      "new": false,
-     "do": "внутренний диалог в несколько шагов; запускают напоминание себе, итог разговора и эпизода и пачка из входящей очереди (inbox.batch); читает память; лимиты шагов и токенов; сам переносит созревшие мысли в память (consolidate)",
+     "do": "внутренний диалог в несколько шагов; запускают напоминание себе, итог разговора и эпизода и пачка из входящей очереди (inbox.batch); читает память; лимиты шагов и токенов; значимая мысль пишется событием `thought` в журнал событий",
      "out": "Intent: сказать, сделать, напомнить, записать, ничего",
-     "now": "есть (ТЗ 30): services/reflection/reflection.py; маршрут think из Dispatcher (domain/rules.think_route) для self-событий и итогов эпизодов, пачку шлёт Inbox.tick; отдельного размышления в простое и ThoughtConsolidator больше нет (перенос мыслей внутри сервиса); лимиты шагов, токенов, часа, глубины; после разговора (self.after_conversation) и эпизода подводит итог: настроение и вывод (IMP-10)"
-    },
-    {
-     "id": "thoughts",
-     "t": "Журнал мыслей",
-     "tag": "I",
-     "new": false,
-     "do": "краткосрочная память: значимые рассуждения с оценкой важности 1-5 (пустые и оборванные не пишутся), важные переносятся в долговременную память, мелкие забываются через сутки; не озвучиваются",
-     "out": "Thought",
-     "now": "есть (ТЗ 30): services/reflection/store.py (JsonThoughts, thoughts.json), services/reflection/thoughts.py, GET /api/thoughts, вкладка «Мысли» дашборда"
+     "now": "есть (ТЗ 30): services/reflection/reflection.py; маршрут think из Dispatcher (domain/rules.think_route) для self-событий и итогов эпизодов, пачку шлёт Inbox.tick; отдельного размышления в простое нет; отдельного журнала мыслей нет, мысль это событие `thought` (контекст момента эпизода, не пик); лимиты шагов, токенов, часа, глубины; после разговора (self.after_conversation) и эпизода подводит итог: настроение и вывод (IMP-10)"
     }
    ]
   },
@@ -555,7 +546,7 @@ window.ARCH_DATA = {
      "t": "Сервис памяти (граница)",
      "tag": "A",
      "new": true,
-     "do": "папка `services/memory_service/`: граф, профиль, эпизоды, сон, дневник, «запомни»; остальное ядро берёт из неё только имена `__init__.py` (GraphMemory, UserMemory, EpisodeService, MemoryCapture, адаптеры) и контракты MemoryReader/MemoryWriter",
+     "do": "папка `services/memory_service/`: эпизоды (жизнь, канон, заметки), сон, дневник, «запомни»; остальное ядро берёт из неё только имена `__init__.py` (UserMemory, EpisodeService, MemoryCapture, адаптеры) и контракты MemoryReader/MemoryWriter",
      "out": "вызовы сервиса",
      "now": "services/memory_service/__init__.py (__all__); граница проверяется test_memory_boundary.py"
     },
@@ -564,18 +555,18 @@ window.ARCH_DATA = {
      "t": "MemoryWriter",
      "tag": "A",
      "new": false,
-     "do": "сразу: диалог и журнал; важное (оценка 4-5) в профиль владельца, планы в задачи; в паузе: факты с оценкой важности (Gemma + эмбеддинги); раз в 6 реплик: осмысление; во сне: факты эпизодов в граф со ссылкой на эпизод (ТЗ 27)",
+     "do": "сразу: диалог и журнал; «запомни» и важное (оценка 3-5) заметкой в эпизоды, планы в задачи; знания из разговора возникают из эпизодов, которые пишет форк её сессии (ТЗ 27)",
      "out": "MemoryRecord",
-     "now": "services/memory_service/capture.py: _learn, _consolidate, remember_text + GraphMemory.step"
+     "now": "services/memory_service/adapters.py (add_fact), capture.py (remember_text), episode_memory.py (remember)"
     },
     {
      "id": "mr",
      "t": "MemoryReader",
      "tag": "A",
      "new": false,
-     "do": "профиль владельца (если говорит он) + факты графа по теме; гибридный поиск (search/) подключён: recall() ищет в фактах, эпизодах и дневнике (ТЗ 27)",
+     "do": "блоки контекста «Твои воспоминания (это о тебе)» (канон) и «Что ты помнишь по теме» (эпизоды и заметки); гибридный поиск (search/): recall() ищет по эпизодам и дневнику (ТЗ 27)",
      "out": "MemoryHit[]",
-     "now": "graph.profile_block (профиль владельца, если говорит он), graph.search, self_memories; search/: HybridIndex (FTS5 + векторы + свежесть), HybridSearch, переписывание запроса, Embedder"
+     "now": "episode_memory.py (canon_block, topic_block), episode_recall.py (find); search/: HybridIndex (FTS5 + векторы + свежесть), HybridSearch, переписывание запроса, Embedder"
     },
     {
      "id": "epi",
@@ -591,7 +582,7 @@ window.ARCH_DATA = {
      "t": "Режим сна (SleepScheduler + SleepRunner)",
      "tag": "A",
      "new": false,
-     "do": "фоновый режим памяти: при простое, по расписанию, догоняющий; резюме от первого лица с проверкой, факты в граф, эмбеддинги, сводки, дневник; прерывается между эпизодами",
+     "do": "фоновый режим памяти: при простое, по расписанию, догоняющий; текст эпизода от первого лица (пишет форк её сессии), эмбеддинги, сводки, дневник; прерывается между эпизодами",
      "out": "episode.summary, дневник",
      "now": "есть (ТЗ 27): services/memory_service/sleep.py, services/memory_service/sleep_scheduler.py, services/memory_service/episode_summary.py, services/memory_service/diary.py"
     },
@@ -623,13 +614,13 @@ window.ARCH_DATA = {
      "now": "services/memory_service/user.py, services/tasks/store.py, services/character/relationships.py"
     },
     {
-     "id": "graph",
-     "t": "FactGraph (контракт)",
+     "id": "epmem",
+     "t": "EpisodeStore (единая память)",
      "tag": "I",
      "new": false,
-     "do": "SQLite graph.db (services/memory_service/fact_store.py, поиск через HybridIndex): факты с интервалами валидности; области global и <id>:<область> по профилю (memory_service.scope.py, ТЗ 04 KB-12/13), в контексте до 3 фактов",
-     "out": "контракт графа",
-     "now": "services/memory_service/graph.py: 701 строка"
+     "do": "SQLite episodes.db (services/memory_service/episode_store.py, поиск через HybridIndex): эпизоды трёх видов (жизнь, канон из memories.yaml, заметки «запомни»), текст от первого лица; в контексте до 3 воспоминаний о себе и до 4 эпизодов по теме",
+     "out": "эпизоды",
+     "now": "services/memory_service/episode_store.py, episode_memory.py, episode_recall.py, character_seed.py, graph_import.py"
     },
     {
      "id": "char",
@@ -656,7 +647,7 @@ window.ARCH_DATA = {
      "t": "LM Studio :1234",
      "tag": "X",
      "new": false,
-     "do": "EmbeddingGemma (поиск) и разбор фактов графа (Gemma); ответов и планов в нём больше нет",
+     "do": "EmbeddingGemma (поиск); ответов и планов в нём больше нет",
      "out": "",
      "now": ""
     },
@@ -966,9 +957,9 @@ window.ARCH_DATA = {
   ],
   [
    "reflect",
-   "thoughts",
+   "elog",
    "w",
-   "мысль"
+   "мысль (thought)"
   ],
   [
    "reflect",
@@ -987,12 +978,6 @@ window.ARCH_DATA = {
    "mw",
    "w",
    "записать"
-  ],
-  [
-   "reflect",
-   "thoughts",
-   "w",
-   "перенос в память или забывание"
   ],
   [
    "resident",
@@ -1188,7 +1173,7 @@ window.ARCH_DATA = {
   ],
   [
    "mw",
-   "graph",
+   "epmem",
    "w",
    null
   ],
@@ -1200,7 +1185,7 @@ window.ARCH_DATA = {
   ],
   [
    "mr",
-   "graph",
+   "epmem",
    "r",
    null
   ],

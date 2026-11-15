@@ -18,9 +18,8 @@ ASK_TIMEOUT = 45.0
 
 
 def day_material(episodes: list[dict], digest: dict | None) -> str:
-    """Факты суток для сводки и дневника: рассказы эпизодов по времени, с отношением к ним."""
-    lines = [f"- {e['title']}: {e['summary']}" + (f" Отношение: {e['attitude']}" if e.get("attitude") else "")
-             for e in episodes if e.get("summary")]
+    """Факты суток для сводки и дневника: тексты эпизодов по времени."""
+    lines = [f"- {e['title']}: {e['text']}" if e["title"] else f"- {e['text']}" for e in episodes if e.get("text")]
     return "\n".join(lines)
 
 
@@ -54,11 +53,9 @@ async def _write(llm: LanguageModel, prompt: dict, material: str, head: str, all
 
 class DayWriter:
     def __init__(self, *, llm: LanguageModel, store, search, digest_prompt: Callable[[], dict], diary_prompt: Callable[[], dict],
-                 allow: Callable[[], list[str]] = lambda: [], character: Callable[[], str] = lambda: "",
-                 notes: Callable[[str], list[str]] = lambda day: []):
+                 allow: Callable[[], list[str]] = lambda: [], character: Callable[[], str] = lambda: ""):
         self.llm, self.store, self.search = llm, store, search
         self.digest_prompt, self.diary_prompt, self.allow, self.character = digest_prompt, diary_prompt, allow, character
-        self.notes = notes                    # notes(день) -> мысли дня, перенесённые в долговременную память: материал дневника
 
     async def digest(self, day: str) -> tuple[bool, int, bool]:
         """Сводка суток, если эпизодов стало больше, чем в прошлой версии. (записана ли, токены, модель недоступна)."""
@@ -81,9 +78,6 @@ class DayWriter:
             return False, 0, False
         dig = await asyncio.to_thread(self.store.digest, day)
         material = day_material(eps, dig) + (f"\nИтог суток: {dig['text']}" if dig and dig.get("text") else "")
-        thoughts = await asyncio.to_thread(self.notes, day)
-        if thoughts:
-            material += "\nВажные мысли дня:\n" + "\n".join(f"- {t}" for t in thoughts[:10])
         text, spent, down = await _write(self.llm, self.diary_prompt(), material, f"Запись дневника за {day}. Факты дня:",
                                          self.allow(), material)
         if text is None:

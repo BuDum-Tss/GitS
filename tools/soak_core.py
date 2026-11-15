@@ -5,9 +5,8 @@
   - реплики в чат через `POST /api/chat`;
   - события от фиктивных модулей через клиентов SDK (`WorkspaceClient.event`);
   - подключение и отключение фиктивных модулей, в том числе обрыв соединения без закрытия;
-  - заглушка очереди памяти-графа (`enqueue` от разговора, разбор по таймеру).
 Раз в `--sample` секунд снимаются: память процесса (RSS), задержка цикла событий, число задач asyncio, число ошибок в журнале,
-размеры очередей (речь, внимание, граф, шаги трассы).
+размеры очередей (речь, внимание, шаги трассы).
 
 Критерии (ТЗ 17, FLOW-2): ни одного необработанного исключения и записи уровня ERROR; рост RSS меньше 50 МБ (после разогрева);
 задержка цикла событий p99 меньше 200 мс; очереди не растут без предела (максимум в границах, конец не выше середины с запасом);
@@ -91,32 +90,6 @@ class LoopLag:
     def take(self) -> list[float]:
         out, self.samples = self.samples, []
         return out
-
-
-class StubGraph:
-    """Очередь памяти-графа без модели и базы: `enqueue` ставит, `drain` разбирает по одному (как фоновый разбор настоящего графа)."""
-
-    def __init__(self):
-        self.queue: list[dict] = []
-        self.total = 0
-
-    def enqueue(self, speaker, text, ts=None, source=None):
-        self.queue.append({"speaker": speaker, "text": text[:200]})
-        self.queue = self.queue[-500:]
-        self.total += 1
-        return len(self.queue)
-
-    def drain(self, n: int = 1):
-        del self.queue[:n]
-
-    def status_text(self):
-        return None
-
-    async def context_block(self, query):
-        return ""
-
-    async def self_memories(self, query):
-        return []
 
 
 class _Speech:
@@ -233,8 +206,6 @@ class Soak:
         self.companion = Companion(self.memory_dir, Relationships(self.memory_dir), speech=_Speech(), presence=presence,
                                    llm=_SimLLM())
         self.companion.resident = _Agent(self.companion)
-        self.graph = StubGraph()
-        self.companion.graph = self.graph
         registry = Registry()
         from host.supervisor import load_specs
         want = set(self.real_modules)
@@ -326,13 +297,6 @@ class Soak:
                     task.cancel()
             await asyncio.sleep(self.rng.uniform(0.3, 1.5))
 
-    async def graph_load(self, deadline: float):
-        """Разбор очереди графа заглушкой раз в 0,5 с и вброс фактов от разговора."""
-        while time.time() < deadline:
-            self.graph.enqueue("Пользователь", self.rng.choice(PHRASES))
-            self.graph.drain(2)
-            await asyncio.sleep(0.5)
-
     async def kill_load(self, deadline: float):
         """FLOW-3: убить процесс настоящего модуля и убедиться, что супервизор поднял его снова, а ядро живо."""
         import psutil
@@ -369,7 +333,7 @@ class Soak:
         lag = self.lag.take()
         return {"t": round(t, 1), "rss_mb": round(_rss_mb(), 1), "tasks": len(asyncio.all_tasks()),
                 "lag_p99_ms": percentile(lag, 0.99), "lag_max_ms": round(max(lag), 1) if lag else None,
-                "q_speech": len(att.speech.items), "q_attention": len(att._tasks), "q_graph": len(self.graph.queue),
+                "q_speech": len(att.speech.items), "q_attention": len(att._tasks),
                 "trace_len": len(flow_trace.records()), "errors": len(self.counter.records) + len(self.unhandled),
                 "modules": len(self.layer.hub.connections()), "_lag": lag}
 
@@ -389,7 +353,7 @@ class Soak:
         t0 = time.time()
         deadline = t0 + self.minutes * 60
         warm = min(30.0, self.minutes * 60 * 0.2)
-        loads = [self.chat_load(deadline, CHAT_PERIOD_S), self.graph_load(deadline), self.module_load(deadline, "soaka", 0.15),
+        loads = [self.chat_load(deadline, CHAT_PERIOD_S), self.module_load(deadline, "soaka", 0.15),
                  self.module_load(deadline, "soakb", 0.3)]
         if self.real_modules:
             loads.append(self.kill_load(deadline))
@@ -426,7 +390,6 @@ class Soak:
             f"задержка цикла p99 < {CRITERIA['loop_lag_p99_ms']:.0f} мс": (percentile(lag_all, 0.99) or 0) < CRITERIA["loop_lag_p99_ms"],
             "очередь речи ограничена": q_ok("q_speech"),
             "очередь внимания ограничена": q_ok("q_attention"),
-            "очередь графа ограничена": q_ok("q_graph"),
             f"рост числа задач < {CRITERIA['tasks_growth']}": tasks_growth < CRITERIA["tasks_growth"],
             "ядро закрылось за 30 с": self.shutdown_s is not None and self.shutdown_s < 30,
             "после закрытия нет оставшихся задач": self.leftover_tasks == 0,
@@ -451,12 +414,12 @@ def to_markdown(rep: dict) -> str:
     lines += ["", f"RSS: рост после разогрева (максимум) {rep['rss_growth_mb']} МБ, к концу {rep['rss_end_growth_mb']} МБ. Задержка цикла: p50 "
               f"{rep['lag_p50_ms']} мс, p99 {rep['lag_p99_ms']} мс, максимум {rep['lag_max_ms']} мс. Рост числа задач {rep['tasks_growth']}. "
               f"Закрытие ядра {rep['shutdown_s']} с, оставшихся задач {rep['leftover_tasks']}.", "",
-              "| t, с | RSS, МБ | задач | лаг p99, мс | лаг max, мс | речь | внимание | граф | шагов трассы | ошибок | модулей |",
-              "|---|---|---|---|---|---|---|---|---|---|---|"]
+              "| t, с | RSS, МБ | задач | лаг p99, мс | лаг max, мс | речь | внимание | шагов трассы | ошибок | модулей |",
+              "|---|---|---|---|---|---|---|---|---|---|"]
     step = max(1, len(s) // 12)
     for x in s[::step] + ([s[-1]] if s and (len(s) - 1) % step else []):
         lines.append(f"| {x['t']} | {x['rss_mb']} | {x['tasks']} | {x['lag_p99_ms']} | {x['lag_max_ms']} | {x['q_speech']} | "
-                     f"{x['q_attention']} | {x['q_graph']} | {x['trace_len']} | {x['errors']} | {x['modules']} |")
+                     f"{x['q_attention']} | {x['trace_len']} | {x['errors']} | {x['modules']} |")
     if rep["errors"]:
         lines += ["", "Ошибки:"] + [f"- {e}" for e in rep["errors"]]
     return "\n".join(lines) + "\n"

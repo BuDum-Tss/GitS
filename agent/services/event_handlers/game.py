@@ -7,14 +7,14 @@ from services.tracing import journal
 
 logger = logging.getLogger("core")
 
-def make_colonists_handler(rel, graph):
-    """Обработчик события rimworld.colonists (RW-9): `data` = {"pawns": [...], "colony": "имя"}. Раньше это делал канал
-    /api/event агента игры (link_event)."""
+def make_colonists_handler(rel, world):
+    """Обработчик события rimworld.colonists (RW-9): `data` = {"pawns": [...], "colony": "имя"}: отношения и состояние мира
+    (`ColonyState`, не память)."""
     async def on_colonists(item) -> None:
         data = item.data or {}
         pawns, colony = data.get("pawns") or [], data.get("colony") or "колония"
         rel.sync_colonists(pawns)
-        await graph.sync_colonists(pawns, colony)
+        world.sync(pawns, colony)
     return on_colonists
 
 

@@ -1,7 +1,7 @@
 """Эпизоды и режим сна: чистые решения без ввода-вывода (ТЗ 27, EPI-4, EPI-6, EPI-10).
 
 Журнал событий остаётся источником правды. Выбор ярких моментов лежит в `moments.py`; здесь только функции над данными эпизодов:
-  check_summary   проверка рассказа от первого лица по источникам: ссылки на события, имена и числа, число предложений, цитаты
+  check_summary   проверка текста эпизода от первого лица по источникам: ссылки на события, имена и числа, число предложений
   decide_sleep    пора ли спать (простой, расписание, «догоняющий» сон) и с каким бюджетом
   diary_days      за какие сутки пора писать дневник
   compress_days   какие сутки пора сжать в сводку
@@ -13,6 +13,7 @@ from dataclasses import dataclass
 # ── статусы ────────────────────────────────────────────────────────────────────────────────────────
 
 PENDING, SUMMARIZED, EMBEDDED, FAILED, SKIPPED = "pending", "summarized", "embedded", "failed", "skipped"
+LIFE, CANON, NOTE = "life", "canon", "note"                      # виды эпизодов (см. episode_store)
 STATUSES = (PENDING, SUMMARIZED, EMBEDDED, FAILED, SKIPPED)      # skipped: тусклый эпизод отброшен живым циклом (очередь переполнена)
 
 MEMORY_MODULE = "memory"            # id внутреннего модуля памяти в менеджере фокуса и в журнале внимания
@@ -27,7 +28,14 @@ class Rec:
     text: str
 
 
-SUMMARY_SENTENCES = (2, 6)           # допустимое число предложений рассказа `story`
+SUMMARY_SENTENCES = (2, 8)           # допустимое число предложений текста эпизода (строгая проверка)
+TEXT_CHARS = (20, 1500)              # допустимая длина текста у форка (проверка облегчённая)
+
+
+def index_text(title: str, text: str) -> str:
+    """Что индексируется у эпизода (и по словам, и вектором): `заголовок. текст`, целиком и без других полей."""
+    title = title.strip().rstrip(".")
+    return f"{title}. {text}".strip() if title else text.strip()
 
 
 def estimate_tokens(text: str) -> int:
@@ -89,27 +97,22 @@ def unsupported(text: str, source: str, allow=()) -> list[str]:
 
 def check_summary(parsed, recs: list[Rec], *, allow: tuple | list | set = (), sentences_range: tuple = SUMMARY_SENTENCES,
                   trusted: bool = False) -> tuple[dict | None, list[str]]:
-    """Ответ модели -> (очищенный dict, замечания). Пустые замечания - рассказ принят.
+    """Ответ модели -> (очищенный dict, замечания). Пустые замечания - эпизод принят.
 
-    Проверяется: есть заголовок `title`, рассказ `story` и отношение `attitude`; число предложений рассказа; ссылки `refs` на
-    существующие номера событий (хотя бы одна); имена и числа из рассказа, отношения и замеченного встречаются в событиях-источниках
-    (или в `allow`: имя персонажа, владельца); дословные цитаты, не найденные в источниках, отбрасываются (замечанием не считаются).
-    `trusted=True` (писал форк её сессии, у которого в контексте весь разговор, а не только события момента): ссылки `refs` не
-    нужны, имена и числа не сверяются, число предложений заменено разумной длиной рассказа; остальное как обычно.
-    В результате `summary` это `story` (общее поле эпизода для поиска и ответов)."""
+    Эпизод это заголовок `title` и свободный текст `text` от первого лица: что произошло, на что она обратила внимание, как к
+    этому относится; отдельных полей нет. Строгая проверка (запасной писатель): число предложений текста; ссылки `refs` на
+    существующие номера событий (хотя бы одна); имена и числа из текста встречаются в событиях-источниках (или в `allow`: имя
+    персонажа, владельца). `trusted=True` (писал форк её сессии, у которого в контексте весь разговор, а не только события момента):
+    заголовок и текст не пусты, длина текста разумная; ссылки, имена и числа не сверяются."""
     if not isinstance(parsed, dict):
         return None, ["ответ не JSON-объект"]
     problems: list[str] = []
-    title = str(parsed.get("title") or "").strip()[:160]
-    story = " ".join(str(parsed.get("story") or "").split())
-    attitude = " ".join(str(parsed.get("attitude") or "").split())[:500]
-    noticed = _strings(parsed.get("noticed"), 4, 160)
+    title = " ".join(str(parsed.get("title") or "").split())[:160]
+    text = " ".join(str(parsed.get("text") or "").split())
     if not title:
         problems.append("нет заголовка title")
-    if not story:
-        problems.append("нет рассказа story")
-    if not attitude:
-        problems.append("нет отношения attitude: что ты об этом думаешь и чувствуешь")
+    if not text:
+        problems.append("нет текста text")
     ids = {r.id for r in recs}
     refs: list[int] = []
     for x in parsed.get("refs") if isinstance(parsed.get("refs"), list) else []:
@@ -117,29 +120,24 @@ def check_summary(parsed, recs: list[Rec], *, allow: tuple | list | set = (), se
             refs.append(int(x))
         except (TypeError, ValueError):
             problems.append(f"ссылка {x!r} не номер события")
-    bad = sorted({x for x in refs if x not in ids})
-    if bad and not trusted:
-        problems.append("ссылки на несуществующие события: " + ", ".join(str(x) for x in bad[:5]))
-    if not trusted and not [x for x in refs if x in ids]:
-        problems.append("нет ссылок refs на события-источники")
-    if story and trusted:
-        if not 20 <= len(story) <= 1500:
-            problems.append(f"рассказ story длиной {len(story)} знаков, нужно от 20 до 1500")
-    elif story:
+    if text and trusted:
+        lo, hi = TEXT_CHARS
+        if not lo <= len(text) <= hi:
+            problems.append(f"текст text длиной {len(text)} знаков, нужно от {lo} до {hi}")
+    elif text:
+        bad = sorted({x for x in refs if x not in ids})
+        if bad:
+            problems.append("ссылки на несуществующие события: " + ", ".join(str(x) for x in bad[:5]))
+        if not [x for x in refs if x in ids]:
+            problems.append("нет ссылок refs на события-источники")
         lo, hi = sentences_range
-        n = len(sentences(story))
+        n = len(sentences(text))
         lo = min(lo, max(1, len(recs) - 1))
         if n < lo or n > hi:
-            problems.append(f"в рассказе {n} предложений, нужно от {lo} до {hi}")
-    own = " ".join(x.rstrip(" ") + ("" if x.rstrip()[-1:] in ".!?…" else ".") for x in (story, attitude, *noticed) if x)
-    if own.strip() and not trusted:
-        problems += unsupported(own, " ".join(r.text for r in recs), allow)
-    sources = _norm(" ".join(r.text for r in recs))
-    quotes = [q.strip() for q in (parsed.get("quotes") if isinstance(parsed.get("quotes"), list) else [])
-              if isinstance(q, str) and q.strip() and _norm(q) in sources][:5]
-    clean = {"title": title, "summary": story, "attitude": attitude, "noticed": noticed, "quotes": quotes,
-             "refs": sorted({x for x in refs if x in ids}), "facts": _strings(parsed.get("facts"), 6, 200),
-             "emotions": _strings(parsed.get("emotions"), 5, 40), "participants": _strings(parsed.get("participants"), 8, 60)}
+            problems.append(f"в тексте {n} предложений, нужно от {lo} до {hi}")
+        problems += unsupported(text, " ".join(r.text for r in recs), allow)
+    clean = {"title": title, "text": text, "refs": sorted({x for x in refs if x in ids}),
+             "participants": _strings(parsed.get("participants"), 8, 60)}
     return (clean if not problems else None), problems
 
 

@@ -27,11 +27,11 @@ async def test_short_soak_runs_core_without_modules_and_closes_cleanly(tmp_path)
     rep = await soak_core.run_soak(0.15, 1.0, memory_dir=str(tmp_path / "soak"))
     assert rep["mode"] == "core-only"
     assert rep["load"]["chat"] > 0 and rep["load"]["events"] > 0 and rep["load"]["connects"] > 0
-    assert rep["samples"] and {"rss_mb", "tasks", "q_speech", "q_attention", "q_graph", "trace_len"} <= set(rep["samples"][0])
+    assert rep["samples"] and {"rss_mb", "tasks", "q_speech", "q_attention", "trace_len"} <= set(rep["samples"][0])
     checks = rep["checks"]
     assert checks["нет необработанных исключений и ERROR"], rep["errors"]
     assert checks["ядро закрылось за 30 с"] and checks["после закрытия нет оставшихся задач"]
-    assert checks["очередь речи ограничена"] and checks["очередь графа ограничена"]
+    assert checks["очередь речи ограничена"] and checks["очередь внимания ограничена"]
     md = soak_core.to_markdown(rep)
     assert "| критерий | итог |" in md and "RSS" in md
 
@@ -45,15 +45,9 @@ async def test_soak_does_not_leave_patches_behind(tmp_path):
     assert dict(os.environ) == env                      # GITS_NO_MODULES и прочие переменные прогона возвращены
 
 
-def test_percentile_and_stub_graph_queue_is_bounded():
+def test_percentile():
     assert soak_core.percentile([], 0.99) is None
     assert soak_core.percentile(list(range(1, 101)), 0.99) == 99
-    g = soak_core.StubGraph()
-    for i in range(1000):
-        g.enqueue("u", str(i))
-    assert len(g.queue) == 500
-    g.drain(5)
-    assert len(g.queue) == 495
 
 
 # ── ошибки GLiNER отдельно ──────────────────────────────────────────────────────────

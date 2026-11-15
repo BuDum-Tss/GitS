@@ -70,15 +70,6 @@ def state_payload(*, game: dict, settings_dict: dict, character: dict, presence,
     }
 
 
-def graph_view(snap: dict, *, status: str, pending, stats: dict | None = None) -> dict:
-    edges = snap.get("edges", [])
-    return {
-        "enabled": True, "status": status, "pending": pending, "nodes": snap.get("entities", []),
-        "current": [e for e in edges if not e["invalid_at"]], "outdated": [e for e in edges if e["invalid_at"]],
-        "entities": len(snap.get("entities", [])), "error": snap.get("error"), "stats": stats or {},
-    }
-
-
 def jobs_view(jobs: list[dict]) -> list[dict]:
     keys = ("module", "job_id", "title", "state", "stage", "progress", "text", "question", "artifacts", "updated")
     return [{k: j.get(k) for k in keys} for j in jobs]

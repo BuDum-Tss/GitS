@@ -120,7 +120,7 @@ class MomentSelector:
         module = str(peak.label.split(".")[0]) if peak.kind in ("attention", "module_event") and "." in peak.label else ""
         return {"id": m.id, "t_start": m.events[0].ts, "t_end": m.events[-1].ts, "first_id": m.first_id, "last_id": m.last_id,
                 "stream": "moment", "module": module, "participants": who + actors, "peak_id": m.peak_id,
-                "salience": round(m.salience, 3), "emotions": [], "status": "pending",
+                "salience": round(m.salience, 3), "status": "pending",
                 "character": self.character(), "day": m.day}
 
     @staticmethod

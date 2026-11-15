@@ -24,7 +24,7 @@ DEFAULTS = {
     "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); переключает ядро (core.set_character), не правьте вручную
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (распознавание локальное, GigaAM)
-    "context": {"mode": "push", "budget_tokens": {"reply": {"dialogue": 500, "profile": 250, "capabilities": 350, "total": 1800}}},   # ТЗ 04: push/pull память; бюджет токенов на роль и блок
+    "context": {"mode": "push", "budget_tokens": {"reply": {"dialogue": 500, "capabilities": 350, "total": 1800}}},   # ТЗ 04: push/pull память; бюджет токенов на роль и блок
     "hearing": False,           # слушать системный звук (речь в колонках); по умолчанию выключено
     "auto_accept": False,       # авто-разрешать ВСЕ действия (кроме опасных, см. services/tools/safety.py); включает только пользователь
     "telegram": False,          # публиковать мысли в Telegram-канал
@@ -32,7 +32,6 @@ DEFAULTS = {
     "record_runs": True,        # записывать каждый забег RimWorld на видео (общая настройка для модуля rimworld, ТЗ 11)
     "telegram_voice": False,       # посты в канал голосовым сообщением (текст идёт подписью)
     "telegram_confirm": False,  # спрашивать разрешение перед каждым постом (False: публикует сама)
-    "graph_memory": True,        # память-граф (SQLite graph.db): факты из разговора; без моделей LM Studio тихо отключается
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
     # размышление (ТЗ 30, IMP-7): шагов и токенов на мысль, размышлений в час, глубина цепочки напоминаний
     "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3},

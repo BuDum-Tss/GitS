@@ -33,7 +33,7 @@ EmbedFn = Callable[[list[str], bool], Awaitable[list[list[float]]]]    # (тек
 
 
 async def lm_studio_embed(texts: list[str], query: bool, timeout: float = BATCH_TIMEOUT_S) -> list[list[float]]:
-    """Эмбеддинги EmbeddingGemma из LM Studio (приставки запроса и документа, как в graph_memory)."""
+    """Эмбеддинги EmbeddingGemma из LM Studio (приставки запроса и документа, как у эпизодов)."""
     prep = (lambda t: f"task: search result | query: {t}") if query else (lambda t: f"title: none | text: {t}")
     async with httpx.AsyncClient(timeout=timeout) as c:
         r = await c.post(f"{LM_URL}/embeddings", json={"model": EMB_MODEL, "input": [prep(t) for t in texts]})

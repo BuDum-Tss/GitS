@@ -1,6 +1,6 @@
 """Разовый перенос старой памяти (`memories.json`, вид user/self/plan/episode) в новую структуру.
 
-user, self и episode -> профиль владельца в графе (пожелания к ней и договорённости тоже о нём), plan -> задача `plan` в `tasks.db`. Берётся только важное
+user, self и episode -> заметки эпизодов (пожелания к ней и договорённости тоже о нём), plan -> задача `plan` в `tasks.db`. Берётся только важное
 (user/self/episode с важностью 4-5, планы от 3 и не устаревшие), остальное отбрасывается. Файл не удаляется: он переименовывается
 в `memories.json.bak` (откат: вернуть имя). Повторный запуск ничего не делает, пока нет нового `memories.json`.
 """
@@ -20,8 +20,8 @@ BACKUP = FILE + ".bak"
 STALE_PLAN_S = 12 * 3600       # план, срок которого прошёл больше чем на полдня назад, не переносится
 
 
-async def migrate(folder: Path, graph, tasks, owner: str = "", clock=time.time) -> dict:
-    """Перенести `folder/memories.json`. Возвращает счётчики {owner, plans, dropped} (пусто, если переносить нечего)."""
+async def migrate(folder: Path, memory, tasks, clock=time.time) -> dict:
+    """Перенести `folder/memories.json`. Возвращает счётчики {owner, plans, dropped} (`memory` - `EpisodeMemory`; owner: записано заметок) (пусто, если переносить нечего)."""
     path = Path(folder) / FILE
     if not path.is_file():
         return {}
@@ -39,8 +39,8 @@ async def migrate(folder: Path, graph, tasks, owner: str = "", clock=time.time) 
         except (TypeError, ValueError):
             importance = 3
         ok = False
-        if kind in ("user", "self", "episode") and graph is not None:
-            ok = graph.remember(text, importance, subject=owner)
+        if kind in ("user", "self", "episode") and memory is not None:
+            ok = memory.remember(text, importance)
             done["owner"] += ok
         elif kind == "plan" and tasks is not None and importance >= MIN_PLAN_IMPORTANCE:
             due = it.get("due") or plan_due.due_of_text(text, float(it.get("ts") or now))

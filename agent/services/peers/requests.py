@@ -21,13 +21,13 @@ logger = logging.getLogger("core_requests")
 TTS_TIMEOUT_S = 80            # синтез у модуля голоса: Fish Speech до 30 с на фразу плюс перекодирование
 TTS_TEXT_MAX = contract.messages.TTS_TEXT_MAX
 
-_NAME_FACT = re.compile(r"\s*(?:имя(?: пользователя)?|зовут)\s*[:\-]\s*(.+)", re.I)
+_NAME_FACT = re.compile(r"\b(?:имя(?: пользователя)?|зовут)\s*[:\-]\s*(.+)", re.I)
 _NAME_WORD = re.compile(r"[А-Яа-яЁёA-Za-z]{3,}")
 
 
-def collect_privacy_terms(owner_name: str, people: list[str], facts: list[str]) -> list[str]:
-    """Личные слова для фильтров публикации модулей (TG-12): имя владельца, имена и ники людей из relationships и имена из
-    фактов о владельце вида «Имя: Аня» (то, что прежде проверял `leaks`). Без повторов, порядок сохраняется."""
+def collect_privacy_terms(people: list[str], notes: list[str]) -> list[str]:
+    """Личные слова для фильтров публикации модулей (TG-12): имена и ники людей из relationships и имена из заметок памяти
+    вида «Имя: Аня» (то, что прежде проверял `leaks`). Без повторов, порядок сохраняется."""
     terms: list[str] = []
     seen: set[str] = set()
 
@@ -37,11 +37,10 @@ def collect_privacy_terms(owner_name: str, people: list[str], facts: list[str]) 
             seen.add(value.lower())
             terms.append(value)
 
-    add(owner_name)
     for person in people:
         add(person)
-    for fact in facts:
-        m = _NAME_FACT.match(fact or "")
+    for note in notes:
+        m = _NAME_FACT.search(note or "")
         if m:
             for word in _NAME_WORD.findall(m.group(1)):
                 add(word)

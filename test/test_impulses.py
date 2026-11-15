@@ -8,11 +8,11 @@ import pytest
 from test_attention import Rig
 from test_companion_split import make as make_companion
 
-from services.reflection.store import JsonReminders, JsonThoughts
+from services.reflection.store import JsonReminders
 from services.reflection.timer import ImpulseTimer
 from services.attention.items import event_of
 from services.reflection.reflection import Intent, ReflectionService, parse_intents, parse_step
-from interfaces.contracts import ReminderRepository, ThoughtJournal
+from interfaces.contracts import ReminderRepository
 from kernel import impulses
 from kernel import hard_rules as rules
 from kernel.event import Event
@@ -47,7 +47,6 @@ class Sink:
 
 def test_stores_satisfy_contracts(tmp_path):
     assert isinstance(store(tmp_path, Clock()), ReminderRepository)
-    assert isinstance(JsonThoughts(lambda: tmp_path / "t.json"), ThoughtJournal)
 
 
 async def test_due_reminder_becomes_self_event(tmp_path):
@@ -155,22 +154,14 @@ class Writer:
         return True
 
 
-class Journal:
+class Log:
+    """Журнал событий (`events_log`) для размышления: пишет события `thought`."""
+
     def __init__(self):
         self.items = []
 
-    def append(self, t):
-        self.items.append(t)
-
-    def recent(self, n=50):
-        return self.items[-n:]
-
-    def update(self, thought_id, **fields):
-        for t in self.items:
-            if t["id"] == thought_id:
-                t.update(fields)
-                return True
-        return False
+    def log_nowait(self, kind, text="", **data):
+        self.items.append({"kind": kind, "text": text, **data})
 
 
 def js(thought="м", recall="", intents=()):
@@ -191,8 +182,8 @@ def service(llm, clock=None, **kw):
     async def remind(due, text, **k):
         reminded.append((due, text, k))
 
-    svc = ReflectionService(llm=llm, memory=Mem(), writer=Writer(), journal=Journal(), prompt=lambda: {"system": "S", "format": "F"},
-                            context=lambda q: "контекст", clock=clock or Clock(), speak=speak, plan=plan, remind=remind, **kw)
+    svc = ReflectionService(llm=llm, memory=Mem(), writer=Writer(), prompt=lambda: {"system": "S", "format": "F"},
+                            context=lambda q: "контекст", clock=clock or Clock(), speak=speak, plan=plan, remind=remind, log=Log(), **kw)
     return svc, SimpleNamespace(spoken=spoken, planned=planned, reminded=reminded)
 
 
@@ -217,7 +208,7 @@ async def test_reflection_produces_every_intent_kind():
     assert got.spoken == ["сборка готова"] and got.planned == ["открой отчёт"]
     assert got.reminded[0][1] == "проверь ещё раз" and got.reminded[0][2]["depth"] == 1
     assert svc.writer.facts == [("сборка зелёная", "episode")]
-    assert svc.journal.items == [t] and t["tokens"] > 0 and t["status"] == "done"
+    assert [e["kind"] for e in svc.log.items] == ["thought"] and svc.log.items[0]["text"] == t["text"] and t["tokens"] > 0 and t["status"] == "done"
 
 
 async def test_reflection_can_recall_then_decide():
@@ -375,14 +366,7 @@ async def test_idle_consolidation_is_one_deferred_call_not_a_poll(tmp_path):
     c._idle_handle.cancel()
 
 
-# ── журнал мыслей и инструмент ────────────────────────────────────────────────
-
-def test_thought_journal_keeps_order_and_limit(tmp_path):
-    j = JsonThoughts(lambda: tmp_path / "t.json")
-    for n in range(3):
-        j.append({"id": n})
-    assert [t["id"] for t in j.recent(2)] == [2, 1]
-
+# ── инструмент ────────────────────────────────────────────────────────────────
 
 def test_event_of_item_keeps_origin_and_data(tmp_path):
     rig = Rig(tmp_path)

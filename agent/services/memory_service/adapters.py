@@ -1,15 +1,15 @@
-"""MemoryReader и MemoryWriter поверх рабочей памяти разговора (`UserMemory`), памяти-графа (`GraphMemory`), задач и эпизодов.
+"""MemoryReader и MemoryWriter поверх рабочей памяти разговора (`UserMemory`), памяти эпизодов (`EpisodeMemory`) и задач.
 
-Куда что пишется (пять мест вместо шести слоёв):
-  user    -> профиль владельца в графе (важность 4-5); сюда же self и episode: его пожелания к ней, договорённости и
-             то, что она сама сочла важным (собственного профиля у неё нет, характер задают карточка и системный промпт);
-  plan    -> задача `plan` в `tasks.db` (срок из `due_days` или из слов текста);
-  факты из разговора -> очередь графа (`enqueue_for_graph`), модель выписывает и оценивает важность;
-  события жизни -> эпизоды (`episodes.db`) нарезаются из журнала сами, сюда не пишутся.
+Память персонажа это эпизоды (`episodes.db`): канон из memories.yaml, заметки «запомни» и события жизни, которые пишет форк её сессии.
+Куда что пишется:
+  user, self, episode -> заметка `kind=note` в эпизодах (текстом; важность 3-5, мелочь не пишется): его пожелания к ней,
+                         договорённости, поправки и то, что она сама сочла важным;
+  plan                -> задача `plan` в `tasks.db` (срок из `due_days` или из слов текста);
+  события жизни и знания из разговора -> эпизоды нарезаются из журнала и пишутся форком, сюда не пишутся.
 
-`get_mem`, `get_graph`, `get_tasks`, `get_episodes` возвращают текущие объекты: память может быть переподключена (переключение
-персонажа), граф и задачи подставляет ядро уже после создания компаньона. Пока объекта нет (None), запись ничего не делает,
-чтение отдаёт пустое значение.
+`get_mem`, `get_episodes`, `get_tasks` возвращают текущие объекты: память может быть переподключена (переключение персонажа),
+эпизоды и задачи подставляет ядро уже после создания компаньона. Пока объекта нет (None), запись ничего не делает, чтение отдаёт
+пустое значение. `get_world` - состояние мира (игры) со строкой `block(запрос)`, оно не память и подмешивается в блок «по теме» отдельно.
 """
 import asyncio
 import hashlib
@@ -17,24 +17,25 @@ import re
 import time
 from typing import Any, Callable
 
-from services.character import character_memory
 from services.memory_service import plan_due
 
 MIN_PLAN_IMPORTANCE = 3          # план записывается и со средней важностью: дедлайны и встречи сами по себе не мелочь
 
 
 class UserMemoryAdapter:
-    def __init__(self, get_mem: Callable[[], Any], get_graph: Callable[[], Any],
-                 get_episodes: Callable[[], Any] | None = None, get_tasks: Callable[[], Any] | None = None,
-                 get_owner: Callable[[], str] | None = None):
-        """get_episodes() -> сервис эпизодов (`services/memory_service/episode_service.py`, у него `.recall`) или None; get_tasks() -> `TaskService` или None
-        (без него планы не записываются); get_owner() -> имя владельца для подписи его фактов."""
+    def __init__(self, get_mem: Callable[[], Any], get_episodes: Callable[[], Any] | None = None,
+                 get_tasks: Callable[[], Any] | None = None, get_world: Callable[[], Any] | None = None):
+        """get_episodes() -> сервис эпизодов (`episode_service.py`, у него `.recall` и `.memory`) или None; get_tasks() -> `TaskService`
+        или None (без него планы не записываются); get_world() -> состояние мира или None."""
         self._get_mem = get_mem
-        self._get_graph = get_graph
         self._get_episodes = get_episodes or (lambda: None)
         self._get_tasks = get_tasks or (lambda: None)
-        self._get_owner = get_owner or (lambda: "")
+        self._get_world = get_world or (lambda: None)
         self.loop: asyncio.AbstractEventLoop | None = None      # цикл ядра: планы из рабочих потоков (to_thread) ставятся в него
+
+    def _memory(self):
+        eps = self._get_episodes()
+        return eps.memory if eps is not None else None
 
     # ── чтение (MemoryReader) ────────────────────────────────────────────────────────
 
@@ -42,24 +43,22 @@ class UserMemoryAdapter:
         mem = self._get_mem()
         return mem.context_block(dialogue=dialogue) if mem is not None else ""
 
-    async def graph_block(self, query: str) -> str:
-        graph = self._get_graph()
-        return await graph.context_block(query) if graph is not None else ""
+    async def topic_block(self, query: str) -> str:
+        """«Что ты помнишь по теме»: эпизоды и заметки по запросу; состояние мира (игры) отдельной строкой."""
+        memory = self._memory()
+        parts = [await memory.topic_block(query)] if memory is not None else []
+        world = self._get_world()
+        parts.append(world.block(query) if world is not None else "")
+        return "\n".join(p for p in parts if p)
 
-    async def self_block(self, query: str) -> str:
-        graph = self._get_graph()
-        if graph is None:
-            return ""
-        return character_memory.block(await graph.self_memories(query))
+    async def canon_block(self, query: str) -> str:
+        """«Твои воспоминания (это о тебе)»: канон персонажа, подходящий к реплике."""
+        memory = self._memory()
+        return await memory.canon_block(query) if memory is not None else ""
 
-    def profile_block(self) -> str:
-        """Профиль владельца: всегда в контексте его разговора, вне темы (читается напрямую, без моделей)."""
-        fn = getattr(self._get_graph(), "profile_block", None)       # у заглушек графа в тестах метода может не быть
-        return fn() if fn is not None else ""
-
-    def graph_status(self) -> str | None:
-        graph = self._get_graph()
-        return graph.status_text() if graph is not None else None
+    def memory_status(self) -> str | None:
+        memory = self._memory()
+        return memory.status_text() if memory is not None else None
 
     def recent_dialogue(self, n: int = 8) -> list[dict]:
         mem = self._get_mem()
@@ -69,30 +68,14 @@ class UserMemoryAdapter:
         mem = self._get_mem()
         return mem.recent_activity(n) if mem is not None else []
 
-    def facts(self) -> list[dict]:
-        """Профиль владельца: [{text, ts}]."""
-        fn = getattr(self._get_graph(), "profile_facts", None)
-        return [{"text": f["text"], "ts": f["ts"]} for f in fn("owner", 50)] if fn is not None else []
-
     async def recall(self, query: str, k: int = 6) -> list[dict]:
-        """Факты графа по теме и, если подключены эпизоды, эпизоды и дневник по смыслу (гибридный поиск, ТЗ 27).
-        Сбой поиска эпизодов не мешает фактам."""
-        out: list[dict] = []
-        graph = self._get_graph()
-        if graph is not None:
-            try:
-                out += [{"text": f["fact"], "kind": "fact", "id": f.get("uuid", ""), "importance": 4}
-                        for f in await graph.search(query, limit=k)]
-            except Exception:
-                pass
-        eps = self._get_episodes()
-        if eps is not None:
-            try:
-                out += [{"text": h["text"], "kind": h["kind"], "id": h["id"], "importance": 3}
-                        for h in await eps.recall.find(query, k=max(1, k // 2))]
-            except Exception:
-                pass
-        return out[:k + 3]
+        """Эпизоды всех видов (жизнь, канон, заметки) и дневник по смыслу запроса (гибридный поиск, ТЗ 27):
+        [{text, kind (episode|canon|note|diary|digest), id, importance}]. Сбой поиска даёт пустой список."""
+        memory = self._memory()
+        if memory is None:
+            return []
+        return [{"text": h["text"], "kind": h["kind"], "id": h["id"], "importance": round(h["salience"] * 5) or 3}
+                for h in await memory.find(query, k)]
 
     def meta(self, key: str, default: Any = None) -> Any:
         mem = self._get_mem()
@@ -110,12 +93,10 @@ class UserMemoryAdapter:
         text = re.sub(r"\s+", " ", str(text)).strip()
         if kind == "plan":
             return self._add_plan(text, importance, due_days)
-        graph = self._get_graph()
-        if getattr(graph, "remember", None) is None:
+        memory = self._memory()
+        if memory is None or kind not in ("user", "self", "episode"):
             return False
-        if kind in ("user", "self", "episode"):
-            return graph.remember(text, importance, subject=self._get_owner())
-        return False
+        return memory.remember(text, importance)
 
     def _add_plan(self, text: str, importance: int, due_days: float | None) -> bool:
         tasks = self._get_tasks()
@@ -139,15 +120,10 @@ class UserMemoryAdapter:
         if mem is not None:
             mem.add_activity(app, category, summary)
 
-    def enqueue_for_graph(self, speaker: str, text: str, source: str | None = None, owner: bool = False) -> None:
-        graph = self._get_graph()
-        if graph is not None:
-            extra = {**({"source": source} if source else {}), **({"owner": True} if owner else {})}    # ТЗ 27: факт из эпизода помнит, из какого
-            graph.enqueue(speaker, text, **extra)
-
     def forget_matching(self, text: str) -> int:
-        fn = getattr(self._get_graph(), "forget_matching", None)
-        return fn(text) if fn is not None else 0
+        """Забыть эпизоды и заметки по словам фразы (канон не забывается)."""
+        memory = self._memory()
+        return memory.forget_matching(text) if memory is not None else 0
 
     def set_meta(self, key: str, value: Any) -> None:
         mem = self._get_mem()
@@ -159,11 +135,3 @@ class UserMemoryAdapter:
         if mem is not None:
             mem.rebind(memory_dir)
 
-
-def writer_for_companion(companion):
-    """MemoryWriter для менеджера внимания: публичное свойство `memory_writer` компаньона; у заглушек без него - память
-    из приватных полей `_mem` и `graph` (читаются при каждом вызове)."""
-    writer = getattr(companion, "memory_writer", None)
-    if writer is not None:
-        return writer
-    return UserMemoryAdapter(lambda: getattr(companion, "_mem", None), lambda: getattr(companion, "graph", None))

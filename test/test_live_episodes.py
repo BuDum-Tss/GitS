@@ -13,7 +13,7 @@ from services.memory_service.episode_fork import ForkedEpisodeWriter, parse_list
 from services.memory_service.live_episodes import LiveEpisodes, live_cfg, will_leave_context
 from services.runtime.pi_runtime import PiRuntime
 
-from test_episodes import LLM, Clock, Journal, Writer, good_summary, make_runner, no_real_pi, text_or_summary    # noqa: F401
+from test_episodes import LLM, Clock, Journal, good_summary, make_runner, no_real_pi, text_or_summary    # noqa: F401
 from test_moments import STRONG, att
 
 T0 = 1_800_000_000.0
@@ -21,9 +21,8 @@ BRIDGE = Path(__file__).with_name("fake_pi_bridge.py")
 
 
 def story(moment, **over):
-    el = {"moment": moment, "title": "Разговор", "story": "Я говорила с пользователем. Он просил меня запомнить важное.",
-          "noticed": ["он просил запомнить"], "attitude": "Мне это важно.", "emotions": ["забота"], "facts": ["Он любит физику"],
-          "quotes": ["запомни"]}
+    el = {"moment": moment, "title": "Разговор",
+          "text": "Я говорила с пользователем, он просил меня запомнить важное про физику. Мне это важно, и я это запомнила."}
     el.update(over)
     return el
 
@@ -77,8 +76,7 @@ class Fork:
 def plain_summary(system, user, n):
     """Строгий писатель (запасной путь): рассказ без имён и чисел, которых нет в событиях."""
     return json.dumps({"title": "Разговор", "refs": [int(x) for x in re.findall(r"^\[(\d+)\]", user, re.M)][:1],
-                       "story": "Я говорила с пользователем. Он просил меня запомнить важное.", "attitude": "Мне это важно.",
-                       "noticed": ["просьба запомнить"]}, ensure_ascii=False)
+                       "text": "Я говорила с пользователем. Он просил меня запомнить важное."}, ensure_ascii=False)
 
 
 def plain_or_text(system, user, n):
@@ -105,7 +103,7 @@ async def test_fork_writes_into_a_copy_and_leaves_the_live_file_untouched(tmp_pa
     before = f.live.read_bytes()
     (ep,) = await pending_of(r)
     res = await f.writer.summarize(ep, r.store.events_of(ep["id"]))
-    assert res.ok and res.data["attitude"] == "Мне это важно." and res.data["noticed"] == ["он просил запомнить"]
+    assert res.ok and "Мне это важно" in res.data["text"] and res.data["title"] == "Разговор"
     assert f.live.read_bytes() == before                              # живой файл байт в байт прежний
     kinds = [x[0] for x in f.log]
     assert kinds == ["start", "run", "close"] and f.log[0][1] == "её система" and f.log[0][2] == []     # без инструментов
@@ -205,7 +203,7 @@ async def test_partial_answer_skips_the_rest_and_bad_element_is_retried(tmp_path
     r = make_runner(tmp_path, one_peak_journal(3), LLM(good_summary), Clock(T0 + 5000))
     pend = await pending_of(r)
     a, b, c = (e["id"] for e in pend)
-    answers = iter([json.dumps([story(a), story(b, attitude="")], ensure_ascii=False),        # c не включён, b неверный
+    answers = iter([json.dumps([story(a), story(b, text="")], ensure_ascii=False),        # c не включён, b неверный
                     json.dumps([story(b)], ensure_ascii=False)])
     f = Fork(tmp_path, r, reply=lambda p: next(answers))
     res = await f.writer.summarize_many([(e, r.store.events_of(e["id"])) for e in pend])
@@ -217,10 +215,9 @@ async def test_partial_answer_skips_the_rest_and_bad_element_is_retried(tmp_path
 async def test_trusted_check_does_not_need_names_from_events(tmp_path):
     r = make_runner(tmp_path, one_peak_journal(), LLM(lambda s, u, n: ""), Clock(T0 + 5000))
     (ep,) = await pending_of(r)
-    f = Fork(tmp_path, r, reply=lambda p: json.dumps([story(ep["id"], story="Я вспомнила разговор с Борисом на прошлой неделе про 77 яблок.",
-                                                           quotes=["запомни", "не было такого"])], ensure_ascii=False))
+    f = Fork(tmp_path, r, reply=lambda p: json.dumps([story(ep["id"], text="Я вспомнила разговор с Борисом на прошлой неделе про 77 яблок.")], ensure_ascii=False))
     res = await f.writer.summarize(ep, r.store.events_of(ep["id"]))
-    assert res.ok and res.data["quotes"] == ["запомни"]                  # цитаты по-прежнему дословные
+    assert res.ok and "Борисом" in res.data["text"]                       # имена и числа форка не сверяются с событиями
 
 
 async def test_fallback_when_fork_is_impossible(tmp_path):
@@ -284,7 +281,7 @@ async def test_instant_peak_is_written_right_away_one_batch(tmp_path):
     r, f, live = make_live(tmp_path, j, T0 + 25)
     assert await live.tick() == "wrote"                                 # через 20 секунд, не через 2 минуты
     (ep,) = r.store.select()
-    assert ep["status"] == "embedded" and ep["attitude"] and ep["noticed"] and ep["summary"]
+    assert ep["status"] == "embedded" and ep["title"] and "Мне это важно" in ep["text"]
     assert await live.tick() == "idle"
 
 
@@ -437,7 +434,7 @@ async def test_service_starts_live_loop_next_to_scheduler(tmp_path):
     from services.memory_service.episode_service import EpisodeService
     from services.memory_service.search.embedder import HashEmbedder
     j = Journal()
-    comp = SimpleNamespace(_dir=tmp_path / "a", _llm=LLM(text_or_summary), memory_writer=Writer(), idle_seconds=lambda: 0.0,
+    comp = SimpleNamespace(_dir=tmp_path / "a", _llm=LLM(text_or_summary), idle_seconds=lambda: 0.0,
                            _last_user_ts=0.0, _settings=SimpleNamespace(load=lambda: {"episodes": {"live": {"tick_s": 0.01}}}))
     svc = EpisodeService(comp, SimpleNamespace(submit=None), clock=Clock(T0 + 5000), embedder=HashEmbedder(), source=j)
     await svc.start()
@@ -449,4 +446,4 @@ async def test_service_starts_live_loop_next_to_scheduler(tmp_path):
     assert svc.live._task is None
 
 
-_ = (Writer, att, good_summary)
+_ = (att, good_summary)

@@ -15,7 +15,6 @@
 import asyncio
 import os
 import logging
-import time as _time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -25,7 +24,6 @@ from services.tracing import events_log
 from services.tracing import tool_trace
 from services.memory_service import episode_routes
 from services.memory_service import episode_service
-from services.memory_service import scope as graph_scope
 from services.reflection import service as impulse_service
 from services.memory_service import migration as memory_migration
 from services.tasks import wiring as task_wiring
@@ -55,7 +53,7 @@ from services.event_handlers.game import make_colonists_handler, make_run_lost_h
 from services.event_handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
 from services.peers.hub import PeerHub
 from services.peers.registry import PeerRegistry
-from services.memory_service import GraphMemory
+from services.event_handlers.colony_state import ColonyState
 from services.character.relationships import Relationships
 from services.tools.router import Router
 
@@ -265,10 +263,10 @@ def wire_modules(companion, registry, *, specs=None,
     return layer
 
 
-async def _migrate_memory(companion, graph, folder: Path) -> None:
-    """Перенос старой `memories.json` в граф и задачи (`services/memory_service/migration.py`); сбой переноса не мешает запуску."""
+async def _migrate_memory(companion, memory, folder: Path) -> None:
+    """Перенос старой `memories.json` в заметки эпизодов и задачи (`services/memory_service/migration.py`); сбой переноса не мешает запуску."""
     try:
-        done = await memory_migration.migrate(folder, graph, getattr(companion, "tasks", None), companion._owner_name())
+        done = await memory_migration.migrate(folder, memory, getattr(companion, "tasks", None))
         if done:
             events_log.log("memory", f"старая память перенесена: владелец {done['owner']}, "
                                      f"планы {done['plans']}, отброшено мелочи {done['dropped']}")
@@ -345,21 +343,15 @@ async def _run(config: dict):
 
     # Окружения: встроенные плагины сразу, манифесты (MCP, вебхуки, RimWorld) подгружаются в фоне
     memory = companion.memory_reader                     # одна память на компаньона, инструменты и разговор
-    layer.requests.privacy_terms = lambda: core_requests.collect_privacy_terms(
-        companion._owner_name(), rel.people_terms(), [f["text"] for f in memory.facts()])      # core.privacy_terms (TG-12)
-    graph = GraphMemory(mem_dir, busy=lambda: _time.time() - companion._last_user_ts < 20 or companion.is_speaking())
-    companion.graph = graph
-    graph.scopes_of = layer.focus.memory_scopes        # ТЗ 04, KB-12/13: области графа по текущей среде
-    graph.scope_of = graph_scope.make_scope_of(
-        layer.attention.decider, graph.scopes_of,
-        layer.focus.scope_title)
-    http_api.set_graph(graph)
+    def note_texts() -> list[str]:
+        eps = getattr(companion, "episodes", None)
+        return [n["text"] for n in eps.store.of_kind("note")] if eps is not None else []
+    layer.requests.privacy_terms = lambda: core_requests.collect_privacy_terms(rel.people_terms(), note_texts())      # core.privacy_terms (TG-12)
+    companion.world = ColonyState(Path(mem_dir) / "colony_state.json")        # состояние игры (колония): не память
     http_api.set_tasks(lambda: getattr(companion, "tasks", None))
-    layer.character_switch = CharacterSwitch(companion=companion, rel=rel, graph=graph, attention=layer.attention,
+    layer.character_switch = CharacterSwitch(companion=companion, rel=rel, attention=layer.attention,
                                              hub=layer.hub)
     http_api.set_character(layer.character_switch)
-    graph.set_character(character.active().id)           # новые факты пишутся в группу активного персонажа
-    asyncio.create_task(graph.run())
     try:
         companion.memory_writer.loop = loop             # планы из рабочих потоков ставятся задачами в цикл ядра
     except AttributeError:
@@ -392,7 +384,6 @@ async def _run(config: dict):
     http_api.set_focus(layer.focus)
     asyncio.create_task(registry.load_manifests(Path(__file__).parent / "environments" / "manifests"))
     layer.requests.tasks = companion.tasks = task_wiring.build(companion, layer.workspaces)    # ТЗ 32, WS-8: общие задачи, напоминания себе и планы
-    await _migrate_memory(companion, graph, Path(companion._dir))      # старая memories.json -> граф и задачи (один раз)
     link_change = layer.workspaces.on_change                            # слот модуля и профиль среды
     task_change = companion.tasks.on_workspace_change                   # checkpoint задач при уходе из среды, возобновление при входе
 
@@ -415,11 +406,12 @@ async def _run(config: dict):
     await episodes.start()
     episodes.scheduler.on_state = layer.workspaces.on_sleep_state      # ТЗ 32: сон это среда sleep
     episode_routes.set_service(episodes)
+    await _migrate_memory(companion, episodes.memory, Path(companion._dir))      # старая memories.json -> заметки и задачи (один раз)
     layer.requests.episodes = episodes                    # core.memory.episodes
     await impulses.plans.start()                         # планы пользователя -> напоминания себе (без опроса модели, ТЗ 30)
 
-    # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и граф памяти, не озвучивается ──
-    layer.attention.register_handler("rimworld.colonists", make_colonists_handler(rel, graph))
+    # ── события игры (ТЗ 11, RW-9): список колонистов обновляет отношения и состояние мира (не память), не озвучивается ──
+    layer.attention.register_handler("rimworld.colonists", make_colonists_handler(rel, companion.world))
     logger.info("Ядро запущено: зрение, компаньон, быстрый слой, шина модулей. Игра и модули подключатся, когда появятся.")
     try:
         await asyncio.Event().wait()

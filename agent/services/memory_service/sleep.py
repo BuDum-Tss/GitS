@@ -1,9 +1,9 @@
-"""Конвейер сна (ТЗ 27, EPI-5, EPI-7, EPI-10): выбор моментов -> рассказ -> факты в граф -> эмбеддинги -> связи -> сводки -> дневник ->
-сжатие старого.
+"""Конвейер сна (ТЗ 27, EPI-5, EPI-7, EPI-10): выбор моментов -> текст эпизода -> эмбеддинги (и у заметок с каноном, записанных без них) -> связи -> сводки ->
+дневник -> сжатие старого.
 
 Единица работы один эпизод; перед каждым эпизодом и между шагами проверяется `should_stop` (безопасная точка), запросы к модели
 короткие. Все шаги идемпотентны: у эпизода статус (`pending`, `summarized`, `embedded`, `failed`), у выбора моментов отметка «обработано до
-события N», у фактов флаг `facts_done`, у уведомления флаг `notified`. Прерванный сон продолжается с того же места, повтор безопасен.
+события N», у уведомления флаг `notified`. Прерванный сон продолжается с того же места, повтор безопасен.
 Недоступная модель останавливает LLM-шаги, а не портит данные: эпизоды остаются в прежнем статусе до следующего сна."""
 import asyncio
 import logging
@@ -13,7 +13,7 @@ from typing import Awaitable, Callable
 
 from services.memory_service.diary import DayWriter
 from services.memory_service.episode_summary import EpisodeSummarizer
-from interfaces.contracts import EventSource, MemoryWriter
+from interfaces.contracts import EventSource
 import services.memory_service.episodes as dom
 
 logger = logging.getLogger("episodes")
@@ -23,8 +23,8 @@ MAX_ATTEMPTS = 3                     # попыток записать эпиз�
 
 
 def embed_text(ep: dict) -> str:
-    """Текст эпизода для поиска (FTS и вектор): `заголовок. рассказ отношение`."""
-    return f"{ep['title']}. {ep['summary']} {ep.get('attitude') or ''}".strip()
+    """Текст эпизода для поиска (FTS и вектор): `заголовок. текст`, целиком и без других полей."""
+    return dom.index_text(ep["title"], ep["text"])
 
 
 def episodes_cfg(settings: Callable[[], dict]) -> dict:
@@ -33,13 +33,13 @@ def episodes_cfg(settings: Callable[[], dict]) -> dict:
 
 
 class SleepRunner:
-    def __init__(self, *, selector, summarizer: EpisodeSummarizer, store, search, writer: MemoryWriter, days: DayWriter,
+    def __init__(self, *, selector, summarizer: EpisodeSummarizer, store, search, days: DayWriter,
                  source: EventSource, settings: Callable[[], dict], clock: Callable[[], float] = time.time,
                  notify: Notify | None = None, hooks: list | None = None):
         """notify(эпизод) шлёт событие `episode.summary` в конвейер внимания (маршрут think); hooks - сценарии после сна
         (ТЗ 28: разбор ошибок), каждый получает отчёт."""
         self.selector, self.summarizer, self.store, self.search = selector, summarizer, store, search
-        self.writer, self.days, self.source, self.settings, self.clock = writer, days, source, settings, clock
+        self.days, self.source, self.settings, self.clock = days, source, settings, clock
         self.notify, self.hooks = notify, hooks if hooks is not None else []
         self.spent = 0
         self.embed_down = False
@@ -94,7 +94,7 @@ class SleepRunner:
                 await self.process_episode(ep, rep, cfg=cfg)
 
     async def process_episode(self, ep: dict, rep: dict, result=None, cfg: dict | None = None) -> bool:
-        """Один эпизод до конца: рассказ (или готовый `result` от писателя), факты в граф, эмбеддинг, уведомление `episode.summary`.
+        """Один эпизод до конца: текст (или готовый `result` от писателя), эмбеддинг, уведомление `episode.summary`.
         Так работает и сон (в цикле), и живой цикл (один эпизод или пачка за тик). `rep` - счётчики (`llm_down`, `summarized`,
         `embedded`, `failed`, `notified`). True, если эпизод дошёл до статуса embedded; недоступная модель или эмбеддер это не
         ошибка: эпизод остаётся в прежнем статусе, повтор в следующий тик или сон."""
@@ -105,7 +105,6 @@ class SleepRunner:
             ep = await self._summarize(ep, rep, result)
             if ep is None:
                 return False
-        await self._facts(ep)
         if not self.embed_down and await self._embed(ep, cfg):
             rep["embedded"] += 1
         await self._notify(ep, cfg, rep)
@@ -134,32 +133,20 @@ class SleepRunner:
             return None
         d = res.data
         parts = sorted({*ep.get("participants", []), *d["participants"]})
-        emotions = sorted({*ep.get("emotions", []), *d["emotions"]})
-        await asyncio.to_thread(self.store.update, ep["id"], title=d["title"], summary=d["summary"], attitude=d["attitude"],
-                                noticed=d["noticed"], quotes=d["quotes"], facts=d["facts"], participants=parts, emotions=emotions,
+        await asyncio.to_thread(self.store.update, ep["id"], title=d["title"], text=d["text"], participants=parts,
                                 status=dom.SUMMARIZED, error="")
         rep["summarized"] += 1
         return await asyncio.to_thread(self.store.get, ep["id"])
 
-    async def _facts(self, ep: dict) -> None:
-        """Факты эпизода в очередь графа через MemoryWriter, с ссылкой на эпизод (один раз)."""
-        if ep.get("facts_done") or not ep.get("facts"):
-            return
-        for fact in ep["facts"]:
-            await asyncio.to_thread(self.writer.enqueue_for_graph, "Пользователь", fact, ep["id"])
-        await asyncio.to_thread(self.store.update, ep["id"], facts_done=1)
-
     async def _embed(self, ep: dict, cfg: dict) -> bool:
         if self.search is None or ep["status"] != dom.SUMMARIZED:
             return False
-        meta = {"episode": ep["id"], "day": ep["day"], "stream": ep["stream"], "salience": ep["salience"]}
+        meta = {"episode": ep["id"], "kind": ep["kind"], "day": ep["day"], "stream": ep["stream"], "salience": ep["salience"]}
         await self.search.add("episodes", ep["id"], embed_text(ep), ts=ep["t_end"], meta=meta)
         if self.search.embedder is not None and not self.search.last_embedded:
             self.embed_down = True                                  # эмбеддер недоступен: статус не двигаем, повтор в следующий сон
             return False
-        for i, q in enumerate(ep.get("quotes") or []):
-            await self.search.add("episodes", f"{ep['id']}#q{i}", q, ts=ep["t_end"], meta={**meta, "quote": True})
-        related = await self._related(ep, cfg)
+        related = await self._related(ep, cfg) if ep["kind"] == dom.LIFE else []        # заметки и канон ни с чем не связываются
         await asyncio.to_thread(self.store.update, ep["id"], status=dom.EMBEDDED, related=related)
         ep["status"] = dom.EMBEDDED
         return True
@@ -170,12 +157,12 @@ class SleepRunner:
         thr = float(thr) if isinstance(thr, (int, float)) and not isinstance(thr, bool) else 0.82
         hits = await self.search.search(embed_text(ep), collections=["episodes"], k=5, rewrite=False,
                                         meta={"stream": ep["stream"]})
-        return [h.key for h in hits if h.key != ep["id"] and "#" not in h.key and not h.key.startswith("digest:")
+        return [h.key for h in hits if h.key != ep["id"] and h.meta.get("kind", dom.LIFE) == dom.LIFE and not h.key.startswith("digest:")
                 and h.cos is not None and h.cos >= thr][:3]
 
     async def _notify(self, ep: dict, cfg: dict, rep: dict) -> int:
         """`episode.summary` во внимание: только яркие эпизоды и не больше `notify_max` за сон (маршрут think, ТЗ 30)."""
-        if self.notify is None or ep.get("notified") or ep["status"] not in (dom.SUMMARIZED, dom.EMBEDDED) or not ep.get("summary"):
+        if self.notify is None or ep.get("notified") or ep["status"] not in (dom.SUMMARIZED, dom.EMBEDDED) or not ep.get("text"):
             return 0
         thr = cfg.get("notify_salience")
         thr = float(thr) if isinstance(thr, (int, float)) and not isinstance(thr, bool) else 0.5
@@ -248,10 +235,7 @@ class SleepRunner:
                 if not ok:
                     continue
             for e in eps:
-                for i in range(len(e.get("quotes") or [])):
-                    if self.search is not None:
-                        await self.search.delete("episodes", f"{e['id']}#q{i}")
-                await asyncio.to_thread(self.store.update, e["id"], quotes=[], compressed=1)
+                await asyncio.to_thread(self.store.update, e["id"], compressed=1)
             await asyncio.to_thread(self.store.set_digest, day, (await asyncio.to_thread(self.store.digest, day))["text"],
                                     len(eps), compressed=True)
             rep["compressed"] += len(eps)
@@ -260,8 +244,8 @@ class SleepRunner:
             rep["raw_deleted"] = await self._delete_raw(now - keep * 86400.0)
 
     async def _delete_raw(self, cutoff: float) -> int:
-        eps = [e for e in await asyncio.to_thread(self.store.select, status=dom.EMBEDDED, until=cutoff, limit=100, oldest_first=True)
-               if not e.get("raw_deleted") and e["t_end"] <= cutoff and e.get("summary")]
+        eps = [e for e in await asyncio.to_thread(self.store.select, status=dom.EMBEDDED, kind=dom.LIFE, until=cutoff, limit=100, oldest_first=True)
+               if not e.get("raw_deleted") and e["t_end"] <= cutoff and e.get("text")]
         n = 0
         for e in eps:
             ids = [ev["id"] for ev in await asyncio.to_thread(self.store.events_of, e["id"])]

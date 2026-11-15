@@ -201,7 +201,7 @@ async def test_backfill_takes_top_k_and_does_not_move_the_mark(tmp_path):
 
 # ── хранилище и чтение ───────────────────────────────────────────────────────────────────────
 
-def test_old_database_gets_new_columns(tmp_path):
+def test_old_database_gets_the_new_columns_and_text(tmp_path):
     path = tmp_path / "episodes.db"
     db = sqlite3.connect(path)
     db.execute("CREATE TABLE episodes (id TEXT PRIMARY KEY, t_start REAL NOT NULL, t_end REAL NOT NULL, first_id INTEGER NOT NULL,"
@@ -218,21 +218,50 @@ def test_old_database_gets_new_columns(tmp_path):
     db.close()
     store = EpisodeStore(path)
     old = store.get("e1-2")
-    assert old["attitude"] == "" and old["noticed"] == []
-    store.update("e1-2", summary="рассказ", attitude="мне это важно", noticed=["деталь"])
+    assert old["kind"] == "life" and old["text"] == "" and "attitude" not in old and "summary" not in old
+    store.update("e1-2", text="рассказ, где уже есть отношение")
     got = store.get("e1-2")
-    assert got["attitude"] == "мне это важно" and got["noticed"] == ["деталь"] and got["version"] == 1
+    assert got["text"] == "рассказ, где уже есть отношение" and got["version"] == 1
     EpisodeStore(path)                                                  # повторное открытие не ломается
 
 
-async def test_recall_gives_attitude_and_noticed(tmp_path):
+async def test_recall_gives_the_text_only(tmp_path):
     store = EpisodeStore(tmp_path / "episodes.db")
     store.add_episode({"id": "m1-2", "t_start": T0, "t_end": T0 + 1, "first_id": 1, "last_id": 2, "day": "2026-01-01"},
                       [{"id": 1, "ts": T0, "kind": "user", "text": "привет"}])
-    store.update("m1-2", title="Встреча", summary="Я встретила Аню.", attitude="Мне было приятно.", noticed=["она улыбалась"])
+    store.update("m1-2", title="Встреча", text="Я встретила Аню, она улыбалась, и мне было приятно.")
     rec = EpisodeRecall(store=store, search=None)
     ep = await rec.expand("m1-2")
-    assert ep["attitude"] == "Мне было приятно." and ep["noticed"] == ["она улыбалась"]
+    assert ep["text"].startswith("Я встретила Аню") and not {"attitude", "noticed", "quotes", "facts", "summary"} & set(ep)
     text = await rec.recall_episode("m1-2")
-    assert "Мне было приятно." in text and "она улыбалась" in text
-    assert (await rec.listing())[0]["attitude"] == "Мне было приятно."
+    assert "мне было приятно" in text and "[1]" in text
+    listed = (await rec.listing())[0]
+    assert listed["text"] == ep["text"] and listed["kind"] == "life" and "attitude" not in listed
+
+
+# ── мысль: контекст момента, но не пик ───────────────────────────────────────────────────────
+
+def test_thought_is_context_of_a_moment_but_never_a_peak():
+    assert "thought" in mom.CONTEXT_KINDS and mom.event_score(row(1, T0, "thought", "она устала", importance=5, salience=0.9)) == (0.0, [])
+    rows = [row(1, T0, "thought", "странная просьба, но спокойно"), row(2, T0 + 5, "user", STRONG), row(3, T0 + 9, "thought", "надо запомнить это")]
+    got = mom.select_moments(rows, CFG, T0 + 1000)
+    assert len(got) == 1 and got[0].peak_id == 2
+    assert [(e.kind, e.score) for e in got[0].events if e.kind == "thought"] == [("thought", 0.0), ("thought", 0.0)]
+
+
+def test_lone_thoughts_never_make_a_moment():
+    assert mom.select_moments([row(1, T0, "thought", "мысль"), row(2, T0 + 30, "thought", "ещё мысль")], CFG, T0 + 1000) == []
+
+
+def test_fork_sees_a_thought_as_own_thought_line():
+    from services.memory_service.episode_summary import format_events
+    line = format_events([{"id": 5, "ts": T0, "kind": "thought", "text": "она устала"}])
+    assert line.endswith("мысль: она устала") and line.startswith("[5] ")
+
+
+async def test_selector_writes_thought_into_the_episode_sources(tmp_path):
+    rows = [row(1, T0, "thought", "тихая мысль"), row(2, T0 + 5, "user", STRONG)]
+    j, store, sel = make_selector(tmp_path, rows, T0 + 1000, first_upto=lambda: 0)
+    assert (await sel.run())["episodes"] == 1
+    ep = store.select()[0]
+    assert [e["kind"] for e in store.events_of(ep["id"])] == ["thought", "user"] and ep["peak_id"] == 2

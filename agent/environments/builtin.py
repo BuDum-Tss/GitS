@@ -233,14 +233,12 @@ def register(registry, companion, memory):
         return f"задача {t.id} закрыта ({t.status}): {t.goal}"
 
     async def recall(a):
-        parts = [f["text"] for f in getattr(memory, "facts", list)() if stems(a["query"]) & stems(f["text"])]    # профиль владельца по теме
-        graph = getattr(companion, "graph", None)
-        if graph is not None:
-            parts += [f["fact"] for f in await graph.search(a["query"], limit=6)]     # память-граф: факты о людях и жизни
+        parts = []
         episodes = getattr(companion, "episodes", None)
-        if episodes is not None:                                   # ТЗ 27: эпизоды и дневник; id разворачивает recall_episode
-            for h in await episodes.recall.find(a["query"], k=3):
-                parts.append(f"{'эпизод ' + h['id'] if h['kind'] == 'episode' else h['kind']} ({h['when']}): {h['text'][:300]}")
+        if episodes is not None:                                   # единая память: эпизоды (жизнь, канон, заметки) и дневник; id разворачивает recall_episode
+            for h in await episodes.recall.find(a["query"], k=6):
+                label = {"episode": "эпизод " + h["id"], "note": "заметка", "canon": "о себе"}.get(h["kind"], h["kind"])
+                parts.append(f"{label} ({h['when']}): {h['text'][:300]}")
         parts = list(dict.fromkeys(parts))
         if not parts:
             raise ToolError("по этой теме в памяти ничего нет")
@@ -290,7 +288,7 @@ def register(registry, companion, memory):
                   deep_analysis, informative=True,
                   keywords=("анализ", "проанализируй", "разбери", "причины", "выводы", "протокол", "аудит", "самоанализ",
                             "почему", "ошибки", "гибель", "погибла", "что пошло не так")),
-            _tool("assistant", "forget", "Стереть из её долговременной памяти записи, где встречается фраза.",
+            _tool("assistant", "forget", "Стереть из её памяти эпизоды и заметки, где встречается фраза (воспоминания персонажа о себе из канона не стираются).",
                   {"text": {"type": "string", "description": "слово или фраза из записи"}}, forget,
                   keywords=("забудь", "забыть", "стереть", "память")),
             _tool("assistant", "remember", "Запомнить что-то надолго по просьбе («запомни, что…»). "
@@ -340,8 +338,8 @@ def register(registry, companion, memory):
             _tool("assistant", "recall", "Вспомнить, что она помнит по теме или о ком-то (для вопросов «что ты помнишь про…»).",
                   {"query": {"type": "string", "description": "тема или слова для поиска в памяти"}},
                   recall, informative=True, keywords=("помнишь", "вспомни", "вспомнить", "память", "знаешь")),
-            _tool("assistant", "recall_episode", "Развернуть эпизод из памяти по его id (из ответа recall «эпизод e12-30»): резюме, "
-                  "цитаты и события-источники по порядку. Для просьб «расскажи подробнее, как это было», «что именно там было сказано».",
+            _tool("assistant", "recall_episode", "Развернуть эпизод из памяти по его id (из ответа recall «эпизод e12-30»): текст эпизода и "
+                  "события-источники по порядку. Для просьб «расскажи подробнее, как это было», «что именно там было сказано».",
                   {"id": {"type": "string", "description": "id эпизода, например e120-135"}},
                   recall_episode, informative=True, keywords=("подробнее", "как это было", "эпизод", "помнишь как", "вспомни как")),
             _tool("assistant", "quiet_mode", "Не отвлекать пользователя заданное число минут (она сама не заговаривает).",

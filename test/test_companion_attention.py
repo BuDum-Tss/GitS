@@ -72,7 +72,7 @@ class Rig:
         self.graph_queries: list[str] = []
         self.companion.graph = SimpleNamespace(
             enqueue=lambda *a, **k: None, status_text=lambda: "граф",
-            context_block=self._graph_block)
+            context_block=self._topic_block)
         orig_stop = self.speech.stop
 
         async def stop(uid=None):
@@ -80,7 +80,7 @@ class Rig:
             await orig_stop(uid)
         self.speech.stop = stop
 
-    async def _graph_block(self, query):
+    async def _topic_block(self, query):
         self.graph_queries.append(query)
         return ""
 

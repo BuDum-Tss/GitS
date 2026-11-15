@@ -41,7 +41,7 @@ def test_bad_records_are_rejected_with_the_record_number(tmp_path, body, message
 
 
 def _cand(mem_id, fact, mtype="self", weight=0.5):
-    return {"mem_id": mem_id, "fact": fact, "mtype": mtype, "weight": weight, "source": "seed"}
+    return {"mem_id": mem_id, "text": fact, "mtype": mtype, "weight": weight, "source": "seed"}
 
 
 def test_pick_keeps_the_best_three_above_threshold_by_relevance_times_weight():
@@ -76,6 +76,6 @@ def test_nudge_is_not_a_gag_or_a_biography():
 
 def test_block_has_the_heading_and_one_line_per_memory():
     assert cm.block([]) == ""
-    text = cm.block([{"fact": "первое"}, {"fact": "второе"}])
+    text = cm.block([{"text": "первое"}, {"text": "второе"}])
     assert text.splitlines()[0] == "Твои воспоминания (это о тебе):"
     assert text.splitlines()[1:] == ["- первое", "- второе"]

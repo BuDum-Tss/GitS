@@ -11,7 +11,6 @@ import core_service
 from services.tracing import events_log
 from services.conversation import speech_out
 from services.conversation.companion import Companion
-from services.memory_service.graph import GraphMemory
 from environments.registry import Registry
 from gits_sdk import ServiceClient
 from services.character.relationships import Relationships
@@ -68,7 +67,6 @@ class Wired:
         self.text = speech_out.TextOnlySpeech(self.presence)
         self.speech = speech_out.SpeechSelector(self.voice, self.text)
         self.companion = Companion(mem, Relationships(mem), speech=self.speech, presence=self.presence)
-        self.companion.graph = GraphMemory(mem)                 # профиль владельца живёт в графе
         self.heard_calls: list[tuple] = []
         self.voiced: list[tuple] = []
 

@@ -35,7 +35,7 @@ class ScriptedLLM:
 def make(tmp_path, *answers):
     llm = ScriptedLLM(*answers)
     c = Companion(str(tmp_path / "memory"), rel=None, speech=Speech(), llm=llm)
-    c.graph = SimpleNamespace(remember=lambda text, importance, subject="": True, status_text=lambda: "граф")      # профиль в графе (запись без модели)
+    c.episodes = SimpleNamespace(memory=SimpleNamespace(remember=lambda text, importance=3: True, status_text=lambda: "память"))      # заметки в эпизодах (запись без модели)
     return c, llm
 
 
@@ -46,14 +46,14 @@ def test_facade_keeps_components_and_public_interface(tmp_path):
     for name in ("on_voice", "on_user_message", "on_input", "say", "remember_text", "speak_about",
                  "note_heard", "recent_heard", "rebind_memory", "is_speaking"):
         assert callable(getattr(c, name))
-    for name in ("_mem", "_rel", "graph", "router", "attention", "presence", "speech", "io"):
+    for name in ("_mem", "_rel", "world", "router", "attention", "presence", "speech", "io"):
         assert hasattr(c, name)
 
 
 def test_context_builder_joins_blocks(tmp_path):
     c, _ = make(tmp_path)
-    c._graph_block = "ГРАФ"
-    c._self_block = "СЕБЯ"
+    c._topic_block = "ГРАФ"
+    c._canon_block = "СЕБЯ"
     c.note_heard("шум")
     text = c.context_builder.build(query="x")
     assert "ГРАФ" in text and "СЕБЯ" in text
@@ -88,21 +88,21 @@ async def test_no_timer_driven_chatter_left_on_the_facade(tmp_path):
 def test_owner_info_only_for_user_replies_or_assistant_workspace(tmp_path):
     c, _ = make(tmp_path)
     c._people.describe = lambda who: "отношение"
-    c._memory_reader.profile_block = lambda: "ПРОФИЛЬ"
     c.workspace_of = lambda: "rimworld"
-    assert "ПРОФИЛЬ" not in c._context(query="x") and "отношение" not in c._context(query="x")
-    assert "ПРОФИЛЬ" in c._context(query="x", owner=True)
+    assert "отношение" not in c._context(query="x")
+    assert "отношение" in c._context(query="x", owner=True)
     c.workspace_of = lambda: "assistant"
-    assert "ПРОФИЛЬ" in c._context(query="x")
+    assert "отношение" in c._context(query="x")
+    assert not hasattr(c._memory_reader, "profile_block")                    # отдельного профиля владельца в памяти нет
 
 
-def test_graph_block_does_not_repeat_self_memories_and_environment_is_shown(tmp_path):
+def test_topic_block_does_not_repeat_self_memories_and_environment_is_shown(tmp_path):
     c, _ = make(tmp_path)
-    c._self_block = "Твои воспоминания:\n- Я провожу эксперименты."
-    c._graph_block = "Что ты знаешь по теме:\n- Я провожу эксперименты.\n- Он любит чай."
+    c._canon_block = "Твои воспоминания:\n- Я провожу эксперименты."
+    c._topic_block = "Что ты знаешь по теме:\n- Я провожу эксперименты.\n- Он любит чай."
     c.environment_note = lambda: "Ты сейчас в среде «RimWorld». Сводка: игра: меню."
     text = c._context(query="x")
     assert text.count("Я провожу эксперименты") == 1 and "Он любит чай" in text
     assert "Ты сейчас в среде «RimWorld»" in text
-    c._graph_block = "Что ты знаешь по теме:\n- Я провожу эксперименты."
+    c._topic_block = "Что ты знаешь по теме:\n- Я провожу эксперименты."
     assert "Что ты знаешь по теме" not in c._context(query="x")        # весь блок повторял воспоминания: пустой заголовок не нужен

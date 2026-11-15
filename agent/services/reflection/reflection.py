@@ -3,24 +3,23 @@
 Маршрут `think` диспетчера внимания отдаёт сюда `Event`. Размышление идёт несколькими шагами локальной модели: на каждом шаге
 модель отвечает JSON с мыслью и либо просит вспомнить (`recall`: чтение памяти через контракт `MemoryReader`), либо выдаёт список
 намерений `Intent`: `say` (факт для реплики; формулирует модель при речи, готовых фраз в коде нет), `do` (просьба планировщику,
-обычные разрешения), `remind` (напоминание себе позже), `remember` (запись в память), `none`.
+обычные разрешения), `remind` (напоминание себе позже), `remember` (явное «запомни»: заметка в памяти), `none`.
 
 Ограничения: шагов и токенов на размышление, глубина цепочки импульсов, размышлений в час; «не отвлекать» запрещает речь, а не
-размышление; действие не исполняется по недоверенному стимулу (чужие тексты это данные). Значимое размышление пишется в журнал мыслей
-(`Thought`) краткосрочной памятью с оценкой важности (`services/reflection/thoughts.py`), не озвучивается; пустое, оборванное лимитом или
-ничего не решившее в журнал не попадает. Созревшие мысли тем же сервисом переносятся в долговременную память (`consolidate`, после размышления не чаще раза в
-`CONSOLIDATE_GAP_S`), мелкие забываются. Событие с `data.silent` говорить не может. Модель подставляется снаружи (контракт `LanguageModel`), в тестах это заглушка.
+размышление; действие не исполняется по недоверенному стимулу (чужие тексты это данные). Значимое размышление пишется событием `thought` в основной журнал событий
+(`events_log`: текст мысли, важность 1-5 от самой модели, виды намерений, событие-источник), не озвучивается; пустое, оборванное лимитом или
+ничего не решившее не пишется (`worth_keeping`). Отдельного журнала мыслей нет; эпизоды берут мысль из журнала событий контекстом момента. Мелкие и устаревшие мысли забываются (`consolidate`, после размышления не чаще раза в `CONSOLIDATE_GAP_S`); в долговременную
+память мысли не переносятся: её ведут эпизоды. Событие с `data.silent` говорить не может. Модель подставляется снаружи (контракт `LanguageModel`), в тестах это заглушка.
 """
 import asyncio
 import logging
-import secrets
 import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
-from interfaces.contracts import LanguageModel, MemoryReader, MemoryWriter, ThoughtJournal
+from interfaces.contracts import LanguageModel, MemoryReader, MemoryWriter
 from kernel import impulses
-from services.reflection import thoughts as thought_dom
+from services.tracing import events_log
 from kernel.event import KIND_AFTER_CONVERSATION, Event
 from kernel.hard_rules import EPISODE_KINDS
 
@@ -29,7 +28,9 @@ from kernel.model_json import parse_step  # noqa: F401  (прежнее имя: 
 
 logger = logging.getLogger("reflection")
 
-CONSOLIDATE_GAP_S = 600.0       # перенос мыслей в память не чаще, чем раз в столько секунд
+IMPORTANCE_MIN, IMPORTANCE_MAX, IMPORTANCE_DEFAULT = 1, 5, 2
+KEEP_MIN_IMPORTANCE = 2           # мысль без намерений и ниже этой важности не сохраняется вовсе
+THOUGHT_KIND = "thought"          # вид события в журнале событий
 INTENT_KINDS = ("say", "do", "remind", "remember", "none")
 TEXT_MAX = 400
 DEFAULTS = {"max_steps": impulses.MAX_STEPS, "max_tokens": impulses.MAX_TOKENS, "max_per_hour": impulses.MAX_PER_HOUR,
@@ -46,6 +47,22 @@ class Intent:
         return {"kind": self.kind, "text": self.text, "in_s": self.in_s}
 
 
+def clean_importance(value) -> int:
+    """Важность из ответа модели: целое 1-5; нечисловое и булево дают значение по умолчанию."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return IMPORTANCE_DEFAULT
+    return max(IMPORTANCE_MIN, min(IMPORTANCE_MAX, int(round(value))))
+
+
+def worth_keeping(*, status: str, text: str, intents: list[dict], importance: int) -> bool:
+    """Стоит ли записывать размышление в журнал событий. Не стоит: оборвано лимитом или ошибкой, мысли нет, либо ничего не решено
+    (все намерения `none`) и важность низкая."""
+    if status != "done" or not text.strip():
+        return False
+    acted = any(i.get("kind") not in (None, "none") for i in intents)
+    return acted or importance > KEEP_MIN_IMPORTANCE
+
+
 def parse_intents(items: Any) -> list[Intent]:
     out: list[Intent] = []
     for it in items if isinstance(items, list) else []:
@@ -60,20 +77,20 @@ def parse_intents(items: Any) -> list[Intent]:
 
 
 class ReflectionService:
-    def __init__(self, *, llm: LanguageModel, memory: MemoryReader, writer: MemoryWriter, journal: ThoughtJournal,
+    def __init__(self, *, llm: LanguageModel, memory: MemoryReader, writer: MemoryWriter,
                  prompt: Callable[[], dict], context: Callable[[str], str] | None = None,
                  settings: Callable[[], dict] | None = None, clock: Callable[[], float] = time.time,
                  speak: Callable[[Event, Intent], Awaitable[str]] | None = None,
                  plan: Callable[[str], Awaitable[str | None]] | None = None,
-                 remind: Callable[..., Awaitable[Any]] | None = None):
+                 remind: Callable[..., Awaitable[Any]] | None = None, log=events_log):
         """prompt() -> {"system": ..., "format": ...}; context(query) -> текст контекста (ContextBuilder);
         speak(event, intent) -> итог речи ("queued" / "suppressed: ..."); plan(text) -> факт для ответа или None;
-        remind(due, text, source=, depth=, untrusted=) создаёт напоминание (ImpulseTimer.add)."""
-        self.llm, self.memory, self.writer, self.journal, self.prompt = llm, memory, writer, journal, prompt
+        remind(due, text, source=, depth=, untrusted=) создаёт напоминание (ImpulseTimer.add); log - журнал событий (`events_log`)."""
+        self.llm, self.memory, self.writer, self.prompt = llm, memory, writer, prompt
+        self.log = log
         self.context, self.settings, self.clock = context, settings, clock
         self.speak, self.plan, self.remind = speak, plan, remind
         self._stamps: list[float] = []
-        self._last_consolidate = clock()
         self.running = 0
 
     def limits(self) -> dict:
@@ -86,16 +103,16 @@ class ReflectionService:
         return out
 
     async def reflect(self, event: Event) -> dict:
-        """Одно размышление; возвращает запись журнала (`Thought`)."""
+        """Одно размышление; возвращает его запись (словарь: текст, важность, намерения, результаты, статус)."""
         now = self.clock()
         lim = self.limits()
-        thought = {"id": "t-" + secrets.token_hex(4), "ts": now,
+        thought = {"ts": now,
                    "trigger": {"kind": event.kind, "origin": event.origin, "text": event.text[:300], "item": event.item_id},
                    "depth": event.depth, "steps": [], "intents": [], "results": [], "tokens": 0, "status": "done",
-                   "text": "", "importance": thought_dom.IMPORTANCE_DEFAULT, "stage": thought_dom.SHORT}
+                   "text": "", "importance": IMPORTANCE_DEFAULT}
         if not impulses.rate_allowed(self._stamps, now, lim["max_per_hour"]):
             thought["status"] = "skipped: limit per hour"
-            return thought                                       # служебные записи в журнал мыслей не идут
+            return thought                                       # служебные записи в журнал не идут
         self._stamps = [t for t in self._stamps if now - t < impulses.HOUR_S] + [now]
         self.running += 1
         try:
@@ -103,8 +120,6 @@ class ReflectionService:
             thought["intents"] = [i.as_dict() for i in intents]
             for intent in intents:
                 thought["results"].append(await self._execute(event, intent, lim, thought["importance"]))
-            if "remembered" in thought["results"]:
-                thought["stage"] = thought_dom.LONG                # явное «запомни» уже записано в долговременную память
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -112,53 +127,16 @@ class ReflectionService:
             thought["status"] = f"error: {e}"
         finally:
             self.running -= 1
-        await self._record(thought)
-        await self._maybe_consolidate(now)
+        self._record(thought, event)
         return thought
 
-    async def _record(self, thought: dict) -> None:
-        if not thought_dom.worth_keeping(status=thought["status"], text=thought["text"], intents=thought["intents"],
-                                         importance=thought["importance"]):
+    def _record(self, thought: dict, event: Event) -> None:
+        """Значимая мысль идёт событием `thought` в основной журнал событий (он сам не бросает исключений)."""
+        if not worth_keeping(status=thought["status"], text=thought["text"], intents=thought["intents"],
+                             importance=thought["importance"]):
             return
-        try:
-            await asyncio.to_thread(self.journal.append, thought)
-        except Exception as e:
-            logger.warning(f"Журнал мыслей: {e}")
-
-    # ── память: перенос созревших мыслей ─────────────────────────────────────
-
-    async def _maybe_consolidate(self, now: float) -> None:
-        if now - self._last_consolidate < CONSOLIDATE_GAP_S:
-            return
-        self._last_consolidate = now
-        try:
-            await self.consolidate()
-        except Exception as e:
-            logger.warning(f"Перенос мыслей: {e}")
-
-    async def consolidate(self, window: int = 200) -> dict:
-        """Один проход по последним мыслям: важные и созревшие (`domain/thoughts.plan`) уходят в долговременную память фактом
-        вида `episode` и получают стадию `long`, мелкие и устаревшие забываются (`dropped`). Модель не нужна: важность уже оценена
-        самим размышлением. Возвращает счётчики {promoted, dropped}."""
-        items = await asyncio.to_thread(self.journal.recent, window)
-        promote, drop = thought_dom.plan(items, self.clock())
-        done = {"promoted": 0, "dropped": 0}
-        for t in promote:
-            text = thought_dom.memory_text(t)
-            try:
-                if text:
-                    await asyncio.to_thread(self.writer.add_fact, text, "episode", thought_dom.clean_importance(t.get("importance")))
-                await asyncio.to_thread(self.journal.update, t["id"], stage=thought_dom.LONG)
-                done["promoted"] += 1
-            except Exception as e:
-                logger.warning(f"Перенос мысли в память: {e}")
-        for t in drop:
-            try:
-                await asyncio.to_thread(self.journal.update, t["id"], stage=thought_dom.DROPPED)
-                done["dropped"] += 1
-            except Exception as e:
-                logger.warning(f"Забывание мысли: {e}")
-        return done
+        self.log.log_nowait(THOUGHT_KIND, thought["text"], importance=thought["importance"],
+                     intents=[i["kind"] for i in thought["intents"]], module=event.module, event_kind=event.kind)
 
     # ── внутренний диалог ────────────────────────────────────────────────────
 
@@ -188,7 +166,7 @@ class ReflectionService:
             if step["text"]:
                 thought["text"] = step["text"]
             if "importance" in data:
-                thought["importance"] = thought_dom.clean_importance(data.get("importance"))
+                thought["importance"] = clean_importance(data.get("importance"))
             intents = parse_intents(data.get("intents"))
             query = str(data.get("recall") or "").strip()
             if query and not intents and n < lim["max_steps"]:
@@ -239,7 +217,7 @@ class ReflectionService:
 
     # ── исполнение намерений ─────────────────────────────────────────────────
 
-    async def _execute(self, event: Event, intent: Intent, lim: dict, importance: int = thought_dom.IMPORTANCE_DEFAULT) -> str:
+    async def _execute(self, event: Event, intent: Intent, lim: dict, importance: int = IMPORTANCE_DEFAULT) -> str:
         try:
             if intent.kind == "none":
                 return "none"
@@ -266,7 +244,7 @@ class ReflectionService:
                                   untrusted=not event.trusted)
                 return "reminder set"
             if intent.kind == "remember":
-                await asyncio.to_thread(self.writer.add_fact, intent.text, "episode", max(2, importance))
+                await asyncio.to_thread(self.writer.add_fact, intent.text, "episode", max(3, importance))
                 return "remembered"
         except asyncio.CancelledError:
             raise

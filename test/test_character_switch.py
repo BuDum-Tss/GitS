@@ -1,4 +1,4 @@
-"""Переключение персонажа (ТЗ 05, CHR-7): порядок шагов, память и группа графа, тема character, отказ без изменений."""
+"""Переключение персонажа (ТЗ 05, CHR-7): порядок шагов, память (эпизоды), тема character, отказ без изменений."""
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,10 +18,19 @@ class Recorder:
         self.calls: list[tuple] = []
 
 
+class FakeMemory(Recorder):
+    """Память эпизодов нового персонажа (`EpisodeService.memory`): сюда переносится его старая memories.json."""
+
+    def remember(self, text, importance=3):
+        self.calls.append(("remember", text, importance))
+        return True
+
+
 class FakeCompanion(Recorder):
     def __init__(self, speaking_polls=0):
         super().__init__()
         self._polls = speaking_polls
+        self.episodes = SimpleNamespace(memory=FakeMemory())
 
     def is_speaking(self):
         if self._polls > 0:
@@ -57,11 +66,6 @@ class FakeAttention(Recorder):
         self.rules.rebind(memory_dir / "attention_rules.json")
 
 
-class FakeGraph(Recorder):
-    def set_character(self, char_id):
-        self.calls.append(("graph", char_id))
-
-
 class FakeHub(Recorder):
     async def broadcast(self, topic, data):
         self.calls.append(("broadcast", topic, data))
@@ -81,13 +85,13 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(character, "CHARACTERS_DIR", root)
     character.init()
     log: list = []
-    parts = dict(companion=FakeCompanion(), rel=FakeRel(), graph=FakeGraph(), attention=FakeAttention(log), hub=FakeHub())
+    parts = dict(companion=FakeCompanion(), rel=FakeRel(), attention=FakeAttention(log), hub=FakeHub())
     switch = CharacterSwitch(mem_root=tmp_path / "memory", speech_wait_s=2.0, **parts)
     return SimpleNamespace(switch=switch, parts=parts, log=log, mem=tmp_path / "memory")
 
 
 
-async def test_switch_moves_memory_group_setting_and_prompts(world):
+async def test_switch_moves_memory_setting_and_prompts(world):
     res = await world.switch.switch("tester")
     assert res == {"changed": True, "id": "tester", "name": "Тестерша"}
     assert character.active().id == "tester"
@@ -95,7 +99,6 @@ async def test_switch_moves_memory_group_setting_and_prompts(world):
     assert ("memory", str(world.mem / "characters" / "tester")) in world.parts["companion"].calls
     assert ("rel", str(world.mem / "characters" / "tester")) in world.parts["rel"].calls
     assert ("rules", str(world.mem / "characters" / "tester" / "attention_rules.json")) in world.parts["attention"].rules.calls
-    assert ("graph", "tester") in world.parts["graph"].calls
     assert world.log == ["reset"], "очередь речи и стек фокуса сброшены"
     assert "Тестерша" in prompts.persona_card()
 
@@ -112,7 +115,6 @@ async def test_switching_back_to_glados_returns_its_memory_at_the_root(world):
     await world.switch.switch("tester")
     await world.switch.switch("glados")
     assert ("memory", str(world.mem)) in world.parts["companion"].calls
-    assert ("graph", "glados") in world.parts["graph"].calls
 
 
 async def test_same_character_changes_nothing(world):
@@ -140,3 +142,12 @@ async def test_tool_answers_in_plain_words(world):
     assert await world.switch.tool("tester") == "персонаж переключён: Тестерша"
     assert await world.switch.tool("tester") == "Тестерша уже активна"
     assert "не переключён" in await world.switch.tool("nobody")
+
+
+async def test_switch_moves_the_old_memories_json_of_the_new_character_into_its_episode_notes(world):
+    mdir = world.mem / "characters" / "tester"
+    mdir.mkdir(parents=True)
+    (mdir / "memories.json").write_text(
+        '{"items": [{"id": "a", "kind": "user", "text": "Любит зелёный чай", "importance": 5, "ts": 1, "due": null}]}', encoding="utf-8")
+    await world.switch.switch("tester")
+    assert ("remember", "Любит зелёный чай", 5) in world.parts["companion"].episodes.memory.calls

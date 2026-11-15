@@ -1,4 +1,4 @@
-"""ReminderRepository и ThoughtJournal на JSON-файлах рядом с памятью персонажа (ТЗ 30, IMP-2, IMP-6).
+"""ReminderRepository на JSON-файле рядом с памятью персонажа (ТЗ 30, IMP-2).
 
 `path_of` возвращает текущий путь файла: при переключении персонажа папка памяти меняется, данные перечитываются.
 """
@@ -9,7 +9,6 @@ import time
 from pathlib import Path
 from typing import Callable
 
-THOUGHTS_MAX = 500
 
 
 def _read(path: Path, default):
@@ -64,32 +63,3 @@ class JsonReminders:
             if r.get("id") == reminder_id:
                 r["status"] = status
         self._save(items)
-
-
-class JsonThoughts:
-    def __init__(self, path_of: Callable[[], Path]):
-        self._path_of = path_of
-
-    def append(self, thought: dict) -> None:
-        path = Path(self._path_of())
-        items = _read(path, [])
-        items = items if isinstance(items, list) else []
-        items.append(thought)
-        _write(path, items[-THOUGHTS_MAX:])
-
-    def recent(self, n: int = 50) -> list[dict]:
-        items = _read(Path(self._path_of()), [])
-        return list(reversed(items[-n:])) if isinstance(items, list) else []
-
-    def update(self, thought_id: str, **fields) -> bool:
-        """Поменять поля мысли (стадия краткосрочной памяти); True, если мысль нашлась."""
-        path = Path(self._path_of())
-        items = _read(path, [])
-        found = False
-        for t in items if isinstance(items, list) else []:
-            if t.get("id") == thought_id:
-                t.update(fields)
-                found = True
-        if found:
-            _write(path, items)
-        return found

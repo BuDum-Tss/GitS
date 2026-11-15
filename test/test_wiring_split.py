@@ -110,12 +110,12 @@ PUBLIC_ROUTES = {
     ("GET", "/api/core"), ("GET", "/api/events"), ("GET", "/api/latency"), ("GET", "/api/flow"), ("GET", "/api/flow/stream"), ("GET", "/api/flow/node/{node}"), ("GET", "/api/flow/turn/{turn}"), ("POST", "/api/rating"),
     ("GET", "/api/decisions"), ("GET", "/api/capabilities"), ("GET", "/api/space"), ("POST", "/api/appraisal_label"),
     ("POST", "/api/menu_click"), ("POST", "/api/approval"), ("POST", "/api/memory/forget"),
-    ("GET", "/api/graph"), ("GET", "/api/graph/search"), ("POST", "/api/graph/forget"), ("GET", "/api/chat"), ("GET", "/api/workspaces"), ("GET", "/api/services"),
+    ("GET", "/api/chat"), ("GET", "/api/workspaces"), ("GET", "/api/services"),
     ("POST", "/api/peers/{id}/enabled"), ("POST", "/api/peers/{id}/restart"), ("POST", "/api/peers/{id}/settings"),
     ("GET", "/api/peers/{id}/panel"), ("POST", "/api/peers/{id}/panel/action"),
     ("POST", "/api/peers/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"), ("GET", "/api/buffer"),
     ("POST", "/api/attention/rules/clear"), ("GET", "/api/workspace"), ("POST", "/api/workspace/enter"), ("POST", "/api/workspace/exit"),
-    ("GET", "/api/thoughts"), ("GET", "/api/episodes"), ("GET", "/api/episodes/{id}"), ("GET", "/api/diary"), ("GET", "/api/sleep"),
+    ("GET", "/api/reminders"), ("GET", "/api/episodes"), ("GET", "/api/episodes/{id}"), ("GET", "/api/diary"), ("GET", "/api/sleep"),
     ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("POST", "/api/notify"), ("GET", "/api/jobs"), ("POST", "/api/jobs/{module}/{job_id}/cancel"),
     ("POST", "/api/jobs/{module}/{job_id}/answer"), ("GET", "/api/reply_context"),
     ("GET", "/api/tasks/now"),
@@ -147,8 +147,7 @@ def test_presenters_are_pure():
     assert presenters.check_setting_value({"type": "boolean"}, True) == (True, None)
     payload = presenters.state_payload(game={}, settings_dict={}, character={}, presence=None, modules=[])
     assert payload["connected"] is False and payload["modules"] == []
-    assert presenters.graph_view({"edges": [{"invalid_at": None}, {"invalid_at": 1}]}, status="ok", pending=0)["outdated"] == [
-        {"invalid_at": 1}]
+    assert not hasattr(presenters, "graph_view")                                     # граф удалён вместе с вкладкой «Факты»
 
 
 @pytest.mark.parametrize("module", ["context", "presenters", "routes_system", "routes_memory", "routes_peers", "routes_attention"])

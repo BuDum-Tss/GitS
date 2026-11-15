@@ -49,7 +49,6 @@ if TYPE_CHECKING:
     from services.attention import Attention
     from services.conversation.conversation_io import ConversationIO
     from services.tools.router import Router
-    from services.memory_service import GraphMemory
 
 logger = logging.getLogger("companion")
 IDLE_CONSOLIDATE_S = 8 * 60 + 5
@@ -85,17 +84,17 @@ class Companion:
         self._approver = approver if approver is not None else approvals
         self.router: Router | None = None    # Router, ставится ядром после создания реестра окружений
         self.module_notes = lambda: []   # () -> строки о подключённых модулях и их состоянии (PeerRegistry.notes, ставит ядро)
-        self.graph: GraphMemory | None = None        # GraphMemory: факты о людях и жизни в графе
-        self._graph_block = ""    # факты графа по теме последней реплики (подмешиваются в контекст)
-        self._self_block = ""     # воспоминания персонажа о себе к последней реплике (ТЗ 05, CHR-19)
+        self.world = None         # состояние мира (колония из игры, `event_handlers/colony_state.py`): не память, подмешивается в контекст по теме
+        self._topic_block = ""    # «Что ты помнишь по теме» к последней реплике (подмешивается в контекст)
+        self._canon_block = ""    # воспоминания персонажа о себе к последней реплике (ТЗ 05, CHR-19)
         self._heard: collections.deque = collections.deque(maxlen=20)   # (время, сводка) услышанного в колонках (voice.heard)
         self.idle_seconds = lambda: 0.0          # секунды простоя ввода (ставит ядро из state модуля desktop; без модуля 0: за компьютером)
         self.screen_activity = lambda: None      # текущая активность экрана {app, category, summary, ...} (ставит ядро, ТЗ 14 DESK-7)
         self.job_wait = None                     # async (peer_id, job_id, timeout) -> итог задачи модуля (ставит ядро, DESK-11)
         if memory_reader is None or memory_writer is None:
             self._mem: UserMemory = UserMemory(memory_dir)                 # личная память на диске (адаптеры по умолчанию)
-            default_memory = UserMemoryAdapter(lambda: self._mem, lambda: self.graph, lambda: getattr(self, "episodes", None),
-                                               lambda: getattr(self, "tasks", None), lambda: self._owner_name())
+            default_memory = UserMemoryAdapter(lambda: self._mem, lambda: getattr(self, "episodes", None),
+                                               lambda: getattr(self, "tasks", None), lambda: self.world)
         else:
             self._mem = None                                   # память передана контрактами: диска не трогаем
             default_memory = None
@@ -303,14 +302,8 @@ class Companion:
     def _declutter(self, reply: str) -> str:
         return self.reply_generator.declutter(reply)
 
-    def _owner_name(self) -> str:
-        return self.memory_capture.owner_name()
-
-    def _queue_graph(self, text: str):
-        self.memory_capture.queue_graph(text)
-
-    async def _refresh_graph(self, query: str):
-        await self.context_builder.refresh_graph(query)
+    async def _refresh_memory(self, query: str):
+        await self.context_builder.refresh_memory(query)
 
     def _store_memories(self, data) -> list[str]:
         return self.memory_capture.store_memories(data)

@@ -1,5 +1,5 @@
-"""MemoryCapture: что запомнить из разговора (ТЗ 29, ARC-5): явное «запомни» (`remember_text`) и очередь реплик в граф.
-Остальное запоминает единый агент сам инструментом памяти, а во сне и в паузе работают эпизоды и размышление."""
+"""MemoryCapture: что запомнить из разговора (ТЗ 29, ARC-5): явное «запомни» (`remember_text`), заметкой в эпизоды.
+Остальное запоминает единый агент сам инструментом памяти, а знания из разговора возникают из эпизодов, которые пишет форк её сессии."""
 from typing import TYPE_CHECKING
 import logging
 import re
@@ -18,27 +18,6 @@ SPEAKER_TAG = re.compile(r"^\[(говорит ([^\]]+)|незнакомый го
 class MemoryCapture:
     def __init__(self, host):
         self._h: Companion = host
-
-    def owner_name(self) -> str:
-        for fact in self._h._memory_reader.facts():
-            m = re.match(r"\s*(?:имя(?: пользователя)?|зовут)\s*[:\-]\s*(.+)", fact["text"], re.I)
-            names = re.findall(r"[А-Яа-яЁёA-Za-z\-]{2,}", m.group(1)) if m else []
-            if names:
-                return names[0]
-        return ""
-
-    def queue_graph(self, text: str):
-        """Реплика человека уходит в очередь на разбор фактов (граф). Незнакомые голоса не запоминаем."""
-        tag = SPEAKER_TAG.match(text)
-        if tag:
-            if not tag.group(2):
-                return
-            speaker, text = tag.group(2), text[tag.end():]
-            owner = speaker.lower() == (self._h._owner_name() or "").lower()
-        else:
-            speaker = self._h._owner_name() or "Пользователь"
-            owner = True
-        self._h._memory_writer.enqueue_for_graph(speaker, text, owner=owner)
 
     def store_memories(self, data) -> list[str]:
         """Сохранить воспоминания из ответа модели ({"memories": [...]}); вернуть тексты новых."""

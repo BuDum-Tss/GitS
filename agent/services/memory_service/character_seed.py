@@ -1,63 +1,53 @@
-"""Загрузка воспоминаний персонажа в граф (ТЗ 05, CHR-16): `python -m services.memory_service.character_seed seed <id> [--dry-run]` (из папки agent).
+"""Канон персонажа в эпизодах (ТЗ 05, CHR-16): воспоминания о себе из memories.yaml становятся эпизодами `kind=canon`.
 
-Граф персонажа (группа = id, ТЗ 05 CHR-9) приводится к memories.yaml: новые записи добавляются, изменённые заменяются
-(обновление по id, без дублей), удалённые из YAML удаляются. Факт: субъект — имя персонажа, отношение ПОМНИТ, объект —
-сама запись; связь помечена canon: true, source: seed, с типом и весом. Нужны LM Studio (эмбеддинги) и файл `graph.db` в папке памяти (`--memory-dir`, по умолчанию `MEMORY_DIR` или `./memory`).
+`python -m services.memory_service.character_seed seed <id> [--dry-run]` (из папки agent) приводит канон в базе эпизодов персонажа к его
+memories.yaml: новые записи добавляются, изменённые заменяются (обновление по `mem_id`, без дублей), удалённые из yaml удаляются.
+То же ядро делает само при открытии памяти персонажа (`seed_canon`). Эпизод канона: текст записи, `mem_id`, тип и вес; он защищён
+от инструментов забывания и записи (CHR-17): меняет его только эта загрузка. Модели и LM Studio не нужны: индекс по словам готов сразу,
+вектор добавит сон, когда эмбеддер доступен.
 """
 from __future__ import annotations
 
 import argparse
-import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
-from datetime import datetime, timezone
 
 from services.character import character
 from services.character import character_memory
-from services.memory_service.graph import Fact
+from services.memory_service import episodes as dom
+from services.memory_service.episode_store import FILE, EpisodeStore, canon_id
+from services.memory_service.search.index import HybridIndex
 
-RELATION = "ПОМНИТ"
+logger = logging.getLogger("episode_memory")
 
 
-async def seed(char: character.Character, backend, when: datetime | None = None) -> dict[str, int]:
-    """Привести граф персонажа к его memories.yaml. Возвращает счётчики: added, updated, same, removed."""
-    group = character.group_id(char.id)
+def seed_canon(char: character.Character, store: EpisodeStore, index: HybridIndex) -> dict[str, int]:
+    """Привести канон в эпизодах к memories.yaml персонажа. Счётчики: added, updated, same, removed."""
     items = character_memory.load_memories(char.path(character.MEMORIES_FILE))
-    when = when or datetime.now(timezone.utc)
-    rows = await backend.seed_rows(group)
     counts = {"added": 0, "updated": 0, "same": 0, "removed": 0}
-    keep: set[str] = set()
     for m in items:
-        keep.add(m["id"])
-        about = " ".join(m["about"])
-        old = rows.get(m["id"])
-        if old and old[1] == m["text"]:
-            counts["same"] += 1
-            await backend.mark_memory(group, old[0], m["id"], m["type"], about, m["weight"], "seed")
-            continue
-        if old:
-            await backend.delete_memory(group, m["id"])
-            counts["updated"] += 1
-        else:
-            counts["added"] += 1
-        fact = Fact(subject=char.name, relation=RELATION, object=f"воспоминание {m['id']}", fact=m["text"])
-        uuid = await backend.add_fact(fact, when, group)
-        await backend.mark_memory(group, uuid, m["id"], m["type"], about, m["weight"], "seed")
-    for mem_id in rows:
-        if mem_id not in keep:
-            await backend.delete_memory(group, mem_id)
-            counts["removed"] += 1
+        res = store.upsert_canon(m["id"], m["text"], mtype=m["type"], weight=m["weight"], character=char.id)
+        counts[res] += 1
+        if res != "same":                                    # новый или изменённый текст: индекс по словам сразу, вектор позже
+            index.upsert("episodes", canon_id(m["id"]), dom.index_text("", m["text"]), ts=store.get(canon_id(m["id"]))["t_start"],
+                         meta={"episode": canon_id(m["id"]), "kind": dom.CANON, "salience": m["weight"]})
+    keep = {m["id"] for m in items}
+    for mem_id in store.canon_ids() - keep:
+        store.remove_canon(mem_id)
+        index.delete("episodes", canon_id(mem_id))
+        counts["removed"] += 1
     return counts
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m services.memory_service.character_seed", description="Персонажи GitS (ТЗ 05)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("seed", help="загрузить воспоминания персонажа в граф (по memories.yaml)")
+    s = sub.add_parser("seed", help="загрузить воспоминания персонажа в эпизоды (по memories.yaml)")
     s.add_argument("id", help="id персонажа: папка resources/<Имя> с этим id")
-    s.add_argument("--dry-run", action="store_true", help="только проверить файл, граф не трогать")
-    s.add_argument("--memory-dir", default=os.getenv("MEMORY_DIR", "./memory"), help="папка памяти ядра (там graph.db)")
+    s.add_argument("--dry-run", action="store_true", help="только проверить файл, память не трогать")
+    s.add_argument("--memory-dir", default=os.getenv("MEMORY_DIR", "./memory"), help="папка памяти ядра (там episodes.db)")
     args = ap.parse_args(argv)
     try:
         char = character.load(args.id)
@@ -68,8 +58,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print(f"{char.id}: записей в memories.yaml: {len(items)}, файл в порядке")
         return 0
-    from services.memory_service.graph import SqliteBackend
-    counts = asyncio.run(seed(char, SqliteBackend(Path(args.memory_dir) / "graph.db")))
+    path = Path(args.memory_dir) / FILE
+    store, index = EpisodeStore(path), HybridIndex(path)
+    counts = seed_canon(char, store, index)
     print(f"{char.id}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
     return 0
 

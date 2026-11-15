@@ -54,8 +54,6 @@ class Dispatcher:
         if decision == "D0":
             self.digest.note(item, "dropped")
             return
-        if item.memorable and not item.memory_done:
-            ctx.writer.enqueue_for_graph(ctx.sender_name(item.sender) or item.module, item.text)
         if decision == "D1":
             self.digest.add(item)
             return

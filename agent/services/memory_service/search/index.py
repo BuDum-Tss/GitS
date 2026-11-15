@@ -1,6 +1,6 @@
 """Единый гибридный индекс (ТЗ 04): SQLite FTS5 (BM25) + векторы + фильтры + вес свежести, коллекции в одной базе.
 
-Коллекции: `facts` (факты), `episodes` (эпизоды), `self` (воспоминания о себе), `reference` (справочник) и любые другие
+Коллекции: `episodes` (эпизоды всех видов: жизнь, канон, заметки), `diary`, `reference` (справочник) и любые другие
 имена. Документ: `collection`, `key` (уникален в коллекции), `text`, `ts`, `meta` (JSON). Векторы лежат в BLOB (float32)
 и сравниваются перебором: для личной памяти (десятки тысяч записей) это быстрее, чем тащить расширение `sqlite-vec`;
 если корпус вырастет, векторный шаг заменяется без изменения интерфейса.
@@ -124,6 +124,15 @@ class HybridIndex:
     def keys(self, collection: str) -> list[str]:
         with self._lock:
             return [r[0] for r in self._db.execute("SELECT key FROM docs WHERE collection=?", (collection,)).fetchall()]
+
+    def vectors(self, collection: str, keys: list[str]) -> dict[str, array.array]:
+        """Векторы записей коллекции по ключам (у не проиндексированных векторами ключей в ответе нет)."""
+        if not keys:
+            return {}
+        with self._lock:
+            rows = self._db.execute(f"SELECT key, vec FROM docs WHERE collection=? AND vec IS NOT NULL AND key IN "
+                                    f"({','.join('?' * len(keys))})", [collection, *keys]).fetchall()
+        return {k: _unpack(b) for k, b in rows}
 
     def delete_collection(self, collection: str) -> int:
         with self._lock:

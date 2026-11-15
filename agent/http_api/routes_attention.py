@@ -1,4 +1,4 @@
-"""Роутер дашборда: внимание, фокус, эмоции, мысли, объявления (ТЗ 03, 18, 26, 30; ТЗ 29 ARC-8)."""
+"""Роутер дашборда: внимание, фокус, эмоции, напоминания себе, объявления (ТЗ 03, 18, 26, 30; ТЗ 29 ARC-8)."""
 import asyncio
 import re
 
@@ -11,17 +11,11 @@ _NOTIFY_SOURCE = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
 _LOCAL_PEERS = ("127.0.0.1", "::1")
 
 
-async def handle_api_thoughts(request: web.Request) -> web.Response:
-    """Журнал мыслей (ТЗ 30, IMP-6) и ожидающие напоминания себе. Мысли не озвучиваются."""
+async def handle_api_reminders(request: web.Request) -> web.Response:
+    """Ожидающие напоминания себе (ТЗ 30)."""
     if ctx.impulses is None:
-        return web.json_response({"thoughts": [], "reminders": []})
-    try:
-        n = max(1, min(200, int(request.query.get("n", 50))))
-    except ValueError:
-        n = 50
-    thoughts = await asyncio.to_thread(ctx.impulses.journal.recent, n)
-    reminders = await asyncio.to_thread(ctx.impulses.reminders.pending)
-    return web.json_response({"thoughts": thoughts, "reminders": reminders})
+        return web.json_response({"reminders": []})
+    return web.json_response({"reminders": await asyncio.to_thread(ctx.impulses.reminders.pending)})
 
 
 async def handle_api_workspace(request: web.Request) -> web.Response:
@@ -110,7 +104,7 @@ ROUTES = [
     ("GET", "/api/workspace", handle_api_workspace),
     ("POST", "/api/workspace/enter", handle_api_workspace_enter),
     ("POST", "/api/workspace/exit", handle_api_workspace_exit),
-    ("GET", "/api/thoughts", handle_api_thoughts),
+    ("GET", "/api/reminders", handle_api_reminders),
 
 
     ("POST", "/api/notify", handle_api_notify),

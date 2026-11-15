@@ -89,28 +89,28 @@ class Wired:
         await asyncio.wait_for(waiter(), timeout)
 
 
-# ── RW-9: список колонистов обновляет отношения и граф памяти ───────────────────────────────────
+# ── RW-9: список колонистов обновляет отношения и состояние мира (не память) ───────────────────────────────────
 
-async def test_colonists_event_updates_relationships_and_graph(tmp_path):
+async def test_colonists_event_updates_relationships_and_world_state(tmp_path):
     synced = []
 
     class Rel:
         def sync_colonists(self, pawns):
             synced.append(("rel", [p["name"] for p in pawns]))
 
-    class Graph:
-        async def sync_colonists(self, pawns, colony):
-            synced.append(("graph", colony, [p["name"] for p in pawns]))
+    class World:
+        def sync(self, pawns, colony):
+            synced.append(("world", colony, [p["name"] for p in pawns]))
 
     async with running_core(tmp_path) as core:
-        core.attention.kind_handlers["rimworld.colonists"] = core_service.make_colonists_handler(Rel(), Graph())
+        core.attention.kind_handlers["rimworld.colonists"] = core_service.make_colonists_handler(Rel(), World())
         client = game_client(core.url, core.token)
         async with running_client(client, core):
             await client.event("rimworld.colonists", "Колония «Дом»: колонистов 2.", urgency_hint=0, addressed_to_me=False,
                                data={"pawns": [{"name": "Борис"}, {"name": "Вика"}], "colony": "Дом"})
             await core.wait_for(lambda: len(synced) == 2)
             await core.attention.settle()
-        assert synced == [("rel", ["Борис", "Вика"]), ("graph", "Дом", ["Борис", "Вика"])]
+        assert synced == [("rel", ["Борис", "Вика"]), ("world", "Дом", ["Борис", "Вика"])]
         assert core.attention.speech.items == [] and core.companion.about == []            # служебное событие не озвучивается
         assert core.attention.digest_counts() == {}                                        # и в сводку не попадает
 

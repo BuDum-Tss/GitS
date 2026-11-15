@@ -2,7 +2,7 @@
 
 Сценарии (`Companion`, `Router`, `Attention`) говорят с моделью, журналом, настройками, памятью, людьми и
 разрешениями только через эти интерфейсы. Конкретные реализации лежат в `agent/adapters/` (тонкие обёртки над
-`fast_brain`, `events_log`, `settings`, `UserMemory`, `GraphMemory`, `Relationships`, `approvals`, `decide`).
+`fast_brain`, `events_log`, `settings`, `UserMemory`, `EpisodeMemory`, `Relationships`, `approvals`, `decide`).
 
 Здесь только `typing.Protocol` и стандартная библиотека: без `settings`, `events_log`, `fast_brain`, `character`,
 сети и баз данных. Проверяет это `test/test_architecture.py`.
@@ -61,25 +61,21 @@ class SettingsProvider(Protocol):
 
 @runtime_checkable
 class MemoryReader(Protocol):
-    """Чтение памяти для ответа: профиль владельца, факты графа по теме, воспоминания о себе, журнал
-    разговора и активности. `recall` (ТЗ 27) - факты по теме и эпизоды с дневником через гибридный поиск:
-    [{"text", "kind" (fact|episode|diary|digest), "id", "importance"}]."""
+    """Чтение памяти для ответа: эпизоды по теме, воспоминания о себе (канон), журнал разговора и активности.
+    `recall` (ТЗ 27) - эпизоды всех видов и дневник через гибридный поиск:
+    [{"text", "kind" (episode|canon|note|diary|digest), "id", "importance"}]."""
 
     def context_block(self, dialogue: int = 6) -> str: ...
 
-    def profile_block(self) -> str: ...
+    async def topic_block(self, query: str) -> str: ...
 
-    async def graph_block(self, query: str) -> str: ...
+    async def canon_block(self, query: str) -> str: ...
 
-    async def self_block(self, query: str) -> str: ...
-
-    def graph_status(self) -> str | None: ...
+    def memory_status(self) -> str | None: ...
 
     def recent_dialogue(self, n: int = 8) -> list[dict]: ...
 
     def recent_activity(self, n: int = 5) -> list[dict]: ...
-
-    def facts(self) -> list[dict]: ...
 
     async def recall(self, query: str, k: int = 6) -> list[dict]: ...
 
@@ -88,16 +84,14 @@ class MemoryReader(Protocol):
 
 @runtime_checkable
 class MemoryWriter(Protocol):
-    """Запись в память: реплики, важное (профиль владельца, планы как задачи), активность, очередь графа,
-    забывание, служебные отметки. `add_fact` берёт только важное (4-5, план от 3): мелочь не записывается."""
+    """Запись в память: реплики, важное (заметки эпизодов, планы как задачи), активность,
+    забывание, служебные отметки. `add_fact` берёт только важное (заметка от 3, план от 3): мелочь не записывается."""
 
     def add_dialogue(self, role: str, text: str) -> None: ...
 
     def add_fact(self, text: str, kind: str = "user", importance: int = 3, due_days: float | None = None) -> bool: ...
 
     def add_activity(self, app: str, category: str, summary: str) -> None: ...
-
-    def enqueue_for_graph(self, speaker: str, text: str, source: str | None = None, owner: bool = False) -> None: ...
 
     def forget_matching(self, text: str) -> int: ...
 
@@ -123,23 +117,6 @@ class PeopleDirectory(Protocol):
     def sync_colonists(self, pawns: list[dict]) -> None: ...
 
     def mark_dead(self, subject: str, cause: str = "") -> None: ...
-
-
-@runtime_checkable
-class FactGraph(Protocol):
-    """Граф фактов (SQLite, services/memory_service/fact_store.py): поиск, факты о себе, очередь записи, колонисты, состояние."""
-
-    def search(self, query: str, limit: int = 6, include_old: bool = False) -> Any: ...
-
-    def self_memories(self, query: str, n: int = 6) -> Any: ...
-
-    def context_block(self, query: str) -> Any: ...
-
-    def enqueue(self, speaker: str, text: str, ts: float | None = None) -> None: ...
-
-    def sync_colonists(self, pawns: list[dict], colony: str, force: bool = False) -> Any: ...
-
-    def status_text(self) -> str: ...
 
 
 @runtime_checkable
@@ -228,17 +205,6 @@ class EventSource(Protocol):
     def last_id(self) -> int: ...
 
     def delete_ids(self, ids: list[int]) -> int: ...
-
-
-@runtime_checkable
-class ThoughtJournal(Protocol):
-    """Журнал мыслей (ТЗ 30, IMP-6): записи не озвучиваются."""
-
-    def append(self, thought: dict) -> None: ...
-
-    def recent(self, n: int = 50) -> list[dict]: ...
-
-    def update(self, thought_id: str, **fields: Any) -> bool: ...
 
 
 @runtime_checkable

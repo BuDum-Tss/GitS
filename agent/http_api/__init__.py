@@ -22,10 +22,9 @@ from .routes_attention import (  # noqa: F401  (прежние имена пак
     NOTIFY_TEXT_MAX, handle_api_attention, handle_api_attention_clear,
     handle_api_buffer, handle_api_notify,
     handle_api_workspace, handle_api_workspace_enter, handle_api_workspace_exit,
-    handle_api_thoughts)
+    handle_api_reminders)
 from .routes_memory import (  # noqa: F401
-    handle_api_approval, handle_api_chat_get, handle_api_chat_post, handle_api_core, handle_api_forget, handle_api_graph,
-    handle_api_graph_forget)
+    handle_api_approval, handle_api_chat_get, handle_api_chat_post, handle_api_core, handle_api_forget)
 from .routes_peers import (  # noqa: F401
     PANEL_ACTION_TIMEOUT_S, handle_api_artifact, handle_api_job_answer, handle_api_job_cancel, handle_api_jobs,
     handle_api_module_enabled, handle_api_peer_panel, handle_api_peer_panel_action, handle_api_peer_panel_link,
@@ -64,10 +63,6 @@ def set_router(router):
 
 def set_character(switch):
     ctx.character = switch
-
-
-def set_graph(graph):
-    ctx.graph = graph
 
 
 def set_tasks(get_tasks):

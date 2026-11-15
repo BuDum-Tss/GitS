@@ -1,7 +1,7 @@
 """Хвосты ТЗ 30: размышление после разговора и эпизода (IMP-10), планы пользователя через импульсы (PlanNudger)."""
 import json
 
-from test_impulses import Clock, Journal, Mem, ScriptedLLM, Sink, Writer, js
+from test_impulses import Clock, Log, Mem, ScriptedLLM, Sink, Writer, js
 from test_impulses import ev as make_event
 
 from types import SimpleNamespace
@@ -24,7 +24,7 @@ def test_after_conversation_event_goes_to_think():
 
 
 def _service(llm):
-    return ReflectionService(llm=llm, memory=Mem(), writer=Writer(), journal=Journal(),
+    return ReflectionService(llm=llm, memory=Mem(), writer=Writer(), log=Log(),
                              prompt=lambda: {"system": "S", "format": "F", "after": "ПОДВЕДИ ИТОГ"}, clock=Clock())
 
 
@@ -97,8 +97,12 @@ async def test_conversation_going_quiet_notifies_the_hook_once(tmp_path):
     assert len(got) == 1 and "расскажи про Луну" in got[0] and "Это спутник Земли." in got[0]
 
 
-def test_dashboard_page_shows_thoughts_and_latency_budget():
+def test_dashboard_page_has_no_thoughts_tab_but_shows_latency_budget():
     from pathlib import Path
     html = (Path(__file__).resolve().parents[1] / "agent" / "clients" / "gui" / "index.html").read_text(encoding="utf-8")
-    for needle in ('data-tab="thoughts"', 'id="tab-thoughts"', "/api/thoughts", 'id="latency-budget"', "L.budget"):
+    for needle in ('data-mtab="thoughts"', 'id="mem-thoughts"', "/api/thoughts", "loadThoughts"):
+        assert needle not in html, needle
+    for needle in ('id="latency-budget"', "L.budget", 'data-mtab="eps"', "/api/reminders"):
         assert needle in html, needle
+    for gone in ('data-mtab="user"', 'data-mpane="facts"', "/api/graph", "mem-user"):                 # владелец и факты отдельно не показываются
+        assert gone not in html, gone

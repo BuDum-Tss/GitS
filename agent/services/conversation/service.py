@@ -84,7 +84,6 @@ class ConversationService:
     def _write_user(self, text: str) -> None:
         h = self._h
         h._memory_writer.add_dialogue("user", text)
-        h._queue_graph(text)
 
     async def _reflex(self, text: str, hard) -> None:
         """Рефлекс жёсткого правила (FAST-2, FAST-5): оборвать генерацию ответа и речь сразу, без вызовов моделей."""

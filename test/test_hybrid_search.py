@@ -101,16 +101,13 @@ class _Mem:
     def context_block(self, dialogue=6):
         return "ПАМЯТЬ " + "я" * 600
 
-    def profile_block(self):
-        return "ПРОФИЛЬ"
-
-    def graph_status(self):
+    def memory_status(self):
         return None
 
 
 class _Host:
-    _graph_block = "ГРАФ"
-    _self_block = "СЕБЯ"
+    _topic_block = "ГРАФ"
+    _canon_block = "СЕБЯ"
 
     class _settings:
         cfg = {"hearing": False}
@@ -138,10 +135,9 @@ def test_context_builder_default_is_unchanged_and_modes_budget_work():
     h = _Host()
     b = ContextBuilder(h)
     default = b.build(query="x")
-    assert "ГРАФ" in default and "СЕБЯ" in default and "ПРОФИЛЬ" in default
-    assert "ПРОФИЛЬ" not in b.build(query="[говорит Вася] привет")           # чужому голосу профиль владельца не показываем
+    assert "ГРАФ" in default and "СЕБЯ" in default
     skipped = b.build(query="x", needs_memory="no")
-    assert "ГРАФ" not in skipped and "ПРОФИЛЬ" in skipped            # профиль владельца остаётся и без темы
+    assert "ГРАФ" not in skipped and "СЕБЯ" not in skipped and "ПАМЯТЬ" in skipped      # отдельного профиля владельца нет: без темы память не лезет
     pulled = b.build(query="x", mode="pull")
     assert "ГРАФ" not in pulled and "СЕБЯ" not in pulled
     h._settings.cfg = {"hearing": False, "context": {"mode": "push", "budget_tokens": {"reply": {"dialogue": 50}}}}

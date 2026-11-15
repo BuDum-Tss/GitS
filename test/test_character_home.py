@@ -40,7 +40,7 @@ def test_home_character_is_the_active_one_whatever_its_id(tmp_path, monkeypatch)
 
 async def test_switch_refused_in_container(tmp_path, monkeypatch):
     monkeypatch.setenv("CHARACTER_HOME", str(_make_home(tmp_path)))
-    sw = CharacterSwitch(companion=None, rel=None, graph=None, attention=None, hub=None, mem_root=tmp_path)
+    sw = CharacterSwitch(companion=None, rel=None, attention=None, hub=None, mem_root=tmp_path)
     with pytest.raises(character.CharacterError, match="один персонаж"):
         await sw.switch("glados")
     assert "один персонаж" in await sw.tool("glados")

@@ -73,7 +73,6 @@ class Item:
     priority: float = 0.0
     decision: str = ""
     first_contact: bool = False                 # TG-14: профиль отправителя заведён именно этим событием (для веса «неизвестный»)
-    memory_done: bool = False                   # TG-14: событие уже отдано в граф и память, в _act второй раз не отдаётся
     trace: Any = None                           # трасса задержки голосовой реплики (ТЗ 24, TRC-1): от модуля, см. latency_trace
     origin: str = "external"                    # ТЗ 30, IMP-1: external (модуль) | self (импульс самого агента)
 
@@ -121,7 +120,7 @@ class AttentionContext:
     """Общие зависимости и позднее подставляемые поля менеджера внимания (см. docstring модуля)."""
 
     def __init__(self, *, companion, io, clock, decider, settings_provider, settings_source, log, approver, people,
-                 writer, idle, autopump, rules, presence):
+                 idle, autopump, rules, presence):
         self.companion = companion
         self.io = io
         self.clock = clock
@@ -133,7 +132,6 @@ class AttentionContext:
         self.log = log
         self.approver = approver
         self.people = people
-        self.writer = writer
         self.idle = idle
         self.autopump = autopump
         self.rules = rules

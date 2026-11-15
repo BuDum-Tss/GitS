@@ -74,7 +74,7 @@ class ReplyGenerator:
                   + (" Свои недавние реплики ты видишь в контексте: не повторяй их ни дословно, ни по смыслу, скажи иначе или промолчи."
                      if not must and not question else ""))
         if not user_text:
-            h._graph_block = h._self_block = ""          # факт о событии: память прошлой реплики (блоки остались от неё) тут не нужна
+            h._topic_block = h._canon_block = ""          # факт о событии: память прошлой реплики (блоки остались от неё) тут не нужна
         user = (f"{h._context(query=user_text or fact, owner=True if user_text else False, role='fact')}\n\nФакт: {fact}"
                 + (f"\nПользователь сказал: {user_text}" if user_text else ""))
         try:

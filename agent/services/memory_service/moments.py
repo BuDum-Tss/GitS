@@ -48,12 +48,14 @@ USER_SIGNS = {
                 "моя девушка", "мой парень", "мне нравится", "у меня есть"), 0.2),
 }
 
+THOUGHT_KIND = "thought"
+
 # шум: никогда не пик и не контекст; vision и desktop.* годятся только как «сцена» (фон)
 NOISE_KINDS = ("focus", "decision", "trace", "budget_exceeded", "setting", "profile", "error", "vision", "boundary")
 SCENE_EVENT_KINDS = ("desktop.app_changed", "desktop.activity")
 SCENE_LABELS = ("vision", *SCENE_EVENT_KINDS)       # подписи строк сцены в источниках эпизода
 CONTEXT_KINDS = ("user", "say", "mistake", "approval", "memory", "emotion", "game", "telegram", "hearing", "task.status",
-                 "attention", "module_event")
+                 "attention", "module_event", THOUGHT_KIND)     # thought: её мысль о событии (reflection), контекст, но не пик (яркость 0)
 READ_KINDS = frozenset(CONTEXT_KINDS) | {"vision"}          # что читать из журнала
 SCENE_MAX = 2                         # строк сцены в моменте
 SCENE_LOOKBACK_S = 1800.0             # сцена старше этого перед пиком не берётся
@@ -261,7 +263,7 @@ def select_moments(rows: list[dict], cfg: MomentCfg, now: float, *, taken: dict 
         score, reasons = event_score(row)
         if kind in ("attention", "module_event") and score < ATTENTION_CONTEXT_MIN:
             continue
-        if kind not in ("user", "say") and score <= 0:
+        if kind not in ("user", "say", "thought") and score <= 0:
             continue
         scored.append(_ev(row, score, reasons))
     scored.sort(key=lambda e: (e.ts, e.id))

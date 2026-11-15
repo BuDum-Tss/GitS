@@ -1,11 +1,12 @@
-"""Сборка эпизодов и режима сна (ТЗ 27): хранилище `episodes.db`, выбор моментов, рассказ, конвейер сна, планировщик, чтение.
+"""Сборка эпизодов, памяти и режима сна (ТЗ 27): хранилище `episodes.db` (единая память персонажа), выбор моментов, текст эпизода, конвейер сна, планировщик, чтение.
 
 Корень сборки только соединяет готовые части (как `impulse_service`): логика лежит в `services/memory_service/episodes.py` и `app/episode_*.py`,
 `app/sleep*.py`, `services/memory_service/diary.py`. Хранилище и поиск у каждого персонажа свои (папка памяти персонажа, ТЗ 05); при переключении
-персонажа части создаются заново для его папки, а выбор моментов нового персонажа начинается с текущего конца журнала (чужая история
+персонажа части создаются заново для его папки (при открытии памяти разово переносится старый `graph.db` и загружается канон из memories.yaml), а выбор моментов нового персонажа начинается с текущего конца журнала (чужая история
 сама не обрабатывается; для неё есть `selector.backfill`).
 Событие `episode.summary` уходит во внимание как событие модуля `memory` и по правилу ТЗ 30 попадает в маршрут think.
 """
+import logging
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +18,10 @@ from services.memory_service.episode_store import FILE, EpisodeStore
 from services.tracing import events_log
 from services.memory_service.diary import DayWriter
 from services.memory_service.moment_selector import MomentSelector
+from services.memory_service.episode_memory import EpisodeMemory
 from services.memory_service.episode_recall import EpisodeRecall
+from services.memory_service.character_seed import seed_canon
+from services.memory_service.graph_import import migrate_graph
 from services.memory_service.episode_fork import ForkedEpisodeWriter
 from services.memory_service.episode_summary import EpisodeSummarizer
 from services.memory_service.live_episodes import LiveEpisodes
@@ -27,13 +31,15 @@ import services.memory_service.episodes as dom
 from services.memory_service.search import HybridIndex, HybridSearch, SearchConfig
 from services.memory_service.search.embedder import LmStudioEmbedder
 
+logger = logging.getLogger("episodes")
+
 SUMMARY_KIND = "episode.summary"
 SESSION_FILE = "resident_pi_session.json"     # сессия её агента pi в папке памяти персонажа (форк копирует её)
 
 
 def summary_event(ep: dict) -> dict:
     """Тело события `episode.summary` (ТЗ 27, ТЗ 30): итог эпизода для размышления. Текст формируют факты эпизода, не реплика."""
-    return {"kind": SUMMARY_KIND, "text": f"{ep['title']}. {ep['summary']} {ep.get('attitude') or ''}".strip()[:400], "urgency_hint": 1, "addressed_to_me": False,
+    return {"kind": SUMMARY_KIND, "text": dom.index_text(ep["title"], ep["text"])[:400], "urgency_hint": 1, "addressed_to_me": False,
             "memorable": ep["salience"] >= 0.7, "dedupe_key": f"episode:{ep['id']}",
             "data": {"episode": ep["id"], "salience": ep["salience"], "day": ep["day"], "stream": ep["stream"]}}
 
@@ -54,18 +60,6 @@ class EpisodeService:
         self.hooks: list = []                 # сценарии после сна (ТЗ 28: разбор ошибок): async (report)
 
     # ── части для текущего персонажа ─────────────────────────────────────────
-
-    def _thought_notes(self, day: str) -> list[str]:
-        """Мысли дня (ГГГГ-ММ-ДД), перенесённые в долговременную память: дополнительный материал дневника."""
-        import time as _t
-        impulses = getattr(self.companion, "impulses", None)
-        if impulses is None:
-            return []
-        out = []
-        for t in reversed(impulses.journal.recent(200)):
-            if t.get("stage") == "long" and _t.strftime("%Y-%m-%d", _t.localtime(float(t.get("ts") or 0))) == day and t.get("text"):
-                out.append(str(t["text"])[:200])
-        return out
 
     def parts(self) -> SimpleNamespace:
         folder = Path(self.companion._dir)
@@ -88,11 +82,18 @@ class EpisodeService:
     def store(self) -> EpisodeStore:
         return self.parts().store
 
+    @property
+    def memory(self) -> EpisodeMemory:
+        """Память активного персонажа: блоки контекста, заметки, забывание."""
+        return self.parts().memory
+
     def _build(self, folder: Path) -> SimpleNamespace:
         llm = self.companion._llm
         store = EpisodeStore(folder / FILE, self.clock)
         index = HybridIndex(folder / FILE, clock=self.clock)
-        search = HybridSearch(index, self.embedder, llm, SearchConfig(recency_weight=0.15, half_life_days=60.0))
+        search = HybridSearch(index, self.embedder, llm, SearchConfig(min_cos=0.5, min_cos_bm25=0.4, recency_weight=0.15,
+                                                                      half_life_days=60.0))
+        self._open_memory(folder, store, index)
         allow = lambda: [character.active().name, *character.active().aliases]            # noqa: E731
         selector = MomentSelector(source=self.source, store=store, settings=self.settings, clock=self.clock,
                                   character=lambda: character.active().id)        # без отметки начинает с конца журнала
@@ -101,13 +102,29 @@ class EpisodeService:
             fallback=base, session_path=lambda: Path(self.companion._dir) / SESSION_FILE, system=self._system_prompt,
             busy=self._live_busy, settings=self.settings, allow=allow)
         days = DayWriter(llm=llm, store=store, search=search, digest_prompt=prompts.digest, diary_prompt=prompts.diary,
-                         allow=allow, character=lambda: character.active().id, notes=self._thought_notes)
+                         allow=allow, character=lambda: character.active().id)
         runner = SleepRunner(selector=selector, summarizer=summarizer, store=store, search=search,
-                             writer=self.companion.memory_writer, days=days, source=self.source, settings=self.settings,
+                             days=days, source=self.source, settings=self.settings,
                              clock=self.clock, notify=self._notify, hooks=self.hooks)
         recall = EpisodeRecall(store=store, search=search, source=self.source)
         return SimpleNamespace(store=store, search=search, selector=selector, summarizer=summarizer, days=days, runner=runner,
-                               recall=recall)
+                               recall=recall, memory=EpisodeMemory(store=store, recall=recall, search=search, clock=self.clock))
+
+    @staticmethod
+    def _open_memory(folder: Path, store: EpisodeStore, index: HybridIndex) -> None:
+        """При открытии памяти персонажа: разовый перенос старого graph.db и загрузка канона из memories.yaml (без моделей).
+        Сбой одного шага не мешает остальным."""
+        try:
+            done = migrate_graph(folder, store, index, character.active().id)
+            if done is not None:
+                events_log.log_nowait("memory", f"граф перенесён в эпизоды: канон {done['canon']}, заметок {done['notes']}, "
+                                                f"пропущено {done['skipped']}")
+        except Exception as e:
+            logger.warning(f"Перенос graph.db: {e}")
+        try:
+            seed_canon(character.active(), store, index)
+        except Exception as e:                       # битый memories.yaml: память работает без канона
+            logger.warning(f"Канон персонажа не загружен: {e}")
 
     def _system_prompt(self) -> str:
         """Системный промпт её агента (тот же, что в её ходах): форк пишет её голосом."""

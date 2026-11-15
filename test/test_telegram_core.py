@@ -19,13 +19,13 @@ AGENT = Path(__file__).resolve().parent.parent / "agent"
 
 # ── core.privacy_terms (TG-12) ─────────────────────────────────────────────────────────────────
 
-def test_collect_privacy_terms_gathers_owner_people_and_names_from_facts():
+def test_collect_privacy_terms_gathers_people_and_names_from_notes():
     terms = core_requests.collect_privacy_terms(
-        "Аня", ["Маша Петрова", "mashka", "аня"],
-        ["Имя: Анна Сергеевна", "Любит чай", "Зовут - Аню", "Живёт в Казани", ""])
-    assert terms == ["Аня", "Маша Петрова", "mashka", "Анна", "Сергеевна", "Аню"]             # без повторов, порядок сохранён
-    assert core_requests.collect_privacy_terms("", [], ["Любит чай"]) == []
-    assert core_requests.collect_privacy_terms("Ян", ["Ли"], ["имя: Ян"]) == []                  # короче трёх букв не берём
+        ["Маша Петрова", "mashka", "аня"],
+        ["Имя: Анна Сергеевна", "Любит чай", "Зовут - Аню", "Аня: имя пользователя: Анна", "Живёт в Казани", ""])
+    assert terms == ["Маша Петрова", "mashka", "аня", "Анна", "Сергеевна", "Аню"]             # без повторов (без регистра), порядок сохранён
+    assert core_requests.collect_privacy_terms([], ["Любит чай"]) == []
+    assert core_requests.collect_privacy_terms(["Ли"], ["имя: Ян"]) == []                  # короче трёх букв не берём
 
 
 def test_relationships_people_terms_take_only_people(tmp_path):

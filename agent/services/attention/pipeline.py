@@ -90,7 +90,7 @@ class EventPipeline:
         cfg = ctx.settings()
         att = ctx.att(cfg)
         to_conversation = self.normalizer.is_owner_address(item)
-        self.normalizer.note_sender(item, skip_memory=to_conversation)
+        self.normalizer.note_sender(item)
         info = ctx.emit_info(peer_id, item.kind)
         declared = info.get("default_urgency") if info else None
         if await self.rules.apply(item, cfg, att, to_conversation, declared):

@@ -218,67 +218,41 @@
       <div id="tab-memory" class="card bg-base-100 shadow-sm scroll-y min-h-0 hidden">
         <div class="card-body gap-4">
           <div role="tablist" id="mem-subtabs" class="tabs tabs-boxed bg-base-200 w-fit max-w-full flex-wrap">
-            <a role="tab" class="tab tab-active" data-mtab="user">Владелец <span id="mt-n-user" class="opacity-60 ml-1 text-xs"></span></a>
-            <a role="tab" class="tab" data-mtab="plan">Цели <span id="mt-n-plan" class="opacity-60 ml-1 text-xs"></span></a>
+            <a role="tab" class="tab tab-active" data-mtab="plan">Цели <span id="mt-n-plan" class="opacity-60 ml-1 text-xs"></span></a>
             <a role="tab" class="tab" data-mtab="eps">Эпизоды</a>
-            <a role="tab" class="tab" data-mtab="facts">Факты</a>
-            <a role="tab" class="tab" data-mtab="thoughts">Мысли</a>
+            <a role="tab" class="tab" data-mtab="rel">Отношения</a>
           </div>
           <details id="mem-howto" class="rounded-box border border-base-300 p-3">
             <summary class="cursor-pointer font-medium">Как устроена память</summary>
-            <p class="text-sm opacity-80 mt-2">Здесь хранятся профиль владельца, цели и планы, эпизоды, важные факты и журнал мыслей. В память идёт только то,
-              что она сама сочла важным; мелочь и сиюминутное не записываются. Всё хранится локально, в папке памяти персонажа; наружу ничего не уходит.</p>
+            <p class="text-sm opacity-80 mt-2">Вся память это эпизоды: короткие тексты от первого лица, в которых уже есть что произошло, на что она обратила внимание
+              и как к этому относится. Вид у них один из трёх: канон (воспоминания персонажа о себе из <code>memories.yaml</code>, их нельзя стереть разговором),
+              заметка («запомни, что…», договорённости) и жизнь (события из журнала, их пишет она сама, пока бодрствует, и во сне). Цели и планы это задачи
+              (<code>tasks.db</code>), отношения лежат в <code>relationships.json</code>. Всё хранится локально, в папке памяти персонажа (<code>episodes.db</code>).</p>
             <div class="grid gap-2 mt-2 md:grid-cols-2">
-                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
-                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Профиль и цели</span><span id="mem-n-notes" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> Главное о тебе, твои пожелания к ней и цели с планами (задачи, файл <code>tasks.db</code>)</div>
-                  <div><span class="opacity-60">Как попадает:</span> Ты просишь «запомни, что…» или она сама решает, что это важно (4-5 из 5); план со сроком становится задачей</div>
-                  <div><span class="opacity-60">Как используется:</span> Профиль всегда в контексте ответа тебе, вне темы разговора (чужим голосам он не показывается); планы всплывают к сроку. «Забудь про…» или ✕ убирает</div>
-                </div>
-                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
-                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Отношения</span><span id="mem-n-rel" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> Кто есть кто и как она к ним относится (<code>relationships.json</code>)</div>
-                  <div><span class="opacity-60">Как попадает:</span> Копятся из общения: Telegram, игра, голос</div>
-                  <div><span class="opacity-60">Как используется:</span> Задают тон и то, кого она узнаёт по имени</div>
-                </div>
-                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
-                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Факты</span><span id="mem-n-facts" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> Важные факты о людях и жизни («Аня живёт в Казани»), воспоминания персонажа (канон из memories.yaml) и данные игры (файл <code>graph.db</code>; профили лежат там же)</div>
-                  <div><span class="opacity-60">Как попадает:</span> В паузах разговора локальная модель выписывает факты из реплик и сама оценивает важность; мелочь отбрасывается</div>
-                  <div><span class="opacity-60">Как используется:</span> Перед ответом ищется до 3 фактов по теме (слова и смысл); новый факт закрывает старый («переехала» закрывает «живёт в Москве»)</div>
-                </div>
-                <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
-                  <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Эпизоды и сон</span><span id="mem-n-eps" class="text-xs text-right">-</span></div>
-                  <div><span class="opacity-60">Что там:</span> События дня, нарезанные на эпизоды, их резюме от первого лица и дневник</div>
-                  <div><span class="opacity-60">Как попадает:</span> Во сне (простой, расписание) она разбирает журнал: пишет резюме, достаёт факты</div>
-                  <div><span class="opacity-60">Как используется:</span> Вспоминает эпизод по запросу; резюме и цитаты ищутся так же, как факты</div>
-                </div>
-            </div>
-            <div class="text-xs opacity-70 mt-3 mb-1">Путь одной реплики до факта</div>
-            <div class="flex flex-wrap items-center gap-1 text-xs">
-              <span class="badge badge-outline">реплика (чат, голос, Telegram)</span>→
-              <span class="badge badge-outline">очередь <code>graph_queue.json</code></span>→
-              <span class="badge badge-outline">локальная модель выписывает факты</span>→
-              <span class="badge badge-outline">таблица фактов <code>graph.db</code></span>→
-              <span class="badge badge-outline">индекс слов и смысла (FTS5 + векторы)</span>→
-              <span class="badge badge-outline">поиск перед ответом</span>→
-              <span class="badge badge-outline">до 3 фактов в подсказку модели</span>
+              <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
+                <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Эпизоды</span><span id="mem-n-eps" class="text-xs text-right">-</span></div>
+                <div><span class="opacity-60">Как попадает:</span> Яркий момент пересказывает форк её сессии своим голосом; «запомни» пишет заметку сразу; канон загружается из yaml</div>
+                <div><span class="opacity-60">Как используется:</span> Перед ответом ищется по словам и смыслу: до 3 воспоминаний о себе и до 4 эпизодов по теме (свежесть и яркость повышают вес). «Забудь про…» или ✕ убирает (канон не убирается)</div>
+              </div>
+              <div class="rounded-box border border-base-300 p-3 text-sm space-y-1">
+                <div class="flex items-baseline justify-between gap-2"><span class="font-medium">Цели и планы</span><span id="mem-n-notes" class="text-xs text-right">-</span></div>
+                <div><span class="opacity-60">Как попадает:</span> Ты просишь «запомни, что…» про дело со сроком, и план становится задачей</div>
+                <div><span class="opacity-60">Как используется:</span> Планы всплывают к сроку; ✕ отменяет задачу</div>
+              </div>
             </div>
           </details>
-          <div data-mpane="user">
-            <div class="font-medium mb-1">Профиль владельца</div>
-            <p class="text-xs opacity-60 mb-2">Главное о тебе, что она сама сочла важным (оценка 4-5). Всегда в контексте ответа. Можно и словами в чате: «забудь про …».</p>
-            <ul id="mem-user" class="space-y-1"></ul>
-          </div>
           <div data-mpane="plan">
             <div class="font-medium mb-1">Цели и планы</div>
             <p class="text-xs opacity-60 mb-2">Дела со сроком: это задачи (tasks.db). ✕ отменяет задачу.</p>
             <ul id="mem-plan" class="space-y-1"></ul>
+            <div class="font-medium mt-4 mb-1">Напоминания себе</div>
+            <div id="reminders-list" class="space-y-1 text-sm"></div>
           </div>
           <div data-mpane="eps">
           <div>
             <div class="flex flex-wrap items-center gap-3 mb-2">
               <div class="font-medium">Эпизоды и сон</div>
+              <select id="ep-kind" class="select select-bordered select-xs"><option value="">все виды</option><option value="canon">канон</option><option value="note">заметки</option><option value="life">жизнь</option></select>
               <span id="sleep-status" class="text-xs opacity-70"></span>
               <button id="sleep-now" class="btn btn-xs btn-ghost">Спать сейчас</button>
               <button id="sleep-stop" class="btn btn-xs btn-ghost">Прервать</button>
@@ -288,52 +262,10 @@
             <div id="diary" class="space-y-2 text-sm"></div>
           </div>
           </div>
-          <div id="mem-thoughts" data-mpane="thoughts" class="hidden space-y-4">
-          <div>
-            <div class="flex flex-wrap items-center gap-3">
-              <div class="font-medium">Журнал мыслей</div>
-              <span id="thoughts-n" class="badge badge-ghost badge-sm"></span>
-            </div>
-            <div class="text-xs opacity-70 mt-1">Её размышления по событиям и напоминаниям. Вслух они не звучат: говорит она только через очередь речи и не при «не отвлекать».</div>
-            <div id="thoughts-list" class="space-y-2 mt-2"></div>
-          </div>
-          <div>
-            <div class="font-medium">Напоминания себе</div>
-            <div id="reminders-list" class="space-y-1 mt-2 text-sm"></div>
-          </div>
-          </div>
-          <div data-mpane="facts">
+          <div data-mpane="rel">
           <div>
             <div class="font-medium mb-2">Отношения</div>
             <ul id="relations" class="space-y-2 text-sm"></ul>
-          </div>
-          <div class="divider my-0"></div>
-          <div>
-            <div class="flex flex-wrap items-center gap-3 mb-1">
-              <div class="font-medium">Факты</div>
-              <span id="facts-status" class="text-xs opacity-60 ml-auto"></span>
-            </div>
-            <p class="text-xs opacity-60 mb-2">Факт это связь «кто, что, с чем» с датой и пометкой, откуда он взялся. Новые факты появляются не сразу: они разбираются
-              в паузах разговора, пока очередь не пуста. Неверный факт можно удалить (✕); канонические воспоминания персонажа удаляются только правкой <code>memories.yaml</code>.</p>
-            <div id="facts-stats" class="flex flex-wrap gap-2 mb-3"></div>
-            <div class="rounded-box border border-base-300 p-3 mb-3">
-              <div class="text-sm font-medium">Проверить поиск</div>
-              <div class="text-xs opacity-60 mb-2">Введи реплику, как её написал бы собеседник: покажу, какие факты находятся (косинус близости, порог <span id="facts-min">0,5</span>)
-                и какой блок уйдёт в подсказку модели.</div>
-              <div class="flex flex-wrap items-center gap-2">
-                <input id="facts-q" class="input input-bordered input-sm w-72" placeholder="Например: где я живу?">
-                <button id="facts-go" class="btn btn-sm btn-outline">Найти</button>
-              </div>
-              <div id="facts-hits" class="space-y-1 text-sm mt-2"></div>
-            </div>
-            <div class="flex flex-wrap items-center gap-3 mb-2">
-              <input id="facts-filter" class="input input-bordered input-sm w-56" placeholder="Фильтр по тексту…">
-              <select id="facts-area" class="select select-bordered select-sm"><option value="">все области</option></select>
-              <label class="label cursor-pointer gap-2 py-0"><span class="label-text text-xs">показывать устаревшие</span>
-                <input id="facts-old" type="checkbox" class="toggle toggle-sm"></label>
-              <span id="facts-count" class="text-xs opacity-60 ml-auto"></span>
-            </div>
-            <div id="facts-list" class="space-y-1"></div>
           </div>
 
           </div>
@@ -467,9 +399,9 @@ function showMemPane(name) {
   document.querySelectorAll('[data-mtab]').forEach(t => t.classList.toggle('tab-active', t.dataset.mtab === name));
   document.querySelectorAll('[data-mpane]').forEach(p => p.classList.toggle('hidden', p.dataset.mpane !== name));
 }
-document.querySelectorAll('[data-mtab]').forEach(t => t.onclick = () => { showMemPane(t.dataset.mtab); loadThoughts().catch(() => {}); });
-let savedPane = 'user'; try { savedPane = localStorage.getItem('memPane') || 'user'; } catch (e) {}
-showMemPane(['user', 'plan', 'eps', 'facts', 'thoughts'].includes(savedPane) ? savedPane : 'user');
+document.querySelectorAll('[data-mtab]').forEach(t => t.onclick = () => { showMemPane(t.dataset.mtab); loadReminders().catch(() => {}); });
+let savedPane = 'plan'; try { savedPane = localStorage.getItem('memPane') || 'plan'; } catch (e) {}
+showMemPane(['plan', 'eps', 'rel'].includes(savedPane) ? savedPane : 'plan');
 
 // ── вкладки ──
 document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
@@ -478,7 +410,7 @@ document.querySelectorAll('[data-tab]').forEach(tab => tab.onclick = () => {
   ['status', 'memory', 'peers', 'events', 'resources', 'settings'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== paneOf(tab.dataset.tab)));
   if (tab.dataset.tab === 'status') { loadModes().catch(() => {}); loadWorkspace().catch(() => {}); loadBuffer().catch(() => {}); }
   if (paneOf(tab.dataset.tab) === 'peers') { setPeerRole(tab.dataset.tab === 'services' ? 'service' : 'workspace'); loadModules().catch(() => {}); }
-  if (tab.dataset.tab === 'memory') { loadFacts().catch(() => {}); loadThoughts().catch(() => {}); }
+  if (tab.dataset.tab === 'memory') { loadEpisodes().catch(() => {}); loadReminders().catch(() => {}); }
   if (tab.dataset.tab === 'resources') { loadResourceBranch('', $('resources-list')); }
 });
 
@@ -696,124 +628,30 @@ async function loadBuffer() {
 }
 setInterval(() => loadBuffer().catch(() => {}), 2000);
 
-// ── факты (память-граф в SQLite) и сводка по слоям памяти ──
+// ── сводка по слоям памяти ──
 const MEMSTAT = {};          // последние данные слоёв для таблицы «Как устроена память»
-const FC = {data: null, sig: '', open: new Set()};
-const relName = r => String(r || '').toLowerCase().replaceAll('_', ' ');
-const SOURCE_TITLE = {extract: 'из разговора', seed: 'канон персонажа', life: 'пережитое', game: 'из игры'};
-function fmtBytes(n) { return n < 1024 ? n + ' Б' : n < 1048576 ? (n / 1024).toFixed(0) + ' КБ' : (n / 1048576).toFixed(1) + ' МБ'; }
-function fmtAgo(ts) {
-  if (!ts) return 'ещё не было';
-  const s = Date.now() / 1000 - ts;
-  return s < 90 ? 'только что' : s < 5400 ? Math.round(s / 60) + ' мин назад' : s < 129600 ? Math.round(s / 3600) + ' ч назад' : Math.round(s / 86400) + ' дн назад';
-}
-function areaTitle(group, base) {
-  return group === base ? 'личная' : String(group).startsWith(base + ':') ? String(group).slice(base.length + 1) : group;
-}
 function layerCounts() {
   const set = (id, text) => { const el = $(id); if (el) el.innerHTML = text; };
-  const n = MEMSTAT.notes || [], by = k => n.filter(m => m.kind === k).length;
-  set('mem-n-notes', `${n.length} <span class="opacity-60 text-xs">(о тебе ${by('user')}, целей ${by('plan')})</span>`);
-  set('mem-n-rel', MEMSTAT.relations === undefined ? '-' : String(MEMSTAT.relations));
-  const g = MEMSTAT.graph;
-  set('mem-n-facts', !g ? '-' : g.enabled === false ? 'выключено' : `${g.active ?? 0} действуют` + (g.outdated ? `, ${g.outdated} устарели` : '') + (g.queue ? `<br><span class="opacity-60 text-xs">в очереди ${g.queue}</span>` : ''));
-  const e = MEMSTAT.eps;
-  set('mem-n-eps', e ? `${(e.embedded || 0) + (e.summarized || 0)} готово` + ((e.pending || 0) ? `<br><span class="opacity-60 text-xs">ждут сна: ${e.pending}</span>` : '') : '-');
+  set('mem-n-notes', String((MEMSTAT.notes || []).length));
+  const e = MEMSTAT.eps, k = (e && e.kinds) || {};
+  set('mem-n-eps', e ? `${k.life || 0} жизнь, ${k.note || 0} заметок, ${k.canon || 0} канон` + ((e.pending || 0) ? `<br><span class="opacity-60 text-xs">ждут записи: ${e.pending}</span>` : '') : '-');
 }
-
-function factsView() {
-  const g = FC.data; if (!g || g.enabled === false) return [];
-  const q = $('facts-filter').value.trim().toLowerCase(), area = $('facts-area').value, old = $('facts-old').checked;
-  const all = [...(g.current || []), ...(old ? g.outdated || [] : [])];
-  const rows = all.filter(e => (!area || e.group === area) &&
-    (!q || (e.fact + ' ' + e.from + ' ' + e.to + ' ' + e.relation).toLowerCase().includes(q)));
-  const by = new Map();
-  rows.forEach(e => { if (!by.has(e.from)) by.set(e.from, []); by.get(e.from).push(e); });
-  return [...by.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
-}
-
-function renderFacts() {
-  const g = FC.data; if (!g) return;
-  const st = g.stats || {}, base = st.group || '';
-  if (g.enabled === false) {
-    $('facts-stats').innerHTML = ''; $('facts-list').innerHTML = '<div class="opacity-60 text-sm">Память-граф не подключена.</div>'; return;
-  }
-  const chip = (text, cls = 'badge-ghost', title = '') => `<span class="badge ${cls}" title="${esc(title)}">${text}</span>`;
-  const chips = [
-    chip(`действуют: ${st.active ?? 0}`, 'badge-success', 'Факты, которые она считает верными сейчас'),
-    chip(`устарели: ${st.outdated ?? 0}`, 'badge-ghost', 'Закрыты датой, потому что появился более новый факт; в ответ не идут'),
-    chip(`канон персонажа: ${st.canon ?? 0}`, 'badge-secondary', 'Воспоминания из memories.yaml: их нельзя закрыть или стереть разговором'),
-    chip(`в очереди на разбор: ${st.queue ?? 0}`, st.queue ? 'badge-warning' : 'badge-ghost', 'Реплики, из которых факты ещё не выписаны'),
-    chip(`в индексе поиска: ${st.indexed ?? 0}`, 'badge-ghost', 'Кусков с векторами и словами в graph.db (факты, эпизоды, справочник)'),
-    chip(`файл graph.db: ${fmtBytes(st.db_bytes || 0)}`, 'badge-ghost'),
-    chip(`последний факт: ${esc(fmtAgo(st.last_added))}`, 'badge-ghost'),
-  ];
-  Object.entries(st.sources || {}).filter(([k]) => k !== 'seed').forEach(([k, v]) => chips.push(chip(`${esc(SOURCE_TITLE[k] || k)}: ${v}`, 'badge-outline')));
-  $('facts-stats').innerHTML = chips.join('');
-  $('facts-status').textContent = g.status || '';
-  if (st.min_score) $('facts-min').textContent = String(st.min_score).replace('.', ',');
-  const sel = $('facts-area'), keep = sel.value;
-  const areas = Object.keys(st.areas || {});
-  sel.innerHTML = '<option value="">все области</option>' + areas.map(a => `<option value="${esc(a)}">${esc(areaTitle(a, base))} (${(st.areas[a].active || 0)})</option>`).join('');
-  sel.value = areas.includes(keep) ? keep : '';
-  sel.classList.toggle('hidden', areas.length < 2);
-  const view = factsView(), total = view.reduce((s, [, r]) => s + r.length, 0), filtering = !!$('facts-filter').value.trim();
-  $('facts-count').textContent = `показано фактов: ${total}, о ${view.length} сущностях`;
-  const fact = e => `<li class="flex items-start justify-between gap-2 ${e.invalid_at ? 'opacity-60' : ''}"><span class="min-w-0">${esc(e.fact)}
-      <span class="block text-xs opacity-60">${esc(relName(e.relation))} · с ${esc(e.valid_at || '?')}${e.invalid_at ? ' по ' + esc(e.invalid_at) + ' (устарел)' : ''}
-      ${e.group !== base ? ' · область ' + esc(areaTitle(e.group, base)) : ''} · ${esc(SOURCE_TITLE[e.source] || e.source || '')}${e.canon ? ' · <b>канон</b>' : ''}</span></span>
-    ${e.canon ? '' : `<button class="btn btn-ghost btn-xs shrink-0" data-fact-uuid="${esc(e.uuid)}" title="Удалить факт">✕</button>`}</li>`;
-  $('facts-list').innerHTML = view.map(([name, rows]) => `<details class="rounded-box border border-base-300 px-3 py-1" data-subj="${esc(name)}" ${filtering || FC.open.has(name) ? 'open' : ''}>
-      <summary class="cursor-pointer text-sm"><b>${esc(name)}</b> <span class="opacity-60 text-xs">фактов: ${rows.length}</span></summary>
-      <ul class="space-y-2 py-2">${rows.map(fact).join('')}</ul></details>`).join('')
-    || '<div class="opacity-60 text-sm">Фактов пока нет. Они появятся после разговора: из реплик выписываются в паузах, очередь видна выше.</div>';
-}
-
-async function loadFacts() {
-  if ($('tab-memory').classList.contains('hidden')) return;
-  const g = await (await fetch('/api/graph')).json();
-  const st = g.stats || {};
-  MEMSTAT.graph = {enabled: g.enabled !== false, active: st.active, outdated: st.outdated, queue: st.queue ?? g.pending};
-  layerCounts();
-  const sig = JSON.stringify([g.status, g.pending, st, (g.current || []).length, (g.outdated || []).length, (g.current || []).map(e => e.uuid)]);
-  FC.data = g;
-  if (sig !== FC.sig) { FC.sig = sig; renderFacts(); }
-}
-async function factsSearch() {
-  const q = $('facts-q').value.trim(); if (!q) return;
-  const d = await (await fetch('/api/graph/search?q=' + encodeURIComponent(q))).json();
-  const hits = (d.hits || []).map(h => `<div class="rounded-box border border-base-300 p-2 ${h.invalid_at ? 'opacity-60' : ''}"><div>${esc(h.fact)}</div>
-    <div class="text-xs opacity-60">близость ${h.score ?? '-'}${h.invalid_at ? ' · устарел с ' + esc(String(h.invalid_at).slice(0, 10)) : ''}</div></div>`).join('');
-  $('facts-hits').innerHTML = (hits || '<div class="opacity-60">Ничего не прошло порог близости: в ответ ничего из фактов не попадёт.</div>') +
-    (d.context ? `<div class="text-xs opacity-60 mt-2">В подсказку модели уйдёт:</div><pre class="text-xs bg-base-200 rounded p-2 whitespace-pre-wrap">${esc(d.context)}</pre>`
-      : (hits ? '<div class="text-xs opacity-60 mt-2">Из действующих фактов в подсказку ничего не попадёт.</div>' : ''));
-}
-$('facts-go').onclick = factsSearch;
-$('facts-q').addEventListener('keydown', e => { if (e.key === 'Enter') factsSearch(); });
-['facts-filter', 'facts-area', 'facts-old'].forEach(id => $(id).addEventListener(id === 'facts-filter' ? 'input' : 'change', renderFacts));
-$('facts-list').addEventListener('toggle', e => {
-  const d = e.target; if (!d.dataset || d.dataset.subj === undefined) return;
-  d.open ? FC.open.add(d.dataset.subj) : FC.open.delete(d.dataset.subj);
-}, true);
-$('facts-list').addEventListener('click', async e => {
-  const uuid = e.target.dataset && e.target.dataset.factUuid; if (!uuid) return;
-  await post('/api/graph/forget', {uuid}); FC.sig = ''; loadFacts();
-});
-setInterval(() => loadFacts().catch(() => {}), 6000);
 
 // ── эпизоды, дневник и сон (ТЗ 27) ──
+const KIND_TITLE = {life: 'жизнь', canon: 'канон', note: 'заметка'};
+const KIND_BADGE = {life: 'badge-info', canon: 'badge-secondary', note: 'badge-success'};
 async function loadEpisodes() {
   if ($('tab-memory').classList.contains('hidden')) return;
-  const [eps, dia, sl] = await Promise.all(['/api/episodes?limit=20', '/api/diary?limit=10', '/api/sleep'].map(u => fetch(u).then(r => r.json())));
+  const [eps, dia, sl] = await Promise.all(['/api/episodes?limit=30' + ($('ep-kind').value ? '&kind=' + $('ep-kind').value : ''), '/api/diary?limit=10', '/api/sleep'].map(u => fetch(u).then(r => r.json())));
   const c = eps.counts || {};
   MEMSTAT.eps = c; layerCounts();
   $('sleep-status').textContent = (sl.state === 'sleeping' ? 'спит (' + (sl.mode || '') + ')' : 'бодрствует') +
-    ` · эпизодов: ${c.embedded || 0} готово, ${c.pending || 0} ждут, ${c.failed || 0} без резюме`;
+    ` · эпизодов жизни: ${c.embedded || 0} готово, ${c.pending || 0} ждут, ${c.failed || 0} не записаны`;
   $('episodes').innerHTML = (eps.episodes || []).map(e => `<details class="rounded-box border border-base-300 p-2" data-ep="${esc(e.id)}">
-    <summary class="cursor-pointer"><b>${esc(e.title || 'без резюме')}</b> <span class="opacity-60">${esc(e.when)} · ${esc(e.status)} · v${e.version}</span></summary>
-    <div class="mt-1">${esc(e.summary || '')}</div>${e.outcome ? `<div class="opacity-70">Исход: ${esc(e.outcome)}</div>` : ''}
-    ${(e.quotes || []).map(q => `<div class="opacity-70">«${esc(q)}»</div>`).join('')}
-    <div class="ep-src text-xs opacity-70 mt-1"></div></details>`).join('') || '<div class="opacity-60">Эпизодов пока нет: они появляются во сне.</div>';
+    <summary class="cursor-pointer"><span class="badge badge-sm ${KIND_BADGE[e.kind] || 'badge-ghost'}">${esc(KIND_TITLE[e.kind] || e.kind)}</span> <b>${esc(e.title || String(e.text || '').slice(0, 60) || 'без текста')}</b> <span class="opacity-60">${esc(e.when)} · ${esc(e.status)}</span></summary>
+    <div class="mt-1">${esc(e.text || '')}</div>
+    ${e.kind === 'canon' ? '' : `<button class="btn btn-ghost btn-xs" data-forget-ep="${esc(e.id)}" title="Забыть">✕ забыть</button>`}
+    <div class="ep-src text-xs opacity-70 mt-1"></div></details>`).join('') || '<div class="opacity-60">Эпизодов пока нет: они появляются, когда случается что-то яркое, и во сне.</div>';
   $('diary').innerHTML = (dia.diary || []).map(d => `<div class="rounded-box border border-base-300 p-2"><div class="text-xs opacity-60">${esc(d.day)}</div>${esc(d.text)}</div>`).join('') || '<div class="opacity-60">Записей пока нет.</div>';
 }
 document.addEventListener('toggle', async ev => {
@@ -821,6 +659,11 @@ document.addEventListener('toggle', async ev => {
   const ep = await (await fetch('/api/episodes/' + encodeURIComponent(d.dataset.ep))).json();
   d.querySelector('.ep-src').innerHTML = (ep.events || []).map(e => `[${e.id}] ${esc(e.when)} ${esc(e.kind)}: ${esc(e.text)}`).join('<br>');
 }, true);
+$('ep-kind').onchange = () => loadEpisodes().catch(() => {});
+$('episodes').addEventListener('click', async ev => {
+  const id = ev.target.dataset && ev.target.dataset.forgetEp; if (!id) return;
+  await post('/api/memory/forget', {id}); loadEpisodes().catch(() => {});
+});
 $('sleep-now').onclick = () => fetch('/api/sleep/now', {method: 'POST'}).then(loadEpisodes);
 $('sleep-stop').onclick = () => fetch('/api/sleep/interrupt', {method: 'POST'}).then(loadEpisodes);
 setInterval(() => loadEpisodes().catch(() => {}), 8000);
@@ -918,7 +761,6 @@ const SETTINGS_CATALOG = [
   {title: 'Поведение', items: [
     {key: 'chattiness', type: 'select', label: 'Разговорчивость', hint: 'Как часто она сама начинает разговор.',
      options: [['quiet', 'Редко'], ['normal', 'Обычно'], ['chatty', 'Часто']]},
-    {key: 'graph_memory', type: 'toggle', label: 'Память: факты', hint: 'Запоминает факты о людях и жизни из разговора (локально: Gemma и EmbeddingGemma в LM Studio, база SQLite в папке памяти, Docker не нужен). Без моделей отключается сама.'},
     {key: 'dnd', type: 'quiet', label: 'Не отвлекать', hint: 'Она сама не заговаривает и не комментирует игру, пока включено. Включается и сама, если сказать «буду смотреть сериал».'}]},
   {title: 'Telegram', items: [
     {key: 'telegram', type: 'toggle', label: 'Публиковать мысли в канал', hint: 'Токен бота и канал задаются в .env.'},
@@ -1031,12 +873,12 @@ function renderActivity(list) {
 
 function renderMemory(core) {
   MEMSTAT.notes = core.memories || []; MEMSTAT.relations = (core.relations || []).length; layerCounts();
-  for (const k of ['user', 'plan']) {
+  for (const k of ['plan']) {
     const items = (core.memories || []).filter(m => m.kind === k);
     $('mt-n-' + k).textContent = items.length || '';
     $('mem-' + k).innerHTML = items.length ? items.map(m => `<li class="flex items-start justify-between gap-2"><span class="bubble-text">${esc(m.text)}${m.due ? ` <span class="text-xs opacity-60">(до ${new Date(m.due * 1000).toLocaleDateString()})</span>` : ''}</span>
         <button class="btn btn-ghost btn-xs" data-forget-id="${esc(m.id)}" title="Забыть">✕</button></li>`).join('')
-      : '<li class="opacity-60 text-sm">Пока пусто. Расскажи об этом в чате или попроси «запомни, что…».</li>';
+      : '<li class="opacity-60 text-sm">Пока пусто. Попроси «запомни, что…» про дело со сроком.</li>';
     $('mem-' + k).querySelectorAll('[data-forget-id]').forEach(b => b.onclick = async () => {
       await post('/api/memory/forget', {id: b.dataset.forgetId}); poll();
     });
@@ -1322,33 +1164,13 @@ setInterval(() => loadLatency().catch(() => {}), 10000);
 loadLatency().catch(() => {});
 loadWorkspace().catch(() => {});
 
-// ── мысли (ТЗ 30, IMP-6): GET /api/thoughts ──
-const INTENT_NAME = {say: 'сказать', do: 'сделать', remind: 'напомнить себе', remember: 'запомнить', none: 'ничего'};
-function thoughtCard(t) {
-  const trig = t.trigger || {}, when = new Date((t.ts || 0) * 1000).toLocaleString();
-  const origin = trig.origin === 'self' ? 'сама себе' : 'событие';
-  const status = t.status && t.status !== 'done' ? `<span class="badge badge-warning badge-xs" title="Размышление оборвано ограничением">${esc(t.status)}</span>` : '';
-  const steps = (t.steps || []).map(st => `<li>${esc(st.text || '')}${st.query ? ` <span class="opacity-60">(вспоминала: ${esc(st.query)}, найдено ${st.found ?? 0})</span>` : ''}</li>`).join('');
-  const intents = (t.intents || []).map((i, k) => `<li><span class="badge badge-ghost badge-xs">${esc(INTENT_NAME[i.kind] || i.kind)}</span> ${esc(i.text || '')} <span class="opacity-60">${esc((t.results || [])[k] || '')}</span></li>`).join('');
-  const STAGE = {short: 'краткосрочная', long: 'перенесена в память', dropped: 'забыта'};
-  const mem = t.stage ? `<span class="badge badge-ghost badge-xs" title="Важность 1-5; важные мысли переносятся в долговременную память, мелкие забываются через сутки">важность ${t.importance ?? '?'} · ${esc(STAGE[t.stage] || t.stage)}</span>` : '';
-  return `<div class="border border-base-300 rounded-box p-2 text-sm">
-    <div class="flex flex-wrap items-center gap-2 text-xs opacity-70"><span>${esc(when)}</span><span class="badge badge-outline badge-xs">${esc(origin)}</span><span>${esc(trig.kind || '')}</span>${mem}${status}</div>
-    ${t.text ? `<div class="mt-1 font-medium">${esc(t.text)}</div>` : ''}
-    <div class="mt-1 opacity-70">${esc(trig.text || '')}</div>
-    ${steps ? `<ul class="list-disc ml-5 mt-1 text-xs opacity-80">${steps}</ul>` : ''}
-    ${intents ? `<ul class="ml-1 mt-1 space-y-0.5">${intents}</ul>` : ''}
-  </div>`;
-}
-async function loadThoughts() {
-  if ($('tab-memory').classList.contains('hidden') || $('mem-thoughts').classList.contains('hidden')) return;
-  const D = await fetch('/api/thoughts?n=50').then(r => r.json());
-  const ts = D.thoughts || [], rs = D.reminders || [];
-  $('thoughts-n').textContent = `мыслей: ${ts.length}`;
-  $('thoughts-list').innerHTML = ts.length ? ts.map(thoughtCard).join('') : '<div class="text-sm opacity-60">Пока нет мыслей: без стимула она молчит и не думает.</div>';
+// ── напоминания себе (ТЗ 30): GET /api/reminders ──
+async function loadReminders() {
+  if ($('tab-memory').classList.contains('hidden')) return;
+  const rs = (await fetch('/api/reminders').then(r => r.json())).reminders || [];
   $('reminders-list').innerHTML = rs.length ? rs.map(r => `<div><span class="opacity-60">${esc(new Date((r.due || 0) * 1000).toLocaleString())}</span> ${esc(r.text || '')}</div>`).join('') : '<div class="opacity-60">Нет назначенных напоминаний.</div>';
 }
-setInterval(() => loadThoughts().catch(() => {}), 5000);
+setInterval(() => loadReminders().catch(() => {}), 5000);
 
 // ── модули и задачи (ТЗ 02, CORE-38) ──
 const MOD_STATUS = {connected: ['подключён', 'badge-success'], disabled: ['выключен', 'badge-ghost'],

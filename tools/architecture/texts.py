@@ -14,7 +14,7 @@ ENT = [
 ]
 SMELLS = [
     ("Бог-объекты", "<code>Attention</code>: 1108 строк, 70 методов. <code>Companion</code>: 37 методов, 15 импортов. <code>FocusManager</code>: 60 методов.", "разрезать по сценариям (шаги R3–R5)"),
-    ("Слои знают друг друга", "<code>attention</code> читает <code>companion._rel</code>, <code>_mem</code>, <code>graph</code> через <code>getattr</code> и зовёт <code>companion._speak_about</code>; <code>peer_hub</code> больше не импортирует <code>attention</code> и <code>fast_brain</code> (приёмник <code>EventSink</code>, ТЗ 29 R6).", "контракты и колбэки"),
+    ("Слои знают друг друга", "<code>attention</code> читает <code>companion._rel</code>, <code>_mem</code>, <code>episodes</code> через <code>getattr</code> и зовёт <code>companion._speak_about</code>; <code>peer_hub</code> больше не импортирует <code>attention</code> и <code>fast_brain</code> (приёмник <code>EventSink</code>, ТЗ 29 R6).", "контракты и колбэки"),
     ("Глобальное состояние", "<code>events_log</code> (16 импортов), <code>character</code> (16), <code>settings.load()</code> (14), блокировка модели в <code>fast_brain</code>.", "передавать через конструкторы"),
     ("Корень сборки с логикой (устранено в R6)", "обработчики voice, colonists, run_lost, game_order вынесены в <code>services/event_handlers/</code>; <code>core_service.py</code> только собирает.", "только сборка"),
     ("Нет единой сущности события", "Словарь, <code>Item</code>, <code>UserInput</code>; правила «замолчи» и «похоже на просьбу» ещё и в <code>router</code>.", "<code>Event</code> и один модуль правил"),
@@ -30,7 +30,7 @@ MAP = [
     ("core_service.py", "Composition root; обработчики в <code>services/event_handlers/</code>"),
     ("services/peers/hub.py + services/peers/outbound.py", "PeerHub: входящие, исходящие в <code>PeerHub.outbound</code>, без импорта домена"),
     ("dashboard/", "HTTP-адаптер: роутеры <code>routes_*.py</code> и презентеры <code>presenters.py</code>"),
-    ("services/memory_service/graph.py, services/memory_service/user.py, services/memory_service/adapters.py", "MemoryWriter/MemoryReader + репозитории"),
+    ("services/memory_service/episode_memory.py, services/memory_service/user.py, services/memory_service/adapters.py", "MemoryWriter/MemoryReader + репозитории"),
     ("services/attention/speech_queue.py (296)", "SpeechQueue: остаётся как есть"),
     ("services/tracing/events_log.py, host/settings.py, services/character/character.py", "контракты EventLog, SettingsProvider, CharacterRepo"),
     ("нет", "ReminderStore, ImpulseTimer, ReflectionService, журнал мыслей (ТЗ 30)"),

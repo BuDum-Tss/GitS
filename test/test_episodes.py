@@ -93,26 +93,16 @@ def ids_in(user: str) -> list[int]:
 
 
 def good_summary(system, user, n):
-    """Корректное резюме: ссылки на реально показанные события, имена и числа из них."""
+    """Корректный эпизод: ссылки на реально показанные события, имена и числа из них; отношение и важное внутри текста."""
     ids = ids_in(user)
     return json.dumps({"title": "Экзамен Ани", "refs": ids[:2],
-                       "story": "Я узнала от Ани про экзамен по физике. Он завтра в 18:30. Я записала это и пообещала напомнить.",
-                       "noticed": ["она просила запомнить"], "attitude": "Мне это важно, и я не хочу подвести Аню.",
-                       "quotes": ["экзамен по физике завтра в 18:30", "выдуманная цитата"],
-                       "facts": ["Аня сдаёт экзамен по физике завтра в 18:30"], "emotions": ["забота"], "participants": ["Аня"]},
-                      ensure_ascii=False)
+                       "text": "Я узнала от Ани про экзамен по физике. Он завтра в 18:30. Я записала это и пообещала напомнить, "
+                               "мне это важно, и я не хочу подвести Аню.",
+                       "participants": ["Аня"]}, ensure_ascii=False)
 
 
 def bad_summary(system, user, n):
-    return json.dumps({"title": "x", "refs": [999], "story": "Борис принёс 77 яблок. Я рада. Мы ушли.", "attitude": "Рада."}, ensure_ascii=False)
-
-
-class Writer:
-    def __init__(self):
-        self.queue = []
-
-    def enqueue_for_graph(self, speaker, text, source=None):
-        self.queue.append((speaker, text, source))
+    return json.dumps({"title": "x", "refs": [999], "text": "Борис принёс 77 яблок. Я рада. Мы ушли."}, ensure_ascii=False)
 
 
 def chat_day(j: Journal, t, who="Аня"):
@@ -122,7 +112,7 @@ def chat_day(j: Journal, t, who="Аня"):
     j.add(t + 9, "user", "спасибо")
 
 
-def make_runner(tmp_path, journal, llm, clock=None, cfg=None, embedder=True, notify=None, writer=None):
+def make_runner(tmp_path, journal, llm, clock=None, cfg=None, embedder=True, notify=None):
     clock = clock or Clock()
     path = tmp_path / "episodes.db"
     store = EpisodeStore(path, clock)
@@ -135,10 +125,9 @@ def make_runner(tmp_path, journal, llm, clock=None, cfg=None, embedder=True, not
                                    allow=lambda: ["ГЛаДОС"], settings=lambda: settings)
     prompt = lambda: {"system": "дай JSON text", "format": ""}                                     # noqa: E731
     days = DayWriter(llm=llm, store=store, search=search, digest_prompt=prompt, diary_prompt=prompt)
-    writer = writer or Writer()
-    runner = SleepRunner(selector=selector, summarizer=summarizer, store=store, search=search, writer=writer, days=days,
+    runner = SleepRunner(selector=selector, summarizer=summarizer, store=store, search=search, days=days,
                          source=journal, settings=lambda: settings, clock=clock, notify=notify)
-    return SimpleNamespace(store=store, search=search, selector=selector, summarizer=summarizer, runner=runner, writer=writer,
+    return SimpleNamespace(store=store, search=search, selector=selector, summarizer=summarizer, runner=runner,
                            clock=clock, settings=settings, journal=journal, llm=llm)
 
 
@@ -156,37 +145,37 @@ SRC = [dom.Rec(1, T0, "user", "Аня сказала: экзамен по физ
 
 
 def parsed(**over):
-    base = {"title": "Экзамен", "refs": [1, 2], "quotes": ["экзамен по физике завтра"], "noticed": ["Аня назвала время"],
-            "story": "Я услышала про экзамен. Аня назвала время 18:30. Я пообещала напомнить.",
-            "attitude": "Мне важно не подвести Аню."}
+    base = {"title": "Экзамен", "refs": [1, 2],
+            "text": "Я услышала про экзамен. Аня назвала время 18:30. Я пообещала напомнить, и мне важно не подвести Аню."}
     base.update(over)
     return base
 
 
-def test_valid_summary_passes_and_unknown_quote_is_dropped():
-    ok, problems = dom.check_summary(parsed(quotes=["экзамен по физике завтра", "этого не говорили"]), SRC)
-    assert problems == [] and ok["quotes"] == ["экзамен по физике завтра"]
-    assert ok["attitude"] and ok["noticed"] == ["Аня назвала время"] and ok["summary"].startswith("Я услышала")
+def test_valid_episode_is_one_text_and_nothing_else():
+    ok, problems = dom.check_summary(parsed(quotes=["x"], attitude="y", facts=["z"], emotions=["w"], noticed=["v"]), SRC)
+    assert problems == [] and ok["text"].startswith("Я услышала") and ok["title"] == "Экзамен"
+    assert set(ok) == {"title", "text", "refs", "participants"}                      # отношение, замеченное, факты, эмоции, цитаты внутри текста
 
 
-def test_trusted_summary_skips_names_numbers_and_refs_but_keeps_quotes():
-    over = parsed(story="Я говорила с Борисом про 77 яблок и вспомнила прошлую неделю.", refs=[], quotes=["экзамен по физике", "нет такого"])
-    assert dom.check_summary(over, SRC)[0] is None
+def test_trusted_check_needs_only_a_title_and_a_text_of_sane_length():
+    over = parsed(text="Я говорила с Борисом про 77 яблок и вспомнила прошлую неделю.", refs=[])
+    assert dom.check_summary(over, SRC)[0] is None                                   # строгая проверка: имён и чисел нет в событиях
     ok, problems = dom.check_summary(over, SRC, trusted=True)
-    assert problems == [] and ok["quotes"] == ["экзамен по физике"]
-    assert dom.check_summary(parsed(attitude=""), SRC, trusted=True)[0] is None
+    assert problems == [] and ok["text"].startswith("Я говорила")
+    assert dom.check_summary(parsed(title=""), SRC, trusted=True)[0] is None
+    assert dom.check_summary(parsed(text=""), SRC, trusted=True)[0] is None
+    assert dom.check_summary(parsed(text="Коротко."), SRC, trusted=True)[0] is None
+    assert dom.check_summary(parsed(text="я " * 800), SRC, trusted=True)[0] is None
 
 
 @pytest.mark.parametrize("over, expect", [
     ({"refs": [1, 77]}, "несуществующие события"),
     ({"refs": []}, "нет ссылок"),
-    ({"story": "Я услышала про Бориса. Он пришёл. Мы поговорили."}, "имён нет"),
-    ({"attitude": "Я рада за Бориса."}, "имён нет"),
-    ({"noticed": ["она упомянула Бориса"]}, "имён нет"),
-    ({"attitude": ""}, "attitude"),
-    ({"story": "Я услышала про экзамен. Аня назвала время 19:45. Я пообещала напомнить."}, "чисел нет"),
-    ({"story": "Я услышала про экзамен."}, "предложений"),
-    ({"story": " ".join(["Я слушала."] * 7)}, "предложений"),
+    ({"text": "Я услышала про Бориса. Он пришёл. Мы поговорили."}, "имён нет"),
+    ({"text": ""}, "нет текста"),
+    ({"text": "Я услышала про экзамен. Аня назвала время 19:45. Я пообещала напомнить."}, "чисел нет"),
+    ({"text": "Я услышала про экзамен."}, "предложений"),
+    ({"text": " ".join(["Я слушала."] * 9)}, "предложений"),
     ({"title": ""}, "заголовка"),
 ])
 def test_summary_problems(over, expect):
@@ -195,11 +184,11 @@ def test_summary_problems(over, expect):
 
 
 def test_declined_name_and_allowed_name():
-    ok, p = dom.check_summary(parsed(story="Я услышала от Ани про экзамен. Она назвала время 18:30. Я пообещала напомнить."), SRC)
+    ok, p = dom.check_summary(parsed(text="Я услышала от Ани про экзамен. Она назвала время 18:30. Я пообещала напомнить."), SRC)
     assert p == []                                                                # «Ани» - форма имени «Аня»
-    clean, p = dom.check_summary(parsed(story="Я, ГЛаДОС, услышала про экзамен. Аня назвала время. Я пообещала напомнить."), SRC)
+    clean, p = dom.check_summary(parsed(text="Я, ГЛаДОС, услышала про экзамен. Аня назвала время. Я пообещала напомнить."), SRC)
     assert clean is None and any("ГЛаДОС" in x for x in p)
-    ok, p = dom.check_summary(parsed(story="Я, ГЛаДОС, услышала про экзамен. Аня назвала время. Я пообещала напомнить."), SRC,
+    ok, p = dom.check_summary(parsed(text="Я, ГЛаДОС, услышала про экзамен. Аня назвала время. Я пообещала напомнить."), SRC,
                               allow=["ГЛаДОС"])
     assert p == []
 
@@ -271,7 +260,7 @@ async def test_summary_passes_verification(tmp_path):
     r = make_runner(tmp_path, j, LLM(good_summary), Clock(T0 + 5000))
     ep, events = await prepared_episode(r)
     res = await r.summarizer.summarize(ep, events)
-    assert res.ok and res.data["quotes"] == ["экзамен по физике завтра в 18:30"] and res.data["refs"] == [1, 2]
+    assert res.ok and res.data["text"].startswith("Я узнала от Ани") and res.data["refs"] == [1, 2]
     assert "<<<" in r.llm.calls[0][1] and "[1]" in r.llm.calls[0][1]              # источники с номерами, как данные
 
 
@@ -324,9 +313,8 @@ async def test_sleep_pipeline_end_to_end(tmp_path):
     assert rep["cut"] == 2 and rep["summarized"] == 2 and rep["embedded"] == 2 and rep["failed"] == 0
     eps = r.store.select(oldest_first=True)
     assert [e["status"] for e in eps] == ["embedded", "embedded"] and all(e["version"] == 1 for e in eps)
-    assert r.writer.queue and all(src == eps[i]["id"] for i, (_, _, src) in enumerate(r.writer.queue[:1]))   # факт знает эпизод
-    assert eps[0]["quotes"] == ["экзамен по физике завтра в 18:30"] and eps[0]["emotions"] == ["забота"]
-    assert len(sent) == 2 and sent[0]["summary"]                                   # episode.summary для ярких эпизодов
+    assert eps[0]["title"] == "Экзамен Ани" and "мне это важно" in eps[0]["text"] and eps[0]["kind"] == "life"      # отношение внутри текста
+    assert len(sent) == 2 and sent[0]["text"]                                      # episode.summary для ярких эпизодов
     hits = await r.search.search("экзамен по физике", collections=["episodes"], rewrite=False)
     assert {h.key.split("#")[0] for h in hits} >= {eps[0]["id"]}
     assert rep["digests"] == 2 and rep["diary"] >= 1 and r.store.diary()            # сводки и дневник
@@ -338,10 +326,10 @@ async def test_sleep_is_idempotent(tmp_path):
     two_days(j)
     r = make_runner(tmp_path, j, LLM(text_or_summary), Clock(T0 + 86400 + 4 * 3600))
     await r.runner.run(dom.SleepPlan("idle", None))
-    calls, queue, docs = len(r.llm.calls), list(r.writer.queue), r.search.index.count()
+    calls, docs = len(r.llm.calls), r.search.index.count()
     rep = await r.runner.run(dom.SleepPlan("idle", None))
     assert rep["cut"] == rep["summarized"] == rep["embedded"] == rep["digests"] == rep["diary"] == 0
-    assert len(r.llm.calls) == calls and r.writer.queue == queue and r.search.index.count() == docs
+    assert len(r.llm.calls) == calls and r.search.index.count() == docs
 
 
 async def test_sleep_interrupts_between_episodes_and_resumes(tmp_path):
@@ -388,7 +376,7 @@ async def test_failed_episode_stays_without_summary_and_raw_search_works(tmp_pat
     r = make_runner(tmp_path, j, LLM(bad_summary), Clock(T0 + 5000))
     rep = await r.runner.run(dom.SleepPlan("idle", None))
     ep = r.store.select()[0]
-    assert rep["failed"] == 1 and ep["status"] == "failed" and ep["summary"] == "" and ep["error"]
+    assert rep["failed"] == 1 and ep["status"] == "failed" and ep["text"] == "" and ep["error"]
     assert r.store.events_of(ep["id"])                                             # источники на месте
     rep = await r.runner.run(dom.SleepPlan("idle", None))
     assert rep["summarized"] == 0                                                  # failed повторно не мучаем
@@ -432,12 +420,12 @@ async def test_compress_old_days_and_delete_raw_only_for_embedded(tmp_path):
     r.clock.t = old.t
     rep = await r.runner.run(dom.SleepPlan("idle", None))
     ep = r.store.select()[0]
-    assert rep["compressed"] == 1 and ep["compressed"] == 1 and ep["quotes"] == [] and ep["raw_deleted"] == 1
+    assert rep["compressed"] == 1 and ep["compressed"] == 1 and ep["raw_deleted"] == 1
     assert j.deleted == [1, 2, 3] and r.store.events_of(ep["id"])                  # сырое удалено, копия источников осталась
     day = datetime.fromtimestamp(T0).date().isoformat()
     assert r.store.digest(day)["compressed"] == 1
     hits = await r.search.search("экзамен по физике завтра", collections=["episodes"], rewrite=False)
-    assert hits and all("#q" not in h.key for h in hits)                           # цитаты сжатого эпизода из индекса убраны
+    assert hits and all("#" not in h.key for h in hits)                            # в индексе только эпизоды целиком, без кусков
 
 
 async def test_raw_is_kept_when_episode_has_no_embedding(tmp_path):
@@ -478,7 +466,7 @@ async def test_recall_finds_and_expands_episode(tmp_path):
     assert found and found[0]["kind"] in ("episode", "diary", "digest")
     eid = next(f["id"] for f in found if f["kind"] == "episode")
     ep = await rec.expand(eid)
-    assert ep["events"] and ep["summary"] and ep["version"] == 1
+    assert ep["events"] and ep["text"] and ep["version"] == 1
     text = await rec.recall_episode(eid)
     assert "События-источники" in text and "экзамен по физике" in text
     assert await rec.recall_episode("нет-такого") == ""
@@ -487,22 +475,21 @@ async def test_recall_finds_and_expands_episode(tmp_path):
     assert isinstance(tail, list)
 
 
-async def test_memory_reader_recall_keeps_default_behaviour_without_episodes():
-    async def search(q, limit=6):
-        return [{"fact": "факт про чай", "uuid": "u1"}]
-
-    ad = UserMemoryAdapter(lambda: None, lambda: SimpleNamespace(search=search))
+async def test_memory_reader_recall_is_empty_without_episodes():
+    ad = UserMemoryAdapter(lambda: None)
     assert isinstance(ad, contracts.MemoryReader)
-    assert await ad.recall("чай") == [{"text": "факт про чай", "kind": "fact", "id": "u1", "importance": 4}]
+    assert await ad.recall("чай") == []
 
 
-async def test_memory_reader_recall_adds_episodes_when_connected():
-    class Rec:
+async def test_memory_reader_recall_gives_episodes_when_connected():
+    class Memory:
         async def find(self, q, k=5):
-            return [{"id": "m1-3", "kind": "episode", "text": "поход", "when": "x", "score": 1}]
+            return [{"id": "m1-3", "kind": "episode", "text": "поход", "when": "x", "score": 1, "salience": 0.0},
+                    {"id": "n-1", "kind": "note", "text": "любит чай", "when": "x", "score": 1, "salience": 0.8}]
 
-    ad = UserMemoryAdapter(lambda: None, lambda: None, lambda: SimpleNamespace(recall=Rec()))
-    assert await ad.recall("поход") == [{"text": "поход", "kind": "episode", "id": "m1-3", "importance": 3}]
+    ad = UserMemoryAdapter(lambda: None, lambda: SimpleNamespace(memory=Memory()))
+    assert await ad.recall("поход") == [{"text": "поход", "kind": "episode", "id": "m1-3", "importance": 3},
+                                        {"text": "любит чай", "kind": "note", "id": "n-1", "importance": 4}]
 
 
 async def test_recall_tool_uses_episodes(monkeypatch):
@@ -659,7 +646,7 @@ async def test_episode_summary_event_goes_to_think_route(tmp_path):
     rig = Rig(tmp_path)
     spy = Spy()
     rig.att.attach_reflection(spy)
-    ep = {"id": "m1-3", "title": "Экзамен Ани", "summary": "Я записала экзамен.", "salience": 0.8, "day": "2026-10-16", "stream": "chat"}
+    ep = {"id": "m1-3", "title": "Экзамен Ани", "text": "Я записала экзамен.", "salience": 0.8, "day": "2026-10-16", "stream": "chat"}
     await rig.att.submit("memory", summary_event(ep))
     await rig.att.settle()
     assert [e.kind for e in spy.events] == ["episode.summary"] and spy.events[0].origin == "external"
@@ -667,7 +654,7 @@ async def test_episode_summary_event_goes_to_think_route(tmp_path):
 
 
 def fake_companion(folder, llm):
-    comp = SimpleNamespace(_dir=folder, _llm=llm, memory_writer=Writer(), idle_seconds=lambda: 0.0, _last_user_ts=0.0,
+    comp = SimpleNamespace(_dir=folder, _llm=llm, idle_seconds=lambda: 0.0, _last_user_ts=0.0,
                            _settings=SimpleNamespace(load=lambda: {"episodes": {}}))
     return comp
 
@@ -687,12 +674,12 @@ async def test_service_keeps_episodes_per_character(tmp_path):
     p1 = svc.parts()
     p1.store.set_meta("moments_upto", 0)
     await p1.selector.run()
-    assert svc.store.select()
+    assert svc.store.select(kind="life")
     comp._dir = folder_b                                   # переключение персонажа: своя папка и свои эпизоды
     p2 = svc.parts()
-    assert p2 is not p1 and svc.store.select() == []
+    assert p2 is not p1 and svc.store.select(kind="life") == []
     comp._dir = folder_a
-    assert svc.parts() is p1 and svc.store.select()
+    assert svc.parts() is p1 and svc.store.select(kind="life")
     svc.attach_scheduler()
     snap = await svc.snapshot()
     assert snap["episodes"] and snap["sleep"]["state"] == "awake"

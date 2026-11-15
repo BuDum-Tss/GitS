@@ -261,14 +261,12 @@ async def test_classifier_switch_in_settings(tmp_path):
 
 # ── что делает решение ────────────────────────────────────────────────────────────────────────────
 
-async def test_d1_goes_to_digest_and_memorable_to_graph(rig):
-    graph = SimpleNamespace(items=[], enqueue=lambda s, t: graph.items.append((s, t)))
-    rig.companion.graph = graph
+async def test_d1_goes_to_digest_and_memorable_does_not_write_memory_by_itself(rig):
+    mem = RecMem()
+    rig.companion._mem = mem
     await rig.submit("tg", kind="tg.dm", text="Маша переезжает в Казань", urgency_hint=1, addressed_to_me=False,
                      memorable=True, sender={"id": "tg:2", "name": "Маша"})
-    assert graph.items == [("Маша", "Маша переезжает в Казань")] and rig.att.digest_counts() == {"tg": 1}
-    await rig.submit("tg", kind="tg.dm", text="пустяк", urgency_hint=0, addressed_to_me=False, memorable=True)
-    assert len(graph.items) == 1                                      # D0: даже memorable не попадает в граф
+    assert rig.att.digest_counts() == {"tg": 1} and mem.facts == []              # знание из события возникает из эпизодов, очереди фактов нет
 
 
 async def test_urgency_4_and_5_make_fact_candidate_with_priority_and_expiry(rig):
@@ -803,63 +801,61 @@ class RecMem:
 def tg14_rig(rig, rel=None):
     rig.companion._rel = rel or RecRel()
     rig.companion._mem = RecMem()
-    rig.companion.graph = SimpleNamespace(items=[], enqueue=lambda s, t: rig.companion.graph.items.append((s, t)))
-    return rig.companion._rel, rig.companion._mem, rig.companion.graph
+    return rig.companion._rel, rig.companion._mem
 
 
 MASHA = {"id": "tg:5", "name": "Маша", "is_owner": False}
 FACT = "Сообщение от Маша в личке бота: «я переезжаю в Казань»"
 
 
-async def test_tg14_sender_is_registered_noted_and_memorized_even_when_the_event_is_dropped(rig):
-    rel, mem, graph = tg14_rig(rig)
+async def test_tg14_sender_is_registered_and_noted_even_when_the_event_is_dropped(rig):
+    rel, mem = tg14_rig(rig)
     d = await rig.submit("telegram", kind="telegram.bot_message", text=FACT, urgency_hint=0, addressed_to_me=False,
                          memorable=True, sender=MASHA, reply_channel={"module": "telegram", "target": "bot:5"})
     assert d["decision"] == "D0"                                           # озвучивать нечего, а запомнить нужно
     assert rel.calls == [("ensure", "tg:5", "Маша", "telegram"), ("note", "tg:5", FACT)]
-    assert graph.items == [("Маша", FACT)] and mem.facts == []      # сырое событие в долгую память не пишется (его запомнит эпизод)
+    assert mem.facts == []      # сырое событие в долгую память не пишется (его запомнит эпизод)
 
 
-async def test_tg14_memory_is_written_once_when_the_event_is_also_spoken_about(rig):
-    rel, mem, graph = tg14_rig(rig)
+async def test_tg14_event_that_is_also_spoken_about_writes_no_raw_memory(rig):
+    rel, mem = tg14_rig(rig)
     await rig.submit("telegram", kind="telegram.bot_message", text=FACT, urgency_hint=3, addressed_to_me=True,
                      memorable=True, sender=MASHA)
     assert rig.att.last_decision["decision"] in ("D2", "D3", "D4")
-    assert len(graph.items) == 1 and mem.facts == []                     # _act второй раз в граф не кладёт
+    assert mem.facts == []
 
 
 async def test_tg14_not_memorable_event_only_registers_the_person(rig):
-    rel, mem, graph = tg14_rig(rig)
+    rel, mem = tg14_rig(rig)
     await rig.submit("telegram", kind="telegram.group", text="Сообщение от Маша в группе «Соседи»: «всем привет»",
                      urgency_hint=1, addressed_to_me=False, sender=MASHA)
-    assert [c[0] for c in rel.calls] == ["ensure", "note"] and graph.items == [] and mem.facts == []
+    assert [c[0] for c in rel.calls] == ["ensure", "note"] and mem.facts == []
 
 
 async def test_tg14_needs_sender_id_and_name(rig):
-    rel, mem, graph = tg14_rig(rig)
+    rel, mem = tg14_rig(rig)
     await rig.submit("echo", urgency_hint=1, addressed_to_me=False, memorable=True)
     await rig.submit("echo", urgency_hint=1, addressed_to_me=False, memorable=True, sender={"id": "echo:1"})
     await rig.submit("echo", urgency_hint=1, addressed_to_me=False, memorable=True, sender={"name": "Безымянный"})
     assert rel.calls == [] and mem.facts == []
-    assert len(graph.items) == 3                                            # граф берёт прежний путь _act (D1 и выше), не TG-14
 
 
 async def test_tg14_owner_address_registers_person_but_conversation_writes_the_memory(rig):
-    rel, mem, graph = tg14_rig(rig)
+    rel, mem = tg14_rig(rig)
     owner = {"id": "tg:777", "name": "Аня", "is_owner": True}
     d = await rig.submit("telegram", kind="telegram.bot_message", text="Сообщение от Аня в личке бота: «как дела?»",
                          addressed_to_me=True, memorable=True, sender=owner, reply_channel={"module": "telegram", "target": "bot:777"})
     assert d["rule"] == "R1" and len(rig.io.inputs) == 1
     assert [c[:2] for c in rel.calls] == [("ensure", "tg:777"), ("note", "tg:777")]
-    assert graph.items == [] and mem.facts == []                            # реплику в граф и память кладёт разговор
+    assert mem.facts == []                                                  # реплику в память кладёт разговор
 
 
 async def test_tg14_duplicate_within_a_minute_is_not_registered_twice(rig):
-    rel, mem, graph = tg14_rig(rig)
+    rel, mem = tg14_rig(rig)
     for _ in range(2):
         await rig.submit("telegram", kind="telegram.bot_message", text=FACT, urgency_hint=2, addressed_to_me=True,
                          memorable=True, sender=MASHA, dedupe_key="tg:bot:5:10")
-    assert [c[0] for c in rel.calls] == ["ensure", "note"] and len(graph.items) == 1 and mem.facts == []
+    assert [c[0] for c in rel.calls] == ["ensure", "note"] and mem.facts == []
 
 
 async def test_tg14_storage_failure_does_not_stop_the_event(rig):

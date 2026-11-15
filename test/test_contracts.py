@@ -19,7 +19,6 @@ from services.character.relationships import RelationshipsAdapter
 from services.runtime.pi_runtime import PiRuntime
 from services.attention import Attention
 from services.conversation.companion import Companion
-from services.memory_service.graph import GraphMemory
 from services.tools.router import Router
 
 
@@ -31,9 +30,8 @@ from services.tools.router import Router
     (settings, contracts.SettingsProvider),
     (approvals, contracts.Approver),
     (RelationshipsAdapter(lambda: None), contracts.PeopleDirectory),
-    (UserMemoryAdapter(lambda: None, lambda: None), contracts.MemoryReader),
-    (UserMemoryAdapter(lambda: None, lambda: None), contracts.MemoryWriter),
-    (GraphMemory.__new__(GraphMemory), contracts.FactGraph),     # методы класса без запуска backend
+    (UserMemoryAdapter(lambda: None), contracts.MemoryReader),
+    (UserMemoryAdapter(lambda: None), contracts.MemoryWriter),
     (decide.Decider(), contracts.Classifier),
     (Router(None, None), contracts.ToolInvoker),
     (time.time, contracts.Clock),
@@ -74,10 +72,10 @@ class FakeLog:
 
 
 class FakeMemory:
-    """MemoryReader и MemoryWriter в памяти процесса: без файлов и графа."""
+    """MemoryReader и MemoryWriter в памяти процесса: без файлов."""
 
     def __init__(self):
-        self.dialogue, self.fact_items, self.graph_items, self.meta_ = [], [], [], {}
+        self.dialogue, self.fact_items, self.meta_ = [], [], {}
 
     def recent_dialogue(self, n=8):
         return self.dialogue[-n:]
@@ -85,22 +83,19 @@ class FakeMemory:
     def recent_activity(self, n=5):
         return []
 
-    def facts(self):
-        return [{"text": f["text"], "ts": 0.0} for f in self.fact_items]
-
     def context_text(self, query=""):
         return ""
 
     def context_block(self, dialogue=6, query=""):
         return ""
 
-    async def graph_block(self, query):
+    async def topic_block(self, query):
         return ""
 
-    async def self_block(self, query):
+    async def canon_block(self, query):
         return ""
 
-    def graph_status(self):
+    def memory_status(self):
         return None
 
     def relevant(self, query="", k=8):
@@ -121,9 +116,6 @@ class FakeMemory:
 
     def add_activity(self, app, category, summary):
         pass
-
-    def enqueue_for_graph(self, speaker, text):
-        self.graph_items.append((speaker, text))
 
     def forget_matching(self, text):
         return 0
@@ -177,7 +169,7 @@ async def test_attention_registers_sender_and_memorises_on_fake_contracts(tmp_pa
     cfg = dict(settings.DEFAULTS)
     att = Attention(FakeCompanion(), FakeIO(), clock=Clock(), decider=StubDecider(None),
                     settings_source=lambda: cfg, rules_file=tmp_path / "rules.json", idle_source=lambda: 0.0,
-                    autopump=False, people=people, memory_writer=mem, event_log=log,
+                    autopump=False, people=people, event_log=log,
                     approver=SimpleNamespace(has_pending=lambda: False, formulating=lambda: False))
     text = "Маша переезжает в Казань"
     await att.submit("tg", {"kind": "tg.dm", "text": text, "urgency_hint": 1, "addressed_to_me": False,
@@ -185,8 +177,7 @@ async def test_attention_registers_sender_and_memorises_on_fake_contracts(tmp_pa
     await att.settle()
 
     assert ("ensure", "tg:2", "Маша") in people.calls and ("note", "tg:2", text) in people.calls
-    assert mem.fact_items == []      # сырое событие в долгую память не пишется
-    assert mem.graph_items == [("Маша", text)]
+    assert mem.fact_items == []      # сырое событие в долгую память не пишется: его запомнят эпизоды
     assert any(kind == "attention" for kind, _ in log.entries)       # решение внимания записано в журнал
 
 

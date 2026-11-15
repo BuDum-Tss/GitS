@@ -23,10 +23,9 @@ CONTAINER_MSG = "в контейнере один персонаж; для др�
 
 
 class CharacterSwitch:
-    def __init__(self, *, companion, rel, graph, attention, hub, mem_root: Path | None = None, speech_wait_s: float = SPEECH_WAIT_S):
+    def __init__(self, *, companion, rel, attention, hub, mem_root: Path | None = None, speech_wait_s: float = SPEECH_WAIT_S):
         self.companion = companion      # Companion: личная память (UserMemory) и речь
         self.rel = rel                  # Relationships
-        self.graph = graph              # GraphMemory (None, если граф не подключён)
         self.attention = attention      # Attention: очередь речи, стек фокуса, правила (None в тестах)
         self.hub = hub                  # PeerHub: рассылка темы character (None в тестах)
         self.mem_root = Path(mem_root) if mem_root is not None else None   # None: память персонажа в resources/<Имя>/memory
@@ -53,11 +52,10 @@ class CharacterSwitch:
             self.rel.rebind(mdir)
             if self.attention is not None:
                 self.attention.rebind_rules(mdir)
-            if self.graph is not None:
-                self.graph.set_character(new.id)
+            episodes = getattr(self.companion, "episodes", None)
+            if episodes is not None:                  # память нового персонажа открывается по папке компаньона (канон и перенос graph.db)
                 try:                                  # у этого персонажа ещё может лежать старая memories.json
-                    await memory_migration.migrate(mdir, self.graph, getattr(self.companion, "tasks", None),
-                                                   self.companion._owner_name())
+                    await memory_migration.migrate(mdir, episodes.memory, getattr(self.companion, "tasks", None))
                 except Exception as e:
                     log.warning("перенос старой памяти персонажа: %s", e)
             if self.hub is not None:

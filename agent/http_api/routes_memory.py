@@ -1,7 +1,8 @@
-"""Роутер дашборда: разговор, память, граф, разрешения (ТЗ 29, ARC-8)."""
+"""Роутер дашборда: разговор, память, разрешения (ТЗ 29, ARC-8)."""
 from datetime import datetime
 
 from services.conversation import approvals
+from services.memory_service import episode_routes
 from services.tracing import reply_trace
 from services.tracing import tool_trace
 from aiohttp import web
@@ -13,11 +14,8 @@ from .routes_system import read_json
 
 
 async def memories_view() -> list[dict]:
-    """Что она помнит важного: профиль владельца (`user`) и цели-планы (`plan`, задачи)."""
+    """Цели-планы (`plan`, задачи): единственное, что вкладка памяти берёт не из эпизодов."""
     items: list[dict] = []
-    if ctx.graph is not None:
-        items += [{"id": f["uuid"], "kind": "user", "text": f["text"], "ts": f["ts"], "importance": f["importance"]}
-                  for f in ctx.graph.profile_facts("owner", 100)]
     tasks = ctx.tasks() if ctx.tasks is not None else None
     if tasks is not None:
         try:
@@ -91,37 +89,13 @@ async def handle_api_forget(request: web.Request) -> web.Response:
                 return web.json_response({"removed": 1})
             except Exception:
                 return web.json_response({"removed": 0})
-        return web.json_response({"removed": int(ctx.graph is not None and await ctx.graph.forget(mem_id))})
+        memory = episode_routes.memory()
+        return web.json_response({"removed": int(memory is not None and memory.forget(mem_id))})     # эпизод или заметка; канон не стирается
     text = str(body.get("text", "")).strip()
     if not text:
         return web.json_response({"error": "empty"}, status=400)
-    return web.json_response({"removed": ctx.graph.forget_matching(text, strict=True) if ctx.graph is not None else 0})
-
-
-async def handle_api_graph(request: web.Request) -> web.Response:
-    """Граф памяти: действующие факты, устаревшие и состояние (очередь, база)."""
-    if ctx.graph is None:
-        return web.json_response({"enabled": False, "status": "память-граф не подключена"})
-    snap = await ctx.graph.snapshot()
-    return web.json_response(presenters.graph_view(snap, status=ctx.graph.status_text(), pending=ctx.graph.pending(),
-                                                   stats=await ctx.graph.stats()))
-
-
-async def handle_api_graph_search(request: web.Request) -> web.Response:
-    """Пробный поиск по фактам: что нашлось (с косинусом) и какой блок попадёт в контекст ответа."""
-    query = request.query.get("q", "").strip()
-    if ctx.graph is None or not query:
-        return web.json_response({"query": query, "hits": [], "context": ""})
-    return web.json_response(await ctx.graph.explain(query[:300]))
-
-
-async def handle_api_graph_forget(request: web.Request) -> web.Response:
-    body, err = await raw_json_body(request)
-    if err:
-        return err
-    if ctx.graph is None or not body.get("uuid"):
-        return web.json_response({"error": "нечего удалять"}, status=400)
-    return web.json_response({"removed": await ctx.graph.forget(str(body["uuid"]))})
+    memory = episode_routes.memory()
+    return web.json_response({"removed": memory.forget_matching(text, strict=True) if memory is not None else 0})
 
 
 async def handle_api_chat_post(request: web.Request) -> web.Response:
@@ -161,8 +135,5 @@ ROUTES = [
     ("GET", "/api/tasks/now", handle_api_tasks_now),
     ("POST", "/api/approval", handle_api_approval),
     ("POST", "/api/memory/forget", handle_api_forget),
-    ("GET", "/api/graph", handle_api_graph),
-    ("GET", "/api/graph/search", handle_api_graph_search),
-    ("POST", "/api/graph/forget", handle_api_graph_forget),
     ("GET", "/api/chat", handle_api_chat_get),
 ]

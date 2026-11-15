@@ -176,7 +176,7 @@ def node_info(node: str, limit: int = 20) -> dict:
 # ── путь по записям журнала задержки (ТЗ 24) ───────────────────────────────────────────────────
 
 STAGE_NODE = {"mic_end": "module:voice", "stt_done": "module:voice", "core_in": "bus", "classify_done": "gliner",
-              "route": "attention", "retrieve_done": "graph_memory", "llm_first_token": "gemma", "llm_done": "gemma",
+              "route": "attention", "retrieve_done": "episode_memory", "llm_first_token": "gemma", "llm_done": "gemma",
               "first_sentence_ready": "speech_queue", "tts_first_audio": "out_voice", "play_start": "out_voice"}
 
 

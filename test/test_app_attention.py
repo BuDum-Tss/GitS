@@ -5,7 +5,7 @@ from test_attention import Rig
 
 from services.attention.core import Item
 from services.attention import Attention, Question
-from interfaces.contracts import MemoryWriter, PeopleDirectory
+from interfaces.contracts import PeopleDirectory
 from services.attention import dedupe
 
 
@@ -52,7 +52,7 @@ def test_facade_aliases_component_state(tmp_path):
 
 def test_people_and_memory_go_through_contracts(tmp_path):
     att = Rig(tmp_path).att
-    assert isinstance(att.ctx.people, PeopleDirectory) and isinstance(att.ctx.writer, MemoryWriter)
+    assert isinstance(att.ctx.people, PeopleDirectory)
 
 
 def test_item_store_merges_duplicates_and_forgets_old(tmp_path):

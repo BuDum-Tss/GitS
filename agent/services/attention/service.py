@@ -31,7 +31,6 @@ from typing import Any, Callable
 from services.conversation import approvals
 from services.classifier import decide
 from services.tracing import events_log
-from services.memory_service import writer_for_companion
 from services.character.relationships import people_for_companion
 from services.attention.announce import Announcer, is_announce_event
 from services.attention.core import (  # noqa: F401  (прежние имена модуля: их импортируют ядро, модули и тесты)
@@ -114,7 +113,6 @@ class Attention:
     _idle = _Via("ctx", "idle")
     _log = _Via("ctx", "log")
     _people = _Via("ctx", "people")
-    _writer = _Via("ctx", "writer")
     _approver = _Via("ctx", "approver")
     _autopump = _Via("ctx", "autopump")
     _tasks = _Via("ctx", "tasks")
@@ -132,12 +130,12 @@ class Attention:
     def __init__(self, companion, io, *, clock=time.time, decider=None,
                  settings_source: Callable[[], dict] | None = None, rules_file=None,
                  idle_source: Callable[[], float] | None = None, autopump: bool = True,
-                 people=None, memory_writer=None, event_log=None, settings_provider=None, approver=None):
+                 people=None, event_log=None, settings_provider=None, approver=None):
         """companion - Companion (say, speak_about, speech, presence); io - ConversationIO. decider - классификатор
         (Classifier; в тестах заглушка); settings_source - откуда брать настройки; rules_file - файл правил (по
         умолчанию memory/attention_rules.json); idle_source - секунды простоя ввода; autopump=False: планировщик речи
         запускается только вручную (`await attention.speech.pump()`), без фоновых задач.
-        Контракты (ТЗ 29, ARC-3): people - PeopleDirectory, memory_writer - MemoryWriter, event_log - EventLog,
+        Контракты (ТЗ 29, ARC-3): people - PeopleDirectory, event_log - EventLog,
         settings_provider - SettingsProvider, approver - Approver. Без них берутся публичные свойства компаньона и адаптеры."""
         provider = settings_provider if settings_provider is not None else settings
         ctx = self.ctx = AttentionContext(
@@ -146,7 +144,6 @@ class Attention:
             log=event_log if event_log is not None else events_log,
             approver=approver if approver is not None else approvals,
             people=people if people is not None else people_for_companion(companion),
-            writer=memory_writer if memory_writer is not None else writer_for_companion(companion),
             idle=idle_source or self._default_idle, autopump=autopump,
             rules=RuleStore(rules_file if rules_file is not None else settings.memory_dir() / RULES_FILE, clock=clock),
             presence=getattr(companion, "presence", None) or NullPresence())
@@ -484,8 +481,8 @@ class Attention:
     def _make_item(self, peer_id: str, ev: dict, now: float) -> Item:
         return self.normalizer.make_item(peer_id, ev, now)
 
-    def _note_sender(self, item: Item, *, skip_memory: bool) -> None:
-        self.normalizer.note_sender(item, skip_memory=skip_memory)
+    def _note_sender(self, item: Item) -> None:
+        self.normalizer.note_sender(item)
 
     def _fact(self, item: Item) -> str:
         return event_fact(self.ctx, item)

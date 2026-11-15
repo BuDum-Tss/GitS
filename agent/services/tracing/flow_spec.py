@@ -25,7 +25,7 @@ NODES = [
     ("deep", "pi (долгие задачи)", "thinking"),
     ("tools", "Инструменты", "tools"),
     ("working_memory", "Рабочая память", "wm"),
-    ("graph_memory", "Личная память (граф)", "ltm"),
+    ("episode_memory", "Личная память (эпизоды)", "ltm"),
     ("out_voice", "Голос", "output"),
     ("out_presence", "Показ состояния", "output"),
     ("out_telegram", "Telegram", "output"),
@@ -35,8 +35,8 @@ NODES = [
 EDGES = [
     ("bus", "gliner"), ("gliner", "attention"), ("bus", "attention"), ("attention", "working_memory"),
     ("attention", "planner"), ("attention", "speech_queue"), ("planner", "gemma"), ("planner", "deep"),
-    ("planner", "tools"), ("planner", "graph_memory"), ("gemma", "speech_queue"), ("gemma", "working_memory"),
-    ("gemma", "graph_memory"), ("working_memory", "graph_memory"),
+    ("planner", "tools"), ("planner", "episode_memory"), ("gemma", "speech_queue"), ("gemma", "working_memory"),
+    ("gemma", "episode_memory"), ("working_memory", "episode_memory"),
     ("speech_queue", "out_voice"), ("speech_queue", "out_presence"), ("speech_queue", "out_telegram"),
     ("speech_queue", "out_dashboard"), ("deep", "speech_queue"),
 ]
@@ -44,7 +44,7 @@ EDGES = [
 # Состояния хода и узел, который переводит в состояние (поведенческий граф без LangGraph)
 STATES = [
     ("received", "принято", "bus"), ("classified", "классифицировано", "gliner"), ("decided", "решено", "attention"),
-    ("memory", "память", "graph_memory"), ("llm", "LLM", "gemma"), ("tool", "инструмент", "tools"),
+    ("memory", "память", "episode_memory"), ("llm", "LLM", "gemma"), ("tool", "инструмент", "tools"),
     ("answered", "ответ", "speech_queue"), ("silent", "молчание", "attention"),
 ]
 TRANSITIONS = [

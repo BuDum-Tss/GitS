@@ -1,6 +1,6 @@
 """HTTP-маршруты вкладки «Память» для эпизодов, дневника и сна (ТЗ 27, EPI-11).
 
-GET  /api/episodes?limit=&offset=&status=&day=   список эпизодов (резюме, статус, версия)
+GET  /api/episodes?limit=&offset=&status=&day=&kind=   список эпизодов всех видов (life, canon, note): текст, вид, статус, версия
 GET  /api/episodes/{id}                          эпизод с событиями-источниками
 GET  /api/diary                                  дневник и суточные сводки
 GET  /api/sleep                                  статус сна и счётчики эпизодов
@@ -17,6 +17,11 @@ _SERVICE = None
 def set_service(service) -> None:
     global _SERVICE
     _SERVICE = service
+
+
+def memory():
+    """Память активного персонажа (`EpisodeMemory`: заметки, забывание) или None, если эпизоды не подключены."""
+    return _SERVICE.memory if _SERVICE is not None else None
 
 
 def force_sleep() -> bool:
@@ -46,7 +51,8 @@ async def handle_episodes(request: web.Request) -> web.Response:
         return web.json_response({"episodes": [], "counts": {}})
     status = request.query.get("status") or None
     eps = await _SERVICE.recall.listing(limit=_int(request, "limit", 30, 1, 200), offset=_int(request, "offset", 0, 0, 100000),
-                                        status=status if status in dom.STATUSES else None, day=request.query.get("day") or None)
+                                        status=status if status in dom.STATUSES else None, day=request.query.get("day") or None,
+                                        kind=request.query.get("kind") if request.query.get("kind") in (dom.LIFE, dom.CANON, dom.NOTE) else None)
     return web.json_response({"episodes": eps, "counts": _SERVICE.store.counts()})
 
 

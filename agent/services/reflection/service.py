@@ -1,4 +1,4 @@
-"""Сборка внутренних импульсов и размышления (ТЗ 30): ReminderStore + ImpulseTimer + ReflectionService + журнал мыслей.
+"""Сборка внутренних импульсов и размышления (ТЗ 30): ReminderStore + ImpulseTimer + ReflectionService.
 
 Заменил прежнюю проактивность по таймеру (`Companion.proactive_loop`, удалена): агент не заговаривает по таймеру, он реагирует на события и на напоминания, которые назначил
 себе. Срок напоминания -> событие `self.reminder` в тот же конвейер внимания -> маршрут `think` -> размышление -> намерения.
@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from services.character import prompts
-from services.reflection.store import JsonReminders, JsonThoughts
+from services.reflection.store import JsonReminders
 from services.reflection import origin as impulse_origin
 from services.reflection.timer import ImpulseTimer
 from services.attention import event_of
@@ -20,7 +20,6 @@ from kernel.event import KIND_AFTER_CONVERSATION
 logger = logging.getLogger("impulses")
 
 REMINDERS_FILE = "reminders.json"
-THOUGHTS_FILE = "thoughts.json"
 
 
 def build(companion, attention, *, settings_source=None, clock=None, tasks=None) -> SimpleNamespace:
@@ -30,7 +29,6 @@ def build(companion, attention, *, settings_source=None, clock=None, tasks=None)
     clock = clock or time.time
     folder = lambda: Path(companion._dir)                      # noqa: E731  (папка памяти персонажа меняется при переключении)
     reminders = tasks.reminders if tasks is not None and tasks.reminders is not None else JsonReminders(lambda: folder() / REMINDERS_FILE, clock)
-    journal = JsonThoughts(lambda: folder() / THOUGHTS_FILE)
     timer = ImpulseTimer(reminders, attention.submit_self, clock=clock)
 
     async def plan(text: str):
@@ -38,7 +36,7 @@ def build(companion, attention, *, settings_source=None, clock=None, tasks=None)
             return await companion.resident.handle_event("self.action", text, "self")
 
     service = ReflectionService(
-        llm=companion._llm, memory=companion.memory_reader, writer=companion.memory_writer, journal=journal,
+        llm=companion._llm, memory=companion.memory_reader, writer=companion.memory_writer,
         prompt=prompts.reflection, context=lambda q: companion._context(include_hearing=False, query=q),
         settings=settings_source or companion._settings.load, clock=clock, speak=attention.reflect_speech, plan=plan,
         remind=timer.add)
@@ -65,6 +63,6 @@ def build(companion, attention, *, settings_source=None, clock=None, tasks=None)
         task.add_done_callback(lambda t: t.cancelled() or t.exception() is None or logger.warning(f"Итог разговора: {t.exception()}"))
 
     companion.on_conversation_end = conversation_ended
-    impulses = SimpleNamespace(timer=timer, reflection=service, journal=journal, reminders=reminders, plans=plans)
+    impulses = SimpleNamespace(timer=timer, reflection=service, reminders=reminders, plans=plans)
     companion.impulses = impulses
     return impulses
