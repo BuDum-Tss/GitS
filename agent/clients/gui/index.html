@@ -714,10 +714,11 @@ function renderChat(dialogue, waiting, tools) {
   const html = rows.map(r => {
     if (r.e) return toolRow(r.e);
     const m = r.m, i = r.i;
-    const mine = m.role === 'user';
+    const other = m.role === 'user' && !!m.who;            // обращение другого человека из канала модуля: не от имени владельца
+    const mine = m.role === 'user' && !other;
     const t = new Date(m.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
     return `<div class="chat ${mine ? 'chat-end' : 'chat-start'}">
-      <div class="chat-header text-xs opacity-60">${mine ? 'Ты' : 'Ассистент'} <time>${t}</time>${mine ? '' : ` <button class="link link-hover" data-ctx="${i}" title="Показать запрос к модели, по которому родилась эта фраза">контекст</button>`}</div>
+      <div class="chat-header text-xs opacity-60">${esc(other ? m.who : mine ? 'Ты' : 'Ассистент')} <time>${t}</time>${mine || other ? '' : ` <button class="link link-hover" data-ctx="${i}" title="Показать запрос к модели, по которому родилась эта фраза">контекст</button>`}</div>
       <div class="chat-bubble ${mine ? 'chat-bubble-neutral' : ''} bubble-text">${esc(m.text)}</div></div>`;
   }).join('') + (waiting ? `<div class="chat chat-start"><div class="chat-bubble"><span class="loading loading-dots loading-sm"></span></div></div>` : '');
   if ($('chat').dataset.sig !== html) {
@@ -904,7 +905,8 @@ async function loadEvents() {
   const kind = $('ev-kind').value;
   const r = await fetch('/api/events?limit=150' + (kind ? '&kind=' + kind : '')).then(x => x.json());
   const html = r.events.slice().reverse().map(e => {
-    const [name, cls] = KIND[e.kind] || [e.kind, 'badge-ghost'];
+    let [name, cls] = KIND[e.kind] || [e.kind, 'badge-ghost'];
+    if (e.kind === 'user' && e.data && e.data.who) { name = e.data.who; cls = 'badge-ghost'; }    // чужое обращение: не «Ты»
     const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
     const det = evDetails(e);
     return `<li class="flex gap-2"><span class="badge ${cls} badge-sm shrink-0 mt-1">${esc(name)}</span>

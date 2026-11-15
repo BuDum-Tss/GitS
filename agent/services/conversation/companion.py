@@ -41,7 +41,7 @@ from services.conversation.service import ConversationService, _sender_ctx  # no
 from services.memory_service import MemoryCapture
 from services.conversation.reply_generator import ReplyGenerator
 from services.conversation.resident import ResidentAgent
-from services.conversation.conversation_io import UserInput, current_channel
+from services.conversation.conversation_io import UserInput, current_channel, turn_replies
 from services.conversation.speech_out import PresenceTracker, TextOnlySpeech, new_utterance_id
 from services.memory_service import UserMemory
 
@@ -186,7 +186,9 @@ class Companion:
         if channel is not None and channel.kind == "module":
             # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
             self._record_say(text, channel)
-            if self.io is not None:
+            guard = turn_replies.get()
+            if self.io is not None and not (guard is not None and guard.silenced(channel)):
+                # ответ уже ушёл в этот адресат инструментом message этого хода: фраза-пересказ вторым сообщением не нужна
                 await self.io.deliver(channel, text)
             self._publish_sticker(sticker)
         else:

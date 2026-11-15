@@ -37,7 +37,20 @@
   "response": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
-    "properties": {},
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "текст результата (типизированный ответ ToolReply)"
+      },
+      "delivered_to": {
+        "type": "array",
+        "description": "адреса, куда инструмент доставил сообщение (формат reply_channel.target: `channel:123`, `dm:456`, `user:789#6`); до 8 адресов по 200 символов, контракт 3.3",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 8
+      }
+    },
     "additionalProperties": true,
     "title": "tool.call (ответ)"
   }

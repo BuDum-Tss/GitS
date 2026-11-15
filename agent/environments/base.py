@@ -28,6 +28,14 @@ class ToolError(Exception):
         self.code = code
 
 
+@dataclass(frozen=True)
+class ToolOutput:
+    """Результат инструмента с типизированной добавкой: `delivered_to` - адреса (формат `reply_channel.target`), КУДА инструмент
+    реально доставил сообщение. Ядро по ним узнаёт, что ответ в канал обращения уже ушёл. Инструмент может вернуть и просто str."""
+    text: str
+    delivered_to: tuple[str, ...] = ()
+
+
 @dataclass
 class Tool:
     id: str                       # "social.telegram_post"
@@ -39,7 +47,7 @@ class Tool:
     params: dict = field(default_factory=dict)
     risk: str = "ask"
     keywords: tuple = ()
-    call: Callable[[dict], Awaitable[str]] | None = None
+    call: Callable[[dict], Awaitable[str | ToolOutput]] | None = None
     # признак из протокола модулей (поле `self_confirming`): сейчас маршрутизатор его не использует
     self_confirming: bool = False
     # результат несёт информацию, которую нужно сообщить пользователю (описание экрана, ответ

@@ -335,9 +335,22 @@ class FakeCore:
         return await self.request(f"workspace.{action}", body, timeout=timeout)
 
     async def call_tool(self, name: str, args: dict | None = None, *, timeout: float = 5.0) -> Any:
-        """`tool.call`; `name` с модулем или без («echo.repeat» и «repeat» равны)."""
+        """`tool.call`; `name` с модулем или без («echo.repeat» и «repeat» равны). Типизированный ответ `ToolReply`
+        (контракт 3.3) отдаётся его текстом; адреса доставки: `call_tool_reply`."""
+        value = await self.call_tool_raw(name, args, timeout=timeout)
+        return value["text"] if isinstance(value, dict) and "delivered_to" in value and isinstance(value.get("text"), str) else value
+
+    async def call_tool_raw(self, name: str, args: dict | None = None, *, timeout: float = 5.0) -> Any:
+        """`tool.call` как есть, значением из `result` (для ToolReply это `{text, delivered_to}`)."""
         return await self.request("tool.call", {"tool": name.split(".", 1)[-1] if "." in name else name,
                                                 "args": args or {}}, timeout=timeout)
+
+    async def call_tool_reply(self, name: str, args: dict | None = None, *, timeout: float = 5.0) -> tuple[str, tuple[str, ...]]:
+        """`tool.call`: (текст, адреса `delivered_to`); у обычного ответа адресов нет."""
+        value = await self.call_tool_raw(name, args, timeout=timeout)
+        if isinstance(value, dict) and isinstance(value.get("text"), str):
+            return value["text"], tuple(value.get("delivered_to") or ())
+        return (value if isinstance(value, str) else str(value)), ()
 
     async def check_tool(self, name: str, args: dict | None = None, *, timeout: float = 5.0) -> str | None:
         """`tool.check`: возвращает причину опасности или None."""

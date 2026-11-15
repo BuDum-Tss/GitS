@@ -29,9 +29,18 @@ TOOLS = [
            "reply_to": {"type": "string", "required": False, "description": "id сообщения, на которое ответить"}},
           informative=True, danger_check=True, timeout_s=60,
           keywords=("напиши", "отправь", "ответь", "сообщение", "ответ")),
+    _tool("react", "Поставить (или снять, remove=true) реакцию-эмодзи на сообщение в Discord: когда хватает короткого отклика "
+                   "(согласие, спасибо, смешно), без отдельного ответа. Без message_id реагирует на последнее входящее "
+                   "сообщение канала, откуда ей писали; id видны в inbox (#id). В чат «только чтение» нельзя.",
+          {"emoji": {"type": "string", "description": "юникод-эмодзи («👍») или кастомное <:имя:id> / имя:id"},
+           "message_id": {"type": "string", "required": False, "description": "id сообщения (число); не задан: последнее входящее"},
+           "to": {"type": "string", "required": False,
+                  "description": "канал, ветка или человек, как у message (по умолчанию channel: последний канал, откуда ей писали)"},
+           "remove": {"type": "boolean", "required": False, "description": "true: снять свою реакцию (по умолчанию поставить)"}},
+          informative=True, danger_check=True, keywords=("реакция", "эмодзи", "лайк", "поставь")),
     _tool("inbox", "Читать Discord бота: без параметров серверы и каналы с режимами; channel - последние сообщения канала, ветки "
                    "или лички (название, #название, «Сервер / канал», id) и сколько она сама в нём писала за час и сутки; "
-                   "unread=true - что писали недавно.",
+                   "unread=true - что писали недавно. У сообщений указан id (#id).",
           {"channel": {"type": "string", "required": False, "description": "название канала, «Сервер / канал», channel:<id>, dm:<id> или @имя"},
            "unread": {"type": "boolean", "required": False, "description": "true: что писали боту недавно"},
            "limit": {"type": "integer", "required": False, "description": "сколько записей, по умолчанию 15"}},

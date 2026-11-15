@@ -18,6 +18,7 @@ from services.tracing import latency_trace
 from services.runtime import llm_gate
 from services.character import prompts
 from interfaces.contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
+from services.conversation.conversation_io import ModuleReplyGuard, current_channel, turn_replies
 from services.conversation.stickers import first_sticker, plain as strip_tags
 
 if TYPE_CHECKING:
@@ -91,7 +92,8 @@ class ResidentAgent:
         self._busy = False
         self._source = ""                   # откуда идущее обращение: user, event, alert
         self._last_montage_read = None
-        self._note = ""                     # что сказать новой сессии после сброса (обрыв хода по времени)
+        self._replies: ModuleReplyGuard | None = None   # защита от дубля ответа в канал модуля в идущем ходе
+        self._note = ""                   # что сказать новой сессии после сброса (обрыв хода по времени)
         self.last_end = 0.0                 # когда закончился последний ход (рабочий цикл не торопит свободного агента)
 
     # ── состояние ──────────────────────────────────────────────────
@@ -139,7 +141,10 @@ class ResidentAgent:
                     await host.wait_speech(SPEECH_SYNC_S)
                 except Exception as e:
                     logger.debug(f"ожидание речи: {e}")
-            ok, result, code = await host.router.run_tool_ex(tool_id, params)
+            outcome = await host.router.run_tool_outcome(tool_id, params)
+            ok, result, code = outcome.ok, outcome.text, outcome.code
+            if agent._replies is not None:                    # доставка в адрес обращения: итоговая фраза в канал не пойдёт
+                agent._replies.note_delivered(ok, outcome.delivered_to)
             if ok and file_read:
                 agent._last_montage_read = read_key
             text = result if ok else f"НЕ ПОЛУЧИЛОСЬ ({code}): {result}"
@@ -293,6 +298,18 @@ class ResidentAgent:
                 self.last_end = time.time()
 
     async def _run(self, prompt: str, source: str) -> None:
+        # состояние хода: канал обращения и «ответила ли инструментом message в тот же адресат» (инструменты зовутся из
+        # задачи среды исполнения, где контекстной переменной хода нет, поэтому объект лежит ещё и на агенте; ходы идут по очереди)
+        guard = ModuleReplyGuard(current_channel.get())
+        token = turn_replies.set(guard)
+        self._replies = guard
+        try:
+            await self._run_turn(prompt, source)
+        finally:
+            self._replies = None
+            turn_replies.reset(token)
+
+    async def _run_turn(self, prompt: str, source: str) -> None:
         h = self._h
         runtime = await self._runtime_for_turn()
         await runtime.start(self._system(), self._tool_specs())

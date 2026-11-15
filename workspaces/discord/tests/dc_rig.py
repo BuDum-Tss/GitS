@@ -26,6 +26,14 @@ class NotFound(Exception):
     status = 404
 
 
+class HTTPException(Exception):
+    """Подмена discord.HTTPException: status и code ответа Discord (10014 Unknown Emoji, 30010 лимит реакций)."""
+
+    def __init__(self, text, status=400, code=0):
+        super().__init__(text)
+        self.status, self.code = status, code
+
+
 class User:
     def __init__(self, uid, name, display=None, bot=False, avatar=None):
         self.id, self.name, self.display_name, self.global_name, self.bot = uid, name, display or name, None, bot
@@ -165,9 +173,23 @@ class Msg:
         self.created_at, self.edited_at = datetime.datetime(2026, 10, 10, 12, minutes), None
         self.type, self.webhook_id, self.flags = SimpleNamespace(name=mtype), webhook, SimpleNamespace(voice=False)
         self.deleted = False
+        self.reactions: list[str] = []
+        self.react_error: Exception | None = None            # что бросит add_reaction / remove_reaction
+        self.removed_by = None
 
     async def delete(self):
         self.deleted = True
+
+    async def add_reaction(self, emoji):
+        if self.react_error is not None:
+            raise self.react_error
+        self.reactions.append(emoji)
+
+    async def remove_reaction(self, emoji, member):
+        if self.react_error is not None:
+            raise self.react_error
+        self.reactions.remove(emoji)
+        self.removed_by = member
 
 
 def reply_ref(msg):

@@ -334,7 +334,7 @@ members и presence. События: `discord.dm` (личка, срочност�
 `channel`, `thread`, плюс `dm` для лички; эффективный режим: ветка, канал, сервер, `default_chat_mode`), семантика как у Telegram;
 `ignore`: событий и inbox нет, `read`: события без обращения и без `reply_channel`, отправка закрыта на всех путях; личка владельца всегда
 `reply`. Инструменты: `message` (`to`: `owner`, `channel`, название, `#название`, `Сервер / канал`, `@имя`, id; `reply_to`; перед ответом
-`channel.typing()`, текст длиннее 2000 символов режется), `inbox` (серверы и каналы; `channel` читает историю и показывает «ТВОЯ АКТИВНОСТЬ
+`channel.typing()`, текст длиннее 2000 символов режется), `react` (реакция-эмодзи: `emoji` юникод или `<:имя:id>`, `message_id`, `to` как у `message`, `remove`; без `message_id` последнее входящее сообщение канала, откуда ей писали; режим и разрешение как у `message`: в `read` и `ignore` нельзя; входящие реакции не обрабатываются), `inbox` (серверы и каналы; сообщения с id `#id`; `channel` читает историю и показывает «ТВОЯ АКТИВНОСТЬ
 В ЭТОМ КАНАЛЕ»; `unread`). Нет права писать (Forbidden): понятная ошибка инструменту, режим сам не меняется. Настройки `peers.discord`:
 `owner`, `names`, `default_chat_mode`, `dm_flood_per_10min`, `dialog_window_mins`. Панель: статус бота, ссылка-приглашение (OAuth2, scope
 `bot`, права View Channels, Send Messages, Send Messages in Threads, Read Message History, Embed Links, Attach Files, Add Reactions), карточки

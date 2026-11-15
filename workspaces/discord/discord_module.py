@@ -2,7 +2,7 @@
 
 `DiscordModule(client, memory_dir)` вешает обработчики на `WorkspaceClient` и создаёт фоновые задачи (`start()`): личные слова от
 ядра (privacy), бот Discord (discord.py), состояние и панель раз в 5 секунд.
-Инструменты: `message` (владельцу в личку, в канал, ветку, пост форума или человеку, который уже писал боту; разрешение
+Инструменты: `react` (реакция-эмодзи на сообщение; режимы и разрешение как у отправки), `message` (владельцу в личку, в канал, ветку, пост форума или человеку, который уже писал боту; разрешение
 спрашивается по адресату) и `inbox` (чтение: серверы, канал, недавнее). Панель в дашборде (`discord_panel.py`) и её действия
 (смена режима, ручная отправка владельцем, удаление своего) это `panel_action`, а не инструменты: агенту они недоступны.
 Тесты собирают модуль против `gits_sdk.testing.FakeCore`, а discord.py подменяют (клиент `bot._client`).
@@ -16,7 +16,7 @@ from common import parse_target, scrub, split_place
 from discord_bot import ChatModeError, DiscordBot, LeakError, SendDenied
 from discord_panel import ACTIONS as PANEL_ACTIONS
 from discord_panel import DiscordPanel
-from gits_sdk import ToolError, WorkspaceClient
+from gits_sdk import ToolError, ToolReply, WorkspaceClient
 from privacy import Privacy
 
 logger = logging.getLogger("discord.app")
@@ -140,6 +140,14 @@ class DiscordModule:
         async def message_check(args):
             return await self.message_check(args)
 
+        @c.tool("react")
+        async def react(args):
+            return await self.react(args)
+
+        @c.check("react")
+        async def react_check(args):
+            return await self.react_check(args)
+
         @c.tool("inbox")
         async def inbox(args):
             return await self.inbox(args)
@@ -207,17 +215,50 @@ class DiscordModule:
         reason = self.privacy.reason(text) if text else None
         if reason:
             return reason
+        if await self._unknown_target(who):
+            return f"написать от бота Discord в «{who[:60]}», откуда ему ещё не писали"
+        return None
+
+    async def _unknown_target(self, who: str) -> bool:
+        """Адресат-чат, из которого боту ещё не писали (по названию, id или «channel» при известном последнем канале)."""
         place = split_place(who)[1]
         parsed = parse_target(who)
         if parsed:                                                  # channel:<id> / dm:<id>: известен по id
             place = str(parsed[1])
         known = await asyncio.to_thread(lambda: self.bot.known.has(who) or self.bot.known.has(place)
                                         or self.bot.dialogs.last_channel() is not None and who.strip().lower() in ("channel", "канал"))
-        if not known:
-            return f"написать от бота Discord в «{who[:60]}», откуда ему ещё не писали"
+        return not known
+
+    # ── реакции (инструмент react) ───────────────────────────────────────────
+
+    async def react_check(self, args: dict) -> str | None:
+        """tool.check: как у message, по адресату. Владелец и известный чат: без вопроса; незнакомый: вопрос."""
+        kind, who = self._target(args.get("to") or "channel")
+        if kind == "chat" and await self._unknown_target(who):
+            return f"поставить реакцию от бота Discord в «{who[:60]}», откуда ему ещё не писали"
         return None
 
-    async def message(self, args: dict) -> str:
+    async def react(self, args: dict) -> str:
+        emoji = _text_arg(args, "emoji")
+        mid = args.get("message_id")
+        if mid is not None and (isinstance(mid, bool) or not isinstance(mid, (int, str)) or not str(mid).isdigit()):
+            raise ToolError("параметр «message_id» должен быть id сообщения (число)", code="bad_request")
+        remove = args.get("remove", False)
+        if remove is not None and not isinstance(remove, bool):
+            raise ToolError("параметр «remove» должен быть true или false", code="bad_request")
+        kind, who = self._target(args.get("to") or "channel")        # без адресата: канал, откуда ей писали последним
+        self.privacy.require()                                       # без списка личных слов ничего не уходит
+        if kind == "chat" and self.privacy.leaks(emoji):
+            raise ToolError("эмодзи не прошло проверку приватности, ничего не поставлено", code="denied")
+        target = None
+        if kind == "owner":
+            owner = self.bot.owner.owner_id()
+            if not owner:
+                raise ToolError("Discord-id владельца не задан или ещё не известен (настройка «Владелец»)", code="unavailable")
+            target = f"dm:{owner}"
+        return await self._bot(self.bot.react, who, emoji, mid, bool(remove), target)
+
+    async def message(self, args: dict) -> ToolReply:
         kind, who = self._target(args.get("to"))
         text = _text_arg(args, "text", required=False).strip()
         if not text:
@@ -235,8 +276,9 @@ class DiscordModule:
                 raise ToolError("Discord-id владельца не задан или ещё не известен (настройка «Владелец»: числовой id; имя "
                                 "запоминается после его первого сообщения)", code="unavailable")
             target = f"dm:{owner}"
-        sent = await self._bot(self._send, who, text, reply_to, target, kind == "chat")
-        return "отправлено владельцу" if kind == "owner" else sent
+        sent_to = await self._bot(self._send, who, text, reply_to, target, kind == "chat")      # разрешённый адрес отправки
+        shown = "отправлено владельцу" if kind == "owner" else f"отправлено в «{str(who or sent_to)[:60]}»"
+        return ToolReply(shown, (sent_to,))                     # адрес доставки сообщает ядру, ушло ли в канал обращения
 
     async def _send(self, who: str, text: str, reply_to, target, leak_check: bool) -> str:
         return await self.bot.send(who, text, reply_to=reply_to, target=target, leak_check=leak_check)

@@ -56,6 +56,35 @@ class UserInput:
 current_channel: contextvars.ContextVar[Channel | None] = contextvars.ContextVar("current_channel", default=None)
 
 
+class ModuleReplyGuard:
+    """Состояние одного хода из канала модуля: доставил ли какой-то её инструмент (например `<модуль>.message`) сообщение в адрес обращения.
+
+    Единый агент отвечает в канал инструментом message и потом пишет итоговую фразу («Ответила: ...»); без этой защиты фраза
+    тоже уходила бы в канал вторым сообщением. Защита детерминированная и живёт только в доставке: ни контекст, ни промпт,
+    ни описания инструментов от канала не зависят. Объект создаётся на ход (`ResidentAgent._run`) и лежит в `turn_replies`,
+    поэтому ходы из разных каналов друг другу не мешают."""
+
+    def __init__(self, channel: Channel | None):
+        self.channel = channel
+        self.answered = False        # какой-то инструмент уже доставил сообщение в адрес обращения
+
+    def note_delivered(self, ok: bool, delivered_to=()) -> None:
+        """Исход вызова инструмента: он сам сообщает типизированным полем `delivered_to`, КУДА доставил сообщение (адреса в
+        формате `reply_channel.target`). Адрес обращения среди них: ответ уже ушёл, дальнейшие реплики хода в канал не идут.
+        Ни имён инструментов, ни разбора текста и параметров: адреса каноничны и сравниваются точно."""
+        ch = self.channel
+        if ok and ch is not None and ch.kind == "module" and ch.target and ch.target in tuple(delivered_to or ()):
+            self.answered = True
+
+    def silenced(self, channel: Channel | None) -> bool:
+        """Не доставлять реплику в `channel`: на этот адресат уже отправлено инструментом."""
+        return self.answered and channel is not None and channel == self.channel
+
+
+# защита от дублей ответа в текущем ходе (None вне хода единого агента)
+turn_replies: contextvars.ContextVar[ModuleReplyGuard | None] = contextvars.ContextVar("turn_replies", default=None)
+
+
 class ConversationIO:
     """Вход обращений из любых каналов и доставка ответов в каналы модулей."""
 

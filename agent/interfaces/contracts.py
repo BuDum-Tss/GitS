@@ -87,7 +87,7 @@ class MemoryWriter(Protocol):
     """Запись в память: реплики, важное (заметки эпизодов, планы как задачи), активность,
     забывание, служебные отметки. `add_fact` берёт только важное (заметка от 3, план от 3): мелочь не записывается."""
 
-    def add_dialogue(self, role: str, text: str) -> None: ...
+    def add_dialogue(self, role: str, text: str, who: str | None = None) -> None: ...   # who: подпись чужого собеседника (только показ)
 
     def add_fact(self, text: str, kind: str = "user", importance: int = 3, due_days: float | None = None) -> bool: ...
 

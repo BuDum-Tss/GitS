@@ -19,11 +19,12 @@ async def server(rig, known=True):
 
 async def test_tool_table_and_handlers(tmp_path, monkeypatch):
     t = tools()
-    assert set(t) == {"message", "inbox"} and all(x["risk"] == "auto" and x["availability"] == "always" for x in t.values())
+    assert set(t) == {"message", "react", "inbox"} and all(x["risk"] == "auto" and x["availability"] == "always" for x in t.values())
     assert t["message"]["danger_check"] is True and t["message"]["informative"] is True and not t["inbox"].get("danger_check")
+    assert t["react"]["danger_check"] is True and t["react"]["risk"] == t["message"]["risk"]
     assert all(len(x["description"]) <= 300 for x in t.values()) and all(p.get("required") is False for p in t["message"]["params"].values())
     async with Rig(tmp_path, monkeypatch) as rig:
-        assert set(rig.client._tools) == {"message", "inbox"} and set(rig.client._checks) == {"message"}
+        assert set(rig.client._tools) == {"message", "react", "inbox"} and set(rig.client._checks) == {"message", "react"}
         assert rig.core.violations == [] and rig.core.rejected == []
 
 
@@ -31,8 +32,8 @@ async def test_message_to_known_channel_types_then_sends_with_safe_mentions(tmp_
     async with Rig(tmp_path, monkeypatch) as rig:
         g, general, _ = await server(rig)
         rig.bot.typing_scale = 0.01
-        out = await rig.core.call_tool("message", {"to": "#общий", "text": "привет всем", "reply_to": "555"})
-        assert out == "отправлено в «#общий»"
+        out, delivered = await rig.core.call_tool_reply("message", {"to": "#общий", "text": "привет всем", "reply_to": "555"})
+        assert out == "отправлено в «#общий»" and delivered == ("channel:100",)      # адрес отправки отдельным полем
         [sent] = general.sent
         assert sent["content"] == "привет всем" and sent["reference"] == ("partial", 555)
         assert sent["allowed_mentions"].kw["everyone"] is False and sent["allowed_mentions"].kw["roles"] is False
@@ -114,7 +115,8 @@ async def test_message_privacy_filter_and_unavailable_without_terms(tmp_path, mo
 async def test_message_to_owner_and_unknown_owner(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, module_settings={"owner": str(OWNER_ID)}) as rig:
         owner = rig.dc.user(OWNER_ID, "anya", display="Аня")
-        assert await rig.core.call_tool("message", {"to": "owner", "text": "Анна не знает"}) == "отправлено владельцу"
+        assert await rig.core.call_tool_reply("message", {"to": "owner", "text": "Анна не знает"}) == (
+            "отправлено владельцу", (f"dm:{OWNER_ID}",))                 # личка владельца: адрес dm:<id>
         assert owner.dm_channel.sent[0]["content"] == "Анна не знает"
     async with Rig(tmp_path / "y", monkeypatch, module_settings={"owner": "anya"}) as rig:
         with pytest.raises(ToolError) as e:

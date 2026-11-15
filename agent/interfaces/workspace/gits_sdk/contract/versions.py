@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .. import protocol as P
 
-CONTRACT_VERSION = "3.2"
+CONTRACT_VERSION = "3.3"
 PROTOCOL = P.PROTOCOL
 
 # версия контракта, в которой появился элемент (поле `since` у Message): "1.0" - исходный состав ТЗ 01
@@ -52,6 +52,9 @@ HISTORY = (
     ("3.2", "рабочее окружение агента (docs/WORKSPACE_CONTRACT.md): необязательные поля блока workspace манифеста brief, skills, "
             "area, commands, site (неверные поля не отклоняют модуль, а попадают в предупреждения); запрос workspace.afk (выход "
             "без отпускания аренды, тело как у workspace.exit); ответ на workspace.enter может нести brief, skills, units, site"),
+    ("3.3", "tool.call: необязательная типизированная форма ответа `{text, delivered_to}` (SDK: `ToolReply`); `delivered_to` - адреса "
+            "(формат reply_channel.target, до 8 по 200 символов), куда инструмент реально доставил сообщение: ядро не дублирует "
+            "туда итоговую реплику хода"),
 )
 
 # Устаревшее: (элемент, дата удаления, чем заменить)

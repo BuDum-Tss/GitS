@@ -125,6 +125,41 @@ class ManifestError(ProtocolError):
     """Манифест не прошёл проверку."""
 
 
+DELIVERED_MAX = 8            # сколько адресов доставки может нести ответ инструмента
+DELIVERED_LEN = 200          # длина одного адреса
+
+
+def check_delivered_to(value) -> list[str]:
+    """Проблемы поля `delivered_to` ответа инструмента (пустой список: верно)."""
+    if not isinstance(value, list):
+        return ["delivered_to: список строк"]
+    if len(value) > DELIVERED_MAX:
+        return [f"delivered_to: не больше {DELIVERED_MAX} адресов"]
+    if not all(isinstance(x, str) and x.strip() for x in value):
+        return ["delivered_to: список непустых строк"]
+    if any(len(x) > DELIVERED_LEN for x in value):
+        return [f"delivered_to: адрес длиннее {DELIVERED_LEN} символов"]
+    return []
+
+
+@dataclass(frozen=True)
+class ToolReply:
+    """Ответ инструмента с типизированной добавкой (контракт 3.3): `text` как раньше, `delivered_to` - адреса, КУДА инструмент
+    реально доставил сообщение (формат `reply_channel.target` события: `channel:123`, `dm:456`, `user:789#6`). Ядро по ним узнаёт,
+    что сообщение в канал обращения уже отправлено, и не доставляет туда итоговую фразу вторым сообщением. Обработчик инструмента
+    возвращает str (как раньше) или `ToolReply`; на шине это `{"text": ..., "delivered_to": [...]}`."""
+    text: str
+    delivered_to: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        problems = check_delivered_to(list(self.delivered_to))
+        if problems or not isinstance(self.text, str):
+            raise ValueError("; ".join(problems) or "text: строка")
+
+    def to_wire(self) -> dict:
+        return {"text": self.text, **({"delivered_to": list(self.delivered_to)} if self.delivered_to else {})}
+
+
 class ToolError(Exception):
     """Ожидаемый отказ (понятная причина, а не сбой кода): уходит в `result` как `ok: false`.
 
