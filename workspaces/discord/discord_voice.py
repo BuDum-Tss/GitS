@@ -39,7 +39,7 @@ from common import MODE_IGNORE, MODE_READ, MODE_REPLY, KnownTargets, channel_tar
 from discord_bot import ChatModeError, kind_name
 from voice_rx import FrameDecoder, build_sink, check_dependencies, dave_info, describe_connect_error
 
-logger = logging.getLogger("discord.voice")
+logger = logging.getLogger("gits_discord.voice")
 
 ADAPTER = "discord"
 VOICE_KINDS = ("voice", "stage_voice")
@@ -686,6 +686,9 @@ class DiscordVoiceAdapter:
             done = cur["done"] = asyncio.Event()
 
             def after(err) -> None:                # из потока плеера discord.py
+                if err is not None:                # плеер упал: без этой строки обрыв реплики не имеет видимой причины
+                    logger.warning("голос: плеер discord.py остановился с ошибкой %s: %s, сыграно %d мс, в буфере %d мс",
+                                   type(err).__name__, scrub(err)[:200], pipe.played_ms, pipe.buffered_ms)
                 try:
                     loop.call_soon_threadsafe(done.set)
                 except RuntimeError:

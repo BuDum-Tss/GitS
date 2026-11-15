@@ -15,7 +15,7 @@ import time
 from common import scrub
 from gits_sdk import ToolError
 
-logger = logging.getLogger("discord.privacy")
+logger = logging.getLogger("gits_discord.privacy")
 
 REFRESH_S = 600.0         # раз в 10 минут
 RETRY_S = 15.0            # пока списка нет совсем: пробуем чаще

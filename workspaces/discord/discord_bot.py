@@ -35,7 +35,7 @@ from common import (MODE_IGNORE, MODE_READ, MODE_REPLY, TEXT_MAX, TOKEN_ENV, Cha
                     chunks, dm_target, message_fact, parse_target, person_name, scrub, split_place, valid_mode)
 from gits_sdk.protocol import clip
 
-logger = logging.getLogger("discord.bot")
+logger = logging.getLogger("gits_discord.bot")
 
 _INBOX_MAX = 100
 FLOOD_WINDOW_S = 600.0               # окно подсчёта потока от одного человека в личке (dm_flood_per_10min)

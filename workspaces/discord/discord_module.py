@@ -20,7 +20,7 @@ from discord_voice import DiscordVoiceAdapter, VoiceError
 from gits_sdk import ToolError, WorkspaceClient
 from privacy import Privacy
 
-logger = logging.getLogger("discord.app")
+logger = logging.getLogger("gits_discord.app")
 
 STATE_EVERY_S = 300.0            # состояние при изменении и раз в 5 минут
 STATE_POLL_S = 5.0

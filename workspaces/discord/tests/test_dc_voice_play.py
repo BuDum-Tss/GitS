@@ -297,7 +297,7 @@ async def test_end_of_play_waits_for_the_real_remainder_not_buffer_at_the_moment
 async def test_pipe_returns_silence_not_end_on_underrun_and_one_info_line_per_reply(tmp_path, monkeypatch, caplog):
     import logging
     from gits_sdk.voice import PlayStream
-    caplog.set_level(logging.INFO, logger="discord.voice")
+    caplog.set_level(logging.INFO, logger="gits_discord.voice")
     async with Rig(tmp_path, monkeypatch) as rig:
         vc, eng, sess = await rt_session(rig)
         stream = PlayStream("u7", 1, "текст", 1500)

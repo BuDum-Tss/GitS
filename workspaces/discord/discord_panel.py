@@ -23,7 +23,7 @@ from discord_bot import AVATAR_NEW_MAX, ChatModeError, SendDenied, is_network_er
 from discord_voice import VoiceError
 from gits_sdk.protocol import PANEL_CARDS_MAX, PANEL_CELL_MAX, PANEL_ROWS_MAX, PANEL_SET_MAX_BYTES
 
-logger = logging.getLogger("discord.panel")
+logger = logging.getLogger("gits_discord.panel")
 
 # все действия панели (кроме них в manifest.panel.actions ничего нет)
 ACTIONS = ("refresh", "reconnect", "toggle_guild", "open_chat", "close_chat", "set_mode", "send_message", "reply_to", "cancel_reply",

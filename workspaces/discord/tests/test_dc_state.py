@@ -105,7 +105,7 @@ def test_token_never_reaches_the_log_even_from_discord_and_aiohttp_loggers(monke
             raise RuntimeError(f"ошибка с {TOKEN}")
         except RuntimeError:
             logging.getLogger("discord.gateway").exception("упало")
-        logging.getLogger("discord.bot").warning("модуль: %s", TOKEN[:-3] + "xyz")        # похожее на токен тоже скрывается
+        logging.getLogger("gits_discord.bot").warning("модуль: %s", TOKEN[:-3] + "xyz")        # похожее на токен тоже скрывается
     finally:
         root.removeHandler(handler)
         root.setLevel(old_level)

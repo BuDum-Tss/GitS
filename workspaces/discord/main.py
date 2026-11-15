@@ -22,7 +22,7 @@ from discord_module import DiscordModule  # noqa: E402
 from gits_sdk import WorkspaceClient  # noqa: E402
 from manifest import build_manifest  # noqa: E402
 
-log = logging.getLogger("discord")
+log = logging.getLogger("gits_discord")
 
 
 async def amain() -> int:
