@@ -9,6 +9,9 @@ description = "SDK участников шины GitS: протокол ядро
 requires-python = ">=3.12"
 dependencies = ["aiohttp>=3.9"]
 
+[project.optional-dependencies]
+voice = ["numpy>=1.26"]      # gits_sdk.voice: перевод звука 48 кГц стерео <-> 16 кГц моно
+
 [tool.setuptools.packages.find]
 include = ["gits_sdk*"]
 

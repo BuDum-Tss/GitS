@@ -4,7 +4,7 @@
   2. дедупликация (`items.py`, решение в `services/attention/dedupe.py`);
   3. HardRules (здесь): правила до классификатора (ATT-7) R1 обращение владельца -> событие агенту с needs_reply; R2 ответ на вопрос в том же
      канале; R3 временное правило mute -> в сводку; R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
-     R6 тег или ответ ей в группе (GROUP_KINDS: telegram.group, discord.message; addressed_to_me) от любого человека ->
+     R6 тег или ответ ей в группе (GROUP_KINDS: telegram.group, discord.message, voicechat.utterance; addressed_to_me) от любого человека ->
         событие агенту с needs_reply, как R1;
   4. срочность без классификатора (`Normalizer.assign_urgency`): подсказка модуля, обращение к ней поднимает до «сказать»;
   5. Dispatcher (`dispatcher.py`): D0-D4 по срочности; сказать сразу (срочность 4+) или во входящую очередь (`inbox.py`).
@@ -24,7 +24,7 @@ from .questions import QuestionService
 logger = logging.getLogger("attention")
 
 # R6: виды событий «сообщение в групповом чате» (группа Telegram, канал, ветка или пост форума Discord)
-GROUP_KINDS = frozenset({"telegram.group", "discord.message"})
+GROUP_KINDS = frozenset({"telegram.group", "discord.message", "voicechat.utterance"})
 GROUP_KIND = "telegram.group"          # прежнее имя константы (на него могут ссылаться тесты и сторонний код)
 
 

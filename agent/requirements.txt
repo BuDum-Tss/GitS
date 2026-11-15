@@ -6,6 +6,7 @@ Pillow>=10.0.0
 psutil
 pystray; sys_platform == "win32"
 pyyaml>=6.0
+numpy>=1.26         # движок голоса (agent/services/voice_engine): ресемплирование и VAD; подгружается, только когда движок включён
 # pystray (трей) нужен только в Windows, в контейнере его нет
 # звук (синтез, микрофон, слух) это модуль voice: его зависимости в services/voice/requirements.txt;
 # экран, мышь и клавиатура (OCR, pyautogui, pygetwindow) это модуль desktop: workspaces/desktop/requirements.txt

@@ -311,6 +311,17 @@ async def test_r6_discord_message_addressed_goes_to_conversation(rig):
     assert rig.candidates() == [] and rig.decider.calls == []
 
 
+VC_CHANNEL = {"module": "voice", "target": "dc-1", "tool": "voice.say", "target_arg": "session"}
+
+
+async def test_r6_voice_utterance_addressed_goes_to_the_agent(rig):
+    """Фраза в голосовом канале, обращённая к ней: тот же путь, что тег в группе (событие агенту, ответ инструментом voice.say)."""
+    d = await rig.submit("voicechat", kind="voicechat.utterance", text="ГЛаДОС, ты тут?", addressed_to_me=True, sender=DC_STRANGER,
+                         reply_channel=VC_CHANNEL)
+    assert d["rule"] == "R6" and d["decision"] == "R6"
+    assert rig.io.inputs == [("ГЛаДОС, ты тут?", VC_CHANNEL, DC_STRANGER)]
+
+
 async def test_r6_discord_message_does_not_fire_without_address_or_channel(rig):
     for i, ev in enumerate([dict(addressed_to_me=False, reply_channel=DC_CHANNEL),         # болтовня мимо неё или режим «чтение»
                             dict(addressed_to_me=True)]):                                  # ответить некуда

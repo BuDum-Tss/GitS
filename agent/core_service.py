@@ -52,6 +52,7 @@ from services.event_handlers.game import make_colonists_handler, make_run_lost_h
 from services.event_handlers.voice import VOICE_SILENT_KINDS, make_heard_hook, make_voice_handlers
 from services.peers.hub import PeerHub
 from services.peers.registry import PeerRegistry
+from services.voice_engine.wiring import wire_voice
 from services.event_handlers.colony_state import ColonyState
 from services.character.relationships import Relationships
 from services.tools.router import Router
@@ -330,6 +331,8 @@ async def _run(config: dict):
     registry = Registry()
     registry.embedder = tool_search.ToolEmbeddings(Path(mem_dir) / "tool_embeddings.json")     # отбор инструментов по смыслу
     layer = wire_modules(companion, registry)
+    voice = wire_voice(layer, registry)                  # движок голоса (docs/VOICE_ENGINE.md): выключен, пока не заданы адреса STT и TTS
+    http_api.set_voice(voice)
     http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
     http_api.set_attention(layer.attention)
     http_api.set_workspace(layer.workspaces)            # ТЗ 32: карточка «Сейчас», среда агента
@@ -414,6 +417,7 @@ async def _run(config: dict):
         await episodes.stop()
         await impulses.timer.stop()
         await work_loop.stop()
+        await voice.stop()
         if impulses.idle is not None:
             impulses.idle.stop()
         await layer.stop()

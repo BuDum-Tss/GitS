@@ -118,6 +118,9 @@ SDK для тяжёлых задач.
 `POST /api/settings` дашборда. Зависимости звука ставятся из `services/voice/requirements.txt`. Сервис питомца запускается через
 `{PYTHONW}` в `peers.yaml`.
 
+## Движок голоса в ядре (`agent/services/voice_engine/`, docs/VOICE_ENGINE.md)
+Голосовые адаптеры (Discord, шлюз ПК) подключаются к ядру по `/voice/ws` (клиент `gits_sdk.voice.VoiceAdapterClient`), модели STT и TTS это отдельные контейнеры по HTTP. Фраза участника это событие внимания `voicechat.utterance`, а не реплика диалога; ответ это инструмент `voice.say` (`voice.sessions`, `voice.stop`, `voice.leave`). Движок включается адресами `GITS_STT_URL` и `GITS_TTS_URL` (по умолчанию выключен); подключение к ядру только `wire_voice` в `core_service`. Модуль `services/voice` (голос ПК на хосте) не затронут. Тесты: `python -m pytest -q test/voice_engine`.
+
 ## Участники шины в монорепо (`workspaces/<id>/`, `services/<id>/`)
 Участники GitS лежат в `workspaces/<id>/` (окружения: `telegram`, `discord`, `streamer`, `desktop`, `rimworld`, `montage`) и `services/<id>/` (сервисы: `voice`, `pet`, `decider`, `f5-tts`, `agent-runtime`): `main.py` (точка входа, одна строка добавляет в `sys.path` свою папку, `agent/` и `agent/interfaces/workspace/`),
 `manifest.py`, остальные файлы, `tests/` (идут в `check.ps1`). Из `agent/` участник берёт только библиотеки без состояния ядра (`fast_brain`,

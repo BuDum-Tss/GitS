@@ -1,0 +1,106 @@
+"""Инструменты ядра для голосовых каналов: `voice.say`, `voice.sessions`, `voice.stop`, `voice.leave`.
+
+Сказанное участником голосового канала приходит агенту событием `voicechat.utterance`; ответ это вызов `voice.say`, а не
+реплика диалога. Инструмент только ставит реплику в очередь и сразу возвращает uid: о конце речи ядро узнаёт отдельным событием,
+вызов не ждёт синтеза и звука.
+"""
+import asyncio
+
+from environments.base import Environment, Tool, ToolError
+
+from .engine import VoiceEngine
+from .protocol import encode
+from .session import VoiceSession
+
+ENV_ID = "voicechat"
+LEAVE_TIMEOUT_S = 3.0
+
+
+def _pick(engine: VoiceEngine, session: str | None) -> VoiceSession:
+    """Сессия по id; без id единственная открытая."""
+    if session:
+        found = engine.session(session)
+        if found is None:
+            raise ToolError(f"голосового канала «{session}» нет; открытые: {_ids(engine)}", "bad_request")
+        return found
+    sessions = engine.sessions_manager.all()
+    if not sessions:
+        raise ToolError("сейчас нет ни одного открытого голосового канала", "unavailable")
+    if len(sessions) > 1:
+        raise ToolError(f"открыто несколько голосовых каналов, укажи session: {_ids(engine)}", "bad_request")
+    return sessions[0]
+
+
+def _ids(engine: VoiceEngine) -> str:
+    return ", ".join(s.id for s in engine.sessions_manager.all()) or "нет"
+
+
+def build_tools(engine: VoiceEngine) -> list[Tool]:
+    async def say(a: dict) -> str:
+        sess = _pick(engine, a.get("session"))
+        try:
+            ticket = engine.speak(sess.id, str(a["text"]), replace=bool(a.get("replace")))
+        except ValueError as e:
+            raise ToolError(str(e), "bad_request") from None
+        where = "звучит сразу" if ticket.position == 0 else f"в очереди, перед ней реплик: {ticket.position}"
+        return f"поставлено в голосовой канал «{sess.id}» ({where}), uid {ticket.uid}; когда договорит, придёт событие"
+
+    async def sessions(a: dict) -> str:
+        rows = engine.sessions()
+        if not rows:
+            return "открытых голосовых каналов нет"
+        lines = []
+        for s in rows:
+            who = ", ".join(sp["name"] + (" (владелец)" if sp["is_owner"] else "") for sp in s["speakers"]) or "никого"
+            state = "говорит" if s["speaking"] else "молчит"
+            lines.append(f"- {s['id']} ({s['adapter']}): сейчас {state}, в очереди {s['queue']}; в канале: {who}; "
+                         f"перебивание: {s['barge_in']}")
+        return "Голосовые каналы:\n" + "\n".join(lines)
+
+    async def stop(a: dict) -> str:
+        sess = _pick(engine, a.get("session"))
+        engine.stop(sess.id, "now", None, "stop")
+        return f"речь в канале «{sess.id}» остановлена, очередь очищена"
+
+    async def leave(a: dict) -> str:
+        sess = _pick(engine, a.get("session"))
+        engine.stop(sess.id, "now", None, "stop")
+        try:
+            await asyncio.wait_for(sess.transport.send_control(encode("leave", reason="requested")), LEAVE_TIMEOUT_S)
+        except (ConnectionError, RuntimeError, asyncio.TimeoutError):
+            raise ToolError("адаптер не отвечает, выйти из канала не удалось", "unavailable") from None
+        return f"попросила адаптер выйти из канала «{sess.id}»"
+
+    session_param = {"type": "string", "required": False, "description": "id голосового канала; можно опустить, если он один"}
+    return [
+        Tool(id="voice.say", env=ENV_ID, name="say",
+             description="Сказать вслух в голосовом канале (Discord, колонки): реплика ставится в очередь и озвучивается, вызов "
+                         "не ждёт конца речи. Так отвечают на то, что сказали в голосовом канале.",
+             params={"text": {"type": "string", "description": "что сказать, живой устной речью, коротко"},
+                     "session": session_param,
+                     "replace": {"type": "boolean", "required": False,
+                                 "description": "true: оборвать звучащее и очередь и сказать это сразу"}},
+             risk="auto", call=say, keywords=("скажи", "ответь", "голосом", "вслух", "войс"), availability="always"),
+        Tool(id="voice.sessions", env=ENV_ID, name="sessions",
+             description="Какие голосовые каналы открыты сейчас и кто в них: id, адаптер, говорит ли она, участники.",
+             params={}, risk="auto", call=sessions, informative=True, keywords=("голосовой", "канал", "кто в канале", "войс"),
+             availability="always"),
+        Tool(id="voice.stop", env=ENV_ID, name="stop",
+             description="Замолчать в голосовом канале: оборвать речь и очистить очередь реплик.",
+             params={"session": session_param}, risk="auto", call=stop, keywords=("замолчи", "хватит", "тихо"),
+             availability="always"),
+        Tool(id="voice.leave", env=ENV_ID, name="leave",
+             description="Выйти из голосового канала: адаптер отключается от канала, сессия закрывается.",
+             params={"session": session_param}, risk="auto", call=leave, keywords=("выйди", "уйди из канала", "отключись"),
+             availability="always"),
+    ]
+
+
+def register_voice_tools(registry, engine: VoiceEngine) -> Environment:
+    """Добавить окружение с инструментами в реестр ядра (окружение `module=core`: видно в любой среде)."""
+    env = Environment(id=ENV_ID, title="Голосовые каналы",
+                      description="Голосовые каналы (Discord, колонки ПК): сказать вслух, кто в канале, замолчать, выйти. "
+                                  "Сказанное участниками приходит событиями voicechat.utterance.",
+                      tools=build_tools(engine))
+    registry.add(env)
+    return env

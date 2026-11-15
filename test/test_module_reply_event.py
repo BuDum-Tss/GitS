@@ -120,6 +120,12 @@ def test_reply_text_carries_what_is_needed_to_answer_and_is_the_same_for_everyon
     assert reply_text(Item(**{**item("x").__dict__, "reply_channel": None})) == "x"      # ответить некуда: только текст
 
 
+def test_reply_text_for_a_channel_with_its_own_reply_tool_names_that_tool():
+    it = item("Петя: привет", module="voice", kind="voicechat.utterance")
+    it.reply_channel = {"module": "voice", "target": "dc-1", "tool": "voice.say", "target_arg": "session"}
+    assert reply_text(it).split(chr(10))[1] == "Ответить (если хочешь): инструмент voice.say (session=dc-1, text)."
+
+
 async def test_event_from_channel_is_answered_by_the_tool_and_becomes_module_out(tmp_path):
     c, sent = make(tmp_path)
     ev = item("Сообщение от X в канале: «сколько будет два плюс два»")

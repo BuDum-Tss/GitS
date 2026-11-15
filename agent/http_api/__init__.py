@@ -78,6 +78,11 @@ def set_attention(attention):
     ctx.attention = attention
 
 
+def set_voice(voice):
+    """Движок голоса (VoiceService): его маршруты `/voice/ws` и `/api/voice` встают в приложение дашборда."""
+    ctx.voice = voice
+
+
 def set_impulses(impulses):
     ctx.impulses = impulses
 
@@ -97,6 +102,8 @@ def build_app() -> web.Application:
     episode_routes.add_routes(app)                      # ТЗ 27: эпизоды, дневник, сон
     if ctx.hub is not None:
         ctx.hub.attach(app)
+    if ctx.voice is not None:
+        ctx.voice.attach(app)
     clients = Path(__file__).resolve().parents[1] / "clients"          # адреса страниц прежние: OBS и дашборд ссылаются на них
     for url, folder in (("/static/ui", clients / "gui"), ("/static/stream", clients / "stream")):
         if folder.exists():

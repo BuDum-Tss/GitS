@@ -26,10 +26,14 @@ def reply_text(item: Item) -> str:
     ch = item.reply_channel or {}
     parts = [item.text]
     if ch.get("module") and ch.get("target"):
-        mid = (item.data or {}).get("message_id") if isinstance(item.data, dict) else None
-        reply_to = f", reply_to={mid}" if mid not in (None, "") else ""
-        parts.append(f"Ответить (если хочешь): инструмент {ch['module']}.message (to={ch['target']}{reply_to}, text). "
-                     "Только он отправляет сообщение в чат; сказанное тобой вслух в чат не уходит.")
+        if ch.get("tool"):                          # у канала свой инструмент ответа (голос: voice.say, адресат в параметре session)
+            arg = ch.get("target_arg") or "to"
+            parts.append(f"Ответить (если хочешь): инструмент {ch['tool']} ({arg}={ch['target']}, text).")
+        else:
+            mid = (item.data or {}).get("message_id") if isinstance(item.data, dict) else None
+            reply_to = f", reply_to={mid}" if mid not in (None, "") else ""
+            parts.append(f"Ответить (если хочешь): инструмент {ch['module']}.message (to={ch['target']}{reply_to}, text). "
+                         "Только он отправляет сообщение в чат; сказанное тобой вслух в чат не уходит.")
     return "\n".join(parts)
 
 
