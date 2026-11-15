@@ -12,9 +12,11 @@
 открыт, по SMS. Не пришёл: нажми Enter вместо кода, и Telegram пришлёт его следующим способом (SMS, звонок).
 """
 import asyncio
+import base64
 import getpass
 import os
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -67,25 +69,46 @@ async def _login_qr(client) -> None:
     except ImportError:
         print("Для QR нужен пакет segno: pip install segno")
         raise SystemExit(1) from None
+    from telethon.tl.functions.auth import ExportLoginTokenRequest, ImportLoginTokenRequest
+    from telethon.tl.types.auth import LoginToken, LoginTokenMigrateTo, LoginTokenSuccess
+
     png = Path(os.getenv("TG_QR_PNG") or (Path("/data") if Path("/data").is_dir() else HERE) / "tg_login_qr.png")
     ascii_too = "--ascii" in sys.argv[1:]
-    qr = await client.qr_login()
+    api_id, api_hash = int(os.getenv("TELEGRAM_API_ID", "0")), os.getenv("TELEGRAM_API_HASH", "")
+    shown, started, last_note = None, time.monotonic(), 0.0
     try:
         while True:
-            segno.make(qr.url, error="m").save(str(png), scale=12, border=4, dark="black", light="white")
-            print(f"\nQR-код сохранён в файл: {png}")
-            print("Если контейнер Docker: на хосте это resources\\GlaDOS\\tg_login_qr.png в папке проекта. Открой картинку.")
-            print("Telegram на телефоне: Настройки -> Устройства -> Подключить устройство, наведи камеру на картинку.")
-            if ascii_too:
-                segno.make(qr.url).terminal(compact=True)
+            # Опрос вместо ожидания события: подтверждение на телефоне видно по ответу, а не по обновлению, которое может не дойти
             try:
-                await qr.wait(30)
-                return
-            except asyncio.TimeoutError:
-                await qr.recreate()
+                res = await client(ExportLoginTokenRequest(api_id, api_hash, []))
+                if isinstance(res, LoginTokenMigrateTo):                    # аккаунт живёт в другом дата-центре Telegram
+                    await client._switch_dc(res.dc_id)
+                    res = await client(ImportLoginTokenRequest(res.token))
             except SessionPasswordNeededError:
                 await client.sign_in(password=await asyncio.to_thread(getpass.getpass, "Пароль двух шагов (ввод не виден): "))
                 return
+            if isinstance(res, LoginTokenSuccess):
+                client._on_login(res.authorization.user)
+                return
+            if not isinstance(res, LoginToken):
+                print(f"Неожиданный ответ Telegram: {type(res).__name__}")
+                await asyncio.sleep(3)
+                continue
+            if res.token != shown:                                        # новый код: картинку перезаписываем
+                shown = res.token
+                url = "tg://login?token=" + base64.urlsafe_b64encode(res.token).decode().rstrip("=")
+                segno.make(url, error="m").save(str(png), scale=12, border=4, dark="black", light="white")
+                print(f"\nQR-код сохранён в файл: {png}")
+                print("Если контейнер Docker: на хосте это resources\\GlaDOS\\tg_login_qr.png в папке проекта. Открой картинку.")
+                print("Telegram на телефоне: Настройки -> Устройства -> Подключить устройство, наведи камеру на картинку.")
+                print("После сканирования подтверди вход на телефоне (кнопка «Подтвердить»/«Войти»); скрипт сам это увидит.")
+                if ascii_too:
+                    segno.make(url).terminal(compact=True)
+            if time.monotonic() - last_note >= 10:
+                last_note = time.monotonic()
+                print(f"... ждём подтверждения на телефоне ({int(time.monotonic() - started)} с); код истекает через "
+                      f"{max(0, int(res.expires.timestamp() - time.time()))} с")
+            await asyncio.sleep(2)
     finally:
         png.unlink(missing_ok=True)
 
