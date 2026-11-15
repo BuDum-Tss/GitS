@@ -29,7 +29,7 @@ class Env:
         async def emit(event):
             self.events.append(event)
 
-        self.engine = VoiceEngine(stt=self.stt, tts=FakeTts(ms_per_char=10), config=EngineConfig(), emit_event=emit,
+        self.engine = VoiceEngine(stt=self.stt, tts=FakeTts(ms_per_char=10), config=EngineConfig(barge_in_ms=400), emit_event=emit,
                                   journal=lambda k, t, d: self.journal.append((k, t, d)), on_speech=self.speech.append,
                                   names=lambda: ("Глэдос",))
         self.voice = VoiceServer(self.engine, lambda: TOKEN, hello_timeout_s=0.5)

@@ -53,7 +53,7 @@ class EngineConfig:
     max_utterance_ms: int = 30000
     # перебивание: auto это any_speaker для адаптера с echo_free и can_barge_in, иначе off
     barge_in: str = "auto"
-    barge_in_ms: int = 400
+    barge_in_ms: int = 2000
     # воспроизведение
     lead_ms: int = 60
     max_waiting: int = 3
@@ -95,7 +95,7 @@ class EngineConfig:
             tail_ms=int(_num(environ, "GITS_VOICE_TAIL_MS", 600, 200, 3000)),
             min_speech_ms=int(_num(environ, "GITS_VOICE_MIN_SPEECH_MS", 240, 60, 2000)),
             barge_in=barge if barge in ("auto", *BARGE_POLICIES) else "auto",
-            barge_in_ms=int(_num(environ, "GITS_VOICE_BARGE_IN_MS", 400, 100, 3000)),
+            barge_in_ms=int(_num(environ, "GITS_VOICE_BARGE_IN_MS", 2000, 100, 3000)),
             tts_ref_audio=_first(environ, "GITS_TTS_REF_AUDIO"),
             tts_ref_text=_first(environ, "GITS_TTS_REF_TEXT"),
             tts_speed=_num(environ, "GITS_TTS_SPEED", 1.0, 0.5, 1.5),

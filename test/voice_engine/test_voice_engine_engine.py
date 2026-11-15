@@ -25,7 +25,7 @@ class Rig:
         async def emit(event):
             self.events.append(event)
 
-        self.engine = VoiceEngine(stt=self.stt, tts=self.tts, config=cfg or EngineConfig(), clock=self.clock, emit_event=emit,
+        self.engine = VoiceEngine(stt=self.stt, tts=self.tts, config=cfg or EngineConfig(barge_in_ms=400), clock=self.clock, emit_event=emit,
                                   journal=lambda k, t, d: self.journal.append((k, t, d)), on_speech=self.speech.append,
                                   names=lambda: ("Глэдос", "Эйч"), **kw)
         self.transport = RecordingTransport(self.clock)

@@ -24,7 +24,7 @@ class Rig:
         self.tts = ClockTts(self.clock, **(tts_kw or {}))
         self.speech: list[dict] = []
         self.journal: list[tuple] = []
-        self.engine = VoiceEngine(stt=FakeStt(), tts=self.tts, config=cfg or EngineConfig(), clock=self.clock,
+        self.engine = VoiceEngine(stt=FakeStt(), tts=self.tts, config=cfg or EngineConfig(barge_in_ms=400), clock=self.clock,
                                   journal=lambda k, t, d: self.journal.append((k, t, d)), on_speech=self.speech.append)
         self.transport = RecordingTransport(self.clock)
 
@@ -238,3 +238,12 @@ def test_config_split_and_prefetch_from_env():
     cfg = EngineConfig.from_env({"GITS_TTS_PREFETCH": "9"})
     assert cfg.tts_split == "sentences" and cfg.tts_prefetch == 3
     assert EngineConfig().tts_prefetch == 1 and EngineConfig().split_min_chars == 25 and EngineConfig().split_max_chars == 220
+
+
+def test_barge_in_needs_two_seconds_of_speech_by_default_and_can_be_changed_or_turned_off():
+    """Перебивать её надо речью дольше 2 секунд подряд (пользователь: короткие реплики и покашливание не должны её обрывать)."""
+    assert EngineConfig().barge_in_ms == 2000
+    assert EngineConfig.from_env({"GITS_STT_URL": "http://s", "GITS_TTS_URL": "http://t"}).barge_in_ms == 2000
+    env = {"GITS_STT_URL": "http://s", "GITS_TTS_URL": "http://t"}
+    assert EngineConfig.from_env({**env, "GITS_VOICE_BARGE_IN_MS": "1200"}).barge_in_ms == 1200
+    assert EngineConfig.from_env({**env, "GITS_VOICE_BARGE_IN": "off"}).barge_in == "off"

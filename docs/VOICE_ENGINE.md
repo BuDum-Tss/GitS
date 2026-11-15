@@ -259,7 +259,7 @@ await client.send_audio("u42", to_16k_mono(chunk_48k_stereo))   # звук КА�
 ## Перебивание
 
 Политика сессии `barge_in`: `off` или `any_speaker` (любой говорящий). Срабатывает, когда речь говорящего непрерывна дольше
-`barge_in_ms` (400 мс; паузы короче 100 мс не разрывают), а она в этот момент говорит: звучащая реплика обрывается
+`barge_in_ms` (2000 мс; паузы короче 100 мс не разрывают), а она в этот момент говорит: звучащая реплика обрывается
 (`play.stop`, причина `barge_in`), очередь очищается. Повторно в той же реплике не срабатывает.
 
 Политика по умолчанию (`GITS_VOICE_BARGE_IN=auto`): `any_speaker` только если адаптер объявил `echo_free` **и** `can_barge_in`
@@ -325,7 +325,7 @@ POST {GITS_TTS_URL}/tts         JSON {"text", "ref_audio_b64", "ref_text", "spee
 | `GITS_VOICE_ENGINE` | авто | `0` выключает при любых адресах; `1` без адресов остаётся выключенным (причина в `/api/voice`) |
 | `GITS_VOICE_LANG` | `ru` | язык распознавания |
 | `GITS_VOICE_BARGE_IN` | `auto` | `auto`, `off`, `any_speaker` |
-| `GITS_VOICE_BARGE_IN_MS` | 400 | сколько речи подряд считать перебиванием (100..3000) |
+| `GITS_VOICE_BARGE_IN_MS` | 2000 | сколько речи подряд считать перебиванием (100..3000); полностью отключить: `GITS_VOICE_BARGE_IN=off` |
 | `GITS_VOICE_VAD`, `GITS_VOICE_THRESHOLD_DB`, `GITS_VOICE_SILERO_MODEL` | `energy`, -42, нет | детектор речи |
 | `GITS_VOICE_TAIL_MS`, `GITS_VOICE_MIN_SPEECH_MS` | 600, 240 | тишина-конец фразы, минимум речи |
 | `GITS_VOICE_MAX_SESSIONS`, `GITS_VOICE_MAX_SPEAKERS` | 4, 32 | лимиты |
