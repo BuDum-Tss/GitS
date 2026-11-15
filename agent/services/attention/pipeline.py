@@ -37,9 +37,9 @@ class HardRules:
             ctx.spawn(ctx.io.from_module(item.text, item.reply_channel, item.sender))
             self.decisions.write(item, att, rule="R1")
             return True
-        # R2: ответ владельца на вопрос, заданный в этом же канале
+        # R2: ответ на вопрос, заданный в этом же канале (отвечать может любой собеседник канала: от кого ответ, не важно)
         channel = self.questions.channel
-        if (ctx.approver.has_pending() and item.sender and item.sender.get("is_owner") and item.reply_channel
+        if (ctx.approver.has_pending() and item.sender and item.reply_channel
                 and channel is not None and item.reply_channel.get("module") == channel.module):
             if await ctx.approver.try_answer(item.text):
                 item.decision = "R2"

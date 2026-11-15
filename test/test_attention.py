@@ -171,13 +171,21 @@ async def test_r2_owner_reply_in_question_channel_answers_the_question(rig):
     assert rig.io.inputs == []                                        # ответ ушёл в approvals, не в разговор
 
 
-async def test_r2_ignored_for_other_channel_other_sender_or_a_plain_message(rig):
+async def test_r2_answer_from_any_sender_in_the_question_channel_counts(rig):
+    """Отвечать на вопрос может любой собеседник канала: от кого ответ, не важно."""
     q = asyncio.create_task(approvals.ask("approval", "Удалить?", timeout_s=30))
     await _until(approvals.has_pending)
     rig.att._question_channel = Channel("module", "tg", "owner")
     stranger = {"id": "tg:7", "name": "Чужой", "is_owner": False}
-    for ev in (dict(sender=stranger, reply_channel=CHAT, text="да"),
-               dict(sender=OWNER, reply_channel={"module": "other", "target": "x"}, text="да"),
+    d = await rig.submit("tg", kind="tg.group", text="да", sender=stranger, reply_channel=CHAT, addressed_to_me=False)
+    assert d["rule"] == "R2" and await q == (True, "user")
+
+
+async def test_r2_ignored_for_other_channel_or_a_plain_message(rig):
+    q = asyncio.create_task(approvals.ask("approval", "Удалить?", timeout_s=30))
+    await _until(approvals.has_pending)
+    rig.att._question_channel = Channel("module", "tg", "owner")
+    for ev in (dict(sender=OWNER, reply_channel={"module": "other", "target": "x"}, text="да"),
                dict(sender=OWNER, reply_channel=CHAT, text="расскажи про погоду в Казани подробно")):
         d = await rig.submit("tg", kind="tg.group", urgency_hint=1, addressed_to_me=False, **ev)
         assert d["rule"] != "R2"
