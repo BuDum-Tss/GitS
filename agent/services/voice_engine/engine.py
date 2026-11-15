@@ -84,7 +84,7 @@ class VoiceEngine:
                                                 split=self.config.tts_split == "sentences", prefetch=self.config.tts_prefetch,
                                                 split_min_chars=self.config.split_min_chars,
                                                 split_max_chars=self.config.split_max_chars,
-                                                first_max=self.config.tts_first_max, speech_ttl_s=self.config.speech_ttl_s),
+                                                first_max=self.config.tts_first_max, first_max_cloud=self.config.tts_first_max_cloud, speech_ttl_s=self.config.speech_ttl_s),
                                  play_ids=self._next_play_id, sinks=(self.metrics,))
         old = self.sessions_manager.add(sess)             # SessionLimitError пробрасывается адаптеру отказом
         if old is not None:
@@ -324,7 +324,8 @@ class VoiceEngine:
                 self._journal("module_out", ev.spoken_text[:events.EVENT_TEXT_MAX], {
                     "module": events.PEER_ID, "tool": "voice.say", "to": sess.id, "own": True, "event_kind": events.KIND_SPOKEN,
                     "adapter": sess.adapter, "utterance_id": ev.uid, "completed": ev.completed, "reason": ev.reason,
-                    "spoken_ms": ev.spoken_ms, "spoken_segments": ev.spoken_segments, "interrupted": ev.reason == "barge_in"})
+                    "spoken_ms": ev.spoken_ms, "spoken_segments": ev.spoken_segments, "interrupted": ev.reason == "barge_in",
+                    "tts": ev.tts})
         if self._on_speech is not None:
             data: dict[str, Any] = {"phase": ev.phase, "utterance_id": ev.uid, "session": sess.id, "adapter": sess.adapter}
             if ev.phase == "segment":
@@ -346,10 +347,14 @@ class VoiceEngine:
         while self._tasks:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
+    def _tts_state(self) -> dict:
+        state = getattr(self.tts, "state", None)
+        return state() if state is not None else {"provider": "local", "active": "local"}
+
     def snapshot(self) -> dict:
         return {"enabled": True, "uptime_s": round(time.time() - self.started_at, 1), "sessions": self.sessions(),
                 "limits": {"max_sessions": self.sessions_manager.max_sessions, "max_speakers": self.sessions_manager.max_speakers},
-                "metrics": self.metrics.public(), "latency": self.latency.public(), "tts_split": self.config.tts_split, "tts_prefetch": self.config.tts_prefetch,
+                "metrics": self.metrics.public(), "latency": self.latency.public(), "tts": self._tts_state(), "tts_split": self.config.tts_split, "tts_prefetch": self.config.tts_prefetch,
                 "stt_url": self.config.stt_url, "tts_url": self.config.tts_url, "lang": self.config.lang}
 
     async def aclose(self) -> None:

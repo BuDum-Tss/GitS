@@ -43,6 +43,7 @@ class PlaybackConfig:
     split_min_chars: int = MIN_CHARS
     split_max_chars: int = MAX_CHARS
     prefetch: int = 1                  # сколько предложений синтезировать вперёд, пока звучит текущее
+    first_max_cloud: int = 45          # то же, пока синтез идёт через облако (его задержка почти не зависит от длины)
     first_max: int = 90                # первое предложение длиннее этого режется раньше (быстрее первый звук)
     speech_ttl_s: float = 20.0         # не начавшая звучать реплика старше этого не звучит (причина `expired`)
 
@@ -79,6 +80,7 @@ class Sentence:
     pcm: bytes | None = None
     ready: asyncio.Event = field(default_factory=asyncio.Event)       # синтез кончился (успехом или ошибкой)
     failed: bool = False
+    provider: str = "local"                                            # чем озвучено: local | openrouter
 
 
 @dataclass
@@ -98,6 +100,7 @@ class Utterance:
     sent_ms: int = 0                                                   # мс звука, отправленных адаптеру
     timeline: list[tuple[int, int, int, str]] = field(default_factory=list)       # (индекс, начало мс, длина мс, текст)
     record: SpokenRecord | None = None                                 # запись для фильтра эха
+    voiced: dict[str, int] = field(default_factory=dict)               # символов проигранного по провайдерам синтеза
 
     @property
     def total_ms(self) -> int:
@@ -116,6 +119,7 @@ class PlaybackEvent:
     spoken_text: str = ""
     spoken_segments: int = 0            # целых проигранных предложений
     segment: int = 0                    # у segment: номер предложения в реплике
+    tts: str = ""                       # у ended: чем озвучена большая часть проигранного (local | openrouter)
 
 
 class Playback:
@@ -187,7 +191,7 @@ class Playback:
         """Поставить реплику. Возвращает её место в очереди: 0 звучит первой (или заменила звучащую), далее по порядку."""
         if self._closed:
             raise RuntimeError("сессия закрыта")
-        parts = (split_sentences(text, self.cfg.split_min_chars, self.cfg.split_max_chars, self.cfg.first_max) if self.cfg.split else [text.strip()])
+        parts = (split_sentences(text, self.cfg.split_min_chars, self.cfg.split_max_chars, self._first_max()) if self.cfg.split else [text.strip()])
         parts = [p for p in parts if p]
         if not parts:
             raise ValueError("пустой текст")
@@ -228,6 +232,10 @@ class Playback:
         self._drop_waiting(reason)
         return n
 
+    def _first_max(self) -> int:
+        """Граница раннего первого куска: короче, пока реплику озвучивает облако."""
+        return self.cfg.first_max_cloud if getattr(self._tts, "cloud_active", False) else self.cfg.first_max
+
     def _stop_current(self, at: str, reason: str) -> None:
         cur = self._current
         if cur is None:
@@ -265,8 +273,13 @@ class Playback:
                 await utt.kick.wait()
             try:
                 async with self._tts_slot:
-                    sentence.pcm = await self._tts.synthesize(sentence.text, voice=self.cfg.voice or None,
-                                                              emotion=self.cfg.emotion or None)
+                    extended = getattr(self._tts, "synthesize_ex", None)
+                    if extended is not None:
+                        sentence.pcm, sentence.provider = await extended(sentence.text, voice=self.cfg.voice or None,
+                                                                         emotion=self.cfg.emotion or None)
+                    else:
+                        sentence.pcm = await self._tts.synthesize(sentence.text, voice=self.cfg.voice or None,
+                                                                  emotion=self.cfg.emotion or None)
             except TtsError as e:
                 sentence.failed = True
                 logger.warning("Синтез предложения не удался (%s)", type(e).__name__)
@@ -308,7 +321,7 @@ class Playback:
         self.last_end_ts = self._clock.time()
         try:
             self._emit(PlaybackEvent("ended", utt.uid, utt.text, completed, None if completed else (reason or "stop"),
-                                     spoken_ms, utt.sent_ms, text, count))
+                                     spoken_ms, utt.sent_ms, text, count, tts=max(utt.voiced, key=utt.voiced.get) if utt.voiced else ""))
         except Exception:
             logger.exception("Обработчик события речи упал")
 
@@ -440,6 +453,7 @@ class Playback:
             else:
                 self._emit(PlaybackEvent("segment", utt.uid, sentence.text, segment=i))
             utt.timeline.append((i, start_ms, dur_ms, sentence.text))
+            utt.voiced[sentence.provider] = utt.voiced.get(sentence.provider, 0) + len(sentence.text)
             now = self._clock.time()
             if utt.record is None:
                 while self.spoken_log and self.spoken_log[0].end < now - RECORD_KEEP_S and not self.spoken_log[0].active:

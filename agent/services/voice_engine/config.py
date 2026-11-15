@@ -67,6 +67,16 @@ class EngineConfig:
     tts_speed: float = 1.0
     tts_voice: str = ""
     tts_emotion: str = ""
+    # облачный синтез (OpenRouter, Fish Audio) с запасным локальным; ключ OPENROUTER_API_KEY читает только wiring
+    tts_provider: str = "auto"          # auto (облако, если есть ключ) | openrouter | local
+    has_openrouter_key: bool = False
+    openrouter_model: str = "fish-audio/s2.1-pro"
+    cloud_connect_timeout_s: float = 5.0
+    cloud_timeout_s: float = 12.0
+    tts_tempo: float = 1.08              # «чуть быстрее»: облако растягивает звук по времени, локальный ESpeech берёт в speed
+    cloud_usd_per_char: float = 0.000015
+    cloud_daily_chars: int = 200000      # 0: без лимита
+    tts_first_max_cloud: int = 45        # первый кусок реплики для облака короче: его задержка почти не зависит от длины
     # обращённость и скорость реакции
     owner_addressed: bool = True         # фраза владельца в сессии, куда она зашла, это обращение к ней
     convo_window_s: float = 20.0         # сколько секунд после её речи ответ собеседника считается продолжением разговора
@@ -91,6 +101,8 @@ class EngineConfig:
         else:
             enabled, reason = True, ""
         barge = _first(environ, "GITS_VOICE_BARGE_IN", default="auto").lower()
+        provider = _first(environ, "GITS_TTS_PROVIDER", default="auto").lower()
+        provider = provider if provider in ("auto", "openrouter", "local") else "auto"
         vad = _first(environ, "GITS_VOICE_VAD", default="energy").lower()
         return cls(
             enabled=enabled, disabled_reason=reason, stt_url=stt, tts_url=tts,
@@ -112,6 +124,15 @@ class EngineConfig:
             tts_ref_audio=_first(environ, "GITS_TTS_REF_AUDIO"),
             tts_ref_text=_first(environ, "GITS_TTS_REF_TEXT"),
             tts_speed=_num(environ, "GITS_TTS_SPEED", 1.0, 0.5, 1.5),
+            tts_provider=provider,
+            has_openrouter_key=bool(str(environ.get("OPENROUTER_API_KEY", "") or "").strip()),
+            openrouter_model=_first(environ, "GITS_TTS_OPENROUTER_MODEL", default="fish-audio/s2.1-pro"),
+            cloud_connect_timeout_s=_num(environ, "GITS_TTS_CLOUD_CONNECT_TIMEOUT_S", 5.0, 1.0, 30.0),
+            cloud_timeout_s=_num(environ, "GITS_TTS_CLOUD_TIMEOUT_S", 12.0, 2.0, 60.0),
+            tts_tempo=_num(environ, "GITS_TTS_TEMPO", 1.08, 0.8, 1.5),
+            cloud_usd_per_char=_num(environ, "GITS_TTS_CLOUD_USD_PER_CHAR", 0.000015, 0.0, 1.0),
+            cloud_daily_chars=int(_num(environ, "GITS_TTS_CLOUD_DAILY_CHARS", 200000, 0, 100_000_000)),
+            tts_first_max_cloud=int(_num(environ, "GITS_TTS_FIRST_MAX_CLOUD", 45, 20, 400)),
             tts_voice=_first(environ, "GITS_TTS_VOICE"),
             tts_emotion=_first(environ, "GITS_TTS_EMOTION"),
             owner_addressed=_first(environ, "GITS_VOICE_OWNER_ADDRESSED", default="1").lower() not in _FALSE,

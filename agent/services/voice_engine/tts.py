@@ -132,6 +132,21 @@ def wav_to_pcm16k(data: bytes) -> bytes:
     return resample(pcm, rate, SAMPLE_RATE) if rate != SAMPLE_RATE else pcm
 
 
+async def read_reference(cfg: TtsSettings) -> tuple[bytes, str]:
+    """(WAV референса голоса, его дословный текст): явная настройка, иначе референс активного персонажа. Синтез с клонированием без
+    референса не говорит, поэтому его отсутствие это ошибка конфигурации, а не «голос по умолчанию»."""
+    path = Path(cfg.ref_audio) if cfg.ref_audio else None
+    text = cfg.ref_text
+    if (path is None or not path.is_file()) and cfg.ref_resolver is not None:
+        found = await asyncio.to_thread(cfg.ref_resolver)
+        if found is not None:
+            path, text = found
+    if path is None or not path.is_file():
+        raise TtsError("нет референса голоса: положи espeech_ref.wav и espeech_ref.txt в папку voice/ персонажа "
+                       "или задай GITS_TTS_REF_AUDIO и GITS_TTS_REF_TEXT")
+    return await asyncio.to_thread(path.read_bytes), text
+
+
 class HttpTtsClient:
     def __init__(self, settings: TtsSettings):
         self.settings = settings
@@ -139,20 +154,10 @@ class HttpTtsClient:
         self._ref: tuple[str, str] | None = None
 
     async def _reference(self) -> tuple[str, str]:
-        """(WAV референса в base64, его текст): явная настройка, иначе референс активного персонажа. ESpeech без референса не
-        говорит, поэтому его отсутствие это ошибка конфигурации, а не «голос по умолчанию»."""
+        """(WAV референса в base64, его текст)."""
         if self._ref is None:
-            cfg = self.settings
-            path = Path(cfg.ref_audio) if cfg.ref_audio else None
-            text = cfg.ref_text
-            if (path is None or not path.is_file()) and cfg.ref_resolver is not None:
-                found = await asyncio.to_thread(cfg.ref_resolver)
-                if found is not None:
-                    path, text = found
-            if path is None or not path.is_file():
-                raise TtsError("нет референса голоса: положи espeech_ref.wav и espeech_ref.txt в папку voice/ персонажа "
-                               "или задай GITS_TTS_REF_AUDIO и GITS_TTS_REF_TEXT")
-            self._ref = (base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode("ascii"), text)
+            wav, text = await read_reference(self.settings)
+            self._ref = (base64.b64encode(wav).decode("ascii"), text)
         return self._ref
 
     async def synthesize(self, text: str, *, voice: str | None = None, emotion: str | None = None) -> bytes:
