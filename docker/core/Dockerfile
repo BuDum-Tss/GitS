@@ -24,6 +24,9 @@ ENV PYTHONUNBUFFERED=1 \
 # Node 22 для среды pi: бинарник из образа node (npm в рантайме не нужен)
 COPY --from=agent-runtime /usr/local/bin/node /usr/local/bin/node
 
+# libopus0: кодек Opus для голоса Discord (discord.py грузит его через ctypes; в python:slim его нет)
+RUN apt-get update && apt-get install -y --no-install-recommends libopus0     && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin gits \
     && mkdir -p /app /data/memory \
     && chown gits:gits /app /data /data/memory

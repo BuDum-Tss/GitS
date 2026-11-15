@@ -4,3 +4,11 @@
 telethon>=1.36
 discord.py>=2.4     # окружение Discord (workspaces/discord): бот, текст; голос потребует PyNaCl (discord.py[voice])
 segno>=1.6          # вход в аккаунт Telegram по QR (workspaces/telegram/tg_login.py --qr)
+# --- голос Discord (проба workspaces/discord/voice_probe, см. docs/DISCORD_VOICE_PROBE.md) ---
+# PyNaCl: транспортное шифрование голоса; discord.py 2.7.1 в extra [voice] требует PyNaCl<1.6
+PyNaCl>=1.5,<1.6
+# davey: сквозное шифрование DAVE (обязательно для звонков Discord с марта 2026); колёса cp312 manylinux x86_64 есть, компилятор не нужен.
+# 0.2.0 вышел 2026-11-02 и с discord.py 2.7.1 не проверялся, поэтому потолок <0.2
+davey>=0.1.6,<0.2
+# приём звука: экспериментальное расширение (0.x alpha, последний релиз PyPI от 2025-06; DAVE в нём НЕТ, расшифровку делает проба сама)
+discord-ext-voice-recv==0.5.2a179
