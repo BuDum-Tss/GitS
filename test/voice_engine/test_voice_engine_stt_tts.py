@@ -231,6 +231,30 @@ async def test_reference_comes_from_the_character_resolver_and_missing_reference
     await server.close()
 
 
+async def test_tts_body_arriving_in_several_network_chunks_is_read_completely(tmp_path):
+    """Регрессия: `content.read(n)` возвращал только первую пришедшую часть ответа, и реплика озвучивалась обрывком (0,15..2 с
+    вместо 3 с). Звук приходит кусками с паузами, как по реальной сети: клиент обязан дочитать тело до конца."""
+    ref = tmp_path / "ref.wav"
+    ref.write_bytes(make_wav())
+    wav = make_wav(ms=3000)
+
+    async def chunked(request):
+        resp = web.StreamResponse(headers={"Content-Type": "audio/wav"})
+        await resp.prepare(request)
+        for i in range(0, len(wav), 9000):
+            await resp.write(wav[i:i + 9000])
+            await asyncio.sleep(0.02)                              # следующая часть приходит позже: read() вернул бы только первую
+        await resp.write_eof()
+        return resp
+
+    server = await serve({("POST", "/tts"): chunked})
+    c = T.HttpTtsClient(T.TtsSettings(url=url(server), ref_audio=str(ref), ref_text="т", timeout_s=5))
+    pcm = await c.synthesize("привет")
+    assert len(pcm) == 3000 * 32                                   # 3 с при 16 кГц моно s16: целиком, а не первый кусок
+    await c.aclose()
+    await server.close()
+
+
 def test_clean_text():
     assert T.clean_text("# Заголовок\n**жирный** `код` [ссылка](http://x)") == "Заголовок жирный ссылка"
     long = "Раз. " * 400

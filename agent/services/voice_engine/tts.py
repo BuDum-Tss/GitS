@@ -173,7 +173,14 @@ class HttpTtsClient:
                                        timeout=aiohttp.ClientTimeout(total=cfg.timeout_s)) as resp:
                 if resp.status != 200:
                     raise TtsServerError(resp.status, (await resp.text())[:200])
-                data = await resp.content.read(MAX_WAV_BYTES + 1)
+                # `content.read(n)` отдаёт только то, что уже пришло по сети (часть тела), поэтому звук обрывался на случайном месте
+                # (0,15 с, 2 с, 0,3 с вместо 3 с): читаем тело целиком кусками с общим пределом размера
+                body = bytearray()
+                async for chunk in resp.content.iter_chunked(65536):
+                    body += chunk
+                    if len(body) > MAX_WAV_BYTES:
+                        raise TtsBadAudio("ответ слишком большой")
+                data = bytes(body)
         except asyncio.TimeoutError:
             raise TtsTimeout(f"сервис синтеза не ответил за {cfg.timeout_s:g} с") from None
         except aiohttp.ClientError as e:
