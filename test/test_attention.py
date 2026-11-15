@@ -294,6 +294,48 @@ async def test_owner_dm_stays_r1_even_with_unified_agent(rig):
     assert d["rule"] == "R1" and len(rig.io.inputs) == 1
 
 
+# ── то же для Discord: R6 для discord.message, личка чужого discord.dm ─────────────────────────────
+
+DC_STRANGER = {"id": "discord:9", "name": "Петя", "is_owner": False}
+DC_CHANNEL = {"module": "discord", "target": "channel:100"}
+DC_DM = {"module": "discord", "target": "dm:9"}
+
+
+async def test_r6_discord_message_addressed_goes_to_conversation(rig):
+    d = await rig.submit("discord", kind="discord.message", text="ГЛаДОС, ты тут?", addressed_to_me=True, sender=DC_STRANGER,
+                         reply_channel=DC_CHANNEL)
+    assert d["rule"] == "R6" and d["decision"] == "R6"
+    assert rig.io.inputs == [("ГЛаДОС, ты тут?", DC_CHANNEL, DC_STRANGER)]
+    assert rig.candidates() == [] and rig.decider.calls == []
+
+
+async def test_r6_discord_message_does_not_fire_without_address_or_channel(rig):
+    for i, ev in enumerate([dict(addressed_to_me=False, reply_channel=DC_CHANNEL),         # болтовня мимо неё или режим «чтение»
+                            dict(addressed_to_me=True)]):                                  # ответить некуда
+        d = await rig.submit("discord", kind="discord.message", text=f"т{i}", sender=DC_STRANGER, urgency_hint=1, **ev)
+        assert d["rule"] != "R6"
+    assert rig.io.inputs == []
+
+
+async def test_stranger_discord_dm_is_taken_by_the_agent_through_attention(rig):
+    rig.att.set_alert_handler(lambda item: True)
+    rig.modules.declare("discord", emits=[("discord.dm", 3)])
+    d = await rig.submit("discord", kind="discord.dm", text="Привет, это Петя", addressed_to_me=True, sender=DC_STRANGER,
+                         reply_channel=DC_DM)
+    assert d["rule"] is None and d["decision"] == "D3" and d["urgency"] == 4
+    assert rig.io.inputs == [("Привет, это Петя", DC_DM, DC_STRANGER)] and rig.candidates() == []
+
+
+async def test_flooded_discord_dm_goes_to_digest_and_owner_dm_stays_r1(rig):
+    rig.att.set_alert_handler(lambda item: True)
+    d = await rig.submit("discord", kind="discord.dm", text="спам 25", addressed_to_me=False, urgency_hint=1,
+                         sender=DC_STRANGER, reply_channel=DC_DM)
+    assert d["decision"] == "D1" and rig.io.inputs == []
+    owner = {"id": "discord:1", "name": "Аня", "is_owner": True}
+    d = await rig.submit("discord", kind="discord.dm", text="Ты скоро?", addressed_to_me=True, sender=owner, reply_channel=DC_DM)
+    assert d["rule"] == "R1" and len(rig.io.inputs) == 1
+
+
 # ── склейка повторов ATT-6 ────────────────────────────────────────────────────────────────────────
 
 async def test_dedupe_key_merges_repeats_within_a_minute(rig):

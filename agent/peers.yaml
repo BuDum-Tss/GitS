@@ -9,7 +9,7 @@
 # never); enabled (включён ли, пока пользователь не выбрал сам: настройка peers.<id>.enabled в дашборде); title и description
 # (как запись называется и описывается во вкладках «Окружения» и «Сервисы»; перекрывают манифест); dev: true (запись видна во вкладках
 # только при настройке dev_mode); health_url и skip_when_env (у внешних сервисов).
-# Реальные записи: telegram - ТЗ 10, rimworld - ТЗ 11, voice - ТЗ 12, desktop - ТЗ 14, montage - ТЗ 20 (ниже).
+# Реальные записи: telegram - ТЗ 10, discord (рядом с telegram), rimworld - ТЗ 11, voice - ТЗ 12, desktop - ТЗ 14, montage - ТЗ 20 (ниже).
 # Общее пространство в контейнере (аренда): `external: true` (процесс запускает не супервизор, `command` не нужен), `control_url`
 # (адрес интерфейса управления, например http://montage:8780) и `control_token_env` (переменная с токеном, по умолчанию
 # GITS_CONTROL_TOKEN). Пример см. в peers.container.yaml. Адрес шины для сервиса: GITS_CORE_PUBLIC_URL (по умолчанию
@@ -24,6 +24,17 @@ workspaces:
     args: ["-u", "main.py"]
     autostart: true
     restart: on-failure       # секреты (TELEGRAM_*) модуль читает сам из .env; без них он работает и пишет «не настроен»
+
+  # Discord: бот на серверах (каналы, ветки, посты форумов, личка), текст; голос позже. Секрет DISCORD_BOT_TOKEN модуль читает сам
+  # из .env; без него он работает и пишет «не настроен». Библиотека discord.py (docker/core/requirements.txt, >=2.4).
+  - id: discord
+    ownership: owned
+    title: Discord
+    cwd: "{GITS}/workspaces/discord"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
 
   # Стример (фаза 3b): Twitch и OBS одним окружением и одним процессом. Twitch: чат и события канала, ответы, модерация, название
   # трансляции; секреты TWITCH_* читает сам из .env, токены входа создаёт workspaces/streamer/twitch/tw_login.py. OBS: сцены,

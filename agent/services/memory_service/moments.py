@@ -31,10 +31,10 @@ EMOTION_MAX = 0.4                    # эмоция стикера: сила * E
 EMOTION_NEUTRAL = ("idle", "thinking", "looking", "question", "neutral")
 USER_BASE, USER_LONG, USER_LONG_CHARS = 0.15, 0.1, 80
 
-# запасная таблица для module_event без записи внимания: `data.event_kind` -> яркость (telegram.* по префиксу)
+# запасная таблица для module_event без записи внимания: `data.event_kind` -> яркость (telegram.*, discord.* по префиксу)
 MODULE_EVENT_WEIGHTS = {"rimworld.death": 0.9, "rimworld.letter": 0.5, "rimworld.game_started": 0.5, "rimworld.run_video": 0.5,
                         "montage.failed": 0.7, "montage.done": 0.6, "voice.heard": 0.35, "self.after_conversation": 0.3}
-MODULE_EVENT_PREFIX = (("telegram.", 0.5),)
+MODULE_EVENT_PREFIX = (("telegram.", 0.5), ("discord.", 0.5))
 
 # признаки в реплике пользователя: (основы слов в нижнем регистре, прибавка)
 USER_SIGNS = {

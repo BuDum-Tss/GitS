@@ -16,7 +16,7 @@ services:
     image: ${CORE_IMAGE:-gits-core:dev}
     container_name: ${CHARACTER_ID:-glados}-core
     restart: unless-stopped
-    # секреты хоста (TELEGRAM_*, TWITCH_*, OBS_WEBSOCKET_PASSWORD, ключи): в образ не копируются
+    # секреты хоста (TELEGRAM_*, DISCORD_BOT_TOKEN, TWITCH_*, OBS_WEBSOCKET_PASSWORD, ключи): в образ не копируются
     env_file:
       - ../../.env
     environment:

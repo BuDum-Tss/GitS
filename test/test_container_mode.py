@@ -43,7 +43,7 @@ def test_container_peers_file_is_valid_and_hardware_free(monkeypatch):
     monkeypatch.setenv("GITS_PEERS_FILE", "agent/peers.container.yaml")
     assert supervisor.peers_file() == CONTAINER_FILE
     specs = {s.id: s for s in supervisor.load_specs()}
-    assert set(specs) == {"telegram", "streamer", "montage"}
+    assert set(specs) == {"telegram", "discord", "streamer", "montage"}
     montage = specs.pop("montage")                                # общее пространство в контейнере: аренда, супервизор не запускает
     assert (montage.ownership, montage.unmanaged, montage.control_url) == ("shared", True, "http://montage:8780")
     assert montage.control_token_env == "GITS_CONTROL_TOKEN"

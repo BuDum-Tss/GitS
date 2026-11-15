@@ -16,14 +16,14 @@
 
 | Род | Что это | Примеры | Клиент SDK |
 |---|---|---|---|
-| **workspace** (окружение) | инструменты, события и рабочее место агента (`workspace`, `nodes` в манифесте) | `montage`, `rimworld`, `minecraft`, `desktop`, `telegram`, `streamer` (Twitch и OBS одним окружением) | `WorkspaceClient` |
+| **workspace** (окружение) | инструменты, события и рабочее место агента (`workspace`, `nodes` в манифесте) | `montage`, `rimworld`, `minecraft`, `desktop`, `telegram`, `discord`, `streamer` (Twitch и OBS одним окружением) | `WorkspaceClient` |
 | **service** | подключается к ядру по WebSocket; окружения и аренды нет, инструменты допустимы | `pet`, `voice` | `ServiceClient` |
 
 Внешние сервисы без WebSocket (decider, espeech и т. п.) тоже сервисы, но к SDK не относятся. Общая база клиентов: `PeerClient`.
 
 Поле манифеста **`role`** обязательно: `"workspace"` или `"service"`; без него манифест отвергается. Поле **`ownership`**
 обязательно у workspace: `"shared"` (общий, эксклюзивный, берётся в аренду: montage, rimworld, minecraft, desktop) или `"owned"`
-(живёт внутри ядра персонажа: telegram, streamer). Service с `ownership` или с описанием `workspace` отвергается проверкой манифеста.
+(живёт внутри ядра персонажа: telegram, discord, streamer). Service с `ownership` или с описанием `workspace` отвергается проверкой манифеста.
 `WorkspaceClient` принимает только `role: workspace`, `ServiceClient` только `role: service`.
 
 ```python

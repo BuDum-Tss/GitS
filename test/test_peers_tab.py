@@ -114,7 +114,7 @@ async def test_workspaces_and_services_endpoints_split_by_role():
     settings.update(dev_mode=True)
     workspaces, services = await _by_role("workspace"), await _by_role("service")
     ws_real = {r["id"] for r in workspaces if r.get("kind") != "planned"}
-    assert {"telegram", "streamer", "desktop", "rimworld", "montage", "echo"} == ws_real
+    assert {"telegram", "discord", "streamer", "desktop", "rimworld", "montage", "echo"} == ws_real
     assert [r["id"] for r in workspaces if r.get("kind") == "planned"] == ["minecraft"]      # серые карточки идут к окружениям
     assert {r["id"] for r in services} == {"voice", "pet", "decider", "espeech"}
     assert all(r["role"] == "workspace" for r in workspaces if r.get("kind") != "planned")

@@ -42,6 +42,7 @@
 | Питомец | `services/pet` | окно на рабочем столе: стикер и облачко по состоянию (`presence`) |
 | Компьютер | `workspaces/desktop` | зрение и экран, мышь и клавиатура, приложения, Участник шины кода как задача |
 | Telegram | `workspaces/telegram` | канал-дневник, бот, её собственный аккаунт |
+| Discord | `workspaces/discord` | бот на серверах: каналы, ветки, личные сообщения (текст; голос позже) |
 | RimWorld | `workspaces/rimworld` | мод, MCP-сервер, игровые контуры, комментатор |
 | Монтаж | `workspaces/montage` | конвейер роликов (Remotion, ffmpeg, агент pi) |
 
@@ -75,6 +76,7 @@ pythonw clients/tray/tray.py                          # трей: поднима
 - Вручную (при разработке, ядро должно работать): `python services/voice/main.py`, `python services/pet/main.py`.
 - Telegram: токен бота и канал (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL`) и ключи аккаунта (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`) лежат
   в `.env`; вход в аккаунт один раз из дашборда (Окружения - Telegram - «Войти по QR», нужен пакет segno); запасной путь: `python workspaces/telegram/tg_login.py --qr`.
+- Discord: токен бота `DISCORD_BOT_TOKEN` в `.env` (Developer Portal - Bot - Reset Token), там же включить Message Content Intent; бот приглашается ссылкой из панели Discord в дашборде; нужен пакет `discord.py>=2.4`.
 
 ### Дашборд
 Вкладки: **Состояние** (профили, внимание, фокус, задержка реплики и бюджеты задержек), **Память** (цели, эпизоды трёх видов, отношения),
@@ -116,7 +118,7 @@ owned) и «Сервисы» (service, включая внешние decider и 
 
 ## Как проверять
 ```powershell
-.\check.ps1       # ruff и все тесты: ядро, sdk, шаблон участника шины, telegram, voice, pet, desktop, rimworld, montage
+.\check.ps1       # ruff и все тесты: ядро, sdk, шаблон участника шины, telegram, discord, voice, pet, desktop, rimworld, montage
 ```
 По частям (из корня репозитория):
 ```

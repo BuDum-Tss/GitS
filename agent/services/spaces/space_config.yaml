@@ -11,6 +11,7 @@ spaces:
     focus:
     - desktop
     - telegram
+    - discord
     memory_scopes:
     - assistant
   sleep:

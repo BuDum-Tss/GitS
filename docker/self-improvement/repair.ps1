@@ -152,7 +152,7 @@ $report
         Run git @('-C',$work,'-c','user.name=GitS Repair','-c','user.email=repair@localhost','commit','-m',"Fix GitS bug $id")
         $commit = Run git @('-C',$work,'rev-parse','HEAD')
         $services = @()
-        if ($files -match '^(agent/|services/agent-runtime/|docker/core/|workspaces/(telegram|streamer)/)') { $services += 'core' }
+        if ($files -match '^(agent/|services/agent-runtime/|docker/core/|workspaces/(telegram|discord|streamer)/)') { $services += 'core' }
         if ($files -match '^(workspaces/montage/|agent/interfaces/workspace/|docker/montage/)') { $services += 'montage' }
         if (!$services) { throw 'The patch does not affect a supported container' }
         Deploy $work $commit $services

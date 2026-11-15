@@ -321,6 +321,26 @@ nodes:
 `read("chat/members", id)`. События: `telegram.dm` (в фокусе 4, вне фокуса 3), `telegram.mention` (4), `telegram.channel_post` (1).
 Подписки по чатам настраиваются.
 
+**Discord** (`workspaces/discord`, owned, первая очередь: текст, ветки, личка, панель; голос позже). Бот discord.py, токен
+`DISCORD_BOT_TOKEN` только в `.env` (не настроен: окружение работает и честно пишет «не настроен»). Intents: guilds, guild_messages,
+dm_messages, message_content (привилегированный, включается в Developer Portal; без него статус панели объясняет, что включить), без
+members и presence. События: `discord.dm` (личка, срочность 3, всегда `addressed_to_me`) и `discord.message` (канал, ветка или пост
+форума сервера, срочность 1; `addressed_to_me`: упоминание бота, ответ на его сообщение или имя из настройки `names`). В событии:
+`sender` (`id` вида `discord:<id>`, `name`, `username`, `is_owner`), `reply_channel` `{module: "discord", target: "channel:<id>" | "dm:<id>"}`
+(у ветки и поста форума свой id), `data.guild_id`, `guild_name`, `channel_id`, `channel_name`, `message_id`, у ветки `parent_id`. Другие боты,
+вебхуки и свои сообщения игнорируются; вложения, стикеры и эмбеды становятся словами («[прислал картинку]») без скачивания. Внимание
+то же, что у Telegram: R6 для видов `GROUP_KINDS` (`telegram.group`, `discord.message`), личка чужого по общему правилу `*.dm`
+(`Dispatcher.is_chat_dm`). Режимы `ignore` / `read` / `reply` у сервера, канала и ветки (файл `discord_chat_modes.json`: `guild`,
+`channel`, `thread`, плюс `dm` для лички; эффективный режим: ветка, канал, сервер, `default_chat_mode`), семантика как у Telegram;
+`ignore`: событий и inbox нет, `read`: события без обращения и без `reply_channel`, отправка закрыта на всех путях; личка владельца всегда
+`reply`. Инструменты: `message` (`to`: `owner`, `channel`, название, `#название`, `Сервер / канал`, `@имя`, id; `reply_to`; перед ответом
+`channel.typing()`, текст длиннее 2000 символов режется), `inbox` (серверы и каналы; `channel` читает историю и показывает «ТВОЯ АКТИВНОСТЬ
+В ЭТОМ КАНАЛЕ»; `unread`). Нет права писать (Forbidden): понятная ошибка инструменту, режим сам не меняется. Настройки `peers.discord`:
+`owner`, `names`, `default_chat_mode`, `dm_flood_per_10min`, `dialog_window_mins`. Панель: статус бота, ссылка-приглашение (OAuth2, scope
+`bot`, права View Channels, Send Messages, Send Messages in Threads, Read Message History, Embed Links, Attach Files, Add Reactions), карточки
+серверов с режимами (клик раскрывает каналы и ветки), группа «Личные сообщения», открытый чат и ручная отправка владельцем; аватарки с CDN
+качаются с таймаутом 6 с и отключаются на 10 минут после трёх таймаутов подряд; сборка панели ограничена 25 с.
+
 Реализация сейчас (`workspaces/telegram`): её аккаунт слушает Telethon (`telegram_user.py`), каждое входящее текстовое сообщение
 (вложения заменяются словами «[прислал голосовое]» и т. п., без скачивания) становится событием `telegram.dm` (личка, срочность 3,
 всегда `addressed_to_me`) или `telegram.group` (срочность 1; `addressed_to_me`, если её тегнули, ответили на её сообщение или назвали

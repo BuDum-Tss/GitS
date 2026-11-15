@@ -1,5 +1,6 @@
-# Зависимости образа gits-core: ядро и окружения без железа (telegram, streamer).
-# httpx, aiohttp и python-dotenv (нужны streamer, telegram) уже входят в requirements ядра.
+# Зависимости образа gits-core: ядро и окружения без железа (telegram, discord, streamer).
+# httpx, aiohttp и python-dotenv (нужны streamer, telegram, discord) уже входят в requirements ядра.
 -r ../../agent/requirements.txt
 telethon>=1.36
+discord.py>=2.4     # окружение Discord (workspaces/discord): бот, текст; голос потребует PyNaCl (discord.py[voice])
 segno>=1.6          # вход в аккаунт Telegram по QR (workspaces/telegram/tg_login.py --qr)

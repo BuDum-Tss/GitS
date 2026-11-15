@@ -30,7 +30,7 @@ RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin gits \
 
 WORKDIR /app
 
-# зависимости ядра и окружений без железа (telegram, streamer): отдельным слоем, меняются редко
+# зависимости ядра и окружений без железа (telegram, discord, streamer): отдельным слоем, меняются редко
 COPY agent/requirements.txt agent/requirements.txt
 COPY docker/core/requirements.txt docker/core/requirements.txt
 RUN pip install -r docker/core/requirements.txt
@@ -40,6 +40,7 @@ COPY agent/interfaces/workspace agent/interfaces/workspace
 COPY services/agent-runtime services/agent-runtime
 COPY agent agent
 COPY workspaces/telegram workspaces/telegram
+COPY workspaces/discord workspaces/discord
 COPY workspaces/streamer workspaces/streamer
 
 RUN mkdir -p logs && chown -R gits:gits logs
