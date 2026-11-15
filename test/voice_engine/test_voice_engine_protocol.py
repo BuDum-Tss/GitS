@@ -95,3 +95,11 @@ def test_speaker_and_ack_validation():
 
 def test_encode_drops_none():
     assert json.loads(V.encode("play.stop", utterance_id=None, reason="stop")) == {"type": "play.stop", "reason": "stop"}
+
+
+def test_hello_title_is_optional_and_bounded():
+    assert V.decode(hello(title="Aperture Science / Игры"), allowed=V.TO_ENGINE)["title"] == "Aperture Science / Игры"
+    assert "title" not in V.decode(hello(), allowed=V.TO_ENGINE)                  # версия протокола не меняется: поле необязательное
+    for bad in ("", "я" * (V.MAX_TITLE_LEN + 1), 5):
+        with pytest.raises(V.VoiceProtocolError):
+            V.decode(hello(title=bad), allowed=V.TO_ENGINE)

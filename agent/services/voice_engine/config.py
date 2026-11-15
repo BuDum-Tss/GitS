@@ -49,7 +49,7 @@ class EngineConfig:
     silero_threshold: float = 0.5
     onset_ms: int = 60
     min_speech_ms: int = 240
-    tail_ms: int = 600
+    tail_ms: int = 400
     max_utterance_ms: int = 30000
     # перебивание: auto это any_speaker для адаптера с echo_free и can_barge_in, иначе off
     barge_in: str = "auto"
@@ -67,6 +67,12 @@ class EngineConfig:
     tts_speed: float = 1.0
     tts_voice: str = ""
     tts_emotion: str = ""
+    # обращённость и скорость реакции
+    owner_addressed: bool = True         # фраза владельца в сессии, куда она зашла, это обращение к ней
+    convo_window_s: float = 20.0         # сколько секунд после её речи ответ собеседника считается продолжением разговора
+    ambient_urgency: int = 2             # срочность не обращённых к ней фраз (фон: в сводку и память, не будят)
+    speech_ttl_s: float = 20.0           # не начавшая звучать реплика старше этого не звучит
+    tts_first_max: int = 90              # первое предложение длиннее этого режется по первой запятой для раннего старта
     # конвейерный синтез: деление реплики на предложения и предзагрузка
     tts_split: str = "sentences"         # sentences | off
     tts_prefetch: int = 1
@@ -96,7 +102,7 @@ class EngineConfig:
             vad=vad if vad in ("energy", "silero") else "energy",
             energy_threshold_db=_num(environ, "GITS_VOICE_THRESHOLD_DB", -42.0, -80.0, -10.0),
             silero_model=_first(environ, "GITS_VOICE_SILERO_MODEL"),
-            tail_ms=int(_num(environ, "GITS_VOICE_TAIL_MS", 600, 200, 3000)),
+            tail_ms=int(_num(environ, "GITS_VOICE_TAIL_MS", 400, 200, 3000)),
             min_speech_ms=int(_num(environ, "GITS_VOICE_MIN_SPEECH_MS", 240, 60, 2000)),
             barge_in=barge if barge in ("auto", *BARGE_POLICIES) else "auto",
             barge_in_ms=int(_num(environ, "GITS_VOICE_BARGE_IN_MS", 2000, 100, 3000)),
@@ -108,6 +114,11 @@ class EngineConfig:
             tts_speed=_num(environ, "GITS_TTS_SPEED", 1.0, 0.5, 1.5),
             tts_voice=_first(environ, "GITS_TTS_VOICE"),
             tts_emotion=_first(environ, "GITS_TTS_EMOTION"),
+            owner_addressed=_first(environ, "GITS_VOICE_OWNER_ADDRESSED", default="1").lower() not in _FALSE,
+            convo_window_s=_num(environ, "GITS_VOICE_CONVO_WINDOW_S", 20.0, 0.0, 300.0),
+            ambient_urgency=int(_num(environ, "GITS_VOICE_AMBIENT_URGENCY", 2, 0, 5)),
+            speech_ttl_s=_num(environ, "GITS_VOICE_SPEECH_TTL_S", 20.0, 1.0, 600.0),
+            tts_first_max=int(_num(environ, "GITS_TTS_FIRST_MAX", 90, 30, 400)),
             tts_split="off" if _first(environ, "GITS_TTS_SPLIT", "TTS_SPLIT", default="sentences").lower() == "off" else "sentences",
             tts_prefetch=int(_num(environ, "GITS_TTS_PREFETCH", _num(environ, "TTS_PREFETCH", 1, 0, 3), 0, 3)),
             split_min_chars=int(_num(environ, "GITS_TTS_SPLIT_MIN", 25, 1, 200)),

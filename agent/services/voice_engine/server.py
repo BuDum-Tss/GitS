@@ -120,7 +120,8 @@ class VoiceServer:
             return None
         caps = Capabilities(**hello["capabilities"])
         try:
-            sess = await self.engine.open_session(hello["session"], hello["adapter"], transport, caps)
+            sess = await self.engine.open_session(hello["session"], hello["adapter"], transport, caps,
+                                                  title=str(hello.get("title") or ""))
         except SessionLimitError as e:
             await self._reject(transport, "limit", str(e))
             return None

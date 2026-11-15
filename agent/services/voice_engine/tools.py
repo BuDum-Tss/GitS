@@ -53,7 +53,8 @@ def build_tools(engine: VoiceEngine) -> list[Tool]:
         for s in rows:
             who = ", ".join(sp["name"] + (" (владелец)" if sp["is_owner"] else "") for sp in s["speakers"]) or "никого"
             state = "говорит" if s["speaking"] else "молчит"
-            lines.append(f"- {s['id']} ({s['adapter']}): сейчас {state}, в очереди {s['queue']}; в канале: {who}; "
+            name = f"«{s['title']}» ({s['id']}, {s['adapter']})" if s.get("title") else f"{s['id']} ({s['adapter']})"
+            lines.append(f"- {name}: сейчас {state}, в очереди {s['queue']}; в канале: {who}; "
                          f"перебивание: {s['barge_in']}")
         return "Голосовые каналы:\n" + "\n".join(lines)
 
@@ -71,6 +72,15 @@ def build_tools(engine: VoiceEngine) -> list[Tool]:
             raise ToolError("адаптер не отвечает, выйти из канала не удалось", "unavailable") from None
         return f"попросила адаптер выйти из канала «{sess.id}»"
 
+    async def transcript(a: dict) -> str:
+        sess = _pick(engine, a.get("session"))
+        rows = engine.transcript(sess.id, int(a.get("n") or 10))
+        if not rows:
+            return f"в канале «{sess.id}» пока никто ничего не говорил"
+        now = engine.clock.time()
+        lines = [f"- {int(now - r.ts)} с назад, {'ты' if r.own else r.name}: {r.text}" for r in rows]
+        return f"Последние фразы канала «{sess.id}»:\n" + "\n".join(lines)
+
     session_param = {"type": "string", "required": False, "description": "id голосового канала; можно опустить, если он один"}
     return [
         Tool(id="voice.say", env=ENV_ID, name="say",
@@ -84,6 +94,12 @@ def build_tools(engine: VoiceEngine) -> list[Tool]:
         Tool(id="voice.sessions", env=ENV_ID, name="sessions",
              description="Какие голосовые каналы открыты сейчас и кто в них: id, адаптер, говорит ли она, участники.",
              params={}, risk="auto", call=sessions, informative=True, keywords=("голосовой", "канал", "кто в канале", "войс"),
+             availability="always"),
+        Tool(id="voice.transcript", env=ENV_ID, name="transcript",
+             description="Последние фразы голосового канала: что говорили люди (в том числе не тебе) и ты сама.",
+             params={"session": session_param,
+                     "n": {"type": "integer", "required": False, "description": "сколько фраз, по умолчанию 10"}},
+             risk="auto", call=transcript, informative=True, keywords=("о чём говорили", "что говорили", "в канале", "расшифровка"),
              availability="always"),
         Tool(id="voice.stop", env=ENV_ID, name="stop",
              description="Замолчать в голосовом канале: оборвать речь и очистить очередь реплик.",

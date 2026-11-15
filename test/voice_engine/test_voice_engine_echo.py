@@ -78,7 +78,7 @@ async def test_different_words_pass_even_during_her_speech(make):
     r = await make(["Стой, подожди, я хочу задать другой вопрос"])
     await r.speak()
     await r.say()
-    assert len(r.events) == 1 and r.events[0]["text"].startswith("Стой") and r.sess.stats.echo_dropped == 0
+    assert len(r.events) == 1 and r.events[0]["data"]["phrase"].startswith("Стой") and r.sess.stats.echo_dropped == 0
     await r.engine.aclose()
 
 
@@ -86,7 +86,7 @@ async def test_short_yes_passes_when_she_said_something_else(make):
     r = await make(["Да.", "заказа"])
     await r.speak()
     await r.say()
-    assert [e["text"] for e in r.events] == ["Да."]
+    assert [e["data"]["phrase"] for e in r.events] == ["Да."]
     await r.say()                                          # а целиком и подряд встречающееся в её речи слово это эхо
     assert len(r.events) == 1 and r.sess.stats.echo_dropped == 1
     await r.engine.aclose()

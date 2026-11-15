@@ -18,7 +18,8 @@ from . import echo, events
 from .clock import SystemClock
 from .config import EngineConfig
 from .playback import Playback, PlaybackConfig, PlaybackEvent, PlaybackMetrics
-from .session import Capabilities, SessionLimitError, SessionManager, SessionTransport, Speaker, VoiceSession
+from .session import (
+    Capabilities, LatencyMetrics, Phrase, SessionLimitError, SessionManager, SessionTransport, Speaker, VoiceSession)
 from .stt import SttClient, SttError
 from .tts import TtsClient, clean_text
 from .vad import EnergyVad, Segment, SegmenterConfig, UtteranceSegmenter, VadDetector
@@ -58,6 +59,7 @@ class VoiceEngine:
         self._patterns_key: tuple = ()
         self._patterns: list = []
         self._play_counter = 0
+        self.latency = LatencyMetrics()                   # задержки реакции по всем сессиям
         self.metrics = PlaybackMetrics()                  # задержка первого звука и разрывы по всем сессиям
         self.started_at = time.time()
 
@@ -73,15 +75,16 @@ class VoiceEngine:
         return "any_speaker" if safe else "off"
 
     async def open_session(self, session_id: str, adapter: str, transport: SessionTransport,
-                           caps: Capabilities | None = None, *, barge_in: str | None = None) -> VoiceSession:
+                           caps: Capabilities | None = None, *, barge_in: str | None = None, title: str = "") -> VoiceSession:
         caps = caps or Capabilities()
-        sess = VoiceSession(session_id, adapter, caps, transport, self.resolve_barge_in(caps, barge_in), self.config.barge_in_ms)
+        sess = VoiceSession(session_id, adapter, caps, transport, self.resolve_barge_in(caps, barge_in), self.config.barge_in_ms, title)
         sess.playback = Playback(transport, self.tts, self.clock, lambda ev: self._on_playback(sess, ev),
                                  PlaybackConfig(max_waiting=self.config.max_waiting, lead_ms=self.config.lead_ms,
                                                 voice=self.config.tts_voice, emotion=self.config.tts_emotion,
                                                 split=self.config.tts_split == "sentences", prefetch=self.config.tts_prefetch,
                                                 split_min_chars=self.config.split_min_chars,
-                                                split_max_chars=self.config.split_max_chars),
+                                                split_max_chars=self.config.split_max_chars,
+                                                first_max=self.config.tts_first_max, speech_ttl_s=self.config.speech_ttl_s),
                                  play_ids=self._next_play_id, sinks=(self.metrics,))
         old = self.sessions_manager.add(sess)             # SessionLimitError пробрасывается адаптеру отказом
         if old is not None:
@@ -203,7 +206,9 @@ class VoiceEngine:
         try:
             async with sp.stt_lock:                     # фразы одного говорящего идут по порядку
                 async with self._stt_sem:
+                    started = self.clock.monotonic()
                     result = await self.stt.transcribe(seg.pcm, lang=self.config.lang)
+                    self._timing(sess, "stt", (self.clock.monotonic() - started) * 1000)
         except SttError as e:
             sess.stats.stt_errors += 1
             logger.warning("Распознавание не удалось (%s): %s", type(e).__name__, e)
@@ -219,24 +224,56 @@ class VoiceEngine:
             logger.info("эхо её речи отброшено (сессия %s, говорящий %s)", sess.id, sp.id)
             return
         speaker = sp.public()
-        addressed, reason = self._addressed(sess, text)
+        now = self.clock.time()
+        addressed, reason = self._addressed(sess, sp, text, now)
+        context = events.recent_tail(list(sess.recent), now) if addressed else ""
+        sess.recent.append(Phrase(now, sp.name, text))
+        speech_end = closed_at - seg.endpoint_ms / 1000.0
+        self._timing(sess, "endpoint", seg.endpoint_ms)
         interrupted = sp.barged_ts > 0 and self.clock.time() - sp.barged_ts < INTERRUPT_MEMORY_S
         event = events.utterance_event(text=text, speaker=speaker, session=sess.id, adapter=sess.adapter,
-                                       duration_ms=result.duration_ms or seg.duration_ms, language=result.language or self.config.lang,
-                                       addressed=addressed, reason=reason, interrupted=interrupted)
+                                       duration_ms=result.duration_ms or seg.duration_ms, title=sess.title, language=result.language or self.config.lang,
+                                       addressed=addressed, reason=reason, interrupted=interrupted, context=context,
+                                       urgency_hint=self.config.ambient_urgency)
         sess.stats.utterances += 1
+        if addressed:                                    # разговор пошёл дальше: устаревшие ожидающие реплики не нужны
+            sess.last_addressed_speaker = sp.id
+            sess.react_since = speech_end
+            if sess.playback is not None:
+                sess.playback.drop_waiting("replaced")
+        self._timing(sess, "to_event", (now - speech_end) * 1000)
         if self._emit_event is not None:
             try:
                 await self._emit_event(event)
             except Exception:
                 logger.exception("Событие голосовой фразы не принято ядром")
 
-    def _addressed(self, sess: VoiceSession, text: str) -> tuple[bool, str]:
+    def _timing(self, sess: VoiceSession, name: str, ms: float) -> None:
+        sess.latency.add(name, ms)
+        self.latency.add(name, ms)
+
+    def _she_spoke_recently(self, sess: VoiceSession, now: float) -> bool:
+        pb = sess.playback
+        if pb is None or not pb.spoken_log:
+            return False
+        rec = pb.spoken_log[-1]
+        return rec.active or now - rec.end <= self.config.convo_window_s
+
+    def _addressed(self, sess: VoiceSession, sp: Speaker, text: str, now: float) -> tuple[bool, str]:
+        """Обращена ли фраза к ней, от сильного признака к слабому: имя; владелец (он зовёт её, даже не называя по имени);
+        продолжение разговора (она только что говорила, отвечает тот, с кем она говорила); канал «один на один».
+        Боты-говорящие не считаются владельцем, собеседником и живым человеком."""
         key = tuple(self._names())
         if key != self._patterns_key:
             self._patterns_key, self._patterns = key, events.name_patterns(key)
         if events.is_addressed(text, self._patterns):
             return True, "name"
+        if sp.is_bot:
+            return False, ""
+        if self.config.owner_addressed and sp.is_owner:
+            return True, "owner"
+        if self._she_spoke_recently(sess, now) and (sess.last_addressed_speaker == sp.id or sess.one_to_one):
+            return True, "continuation"
         if sess.one_to_one:
             return True, "one_to_one"
         return False, ""
@@ -264,12 +301,22 @@ class VoiceEngine:
         sess = self._open(session_id)
         sess.playback.stop(uid, at, reason)
 
+    def transcript(self, session_id: str, n: int = 10) -> list[Phrase]:
+        """Последние n фраз канала (старые первыми): чужие и её собственные."""
+        sess = self._open(session_id)
+        return list(sess.recent)[-max(1, min(n, 40)):]
+
     def ack(self, session_id: str, uid: str, spoken_ms: int, reason: str) -> None:
         sess = self.sessions_manager.get(session_id)
         if sess is not None and sess.playback is not None:
             sess.playback.on_ack(uid, spoken_ms, reason)
 
     def _on_playback(self, sess: VoiceSession, ev: PlaybackEvent) -> None:
+        if ev.phase == "started" and sess.react_since is not None:          # первый звук ответа на обращённую фразу
+            self._timing(sess, "react", (self.clock.time() - sess.react_since) * 1000)
+            sess.react_since = None
+        if ev.phase == "ended" and ev.spoken_text:
+            sess.recent.append(Phrase(self.clock.time(), "ты", ev.spoken_text, own=True))
         if ev.phase == "ended" and ev.spoken_ms > 0:
             sess.stats.spoken += 1
         if ev.phase == "ended":
@@ -302,7 +349,7 @@ class VoiceEngine:
     def snapshot(self) -> dict:
         return {"enabled": True, "uptime_s": round(time.time() - self.started_at, 1), "sessions": self.sessions(),
                 "limits": {"max_sessions": self.sessions_manager.max_sessions, "max_speakers": self.sessions_manager.max_speakers},
-                "metrics": self.metrics.public(), "tts_split": self.config.tts_split, "tts_prefetch": self.config.tts_prefetch,
+                "metrics": self.metrics.public(), "latency": self.latency.public(), "tts_split": self.config.tts_split, "tts_prefetch": self.config.tts_prefetch,
                 "stt_url": self.config.stt_url, "tts_url": self.config.tts_url, "lang": self.config.lang}
 
     async def aclose(self) -> None:

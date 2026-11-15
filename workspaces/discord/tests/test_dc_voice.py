@@ -589,7 +589,9 @@ async def test_end_to_end_with_real_voice_engine_listen_utterance_and_speak(tmp_
                 await asyncio.sleep(0.02)
             await until(lambda: events, 8)                                                   # тишину после речи добавил адаптер
             ev = events[0]
-            assert ev["text"] == "Глэдос, слышишь меня" and ev["sender"]["is_owner"] is True and ev["data"]["session"] == sid
+            assert ev["data"]["phrase"] == "Глэдос, слышишь меня" and ev["sender"]["is_owner"] is True and ev["data"]["session"] == sid
+            # самодостаточный текст: ник говорящего, пометка владельца и название канала (из hello.title адаптера)
+            assert ev["text"] == "boss (владелец) в голосовом канале «Клуб / Войс»: «Глэдос, слышишь меня»"
             engine.speak(sid, "привет")
             await until(lambda: vc.source is not None)
             await asyncio.sleep(0.1)

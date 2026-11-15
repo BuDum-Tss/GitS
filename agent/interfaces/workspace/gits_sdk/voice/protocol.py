@@ -34,6 +34,7 @@ MAX_PCM_BYTES = FRAME_BYTES * 10        # тело одного бинарног
 MAX_WS_MESSAGE_BYTES = MAX_CONTROL_BYTES
 MAX_ID_LEN = 128
 MAX_NAME_LEN = 80
+MAX_TITLE_LEN = 120                     # человекочитаемое название канала в hello (необязательно)
 MAX_TEXT_LEN = 4000                     # текст реплики в play.start
 
 # бинарный кадр: тип, флаги (0), говорящий, поток, номер
@@ -168,6 +169,7 @@ def _hello(msg: dict) -> dict:
         raise VoiceProtocolError(f"версия протокола {msg.get('version')!r} не поддерживается (нужна {VOICE_PROTOCOL})")
     _str(msg, "adapter", pattern=_ADAPTER_RE)
     _str(msg, "session", pattern=_ID_RE)
+    _str(msg, "title", limit=MAX_TITLE_LEN, required=False)
     caps = msg.get("capabilities", {})
     if not isinstance(caps, dict):
         raise VoiceProtocolError("capabilities должно быть объектом")

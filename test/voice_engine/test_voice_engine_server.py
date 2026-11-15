@@ -86,7 +86,7 @@ async def test_end_to_end_utterance_and_speech(env):
     await fake.speak("u1", 700)
     await env.until(lambda: env.events)
     ev = env.events[0]
-    assert ev["text"] == "Глэдос, слышишь меня" and ev["sender"] == {"id": "u1", "name": "Маша", "is_owner": True}
+    assert ev["data"]["phrase"] == "Глэдос, слышишь меня" and ev["text"] == "Маша (владелец) в голосовом канале: «Глэдос, слышишь меня»" and ev["sender"] == {"id": "u1", "name": "Маша", "is_owner": True}
     assert ev["addressed_to_me"] is True and ev["data"]["adapter"] == "fake" and ev["data"]["session"] == "s1"
 
     ticket = env.engine.speak("s1", "привет, Маша")             # 12 символов по 10 мс = 120 мс
@@ -294,4 +294,17 @@ async def test_state_snapshot_lists_sessions(env):
     snap = env.engine.snapshot()
     assert snap["enabled"] and snap["sessions"][0]["id"] == "s1" and snap["sessions"][0]["speakers"][0]["name"] == "Маша"
     assert env.voice.connections == 1
+    await fake.stop()
+
+
+async def test_title_from_hello_reaches_session_event_text_and_state(env):
+    fake = env.adapter(title="Aperture Science / Игры")
+    await fake.start()
+    await fake.join("u1", "Маша", is_owner=True)
+    await env.until(lambda: env.engine.session("s1") is not None and "u1" in env.engine.session("s1").speakers)
+    assert env.engine.session("s1").title == "Aperture Science / Игры"
+    assert env.engine.sessions()[0]["title"] == "Aperture Science / Игры"
+    await fake.speak("u1", 700)
+    await env.until(lambda: env.events)
+    assert env.events[0]["text"] == "Маша (владелец) в голосовом канале «Aperture Science / Игры»: «Глэдос, слышишь меня»"
     await fake.stop()

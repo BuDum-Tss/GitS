@@ -43,6 +43,8 @@ class PlaybackConfig:
     split_min_chars: int = MIN_CHARS
     split_max_chars: int = MAX_CHARS
     prefetch: int = 1                  # сколько предложений синтезировать вперёд, пока звучит текущее
+    first_max: int = 90                # первое предложение длиннее этого режется раньше (быстрее первый звук)
+    speech_ttl_s: float = 20.0         # не начавшая звучать реплика старше этого не звучит (причина `expired`)
 
 
 @dataclass
@@ -185,7 +187,7 @@ class Playback:
         """Поставить реплику. Возвращает её место в очереди: 0 звучит первой (или заменила звучащую), далее по порядку."""
         if self._closed:
             raise RuntimeError("сессия закрыта")
-        parts = (split_sentences(text, self.cfg.split_min_chars, self.cfg.split_max_chars) if self.cfg.split else [text.strip()])
+        parts = (split_sentences(text, self.cfg.split_min_chars, self.cfg.split_max_chars, self.cfg.first_max) if self.cfg.split else [text.strip()])
         parts = [p for p in parts if p]
         if not parts:
             raise ValueError("пустой текст")
@@ -219,6 +221,12 @@ class Playback:
                 return
         if self._current is not None and self._current.uid == uid:
             self._stop_current(at, reason)
+
+    def drop_waiting(self, reason: str = "replaced") -> int:
+        """Отбросить ожидающие реплики, звучащую не трогая (пришла новая обращённая фраза). Возвращает, сколько отброшено."""
+        n = len(self._waiting)
+        self._drop_waiting(reason)
+        return n
 
     def _stop_current(self, at: str, reason: str) -> None:
         cur = self._current
@@ -334,6 +342,9 @@ class Playback:
                 self._wake.clear()
                 await self._wake.wait()
             utt = self._waiting.popleft()
+            if self._clock.monotonic() - utt.created > self.cfg.speech_ttl_s:      # разговор ушёл вперёд: устаревший ответ молчит
+                self._discard(utt, "expired")
+                continue
             self._current = utt
             utt.kick.set()
             self._play_task = asyncio.get_running_loop().create_task(self._play(utt), name=f"voice-play-{utt.uid}")

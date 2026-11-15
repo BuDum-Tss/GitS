@@ -9,6 +9,8 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Protocol
 
+from collections import deque
+
 from .playback import Playback
 from .vad import UtteranceSegmenter
 
@@ -58,6 +60,45 @@ class Speaker:
 
 
 @dataclass
+class Phrase:
+    """Недавняя фраза канала (чья-то или её собственная): для хвоста «до этого в канале» и `voice.transcript`."""
+    ts: float
+    name: str
+    text: str
+    own: bool = False
+
+
+@dataclass
+class Timing:
+    count: int = 0
+    last_ms: int = 0
+    total_ms: int = 0
+
+    def add(self, ms: float) -> None:
+        self.count += 1
+        self.last_ms = round(ms)
+        self.total_ms += round(ms)
+
+    def public(self) -> dict:
+        return {"count": self.count, "last_ms": self.last_ms, "avg_ms": round(self.total_ms / self.count) if self.count else 0}
+
+
+class LatencyMetrics:
+    """Задержка реакции: хвост тишины до закрытия фразы, распознавание, конец речи -> событие, ответ на обращённую фразу -> первый звук."""
+
+    NAMES = ("endpoint", "stt", "to_event", "react")
+
+    def __init__(self):
+        self.timings = {name: Timing() for name in self.NAMES}
+
+    def add(self, name: str, ms: float) -> None:
+        self.timings[name].add(ms)
+
+    def public(self) -> dict:
+        return {f"{name}_ms": t.public() for name, t in self.timings.items()}
+
+
+@dataclass
 class SessionStats:
     frames_in: int = 0
     bad_frames: int = 0
@@ -71,7 +112,8 @@ class SessionStats:
 
 class VoiceSession:
     def __init__(self, session_id: str, adapter: str, caps: Capabilities, transport: SessionTransport, barge_in: str,
-                 barge_in_ms: int):
+                 barge_in_ms: int, title: str = ""):
+        self.title = title
         self.id, self.adapter, self.caps, self.transport = session_id, adapter, caps, transport
         self.barge_in_policy = barge_in                  # действующая политика (уже с учётом возможностей адаптера)
         self.barge_in_ms = barge_in_ms
@@ -83,6 +125,10 @@ class VoiceSession:
         self.closed = False
         self.stt_pending = 0
         self.tasks: set = set()
+        self.recent: deque[Phrase] = deque(maxlen=40)      # последние фразы канала, обращённые и нет, и её собственные
+        self.last_addressed_speaker: str | None = None     # кому она отвечала: от кого пришла последняя обращённая фраза
+        self.react_since: float | None = None              # конец речи последней обращённой фразы, пока ответа на неё не было
+        self.latency = LatencyMetrics()
 
     @property
     def one_to_one(self) -> bool:
@@ -93,10 +139,10 @@ class VoiceSession:
     def public(self) -> dict:
         pb = self.playback
         return {
-            "id": self.id, "adapter": self.adapter, "capabilities": asdict(self.caps),
+            "id": self.id, "adapter": self.adapter, "title": self.title, "capabilities": asdict(self.caps),
             "barge_in": self.barge_in_policy, "speakers": [s.public() for s in self.speakers.values()],
             "speaking": pb.audible if pb is not None else False, "metrics": pb.metrics.public() if pb is not None else {}, "queue": len(pb.waiting_uids()) if pb is not None else 0,
-            "age_s": round(time.time() - self.created, 1), "stats": asdict(self.stats),
+            "age_s": round(time.time() - self.created, 1), "stats": asdict(self.stats), "latency": self.latency.public(),
         }
 
 

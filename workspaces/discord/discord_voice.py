@@ -432,7 +432,9 @@ class DiscordVoiceAdapter:
         return scrub(describe_connect_error(e), getattr(self.bot, "_token", ""))[:200]
 
     def _make_engine(self, sess: VoiceSession):
-        kw = dict(adapter=ADAPTER, session=sess.id, url=self.engine_url, token=self.engine_token, echo_free=True, can_barge_in=True,
+        title = f"{getattr(sess.guild, 'name', '') or ''} / {getattr(sess.channel, 'name', '') or ''}".strip(" /")
+        kw = dict(adapter=ADAPTER, session=sess.id, title=title[:120], url=self.engine_url, token=self.engine_token, echo_free=True,
+                  can_barge_in=True,
                   speakers_labelled=True, direct=False, on_play=lambda frames, uid: self._on_play(sess, frames, uid),
                   on_stop=lambda uid, reason: self._on_stop(sess, uid, reason), on_leave=lambda: self._on_engine_leave(sess))
         if self.client_factory is not None:

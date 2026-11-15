@@ -9,6 +9,7 @@ import re
 
 MIN_CHARS = 25
 MAX_CHARS = 220
+FIRST_EARLY = 30                    # раньше этого символа первое предложение не режется
 
 # сокращения, после которых точка не конец предложения (в нижнем регистре, без внешних точек)
 ABBREVIATIONS = frozenset({
@@ -19,6 +20,7 @@ ABBREVIATIONS = frozenset({
 _TERMINATORS = ".!?…"
 _CLOSERS = "\"'»”)]}"
 _OPENERS = "\"'«“([{"
+_EARLY = re.compile(r"[,;:](?=\s)|\s[—–-]\s")
 _MAJOR = re.compile(r"(?<=[;:])\s+")
 _COMMA = re.compile(r"(?<=,)\s+")
 _DASH = re.compile(r"\s+[—–-]\s+")
@@ -108,7 +110,20 @@ def _has_speech(text: str) -> bool:
     return any(ch.isalnum() for ch in text)
 
 
-def split_sentences(text: str, min_chars: int = MIN_CHARS, max_chars: int = MAX_CHARS) -> list[str]:
+def _split_first(sentence: str, first_max: int, early: int = FIRST_EARLY) -> list[str]:
+    """Первое предложение длиннее first_max: делим по первой запятой, точке с запятой, двоеточию или тире после `early` символов,
+    чтобы первый звук наступил раньше (остаток не короче 15 символов)."""
+    if len(sentence) <= first_max:
+        return [sentence]
+    for match in _EARLY.finditer(sentence):
+        cut = match.end() if sentence[match.start()] != " " else match.start()
+        if cut >= early and len(sentence) - cut >= 15:
+            return [sentence[:cut].rstrip(), sentence[match.end():].lstrip()]
+    return [sentence]
+
+
+def split_sentences(text: str, min_chars: int = MIN_CHARS, max_chars: int = MAX_CHARS,
+                    first_max: int | None = None) -> list[str]:
     """Реплика -> список предложений для синтеза. Пустые и из одних знаков отбрасываются; короткие склеиваются со следующим."""
     raw: list[str] = []
     for line in text.splitlines():
@@ -136,4 +151,6 @@ def split_sentences(text: str, min_chars: int = MIN_CHARS, max_chars: int = MAX_
             merged[-1] = f"{merged[-1]} {cur}"
         else:
             merged.append(cur)
+    if first_max and merged:
+        merged[:1] = _split_first(merged[0], first_max)
     return merged

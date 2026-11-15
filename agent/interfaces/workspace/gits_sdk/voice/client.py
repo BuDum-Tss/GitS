@@ -105,12 +105,14 @@ class AdapterStats:
 class VoiceAdapterClient:
     def __init__(self, *, adapter: str, session: str, url: str | None = None, token: str | None = None,
                  echo_free: bool = False, can_barge_in: bool = False, speakers_labelled: bool = True, direct: bool = False,
+                 title: str = "",
                  on_play: Callable[[PlayStream, str], Awaitable[int | None]] | None = None,
                  on_stop: Callable[[str, str], Awaitable[None] | None] | None = None,
                  on_leave: Callable[[], Awaitable[None] | None] | None = None,
                  on_ready: Callable[[dict], Awaitable[None] | None] | None = None,
                  reconnect: bool = True, http_session: aiohttp.ClientSession | None = None):
         self.adapter, self.session_id = adapter, session
+        self.title = title.strip()[:V.MAX_TITLE_LEN]       # «Сервер / Канал» для событий и инструментов; можно не задавать
         self.url = url or default_url()
         self._token = token if token is not None else (core_protocol.env_token() or "")
         self.capabilities = {"echo_free": echo_free, "can_barge_in": can_barge_in,
@@ -252,7 +254,7 @@ class VoiceAdapterClient:
         self._ws = ws
         try:
             await self._send_text(V.encode("hello", version=V.VOICE_PROTOCOL, adapter=self.adapter, session=self.session_id,
-                                           capabilities=self.capabilities, format=V.audio_format()))
+                                           title=self.title or None, capabilities=self.capabilities, format=V.audio_format()))
             msg = await asyncio.wait_for(ws.receive(), WELCOME_TIMEOUT_S)
             if msg.type != aiohttp.WSMsgType.TEXT:
                 raise V.VoiceProtocolError("ожидался welcome")

@@ -70,7 +70,7 @@ async def test_two_speakers_interleaved_become_two_events():
         r.engine.feed("s1", "u1", a[i:i + step])
         r.engine.feed("s1", 2, b[i:i + step])               # второй говорящий задан номером кадра
     await r.engine.settle()
-    assert [(e["sender"]["id"], e["text"]) for e in r.events] == [("u2", "а я просто мимо"), ("u1", "Глэдос, привет")]
+    assert [(e["sender"]["id"], e["data"]["phrase"]) for e in r.events] == [("u2", "а я просто мимо"), ("u1", "Глэдос, привет")]
     second, first = r.events
     assert first["kind"] == "voicechat.utterance" and first["sender"] == {"id": "u1", "name": "Маша", "is_owner": True}
     assert first["addressed_to_me"] is True and first["data"]["needs_reply"] is True and first["data"]["addressed_reason"] == "name"
@@ -120,7 +120,7 @@ async def test_noise_text_and_stt_errors_make_no_event(rig):
     rig.stt._texts.extend(["э", " . ", "нормальная фраза"])
     for _ in range(3):
         await say(rig, "u1")
-    assert [e["text"] for e in rig.events] == ["нормальная фраза"]
+    assert [e["data"]["phrase"] for e in rig.events] == ["нормальная фраза"]
     rig.stt.fail = SttTimeout("долго")
     await say(rig, "u1")
     assert len(rig.events) == 1 and rig.sess.stats.stt_errors == 1
@@ -132,7 +132,7 @@ async def test_speaker_leaving_flushes_unfinished_phrase(rig):
     rig.engine.feed("s1", "u1", tone(500))
     rig.engine.remove_speaker("s1", "u1")
     await rig.engine.settle()
-    assert [e["text"] for e in rig.events] == ["недоговорил"]
+    assert [e["data"]["phrase"] for e in rig.events] == ["недоговорил"]
     assert not rig.engine.feed("s1", "u1", tone(100))      # ушедшего больше не слышно
 
 

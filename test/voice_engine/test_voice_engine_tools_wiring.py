@@ -114,7 +114,7 @@ async def test_tool_descriptions_and_schema_are_valid(engine):
 async def test_register_into_registry(engine):
     reg = Registry()
     env = register_voice_tools(reg, engine)
-    assert reg.envs[env.id] is env and {t.id for t in env.tools} == {"voice.say", "voice.sessions", "voice.stop", "voice.leave"}
+    assert reg.envs[env.id] is env and {t.id for t in env.tools} == {"voice.say", "voice.sessions", "voice.stop", "voice.leave", "voice.transcript"}
 
 
 # ── настройки и подключение ──────────────────────────────────────────────────────
@@ -191,7 +191,7 @@ def test_name_patterns():
     assert events.is_addressed("Ёлка зовёт", events.name_patterns(["Елка"]))
     ev = events.utterance_event(text="т" * 2000, speaker={"id": "u", "is_owner": False}, session="s", adapter="a", duration_ms=5,
                                 language="ru", addressed=False, reason="")
-    assert len(ev["text"]) == events.EVENT_TEXT_MAX and ev["sender"]["name"] == "u"
+    assert len(ev["data"]["phrase"]) == events.EVENT_TEXT_MAX and ev["sender"]["name"] == "u"
 
 
 def test_wiring_module_does_not_pull_heavy_imports():

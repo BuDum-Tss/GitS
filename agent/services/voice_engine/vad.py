@@ -107,6 +107,7 @@ class Segment:
     duration_ms: int
     speech_ms: int
     forced: bool = False            # закрыта принудительно (превышена длина или ушёл говорящий)
+    endpoint_ms: int = 0            # сколько тишины ждали, чтобы закрыть реплику (0 при принудительном закрытии)
 
 
 class UtteranceSegmenter:
@@ -209,7 +210,7 @@ class UtteranceSegmenter:
         return None
 
     def _close(self, forced: bool = False) -> Segment | None:
-        frames, voiced = self._frames, self._voiced_ms
+        frames, voiced, waited = self._frames, self._voiced_ms, self._silence_ms
         extra = max(0, self._silence_ms - self.cfg.keep_tail_ms) // FRAME_MS
         if extra and not forced:
             frames = frames[:len(frames) - extra]
@@ -218,4 +219,5 @@ class UtteranceSegmenter:
         if voiced < self.cfg.min_speech_ms or not frames:
             return None
         pcm = b"".join(frames)
-        return Segment(pcm=pcm, duration_ms=len(pcm) // BYTES_PER_MS, speech_ms=voiced, forced=forced)
+        return Segment(pcm=pcm, duration_ms=len(pcm) // BYTES_PER_MS, speech_ms=voiced, forced=forced,
+                       endpoint_ms=0 if forced else waited)
