@@ -155,6 +155,11 @@ def blocks_ok():
         {"type": "video", "artifact": {"job": "j-1a2b3c4d", "name": "preview.mp4"}},
         {"type": "log", "lines": ["строка 1", "строка 2"]},
         {"type": "tabs", "tabs": [{"label": "Ролики", "blocks": [{"type": "text", "text": "вложено"}]}]},
+        {"type": "input", "label": "Сообщение", "placeholder": "текст", "submit": "Отправить", "action": "open_studio",
+         "args": {"chat": 5}, "title": "Написать", "collapsed": False},
+        {"type": "input", "label": "Пароль", "secret": True, "action": "approve_plan"},
+        {"type": "image", "file": "qr-1a2b.png", "alt": "QR"},
+        {"type": "text", "text": "сворачиваемый", "title": "Секция", "collapsed": True},
     ]
 
 
@@ -195,6 +200,17 @@ BAD_BLOCKS = [
         {"type": "tabs", "tabs": [{"label": "b", "blocks": [
             {"type": "tabs", "tabs": [{"label": "c", "blocks": []}]}]}]}]}]}, "глубже"),
     ({"type": "text", "text": "x", "title": "y" * 200}, "title"),
+    ({"type": "text", "text": "x", "collapsed": "да"}, "collapsed"),
+    ({"type": "input", "label": "x"}, "id"),
+    ({"type": "input", "label": "x", "action": "drop_db"}, "не объявлено"),
+    ({"type": "input", "action": "approve_plan"}, "label"),
+    ({"type": "input", "label": "x", "action": "approve_plan", "secret": "да"}, "secret"),
+    ({"type": "input", "label": "x", "action": "approve_plan", "secret": True, "value": "подсказка"}, "value"),
+    ({"type": "input", "label": "x", "action": "approve_plan", "args": [1]}, "args"),
+    ({"type": "image"}, "ровно одно"),
+    ({"type": "image", "file": "a.png", "artifact": {"job": "j-1a2b3c4d", "name": "a.png"}}, "ровно одно"),
+    ({"type": "image", "file": "../a.png"}, "file"),
+    ({"type": "image", "file": "a.exe"}, "file"),
 ]
 
 

@@ -243,7 +243,8 @@ PANEL_LINKS_MAX, PANEL_ACTIONS_MAX, PANEL_HOSTS_MAX, PANEL_DIRS_MAX = 12, 40, 10
 PANEL_LINK_KINDS = ("url", "tool", "reveal_path")
 PANEL_ARGS_FROM = ("job",)
 PANEL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")          # id ссылок, действий и вкладок
-PANEL_BLOCK_TYPES = ("stats", "table", "list", "text", "progress", "buttons", "link", "image", "video", "log", "tabs")
+PANEL_BLOCK_TYPES = ("stats", "table", "list", "text", "progress", "buttons", "link", "image", "video", "log", "tabs",
+                     "input")
 PANEL_BUTTON_STYLES = ("default", "primary", "danger")
 PANEL_SET_MAX_BYTES = 64 * 1024              # panel.set: тело целиком (ТЗ 15, раздел 3)
 PANEL_SET_MIN_INTERVAL_S = 1.0               # не чаще раза в секунду на модуль (ядро отбрасывает лишнее)
@@ -251,6 +252,8 @@ PANEL_BLOCKS_MAX, PANEL_ITEMS_MAX, PANEL_ROWS_MAX, PANEL_LINES_MAX = 40, 50, 200
 PANEL_TABS_MAX, PANEL_DEPTH_MAX = 6, 2       # вложенность блоков «tabs»: не глубже двух уровней
 PANEL_TEXT_MAX, PANEL_CELL_MAX, PANEL_LINE_MAX = 4000, 500, 500
 PANEL_LABEL_MAX = 80
+PANEL_INPUT_VALUE_MAX = 4096                 # значение поля ввода (блок input): уходит действием как args.value
+PANEL_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")      # image.file: только картинки из panel.serve_dirs
 PANEL_ACTION_RESULT_MESSAGE_MAX = 300
 
 
@@ -1354,7 +1357,19 @@ def _check_link(where: str, b: dict, actions, depth: int) -> list[str]:
 
 
 def _check_image(where: str, b: dict, actions, depth: int) -> list[str]:
-    problems = _artifact_problems(where, b.get("artifact"))
+    """Картинка: либо artifact {job, name} (файл задачи), либо file - имя файла-картинки прямо в panel.serve_dirs (без задачи:
+    так показывают QR-код входа и подобное). Ровно одно из двух."""
+    if ("artifact" in b) == ("file" in b):
+        return [f"{where}: нужно ровно одно из artifact ({{job, name}}) или file (имя файла)"]
+    if "file" in b:
+        name = b["file"]
+        if not isinstance(name, str) or not name or len(name) > 200 or name in (".", "..") or "/" in name or "\\" in name \
+                or not name.lower().endswith(PANEL_IMAGE_EXTS):
+            problems = [f"{where}.file: имя файла без путей, расширение из {list(PANEL_IMAGE_EXTS)}"]
+        else:
+            problems = []
+    else:
+        problems = _artifact_problems(where, b.get("artifact"))
     return problems + [p for p in [_text_problem(where, b, "alt", 200, required=False)] if p]
 
 
@@ -1368,6 +1383,22 @@ def _check_log(where: str, b: dict, actions, depth: int) -> list[str]:
             isinstance(x, str) and len(x) <= PANEL_LINE_MAX for x in lines):
         return [f"{where}.lines: список до {PANEL_LINES_MAX} строк по {PANEL_LINE_MAX} символов"]
     return []
+
+
+def _check_input(where: str, b: dict, actions, depth: int) -> list[str]:
+    """Поле ввода с кнопкой: значение уходит действием `action` как args.value (вместе с args блока). secret: поле пароля;
+    его значение ядро нигде не пишет и вырезает из ответов, начальное значение (value) у такого поля запрещено."""
+    problems = _action_problems(where, {"id": b.get("action"), "label": b.get("submit", "Отправить"), "args": b.get("args")},
+                                actions)
+    problems += [p for p in [_text_problem(where, b, "label", PANEL_LABEL_MAX), _text_problem(where, b, "placeholder", 120, required=False),
+                             _text_problem(where, b, "value", PANEL_INPUT_VALUE_MAX, required=False)] if p]
+    if b.get("secret") is not None and not isinstance(b["secret"], bool):
+        problems.append(f"{where}.secret: true или false")
+    if b.get("secret") is True and b.get("value"):
+        problems.append(f"{where}.value: у секретного поля начального значения быть не может")
+    if b.get("multiline") is not None and not isinstance(b["multiline"], bool):
+        problems.append(f"{where}.multiline: true или false")
+    return problems
 
 
 def _check_tabs(where: str, b: dict, actions, depth: int) -> list[str]:
@@ -1390,7 +1421,7 @@ def _check_tabs(where: str, b: dict, actions, depth: int) -> list[str]:
 _BLOCK_CHECKERS = {
     "stats": _check_stats, "table": _check_table, "list": _check_list, "text": _check_text,
     "progress": _check_progress, "buttons": _check_buttons, "link": _check_link, "image": _check_image,
-    "video": _check_video, "log": _check_log, "tabs": _check_tabs,
+    "video": _check_video, "log": _check_log, "tabs": _check_tabs, "input": _check_input,
 }
 
 
@@ -1401,6 +1432,8 @@ def _check_block(where: str, b: Any, actions: set[str] | None, depth: int) -> li
     if kind not in PANEL_BLOCK_TYPES:
         return [f"{where}.type: одно из {list(PANEL_BLOCK_TYPES)}"]
     problems = [p for p in [_text_problem(where, b, "title", 120, required=False)] if p]
+    if b.get("collapsed") is not None and not isinstance(b["collapsed"], bool):
+        problems.append(f"{where}.collapsed: true или false")
     return problems + _BLOCK_CHECKERS[kind](where, b, actions, depth)
 
 

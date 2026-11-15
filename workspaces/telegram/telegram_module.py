@@ -4,6 +4,8 @@
 личные слова от ядра (privacy), входящие бота-витрины (команды, подписка), цикл постов, проверка канала, её аккаунт (Telethon), состояние раз в 5 минут.
 Инструменты: `message` (канал, владелец или чат с её аккаунта; текст, тема, файлы; разрешение спрашивается по адресату),
 `inbox` (чтение её аккаунта), `announce` (рассылка объявлений подписчикам бота), `settings` (периодические посты и пост-итог).
+Панель в дашборде (`telegram_panel.py`): вход в аккаунт по QR, список всех диалогов с режимами, открытый чат. Действия панели
+(вход, выход, ручная отправка владельцем, смена режима) это `panel_action`, а не инструменты: агенту они недоступны.
 Тесты собирают модуль против `gits_sdk.testing.FakeCore`, а сеть Telegram подменяют (`_call`, `_upload`, клиент Telethon).
 """
 import asyncio
@@ -17,7 +19,9 @@ from common import scrub
 from gits_sdk import WorkspaceClient, ToolError
 from privacy import Privacy
 from telegram_channel import TelegramChannel
-from telegram_user import LeakError, TelegramUser
+from telegram_panel import ACTIONS as PANEL_ACTIONS
+from telegram_panel import TelegramPanel
+from telegram_user import ChatModeError, LeakError, TelegramUser
 
 from gits_sdk import host
 from gits_sdk.envcompat import env
@@ -70,6 +74,8 @@ class TelegramModule:
         self.privacy = Privacy(client.privacy_terms)
         self.channel = TelegramChannel(memory_dir, client, self.privacy)
         self.user = TelegramUser(memory_dir, client, self.privacy)
+        self.panel = TelegramPanel(self)
+        self.user.on_change = self.panel.wake.set          # вход, выход и сбой связи обновляют панель сразу
         self.tasks: list[asyncio.Task] = []
         self._panel_key: str | None = None          # последние блоки пространства, посланные ядру (TZ 15)
         self._register()
@@ -115,31 +121,10 @@ class TelegramModule:
                 "last_post_ts": last, "unread": user.unread_count()}
         return f"канал: {channel_word}, аккаунт: {account}, последний пост: {when}", data
 
-    def panel_blocks(self) -> list[dict]:
-        """Пространство «Telegram» в дашборде (TZ 15, TAB-9): канал, аккаунт, непрочитанные, последний пост и последние
-        диалоги из входящих. Без текста сообщений: только имя чата, отправитель и время. Читает файлы: через to_thread."""
-        account = self.user.state_word()
-        last = self.channel.last_post_ts()
-        when = time.strftime("%d.%m %H:%M", time.localtime(last)) if last else "ещё не было"
-        seen, rows = set(), []
-        for rec in reversed(self.user._load_inbox()):             # свежие сверху, один диалог - одна строка
-            chat = str(rec.get("chat") or "")[:120]
-            if chat in seen:
-                continue
-            seen.add(chat)
-            stamp = time.strftime("%d.%m %H:%M", time.localtime(rec.get("ts", 0)))
-            rows.append({"text": chat or "без названия", "sub": f"{str(rec.get('from') or '')[:80]}, {stamp}"})
-            if len(rows) >= 8:
-                break
-        return [
-            {"type": "stats", "title": "Сейчас", "items": [
-                {"label": "Канал", "value": self._channel_word()},
-                {"label": "Аккаунт", "value": account},
-                {"label": "Непрочитано", "value": self.user.unread_count()},
-                {"label": "Последний пост", "value": when}]},
-            {"type": "list", "title": "Последние диалоги", "items": rows} if rows
-            else {"type": "text", "title": "Последние диалоги", "text": "Входящих в её аккаунт пока не было."},
-        ]
+    async def panel_blocks(self) -> list[dict]:
+        """Пространство «Telegram» в дашборде (TZ 15): аккаунт (вход по QR, выход), список всех диалогов с режимами или
+        открытый чат. Список диалогов и историю читает Telethon по запросу (короткие кэши), файлов памяти здесь не читаем."""
+        return await self.panel.blocks()
 
     async def run_state(self) -> None:
         last_key, sent_at = None, 0.0
@@ -150,15 +135,21 @@ class TelegramModule:
                 if key != last_key or time.monotonic() - sent_at >= STATE_EVERY_S:
                     await self.client.state(summary, data)
                     last_key, sent_at = key, time.monotonic()
-                blocks = await asyncio.to_thread(self.panel_blocks)
+                blocks = await self.panel_blocks()
                 pkey = json.dumps(blocks, ensure_ascii=False, sort_keys=True)
-                if pkey != self._panel_key and await self.client.panel.set(blocks):
+                if pkey != self._panel_key and await self.client.panel.set(blocks):     # частоту держит PanelClient.set
                     self._panel_key = pkey
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning("состояние не отправлено: %s", e)
-            await asyncio.sleep(STATE_POLL_S)
+                logger.warning("состояние не отправлено: %s", type(e).__name__)
+            # во время входа код меняется каждые ~30 с, а секунды его жизни идут в панели: обновляем чаще
+            delay = min(STATE_POLL_S, 2.0) if self.user.login_active() else STATE_POLL_S
+            try:
+                await asyncio.wait_for(self.panel.wake.wait(), delay)
+            except asyncio.TimeoutError:
+                pass
+            self.panel.wake.clear()
 
     # ── обработчики ──────────────────────────────────────────────────────────
 
@@ -171,7 +162,7 @@ class TelegramModule:
             return await fn(*args)
         except ToolError:
             raise
-        except LeakError as e:
+        except (LeakError, ChatModeError) as e:
             raise ToolError(str(e), code="denied") from e
         except ValueError as e:
             raise ToolError(str(e), code="bad_request") from e
@@ -269,6 +260,15 @@ class TelegramModule:
         @c.on_reconnect
         async def reconnected():
             await privacy.refresh()
+
+        # ── панель дашборда: действия владельца (в инструменты агента не входят) ──
+        for action_id in PANEL_ACTIONS:
+            c.panel_action(action_id)(self._panel_handler(action_id))
+
+    def _panel_handler(self, action_id: str):
+        async def handler(args: dict) -> dict:
+            return await self.panel.handle(action_id, args)
+        return handler
 
     async def settings(self, args: dict) -> str:
         """Периодические посты и пост-итог после забега: значения меняются через дашборд ядра; без параметров - текущие."""
@@ -408,7 +408,7 @@ class TelegramModule:
             return await self._send_message(kind, who, text, files, voice, reply_to)
         except ToolError:
             raise
-        except LeakError as e:
+        except (LeakError, ChatModeError) as e:
             raise ToolError(str(e), code="denied") from e
         except ValueError as e:
             raise ToolError(str(e), code="bad_request") from e
@@ -468,6 +468,8 @@ class TelegramModule:
                 await self.user.reply(chat_id, text, ogg)
         except ToolError:
             raise
+        except ChatModeError as e:
+            raise ToolError(str(e), code="denied") from e
         except Exception as e:
             raise ToolError("не удалось доставить в Telegram: " + scrub(str(e), self.channel._token)[:160],
                             code="unavailable") from e

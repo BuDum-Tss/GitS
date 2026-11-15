@@ -74,7 +74,7 @@ pythonw clients/tray/tray.py                          # трей: поднима
 - Без звука и без окна для проверки запуска: `GITS_VOICE_FAKE=1`, `GITS_PET_HEADLESS=1`. Выключить второй эшелон фокуса: `GITS_FOCUS_LLM=0`.
 - Вручную (при разработке, ядро должно работать): `python services/voice/main.py`, `python services/pet/main.py`.
 - Telegram: токен бота и канал (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL`) и ключи аккаунта (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`) лежат
-  в `.env`; вход в аккаунт один раз вручную: `python workspaces/telegram/tg_login.py`.
+  в `.env`; вход в аккаунт один раз из дашборда (Окружения - Telegram - «Войти по QR», нужен пакет segno); запасной путь: `python workspaces/telegram/tg_login.py --qr`.
 
 ### Дашборд
 Вкладки: **Состояние** (профили, внимание, фокус, задержка реплики и бюджеты задержек), **Память** (цели, эпизоды трёх видов, отношения),

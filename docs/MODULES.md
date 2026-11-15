@@ -208,7 +208,13 @@ asyncio.run(main())
 - `serve_dirs`: каталоги, из которых ядро раздаёт артефакты задач (`GET /api/artifact`: видео с перемоткой, `.srt`,
   `.json`, `.md` и т. п.). Без `..` и без симлинков наружу.
 - `embed_url`: своя страница окружения на `127.0.0.1` или `localhost`, показывается во вкладке (`iframe`).
-- Блоки (`client.panel.set`): `stats`, `table`, `list`, `text`, `progress`, `buttons`, `link`, `image`, `video`, `log`, `tabs`.
+- Блоки (`client.panel.set`): `stats`, `table`, `list`, `text`, `progress`, `buttons`, `link`, `image`, `video`, `log`, `tabs`, `input`.
+  `input`: поле ввода `{label, action, submit?, placeholder?, args?, secret?, multiline?}`; нажатие шлёт действие `action` с
+  `args.value` (до 4096 символов). `secret: true`: поле пароля; ядро нигде не пишет это значение и вырезает его из ответов и
+  ошибок действия, дашборд не кладёт его в разметку и хранилище. У любого блока необязательное `collapsed: true|false`
+  (сворачиваемая секция по `title`; состояние помнится в localStorage). У `image` вместо `artifact` можно `file`: имя картинки
+  прямо в `serve_dirs` (`GET /api/artifact?module=&file=`). «Настройки» каждого окружения в дашборде всегда свёрнуты по умолчанию.
+  Чат и подобное собирается из `table` (кнопки в строках) и `input`, отдельного блока нет.
   Текст выводится как текст (дашборд экранирует всё, HTML не исполняется). Кнопки и строки таблицы ссылаются на
   `actions` из манифеста, нажатие приходит как `panel.action` (`@client.panel_action`).
 - Вкладка видна, пока окружение включён или подключён. Служебная секция «Служебное» (задачи, настройки, инструменты, события)
@@ -219,7 +225,7 @@ asyncio.run(main())
 - Собственные настройки участника (окно, позиция, клавиши) лежат в его `settings_schema` и хранятся в `peers.<id>` (ядро их не
   знает). Меняются через дашборд (`POST /api/peers/<id>/settings`): так делают кнопки «Показать» и «Скрыть» сервиса `pet`, запись
   позиции его окна и инструмент `telegram.settings` (настройки Telegram `publish`, `after_run`, `voice`,
-  `owner`, `owner_tg_id`, `names`, `dm_flood_per_10min`, `dialog_window_mins` хранятся в `peers.telegram`; старые общие ключи `telegram*` при загрузке `settings.json` переносятся туда).
+  `owner`, `owner_tg_id`, `names`, `dm_flood_per_10min`, `dialog_window_mins`, `default_chat_mode` хранятся в `peers.telegram`; старые общие ключи `telegram*` при загрузке `settings.json` переносятся туда).
 
 ### Среда агента (ТЗ 32)
 

@@ -2,7 +2,8 @@
 telegram_account (environments/builtin.py ядра) дословно: их читает планировщик."""
 import copy
 
-from common import DEFAULT_ABOUT
+from common import CHAT_MODES, DEFAULT_ABOUT, MODE_REPLY
+from telegram_panel import ACTIONS as PANEL_ACTIONS
 
 _GENERIC = ("телеграм", "телега", "тг", "канал", "пост", "написать", "чат")      # TG-8: общие слова просьб про Telegram
 
@@ -69,9 +70,9 @@ MANIFEST = {
     "role": "workspace",
     "ownership": "owned",
     "title": "Telegram",
-    "description": "Telegram: её собственный аккаунт (общается с людьми в личке и группах: слушатель Telethon, события "
-                   "telegram.dm и telegram.group, тег или ответ в группе обязательны к ответу), посты в канал и бот-витрина "
-                   "(описание, ссылки, рассылка объявлений о стримах и видео).",
+    "description": "Telegram: её аккаунт (вход по QR из дашборда; личка и группы, режимы чатов: игнор, чтение, ответы), "
+                   "события telegram.dm и telegram.group (тег в группе обязателен к ответу, если режим «ответы»), посты в "
+                   "канал, бот-витрина. Панель: чаты, переписка, ручная отправка владельцем.",
     "version": "1.0.0",
     "capabilities": ["chat.channel"],
     "subscribe": ["settings", "presence", "module", "character"],
@@ -96,6 +97,9 @@ MANIFEST = {
                                "default": 20, "min": 0, "max": 1000},
         "dialog_window_mins": {"type": "integer", "title": "Продолжение диалога: сколько минут после её ответа собеседник "
                                "считается говорящим с ней без тега (0: выключено)", "default": 15, "min": 0, "max": 240},
+        "default_chat_mode": {"type": "string", "enum": list(CHAT_MODES), "default": MODE_REPLY,
+                              "title": "Режим нового чата её аккаунта: ignore (событий нет), read (читает, не пишет), "
+                                       "reply (читает и отвечает); у каждого чата меняется в панели"},
         "owner": {"type": "string", "title": "Аккаунт владельца в Telegram: @имя или числовой id", "default": ""},
         "owner_tg_id": {"type": "integer", "title": "Telegram id владельца (0: не задан; можно указать аккаунт выше)",
                         "default": 0, "min": 0},
@@ -111,11 +115,15 @@ MANIFEST = {
         {"kind": "telegram.posted", "description": "Опубликован пост в канале", "default_urgency": 1},
     ],
     "state": True,
-    # пространство в дашборде (TZ 15, TAB-6/TAB-9): канал, аккаунт, последние диалоги без текста сообщений
-    "panel": {"title": "Telegram", "icon": "send", "order": 60},
+    # пространство в дашборде (TZ 15): вход в аккаунт, чаты с режимами, открытый чат; действия владельца (не инструменты агента)
+    "panel": {"title": "Telegram", "icon": "send", "order": 60, "actions": list(PANEL_ACTIONS)},
 }
 
 
-def build_manifest() -> dict:
-    """Свежая копия манифеста (клиент тоже копирует, но тестам удобно менять свою)."""
-    return copy.deepcopy(MANIFEST)
+def build_manifest(serve_dirs: list[str] | None = None) -> dict:
+    """Свежая копия манифеста (клиент тоже копирует, но тестам удобно менять свою). `serve_dirs` - каталог с картинкой QR входа
+    (`TelegramUser.qr_dir`): из него ядро отдаёт её браузеру дашборда (panel.serve_dirs, блок image с file)."""
+    manifest = copy.deepcopy(MANIFEST)
+    if serve_dirs:
+        manifest["panel"]["serve_dirs"] = list(serve_dirs)
+    return manifest

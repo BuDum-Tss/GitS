@@ -8,6 +8,7 @@
 Нужны TELEGRAM_API_ID и TELEGRAM_API_HASH в .env (my.telegram.org, API development tools).
 
 Если код не доходит вообще, вход по QR (нужен пакет segno): python workspaces/telegram/tg_login.py --qr
+Проще всего войти из дашборда: вкладка «Окружения» -> Telegram -> блок «Аккаунт» -> «Войти по QR» (этот скрипт запасной).
 Код приходит в приложение Telegram на устройстве, где этот аккаунт уже открыт (служебный чат «Telegram»), а если аккаунт нигде не
 открыт, по SMS. Не пришёл: нажми Enter вместо кода, и Telegram пришлёт его следующим способом (SMS, звонок).
 """
@@ -59,13 +60,10 @@ def _describe(sent) -> None:
         print(f"(Повторный запрос возможен примерно через {timeout} с.)")
 
 
-def _write_qr_page(path: Path, qr) -> None:
+def _write_qr_page(path: Path, png: bytes) -> None:
     """HTML со встроенной картинкой и автообновлением: браузер не держит файл открытым (PNG в просмотрщике Windows блокируется,
     и перезапись падала). Пишем во временный файл и подменяем, чтобы страница никогда не читалась недописанной."""
-    import io
-    buf = io.BytesIO()
-    qr.save(buf, kind="png", scale=10, border=4, dark="black", light="white")
-    data = base64.b64encode(buf.getvalue()).decode()
+    data = base64.b64encode(png).decode()
     html = ('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="2"><title>Вход в Telegram</title>'
             '<body style="background:#fff;text-align:center;font-family:sans-serif">'
             f'<p>Telegram на телефоне: Настройки - Устройства - Подключить устройство. Код меняется каждые ~30 с.</p><img src="data:image/png;base64,{data}">')
@@ -76,16 +74,18 @@ def _write_qr_page(path: Path, qr) -> None:
 
 async def _login_qr(client) -> None:
     """Вход по QR-коду: код доставки не нужен. В Telegram на телефоне: Настройки -> Устройства -> Подключить устройство,
-    навести камеру на код. По умолчанию код пишется картинкой PNG (в терминале QR часто не сканируется из-за тёмной темы и
-    шрифта), файл обновляется каждые 30 секунд и удаляется при выходе; `--ascii` рисует его ещё и в терминале.
-    Путь картинки: TG_QR_PNG, иначе /data/tg_login_qr.html (папка персонажа на хосте), иначе рядом со скриптом."""
+    навести камеру на код. По умолчанию код пишется страницей HTML с картинкой (в терминале QR часто не сканируется из-за тёмной
+    темы и шрифта), файл обновляется при смене кода и удаляется при выходе; `--ascii` рисует его ещё и в терминале.
+    Путь страницы: TG_QR_PNG, иначе /data/tg_login_qr.html (папка персонажа на хосте), иначе рядом со скриптом.
+    Сам опрос Telegram (токен, миграция дата-центра, пароль двух шагов) общий с окружением: tg_qr_login.py. Из панели дашборда
+    окружения войти можно без терминала; этот скрипт остаётся запасным путём."""
+    from tg_qr_login import QrUnavailable, login_url, qr_png, qr_poll
     try:
         import segno
-    except ImportError:
+        qr_png("tg://probe")
+    except (ImportError, QrUnavailable):
         print("Для QR нужен пакет segno: pip install segno")
         raise SystemExit(1) from None
-    from telethon.tl.functions.auth import ExportLoginTokenRequest, ImportLoginTokenRequest
-    from telethon.tl.types.auth import LoginToken, LoginTokenMigrateTo, LoginTokenSuccess
 
     png = Path(os.getenv("TG_QR_PNG") or (Path("/data") if Path("/data").is_dir() else HERE) / "tg_login_qr.html")
     ascii_too = "--ascii" in sys.argv[1:]
@@ -93,26 +93,20 @@ async def _login_qr(client) -> None:
     shown, started, last_note, announced = None, time.monotonic(), 0.0, False
     try:
         while True:
-            # Опрос вместо ожидания события: подтверждение на телефоне видно по ответу, а не по обновлению, которое может не дойти
-            try:
-                res = await client(ExportLoginTokenRequest(api_id, api_hash, []))
-                if isinstance(res, LoginTokenMigrateTo):                    # аккаунт живёт в другом дата-центре Telegram
-                    await client._switch_dc(res.dc_id)
-                    res = await client(ImportLoginTokenRequest(res.token))
-            except SessionPasswordNeededError:
+            step = await qr_poll(client, api_id, api_hash)                # опрос вместо ожидания события: подтверждение видно по ответу
+            if step.kind == "password":
                 await client.sign_in(password=await asyncio.to_thread(getpass.getpass, "Пароль двух шагов (ввод не виден): "))
                 return
-            if isinstance(res, LoginTokenSuccess):
-                client._on_login(res.authorization.user)
+            if step.kind == "success":
                 return
-            if not isinstance(res, LoginToken):
-                print(f"Неожиданный ответ Telegram: {type(res).__name__}")
+            if step.kind != "token":
+                print(f"Неожиданный ответ Telegram: {step.kind}")
                 await asyncio.sleep(3)
                 continue
-            if res.token != shown:                                        # новый код: картинку перезаписываем
-                shown = res.token
-                url = "tg://login?token=" + base64.urlsafe_b64encode(res.token).decode().rstrip("=")
-                _write_qr_page(png, segno.make(url, error="m"))
+            if step.token != shown:                                       # новый код: страницу перезаписываем
+                shown = step.token
+                url = login_url(step.token)
+                _write_qr_page(png, qr_png(url))
                 if not announced:
                     announced = True
                     print(f"\nQR-код сохранён в файл: {png}")
@@ -124,7 +118,7 @@ async def _login_qr(client) -> None:
             if time.monotonic() - last_note >= 10:
                 last_note = time.monotonic()
                 print(f"... ждём подтверждения на телефоне ({int(time.monotonic() - started)} с); код истекает через "
-                      f"{max(0, int(res.expires.timestamp() - time.time()))} с")
+                      f"{max(0, int(step.expires - time.time()))} с")
             await asyncio.sleep(2)
     finally:
         png.unlink(missing_ok=True)

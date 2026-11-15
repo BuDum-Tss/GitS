@@ -3,7 +3,7 @@ import asyncio
 
 from services.peers import panel as peer_panel
 from aiohttp import web
-from gits_sdk.protocol import JOB_ID_RE, ROLE_SERVICE, ROLE_WORKSPACE
+from gits_sdk.protocol import JOB_ID_RE, PANEL_INPUT_VALUE_MAX, ROLE_SERVICE, ROLE_WORKSPACE
 
 from . import presenters
 from .context import background, ctx, json_body
@@ -104,19 +104,28 @@ async def handle_api_peer_panel(request: web.Request) -> web.Response:
 
 
 async def handle_api_peer_panel_action(request: web.Request) -> web.Response:
-    """{"action_id": str, "args": {}}: кнопка или строка пространства. Идентификатор должен быть в panel.actions;
-    модуль отвечает `panel.action`, адрес открытия проверяется (`peer_panel.action_result`)."""
+    """{"action_id": str, "args": {}, "value": str?}: кнопка, строка или поле ввода пространства. Идентификатор должен быть в
+    panel.actions; модуль отвечает `panel.action`, адрес открытия проверяется (`peer_panel.action_result`).
+
+    `value` (поле ввода) доходит до модуля как args.value. Если за действием стоит секретное поле (input с secret: пароль),
+    значение нигде не пишется (ни журнал, ни трассировка, ни текст ошибки) и вырезается из сообщений в ответе дашборду."""
     body, err = await json_body(request)
     if err:
         return err
     rec, err = _module_or_404(request)
     if err:
         return err
-    action_id, args = body.get("action_id"), body.get("args", {})
+    action_id, args, value = body.get("action_id"), body.get("args", {}), body.get("value")
     if not isinstance(action_id, str) or action_id not in ((rec.panel or {}).get("actions") or []):
         return web.json_response({"error": "действие не объявлено в panel.actions модуля"}, status=400)
     if not isinstance(args, dict):
         return web.json_response({"error": "args должно быть объектом"}, status=400)
+    if value is not None and (not isinstance(value, str) or len(value) > PANEL_INPUT_VALUE_MAX):
+        return web.json_response({"error": f"value должно быть строкой до {PANEL_INPUT_VALUE_MAX} символов"}, status=400)
+    secret = value if (isinstance(value, str) and (body.get("secret") is True or action_id in peer_panel.secret_actions(
+        (rec.panel_blocks or {}).get("blocks")))) else None
+    if value is not None:
+        args = {**args, "value": value}
     if ctx.hub is None:
         return web.json_response({"error": "шина модулей не подключена"}, status=503)
     conn = ctx.hub.connection(rec.id)
@@ -124,11 +133,11 @@ async def handle_api_peer_panel_action(request: web.Request) -> web.Response:
         return web.json_response({"error": "модуль не подключён"}, status=409)
     from services.peers.hub import PeerError
     try:
-        value = await conn.request("panel.action", {"action_id": action_id, "args": args},
-                                   timeout=PANEL_ACTION_TIMEOUT_S)
+        result = await conn.request("panel.action", {"action_id": action_id, "args": args},
+                                    timeout=PANEL_ACTION_TIMEOUT_S)
     except PeerError as e:                       # отказ модуля - обычный ответ, не ошибка дашборда
-        return web.json_response({"ok": False, "message": e.message, "code": e.code})
-    return web.json_response(peer_panel.action_result(value, (rec.panel or {}).get("allowed_hosts")))
+        return web.json_response({"ok": False, "message": peer_panel.mask_secret(e.message, secret), "code": e.code})
+    return web.json_response(peer_panel.action_result(result, (rec.panel or {}).get("allowed_hosts"), secret))
 
 
 async def handle_api_peer_panel_link(request: web.Request) -> web.Response:
@@ -194,7 +203,7 @@ async def _run_tool_link(rec, link: dict, body: dict) -> web.Response:
 
 
 async def handle_api_artifact(request: web.Request) -> web.Response:
-    """Файл артефакта задачи: `/api/artifact?module=&job=&name=` (TZ 15, TAB-3). Путь берётся из артефактов задачи и
+    """Файл артефакта задачи: `/api/artifact?module=&job=&name=` или картинка из serve_dirs `?module=&file=` (TZ 15, TAB-3). Путь берётся из артефактов задачи и
     раздаётся только из каталогов panel.serve_dirs; диапазоны (Range) для видео отдаёт aiohttp."""
     if ctx.modules is None:
         return web.json_response({"error": "участники шины не подключены"}, status=503)
@@ -202,6 +211,13 @@ async def handle_api_artifact(request: web.Request) -> web.Response:
     rec = ctx.modules.get(q.get("module", ""))
     if rec is None:
         return web.json_response({"error": "нет такого участника"}, status=404)
+    if q.get("file"):                                   # картинка прямо в serve_dirs (блок image с file), без задачи
+        path = peer_panel.served_image((rec.panel or {}).get("serve_dirs"), q["file"])
+        if path is None:
+            return web.json_response({"error": "такой картинки у модуля нет"}, status=404)
+        resp = web.FileResponse(path, headers={"Cache-Control": "no-cache"})
+        resp.content_type = peer_panel.artifact_content_type(path)
+        return resp
     job_id, name = q.get("job", ""), q.get("name", "")
     if not JOB_ID_RE.match(job_id) or peer_panel.bad_name(name):
         return web.json_response({"error": "нужны job (j-xxxxxxxx) и name (имя файла)"}, status=400)

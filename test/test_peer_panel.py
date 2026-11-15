@@ -223,6 +223,79 @@ async def test_panel_action_refusal_is_an_answer(tmp_path):
     assert resp.status == 200 and body["ok"] is False and body["code"] == "internal"
 
 
+async def test_panel_action_input_value_reaches_module_as_args_value(tmp_path):
+    """Поле ввода: значение приходит действию как args.value (вместе с args блока); не строка и слишком длинное отклоняются."""
+    async with running_core(tmp_path) as core:
+        async with connected(core) as raw:
+            seen = []
+            raw.handlers["panel.action"] = lambda body: seen.append(body) or {"ok": True}
+            async with panel_http(core) as http:
+                resp = await http.post("/api/peers/paneled/panel/action",
+                                       json={"action_id": "approve", "args": {"chat": 5, "value": "подмена"}, "value": "привет"})
+                assert resp.status == 200 and (await resp.json())["ok"] is True
+                assert seen == [{"action_id": "approve", "args": {"chat": 5, "value": "привет"}}]
+                for bad in (5, ["x"], "я" * (P.PANEL_INPUT_VALUE_MAX + 1)):
+                    resp = await http.post("/api/peers/paneled/panel/action", json={"action_id": "approve", "value": bad})
+                    assert resp.status == 400
+
+
+async def test_secret_input_value_is_not_logged_and_is_masked_in_answers(tmp_path, caplog):
+    """Секретное поле (пароль двух шагов): значения нет ни в одном журнале ядра, а из сообщения модуля и из ошибки оно вырезается."""
+    secret = "Пароль-Двух-Шагов-123"
+    secret_block = [{"type": "input", "action": "approve", "label": "Пароль", "secret": True}]
+    async with running_core(tmp_path) as core:
+        async with connected(core) as raw:
+            await raw.send("panel.set", {"blocks": secret_block})
+            await core.wait_for(lambda: core.modules.get("paneled").panel_blocks)
+            answers = [lambda body: {"ok": True, "message": "принят " + body["args"]["value"]}]
+            raw.handlers["panel.action"] = lambda body: answers[0](body)
+            with caplog.at_level(logging.DEBUG):
+                async with panel_http(core) as http:
+                    resp = await http.post("/api/peers/paneled/panel/action", json={"action_id": "approve", "value": secret})
+                    body = await resp.json()
+                    assert body["ok"] is True and secret not in body["message"] and "***" in body["message"]
+                    def refuse(request):
+                        raise RuntimeError("неверно: " + request["args"]["value"])
+                    raw.handlers["panel.action"] = refuse
+                    resp = await http.post("/api/peers/paneled/panel/action", json={"action_id": "approve", "value": secret})
+                    body = await resp.json()
+                    assert body["ok"] is False and secret not in body["message"]
+    assert secret not in caplog.text
+    assert secret not in " ".join(str(r.args) for r in caplog.records)
+    from services.tracing import events_log
+    events_log.flush()
+    assert secret not in str(events_log.tail(limit=500))
+
+
+async def test_panel_set_accepts_new_blocks_and_rejects_bad_ones(tmp_path):
+    good = [{"type": "input", "action": "approve", "label": "Текст", "collapsed": True},
+            {"type": "image", "file": "qr.png"}, {"type": "text", "text": "x", "collapsed": False}]
+    async with running_core(tmp_path) as core:
+        async with connected(core) as raw:
+            await raw.send("panel.set", {"blocks": good})
+            await core.wait_for(lambda: core.modules.get("paneled").panel_blocks)
+            assert core.modules.get("paneled").panel_blocks["blocks"] == good
+
+
+async def test_image_file_is_served_only_from_serve_dirs(tmp_path):
+    """Блок image с file: картинка лежит прямо в каталоге из serve_dirs; чужие расширения, пути и файлы вне каталога не отдаются."""
+    shown = tmp_path / "shown"
+    shown.mkdir()
+    (shown / "qr.png").write_bytes(b"PNG-data")
+    (shown / "notes.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "outside.png").write_bytes(b"x")
+    async with running_core(tmp_path / "core") as core:
+        async with connected(core, paneled(dict(PANEL, serve_dirs=[str(shown)]))):
+            async with panel_http(core) as http:
+                async def get(name):
+                    return await http.get("/api/artifact", params={"module": "paneled", "file": name})
+                resp = await get("qr.png")
+                assert resp.status == 200 and resp.headers["Content-Type"] == "image/png" and await resp.read() == b"PNG-data"
+                assert (await get("notes.txt")).status == 404          # не картинка
+                assert (await get("../outside.png")).status == 404     # путь вместо имени
+                assert (await get("missing.png")).status == 404
+
+
 async def test_tool_link_runs_auto_tool_and_returns_url(tmp_path):
     async with running_core(tmp_path) as core:
         async with connected(core) as raw:
@@ -394,6 +467,15 @@ def test_action_result_rules():
     assert peer_panel.action_result({"ok": True, "open_url": "https://example.com/a"}, hosts)["open_url"]
     assert "open_url" not in peer_panel.action_result({"ok": True, "open_url": "file:///C:/x"}, hosts)
     assert peer_panel.action_result("не объект", hosts) == {"ok": False, "message": "модуль вернул ответ не по форме"}
+
+
+def test_secret_actions_and_mask_helpers():
+    blocks = [{"type": "input", "action": "a", "label": "x", "secret": True}, {"type": "input", "action": "b", "label": "x"},
+              {"type": "tabs", "tabs": [{"label": "t", "blocks": [{"type": "input", "action": "c", "label": "x", "secret": True}]}]}]
+    assert peer_panel.secret_actions(blocks) == {"a", "c"}
+    assert peer_panel.secret_actions(None) == set()
+    assert peer_panel.mask_secret("пароль qwe тут", "qwe") == "пароль *** тут"
+    assert peer_panel.mask_secret("без секрета", None) == "без секрета"
 
 
 def test_panel_spec_has_serve_dirs_for_core():

@@ -55,6 +55,44 @@ def served_dir(serve_dirs, raw) -> Path | None:
     return None
 
 
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+
+
+def served_image(serve_dirs, name) -> Path | None:
+    """Файл-картинка по имени прямо в каталоге из serve_dirs (блок image с полем file, без задачи): только имя без путей и
+    только расширения картинок; дальше те же проверки, что у served_file (никаких `..` и симлинков наружу)."""
+    if not isinstance(name, str) or bad_name(name) or not name.lower().endswith(IMAGE_EXTS):
+        return None
+    for d in serve_dirs or []:
+        found = served_file(serve_dirs, str(Path(d) / name))
+        if found is not None:
+            return found
+    return None
+
+
+def secret_actions(blocks) -> set[str]:
+    """Идентификаторы действий, которые стоят за секретными полями ввода (input с secret) в блоках панели, включая вкладки.
+    Значение таких действий нигде не пишется и вырезается из ответов."""
+    found: set[str] = set()
+    for b in blocks if isinstance(blocks, list) else []:
+        if not isinstance(b, dict):
+            continue
+        if b.get("type") == "input" and b.get("secret") is True and isinstance(b.get("action"), str):
+            found.add(b["action"])
+        for tab in b.get("tabs") or []:
+            if isinstance(tab, dict):
+                found |= secret_actions(tab.get("blocks"))
+    return found
+
+
+def mask_secret(text, secret) -> str:
+    """Убрать секретное значение (пароль из поля ввода) из текста: сообщения модуля и ошибок, прежде чем они пойдут в ответ или журнал."""
+    text = str(text)
+    if isinstance(secret, str) and secret:
+        text = text.replace(secret, "***")
+    return text
+
+
 def artifact_content_type(path: Path) -> str:
     return ARTIFACT_TYPES.get(path.suffix.lower(), "application/octet-stream")
 
@@ -70,7 +108,7 @@ def open_url_allowed(url, allowed_hosts) -> bool:
     return parts.hostname in LOCAL_HOSTS or parts.hostname in set(allowed_hosts or [])
 
 
-def action_result(value, allowed_hosts) -> dict:
+def action_result(value, allowed_hosts, secret: str | None = None) -> dict:
     """Ответ модуля на `panel.action` (`{ok, message?, open_url?}`) -> ответ дашборду. Адрес, которого нет в
     разрешённых, не отдаётся: вместо него в сообщении пишется причина."""
     if not isinstance(value, dict) or not isinstance(value.get("ok"), bool):
@@ -78,7 +116,7 @@ def action_result(value, allowed_hosts) -> dict:
     out: dict = {"ok": value["ok"]}
     message = value.get("message")
     if isinstance(message, str) and message:
-        out["message"] = message[:ACTION_MESSAGE_MAX]
+        out["message"] = mask_secret(message, secret)[:ACTION_MESSAGE_MAX]
     url = value.get("open_url")
     if url is not None:
         if open_url_allowed(url, allowed_hosts):

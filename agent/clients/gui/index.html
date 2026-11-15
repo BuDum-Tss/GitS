@@ -1211,7 +1211,7 @@ function renderModule(m) {
     ${m.last_error ? `<pre class="text-xs bg-base-200 rounded p-2 mt-2 whitespace-pre-wrap" style="max-height:8rem;overflow:auto">${esc(m.last_error)}</pre>` : ''}
     ${(m.capabilities || []).length ? `<div class="flex flex-wrap gap-1 mt-2">${m.capabilities.map(c => `<span class="badge badge-outline badge-xs">${esc(c)}</span>`).join('')}</div>` : ''}
     ${tools ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Инструменты (${m.tools.length})</summary><ul class="space-y-1 mt-1">${tools}</ul></details>` : ''}
-    ${schema.length ? `<details class="mt-2"><summary class="text-xs cursor-pointer opacity-70">Настройки</summary><div class="space-y-2 mt-2">${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></details>` : ''}
+    ${schema.length ? `<details class="mt-2" data-collapse="settings:${esc(m.id)}" ${collapseOpen('settings:' + m.id, true) ? 'open' : ''}><summary class="text-xs cursor-pointer opacity-70">Настройки</summary><div class="space-y-2 mt-2">${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></details>` : ''}
   </div>`;
 }
 
@@ -1263,6 +1263,25 @@ MODTAB.selected = modTabStored();
 const panelModules = mods => mods.filter(m => !m.external && m.panel && (m.enabled || m.connected));
 const safeHttp = url => /^https?:\/\//i.test(String(url || '')) ? esc(url) : '#';
 const artifactUrl = (module, job, name) => `/api/artifact?module=${encodeURIComponent(module)}&job=${encodeURIComponent(job)}&name=${encodeURIComponent(name)}`;
+const imageFileUrl = (module, file) => `/api/artifact?module=${encodeURIComponent(module)}&file=${encodeURIComponent(file)}`;
+// Сворачиваемые секции (блоки с collapsed и все «Настройки»): состояние хранится в localStorage по ключу секции; пока его нет,
+// секция свёрнута, если collapsed (для настроек: всегда) истинно. Закрытое хранилище не мешает: тогда состояние только на сессию.
+const COLLAPSE_KEY = 'gits.collapsed';
+const COLLAPSE_MEM = {};
+function collapseOpen(key, collapsedDefault) {
+  if (key in COLLAPSE_MEM) return COLLAPSE_MEM[key];
+  try { const v = (JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '{}') || {})[key]; if (typeof v === 'boolean') return v; } catch (_) { /* нет хранилища */ }
+  return !collapsedDefault;
+}
+function collapseSave(key, open) {
+  COLLAPSE_MEM[key] = open;
+  try { const all = JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '{}') || {}; all[key] = open; localStorage.setItem(COLLAPSE_KEY, JSON.stringify(all)); } catch (_) { /* только в памяти страницы */ }
+}
+function collapsible(key, title, bodyHtml, collapsedDefault) {
+  return `<details class="rounded-box border border-base-300 p-3" data-collapse="${esc(key)}" ${collapseOpen(key, collapsedDefault) ? 'open' : ''}><summary class="cursor-pointer text-sm font-medium bubble-text">${esc(title)}</summary><div class="mt-2 space-y-1">${bodyHtml}</div></details>`;
+}
+// Черновики полей ввода живут только в памяти страницы (пароль тоже; на диск и в HTML они не попадают): перерисовка панели их не стирает.
+const PANEL_DRAFT = {};
 const dotCls = m => m.connected ? 'bg-success' : (m.status === 'crashed' || m.status === 'backoff' || m.last_error) ? 'bg-error' : 'bg-base-300';
 
 function setModTab(key) {
@@ -1290,6 +1309,7 @@ function actionButton(module, a, size, style) {
 function panelBlocks(module, blocks, path) {
   return (blocks || []).map((b, i) => {
     const p = path ? `${path}.${i}` : `${i}`;
+    if (typeof b.collapsed === 'boolean') return `<section>${collapsible(`panel:${module}:${p}`, b.title || 'Секция', panelBlock(module, b, p), b.collapsed)}</section>`;
     const head = b.title ? `<div class="text-sm font-medium mb-1 bubble-text">${esc(b.title)}</div>` : '';
     return `<section class="space-y-1">${head}${panelBlock(module, b, p)}</section>`;
   }).join('');
@@ -1318,7 +1338,14 @@ function panelBlock(module, b, p) {
     case 'link':
       return `<a class="link link-primary bubble-text" href="${safeHttp(b.url)}" target="_blank" rel="noopener noreferrer">${esc(b.label)}</a>`;
     case 'image':
-      return `<img class="rounded-box max-h-64 bg-base-200" src="${esc(artifactUrl(module, (b.artifact || {}).job, (b.artifact || {}).name))}" alt="${esc(b.alt || '')}" loading="lazy">`;
+      return `<img class="rounded-box max-h-64 bg-base-200" src="${esc(b.file ? imageFileUrl(module, b.file) : artifactUrl(module, (b.artifact || {}).job, (b.artifact || {}).name))}" alt="${esc(b.alt || '')}" loading="lazy">`;
+    case 'input': {
+      const key = `${module}:${p}`, secret = b.secret === true;
+      const field = b.multiline
+        ? `<textarea class="textarea textarea-bordered textarea-sm w-full" rows="3" data-draft="${esc(key)}" placeholder="${esc(b.placeholder || '')}" autocomplete="off"></textarea>`
+        : `<input class="input input-bordered input-sm w-full" type="${secret ? 'password' : 'text'}" data-draft="${esc(key)}" placeholder="${esc(b.placeholder || '')}" autocomplete="${secret ? 'new-password' : 'off'}">`;
+      return `<form class="space-y-1" data-panel-input="${esc(b.action)}" data-module="${esc(module)}" data-draft-key="${esc(key)}" data-args="${esc(JSON.stringify(b.args || {}))}"${secret ? ' data-secret="1"' : ''}><label class="text-xs opacity-70 bubble-text">${esc(b.label)}</label><div class="flex gap-2 items-end">${field}<button type="submit" class="btn btn-sm btn-neutral shrink-0">${esc(b.submit || 'Отправить')}</button></div></form>`;
+    }
     case 'video':
       return `<video class="w-full rounded-box bg-black" controls preload="metadata" src="${esc(artifactUrl(module, (b.artifact || {}).job, (b.artifact || {}).name))}"></video>`;
     case 'log':
@@ -1366,7 +1393,7 @@ function modPageHtml(m, data, jobs, events) {
     ${panel.embed_url ? `<iframe src="${esc(panel.embed_url)}" title="${esc(panel.title || m.title)}" class="w-full rounded-box border border-base-300 bg-base-100" style="height:60vh"></iframe>` : ''}
     ${blocks.length ? `<div class="space-y-4">${panelBlocks(m.id, blocks, '')}</div>` : ''}
     ${msg ? `<div class="text-xs bubble-text" data-panel-msg="${esc(m.id)}">${esc(msg)}</div>` : ''}
-    ${shared.length || schema.length ? `<section class="rounded-box border border-base-300 p-3"><div class="text-sm font-medium mb-2">Настройки</div><div class="space-y-3">${shared.map(sharedSettingControl).join('')}${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div></section>` : ''}
+    ${shared.length || schema.length ? collapsible('settings:' + m.id, 'Настройки', `<div class="space-y-3 mt-2">${shared.map(sharedSettingControl).join('')}${schema.map(([k, s]) => modSettingControl(m, k, s)).join('')}</div><div class="text-xs text-error mt-1" data-err="${esc(m.id)}"></div>`, true) : ''}
     <details class="rounded-box border border-base-300 p-3" data-svc="${esc(m.id)}" ${svcOpen ? 'open' : ''}>
       <summary class="cursor-pointer text-sm font-medium">Служебное</summary>
       <div class="space-y-4 mt-3">
@@ -1386,7 +1413,7 @@ async function renderModPage(mods, jobs) {
   const events = await modEvents(m.id);
   const html = modPageHtml(m, data, jobs.filter(j => j.module === m.id), events);
   const typing = $('mod-page').contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
-  if (!typing && MODTAB.pageSig !== html) { MODTAB.pageSig = html; $('mod-page').innerHTML = html; }
+  if (!typing && MODTAB.pageSig !== html) { MODTAB.pageSig = html; $('mod-page').innerHTML = html; restoreDrafts(); }
 }
 
 async function loadModules() {
@@ -1428,6 +1455,31 @@ $('mod-subtabs').addEventListener('click', e => {
 $('mod-page').addEventListener('toggle', e => {
   const d = e.target; if (d.dataset && d.dataset.svc) MODTAB.open[d.dataset.svc] = d.open;
 }, true);
+// Сворачиваемые секции есть и на странице окружения, и в карточках «Обзора»: toggle не всплывает, слушаем на документе в фазе захвата
+document.addEventListener('toggle', e => {
+  const d = e.target; if (d && d.dataset && d.dataset.collapse) collapseSave(d.dataset.collapse, d.open);
+}, true);
+// Поля ввода: значение (в том числе пароль) уходит только в POST этого действия и сразу стирается из поля и из черновика
+function restoreDrafts() {
+  document.querySelectorAll('#mod-page [data-draft]').forEach(el => { const v = PANEL_DRAFT[el.dataset.draft]; if (typeof v === 'string') el.value = v; });
+}
+$('mod-page').addEventListener('input', e => {
+  const el = e.target; if (el && el.dataset && el.dataset.draft) PANEL_DRAFT[el.dataset.draft] = el.value;
+});
+$('mod-page').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.ctrlKey && e.target.tagName === 'TEXTAREA' && e.target.form) e.target.form.requestSubmit();
+});
+$('mod-page').addEventListener('submit', async e => {
+  const form = e.target.closest('[data-panel-input]'); if (!form) return;
+  e.preventDefault();
+  const field = form.querySelector('[data-draft]'), secret = !!form.dataset.secret;
+  const value = field.value; if (!(secret ? value : value.trim())) return;
+  let args = {}; try { args = JSON.parse(form.dataset.args || '{}'); } catch (_) { args = {}; }
+  const body = {action_id: form.dataset.panelInput, args, value}; if (secret) body.secret = true;
+  field.value = ''; delete PANEL_DRAFT[form.dataset.draftKey]; field.blur();
+  const r = await post(`/api/peers/${encodeURIComponent(form.dataset.module)}/panel/action`, body);
+  await showPanelReply(form.dataset.module, r);
+});
 $('mod-page').addEventListener('click', async e => {
   const tab = e.target.closest('[data-panel-tab]');
   if (tab) { MODTAB.tabSel[tab.dataset.panelTab] = Number(tab.dataset.index) || 0; MODTAB.pageSig = ''; loadModules().catch(() => {}); return; }

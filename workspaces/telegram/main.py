@@ -28,7 +28,9 @@ log = logging.getLogger("telegram")
 
 async def amain() -> int:
     memory_dir = default_memory_dir()
-    client = WorkspaceClient(build_manifest())
+    qr_dir = Path(memory_dir).resolve() / "tg_login"                # картинку QR входа ядро отдаёт из panel.serve_dirs
+    qr_dir.mkdir(parents=True, exist_ok=True)
+    client = WorkspaceClient(build_manifest([str(qr_dir)]))
     module = TelegramModule(client, memory_dir)
     module.start()
     try:

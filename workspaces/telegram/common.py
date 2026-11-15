@@ -256,6 +256,64 @@ class Dialogs:
                 "last_out": float(rec.get("reply_ts") or 0.0), "last_in": float(rec.get("in_ts") or 0.0)}
 
 
+# Режимы чата её аккаунта (жёстко в коде telegram_user.py): что ей позволено в этом чате
+MODE_IGNORE, MODE_READ, MODE_REPLY = "ignore", "read", "reply"
+CHAT_MODES = (MODE_IGNORE, MODE_READ, MODE_REPLY)
+MODE_WORDS = {MODE_IGNORE: "игнор", MODE_READ: "чтение", MODE_REPLY: "ответы"}
+
+
+def valid_mode(value, default: str = MODE_REPLY) -> str:
+    """Режим из настройки или файла: незнакомое значение заменяется на default."""
+    return value if value in CHAT_MODES else default
+
+
+class ChatModes:
+    """Режим каждого чата её аккаунта: ignore (событий в ядро нет), read (события есть, писать нельзя), reply (как обычно).
+    Файл tg_chat_modes.json рядом с остальной памятью; хранятся только id чата и режим, не тексты. Запись атомарная (временный
+    файл и замена). Для чата без записи действует режим по умолчанию (настройка `default_chat_mode`, по умолчанию reply)."""
+
+    FILE = "tg_chat_modes.json"
+
+    def __init__(self, memory_dir: str):
+        self._file = Path(memory_dir) / self.FILE
+        self._lock = threading.Lock()
+
+    def _load(self) -> dict[str, str]:
+        try:
+            chats = json.loads(self._file.read_text(encoding="utf-8")).get("chats", {})
+        except Exception:
+            return {}
+        return {k: v for k, v in chats.items() if isinstance(k, str) and k.lstrip("-").isdigit() and v in CHAT_MODES}
+
+    def _save(self, chats: dict[str, str]) -> bool:
+        tmp = self._file.with_name(self._file.name + ".tmp")
+        try:
+            self._file.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps({"chats": chats}, ensure_ascii=False, indent=1), encoding="utf-8")
+            os.replace(tmp, self._file)
+        except OSError:
+            return False
+        return True
+
+    def get(self, chat_id, default: str = MODE_REPLY) -> str:
+        return self._load().get(str(chat_id)) or valid_mode(default)
+
+    def explicit(self, chat_id) -> str | None:
+        """Режим, который для чата выбрали явно; None, если чат на значении по умолчанию."""
+        return self._load().get(str(chat_id))
+
+    def set(self, chat_id, mode: str) -> bool:
+        if mode not in CHAT_MODES:
+            raise ValueError(f"режим чата: одно из {list(CHAT_MODES)}")
+        with self._lock:
+            chats = self._load()
+            chats[str(chat_id)] = mode
+            return self._save(chats)
+
+    def all(self) -> dict[str, str]:
+        return self._load()
+
+
 class Subscribers:
     """Подписчики бота-витрины на объявления (/subscribe): id личного чата -> имя и время подписки. Один файл
     tg_subscribers.json рядом с остальной памятью; запись атомарная (временный файл и замена), чтобы сбой посреди записи не

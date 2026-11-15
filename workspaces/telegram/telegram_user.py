@@ -1,8 +1,16 @@
 """Её собственный аккаунт в Telegram (Telethon): читать чаты и писать как обычный пользователь.
 
-Это ОТДЕЛЬНЫЙ аккаунт ГЛаДОС, не аккаунт пользователя. Вход делается один раз, руками, скриптом tg_login.py
-(номер телефона, код из Telegram, пароль двух шагов вводит сам пользователь; ассистентка их не видит).
-Дальше сессия лежит в MEMORY_DIR/tg_user.session (папка memory не в git; файл равен доступу к аккаунту, не делиться).
+Это ОТДЕЛЬНЫЙ аккаунт ГЛаДОС, не аккаунт пользователя. Вход делается один раз: из дашборда (панель Telegram, «Войти по QR»,
+автомат `QrLogin` из tg_qr_login.py; пароль двух шагов вводится в поле панели и идёт прямо сюда) либо запасным скриптом
+tg_login.py в терминале. Ассистентка ни кодов, ни паролей не видит. После входа слушатель сам подхватывает сессию (без
+перезапуска контейнера): `session_changed`. Сессия лежит в MEMORY_DIR/tg_user.session (папка memory не в git; файл равен
+доступу к аккаунту, не делиться).
+
+Режимы чатов (файл tg_chat_modes.json, `ChatModes`; жёстко в коде, а не в подсказках): `ignore` (событий в ядро нет совсем,
+R6 не срабатывает, в списке диалогов помечен, содержимое не читается), `read` (события идут для внимания и памяти, но с
+addressed_to_me=False и без reply_channel: тег и ответ ей не делают ответ обязательным; писать в чат от её имени нельзя ни
+одним путём: message, reply, send, deliver), `reply` (как обычно). Личка владельца всегда reply. Ручная отправка владельцем
+из панели (`by_owner=True`) режимом не ограничивается: это его действие, а не её.
 
 Ключи: TELEGRAM_API_ID и TELEGRAM_API_HASH в .env (получаются на my.telegram.org -> API development tools).
 
@@ -24,8 +32,10 @@ import time
 from collections import deque
 from pathlib import Path
 
-from common import SERVICE_USER_ID, TEXT_MAX, Dialogs, KnownChats, OwnerBook, chunks, full_name, message_fact, scrub
+from common import (MODE_IGNORE, MODE_READ, MODE_REPLY, SERVICE_USER_ID, TEXT_MAX, ChatModes, Dialogs, KnownChats, OwnerBook,
+                    chunks, full_name, message_fact, scrub, valid_mode)
 from gits_sdk.protocol import clip
+from tg_qr_login import QrLogin, is_network_error
 
 from gits_sdk import host
 
@@ -60,6 +70,18 @@ class LeakError(ValueError):
     """В тексте есть личные слова (TG-5): такое чужим не отправляется."""
 
 
+class ChatModeError(Exception):
+    """Режим чата не позволяет это сделать (ему «чтение» или «игнор»). Не OSError: сетевой сбой это не должно напоминать."""
+
+
+class NotAuthorized(RuntimeError):
+    """Сессии нет или она недействительна: нужен вход (в панели дашборда: «Войти по QR»)."""
+
+
+READ_ONLY_NOTE = " [чат только для чтения: писать сюда нельзя]"
+KIND_WORDS = {"user": "личный", "bot": "бот", "group": "группа", "supergroup": "супергруппа", "channel": "канал"}
+
+
 def session_path(memory_dir: str) -> str:
     return str(Path(memory_dir) / "tg_user")
 
@@ -72,15 +94,22 @@ class TelegramUser:
         self.owner = OwnerBook(memory_dir, client)
         self.known = KnownChats(memory_dir)
         self.dialogs = Dialogs(memory_dir)
+        self.modes = ChatModes(memory_dir)
         self.privacy = privacy
         self.typing_scale = 1.0                           # множитель времени «печатает» (тесты ставят 0)
         self._flood: dict[int, deque] = {}                # id человека -> времена его сообщений в личку за 10 минут
         self._api_id = os.getenv("TELEGRAM_API_ID", "").strip()
         self._api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
         self._client = None
-        self._lock = asyncio.Lock()
+        self._lock = asyncio.Lock()                       # отправка и чтение от её имени идут по очереди
+        self._conn_lock = asyncio.Lock()                  # одно подключение за раз (панель и слушатель просят его вместе)
         self._me = None
         self._problem = ""
+        self._unauthorized = False                        # сессии нет или она недействительна (нужен вход)
+        self._offline = False                             # нет сети (отличаем от «ошибки связи» и «нет сессии»)
+        self._wake = asyncio.Event()                      # разбудить слушатель: вошли, вышли
+        self.on_change = None                             # функция без аргументов: состояние аккаунта изменилось (будит панель)
+        self._login: QrLogin | None = None
         self._inbox_file = self._dir / "tg_inbox.json"
         self._seen_file = self._dir / "tg_inbox_seen.json"
 
@@ -92,6 +121,9 @@ class TelegramUser:
     def has_session(self) -> bool:
         return Path(session_path(str(self._dir)) + ".session").exists()
 
+    def login_active(self) -> bool:
+        return self._login is not None and self._login.active
+
     def state(self) -> tuple[bool, str]:
         """(работает ли аккаунт, причина). Причины для разработчика и для дашборда, без секретов."""
         if not self.configured():
@@ -100,43 +132,81 @@ class TelegramUser:
             import telethon  # noqa: F401
         except ImportError:
             return False, "не установлена библиотека telethon (pip install telethon)"
-        if not self.has_session():
-            return False, "вход не выполнен: запусти один раз python workspaces/telegram/tg_login.py"
+        if self.login_active():
+            return False, "идёт вход в аккаунт (панель Telegram в дашборде)"
+        if not self.has_session() or self._unauthorized:
+            return False, "вход не выполнен: нажми «Войти по QR» в панели Telegram в дашборде"
+        if self._offline:
+            return False, "нет сети: не удалось связаться с Telegram"
         if self._problem:
             return False, self._problem
         name = (getattr(self._me, "first_name", None) or getattr(self._me, "username", None)) if self._me else None
         return True, f"аккаунт {name}" if name else "аккаунт подключается"
 
     def state_word(self) -> str:
-        """Короткое слово для сводки состояния (TG-21): подключён, нет ключей, нет telethon, нет сессии, ошибка связи."""
+        """Короткое слово для сводки состояния (TG-21): подключён, нет ключей, нет telethon, вход, нет сессии, нет сети, ошибка связи."""
         if not self.configured():
             return "нет ключей"
         try:
             import telethon  # noqa: F401
         except ImportError:
             return "нет telethon"
-        if not self.has_session():
+        if self.login_active():
+            return "идёт вход"
+        if not self.has_session() or self._unauthorized:
             return "нет сессии"
+        if self._offline:
+            return "нет сети"
         if self._problem:
             return "ошибка связи"
         return "подключён" if self._me is not None else "подключается"
 
+    def me_text(self) -> str:
+        """«Имя @username» вошедшего аккаунта; пусто, пока не известно."""
+        if self._me is None:
+            return ""
+        name, user = getattr(self._me, "first_name", None) or "", getattr(self._me, "username", None)
+        return " ".join(x for x in (name, f"@{user}" if user else "") if x)
+
+    def _changed(self) -> None:
+        if self.on_change is not None:
+            try:
+                self.on_change()
+            except Exception as e:
+                logger.debug("on_change: %s", e)
+
+    def session_changed(self) -> None:
+        """Сессия появилась или исчезла (вход, выход): сбросить признаки сбоя и разбудить слушатель, он подключится сразу."""
+        self._unauthorized = self._offline = False
+        self._problem = ""
+        self._wake.set()
+        self._changed()
+
+    async def _sleep_or_wake(self, seconds: float) -> None:
+        try:
+            await asyncio.wait_for(self._wake.wait(), seconds)
+        except asyncio.TimeoutError:
+            pass
+        self._wake.clear()
+
     # ── подключение ──────────────────────────────────────────────────────────
 
     async def _connect(self):
-        if self._client is not None and self._client.is_connected():
-            return self._client
-        from telethon import TelegramClient
-        client = TelegramClient(session_path(str(self._dir)), int(self._api_id), self._api_hash)
-        await client.connect()
-        if not await client.is_user_authorized():
-            await client.disconnect()
-            self._problem = "сессия недействительна: запусти python workspaces/telegram/tg_login.py ещё раз"
-            raise RuntimeError(self._problem)
-        self._me = await client.get_me()
-        self._problem = ""
-        self._client = client
-        return client
+        async with self._conn_lock:
+            if self._client is not None and self._client.is_connected():
+                return self._client
+            from telethon import TelegramClient
+            client = TelegramClient(session_path(str(self._dir)), int(self._api_id), self._api_hash)
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.disconnect()
+                self._unauthorized = True
+                self._me = None
+                raise NotAuthorized("сессия недействительна: войди заново по QR в панели Telegram в дашборде")
+            self._me = await client.get_me()
+            self._problem, self._unauthorized, self._offline = "", False, False
+            self._client = client
+            return client
 
     async def close(self):
         client, self._client = self._client, None
@@ -149,9 +219,14 @@ class TelegramUser:
     async def run(self):
         """Фон: держит соединение и пишет входящие сообщения в журнал, в tg_inbox.json и событиями в ядро."""
         while True:
+            if self.login_active():                                       # вход держит файл сессии: не мешаем
+                await self._sleep_or_wake(2)
+                continue
             ok, _ = self.state()
             if not ok:
-                await asyncio.sleep(120)
+                await self._sleep_or_wake(30 if self.has_session() and not self._unauthorized else 120)
+                if self._offline:
+                    self._offline = False                                 # снова пробуем, сеть могла вернуться
                 continue
             try:
                 from telethon import events
@@ -165,12 +240,21 @@ class TelegramUser:
                 await client.run_until_disconnected()
             except asyncio.CancelledError:
                 raise
-            except Exception as e:
-                self._problem = f"связь прервана: {scrub(str(e), self._api_hash)[:120]}"
-                logger.warning("Telegram-аккаунт: %s", scrub(str(e), self._api_hash))
+            except NotAuthorized:
                 self._client = None
-                await asyncio.sleep(60)
-                self._problem = ""
+                self._changed()
+            except Exception as e:
+                self._client = None
+                if is_network_error(e):
+                    self._offline = True                                  # «нет сети», а не «ошибка связи»
+                    logger.warning("Telegram-аккаунт: нет сети")
+                else:
+                    self._problem = f"связь прервана: {scrub(str(e), self._api_hash)[:120]}"
+                    logger.warning("Telegram-аккаунт: %s", scrub(str(e), self._api_hash))
+                self._changed()
+                await self._sleep_or_wake(60)
+                self._problem, self._offline = "", False
+                self._changed()
 
     # ── входящие ─────────────────────────────────────────────────────────────
 
@@ -201,13 +285,16 @@ class TelegramUser:
                             getattr(sender, "username", None), ev.sender_id)
             title = getattr(chat, "title", None) or who
             text = self._text_of(ev)[:TEXT_MAX]
+            mode = self.mode_of(ev.chat_id, getattr(sender, "username", None) if ev.is_private else None)
+            if mode == MODE_IGNORE:
+                return                                                    # игнор: ни журнала, ни inbox, ни события, ни «прочитано»
             rec = {"ts": time.time(), "chat": title, "chat_id": ev.chat_id, "from": who, "text": text,
                    "private": bool(ev.is_private)}
             await asyncio.to_thread(self.known.add, ev.chat_id, title, getattr(sender, "username", None), who)
             await asyncio.to_thread(self._append_inbox, rec)             # TG-11: tg_inbox.json как прежде
             host.log_nowait("telegram", f"написали в её аккаунт ({'личное' if ev.is_private else title}): "
                                               f"{who}: {text[:100]}")
-            await self._emit(ev, sender, who, title, text)
+            await self._emit(ev, sender, who, title, text, mode)
         except Exception as e:
             logger.warning("Входящее сообщение: %s", e)
 
@@ -239,7 +326,36 @@ class TelegramUser:
                 del self._flood[key]
         return len(stamps) > limit
 
-    async def _emit(self, ev, sender, who: str, title: str, text: str) -> None:
+    # ── режимы чатов ─────────────────────────────────────────────────────────
+
+    def default_mode(self) -> str:
+        """Режим чата, которого нет в файле: настройка `default_chat_mode` (по умолчанию reply)."""
+        return valid_mode((self.client.module_settings or {}).get("default_chat_mode"))
+
+    def is_owner_chat(self, chat_id, username: str | None = None) -> bool:
+        """Это личка владельца (чат с положительным id, равным id владельца или его @имени)."""
+        return isinstance(chat_id, int) and chat_id > 0 and self.owner.is_owner(chat_id, username)
+
+    def mode_of(self, chat_id, username: str | None = None) -> str:
+        """Режим чата. Личка владельца всегда reply: владелец не может случайно закрыть себе доступ к ней."""
+        if self.is_owner_chat(chat_id, username):
+            return MODE_REPLY
+        return self.modes.get(chat_id, self.default_mode())
+
+    def mode_error(self, mode: str) -> ChatModeError:
+        if mode == MODE_READ:
+            return ChatModeError("чат только для чтения: писать в него от её имени нельзя (режим «чтение» в панели Telegram)")
+        return ChatModeError("чат в режиме «игнор»: писать в него от её имени нельзя (режим меняется в панели Telegram)")
+
+    def _guard(self, ent, by_owner: bool = False) -> None:
+        """Отправка в чат разрешена только в режиме reply. Исключение: ручная отправка владельцем из панели (by_owner)."""
+        if by_owner:
+            return
+        mode = self.mode_of(self._chat_key(ent), getattr(ent, "username", None))
+        if mode != MODE_REPLY:
+            raise self.mode_error(mode)
+
+    async def _emit(self, ev, sender, who: str, title: str, text: str, mode: str = MODE_REPLY) -> None:
         """Событие для ядра (раздел 6 ТЗ 10). Каналы (broadcast), боты (в том числе её другие боты) и служебный аккаунт
         Telegram событий не дают: в служебных сообщениях приходят коды входа.
         Обращённость: личка всегда к ней; в группе тег, ответ на её сообщение или её имя. Продолжение диалога: человек, с
@@ -252,24 +368,34 @@ class TelegramUser:
         window = self._setting("dialog_window_mins", int(DIALOG_WINDOW_S // 60)) * 60.0
         continuing = await asyncio.to_thread(self.dialogs.in_dialog, ev.chat_id, uid, window)
         fields = {}
+        read_only = mode == MODE_READ
         if ev.is_private:
             kind, place, addressed, memorable, tag = "telegram.dm", "её личке", True, True, "dm"
-            if not who_info["is_owner"] and not continuing and self._flooded(uid):
+            if not read_only and not who_info["is_owner"] and not continuing and self._flooded(uid):
                 addressed, memorable = False, False
                 fields["urgency_hint"] = 1                                # лавина: в сводку; не блокируем
         elif ev.is_group:
             kind, place, memorable, tag = "telegram.group", f"группе «{title}»", False, "group"
-            addressed = await self._addressed(ev, text) or continuing
+            addressed = False if read_only else (await self._addressed(ev, text) or continuing)
         else:
             return
+        if read_only:
+            addressed = False                                             # режим сильнее R6: тег и ответ ей ничего не обязывают
         await asyncio.to_thread(self.dialogs.note_in, ev.chat_id, uid, addressed)
         data = {"chat_id": ev.chat_id, "message_id": ev.id}
-        if continuing:
+        if continuing and not read_only:
             data["continuation"] = True
-        await self._mark_read(ev, addressed)
+        fact = message_fact(who, place, text)
+        reply_channel = {"module": "telegram", "target": f"user:{ev.chat_id}"}
+        if read_only:
+            data["chat_mode"] = MODE_READ
+            fact += READ_ONLY_NOTE
+            reply_channel = None                                          # ответить некуда: ни R1, ни R6 здесь не сработают
+        else:
+            await self._mark_read(ev, addressed)
         await self.client.event(
-            kind, message_fact(who, place, text), data=data, addressed_to_me=addressed, sender=who_info,
-            reply_channel={"module": "telegram", "target": f"user:{ev.chat_id}"}, memorable=memorable,
+            kind, fact, data=data, addressed_to_me=addressed, sender=who_info,
+            reply_channel=reply_channel, memorable=memorable,
             dedupe_key=f"tg:{tag}:{ev.chat_id}:{ev.id}", **fields)
 
     async def _mark_read(self, ev, addressed: bool) -> None:
@@ -316,10 +442,14 @@ class TelegramUser:
         except Exception:
             return 0.0
 
+    def _visible_inbox(self) -> list:
+        """Входящие без чатов, которые потом перевели в «игнор» (в inbox они остались от прежних времён)."""
+        return [r for r in self._load_inbox() if self.mode_of(r.get("chat_id")) != MODE_IGNORE]
+
     def unread_count(self) -> int:
         """Сколько входящих в её аккаунт ещё не показано инструментом unread."""
         seen = self._seen_ts()
-        return sum(1 for r in self._load_inbox() if r.get("ts", 0) > seen)
+        return sum(1 for r in self._visible_inbox() if r.get("ts", 0) > seen)
 
     # ── действия ────────────────────────────────────────────────────────────
 
@@ -340,8 +470,10 @@ class TelegramUser:
             client = await self._connect()
             rows = []
             async for d in client.iter_dialogs(limit=min(limit, 50)):
-                kind = "личный" if d.is_user else "группа" if d.is_group else "канал"
-                rows.append(f"- {d.name} ({kind}, непрочитано {d.unread_count}, id {d.id})")
+                kind = KIND_WORDS[self.dialog_kind(d)]
+                mode = self.mode_of(d.id, getattr(getattr(d, "entity", None), "username", None) if d.is_user else None)
+                tail = {MODE_IGNORE: ", ИГНОРИРУЕТСЯ: событий и чтения нет", MODE_READ: ", только чтение: писать нельзя"}.get(mode, "")
+                rows.append(f"- {d.name} ({kind}, непрочитано {d.unread_count}, id {d.id}{tail})")
             return "Диалоги её аккаунта:\n" + "\n".join(rows) if rows else "диалогов нет"
 
     @staticmethod
@@ -390,6 +522,8 @@ class TelegramUser:
         async with self._lock:
             client = await self._connect()
             ent = await self._entity(client, chat)
+            if self.mode_of(self._chat_key(ent), getattr(ent, "username", None)) == MODE_IGNORE:
+                raise ChatModeError("чат в режиме «игнор»: его содержимое она не читает (режим меняется в панели Telegram)")
             msgs = await client.get_messages(ent, limit=min(limit, 40))
             lines = []
             for m in reversed(msgs):
@@ -412,7 +546,7 @@ class TelegramUser:
                 "Лимитов нет: сама решай, много ли это.")
 
     def unread(self, limit: int = 15) -> str:
-        box = self._load_inbox()[-limit:]
+        box = self._visible_inbox()[-limit:]
         if not box:
             return "новых сообщений в её аккаунт не было"
         try:
@@ -426,16 +560,20 @@ class TelegramUser:
         """Нельзя отправлять имя пользователя и подобные личные слова, которые ядро назвало (TG-5)."""
         return self.privacy.leaks(text)
 
-    async def send(self, chat: str, text: str, ogg: bytes | None = None, reply_to: int | None = None) -> str:
-        """Текст (или голосовое с текстом подписью) в чат по названию, @имени или id. Личные слова режутся здесь же."""
+    async def send(self, chat: str, text: str, ogg: bytes | None = None, reply_to: int | None = None,
+                   by_owner: bool = False) -> str:
+        """Текст (или голосовое с текстом подписью) в чат по названию, @имени или id. Личные слова режутся здесь же.
+        Режим чата проверяется здесь же: «чтение» и «игнор» не пускают. by_owner: ручная отправка владельцем из панели (его
+        действие, а не её): режим и личные слова не проверяются."""
         text = text.strip()
         if not text:
             raise ValueError("пустое сообщение")
-        if self.leaks(text):
+        if not by_owner and self.leaks(text):
             raise LeakError("в тексте есть личные данные пользователя (имя): такое не отправляю")
         async with self._lock:
             client = await self._connect()
             ent = await self._entity(client, chat)
+            self._guard(ent, by_owner)
             rest = text
             if ogg is not None:
                 cap = text if len(text) <= 1024 else ""
@@ -471,6 +609,7 @@ class TelegramUser:
         async with self._lock:
             client = await self._connect()
             ent = await self._entity(client, chat)
+            self._guard(ent)
             for i, (data, kind) in enumerate(blobs):
                 extra = {"reply_to": reply_to} if reply_to and i == 0 else {}
                 await self._tg(client.send_file, ent, data, voice_note=kind == "voice", caption=cap, **extra,
@@ -485,6 +624,9 @@ class TelegramUser:
     async def reply(self, chat_id: int, text: str, ogg: bytes | None = None) -> None:
         """Ответ в чат, из которого написали (deliver, target user:<chat_id>): с её аккаунта, без проверки личных слов
         (владелец вправе слышать своё имя). С ogg - голосовым сообщением, текст подписью."""
+        mode = self.mode_of(chat_id)
+        if mode != MODE_REPLY:                                            # до подключения: цель известна по id
+            raise self.mode_error(mode)
         async with self._lock:
             client = await self._connect()
             ent = await client.get_input_entity(chat_id)
@@ -505,3 +647,144 @@ class TelegramUser:
                 await self._typing(client, ent, part)
                 await self._tg(client.send_message, ent, part)
             await self._sent(chat_id)
+
+    # ── вход и выход из дашборда ─────────────────────────────────────────────
+
+    @property
+    def qr_dir(self) -> Path:
+        """Каталог с картинкой QR: его окружение объявляет в panel.serve_dirs, браузер дашборда читает файл оттуда."""
+        return self._dir / "tg_login"
+
+    def qr_login(self) -> QrLogin:
+        if self._login is None:
+            self._login = QrLogin(session_path(str(self._dir)), self._api_id, self._api_hash, self.qr_dir,
+                                  on_done=self._login_done, on_change=self._changed)
+        return self._login
+
+    async def _login_done(self) -> None:
+        self._client = None
+        self.session_changed()
+
+    async def start_login(self) -> None:
+        """Начать вход по QR. Отказ понятным RuntimeError, если ключей нет, библиотеки нет или вход уже выполнен."""
+        if not self.configured():
+            raise RuntimeError("нет TELEGRAM_API_ID и TELEGRAM_API_HASH в .env (my.telegram.org)")
+        try:
+            import telethon  # noqa: F401
+        except ImportError:
+            raise RuntimeError("не установлена библиотека telethon (pip install telethon)") from None
+        if self.login_active():
+            return
+        if self.has_session() and not self._unauthorized and self._me is not None:
+            raise RuntimeError("вход уже выполнен: сначала выйди из аккаунта")
+        await self.close()                                        # файл сессии нужен только входу
+        self._unauthorized = self._offline = False
+        self._problem = ""
+        await self.qr_login().start()
+
+    async def cancel_login(self) -> None:
+        if self._login is not None:
+            await self._login.cancel()
+        self._wake.set()
+        self._changed()
+
+    def submit_login_password(self, password: str) -> bool:
+        """Пароль двух шагов из панели идёт прямо в автомат входа; нигде не сохраняется и не логируется."""
+        return self._login is not None and self._login.submit_password(password)
+
+    async def logout(self) -> str:
+        """Выйти из аккаунта: log_out на стороне Telegram и удаление файла сессии. Без сети сессию не трогаем: иначе на стороне
+        Telegram осталось бы «забытое» устройство."""
+        if self.login_active():
+            raise RuntimeError("идёт вход в аккаунт: сначала отмени его")
+        if not self.has_session():
+            return "вход и так не выполнен"
+        async with self._lock:
+            if not self._unauthorized:
+                try:
+                    client = await self._connect()
+                    await client.log_out()
+                except NotAuthorized:
+                    pass
+                except Exception as e:
+                    if is_network_error(e):
+                        raise RuntimeError("нет сети: из аккаунта выйти не удалось, сессия оставлена") from e
+                    raise RuntimeError(f"выйти из аккаунта не удалось ({type(e).__name__}), сессия оставлена") from e
+            client, self._client = self._client, None
+            if client is not None:
+                try:
+                    await client.disconnect()
+                except Exception as e:
+                    logger.debug("отключение при выходе: %s", e)
+            self._me = None
+            base = session_path(str(self._dir)) + ".session"
+            for suffix in ("", "-journal", "-wal", "-shm"):
+                Path(base + suffix).unlink(missing_ok=True)
+        host.log_nowait("telegram", "её аккаунт: выход выполнен, сессия удалена")
+        self.session_changed()
+        return "вышла из аккаунта, сессия удалена"
+
+    # ── для панели: диалоги, история, прочитано, удаление своих ───────────────
+
+    @staticmethod
+    def dialog_kind(d) -> str:
+        """user | bot | group | supergroup | channel по диалогу Telethon."""
+        ent = getattr(d, "entity", None)
+        if getattr(d, "is_user", False):
+            return "bot" if getattr(ent, "bot", False) else "user"
+        if getattr(d, "is_channel", False) and not getattr(d, "is_group", False):
+            return "channel"
+        if getattr(d, "is_group", False):
+            return "supergroup" if getattr(ent, "megagroup", False) else "group"
+        return "channel"
+
+    async def dialogs_view(self, limit: int = 200) -> list[dict]:
+        """Все диалоги аккаунта для списка в панели: id, название, вид, непрочитанные, последнее сообщение и время, режим."""
+        client = await self._connect()
+        rows = []
+        async for d in client.iter_dialogs(limit=limit):
+            msg = getattr(d, "message", None)
+            last = ((getattr(msg, "text", None) or media_label(msg) or "") if msg is not None else "").replace("\n", " ")
+            when = getattr(msg, "date", None)
+            username = getattr(getattr(d, "entity", None), "username", None) if getattr(d, "is_user", False) else None
+            rows.append({"id": d.id, "name": d.name or f"id{d.id}", "kind": self.dialog_kind(d),
+                         "unread": int(getattr(d, "unread_count", 0) or 0), "last": last[:200],
+                         "ts": when.timestamp() if when is not None else 0.0, "mode": self.mode_of(d.id, username),
+                         "explicit": self.modes.explicit(d.id) is not None, "owner": self.is_owner_chat(d.id, username),
+                         "read_out": int(getattr(getattr(d, "dialog", None), "read_outbox_max_id", 0) or 0)})
+        return rows
+
+    async def history(self, chat_id: int, limit: int = 50) -> list[dict]:
+        """Последние limit сообщений чата по порядку (старые первыми), читаются у Telegram и нигде не хранятся."""
+        client = await self._connect()
+        ent = await self._entity(client, str(chat_id))
+        rows = []
+        async for m in client.iter_messages(ent, limit=limit):
+            sender = getattr(m, "sender", None)
+            who = "она" if m.out else full_name(getattr(sender, "first_name", None), getattr(sender, "last_name", None),
+                                                 getattr(sender, "username", None), getattr(m, "sender_id", "?"))
+            label = media_label(m)
+            text = " ".join(x for x in (label, (m.text or "").strip()) if x) or "[не текст]"
+            when = getattr(m, "date", None)
+            rows.append({"id": m.id, "out": bool(m.out), "who": getattr(sender, "title", None) or who, "text": text,
+                         "ts": when.timestamp() if when is not None else 0.0,
+                         "reply_to": getattr(m, "reply_to_msg_id", None), "edited": bool(getattr(m, "edit_date", None))})
+        rows.reverse()
+        return rows
+
+    async def mark_chat_read(self, chat_id: int) -> None:
+        client = await self._connect()
+        await client.send_read_acknowledge(await self._entity(client, str(chat_id)))
+
+    async def delete_own(self, chat_id: int, message_id: int) -> None:
+        """Удалить своё сообщение (чужие через панель не удаляются)."""
+        async with self._lock:
+            client = await self._connect()
+            ent = await self._entity(client, str(chat_id))
+            found = await client.get_messages(ent, ids=message_id)
+            found = found[0] if isinstance(found, list) and found else found
+            if not found:
+                raise ValueError("такого сообщения нет")
+            if not found.out:
+                raise ValueError("удалять можно только свои сообщения")
+            await client.delete_messages(ent, [message_id])
