@@ -18,11 +18,9 @@ ASK_TIMEOUT = 45.0
 
 
 def day_material(episodes: list[dict], digest: dict | None) -> str:
-    """Факты суток для сводки и дневника: резюме эпизодов по времени и сколько было спокойного."""
-    lines = [f"- {e['title']}: {e['summary']}" for e in episodes if e.get("summary")]
-    calm = (digest or {}).get("calm") or {}
-    if calm.get("n"):
-        lines.append(f"Спокойных событий без эпизодов: {calm['n']}.")
+    """Факты суток для сводки и дневника: рассказы эпизодов по времени, с отношением к ним."""
+    lines = [f"- {e['title']}: {e['summary']}" + (f" Отношение: {e['attitude']}" if e.get("attitude") else "")
+             for e in episodes if e.get("summary")]
     return "\n".join(lines)
 
 

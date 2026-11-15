@@ -214,7 +214,7 @@ class PiLlmClient:
 
     # ── запросы ────────────────────────────────────────────────────
 
-    async def _events(self, system: str, user: str, image_b64: str | None, stream: bool):
+    async def _events(self, system: str, user: str, image_b64: str | None, stream: bool, model: str | None = None):
         """Сообщения `delta` и итог (`done` / `failed`) одного запроса; на выходе из генератора запрос обрывается."""
         await self._ensure()
         cfg = _settings_cfg()
@@ -224,7 +224,7 @@ class PiLlmClient:
         finished = False
         try:
             sent = await self._send({
-                "type": "complete", "id": rid, "model": cfg.get("pi_model") or "gpt-6-luna",
+                "type": "complete", "id": rid, "model": model or cfg.get("pi_model") or "gpt-6-luna",
                 "thinking": cfg.get("pi_thinking") or "minimal", "system": system, "user": user,
                 "image_b64": image_b64 if image_b64 and image_ok(image_b64) else None, "image_mime": "image/jpeg",
                 "stream": stream})
@@ -244,9 +244,9 @@ class PiLlmClient:
                 with contextlib.suppress(Exception):
                     await asyncio.shield(self._send({"type": "cancel", "id": rid}))
 
-    async def ask(self, system: str, user: str, timeout: float, image_b64: str | None = None) -> str:
+    async def ask(self, system: str, user: str, timeout: float, image_b64: str | None = None, model: str | None = None) -> str:
         async def go() -> str:
-            async for msg in self._events(system, user, image_b64, False):
+            async for msg in self._events(system, user, image_b64, False, model):
                 if msg["type"] == "failed":
                     raise RuntimeError(f"pi: {msg.get('error') or 'сбой поставщика'}")
                 if msg["type"] == "done":
@@ -307,9 +307,17 @@ def set_client(c: PiLlmClient | None) -> None:
     _client = c
 
 
-async def ask(system: str, user: str, timeout: float, image_b64: str | None = None, contour: str = "fast") -> str:
-    """Ответ pi целиком. RuntimeError: нет входа, сбой поставщика, пустой ответ; TimeoutError: не уложился в `timeout`."""
-    return await client().ask(system, user, timeout, image_b64=image_b64)
+async def ask(system: str, user: str, timeout: float, image_b64: str | None = None, contour: str = "fast",
+              model: str | None = None) -> str:
+    """Ответ pi целиком. RuntimeError: нет входа, сбой поставщика, пустой ответ; TimeoutError: не уложился в `timeout`.
+    `model` - другая модель на этот вызов (по умолчанию `pi_model`)."""
+    return await client().ask(system, user, timeout, image_b64=image_b64, model=model)
+
+
+async def ask_heavy(system: str, user: str, timeout: float) -> str:
+    """Тот же вызов на сильной модели `pi_model_heavy` (без инструментов): фоновые задачи вроде записи эпизодов памяти."""
+    model = str(_settings_cfg().get("pi_model_heavy") or "").strip() or None
+    return await client().ask(system, user, timeout, model=model)
 
 
 async def ask_stream(system: str, user: str, timeout: float):

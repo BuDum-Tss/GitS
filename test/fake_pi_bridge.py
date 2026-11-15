@@ -1,8 +1,8 @@
 """Поддельный мост среды pi для тестов `services/runtime/pi_runtime.py`: говорит по протоколу `services/agent-runtime` (строки JSON),
 поведение задаёт текст запроса. Без сети, Node и моделей.
 
-Запросы: `hello` (текст и конец), `tool` (вызов find_tools, ждёт tool_result), `slowtool` (вызов и ожидание), `wait` (ждёт
-steer или abort), `system` (отвечает текущей системной подсказкой), `die` (процесс умирает), `big` (очень длинная строка).
+Запросы: любой другой текст получает очередной ответ из `faux_responses` (init); `hello` (текст и конец), `tool` (вызов find_tools, ждёт tool_result), `slowtool` (вызов и ожидание), `wait` (ждёт
+steer или abort), `system` (отвечает текущей системной подсказкой), `info` (параметры из init: число инструментов, предел контекста, файл сессии), `die` (процесс умирает), `big` (очень длинная строка).
 """
 import json
 import os
@@ -17,7 +17,7 @@ def out(msg: dict) -> None:
 def main() -> None:
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
-    system, session_file, run, waiting = "", None, None, None
+    system, session_file, run, waiting, faux, info = "", None, None, None, [], {}
     for raw in sys.stdin:
         raw = raw.strip()
         if not raw:
@@ -26,6 +26,8 @@ def main() -> None:
         kind = msg.get("type")
         if kind == "init":
             system, session_file = msg.get("system", ""), msg.get("session_file")
+            faux = list(msg.get("faux_responses") or [])
+            info = {"tools": len(msg.get("tools") or []), "max_context_chars": msg.get("max_context_chars"), "session_file": session_file}
             auth = msg.get("auth_file") or ""
             if msg.get("provider") == "openai" and not os.path.exists(auth):
                 out({"type": "error", "fatal": True, "message": "нет входа: выполни npx @earendil-works/pi-ai login openai"})
@@ -55,12 +57,20 @@ def main() -> None:
                 out({"type": "text", "id": run, "text": "system=" + system})
                 end(run, session_file)
                 run = None
+            elif text == "info":
+                out({"type": "text", "id": run, "text": json.dumps(info)})
+                end(run, session_file)
+                run = None
             elif text == "big":
                 out({"type": "text", "id": run, "text": "x" * 300000})
                 end(run, session_file)
                 run = None
             elif text == "die":
                 os._exit(3)
+            elif faux:                       # любой другой запрос: очередной заготовленный ответ (`faux_responses` из init)
+                out({"type": "text", "id": run, "text": faux.pop(0)})
+                end(run, session_file)
+                run = None
         elif kind == "tool_result" and run is not None and waiting == "c1":
             out({"type": "text", "id": run, "text": f"ok={msg.get('ok')} {msg.get('text')}"})
             end(run, session_file)

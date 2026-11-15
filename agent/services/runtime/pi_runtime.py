@@ -41,12 +41,14 @@ class PiRuntime:
 
     def __init__(self, *, command: list[str] | None = None, provider: str = "openai", model: str | None = None,
                  thinking: str | None = None, auth_file: str | None = None, session_file: Path | None = None,
-                 faux_responses: list | None = None, cwd: str | None = None, persist: bool = True):
+                 faux_responses: list | None = None, cwd: str | None = None, persist: bool = True,
+                 max_context_chars: int | None = None):
         self._command = command             # тесты подставляют поддельный мост; иначе node bridge.mjs
         self._provider, self._model, self._thinking = provider, model, thinking
         self._auth_file, self._session_file_override = auth_file, session_file
         self._faux = faux_responses
         self._cwd = cwd
+        self._max_context = max_context_chars or MAX_CONTEXT_CHARS     # мост обрезает историю при отправке по этому пределу
         self._persist = persist             # False: история не сохраняется (в `init` уходит session_file: null)
         self._system, self._sent_system = "", None
         self._tools: dict[str, ToolSpec] = {}
@@ -98,7 +100,7 @@ class PiRuntime:
                "tools": [{"name": t.name, "description": t.description, "parameters": t.parameters}
                          for t in self._tools.values()],
                "auth_file": auth, "session_file": str(self._session_path()) if self._persist else None, "session_id": SESSION_ID,
-               "max_context_chars": MAX_CONTEXT_CHARS}
+               "max_context_chars": self._max_context}
         if self._faux is not None:
             msg["faux_responses"] = self._faux
         return msg

@@ -13,7 +13,7 @@ from services.tracing import events_log
 from services.memory_service.episode_store import EpisodeStore
 from services.memory_service.adapters import UserMemoryAdapter
 from services.memory_service.diary import DayWriter
-from services.memory_service.episode_cutter import EpisodeCutter
+from services.memory_service.moment_selector import MomentSelector
 from services.memory_service.episode_recall import EpisodeRecall
 from services.memory_service.episode_summary import EpisodeSummarizer
 from services.memory_service.sleep import SleepRunner
@@ -25,6 +25,17 @@ from services.memory_service.search.embedder import HashEmbedder
 
 T0 = 1_800_000_000.0           # фиксированное «сегодня» тестов
 MIN = 60.0
+
+
+@pytest.fixture(autouse=True)
+def no_real_pi(monkeypatch):
+    """Сильная модель pi в тестах недоступна (мост и сеть не нужны): запасной писатель идёт на быструю заглушку."""
+    from services.runtime import pi_llm
+
+    async def down(system, user, timeout):
+        raise RuntimeError("pi в тестах недоступна")
+
+    monkeypatch.setattr(pi_llm, "ask_heavy", down)
 
 
 # ── заглушки ─────────────────────────────────────────────────────────────────────────────────
@@ -85,14 +96,15 @@ def good_summary(system, user, n):
     """Корректное резюме: ссылки на реально показанные события, имена и числа из них."""
     ids = ids_in(user)
     return json.dumps({"title": "Экзамен Ани", "refs": ids[:2],
-                       "summary": "Я узнала от Ани про экзамен по физике. Он завтра в 18:30. Я записала это и пообещала напомнить.",
-                       "outcome": "решили напомнить", "quotes": ["экзамен по физике завтра в 18:30", "выдуманная цитата"],
+                       "story": "Я узнала от Ани про экзамен по физике. Он завтра в 18:30. Я записала это и пообещала напомнить.",
+                       "noticed": ["она просила запомнить"], "attitude": "Мне это важно, и я не хочу подвести Аню.",
+                       "quotes": ["экзамен по физике завтра в 18:30", "выдуманная цитата"],
                        "facts": ["Аня сдаёт экзамен по физике завтра в 18:30"], "emotions": ["забота"], "participants": ["Аня"]},
                       ensure_ascii=False)
 
 
 def bad_summary(system, user, n):
-    return json.dumps({"title": "x", "refs": [999], "summary": "Борис принёс 77 яблок. Я рада. Мы ушли."}, ensure_ascii=False)
+    return json.dumps({"title": "x", "refs": [999], "story": "Борис принёс 77 яблок. Я рада. Мы ушли.", "attitude": "Рада."}, ensure_ascii=False)
 
 
 class Writer:
@@ -105,9 +117,9 @@ class Writer:
 
 def chat_day(j: Journal, t, who="Аня"):
     """Диалог про экзамен: яркие реплики (пик) и спокойные."""
-    j.add(t, "user", f"{who} сказала: экзамен по физике завтра в 18:30", salience=0.8)
-    j.add(t + 5, "say", "Запомнила, напомню", salience=0.2)
-    j.add(t + 9, "user", "спасибо", salience=0.1)
+    j.add(t, "user", f"{who} сказала: запомни, мне нравится физика, экзамен по физике завтра в 18:30")    # пик: 0.7
+    j.add(t + 5, "say", "Запомнила, напомню")
+    j.add(t + 9, "user", "спасибо")
 
 
 def make_runner(tmp_path, journal, llm, clock=None, cfg=None, embedder=True, notify=None, writer=None):
@@ -117,15 +129,16 @@ def make_runner(tmp_path, journal, llm, clock=None, cfg=None, embedder=True, not
     search = HybridSearch(HybridIndex(path, clock=clock), HashEmbedder() if embedder else None, llm,
                           SearchConfig(min_cos=0.2, min_cos_bm25=0.1))
     settings = {"episodes": {"notify_salience": 0.5, **(cfg or {})}}
-    cutter = EpisodeCutter(source=journal, store=store, settings=lambda: settings, clock=clock, character=lambda: "glados")
+    selector = MomentSelector(source=journal, store=store, settings=lambda: settings, clock=clock, character=lambda: "glados",
+                              first_upto=lambda: 0)
     summarizer = EpisodeSummarizer(llm=llm, prompt=lambda: {"system": "Ты вспоминаешь.", "format": "JSON"},
                                    allow=lambda: ["ГЛаДОС"], settings=lambda: settings)
     prompt = lambda: {"system": "дай JSON text", "format": ""}                                     # noqa: E731
     days = DayWriter(llm=llm, store=store, search=search, digest_prompt=prompt, diary_prompt=prompt)
     writer = writer or Writer()
-    runner = SleepRunner(cutter=cutter, summarizer=summarizer, store=store, search=search, writer=writer, days=days,
+    runner = SleepRunner(selector=selector, summarizer=summarizer, store=store, search=search, writer=writer, days=days,
                          source=journal, settings=lambda: settings, clock=clock, notify=notify)
-    return SimpleNamespace(store=store, search=search, cutter=cutter, summarizer=summarizer, runner=runner, writer=writer,
+    return SimpleNamespace(store=store, search=search, selector=selector, summarizer=summarizer, runner=runner, writer=writer,
                            clock=clock, settings=settings, journal=journal, llm=llm)
 
 
@@ -136,91 +149,16 @@ def text_or_summary(system, user, n):
     return json.dumps({"text": "Я помогала Ане с экзаменом по физике."}, ensure_ascii=False)
 
 
-# ── домен: границы и нарезка ─────────────────────────────────────────────────────────────────
+# ── домен: проверка рассказа ─────────────────────────────────────────────────────────────────
 
-def rows(*spec):
-    return [{"id": i + 1, "ts": ts, "kind": kind, "text": text, "data": data}
-            for i, (ts, kind, text, data) in enumerate(spec)]
-
-
-def recs_of(rs):
-    return [r for r in (dom.rec_of(x) for x in rs) if r is not None]
-
-
-def test_rec_of_filters_service_kinds_and_marks_boundaries():
-    assert dom.rec_of({"id": 1, "ts": 1, "kind": "trace", "text": "x"}) is None
-    assert dom.rec_of({"id": 2, "ts": 1, "kind": "user", "text": ""}) is None
-    assert dom.rec_of({"id": 3, "ts": 1, "kind": "profile", "text": "a -> b"}).boundary
-    assert dom.rec_of({"id": 4, "ts": 1, "kind": "focus", "text": "", "data": {"focus_type": "switch"}}).boundary
-    assert dom.rec_of({"id": 5, "ts": 1, "kind": "focus", "text": "", "data": {"focus_type": "checkpoint"}}) is None
-    r = dom.rec_of({"id": 6, "ts": 1, "kind": "module_event", "text": "привет", "data": {"module": "telegram", "sender": "Маша"}})
-    assert r.stream == "telegram:Маша" and r.actor == "Маша"                    # поток = модуль + собеседник
-
-
-def test_pause_longer_than_ten_minutes_closes_segment_and_open_one_waits():
-    cfg = dom.CutCfg()
-    rs = recs_of(rows((100, "user", "а", {}), (130, "say", "б", {}), (100 + 700, "user", "в", {})))
-    segs, upto = dom.split_segments(rs, cfg, now=100 + 701)
-    assert [[r.id for r in s] for s in segs] == [[1, 2]] and upto == 2           # третье событие ещё идёт: сегмент открыт
-    segs, upto = dom.split_segments(rs, cfg, now=100 + 700 + 601)
-    assert [[r.id for r in s] for s in segs] == [[1, 2], [3]] and upto == 3     # прошла пауза: закрыт и он
-
-
-def test_boundary_kinds_split_segments():
-    rs = recs_of(rows((10, "user", "а", {}), (20, "boundary", "конец забега", {}), (30, "user", "б", {}),
-                      (40, "focus", "", {"focus_type": "switch"}), (50, "user", "в", {})))
-    segs, upto = dom.split_segments(rs, dom.CutCfg(), now=10_000)
-    assert [[r.id for r in s] for s in segs] == [[1], [3], [5]] and upto == 5
-
-
-def test_streams_are_not_mixed_and_calm_goes_to_digest():
-    cfg = dom.CutCfg(dense_events=5)
-    spec = [(10, "user", "важное решение", {"salience": 0.9}), (11, "module_event", "тик мира", {"module": "rimworld", "salience": 0.1}),
-            (12, "say", "ответ", {"salience": 0.2}), (13, "module_event", "ещё тик", {"module": "rimworld", "salience": 0.1})]
-    cands, calm = dom.cut(recs_of(rows(*spec)), cfg)
-    assert len(cands) == 1 and cands[0].stream == "chat" and [r.id for r in cands[0].events] == [1, 3]
-    assert [r.id for r in calm] == [2, 4]                                         # спокойный поток модуля - в сводку
-
-
-def test_dense_stream_without_peak_becomes_episode():
-    cfg = dom.CutCfg(dense_events=3)
-    cands, calm = dom.cut(recs_of(rows(*[(i, "user", f"р{i}", {"salience": 0.1}) for i in range(4)])), cfg)
-    assert len(cands) == 1 and cands[0].reason == "dense" and not calm
-
-
-def test_long_run_is_cut_around_peaks_with_limits():
-    cfg = dom.CutCfg(max_events=6, max_tokens=10_000, decay_run=2, peak=0.5, dense_events=100)
-    spec = []
-    for i in range(30):
-        peak = i in (4, 22)
-        spec.append((i, "game", f"событие {i}", {"salience": 0.9 if peak else 0.05}))
-    cands, calm = dom.cut(recs_of(rows(*spec)), cfg)
-    assert len(cands) == 2
-    for c in cands:
-        assert len(c.events) <= cfg.max_events
-        assert c.peak_id in [e.id for e in c.events]                              # окно содержит свой пик
-    assert cands[0].first_id <= 5 <= cands[0].last_id and cands[1].first_id <= 23 <= cands[1].last_id
-    assert len(calm) == 30 - sum(len(c.events) for c in cands)                    # остальное спокойное
-    ids = [e.id for c in cands for e in c.events]
-    assert len(ids) == len(set(ids))                                              # окна не пересекаются
-
-
-def test_window_stops_by_token_limit():
-    cfg = dom.CutCfg(max_events=50, max_tokens=60, peak=0.5, dense_events=100)
-    spec = [(i, "game", "слово " * 10, {"salience": 0.9 if i == 10 else 0.4}) for i in range(21)]
-    cands, _ = dom.cut(recs_of(rows(*spec)), cfg)
-    assert sum(dom.estimate_tokens(e.text) + 8 for e in cands[0].events) <= 60 + 40
-
-
-# ── домен: проверка резюме ───────────────────────────────────────────────────────────────────
-
-SRC = recs_of(rows((1, "user", "Аня сказала: экзамен по физике завтра в 18:30", {}), (2, "say", "Запомнила, напомню", {}),
-                   (3, "user", "спасибо большое", {})))
+SRC = [dom.Rec(1, T0, "user", "Аня сказала: экзамен по физике завтра в 18:30"), dom.Rec(2, T0 + 5, "say", "Запомнила, напомню"),
+       dom.Rec(3, T0 + 9, "user", "спасибо")]
 
 
 def parsed(**over):
-    base = {"title": "Экзамен", "refs": [1, 2], "quotes": ["экзамен по физике завтра"],
-            "summary": "Я услышала про экзамен. Аня назвала время 18:30. Я пообещала напомнить."}
+    base = {"title": "Экзамен", "refs": [1, 2], "quotes": ["экзамен по физике завтра"], "noticed": ["Аня назвала время"],
+            "story": "Я услышала про экзамен. Аня назвала время 18:30. Я пообещала напомнить.",
+            "attitude": "Мне важно не подвести Аню."}
     base.update(over)
     return base
 
@@ -228,14 +166,27 @@ def parsed(**over):
 def test_valid_summary_passes_and_unknown_quote_is_dropped():
     ok, problems = dom.check_summary(parsed(quotes=["экзамен по физике завтра", "этого не говорили"]), SRC)
     assert problems == [] and ok["quotes"] == ["экзамен по физике завтра"]
+    assert ok["attitude"] and ok["noticed"] == ["Аня назвала время"] and ok["summary"].startswith("Я услышала")
+
+
+def test_trusted_summary_skips_names_numbers_and_refs_but_keeps_quotes():
+    over = parsed(story="Я говорила с Борисом про 77 яблок и вспомнила прошлую неделю.", refs=[], quotes=["экзамен по физике", "нет такого"])
+    assert dom.check_summary(over, SRC)[0] is None
+    ok, problems = dom.check_summary(over, SRC, trusted=True)
+    assert problems == [] and ok["quotes"] == ["экзамен по физике"]
+    assert dom.check_summary(parsed(attitude=""), SRC, trusted=True)[0] is None
 
 
 @pytest.mark.parametrize("over, expect", [
     ({"refs": [1, 77]}, "несуществующие события"),
     ({"refs": []}, "нет ссылок"),
-    ({"summary": "Я услышала про Бориса. Он пришёл. Мы поговорили."}, "имён нет"),
-    ({"summary": "Я услышала про экзамен. Аня назвала время 19:45. Я пообещала напомнить."}, "чисел нет"),
-    ({"summary": "Я услышала про экзамен."}, "предложений"),
+    ({"story": "Я услышала про Бориса. Он пришёл. Мы поговорили."}, "имён нет"),
+    ({"attitude": "Я рада за Бориса."}, "имён нет"),
+    ({"noticed": ["она упомянула Бориса"]}, "имён нет"),
+    ({"attitude": ""}, "attitude"),
+    ({"story": "Я услышала про экзамен. Аня назвала время 19:45. Я пообещала напомнить."}, "чисел нет"),
+    ({"story": "Я услышала про экзамен."}, "предложений"),
+    ({"story": " ".join(["Я слушала."] * 7)}, "предложений"),
     ({"title": ""}, "заголовка"),
 ])
 def test_summary_problems(over, expect):
@@ -244,11 +195,11 @@ def test_summary_problems(over, expect):
 
 
 def test_declined_name_and_allowed_name():
-    ok, p = dom.check_summary(parsed(summary="Я услышала от Ани про экзамен. Она назвала время 18:30. Я пообещала напомнить."), SRC)
+    ok, p = dom.check_summary(parsed(story="Я услышала от Ани про экзамен. Она назвала время 18:30. Я пообещала напомнить."), SRC)
     assert p == []                                                                # «Ани» - форма имени «Аня»
-    clean, p = dom.check_summary(parsed(summary="Я, ГЛаДОС, услышала про экзамен. Аня назвала время. Я пообещала напомнить."), SRC)
+    clean, p = dom.check_summary(parsed(story="Я, ГЛаДОС, услышала про экзамен. Аня назвала время. Я пообещала напомнить."), SRC)
     assert clean is None and any("ГЛаДОС" in x for x in p)
-    ok, p = dom.check_summary(parsed(summary="Я, ГЛаДОС, услышала про экзамен. Аня назвала время. Я пообещала напомнить."), SRC,
+    ok, p = dom.check_summary(parsed(story="Я, ГЛаДОС, услышала про экзамен. Аня назвала время. Я пообещала напомнить."), SRC,
                               allow=["ГЛаДОС"])
     assert p == []
 
@@ -278,49 +229,38 @@ def test_diary_and_compress_days():
     assert dom.compress_days(today_ord=today, episodes_by_day={"2026-08-01": 2}, compressed=set(), after_days=0) == []
 
 
-# ── нарезка и хранилище ──────────────────────────────────────────────────────────────────────
+# ── выбор моментов и хранилище ───────────────────────────────────────────────────────────────
 
-async def test_cutter_is_idempotent_and_keeps_open_segment(tmp_path):
+async def test_selector_is_idempotent_and_keeps_open_moment(tmp_path):
     j = Journal()
     chat_day(j, T0)
-    chat_day(j, T0 + 30 * MIN)                                   # через 30 минут: второй сегмент
+    chat_day(j, T0 + 30 * MIN)                                   # через 30 минут: второй момент
     r = make_runner(tmp_path, j, LLM(good_summary), Clock(T0 + 30 * MIN + 100))
-    got = await r.cutter.run()
-    assert got["episodes"] == 1 and r.store.get_meta("cut_upto") == 3             # второй сегмент ещё идёт
-    again = await r.cutter.run()
-    assert again["episodes"] == 0
-    r.clock.t = T0 + 30 * MIN + 2000                                              # пауза прошла: закрывается и он
-    assert (await r.cutter.run())["episodes"] == 1
-    assert (await r.cutter.run())["episodes"] == 0
+    got = await r.selector.run()
+    assert got["episodes"] == 1 and r.store.get_meta("moments_upto") == 3         # второй момент ещё идёт
+    assert (await r.selector.run())["episodes"] == 0
+    r.clock.t = T0 + 30 * MIN + 2000                                              # время вышло: закрывается и он
+    assert (await r.selector.run())["episodes"] == 1
+    assert (await r.selector.run())["episodes"] == 0
     eps = r.store.select(oldest_first=True)
     assert [e["status"] for e in eps] == ["pending", "pending"] and eps[0]["first_id"] == 1 and eps[0]["last_id"] == 3
     assert [e["id"] for e in r.store.events_of(eps[0]["id"])] == [1, 2, 3]
-    assert eps[0]["character"] == "glados" and eps[0]["peak_id"] == 1 and eps[0]["salience"] == 0.8
+    assert eps[0]["character"] == "glados" and eps[0]["peak_id"] == 1 and eps[0]["salience"] == 0.7
+    assert eps[0]["stream"] == "moment" and "user" in eps[0]["participants"]
 
 
-async def test_calm_events_go_to_day_digest_counters(tmp_path):
-    j = Journal()
-    for i in range(3):
-        j.add(T0 + i, "module_event", f"тик {i}", module="rimworld", salience=0.05)
-    r = make_runner(tmp_path, j, LLM(good_summary), Clock(T0 + 5000))
-    await r.cutter.run()
-    await r.cutter.run()
-    day = datetime.fromtimestamp(T0).date().isoformat()
-    assert r.store.digest(day)["calm"]["n"] == 3 and r.store.select() == []       # повтор не удваивает счётчик
-
-
-async def test_new_character_starts_from_the_end_of_the_journal(tmp_path):
+async def test_new_selector_starts_from_the_end_of_the_journal(tmp_path):
     j = Journal()
     chat_day(j, T0)
     store = EpisodeStore(tmp_path / "episodes.db")
-    cutter = EpisodeCutter(source=j, store=store, settings=lambda: {}, clock=Clock(T0 + 9999), first_upto=j.last_id)
-    assert (await cutter.run())["episodes"] == 0                                  # чужая история не нарезается
+    selector = MomentSelector(source=j, store=store, settings=lambda: {}, clock=Clock(T0 + 9999))
+    assert (await selector.run())["episodes"] == 0 and store.get_meta("moments_upto") == 3    # прошлое не обрабатывается
 
 
 # ── резюме ───────────────────────────────────────────────────────────────────────────────────
 
 async def prepared_episode(r):
-    await r.cutter.run()
+    await r.selector.run()
     ep = r.store.select()[0]
     return ep, r.store.events_of(ep["id"])
 
@@ -390,7 +330,7 @@ async def test_sleep_pipeline_end_to_end(tmp_path):
     hits = await r.search.search("экзамен по физике", collections=["episodes"], rewrite=False)
     assert {h.key.split("#")[0] for h in hits} >= {eps[0]["id"]}
     assert rep["digests"] == 2 and rep["diary"] >= 1 and r.store.diary()            # сводки и дневник
-    assert r.store.get_meta("cut_upto") == 6 and r.store.get_meta("last_sleep") == r.clock.t
+    assert r.store.get_meta("moments_upto") == 6 and r.store.get_meta("last_sleep") == r.clock.t
 
 
 async def test_sleep_is_idempotent(tmp_path):
@@ -559,10 +499,10 @@ async def test_memory_reader_recall_keeps_default_behaviour_without_episodes():
 async def test_memory_reader_recall_adds_episodes_when_connected():
     class Rec:
         async def find(self, q, k=5):
-            return [{"id": "e1-3", "kind": "episode", "text": "поход", "when": "x", "score": 1}]
+            return [{"id": "m1-3", "kind": "episode", "text": "поход", "when": "x", "score": 1}]
 
     ad = UserMemoryAdapter(lambda: None, lambda: None, lambda: SimpleNamespace(recall=Rec()))
-    assert await ad.recall("поход") == [{"text": "поход", "kind": "episode", "id": "e1-3", "importance": 3}]
+    assert await ad.recall("поход") == [{"text": "поход", "kind": "episode", "id": "m1-3", "importance": 3}]
 
 
 async def test_recall_tool_uses_episodes(monkeypatch):
@@ -571,10 +511,10 @@ async def test_recall_tool_uses_episodes(monkeypatch):
 
     class Rec:
         async def find(self, q, k=5):
-            return [{"id": "e1-3", "kind": "episode", "text": "поход на озеро", "when": "2026-10-15 10:00", "score": 1}]
+            return [{"id": "m1-3", "kind": "episode", "text": "поход на озеро", "when": "2026-10-15 10:00", "score": 1}]
 
         async def recall_episode(self, eid):
-            return "Эпизод e1-3" if eid == "e1-3" else ""
+            return "Эпизод m1-3" if eid == "m1-3" else ""
 
     class Registry:
         def __init__(self):
@@ -588,8 +528,8 @@ async def test_recall_tool_uses_episodes(monkeypatch):
     reg = Registry()
     builtin.register(reg, comp, mem)
     tools = {t.name: t for t in reg.envs["assistant"].tools}
-    assert "эпизод e1-3" in await tools["recall"].call({"query": "озеро"})
-    assert await tools["recall_episode"].call({"id": "e1-3"}) == "Эпизод e1-3"
+    assert "эпизод m1-3" in await tools["recall"].call({"query": "озеро"})
+    assert await tools["recall_episode"].call({"id": "m1-3"}) == "Эпизод m1-3"
     with pytest.raises(ToolError):
         await tools["recall_episode"].call({"id": "x"})
 
@@ -719,11 +659,11 @@ async def test_episode_summary_event_goes_to_think_route(tmp_path):
     rig = Rig(tmp_path)
     spy = Spy()
     rig.att.attach_reflection(spy)
-    ep = {"id": "e1-3", "title": "Экзамен Ани", "summary": "Я записала экзамен.", "salience": 0.8, "day": "2026-10-16", "stream": "chat"}
+    ep = {"id": "m1-3", "title": "Экзамен Ани", "summary": "Я записала экзамен.", "salience": 0.8, "day": "2026-10-16", "stream": "chat"}
     await rig.att.submit("memory", summary_event(ep))
     await rig.att.settle()
     assert [e.kind for e in spy.events] == ["episode.summary"] and spy.events[0].origin == "external"
-    assert spy.events[0].data["episode"] == "e1-3" and rig.att.last_decision.get("route") == "think"
+    assert spy.events[0].data["episode"] == "m1-3" and rig.att.last_decision.get("route") == "think"
 
 
 def fake_companion(folder, llm):
@@ -745,7 +685,8 @@ async def test_service_keeps_episodes_per_character(tmp_path):
     chat_day(j, T0)
     svc = EpisodeService(comp, Att(), clock=Clock(T0 + 5000), embedder=HashEmbedder(), source=j)
     p1 = svc.parts()
-    await p1.cutter.run()
+    p1.store.set_meta("moments_upto", 0)
+    await p1.selector.run()
     assert svc.store.select()
     comp._dir = folder_b                                   # переключение персонажа: своя папка и свои эпизоды
     p2 = svc.parts()
@@ -759,14 +700,14 @@ async def test_service_keeps_episodes_per_character(tmp_path):
     assert ("memory", "episode.summary") in submitted
 
 
-async def test_non_default_character_does_not_cut_foreign_history(tmp_path, monkeypatch):
+async def test_non_default_character_does_not_process_foreign_history(tmp_path, monkeypatch):
     j = Journal()
     chat_day(j, T0)
     comp = fake_companion(tmp_path / "x", LLM(text_or_summary))
     other = SimpleNamespace(id="other", name="Другая", aliases=())
     monkeypatch.setattr(character, "active", lambda: other)
     svc = EpisodeService(comp, SimpleNamespace(), clock=Clock(T0 + 5000), embedder=HashEmbedder(), source=j)
-    assert (await svc.parts().cutter.run())["episodes"] == 0
+    assert (await svc.parts().selector.run())["episodes"] == 0
 
 
 # ── журнал: номера, чтение после отметки, удаление ───────────────────────────────────────────
@@ -783,17 +724,6 @@ def test_events_log_after_and_delete_ids():
     assert src.delete_ids([rows_[0]["id"]]) == 1 and [r["text"] for r in src.after(0, 10, {"user"})] == []
     assert isinstance(src, contracts.EventSource)
     assert "boundary" in events_log.KINDS
-
-
-async def test_enrich_gives_module_events_salience_from_hint():
-    from services.memory_service.episode_cutter import enrich
-    row = {"id": 1, "ts": 1.0, "kind": "module_event", "text": "налёт", "data": {"module": "rimworld", "event_kind": "rimworld.raid",
-                                                                              "urgency_hint": 5}}
-    assert enrich(row)["data"]["salience"] >= 0.35
-    quiet = {"id": 2, "ts": 1.0, "kind": "module_event", "text": "тик", "data": {"module": "rimworld", "urgency_hint": 0}}
-    assert enrich(quiet)["data"]["salience"] == 0.0
-    done = {"id": 3, "ts": 1.0, "kind": "module_event", "text": "конец", "data": {"module": "rimworld", "event_kind": "rimworld.run_ended"}}
-    assert enrich(done)["data"]["salience"] >= 0.5                                # итог забега - пик
 
 
 def test_prompts_have_episode_sections():

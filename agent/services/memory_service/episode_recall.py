@@ -1,6 +1,6 @@
 """Чтение эпизодов (ТЗ 27, EPI-9): «помнишь, как…», разворот эпизода до событий-источников, список для дашборда.
 
-Поиск идёт через `search.HybridSearch` (коллекции `episodes` и `diary`, гибрид FTS + вектор + свежесть). Резюме и дневник это
+Поиск идёт через `search.HybridSearch` (коллекции `episodes` и `diary`, гибрид FTS + вектор + свежесть). Рассказ эпизода (от первого лица, с отношением) и дневник это
 сжатая память; настоящая правда журнал: `expand` отдаёт события-источники эпизода (копия текста из хранилища эпизодов, она
 остаётся, даже когда сырое удалено по сроку). Окно между событием и сном закрывает хвост журнала (`recent_tail`)."""
 import asyncio
@@ -15,7 +15,8 @@ def fmt_time(ts: float) -> str:
 
 
 def brief(ep: dict) -> dict:
-    return {"id": ep["id"], "title": ep["title"], "summary": ep["summary"], "outcome": ep["outcome"], "when": fmt_time(ep["t_start"]),
+    return {"id": ep["id"], "title": ep["title"], "summary": ep["summary"], "attitude": ep.get("attitude", ""),
+            "noticed": ep.get("noticed", []), "when": fmt_time(ep["t_start"]),
             "day": ep["day"], "status": ep["status"], "version": ep["version"], "salience": ep["salience"],
             "participants": ep["participants"], "module": ep["module"], "quotes": ep["quotes"]}
 
@@ -64,8 +65,10 @@ class EpisodeRecall:
         lines = [head]
         if ep["summary"]:
             lines.append(ep["summary"])
-        if ep["outcome"]:
-            lines.append(f"Исход: {ep['outcome']}")
+        if ep.get("attitude"):
+            lines.append(f"Мой взгляд: {ep['attitude']}")
+        if ep.get("noticed"):
+            lines.append("Заметила: " + "; ".join(ep["noticed"]))
         for q in ep["quotes"]:
             lines.append(f"Цитата: «{q}»")
         lines.append("События-источники:")
@@ -84,7 +87,7 @@ class EpisodeRecall:
         """Хвост журнала после последней нарезки: события, которые ещё не стали эпизодом (рабочая память)."""
         if self.source is None:
             return []
-        upto = await asyncio.to_thread(self.store.get_meta, "cut_upto", 0)
+        upto = await asyncio.to_thread(self.store.get_meta, "moments_upto", 0)
         rows = await asyncio.to_thread(self.source.after, upto or 0, n, {"user", "say", "module_event"})
         return [{"id": r["id"], "kind": r["kind"], "text": r["text"], "ts": r["ts"]} for r in rows]
 

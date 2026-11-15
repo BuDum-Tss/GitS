@@ -1,7 +1,7 @@
 """Хранилище эпизодов `memory/episodes.db` (ТЗ 27, EPI-1): SQLite в режиме WAL.
 
 Таблицы: `episodes` (запись эпизода со статусом и версией), `episode_events` (источники: копия текста события, чтобы
-эпизод читался, даже когда сырое событие удалено по сроку, EPI-10), `digests` (суточные сводки и счётчики спокойного),
+эпизод читался, даже когда сырое событие удалено по сроку, EPI-10), `digests` (суточные сводки),
 `diary` (дневник от первого лица), `meta` (отметки вроде «обработано до события N»). Полнотекстовый индекс и векторы лежат
 в том же файле: их ведёт `search.HybridIndex` (FTS5 и float32-векторы, ТЗ 04); отдельные таблицы здесь не нужны.
 
@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS episodes (
     stream TEXT NOT NULL DEFAULT '', module TEXT NOT NULL DEFAULT '', participants TEXT NOT NULL DEFAULT '[]',
     peak_id INTEGER, salience REAL NOT NULL DEFAULT 0, emotions TEXT NOT NULL DEFAULT '[]',
     title TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '', outcome TEXT NOT NULL DEFAULT '',
+    attitude TEXT NOT NULL DEFAULT '', noticed TEXT NOT NULL DEFAULT '[]',
     quotes TEXT NOT NULL DEFAULT '[]', facts TEXT NOT NULL DEFAULT '[]', related TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'pending', version INTEGER NOT NULL DEFAULT 0, character TEXT NOT NULL DEFAULT '',
     attempts INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', facts_done INTEGER NOT NULL DEFAULT 0,
@@ -42,8 +43,10 @@ CREATE TABLE IF NOT EXISTS diary (
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
-_JSON_COLS = ("participants", "emotions", "quotes", "facts", "related")
-SUMMARY_COLS = ("title", "summary", "outcome", "quotes", "facts", "emotions", "participants")
+_JSON_COLS = ("participants", "emotions", "quotes", "facts", "related", "noticed")
+SUMMARY_COLS = ("title", "summary", "attitude", "noticed", "quotes", "facts", "emotions", "participants")
+# колонки, которых нет в базах старой схемы: добавляются при открытии (автомиграция)
+_MIGRATE = {"attitude": "TEXT NOT NULL DEFAULT ''", "noticed": "TEXT NOT NULL DEFAULT '[]'"}
 
 
 def _row(r: sqlite3.Row | None) -> dict | None:
@@ -71,6 +74,10 @@ class EpisodeStore:
             if self.path != ":memory:":
                 self._db.execute("PRAGMA journal_mode=WAL")
             self._db.executescript(_SCHEMA)
+            have = {r[1] for r in self._db.execute("PRAGMA table_info(episodes)")}
+            for col, decl in _MIGRATE.items():
+                if col not in have:
+                    self._db.execute(f"ALTER TABLE episodes ADD COLUMN {col} {decl}")
             self._db.commit()
 
     def close(self) -> None:
@@ -116,7 +123,7 @@ class EpisodeStore:
                         "INSERT OR IGNORE INTO episode_events (episode_id, event_id, ts, kind, text, salience) VALUES (?,?,?,?,?,?)",
                         [(ep["id"], e["id"], e["ts"], e["kind"], e["text"][:600], float(e.get("salience", 0.0))) for e in events])
                 if upto is not None:
-                    self._set_meta_nolock("cut_upto", upto)
+                    self._set_meta_nolock("moments_upto", upto)
                 self._db.commit()
                 return added
             except sqlite3.Error:
@@ -126,6 +133,14 @@ class EpisodeStore:
     def _set_meta_nolock(self, key: str, value) -> None:
         self._db.execute("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                          (key, json.dumps(value, ensure_ascii=False)))
+
+    def has_peak(self, event_ids: list[int]) -> bool:
+        """Есть ли уже эпизод с одним из этих событий-пиков (момент не дублируется, даже если контекст вырос)."""
+        if not event_ids:
+            return False
+        with self._lock:
+            q = f"SELECT 1 FROM episodes WHERE peak_id IN ({','.join('?' * len(event_ids))}) LIMIT 1"
+            return self._db.execute(q, [int(i) for i in event_ids]).fetchone() is not None
 
     def get(self, episode_id: str) -> dict | None:
         with self._lock:
@@ -177,7 +192,7 @@ class EpisodeStore:
     def counts(self) -> dict:
         with self._lock:
             rows = self._db.execute("SELECT status, COUNT(*) FROM episodes GROUP BY status").fetchall()
-        out = {s: 0 for s in ("pending", "summarized", "embedded", "failed")}
+        out = {s: 0 for s in ("pending", "summarized", "embedded", "failed", "skipped")}
         out.update({r[0]: r[1] for r in rows})
         return out
 
@@ -191,24 +206,6 @@ class EpisodeStore:
             return [_row(r) for r in self._db.execute(sql, (day,)).fetchall()]
 
     # ── сводки ───────────────────────────────────────────────────────────────
-
-    def add_calm(self, day: str, n: int, kinds: dict, first_id: int, last_id: int, *, marker: str) -> None:
-        """Спокойные события сегмента: счётчик в сводку суток. `marker` (например `cut:<последний id>`) защищает от двойного учёта."""
-        with self._lock:
-            if self.get_meta(f"calm:{marker}"):
-                return
-            r = self._db.execute("SELECT calm FROM digests WHERE day=?", (day,)).fetchone()
-            calm = json.loads(r[0]) if r else {}
-            calm["n"] = calm.get("n", 0) + n
-            by = calm.setdefault("kinds", {})
-            for k, v in kinds.items():
-                by[k] = by.get(k, 0) + v
-            calm["first_id"] = min(calm.get("first_id", first_id), first_id)
-            calm["last_id"] = max(calm.get("last_id", last_id), last_id)
-            self._db.execute("INSERT INTO digests (day, calm, updated) VALUES (?,?,?) ON CONFLICT(day) DO UPDATE SET"
-                             " calm=excluded.calm, updated=excluded.updated", (day, json.dumps(calm), self._clock()))
-            self._set_meta_nolock(f"calm:{marker}", 1)
-            self._db.commit()
 
     def digest(self, day: str) -> dict | None:
         with self._lock:

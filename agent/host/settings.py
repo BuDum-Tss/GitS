@@ -36,12 +36,17 @@ DEFAULTS = {
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
     # размышление (ТЗ 30, IMP-7): шагов и токенов на мысль, размышлений в час, глубина цепочки напоминаний
     "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3},
-    # эпизоды и режим сна (ТЗ 27): сон при простое, расписании или «догоняющий»; нарезка `cut`; в контекст ответа эпизоды идут,
+    # эпизоды и режим сна (ТЗ 27): сон при простое, расписании или «догоняющий»; выбор ярких моментов `moments` (порог пика, суточный бюджет, склейка, окно контекста); writer - кто пишет эпизоды от первого лица: fork (копия её сессии pi, при недоступности heavy), heavy (pi_model_heavy, при сбое быстрая) или fast;
+    # live - живая запись эпизодов, пока она бодрствует (условия форка, паузы, лимиты, очередь); в контекст ответа эпизоды идут,
     # если context=True (по умолчанию выключено); raw_keep_days > 0 удаляет сырые события уже записанных эпизодов
     "episodes": {"enabled": True, "idle_min": 15, "min_gap_min": 20, "schedule_hours": [3], "catchup_after_h": 12,
                  "catchup_budget_tokens": 1500, "notify_salience": 0.5, "notify_max": 3, "diary_hour": 22,
-                 "compress_after_days": 30, "raw_keep_days": 0, "related_cos": 0.82, "heavy_salience": 0, "context": False,
-                 "cut": {"pause_s": 600, "peak": 0.5, "dense_events": 8, "max_events": 40, "max_tokens": 1500}},
+                 "compress_after_days": 30, "raw_keep_days": 0, "related_cos": 0.82, "writer": "fork", "context": False,
+                 "moments": {"threshold": 0.5, "per_day": 10, "merge_s": 300, "before_s": 240, "after_s": 120, "max_events": 30,
+                             "max_tokens": 1500},
+                 "live": {"enabled": True, "tick_s": 30, "min_gap_s": 45, "per_hour": 8, "max_pending": 20, "instant_score": 0.85,
+                          "instant_after_s": 20, "fork_after_events": 6, "context_share": 0.5, "max_wait_s": 1800,
+                          "max_per_fork": 4}},
     # быстрый контур (ТЗ 25): stream - стриминг ответа по предложениям; memory_deadline_ms - дедлайн поиска в памяти (FAST-6);
     # ack_ms - через сколько без реплики на поручении уходит факт «принято» (FAST-3); filler_ms - факт-филлер при затянутом ответе
     # бюджеты задержки по этапам трассы, мс (ТЗ 25, FAST-8): шаг от предыдущей метки до метки этапа; end_to_sound - от конца
