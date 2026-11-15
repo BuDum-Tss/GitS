@@ -42,9 +42,8 @@ async def test_check_by_address_channel_owner_known_and_unknown(tmp_path, monkey
         assert await check("message", {"to": str(OWNER), "text": "привет"}) is None
         unknown = await check("message", {"to": "Маша", "text": "привет"})
         assert unknown and "ещё не писали" in unknown                                      # незнакомый чат: вопрос
-        await rig.mod.channel._on_private({"message_id": 1, "chat": {"id": 555, "type": "private"}, "text": "привет",
-                                           "from": {"id": 555, "first_name": "Маша", "username": "masha_x"}})
-        for who in ("Маша", "маша", "@masha_x", "555"):                                    # писала боту: без вопроса
+        rig.mod.user.known.add(555, "Маша", "masha_x")
+        for who in ("Маша", "маша", "@masha_x", "555"):                                    # писала в её аккаунт: без вопроса
             assert await check("message", {"to": who, "text": "привет"}) is None, who
         assert await check("message", {"to": "Паша", "text": "привет"}) is not None        # другой: вопрос
 
@@ -62,8 +61,7 @@ async def test_check_known_chat_from_her_account_inbox(tmp_path, monkeypatch):
 
 async def test_check_private_words_raise_the_question_even_for_known_chat(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, telethon=True, terms=["Анна"]) as rig:
-        await rig.mod.channel._on_private({"message_id": 1, "chat": {"id": 5, "type": "private"}, "text": "я",
-                                           "from": {"id": 5, "first_name": "Маша"}})
+        rig.mod.user.known.add(5, "Маша")
         danger = await rig.core.check_tool("message", {"to": "Маша", "text": "Анна просила привет"})
         assert danger and "Анн" not in danger                                              # причина личное не повторяет
 
@@ -268,18 +266,13 @@ def msg(uid, username=None, first="Аня", chat=None, message_id=1):
 ])
 async def test_owner_matches_by_username_or_id(tmp_path, monkeypatch, owner, uid, username, expected):
     async with Rig(tmp_path, monkeypatch, module_settings={"owner": owner}) as rig:
-        await rig.mod.channel._on_private(msg(uid, username))
-        ev = (await rig.core.wait_message("event")).body
-    assert ev["sender"]["is_owner"] is expected
+        assert rig.mod.channel.owner.is_owner(uid, username) is expected
 
 
 async def test_old_owner_tg_id_still_works_next_to_owner_string(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, module_settings={"owner_tg_id": OWNER, "owner": "@someone"}) as rig:
-        await rig.mod.channel._on_private(msg(OWNER))
-        await rig.mod.channel._on_private(msg(5, "someone", message_id=2))
-        await rig.mod.channel._on_private(msg(6, "third", message_id=3))
-        await rig.core.wait_for(lambda: len(rig.core.events) == 3)
-        assert [e["sender"]["is_owner"] for e in rig.core.events] == [True, True, False]
+        owner = rig.mod.channel.owner
+        assert [owner.is_owner(OWNER), owner.is_owner(5, "someone"), owner.is_owner(6, "third")] == [True, True, False]
 
 
 async def test_owner_id_is_learned_from_username_and_used_for_delivery(tmp_path, monkeypatch):
@@ -299,9 +292,7 @@ async def test_owner_id_is_learned_from_username_and_used_for_delivery(tmp_path,
 async def test_learned_id_survives_username_change_but_not_owner_change(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, module_settings={"owner": "@anya_owner"}) as rig:
         await rig.mod.channel._on_private(msg(5, "anya_owner"))
-        await rig.mod.channel._on_private(msg(5, "renamed", message_id=2))                    # сменила @имя, id тот же
-        await rig.core.wait_for(lambda: len(rig.core.events) == 2)
-        assert rig.core.events[1]["sender"]["is_owner"] is True
+        assert rig.mod.channel.owner.is_owner(5, "renamed") is True                           # сменила @имя, id тот же
         await rig.core.update_settings({}, module_settings={"owner": "@someone_else"})
         await rig.core.wait_for(lambda: rig.client.module_settings.get("owner") == "@someone_else")
         assert rig.mod.channel.owner_id() == 0                                               # выученный id принадлежал другому

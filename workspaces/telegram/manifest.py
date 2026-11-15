@@ -2,6 +2,8 @@
 telegram_account (environments/builtin.py ядра) дословно: их читает планировщик."""
 import copy
 
+from common import DEFAULT_ABOUT
+
 _GENERIC = ("телеграм", "телега", "тг", "канал", "пост", "написать", "чат")      # TG-8: общие слова просьб про Telegram
 
 
@@ -49,6 +51,13 @@ TOOLS = [
            "unread": _bool("true: что писали в её аккаунт недавно", required=False),
            "limit": {"type": "integer", "required": False, "description": _LIMIT.format("записей", 15)}},
           informative=True, timeout_s=60, keywords=("прочитай", "переписка", "сообщения", "чаты", "диалоги", "новые", "входящие")),
+    _tool("announce", "Разослать объявление подписчикам бота-витрины (подписка: /subscribe): начался стрим, вышло видео. "
+                      "text - текст объявления, url - необязательная ссылка (добавится в конец). Заблокировавшие бота "
+                      "снимаются с подписки.",
+          {"text": {"type": "string", "description": "текст объявления (до 1000 символов, без личных данных)"},
+           "url": {"type": "string", "required": False, "description": "ссылка на стрим или видео (http/https)"}},
+          informative=True, timeout_s=120,
+          keywords=("объяви", "объявление", "рассылка", "подписчикам", "анонс", "стрим", "вышло видео")),
     _tool("settings", "Включить или выключить периодические посты-мысли в канал (periodic) и пост-итог после забега (after_run).",
           {"periodic": _bool("true: публиковать периодически", required=False),
            "after_run": _bool("true: писать итог после забега, когда колония погибла", required=False)},
@@ -60,8 +69,8 @@ MANIFEST = {
     "role": "workspace",
     "ownership": "owned",
     "title": "Telegram",
-    "description": "Telegram: сообщения и посты в канал, её собственный аккаунт (чтение и отправка), разговор владельца с ней "
-                   "и ответы незнакомым людям через бота.",
+    "description": "Telegram: сообщения и посты в канал, её собственный аккаунт (чтение и отправка) и бот-витрина: "
+                   "описание, ссылки и рассылка объявлений о стримах и видео подписчикам.",
     "version": "1.0.0",
     "capabilities": ["chat.channel"],
     "subscribe": ["settings", "presence", "module", "character"],
@@ -72,6 +81,13 @@ MANIFEST = {
         "after_run": {"type": "boolean", "title": "Пост-итог после каждого забега (когда колония погибает)",
                       "default": False},
         "voice": {"type": "boolean", "title": "Посты голосом (текст остаётся подписью)", "default": False},
+        "about": {"type": "string", "title": "Бот-витрина: описание в ответ на /start и /help",
+                  "default": DEFAULT_ABOUT},
+        "channel_url": {"type": "string", "title": "Бот-витрина: ссылка на её Telegram-канал (пусто: кнопки нет)", "default": ""},
+        "account_url": {"type": "string", "title": "Бот-витрина: ссылка на её Telegram-аккаунт, где с ней можно говорить "
+                                                    "(пусто: кнопки нет)", "default": ""},
+        "twitch_url": {"type": "string", "title": "Бот-витрина: ссылка на Twitch (пусто: кнопки нет)", "default": ""},
+        "youtube_url": {"type": "string", "title": "Бот-витрина: ссылка на YouTube (пусто: кнопки нет)", "default": ""},
         "owner": {"type": "string", "title": "Аккаунт владельца в Telegram: @имя или числовой id", "default": ""},
         "owner_tg_id": {"type": "integer", "title": "Telegram id владельца (0: не задан; можно указать аккаунт выше)",
                         "default": 0, "min": 0},
@@ -82,7 +98,6 @@ MANIFEST = {
     },
     "tools": TOOLS,
     "emits": [
-        {"kind": "telegram.bot_message", "description": "Личное сообщение боту от человека", "default_urgency": 2},
         {"kind": "telegram.dm", "description": "Личное сообщение в её аккаунт", "default_urgency": 3},
         {"kind": "telegram.group", "description": "Сообщение в группе её аккаунта", "default_urgency": 1},
         {"kind": "telegram.posted", "description": "Опубликован пост в канале", "default_urgency": 1},

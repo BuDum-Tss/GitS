@@ -1,4 +1,4 @@
-"""Telegram-канал и бот: она периодически публикует «мысли» в канал, пишет посты по просьбе и отвечает владельцу в боте.
+"""Telegram-канал и бот-витрина: она периодически публикует «мысли» в канал, пишет посты по просьбе, а бот рассылает объявления.
 
 Секреты НЕ в репозитории: токен бота и канал модуль читает сам из .env (файл в .gitignore):
     TELEGRAM_BOT_TOKEN=123456:ABC...        (выдаёт @BotFather)
@@ -11,17 +11,19 @@
     after_run   - писать ли пост-итог после забега (просит модуль игры, tool telegram.message с after_run);
     voice       - посты голосовым сообщением (текст идёт подписью);
     every_mins, post_hours_from, post_hours_to - частота и окно часов;
-    owner, owner_tg_id - владелец (@имя или числовой id).
+    owner, owner_tg_id - владелец (@имя или числовой id);
+    about, channel_url, account_url, twitch_url, youtube_url - описание и ссылки витрины бота.
 Разрешения на публикацию в канал нет: она публикует сама (отправка с её личного аккаунта в незнакомые чаты спрашивается).
 
 Приватность: «мысль» строится только из безопасного материала (время суток, события игры, её прошлые посты). Экран,
 услышанное, разговор и данные о пользователе в запрос не попадают, а готовый текст проверяется фильтром (ссылки,
 @упоминания, телефоны, личные слова от ядра, пароли) и отбрасывается, если что-то нашлось.
 
-Личные сообщения боту становятся событиями telegram.bot_message: ядро само решает, что с ними делать. Владельцу отвечает
-она сама (разговор, deliver); любому другому человеку отвечает тот же агент тем же разговором (R5, без отличий в контексте и
-возможностях), ответ тоже приходит запросом deliver. Сам модуль никому
-не отвечает: он только доставляет то, что прислало ядро. Владелец определяется настройками owner_tg_id и owner (@имя или id).
+Бот - витрина: он ничего не обсуждает и событий в ядро не шлёт. /start и /help: описание и кнопки-ссылки (канал, аккаунт,
+Twitch, YouTube из настроек окружения), /subscribe и /unsubscribe: подписка на объявления, любое другое сообщение: короткий
+ответ-заглушка со ссылкой на её аккаунт. Объявления (начался стрим, вышло видео) рассылает инструмент announce. Разговоры
+ведёт её аккаунт (Telethon, telegram_user). Владелец определяется настройками owner_tg_id и owner (@имя или id): ему бот
+доставляет вопросы ядра (deliver target=owner).
 """
 import asyncio
 import json
@@ -33,7 +35,8 @@ import time
 from pathlib import Path
 
 import httpx
-from common import CAPTION_MAX, KnownChats, OwnerBook, chunks, full_name, message_fact, quiet_active, scrub
+from common import (CAPTION_MAX, DEFAULT_ABOUT, KnownChats, OwnerBook, Subscribers, chunks, full_name, link_keyboard,
+                    quiet_active, scrub)
 from shots import Shots
 
 from gits_sdk import host
@@ -42,6 +45,8 @@ logger = logging.getLogger("telegram")
 
 API = "https://api.telegram.org"
 MAX_CHARS = 700
+STUB_REPLY = "Я только объявляю события; поговорить можно с её аккаунтом."
+ANNOUNCE_PER_SEC = 20                  # рассылка: лимит Bot API ~30 сообщений/с, берём с запасом
 STATE_FILE = "telegram.json"
 _MEDIA = {"photo": ("sendPhoto", "photo"), "video": ("sendVideo", "video"), "voice": ("sendVoice", "voice"),
           "document": ("sendDocument", "document")}
@@ -70,6 +75,8 @@ class TelegramChannel:
         self.shots = Shots(memory_dir)
         self.owner = OwnerBook(memory_dir, client)
         self.known = KnownChats(memory_dir)
+        self.subscribers = Subscribers(memory_dir)
+        self.announce_gap = 1 / ANNOUNCE_PER_SEC          # пауза между сообщениями рассылки (тесты обнуляют)
         self.client = client
         self.privacy = privacy
         self._token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -305,36 +312,86 @@ class TelegramChannel:
             self.log("черновик по просьбе отброшен фильтром приватности")
         return text
 
-    # ── входящие: кто-то написал боту ────────────────────────────────────────
+    # ── витрина: команды бота ────────────────────────────────────────────────
+
+    def about_text(self) -> str:
+        text = self.mod_cfg("about", DEFAULT_ABOUT).strip()
+        return text or DEFAULT_ABOUT
+
+    async def _say(self, chat_id, text: str, markup: dict | None = None) -> bool:
+        """Одно сообщение бота в личный чат; сбой Bot API в журнал, а не наружу (отвечать на сбой некому)."""
+        params = {"reply_markup": markup} if markup else {}
+        try:
+            await self._call("sendMessage", chat_id=chat_id, text=text, **params)
+            return True
+        except Exception as e:
+            self.log(f"ответ в боте не ушёл: {e}", error=True)
+            return False
 
     async def _on_private(self, msg: dict) -> bool:
-        """Личное сообщение боту: событие telegram.bot_message (TG-7: профиль человека и память ведёт ядро по sender).
-        True, если сообщение обработано (событие ушло или его не нужно слать); False - повторить позже."""
+        """Личное сообщение боту. Событий в ядро НЕТ и разговора с агентом нет: команды витрины (/start, /help, /subscribe,
+        /unsubscribe) или один короткий ответ-заглушка со ссылкой на её аккаунт. Всегда True: сообщение обработано."""
         sender = msg.get("from") or {}
-        if sender.get("is_bot"):
-            return True
         chat_id = (msg.get("chat") or {}).get("id")
-        uid = sender.get("id")
-        if uid is None or chat_id is None:
+        if sender.get("is_bot") or chat_id is None:
             return True
-        name = full_name(sender.get("first_name"), sender.get("last_name"), sender.get("username"), uid)
-        text = (msg.get("text") or msg.get("caption") or "[не текст]").strip()
-        await asyncio.to_thread(self.known.add, chat_id, name, sender.get("username"), sender.get("first_name"))
-        self.log(f"сообщение в боте: {name}: {text[:120]}")
-        try:
-            return bool(await self.client.event(
-                "telegram.bot_message", message_fact(name, "личке бота", text),
-                data={"chat_id": chat_id, "message_id": msg.get("message_id")},
-                addressed_to_me=True, sender=self.owner.sender(uid, name, sender.get("username")),
-                reply_channel={"module": "telegram", "target": f"bot:{chat_id}"}, memorable=True,
-                dedupe_key=f"tg:bot:{chat_id}:{msg.get('message_id')}"))
-        except ValueError as e:
-            logger.warning("событие бота не сформировано: %s", e)
-            return True                  # сообщение неисправимое: пропустить, а не застрять на нём
+        await asyncio.to_thread(self.owner.is_owner, sender.get("id"), sender.get("username"))   # узнаёт id владельца по @имени
+        raw = (msg.get("text") or "").strip()
+        command = raw.split(None, 1)[0].split("@", 1)[0].lower() if raw.startswith("/") else ""
+        ms = self.client.module_settings
+        if command in ("/start", "/help"):
+            await self._say(chat_id, self.about_text(), link_keyboard(ms))
+        elif command == "/subscribe":
+            name = full_name(sender.get("first_name"), sender.get("last_name"), sender.get("username"), chat_id)
+            new = await asyncio.to_thread(self.subscribers.add, chat_id, name)
+            await self._say(chat_id, "Вы подписаны на объявления: напишу, когда начнётся стрим или выйдет видео. "
+                                     "Отписаться: /unsubscribe." if new else
+                            "Вы уже подписаны. Отписаться: /unsubscribe.")
+        elif command == "/unsubscribe":
+            was = await asyncio.to_thread(self.subscribers.remove, chat_id)
+            await self._say(chat_id, "Подписка снята. Вернуться: /subscribe." if was else
+                            "Вы и не были подписаны. Подписаться: /subscribe.")
+        else:
+            await self._say(chat_id, STUB_REPLY, link_keyboard(ms, only=("account_url",)))
+        return True
+
+    # ── рассылка объявлений ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _gone(error: Exception) -> bool:
+        """Бот больше не может писать в этот чат (заблокирован, чат удалён): подписку снимаем."""
+        low = str(error).lower()
+        return any(w in low for w in ("blocked", "forbidden", "chat not found", "deactivated", "kicked"))
+
+    async def broadcast(self, text: str, url: str = "") -> dict:
+        """Разослать объявление всем подписчикам с паузой между сообщениями; заблокировавших бота снять с подписки.
+        Возвращает {"sent", "removed", "failed", "total"}. Бросает RuntimeError, если бот не настроен."""
+        if not self._token:
+            raise RuntimeError("бот не настроен: нет TELEGRAM_BOT_TOKEN в .env")
+        body = text.strip() + (chr(10) + url.strip() if url.strip() else "")
+        ids = await asyncio.to_thread(self.subscribers.ids)
+        sent = removed = failed = 0
+        for i, chat_id in enumerate(ids):
+            if i and self.announce_gap > 0:
+                await asyncio.sleep(self.announce_gap)
+            try:
+                await self._call("sendMessage", chat_id=chat_id, text=body)
+                sent += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                if self._gone(e):
+                    await asyncio.to_thread(self.subscribers.remove, chat_id)
+                    removed += 1
+                else:
+                    failed += 1
+                    self.log(f"объявление не дошло до {chat_id}: {e}", error=True)
+        self.log(f"объявление разослано: {sent} из {len(ids)}, снято с подписки {removed}, сбоев {failed}")
+        return {"sent": sent, "removed": removed, "failed": failed, "total": len(ids)}
 
     async def run_inbox(self):
-        """Входящие бота (getUpdates). Пока ядро не принимает события (нет связи, модуль выключен), смещение не двигается:
-        сообщения не теряются, а придут, когда связь появится."""
+        """Входящие бота (getUpdates): команды витрины и ответ-заглушка. Пока нет связи с ядром (настройки витрины приходят
+        от него) или модуль выключен, смещение не двигается: сообщения не теряются, а будут обработаны позже."""
         while True:
             if not self._token:
                 await asyncio.sleep(300)

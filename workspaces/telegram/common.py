@@ -7,6 +7,7 @@ import json
 import os
 from gits_sdk import resources
 import re
+import threading
 import time
 from pathlib import Path
 from gits_sdk.envcompat import env
@@ -177,6 +178,85 @@ class KnownChats:
     def has(self, value) -> bool:
         key = self._key(value)
         return bool(key) and key in self._load()
+
+
+class Subscribers:
+    """Подписчики бота-витрины на объявления (/subscribe): id личного чата -> имя и время подписки. Один файл
+    tg_subscribers.json рядом с остальной памятью; запись атомарная (временный файл и замена), чтобы сбой посреди записи не
+    оставил битый список. Хранятся только id чата и имя, не тексты сообщений."""
+
+    FILE = "tg_subscribers.json"
+
+    def __init__(self, memory_dir: str):
+        self._file = Path(memory_dir) / self.FILE
+        self._lock = threading.Lock()
+
+    def _load(self) -> dict[str, dict]:
+        try:
+            chats = json.loads(self._file.read_text(encoding="utf-8")).get("chats", {})
+        except Exception:
+            return {}
+        return {k: v for k, v in chats.items() if isinstance(k, str) and k.lstrip("-").isdigit() and isinstance(v, dict)}
+
+    def _save(self, chats: dict[str, dict]) -> bool:
+        tmp = self._file.with_name(self._file.name + ".tmp")
+        try:
+            self._file.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps({"chats": chats}, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, self._file)
+        except OSError:
+            return False
+        return True
+
+    def add(self, chat_id: int, name: str = "") -> bool:
+        """Подписать чат. True, если подписка новая (уже подписанному: False, ничего не меняется)."""
+        with self._lock:
+            chats = self._load()
+            key = str(chat_id)
+            if key in chats:
+                return False
+            chats[key] = {"name": str(name or "")[:80], "since": time.time()}
+            return self._save(chats)
+
+    def remove(self, chat_id: int) -> bool:
+        """Снять подписку. True, если чат был подписан."""
+        with self._lock:
+            chats = self._load()
+            if chats.pop(str(chat_id), None) is None:
+                return False
+            return self._save(chats)
+
+    def has(self, chat_id: int) -> bool:
+        return str(chat_id) in self._load()
+
+    def ids(self) -> list[int]:
+        with self._lock:
+            return [int(k) for k in self._load()]
+
+    def count(self) -> int:
+        return len(self._load())
+
+
+# Кнопки-ссылки витрины: ключ настройки окружения -> подпись кнопки. Пустая ссылка: кнопки нет.
+LINK_BUTTONS = (("channel_url", "Telegram-канал"), ("account_url", "Telegram-аккаунт"), ("twitch_url", "Twitch"),
+                ("youtube_url", "YouTube"))
+DEFAULT_ABOUT = ("Я ГЛаДОС: искусственный интеллект, который живёт на компьютере, играет, ведёт стримы и монтирует видео. "
+                 "Здесь я только объявляю события: начался стрим, вышло новое видео. Подпишитесь командой /subscribe, "
+                 "отписаться можно командой /unsubscribe. Поговорить можно с моим аккаунтом.")
+
+
+def link_keyboard(module_settings: dict | None, only: tuple[str, ...] | None = None) -> dict | None:
+    """reply_markup с inline-кнопками-ссылками из настроек окружения (по одной кнопке в ряд). Пустая или не http(s) ссылка:
+    кнопки нет. `only` оставляет часть кнопок по ключам настроек. None, если кнопок нет совсем."""
+    cfg = module_settings or {}
+    rows = []
+    for key, label in LINK_BUTTONS:
+        url = cfg.get(key)
+        if only is not None and key not in only:
+            continue
+        if isinstance(url, str) and url.strip().lower().startswith(("http://", "https://", "tg://")):
+            rows.append([{"text": label, "url": url.strip()}])
+    return {"inline_keyboard": rows} if rows else None
 
 
 def message_fact(name: str, place: str, text: str) -> str:

@@ -3,8 +3,7 @@
   1. Normalizer (`normalizer.py`): тело события -> Item, отправитель -> человек и память;
   2. дедупликация (`items.py`, решение в `services/attention/dedupe.py`);
   3. HardRules (здесь): правила до классификатора (ATT-7) R1 обращение владельца -> разговор; R2 ответ на вопрос в том же
-     канале; R3 временное правило mute -> в сводку; R5 личное сообщение боту Telegram не от владельца -> тот же разговор
-     с тем же агентом (ничего в нём не зависит от того, кто пишет); R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
+     канале; R3 временное правило mute -> в сводку; R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
   4. срочность без классификатора (`Normalizer.assign_urgency`): подсказка модуля, обращение к ней поднимает до «сказать»;
   5. Dispatcher (`dispatcher.py`): D0-D4 по срочности; сказать сразу (срочность 4+) или во входящую очередь (`inbox.py`).
 """
@@ -24,7 +23,7 @@ logger = logging.getLogger("attention")
 
 
 class HardRules:
-    """Правила R1-R5 до классификатора. `apply` возвращает True, если событие уже обработано."""
+    """Правила R1-R4 до классификатора. `apply` возвращает True, если событие уже обработано."""
 
     def __init__(self, ctx: AttentionContext, dispatcher: Dispatcher, decisions: DecisionLog, questions: QuestionService):
         self.ctx, self.dispatcher, self.decisions, self.questions = ctx, dispatcher, decisions, questions
@@ -50,15 +49,6 @@ class HardRules:
         if muted is not None:
             item.urgency = item.urgency_hint if item.urgency_hint is not None else 1
             await self.dispatcher.finish(item, cfg, att, rule="R3", force="D1", rule_id=muted.id)
-            return True
-        # R5: личное сообщение боту Telegram от не владельца: тот же путь, что у R1 (тот же агент, те же инструменты и память,
-        # текст события как есть); человек уже записан в relationships (note_sender), решение пишется в журнал решений
-        sender = item.sender
-        if (item.kind == "telegram.bot_message" and item.addressed_to_me is True and item.reply_channel
-                and sender and sender.get("id") and not sender.get("is_owner")):
-            item.decision = "R5"
-            ctx.spawn(ctx.io.from_module(item.text, item.reply_channel, sender))
-            self.decisions.write(item, att, rule="R5")
             return True
         # R4: критичное событие, объявленное модулем как срочное, обходит классификатор
         if item.urgency_hint == 5 and declared == 5:

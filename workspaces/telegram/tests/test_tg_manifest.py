@@ -4,7 +4,7 @@ from tg_rig import Rig
 from gits_sdk import protocol as P
 from manifest import MANIFEST, build_manifest
 
-TABLE = {"message", "inbox", "settings"}
+TABLE = {"message", "inbox", "announce", "settings"}
 
 
 def tools():
@@ -28,12 +28,21 @@ def test_manifest_is_valid_and_matches_the_spec():
     assert not any(s.get("secret") for s in schema.values())                 # секретов в настройках нет
 
 
+def test_showcase_settings_and_events():
+    schema = MANIFEST["settings_schema"]
+    assert schema["about"]["default"] and all(schema[k]["default"] == "" for k in
+                                              ("channel_url", "account_url", "twitch_url", "youtube_url"))
+    kinds = {e["kind"] for e in MANIFEST["emits"]}
+    assert "telegram.bot_message" not in kinds and {"telegram.dm", "telegram.group", "telegram.posted"} <= kinds
+
+
 def test_tool_table():
     t = tools()
     assert set(t) == TABLE
     assert all(x["availability"] == "always" and x["risk"] == "auto" for x in t.values())
     assert not any(x.get("self_confirming") for x in t.values())                 # публикация без самоподтверждения и риска public
     assert t["message"]["danger_check"] is True and t["message"]["informative"] is True     # разрешение решает проверка адресата
+    assert t["announce"]["params"]["text"].get("required") is not False and t["announce"]["params"]["url"]["required"] is False
     assert not t["inbox"].get("danger_check") and not t["settings"].get("danger_check")
     assert t["message"]["params"]["files"]["type"] == "array" and t["message"]["params"]["reply_to"]["type"] == "integer"
     assert all(p.get("required") is False for p in t["message"]["params"].values())

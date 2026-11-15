@@ -1,6 +1,6 @@
 """Модуль Telegram против настоящих шины, внимания, реестра и маршрутизатора ядра (без процессов и без сети Telegram).
 
-Проверяет стык целиком: событие владельца -> правило R1 -> разговор -> ответ deliver -> Bot API; инструменты модуля в
+Проверяет стык целиком: бот-витрина не шлёт событий в ядро; ответ deliver -> Bot API; инструменты модуля в
 реестре планировщика; core.set_setting, core.privacy_terms; вопросы владельцу в Telegram (target owner); TG-14 для чужих.
 """
 import asyncio
@@ -86,39 +86,29 @@ async def test_module_manifest_is_accepted_and_tools_reach_the_planner(tmp_path,
         rec = s.core.modules.get("telegram")
         assert rec.connected and rec.title == "Telegram" and "chat.channel" in rec.manifest["capabilities"]
         env = s.core.envs.envs["telegram"]
-        assert env.module == "telegram" and {t.name for t in env.tools} == {"message", "inbox", "settings"}
+        assert env.module == "telegram" and {t.name for t in env.tools} == {"message", "inbox", "announce", "settings"}
         s.core.envs.focus = lambda: set()                                     # ни один профиль модуль не focus: always видны
         visible = {t.id for t in s.core.envs.active_tools()}
-        assert {"telegram.message", "telegram.inbox", "telegram.settings"} <= visible
+        assert {"telegram.message", "telegram.inbox", "telegram.announce", "telegram.settings"} <= visible
         msg = s.core.envs.get("telegram.message")
         assert msg.danger_check and msg.risk == "auto" and not msg.self_confirming      # разрешение решает проверка адресата
 
 
-async def test_owner_message_goes_to_conversation_and_the_reply_comes_back_to_the_same_chat(tmp_path, monkeypatch):
+async def test_owner_message_to_the_bot_is_not_a_conversation_either(tmp_path, monkeypatch):
     async with stack(tmp_path, monkeypatch) as s:
         assert await s.mod.channel._on_private(bot_msg(OWNER, "как дела?", name="Аня"))
-        await s.core.wait_for(lambda: s.core.io.inputs)
-        text, channel, sender = s.core.io.inputs[0]
-        assert s.core.attention.last_decision["rule"] == "R1"                  # TG-17: обращение владельца -> разговор
-        assert text == "Сообщение от Аня в личке бота: «как дела?»"
-        assert channel == {"module": "telegram", "target": f"bot:{OWNER}"} and sender["is_owner"] is True
-        # ответ уходит в тот же чат от бота
-        reply = Channel("module", channel["module"], channel["target"])
-        assert await s.io.deliver(reply, "Сносно. Подопытные не взорвались.")
-        assert s.net.api[-1] == ("sendMessage", {"chat_id": OWNER, "text": "Сносно. Подопытные не взорвались."})
+        await asyncio.sleep(0.3)
+        assert not s.core.io.inputs                                            # разговоры ведёт её аккаунт, не бот
+        assert "только объявляю" in s.net.api[-1][1]["text"]
 
 
-async def test_stranger_message_goes_to_the_same_conversation_and_is_registered(tmp_path, monkeypatch):
+async def test_stranger_message_to_the_bot_gets_stub_and_never_reaches_the_core(tmp_path, monkeypatch):
     async with stack(tmp_path, monkeypatch) as s:
         await s.mod.channel._on_private(bot_msg(555, "я переезжаю в Казань", name="Маша"))
-        await s.core.wait_for(lambda: s.core.io.inputs)
-        d = s.core.attention.last_decision
-        assert d["rule"] == "R5" and len(s.core.io.inputs) == 1        # тот же разговор, что у владельца
-        text, channel, sender = s.core.io.inputs[0]
-        assert "Казань" in text and "не владелец" not in text and channel == {"module": "telegram", "target": "bot:555"} and sender["is_owner"] is False
-        assert s.rel.people["tg:555"]["source"] == "telegram" and s.rel.people["tg:555"]["name"] == "Маша"   # TG-14
-        assert "Казань" in s.rel.people["tg:555"]["notes"][0]
-        assert not s.core.companion._mem.facts                                  # сырой текст чужого сообщения в долгую память не пишется
+        await asyncio.sleep(0.3)
+        assert not s.core.io.inputs and s.core.attention.last_decision is None       # ни разговора, ни события
+        assert "tg:555" not in s.rel.people and not s.core.companion._mem.facts
+        assert s.net.api[-1][0] == "sendMessage" and "только объявляю" in s.net.api[-1][1]["text"]
 
 
 async def test_question_to_the_owner_is_delivered_to_the_owners_bot_chat(tmp_path, monkeypatch):
@@ -152,7 +142,7 @@ async def test_message_asks_only_for_unknown_chats_through_the_router(tmp_path, 
         assert await tool.check({"to": "Маша", "text": "Анна просила привет"})          # личные слова: тоже причина
         assert await tool.check({"to": "channel", "text": "привет"}) is None             # канал и владелец: без вопроса
         assert await tool.check({"to": "owner", "text": "привет"}) is None
-        await s.mod.channel._on_private(bot_msg(555, "привет", name="Маша"))            # теперь Маша писала боту
+        s.mod.user.known.add(555, "Маша")                                               # теперь Маша писала её аккаунту
         assert await tool.check({"to": "Маша", "text": "привет"}) is None
         assert await tool.check({"to": "555", "text": "привет"}) is None
 
@@ -187,7 +177,7 @@ async def test_disabling_the_module_hides_its_tools_and_drops_its_events(tmp_pat
         await s.core.wait_for(lambda: not s.client.enabled)
         assert s.core.envs.envs["telegram"].state()[0] is False                 # «возможности»: инструменты пропали
         before = s.core.attention.last_decision
-        await s.mod.channel._on_private(bot_msg(555, "привет"))
+        await s.client.event("telegram.dm", "Сообщение от Маша в её личке: «привет»", addressed_to_me=True)
         await asyncio.sleep(0.2)
         assert s.core.attention.last_decision is before
 

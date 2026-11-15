@@ -1,9 +1,9 @@
 """Модуль Telegram: сборка клиента, инструментов, доставки ответов (`deliver`) и состояния для дашборда (ТЗ 10).
 
 `TelegramModule(client, memory_dir)` вешает обработчики на `WorkspaceClient` и создаёт фоновые задачи (`start()`):
-личные слова от ядра (privacy), входящие бота, цикл постов, проверка канала, её аккаунт (Telethon), состояние раз в 5 минут.
+личные слова от ядра (privacy), входящие бота-витрины (команды, подписка), цикл постов, проверка канала, её аккаунт (Telethon), состояние раз в 5 минут.
 Инструменты: `message` (канал, владелец или чат с её аккаунта; текст, тема, файлы; разрешение спрашивается по адресату),
-`inbox` (чтение её аккаунта), `settings` (периодические посты и пост-итог).
+`inbox` (чтение её аккаунта), `announce` (рассылка объявлений подписчикам бота), `settings` (периодические посты и пост-итог).
 Тесты собирают модуль против `gits_sdk.testing.FakeCore`, а сеть Telegram подменяют (`_call`, `_upload`, клиент Telethon).
 """
 import asyncio
@@ -32,6 +32,7 @@ VOICE_EXT = (".ogg", ".opus")
 
 # статус публикации в канал (`TelegramChannel.ready_for_posts`) и отказ фильтра -> (текст отказа, код ошибки MOD-9)
 MAX_FILES = 10
+ANNOUNCE_MAX = 1000
 FILE_MAX_BYTES = 50_000_000                       # лимит Telegram Bot API
 FILE_KINDS = {".png": "photo", ".jpg": "photo", ".jpeg": "photo", ".webp": "photo", ".mp4": "video", ".ogg": "voice",
               ".opus": "voice"}
@@ -250,6 +251,11 @@ class TelegramModule:
                 return await asyncio.to_thread(user.unread, limit)
             return await self._account(user.chats, _int_arg(args, "limit", 20))
 
+        # ── объявления подписчикам бота-витрины ──
+        @c.tool("announce")
+        async def announce(args):
+            return await self.announce(args)
+
         # ── настройки ──
         @c.tool("settings")
         async def settings(args):
@@ -283,6 +289,35 @@ class TelegramModule:
         ch = self.channel
         return (f"периодические посты: {'включены' if ch.flag('publish') else 'выключены'}; "
                 f"пост-итог после забега: {'включён' if ch.flag('after_run') else 'выключен'}")
+
+    # ── объявления (инструмент announce) ──
+
+    async def announce(self, args: dict) -> str:
+        """Рассылка текста (и необязательной ссылки) всем подписчикам бота. Текст задаёт вызывающий; личные слова из списка
+        ядра в него не пропускаются (рассылка публичная)."""
+        text = _text_arg(args, "text").strip()
+        url = _text_arg(args, "url", required=False).strip()
+        if len(text) > ANNOUNCE_MAX:
+            raise ToolError(f"текст объявления не длиннее {ANNOUNCE_MAX} символов", code="bad_request")
+        if url and not url.lower().startswith(("http://", "https://")):
+            raise ToolError("параметр «url» должен быть ссылкой http или https", code="bad_request")
+        self.privacy.require()
+        if self.privacy.leaks(text):
+            raise ToolError(POST_FAILURES["unsafe"][0].replace("опубликовано", "разослано"), code="denied")
+        if not self.channel.has_token():
+            raise ToolError("бот не настроен: нет TELEGRAM_BOT_TOKEN в .env", code="unavailable")
+        if not await asyncio.to_thread(self.channel.subscribers.count):
+            return "подписчиков пока нет, объявление никому не отправлено"
+        try:
+            res = await self.channel.broadcast(text, url)
+        except RuntimeError as e:
+            raise ToolError(scrub(str(e), self.channel._token)[:160], code="unavailable") from e
+        out = f"объявление отправлено: {res['sent']} из {res['total']}"
+        if res["removed"]:
+            out += f"; снято с подписки (заблокировали бота): {res['removed']}"
+        if res["failed"]:
+            out += f"; не дошло из-за сбоев: {res['failed']}"
+        return out
 
     # ── сообщения (инструмент message) ───────────────────────────────────────
 

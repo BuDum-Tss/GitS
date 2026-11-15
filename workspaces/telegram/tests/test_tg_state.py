@@ -62,10 +62,6 @@ async def test_state_says_disabled_and_core_keeps_it(tmp_path, monkeypatch):
         await rig.core.wait_for(lambda: not rig.client.enabled)
         summary, _ = await asyncio.to_thread(rig.mod.snapshot)
         assert summary.startswith("канал: выключен")
-        await rig.mod.channel._on_private({"message_id": 1, "chat": {"id": 5, "type": "private"}, "text": "x",
-                                           "from": {"id": 5, "first_name": "П"}})
-        await asyncio.sleep(0.1)
-        assert rig.core.events == []                                                      # выключенный модуль молчит
 
 
 async def test_panel_shows_state_and_dialogs_without_message_text(tmp_path, monkeypatch):

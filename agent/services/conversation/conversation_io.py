@@ -4,7 +4,6 @@
   voice      - микрофон (модуль voice: событие `voice.utterance` -> `Companion.on_voice`);
   dashboard  - чат дашборда и строка быстрого ввода питомца (`POST /api/chat`);
   module     - модуль-канал (Telegram и т.п.): обращение к ней, которое менеджер внимания признал обращением (владельца или другого человека).
-Личное сообщение боту от не владельца (правило R5) идёт тем же `from_module`: отвечает тот же агент, что и владельцу.
 Ответ уходит в тот канал, откуда пришло обращение. На время обработки обращения канал лежит в контекстной переменной
 `current_channel`, поэтому `Companion.say` находит его без передачи параметров через весь путь (маршрутизатор,
 планировщик, оговорки «сейчас посмотрю»). Для канала `module` ответ идёт запросом `deliver` модулю и вслух не
@@ -72,7 +71,7 @@ class ConversationIO:
         await self.submit(UserInput(text, DASHBOARD))
 
     async def from_module(self, text: str, reply_channel: dict, sender: dict | None = None) -> None:
-        """Обращение из модуля-канала (владельца или другого человека, R1/R5): reply_channel события {"module", "target"}."""
+        """Обращение из модуля-канала (владельца или другого человека, R1): reply_channel события {"module", "target"}."""
         channel = Channel("module", str(reply_channel.get("module") or ""), str(reply_channel.get("target") or ""))
         await self.submit(UserInput(text, channel, sender))
 
