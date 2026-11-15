@@ -66,6 +66,7 @@ class SessionStats:
     stt_errors: int = 0
     spoken: int = 0
     barge_ins: int = 0
+    echo_dropped: int = 0
 
 
 class VoiceSession:

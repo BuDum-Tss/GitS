@@ -54,6 +54,10 @@ class EngineConfig:
     # перебивание: auto это any_speaker для адаптера с echo_free и can_barge_in, иначе off
     barge_in: str = "auto"
     barge_in_ms: int = 2000
+    barge_in_db: float = 6.0             # перебивание считает речь только громче порога VAD на столько дБ (эхо тише живого голоса)
+    # фильтр эха её собственной речи (echo.py): окно после конца её реплики, 0 выключает; доля совпавших слов
+    echo_window_s: float = 8.0
+    echo_ratio: float = 0.7
     # воспроизведение
     lead_ms: int = 60
     max_waiting: int = 3
@@ -96,6 +100,9 @@ class EngineConfig:
             min_speech_ms=int(_num(environ, "GITS_VOICE_MIN_SPEECH_MS", 240, 60, 2000)),
             barge_in=barge if barge in ("auto", *BARGE_POLICIES) else "auto",
             barge_in_ms=int(_num(environ, "GITS_VOICE_BARGE_IN_MS", 2000, 100, 3000)),
+            barge_in_db=_num(environ, "GITS_VOICE_BARGE_IN_DB", 6.0, 0.0, 30.0),
+            echo_window_s=_num(environ, "GITS_VOICE_ECHO_WINDOW_S", 8.0, 0.0, 60.0),
+            echo_ratio=_num(environ, "GITS_VOICE_ECHO_RATIO", 0.7, 0.3, 1.0),
             tts_ref_audio=_first(environ, "GITS_TTS_REF_AUDIO"),
             tts_ref_text=_first(environ, "GITS_TTS_REF_TEXT"),
             tts_speed=_num(environ, "GITS_TTS_SPEED", 1.0, 0.5, 1.5),

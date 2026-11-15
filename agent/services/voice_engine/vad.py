@@ -114,8 +114,11 @@ class UtteranceSegmenter:
 
     RUN_GAP_MS = 100                # пауза короче этой не обрывает «устойчивую речь» (для перебивания)
 
-    def __init__(self, vad: VadDetector, cfg: SegmenterConfig | None = None):
+    def __init__(self, vad: VadDetector, cfg: SegmenterConfig | None = None, loud_db: float | None = None):
         self.vad = vad
+        self.loud_db = loud_db          # порог громкости для перебивания (None: не считать)
+        self._loud_ms = 0
+        self._loud_gap = 0
         self.cfg = cfg or SegmenterConfig()
         self._buf = bytearray()
         self._preroll: deque[bytes] = deque(maxlen=max(1, (self.cfg.preroll_ms + self.cfg.onset_ms) // FRAME_MS))
@@ -136,6 +139,11 @@ class UtteranceSegmenter:
     def run_ms(self) -> int:
         """Сколько миллисекунд речь идёт подряд (паузы до 100 мс не считаются разрывом): основа перебивания."""
         return self._run_ms
+
+    @property
+    def loud_run_ms(self) -> int:
+        """Как `run_ms`, но считаются только кадры громче `loud_db`: живой голос у микрофона громче её эха из колонок."""
+        return self._loud_ms
 
     def push(self, pcm: bytes) -> list[Segment]:
         self._buf.extend(pcm)
@@ -162,6 +170,14 @@ class UtteranceSegmenter:
 
     def _frame(self, frame: bytes) -> Segment | None:
         voiced = self.vad.is_speech(frame)
+        if self.loud_db is not None:
+            if voiced and rms_db(frame) >= self.loud_db:
+                self._loud_ms += FRAME_MS + self._loud_gap
+                self._loud_gap = 0
+            else:
+                self._loud_gap += FRAME_MS
+                if self._loud_gap >= self.RUN_GAP_MS:
+                    self._loud_ms = self._loud_gap = 0
         if voiced:
             self._run_ms += FRAME_MS + self._gap_ms
             self._gap_ms = 0

@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Iterable
 
-from . import events
+from . import echo, events
 from .clock import SystemClock
 from .config import EngineConfig
 from .playback import Playback, PlaybackConfig, PlaybackEvent, PlaybackMetrics
@@ -133,7 +133,8 @@ class VoiceEngine:
                 raise SessionLimitError(f"в сессии {len(sess.speakers)} говорящих из {self.sessions_manager.max_speakers} возможных")
             if idx in sess.by_idx:
                 raise ValueError(f"номер говорящего {idx} занят")
-            sp = Speaker(speaker_id, name or speaker_id, idx, UtteranceSegmenter(self._vad_factory(), self._segmenter_cfg))
+            sp = Speaker(speaker_id, name or speaker_id, idx, UtteranceSegmenter(self._vad_factory(), self._segmenter_cfg,
+                                                           self.config.energy_threshold_db + self.config.barge_in_db))
             sess.speakers[speaker_id] = sp
             sess.by_idx[idx] = sp
         sp.name, sp.is_owner, sp.is_bot = name or sp.name, is_owner, is_bot
@@ -175,7 +176,7 @@ class VoiceEngine:
     def _maybe_barge_in(self, sess: VoiceSession, sp: Speaker) -> None:
         pb = sess.playback
         if (sess.barge_in_policy == "any_speaker" and pb is not None and pb.audible and not sp.is_bot
-                and sp.segmenter.run_ms >= sess.barge_in_ms and pb.barge_in()):
+                and sp.segmenter.loud_run_ms >= sess.barge_in_ms and pb.barge_in()):
             sess.stats.barge_ins += 1
             sp.barged_ts = self.clock.time()
 
@@ -187,7 +188,8 @@ class VoiceEngine:
             logger.warning("Распознавание не успевает: фраза говорящего отброшена (сессия %s)", sess.id)
             return
         sess.stt_pending += 1
-        self._spawn(sess, self._transcribe(sess, sp, seg), f"voice-stt-{sess.id}")
+        closed_at = self.clock.time()
+        self._spawn(sess, self._transcribe(sess, sp, seg, closed_at), f"voice-stt-{sess.id}")
 
     def _spawn(self, sess: VoiceSession, coro, name: str) -> asyncio.Task:
         task = asyncio.get_running_loop().create_task(coro, name=name)
@@ -197,7 +199,7 @@ class VoiceEngine:
         task.add_done_callback(sess.tasks.discard)
         return task
 
-    async def _transcribe(self, sess: VoiceSession, sp: Speaker, seg: Segment) -> None:
+    async def _transcribe(self, sess: VoiceSession, sp: Speaker, seg: Segment, closed_at: float) -> None:
         try:
             async with sp.stt_lock:                     # фразы одного говорящего идут по порядку
                 async with self._stt_sem:
@@ -210,6 +212,11 @@ class VoiceEngine:
             sess.stt_pending -= 1
         text = result.text.strip()
         if sess.closed or len(text.strip(" .,!?-—…")) < NOISE_MIN_CHARS:
+            return
+        if sess.playback is not None and echo.is_echo(text, list(sess.playback.spoken_log), closed_at - seg.duration_ms / 1000.0,
+                                                      closed_at, self.config.echo_window_s, self.config.echo_ratio):
+            sess.stats.echo_dropped += 1
+            logger.info("эхо её речи отброшено (сессия %s, говорящий %s)", sess.id, sp.id)
             return
         speaker = sp.public()
         addressed, reason = self._addressed(sess, text)

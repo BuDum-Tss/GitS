@@ -19,6 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable
 
+from .echo import RECORD_KEEP_S, SpokenRecord
 from .frames import FRAME_MS, pcm_ms, split_frames
 from .protocol import encode
 from .sentences import MAX_CHARS, MIN_CHARS, split_sentences
@@ -94,6 +95,7 @@ class Utterance:
     base: float = 0.0                                                  # момент, от которого отсчитывается время кадров
     sent_ms: int = 0                                                   # мс звука, отправленных адаптеру
     timeline: list[tuple[int, int, int, str]] = field(default_factory=list)       # (индекс, начало мс, длина мс, текст)
+    record: SpokenRecord | None = None                                 # запись для фильтра эха
 
     @property
     def total_ms(self) -> int:
@@ -135,6 +137,7 @@ class Playback:
         self._counter = 0
         self._play_ids = play_ids or self._own_play_id
         self.last_end_ts = 0.0
+        self.spoken_log: deque[SpokenRecord] = deque(maxlen=16)        # недавно озвученное: для фильтра эха
 
     def _own_play_id(self) -> int:
         self._counter += 1
@@ -290,6 +293,10 @@ class Playback:
 
     def _finish(self, utt: Utterance, *, completed: bool, reason: str | None, spoken_ms: int) -> None:
         text, count = self._spoken(utt, spoken_ms, completed)
+        if utt.record is not None:
+            utt.record.active = False
+            if not completed:
+                utt.record.end = min(utt.record.end, self._clock.time())
         self.last_end_ts = self._clock.time()
         try:
             self._emit(PlaybackEvent("ended", utt.uid, utt.text, completed, None if completed else (reason or "stop"),
@@ -422,6 +429,14 @@ class Playback:
             else:
                 self._emit(PlaybackEvent("segment", utt.uid, sentence.text, segment=i))
             utt.timeline.append((i, start_ms, dur_ms, sentence.text))
+            now = self._clock.time()
+            if utt.record is None:
+                while self.spoken_log and self.spoken_log[0].end < now - RECORD_KEEP_S and not self.spoken_log[0].active:
+                    self.spoken_log.popleft()
+                utt.record = SpokenRecord(utt.uid, now + lead, now + lead)
+                self.spoken_log.append(utt.record)
+            utt.record.parts.append(sentence.text)
+            utt.record.end = max(utt.record.end, now + lead + dur_ms / 1000.0)
             for frame in frames:
                 delay = utt.base + frames_total * step - lead - self._clock.monotonic()
                 if delay > 0:
