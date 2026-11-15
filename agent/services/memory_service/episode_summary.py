@@ -41,7 +41,8 @@ def format_events(events: list[dict]) -> str:
     for e in events:
         t = datetime.fromtimestamp(e["ts"]).strftime("%H:%M:%S")
         back = " (фон)" if e["kind"] in moments.SCENE_LABELS else ""
-        kind = "мысль" if e["kind"] == moments.THOUGHT_KIND else e["kind"]          # её собственная мысль о событии
+        kind = {moments.THOUGHT_KIND: "мысль",                       # её собственная мысль о событии
+                moments.OUT_KIND: "она написала в чат"}.get(e["kind"], e["kind"])      # её исходящее сообщение в канал модуля
         lines.append(f"[{e['id']}] {t} {kind}{back}: {str(e['text'])[:400]}")
     return "\n".join(lines)
 

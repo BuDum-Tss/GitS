@@ -767,7 +767,7 @@ class DiscordBot:
 
     async def send(self, raw_to, text: str, reply_to=None, by_owner: bool = False, target: str | None = None,
                    leak_check: bool = True) -> str:
-        """Текст в канал, ветку или личку по адресу. Возвращает РАЗРЕШЁННЫЙ адрес (`channel:<id>` / `dm:<id>`), куда ушло сообщение. Личные слова режутся здесь же. Режим проверяется здесь же: «чтение» и «игнор»
+        """Текст в канал, ветку или личку по адресу. Личные слова режутся здесь же. Режим проверяется здесь же: «чтение» и «игнор»
         не пускают. by_owner: ручная отправка владельцем из панели (его действие, а не её): режим и личные слова не проверяются.
         Ответ длиннее 2000 символов режется на части. leak_check=False: личка владельца (он вправе слышать своё имя)."""
         text = text.strip()
@@ -784,7 +784,7 @@ class DiscordBot:
             await self._send_parts(channel, text, reply_to)
             await asyncio.to_thread(self.dialogs.note_out, target)
         logger.info("она написала в %s", target)
-        return target
+        return f"отправлено в «{str(raw_to or target)[:60]}»"
 
     async def reply(self, target: str, text: str) -> None:
         """Ответ по адресу, из которого написали (deliver): без проверки личных слов (владелец вправе слышать своё имя). Режим

@@ -147,6 +147,9 @@ class AttentionContext:
         # важное событие (решение D3/D4, пришло не от пользователя): on_alert(item) -> True, если его берёт единый агент и обрывает
         # свою текущую работу; озвучивает его тогда сам агент, в очередь речи оно не кладётся. None - обычный путь.
         self.on_alert: Callable[[Item], bool] | None = None
+        # сообщение из канала модуля, на которое она обязана ответить (R1 владелец, R6 тег или ответ в группе, личка): событие, а не
+        # реплика разговора. on_reply(item) отдаёт его единому агенту с признаком needs_reply; отвечает агент инструментом модуля.
+        self.on_reply: Callable[[Item], None] | None = None
         self.silent_kinds: set[str] = set()      # виды, которые не пишутся в журнал module_event
         self.last_decision: dict | None = None   # для отладки и дашборда
         self.decisions: deque = deque(maxlen=100)

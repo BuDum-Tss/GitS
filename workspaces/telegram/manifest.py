@@ -9,13 +9,15 @@ _GENERIC = ("телеграм", "телега", "тг", "канал", "пост"
 
 
 def _tool(name, description, params, *, risk="auto", keywords=(), informative=False,
-          danger_check=False, timeout_s=30):
+          danger_check=False, timeout_s=30, sends=False):
     tool = {"name": name, "description": description, "params": params, "risk": risk, "availability": "always",
             "timeout_s": timeout_s, "keywords": list(dict.fromkeys([*keywords, *_GENERIC]))}
     if informative:
         tool["informative"] = True
     if danger_check:
         tool["danger_check"] = True
+    if sends:
+        tool["sends"] = True              # отправляет текст людям: ядро пишет её исходящее событие module_out
     return tool
 
 
@@ -45,7 +47,7 @@ TOOLS = [
                          "description": "true: вызов от игры после забега; публикуется, только если включена настройка "
                                         "«Пост-итог после забега»"}},
           informative=True, danger_check=True, timeout_s=120,
-          keywords=("напиши", "отправь", "опубликуй", "запости", "выложи", "ответь", "видео", "скриншот", "сообщение")),
+          sends=True, keywords=("напиши", "отправь", "опубликуй", "запости", "выложи", "ответь", "видео", "скриншот", "сообщение")),
     _tool("inbox", "Читать Telegram её аккаунта: без параметров список диалогов с числом непрочитанных; chat - последние "
                    "сообщения чата (название, @имя или id) и сколько она сама в нём писала за час и сутки; unread=true - что писали недавно.",
           {"chat": {"type": "string", "required": False, "description": "название чата, @имя или id"},

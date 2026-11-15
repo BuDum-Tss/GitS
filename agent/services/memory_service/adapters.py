@@ -83,10 +83,10 @@ class UserMemoryAdapter:
 
     # ── запись (MemoryWriter) ────────────────────────────────────────────────────────
 
-    def add_dialogue(self, role: str, text: str, who: str | None = None) -> None:
+    def add_dialogue(self, role: str, text: str) -> None:
         mem = self._get_mem()
         if mem is not None:
-            mem.add_dialogue(role, text, who)
+            mem.add_dialogue(role, text)
 
     def add_fact(self, text: str, kind: str = "user", importance: int = 3, due_days: float | None = None) -> bool:
         """Запомнить то, что она сама сочла важным. Мелочь (важность ниже порога) не записывается. True, если запись новая."""

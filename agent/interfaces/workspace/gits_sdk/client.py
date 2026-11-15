@@ -194,7 +194,7 @@ class PeerClient:
         return deco
 
     def tool(self, name: str):
-        """Обработчик инструмента из манифеста: `async (args: dict) -> JSON-значение` или `ToolReply` (текст и адреса `delivered_to`)."""
+        """Обработчик инструмента из манифеста: `async (args: dict) -> JSON-значение`."""
         if name not in self._tool_names():
             raise ValueError(f"инструмента «{name}» нет в манифесте модуля «{self.id}»")
 
@@ -594,8 +594,7 @@ class PeerClient:
             raise ToolError("аргументы должны быть объектом", code="bad_request")
         if not self.enabled:
             raise ToolError(f"модуль «{self.id}» выключен", code="unavailable")
-        result = await fn(args)
-        return result.to_wire() if isinstance(result, P.ToolReply) else result
+        return await fn(args)
 
     async def _tool_check(self, body: dict) -> dict:
         name = body.get("tool")

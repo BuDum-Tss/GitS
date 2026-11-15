@@ -2,10 +2,10 @@
 
   1. Normalizer (`normalizer.py`): тело события -> Item, отправитель -> человек и память;
   2. дедупликация (`items.py`, решение в `services/attention/dedupe.py`);
-  3. HardRules (здесь): правила до классификатора (ATT-7) R1 обращение владельца -> разговор; R2 ответ на вопрос в том же
+  3. HardRules (здесь): правила до классификатора (ATT-7) R1 обращение владельца -> событие агенту с needs_reply; R2 ответ на вопрос в том же
      канале; R3 временное правило mute -> в сводку; R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
      R6 тег или ответ ей в группе (GROUP_KINDS: telegram.group, discord.message; addressed_to_me) от любого человека ->
-        разговор, как R1;
+        событие агенту с needs_reply, как R1;
   4. срочность без классификатора (`Normalizer.assign_urgency`): подсказка модуля, обращение к ней поднимает до «сказать»;
   5. Dispatcher (`dispatcher.py`): D0-D4 по срочности; сказать сразу (срочность 4+) или во входящую очередь (`inbox.py`).
 """
@@ -36,10 +36,9 @@ class HardRules:
 
     async def apply(self, item: Item, cfg: dict, att: dict, to_conversation: bool, declared: int | None) -> bool:
         ctx = self.ctx
-        # R1: обращение владельца к ней - это не событие внимания, а реплика разговору (CORE-24)
-        if to_conversation:
+        # R1: обращение владельца к ней: высокий приоритет, не обязательно к ответу (решает она); это событие (как любое сообщение из канала), агент отвечает инструментом
+        if to_conversation and self.dispatcher.to_agent(item):
             item.decision = "R1"
-            ctx.spawn(ctx.io.from_module(item.text, item.reply_channel, item.sender))
             self.decisions.write(item, att, rule="R1")
             return True
         # R2: ответ на вопрос, заданный в этом же канале (отвечать может любой собеседник канала: от кого ответ, не важно)
@@ -50,11 +49,11 @@ class HardRules:
                 item.decision = "R2"
                 self.decisions.write(item, att, rule="R2")
                 return True
-        # R6: ей написали в группе напрямую (тег, ответ на её сообщение, её имя): обязательно к ответу, от любого человека,
-        # в обход фильтра внимания. Тот же путь, что R1: ответ уйдёт в тот же чат. Владелец с обращением сюда не доходит (R1).
-        if item.kind in GROUP_KINDS and item.addressed_to_me is True and item.reply_channel:
+        # R6: ей написали в группе напрямую (тег, ответ на её сообщение, её имя): высокий приоритет, отвечать не обязательно, от любого человека,
+        # в обход фильтра внимания. Тот же путь, что R1 (событие агенту с needs_reply). Владелец с обращением сюда не доходит (R1).
+        if (item.kind in GROUP_KINDS and item.addressed_to_me is True and item.reply_channel
+                and self.dispatcher.to_agent(item)):
             item.decision = "R6"
-            ctx.spawn(ctx.io.from_module(item.text, item.reply_channel, item.sender))
             self.decisions.write(item, att, rule="R6")
             return True
         # R3: временное правило mute - в сводку, классификатор не нужен

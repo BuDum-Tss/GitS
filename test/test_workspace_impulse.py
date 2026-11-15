@@ -263,7 +263,7 @@ async def test_reflection_do_intent_hands_the_task_to_the_agent_as_a_self_impuls
     companion = SimpleNamespace(_dir=str(tmp_path), _llm=None, memory_reader=None, memory_writer=None, resident=FakeResident(),
                                 _settings=SimpleNamespace(load=lambda: {}), _context=lambda *a, **k: "")
     attention = SimpleNamespace(submit_self=None, reflect_speech=None, attach_reflection=lambda service: None,
-                                set_think_handler=lambda fn: None, set_alert_handler=lambda fn: None, spawn=lambda c: None)
+                                set_think_handler=lambda fn: None, set_alert_handler=lambda fn: None, set_reply_handler=lambda fn: None, spawn=lambda c: None)
     impulses = impulse_service.build(companion, attention)
     await impulses.reflection.plan("зайди в колонию")
     assert seen == [("self.action", "зайди в колонию", "self", impulse_origin.SELF)]

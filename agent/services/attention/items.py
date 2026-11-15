@@ -19,6 +19,20 @@ def event_fact(ctx: AttentionContext, item: Item) -> str:
     return " ".join(parts)
 
 
+def reply_text(item: Item) -> str:
+    """Текст события «ей написали напрямую» для единого агента: само сообщение и всё, что нужно, чтобы ответить, если она решит
+    (инструмент модуля, адрес, id сообщения). Одинаково для любого собеседника; отвечать не обязательно, решает она; ответ уходит
+    только инструментом, её речь в канал не идёт."""
+    ch = item.reply_channel or {}
+    parts = [item.text]
+    if ch.get("module") and ch.get("target"):
+        mid = (item.data or {}).get("message_id") if isinstance(item.data, dict) else None
+        reply_to = f", reply_to={mid}" if mid not in (None, "") else ""
+        parts.append(f"Ответить (если хочешь): инструмент {ch['module']}.message (to={ch['target']}{reply_to}, text). "
+                     "Только он отправляет сообщение в чат; сказанное тобой вслух в чат не уходит.")
+    return "\n".join(parts)
+
+
 def event_of(item: Item) -> Event:
     """Item внимания -> Event для размышления (ТЗ 30)."""
     return Event(kind=item.kind, text=item.text, origin=item.origin, module=item.module, ts=item.created, sender=item.sender,

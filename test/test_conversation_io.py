@@ -85,7 +85,7 @@ async def test_module_channel_reply_is_delivered_not_spoken(tmp_path):
             async def fake_handle(text):
                 await c.say("Ответ в телегу")
             c._handle_text = fake_handle
-            await c.io.from_module("Привет", {"module": "chat", "target": "tg:42"}, {"id": "tg:42", "is_owner": True})
+            await c.io.submit(UserInput("Привет", Channel("module", "chat", "tg:42"), {"id": "tg:42", "is_owner": True}))
             assert delivered == [{"target": "tg:42", "text": "Ответ в телегу"}]            # CORE-25
             assert speech.spoken == []                                                    # вслух не произносится
             assert c._mem.recent_dialogue(1)[0]["text"] == "Ответ в телегу"
@@ -105,13 +105,13 @@ async def test_deliver_failure_or_offline_module_keeps_reply_in_dashboard_chat(t
             await c.say("Не дошло")
         c._handle_text = fake_handle
         try:
-            await c.io.from_module("Привет", {"module": "chat", "target": "tg:42"})
+            await c.io.submit(UserInput("Привет", Channel("module", "chat", "tg:42")))
             assert speech.spoken == [] and c._mem.recent_dialogue(1)[0]["text"] == "Не дошло"
             assert any("не доставлен" in e["text"] for e in events_log.tail(20, {"module"}))
         finally:
             await chan.close()
         await core.wait_for(lambda: not core.hub.is_connected("chat"))
-        await c.io.from_module("Ещё раз", {"module": "chat", "target": "tg:42"})            # модуль офлайн
+        await c.io.submit(UserInput("Ещё раз", Channel("module", "chat", "tg:42")))            # модуль офлайн
         assert speech.spoken == [] and c._mem.recent_dialogue(1)[0]["text"] == "Не дошло"
         assert sum("не доставлен" in e["text"] for e in events_log.tail(20, {"module"})) == 2
         # модуль без chat.channel доставку не принимает

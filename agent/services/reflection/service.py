@@ -13,6 +13,7 @@ from services.reflection.store import JsonReminders
 from services.reflection import origin as impulse_origin
 from services.reflection.timer import ImpulseTimer
 from services.attention import event_of
+from services.attention.items import reply_text
 from services.reflection.plan_nudge import PlanNudger
 from services.reflection.reflection import ReflectionService
 from kernel.event import KIND_AFTER_CONVERSATION
@@ -54,6 +55,11 @@ def build(companion, attention, *, settings_source=None, clock=None, tasks=None)
         attention.spawn(companion.resident.preempt(e.kind, e.text, e.origin))
         return True
     attention.set_alert_handler(alert)
+    def reply(item) -> None:
+        """Сообщение из канала модуля, адресованное ей напрямую (R1, R6, личка; отвечать не обязательно): событие единому агенту, ответ его инструментом."""
+        e = event_of(item)
+        attention.spawn(companion.resident.handle_event(e.kind, reply_text(item), e.origin))
+    attention.set_reply_handler(reply)
     plans = PlanNudger(tasks, timer.add, clock=clock)   # планы пользователя -> напоминания себе
 
     def conversation_ended(text: str) -> None:

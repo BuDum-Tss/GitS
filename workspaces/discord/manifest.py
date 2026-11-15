@@ -8,13 +8,15 @@ _GENERIC = ("дискорд", "discord", "сервер", "канал", "ветк
 
 
 def _tool(name, description, params, *, risk="auto", keywords=(), informative=False,
-          danger_check=False, timeout_s=30):
+          danger_check=False, timeout_s=30, sends=False):
     tool = {"name": name, "description": description, "params": params, "risk": risk, "availability": "always",
             "timeout_s": timeout_s, "keywords": list(dict.fromkeys([*keywords, *_GENERIC]))}
     if informative:
         tool["informative"] = True
     if danger_check:
         tool["danger_check"] = True
+    if sends:
+        tool["sends"] = True              # отправляет текст людям: ядро пишет её исходящее событие module_out
     return tool
 
 
@@ -28,7 +30,7 @@ TOOLS = [
            "text": {"type": "string", "required": False, "description": "текст сообщения (до 2000 символов в одном сообщении)"},
            "reply_to": {"type": "string", "required": False, "description": "id сообщения, на которое ответить"}},
           informative=True, danger_check=True, timeout_s=60,
-          keywords=("напиши", "отправь", "ответь", "сообщение", "ответ")),
+          sends=True, keywords=("напиши", "отправь", "ответь", "сообщение", "ответ")),
     _tool("react", "Поставить (или снять, remove=true) реакцию-эмодзи на сообщение в Discord: когда хватает короткого отклика "
                    "(согласие, спасибо, смешно), без отдельного ответа. Без message_id реагирует на последнее входящее "
                    "сообщение канала, откуда ей писали; id видны в inbox (#id). В чат «только чтение» нельзя.",

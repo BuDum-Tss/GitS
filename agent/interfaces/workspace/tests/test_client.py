@@ -835,22 +835,3 @@ async def test_env_token_wins_over_file(core, monkeypatch, tmp_path):
     assert await client._resolve_token() == core.token
     async with running(client, core):
         assert len(core.hellos) == 1
-
-
-async def test_tool_reply_goes_to_the_wire_with_delivered_to_and_str_still_works(core):
-    """Обработчик возвращает ToolReply: на шине `{text, delivered_to}` (контракт 3.3); обычный str и dict как прежде."""
-    from gits_sdk import ToolReply
-    client = make_client(core)
-
-    @client.tool("ping")
-    async def ping(args):
-        if args.get("bad"):
-            return ToolReply("x", ("a" * 201,))
-        return ToolReply("отправлено", ("channel:7",)) if args.get("typed") else "просто"
-    async with running(client, core):
-        assert await core.call_tool_raw("ping", {"typed": True}) == {"text": "отправлено", "delivered_to": ["channel:7"]}
-        assert await core.call_tool_reply("ping", {"typed": True}) == ("отправлено", ("channel:7",))
-        assert await core.call_tool("ping", {"typed": True}) == "отправлено"
-        assert await core.call_tool("ping", {}) == "просто" and await core.call_tool_reply("ping", {}) == ("просто", ())
-        with pytest.raises(ToolError):                      # длинный адрес отвергается ещё у отправителя
-            await core.call_tool("ping", {"bad": True})

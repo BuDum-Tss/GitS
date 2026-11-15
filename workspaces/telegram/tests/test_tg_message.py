@@ -74,8 +74,10 @@ async def test_message_to_chat_from_her_account_and_private_words_blocked(tmp_pa
         with pytest.raises(ToolError) as e:
             await rig.core.call_tool("message", {"to": "Маша", "text": "Анна просила привет"})
         assert e.value.code == "denied" and rig.tl.sent == []
-        assert await rig.core.call_tool_reply("message", {"to": "Маша", "text": "привет"}) == ("отправлено в «Маша»", ("user:Маша",))
+        assert await rig.core.call_tool("message", {"to": "Маша", "text": "привет"}) == "отправлено в «Маша»"
         assert rig.tl.sent == [(("chat", "Маша"), "привет")]
+        await rig.core.call_tool("message", {"to": "user:Маша", "text": "по адресу события"})       # `reply_channel.target` как адрес
+        assert rig.tl.sent[-1] == (("chat", "Маша"), "по адресу события")
         assert rig.api_calls("sendMessage") == []
 
 

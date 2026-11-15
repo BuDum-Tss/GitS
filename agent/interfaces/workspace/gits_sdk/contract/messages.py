@@ -269,29 +269,13 @@ _log = Message(
 
 # ── ядро -> участник шины ────────────────────────────────────────────────────────────
 
-def _check_tool_result(value) -> list[str]:
-    """Ответ tool.call: любое значение; объект с `delivered_to` проверяется по контракту 3.3."""
-    if isinstance(value, dict) and "delivered_to" in value:
-        return P.check_delivered_to(value["delivered_to"])
-    return []
-
-
 _c_tool_call = Message(
     "tool.call", C2M, REQUEST, "Вызов инструмента участника шины из манифеста. `tool` без префикса участника шины или с ним.",
     request=(F("tool", "string", True, "имя инструмента", nonempty=True), F("args", "object", False, "аргументы")),
-    response=(F("text", "string", False, "текст результата (типизированный ответ ToolReply)"),
-              F("delivered_to", "array", False, "адреса, куда инструмент доставил сообщение (формат reply_channel.target: "
-                "`channel:123`, `dm:456`, `user:789#6`); до 8 адресов по 200 символов, контракт 3.3", items="string", max=8)),
-    errors=("bad_request", "unknown", "unavailable", "denied", "internal", "timeout", "cancelled"),
+    response=(), errors=("bad_request", "unknown", "unavailable", "denied", "internal", "timeout", "cancelled"),
     valid=({"tool": "repeat", "args": {"text": "а"}}, {"tool": "echo.repeat"}),
     invalid=({}, {"tool": ""}, {"tool": "x", "args": "нет"}),
-    check_response=_check_tool_result,
-    response_valid=("текст", {"job_id": "j1"}, {"text": "отправлено"}, {"text": "отправлено", "delivered_to": ["channel:123", "user:7#6"]}),
-    response_invalid=({"text": "x", "delivered_to": "channel:1"}, {"text": "x", "delivered_to": [5]},
-                      {"text": "x", "delivered_to": ["a"] * 9}, {"text": "x", "delivered_to": ["a" * 201]}),
-    note="Результат: любое JSON-значение. Необязательная типизированная форма (контракт 3.3): объект `{\"text\": строка, "
-         "\"delivered_to\": [адреса]}`, `delivered_to` сообщает, КУДА инструмент реально доставил сообщение: если среди адресов "
-         "адрес обращения (`reply_channel.target`), ядро не доставляет туда итоговую фразу хода второй раз.",
+    note="Результат: любое JSON-значение.",
 )
 _c_tool_check = Message(
     "tool.check", C2M, REQUEST, "Опасность вызова до выполнения (для инструментов с `danger_check: true`).",

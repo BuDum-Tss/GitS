@@ -18,7 +18,6 @@ from services.tracing import latency_trace
 from services.runtime import llm_gate
 from services.character import prompts
 from interfaces.contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
-from services.conversation.conversation_io import ModuleReplyGuard, current_channel, turn_replies
 from services.conversation.stickers import first_sticker, plain as strip_tags
 
 if TYPE_CHECKING:
@@ -92,8 +91,7 @@ class ResidentAgent:
         self._busy = False
         self._source = ""                   # откуда идущее обращение: user, event, alert
         self._last_montage_read = None
-        self._replies: ModuleReplyGuard | None = None   # защита от дубля ответа в канал модуля в идущем ходе
-        self._note = ""                   # что сказать новой сессии после сброса (обрыв хода по времени)
+        self._note = ""                     # что сказать новой сессии после сброса (обрыв хода по времени)
         self.last_end = 0.0                 # когда закончился последний ход (рабочий цикл не торопит свободного агента)
 
     # ── состояние ──────────────────────────────────────────────────
@@ -141,10 +139,7 @@ class ResidentAgent:
                     await host.wait_speech(SPEECH_SYNC_S)
                 except Exception as e:
                     logger.debug(f"ожидание речи: {e}")
-            outcome = await host.router.run_tool_outcome(tool_id, params)
-            ok, result, code = outcome.ok, outcome.text, outcome.code
-            if agent._replies is not None and agent._replies.note_delivered(ok, outcome.delivered_to):
-                agent._record_sent(params)                    # доставка в адрес обращения: её реплика это отправленный текст
+            ok, result, code = await host.router.run_tool_ex(tool_id, params)
             if ok and file_read:
                 agent._last_montage_read = read_key
             text = result if ok else f"НЕ ПОЛУЧИЛОСЬ ({code}): {result}"
@@ -169,19 +164,6 @@ class ResidentAgent:
                      {"type": "object", "properties": {"tool_id": {"type": "string"}, "args": {"type": "object"}},
                       "required": ["tool_id", "args"]}, call_tool)]
         return self._specs
-
-    def _record_sent(self, params: dict) -> None:
-        """Инструмент доставил сообщение в адрес обращения: отправленный текст (аргумент `text`) записывается как её реплика в
-        канале (диалог, журнал say с подписью канала, присутствие) без повторной доставки и озвучки. Остальной текст хода после
-        этого глушится (`Companion._say_now`), поэтому реальный ответ остаётся в памяти ровно один раз, а отчёта нет."""
-        guard, record = self._replies, getattr(self._h, "_record_say", None)
-        text = str(params.get("text") or "").strip()
-        if guard is None or record is None or not text:
-            return
-        try:
-            record(text, guard.channel)
-        except Exception as e:
-            logger.warning(f"запись отправленного ответа: {e}")
 
     def _system(self) -> str:
         h = self._h
@@ -311,33 +293,6 @@ class ResidentAgent:
                 self.last_end = time.time()
 
     async def _run(self, prompt: str, source: str) -> None:
-        # состояние хода: канал обращения и «ответила ли инструментом message в тот же адресат» (инструменты зовутся из
-        # задачи среды исполнения, где контекстной переменной хода нет, поэтому объект лежит ещё и на агенте; ходы идут по очереди)
-        guard = ModuleReplyGuard(current_channel.get())
-        from_module = guard.channel is not None and guard.channel.kind == "module"
-        token = turn_replies.set(guard)
-        self._replies = guard
-        try:
-            try:
-                ok = await self._run_turn(prompt, source)
-            except BaseException:                        # ошибка, тайм-аут, отмена: накопленное не доставляется
-                if from_module:
-                    await self._h.release_channel_replies(guard, False)
-                raise
-            if from_module:
-                await self._h.release_channel_replies(guard, ok)  # конец хода: ответ уходит в канал (или молча отбрасывается)
-        finally:
-            self._replies = None
-            turn_replies.reset(token)
-
-    def _drop_comments(self) -> None:
-        """Начался вызов инструмента: реплики до него это промежуточные комментарии, они никуда не уходят (только лог)."""
-        if self._replies is not None:
-            for text, _ in self._replies.take():
-                logger.info(f"(комментарий до инструмента, не показан) {text}")
-
-    async def _run_turn(self, prompt: str, source: str) -> bool:
-        """Один ход; True, если он закончился штатно (не ошибкой и не обрывом)."""
         h = self._h
         runtime = await self._runtime_for_turn()
         await runtime.start(self._system(), self._tool_specs())
@@ -346,7 +301,6 @@ class ResidentAgent:
             self._last_montage_read = None
         if self._note:
             prompt, self._note = f"=== ЗАМЕТКА ===\n{self._note}\n\n{prompt}", ""
-        ok = True
         latency_trace.mark("route")                        # запрос собран, ход ушёл в среду (трасса задержки, ТЗ 24)
         async for event in runtime.run(prompt):
             if isinstance(event, TextEvent):
@@ -356,18 +310,15 @@ class ResidentAgent:
                     continue                               # «не отвлекать»: событие не повод говорить
                 await h.say(h._declutter(strip_tags(event.text)), first_sticker(event.text))   # тег реакции -> стикер питомца
             elif isinstance(event, ToolEvent):
-                self._drop_comments()
                 tool_id = str(event.args.get("tool_id") or event.args.get("query") or "")[:120]   # для find_tools в журнале виден запрос
                 logger.info(f"[агент] {event.name} {tool_id}".rstrip())
             elif isinstance(event, EndEvent):
                 latency_trace.mark("llm_done")
-                ok = event.status == "ok"
             if isinstance(event, EndEvent) and event.status == "error":
                 if llm_gate.note_pi_error(event.error):
                     logger.warning("Лимит подписки на pi: агент отдыхает")
                 else:
                     logger.error(f"Резидентный агент: {event.error}")
-        return ok
 
     @staticmethod
     def _quiet() -> bool:

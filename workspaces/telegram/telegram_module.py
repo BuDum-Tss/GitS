@@ -16,7 +16,7 @@ from pathlib import Path
 
 import httpx
 from common import scrub, split_target
-from gits_sdk import WorkspaceClient, ToolError, ToolReply
+from gits_sdk import WorkspaceClient, ToolError
 from privacy import Privacy
 from telegram_channel import TelegramChannel
 from telegram_panel import ACTIONS as PANEL_ACTIONS
@@ -325,6 +325,8 @@ class TelegramModule:
     def _target(self, raw) -> tuple[str, str]:
         """(вид, адресат): channel, owner или chat (название, @имя или id как их написали)."""
         text = str(raw or "").strip()
+        if text.startswith("user:"):
+            text = text[5:]                                  # адрес из события (`reply_channel.target`: `user:<чат>[#тема]`)
         low = text.lstrip("@").lower()
         if low in ("", "channel", "канал"):
             return "channel", ""
@@ -375,7 +377,7 @@ class TelegramModule:
             out.append((path, kind))
         return out
 
-    async def message(self, args: dict) -> str | ToolReply:
+    async def message(self, args: dict) -> str:
         ch, privacy = self.channel, self.privacy
         if args.get("after_run") and not ch.flag("after_run"):
             return "пост-итог после забега выключен в настройках Telegram"
@@ -417,18 +419,16 @@ class TelegramModule:
         except Exception as e:
             raise ToolError("не удалось отправить в Telegram: " + scrub(str(e), ch._token)[:160], code="unavailable") from e
 
-    async def _send_message(self, kind: str, who: str, text: str, files: list, voice: bool, reply_to) -> str | ToolReply:
+    async def _send_message(self, kind: str, who: str, text: str, files: list, voice: bool, reply_to) -> str:
         ch = self.channel
         if kind == "chat":
             ok, why = self.user.state()
             if not ok:
                 raise ToolError(why, code="unavailable")
             if files:
-                to = await self.user.send_files(who, files, text, reply_to)
-                return ToolReply(f"отправлено в «{who}»: файлов {len(files)}", (to,))
+                return await self.user.send_files(who, files, text, reply_to)
             ogg = await ch.try_ogg(text) if voice else None
-            to = await self.user.send(who, text, ogg, reply_to)
-            return ToolReply(f"отправлено в «{who}»", (to,))               # адрес отправки (формат reply_channel) сообщает ядру, куда ушло
+            return await self.user.send(who, text, ogg, reply_to)
         chat_id = ch._channel
         if kind == "owner":
             chat_id = ch.owner_id()

@@ -71,6 +71,7 @@ class Rig:
         self.att = Attention(self.companion, self.io, clock=self.clock, decider=self.decider,
                              settings_source=lambda: self.cfg, rules_file=tmp_path / "rules.json",
                              idle_source=lambda: self.idle, autopump=False)
+        self.att.set_reply_handler(self.io.on_reply)
         self.modules = FakeModules()
         self.att.modules = self.modules
 
@@ -266,6 +267,7 @@ async def test_stranger_dm_is_taken_by_the_agent_through_attention(rig):
 
 
 async def test_stranger_dm_without_unified_agent_is_voiced_as_before(rig):
+    rig.att.set_reply_handler(None)                                   # единого агента нет
     d = await rig.submit("telegram", kind="telegram.dm", text="Привет", addressed_to_me=True, sender=STRANGER,
                          reply_channel=DM_CHAT)
     assert d["decision"] == "D3" and rig.io.inputs == [] and len(rig.candidates()) == 1
@@ -458,6 +460,7 @@ async def test_reaction_focus_pops_when_candidate_expires_and_event_goes_to_dige
 
 async def test_reply_note_when_event_can_be_answered(tmp_path):
     rig = Rig(tmp_path)
+    rig.att.set_reply_handler(None)                                   # единого агента нет: озвучивает вопрос внимание
     rig.modules.declare("tg", title="Телеграм")
     await rig.submit("tg", kind="tg.dm", text="Ты скоро?", sender={"id": "tg:5", "name": "Маша"}, reply_channel=CHAT,
                      urgency_hint=3, addressed_to_me=True)
@@ -1010,7 +1013,20 @@ BOT = {"module": "telegram", "target": "bot:5"}
 
 async def test_stranger_dm_does_not_go_to_the_conversation(rig):
     tg14_rig(rig)
+    rig.att.set_reply_handler(None)                                   # единого агента нет
     d = await rig.submit("telegram", kind="telegram.dm", text=FACT, addressed_to_me=True, memorable=True,
                          sender=MASHA, reply_channel=BOT)
     assert d.get("rule") not in ("R1", "R5") and rig.io.inputs == []          # разговор только с владельцем
 
+
+
+async def test_owner_and_stranger_messages_take_one_path_to_the_agent_as_needs_reply(rig):
+    """R1 (владелец), R6 (чужой, тег в группе) и личка чужого: одно событие агенту с needs_reply, не реплика разговора и не речь."""
+    rig.att.set_alert_handler(lambda item: True)
+    await rig.submit("tg", kind="tg.dm", text="от владельца", addressed_to_me=True, sender=OWNER, reply_channel=CHAT)
+    await rig.submit("telegram", kind="telegram.group", text="от чужого в группе", addressed_to_me=True, sender=STRANGER,
+                     reply_channel=GROUP_CHAT)
+    await rig.submit("telegram", kind="telegram.dm", text="личка чужого", addressed_to_me=True, sender=STRANGER, reply_channel=DM_CHAT)
+    assert [i.text for i in rig.io.items] == ["от владельца", "от чужого в группе", "личка чужого"]     # по порядку, без смешения
+    assert all(i.needs_reply and i.reply_channel for i in rig.io.items)
+    assert rig.candidates() == []                                      # вслух и в очередь речи ничего не пошло

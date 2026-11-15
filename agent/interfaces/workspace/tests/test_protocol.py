@@ -77,6 +77,10 @@ def test_tool_with_all_optional_fields_is_valid():
              core_fills=["context"], params={"text": {"type": "string"}, "context": {"type": "string"}})
     assert problems_of(make(tools=[t])) == []
     assert P.Manifest.from_dict(make(tools=[t])).tools[0].announce is True            # AN-3
+    s = tool(sends=True)                                                              # контракт 3.4: инструмент отправляет текст людям
+    assert problems_of(make(tools=[s])) == []
+    spec = P.Manifest.from_dict(make(tools=[s])).tools[0]
+    assert spec.sends is True and spec.to_dict()["sends"] is True and "sends" not in P.Manifest.from_dict(make()).tools[0].to_dict()
 
 
 @pytest.mark.parametrize("version", ["1.0.0", "0.12.345", "1.0.0-rc.1", "2.1.0+build5"])
@@ -150,6 +154,7 @@ def test_manifest_invalid(manifest, needle):
     ({"job": None}, "job"),
     ({"fallback": "true"}, "fallback"),
     ({"announce": "да"}, "announce"),
+    ({"sends": "да"}, "sends"),
     ({"timeout_s": 0}, "timeout_s"),
     ({"timeout_s": 121}, "timeout_s"),
     ({"timeout_s": 5.5}, "timeout_s"),

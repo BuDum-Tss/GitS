@@ -32,8 +32,8 @@ async def test_message_to_known_channel_types_then_sends_with_safe_mentions(tmp_
     async with Rig(tmp_path, monkeypatch) as rig:
         g, general, _ = await server(rig)
         rig.bot.typing_scale = 0.01
-        out, delivered = await rig.core.call_tool_reply("message", {"to": "#общий", "text": "привет всем", "reply_to": "555"})
-        assert out == "отправлено в «#общий»" and delivered == ("channel:100",)      # адрес отправки отдельным полем
+        out = await rig.core.call_tool("message", {"to": "#общий", "text": "привет всем", "reply_to": "555"})
+        assert out == "отправлено в «#общий»"
         [sent] = general.sent
         assert sent["content"] == "привет всем" and sent["reference"] == ("partial", 555)
         assert sent["allowed_mentions"].kw["everyone"] is False and sent["allowed_mentions"].kw["roles"] is False
@@ -115,8 +115,7 @@ async def test_message_privacy_filter_and_unavailable_without_terms(tmp_path, mo
 async def test_message_to_owner_and_unknown_owner(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, module_settings={"owner": str(OWNER_ID)}) as rig:
         owner = rig.dc.user(OWNER_ID, "anya", display="Аня")
-        assert await rig.core.call_tool_reply("message", {"to": "owner", "text": "Анна не знает"}) == (
-            "отправлено владельцу", (f"dm:{OWNER_ID}",))                 # личка владельца: адрес dm:<id>
+        assert await rig.core.call_tool("message", {"to": "owner", "text": "Анна не знает"}) == "отправлено владельцу"
         assert owner.dm_channel.sent[0]["content"] == "Анна не знает"
     async with Rig(tmp_path / "y", monkeypatch, module_settings={"owner": "anya"}) as rig:
         with pytest.raises(ToolError) as e:

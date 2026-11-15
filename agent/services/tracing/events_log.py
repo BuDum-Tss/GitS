@@ -40,7 +40,7 @@ import uuid
 from pathlib import Path
 
 KINDS = ("user", "say", "proactive", "reflex", "vision", "hearing", "game", "telegram", "plan", "memory", "audit",
-         "approval", "setting", "module", "module_event", "profile", "attention", "focus", "error", "thought",
+         "approval", "setting", "module", "module_event", "module_out", "profile", "attention", "focus", "error", "thought",
          "trace", "mistake", "decision", "boundary")
 KEEP_DAYS = 45
 KEEP_ROWS = 300_000

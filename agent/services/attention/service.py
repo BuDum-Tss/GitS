@@ -194,6 +194,10 @@ class Attention:
         """Важное событие не от пользователя: fn(item) -> True, если его берёт единый агент и обрывает идущий ход."""
         self.ctx.on_alert = fn
 
+    def set_reply_handler(self, fn: Callable[[Item], None] | None) -> None:
+        """Сообщение из канала модуля, на которое она обязана ответить: fn(item) отдаёт его единому агенту как событие."""
+        self.ctx.on_reply = fn
+
     def register_handler(self, kind: str, handler: Callable) -> None:
         """Служебное событие вида `kind`: async handler(item) вместо обычной обработки (ТЗ 11, RW-9)."""
         self.kind_handlers[kind] = handler

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
 from host import settings
-from environments.base import Environment, Tool, ToolError, ToolOutput
+from environments.base import Environment, Tool, ToolError
 from gits_sdk import protocol as P
 from services.peers.hub import PeerError
 
@@ -370,18 +370,6 @@ class PeerRegistry:
             return f"задача {job_id} запущена" if job_id else "задача запущена"
         return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
 
-    @staticmethod
-    def delivered_to(value) -> tuple[str, ...] | None:
-        """Адреса доставки из типизированного ответа инструмента `{"text": str, "delivered_to": [str, ...]}` (контракт 3.3).
-        None: ответ обычный. Список с неверными элементами (не строки, длиннее 200, больше 8) отбрасывается целиком."""
-        if not isinstance(value, dict) or "delivered_to" not in value or not isinstance(value.get("text"), str):
-            return None
-        raw = value["delivered_to"]
-        if not isinstance(raw, list) or len(raw) > 8 or not all(isinstance(x, str) and 0 < len(x) <= 200 for x in raw):
-            logger.warning("delivered_to в ответе инструмента не по контракту: игнорируется")
-            return ()
-        return tuple(raw)
-
     async def _fill_core(self, spec, args: dict) -> dict:
         """core_fills (ТЗ 01 §6.1, DESK-12): параметры, которые заполняет ядро, а не планировщик. Сейчас только context."""
         if "context" not in spec.core_fills:
@@ -412,9 +400,6 @@ class PeerRegistry:
                 value = await conn.request("tool.call", {"tool": spec.name, "args": args}, timeout=spec.timeout_s)
             except PeerError as e:
                 raise ToolError(e.message, e.code)
-            delivered = self.delivered_to(value)
-            if delivered is not None:               # типизированный ответ {text, delivered_to}: текст как был, адреса отдельно
-                return ToolOutput(self.render(value.get("text", ""), spec.job), delivered)
             return self.render(value, spec.job)
 
         async def check(args: dict) -> str | None:
@@ -433,7 +418,7 @@ class PeerRegistry:
                     params=params, risk=spec.risk, keywords=tuple(spec.keywords), call=call,
                     self_confirming=spec.self_confirming, informative=spec.informative, always=spec.fallback,
                     availability=spec.availability, node=spec.node, timeout_s=spec.timeout_s, job=spec.job,
-                    danger_check=spec.danger_check, check=check if spec.danger_check else None)
+                    danger_check=spec.danger_check, check=check if spec.danger_check else None, sends=spec.sends)
 
     def _build_environment(self, rec: PeerRecord, spec) -> None:
         """Окружение модуля (CORE-8): id окружения = id модуля, module = id модуля."""

@@ -631,11 +631,6 @@ class TelegramUser:
                 return ent[-1] if ent else None
             return getattr(ent, "id", None)
 
-    @staticmethod
-    def _address(key, topic=None) -> str:
-        """Адрес чата (и темы) в формате reply_channel: `user:<чат>[#тема]`; по нему ядро узнаёт, ушло ли сообщение в чат обращения."""
-        return f"user:{key}" + (f"#{topic}" if topic else "")
-
     async def _tg(self, fn, *args, **kwargs):
         """Вызов Telethon с защитой от FloodWait: подождать названное время и повторить один раз; не помогло или ждать
         слишком долго (больше FLOOD_MAX_WAIT_S): RuntimeError, его инструмент вернёт ошибкой."""
@@ -731,7 +726,7 @@ class TelegramUser:
 
     async def send(self, chat: str, text: str, ogg: bytes | None = None, reply_to: int | None = None,
                    by_owner: bool = False, topic=None) -> str:
-        """Текст (или голосовое с текстом подписью) в чат по названию, @имени или id. Возвращает адрес отправки `user:<чат>[#тема]`. Личные слова режутся здесь же.
+        """Текст (или голосовое с текстом подписью) в чат по названию, @имени или id. Личные слова режутся здесь же.
         Режим чата проверяется здесь же: «чтение» и «игнор» не пускают. by_owner: ручная отправка владельцем из панели (его
         действие, а не её): режим и личные слова не проверяются. topic: тема форума (id или название; можно и в chat:
         «Группа / Тема»); режим тогда берётся у темы."""
@@ -759,10 +754,9 @@ class TelegramUser:
                 await self._typing(client, ent, part)
                 await self._tg(client.send_message, ent, part, **({"reply_to": reply_to} if reply_to else {}))
                 reply_to = None
-            key = self._chat_key(ent)
-            await self._sent(key, tid)
+            await self._sent(self._chat_key(ent), tid)
         host.log_nowait("telegram", f"она написала с аккаунта в «{chat}»: {text[:120]}")
-        return self._address(key, tid)
+        return f"отправлено в «{chat}»"
 
     async def send_files(self, chat: str, items: list[tuple[Path, str]], caption: str = "",
                          reply_to: int | None = None, topic=None) -> str:
@@ -786,10 +780,9 @@ class TelegramUser:
             if caption and not cap:
                 await self._typing(client, ent, caption)
                 await self._tg(client.send_message, ent, caption, **({"reply_to": reply_to} if reply_to else {}))
-            key = self._chat_key(ent)
-            await self._sent(key, tid)
+            await self._sent(self._chat_key(ent), tid)
         host.log_nowait("telegram", f"она отправила файлы с аккаунта в «{chat}»: {len(items)}")
-        return self._address(key, tid)
+        return f"отправлено в «{chat}»: файлов {len(items)}"
 
     async def reply(self, chat_id: int, text: str, ogg: bytes | None = None, topic: int | None = None) -> None:
         """Ответ в чат, из которого написали (deliver, target user:<chat_id>): с её аккаунта, без проверки личных слов

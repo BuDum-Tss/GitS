@@ -22,7 +22,7 @@ from services.runtime.pi_runtime import MAX_CONTEXT_CHARS
 logger = logging.getLogger("episodes")
 
 MESSAGE_OVERHEAD = 60                # служебные символы сообщения в сессии сверх текста события (JSON.stringify моста)
-CONTEXT_KINDS = {"user", "say", "mistake", "approval"}     # события журнала, которые попадают в историю её сессии
+CONTEXT_KINDS = {"user", "say", "module_out", "mistake", "approval"}     # события журнала, которые попадают в историю её сессии
 DEFAULTS = {"enabled": True, "tick_s": 30.0, "min_gap_s": 45.0, "per_hour": 8, "max_pending": 20, "instant_score": 0.85,
             "instant_after_s": 20.0, "fork_after_events": 6, "context_share": 0.5, "max_wait_s": 1800.0, "max_per_fork": 4}
 

@@ -82,12 +82,20 @@ class Dispatcher:
 
     def converse(self, item: Item) -> bool:
         """Личка чужого человека, прошедшая отбор внимания (срочность 4+: не лавина, не «не отвлекать»): это реплика ей, а не
-        новость пользователю. Единый агент отвечает в разговоре (как R1: ответ уходит в тот же чат), а не пересказывает её
-        вслух. Событие без срочности (лавина сообщений, режим «не отвлекать») сюда не доходит: оно в сводке."""
-        if not self.is_chat_dm(item) or self.ctx.on_alert is None:
+        новость пользователю. Это событие единому агенту с needs_reply (как R1, `to_agent`): он отвечает инструментом модуля в тот
+        же чат, а не пересказывает её вслух. Событие без срочности (лавина сообщений, режим «не отвлекать») сюда не доходит: оно в сводке."""
+        if not self.is_chat_dm(item) or not self.to_agent(item):
             return False                                         # без единого агента путь прежний (озвучить пользователю)
-        ctx = self.ctx
-        ctx.spawn(ctx.io.from_module(item.text, item.reply_channel, item.sender))
+        return True
+
+    def to_agent(self, item: Item) -> bool:
+        """Единый путь сообщений из каналов модулей, адресованных ей напрямую (R1, R6, личка; отвечать не обязательно): событие с признаком
+        needs_reply уходит единому агенту, ответ делает только его инструмент модуля. False: агента нет, путь прежний."""
+        hook = self.ctx.on_reply
+        if hook is None:
+            return False
+        item.needs_reply = True
+        hook(item)
         return True
 
     def alerted(self, item: Item) -> bool:

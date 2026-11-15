@@ -82,9 +82,12 @@ class FakeCompanion:
 class FakeIO:
     def __init__(self):
         self.inputs: list[tuple] = []
+        self.items: list = []
 
-    async def from_module(self, text, reply_channel, sender=None):
-        self.inputs.append((text, reply_channel, sender))
+    def on_reply(self, item):
+        """Обработчик «ей написали в канале модуля, нужен ответ» (событие единому агенту): запоминает (текст, канал, отправитель)."""
+        self.inputs.append((item.text, item.reply_channel, item.sender))
+        self.items.append(item)
 
 
 class Core:
@@ -97,6 +100,7 @@ class Core:
         self.companion = FakeCompanion()
         self.io = FakeIO()
         self.attention = Attention(self.companion, self.io, idle_source=lambda: 0.0)       # не зависеть от простоя настоящего ввода
+        self.attention.set_reply_handler(self.io.on_reply)
         self.attention.hub, self.attention.modules = None, self.modules
         self.requests = CoreRequests(attention=self.attention)
         self.said: list[str] = []

@@ -28,14 +28,6 @@ class ToolError(Exception):
         self.code = code
 
 
-@dataclass(frozen=True)
-class ToolOutput:
-    """Результат инструмента с типизированной добавкой: `delivered_to` - адреса (формат `reply_channel.target`), КУДА инструмент
-    реально доставил сообщение. Ядро по ним узнаёт, что ответ в канал обращения уже ушёл. Инструмент может вернуть и просто str."""
-    text: str
-    delivered_to: tuple[str, ...] = ()
-
-
 @dataclass
 class Tool:
     id: str                       # "social.telegram_post"
@@ -47,7 +39,7 @@ class Tool:
     params: dict = field(default_factory=dict)
     risk: str = "ask"
     keywords: tuple = ()
-    call: Callable[[dict], Awaitable[str | ToolOutput]] | None = None
+    call: Callable[[dict], Awaitable[str]] | None = None
     # признак из протокола модулей (поле `self_confirming`): сейчас маршрутизатор его не использует
     self_confirming: bool = False
     # результат несёт информацию, которую нужно сообщить пользователю (описание экрана, ответ
@@ -64,6 +56,7 @@ class Tool:
     timeout_s: int = 150          # сколько маршрутизатор ждёт результат шага (у инструментов модулей - из манифеста)
     job: bool = False             # вызов запускает долгую задачу: результат придёт позже (job.update)
     danger_check: bool = False    # перед вызовом спрашивается check (модуль сам называет опасность)
+    sends: bool = False           # инструмент отправляет текст людям: ядро пишет исходящее событие `module_out` (контракт 3.4)
     # () -> причина опасности или None; для danger_check (запрос tool.check к модулю, тайм-аут 2 с)
     check: Callable[[dict], Awaitable[str | None]] | None = None
 

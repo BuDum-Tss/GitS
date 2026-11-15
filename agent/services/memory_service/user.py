@@ -30,11 +30,9 @@ class UserMemory:
 
     # Разговор ---------------------------------------------------------------
 
-    def add_dialogue(self, role: str, text: str, who: str | None = None):
-        """who: подпись для чата дашборда, если реплику написал не владелец («NektoKtoto · Discord»); роль остаётся `user`,
-        поэтому память и контекст агента от собеседника не зависят."""
+    def add_dialogue(self, role: str, text: str):
         log = self._load("dialogue.json", [])
-        log.append({"role": role, "text": text[:600], "ts": time.time(), **({"who": who} if who else {})})
+        log.append({"role": role, "text": text[:600], "ts": time.time()})
         self._save("dialogue.json", log[-_MAX_DIALOGUE:])
 
     def recent_dialogue(self, n: int = 8) -> list[dict]:

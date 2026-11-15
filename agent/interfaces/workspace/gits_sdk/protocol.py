@@ -125,41 +125,6 @@ class ManifestError(ProtocolError):
     """Манифест не прошёл проверку."""
 
 
-DELIVERED_MAX = 8            # сколько адресов доставки может нести ответ инструмента
-DELIVERED_LEN = 200          # длина одного адреса
-
-
-def check_delivered_to(value) -> list[str]:
-    """Проблемы поля `delivered_to` ответа инструмента (пустой список: верно)."""
-    if not isinstance(value, list):
-        return ["delivered_to: список строк"]
-    if len(value) > DELIVERED_MAX:
-        return [f"delivered_to: не больше {DELIVERED_MAX} адресов"]
-    if not all(isinstance(x, str) and x.strip() for x in value):
-        return ["delivered_to: список непустых строк"]
-    if any(len(x) > DELIVERED_LEN for x in value):
-        return [f"delivered_to: адрес длиннее {DELIVERED_LEN} символов"]
-    return []
-
-
-@dataclass(frozen=True)
-class ToolReply:
-    """Ответ инструмента с типизированной добавкой (контракт 3.3): `text` как раньше, `delivered_to` - адреса, КУДА инструмент
-    реально доставил сообщение (формат `reply_channel.target` события: `channel:123`, `dm:456`, `user:789#6`). Ядро по ним узнаёт,
-    что сообщение в канал обращения уже отправлено, и не доставляет туда итоговую фразу вторым сообщением. Обработчик инструмента
-    возвращает str (как раньше) или `ToolReply`; на шине это `{"text": ..., "delivered_to": [...]}`."""
-    text: str
-    delivered_to: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        problems = check_delivered_to(list(self.delivered_to))
-        if problems or not isinstance(self.text, str):
-            raise ValueError("; ".join(problems) or "text: строка")
-
-    def to_wire(self) -> dict:
-        return {"text": self.text, **({"delivered_to": list(self.delivered_to)} if self.delivered_to else {})}
-
-
 class ToolError(Exception):
     """Ожидаемый отказ (понятная причина, а не сбой кода): уходит в `result` как `ok: false`.
 
@@ -468,7 +433,7 @@ def _check_tool(i: int, tool: Any, problems: list[str], seen: set[str]) -> None:
         problems.append(f"{where}.risk: одно из {list(RISKS)}")
     if tool.get("availability") not in AVAILABILITIES:
         problems.append(f"{where}.availability: одно из {list(AVAILABILITIES)}")
-    for flag in ("informative", "self_confirming", "danger_check", "job", "fallback", "announce"):
+    for flag in ("informative", "self_confirming", "danger_check", "job", "fallback", "announce", "sends"):
         if flag in tool and not isinstance(tool[flag], bool):
             problems.append(f"{where}.{flag}: должно быть true или false")
     if "timeout_s" in tool:
@@ -1032,6 +997,7 @@ class ToolSpec:
     core_fills: list[str] = field(default_factory=list)
     announce: bool = False          # долгое или заметное действие на ПК: ядро объявляет запуск до вызова (AN-3)
     node: str | None = None         # ТЗ 33: узел рабочего места, в котором инструмент виден; None - виден всегда
+    sends: bool = False             # контракт 3.4: инструмент отправляет текст людям (сообщение в чат): ядро пишет исходящее событие `module_out`
 
     def full_id(self, peer_id: str) -> str:
         return f"{peer_id}.{self.name}"
@@ -1045,7 +1011,8 @@ class ToolSpec:
             timeout_s=int(d.get("timeout_s", TIMEOUT_TOOL_DEFAULT)), keywords=list(d.get("keywords") or []),
             danger_check=bool(d.get("danger_check", False)), job=bool(d.get("job", False)),
             fallback=bool(d.get("fallback", False)), core_fills=list(d.get("core_fills") or []),
-            announce=bool(d.get("announce", False)), node=d.get("node"))
+            announce=bool(d.get("announce", False)), node=d.get("node"),
+            sends=bool(d.get("sends", False)))
 
     def to_dict(self) -> dict:
         return {"name": self.name, "description": self.description, "params": self.params, "risk": self.risk,
@@ -1053,7 +1020,7 @@ class ToolSpec:
                 "self_confirming": self.self_confirming, "timeout_s": self.timeout_s, "keywords": self.keywords,
                 "danger_check": self.danger_check, "job": self.job, "fallback": self.fallback,
                 "core_fills": self.core_fills, "announce": self.announce,
-                **({"node": self.node} if self.node else {})}
+                **({"node": self.node} if self.node else {}), **({"sends": True} if self.sends else {})}
 
 
 @dataclass

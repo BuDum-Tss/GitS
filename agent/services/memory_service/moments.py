@@ -25,7 +25,8 @@ ATTENTION_ROUTE_BONUS = (("think", "chat"), 0.1)
 ATTENTION_CONTEXT_MIN = 0.3          # запись внимания слабее в контекст момента не попадает
 
 # вид события журнала -> яркость (разговор и жизнь без записи внимания)
-KIND_WEIGHTS = {"mistake": 0.7, "approval": 0.4, "memory": 0.3, "telegram": 0.5, "hearing": 0.2, "say": 0.1, "game": 0.3}
+KIND_WEIGHTS = {"mistake": 0.7, "approval": 0.4, "memory": 0.3, "telegram": 0.5, "hearing": 0.2, "say": 0.1, "game": 0.3,
+                "module_out": 0.1}      # module_out: её сообщение в канал модуля (исходящее событие), как её реплика
 TASK_STATUS_WEIGHTS = {"done": 0.5, "completed": 0.5, "failed": 0.65, "error": 0.65}
 EMOTION_MAX = 0.4                    # эмоция стикера: сила * EMOTION_MAX, фоновая и нейтральная это 0
 EMOTION_NEUTRAL = ("idle", "thinking", "looking", "question", "neutral")
@@ -49,12 +50,13 @@ USER_SIGNS = {
 }
 
 THOUGHT_KIND = "thought"
+OUT_KIND = "module_out"                # исходящее событие: она написала в канал модуля (Discord, Telegram)
 
 # шум: никогда не пик и не контекст; vision и desktop.* годятся только как «сцена» (фон)
 NOISE_KINDS = ("focus", "decision", "trace", "budget_exceeded", "setting", "profile", "error", "vision", "boundary")
 SCENE_EVENT_KINDS = ("desktop.app_changed", "desktop.activity")
 SCENE_LABELS = ("vision", *SCENE_EVENT_KINDS)       # подписи строк сцены в источниках эпизода
-CONTEXT_KINDS = ("user", "say", "mistake", "approval", "memory", "emotion", "game", "telegram", "hearing", "task.status",
+CONTEXT_KINDS = ("user", "say", OUT_KIND, "mistake", "approval", "memory", "emotion", "game", "telegram", "hearing", "task.status",
                  "attention", "module_event", THOUGHT_KIND)     # thought: её мысль о событии (reflection), контекст, но не пик (яркость 0)
 READ_KINDS = frozenset(CONTEXT_KINDS) | {"vision"}          # что читать из журнала
 SCENE_MAX = 2                         # строк сцены в моменте
@@ -263,7 +265,7 @@ def select_moments(rows: list[dict], cfg: MomentCfg, now: float, *, taken: dict 
         score, reasons = event_score(row)
         if kind in ("attention", "module_event") and score < ATTENTION_CONTEXT_MIN:
             continue
-        if kind not in ("user", "say", "thought") and score <= 0:
+        if kind not in ("user", "say", OUT_KIND, "thought") and score <= 0:
             continue
         scored.append(_ev(row, score, reasons))
     scored.sort(key=lambda e: (e.ts, e.id))

@@ -3,8 +3,9 @@
 Любое обращение пользователя к ней - один вид входа `UserInput(text, channel, sender, ts)`, где канал:
   voice      - микрофон (модуль voice: событие `voice.utterance` -> `Companion.on_voice`);
   dashboard  - чат дашборда и строка быстрого ввода питомца (`POST /api/chat`);
-  module     - модуль-канал (Telegram и т.п.): обращение к ней, которое менеджер внимания признал обращением (владельца или другого человека).
-Ответ уходит в тот канал, откуда пришло обращение. На время обработки обращения канал лежит в контекстной переменной
+Сообщения из каналов модулей (Discord, Telegram и т.п.) в этот вид входа НЕ попадают: это события внимания, а не реплики
+разговора (`services/attention/pipeline.py`), агент отвечает на них инструментом модуля. Канал `module` остаётся только для
+вопросов владельцу через модуль (`services/attention/questions.py`). Ответ уходит в тот канал, откуда пришло обращение. На время обработки обращения канал лежит в контекстной переменной
 `current_channel`, поэтому `Companion.say` находит его без передачи параметров через весь путь (маршрутизатор,
 планировщик, оговорки «сейчас посмотрю»). Для канала `module` ответ идёт запросом `deliver` модулю и вслух не
 произносится; при ошибке или офлайне модуля ответ остаётся в чате дашборда, а в журнале появляется пометка.
@@ -56,44 +57,6 @@ class UserInput:
 current_channel: contextvars.ContextVar[Channel | None] = contextvars.ContextVar("current_channel", default=None)
 
 
-class ModuleReplyGuard:
-    """Реплики одного хода единого агента из канала модуля: копятся до конца хода и решается, что из них ответ.
-
-    Реплика до вызова инструмента это промежуточный комментарий («сейчас напишу»): при начале вызова накопленное отбрасывается
-    (`take`). Если инструмент доставил сообщение в адрес обращения (`note_delivered`), реальный ответ уже записан резидентом как её
-    реплика, и остаток хода не нужен. Иначе реплики после последнего инструмента в конце хода доставляются как ответ
-    (`Companion.release_channel_replies`), по порядку. Ход оборван или упал: накопленное отбрасывается. Защита детерминированная и
-    живёт только в доставке: контекст, промпт и описания инструментов от канала не зависят. Объект создаётся на ход
-    (`ResidentAgent._run`) и лежит в `turn_replies`, поэтому ходы из разных каналов друг другу не мешают."""
-
-    def __init__(self, channel: Channel | None):
-        self.channel = channel
-        self.answered = False                      # какой-то инструмент доставил сообщение в адрес обращения
-        self.held: list[tuple[str, str | None]] = []   # (текст, стикер) реплик хода по порядку
-
-    def hold(self, text: str, sticker: str | None = None) -> None:
-        self.held.append((text, sticker))
-
-    def take(self) -> list[tuple[str, str | None]]:
-        """Забрать накопленные реплики (очередь пустеет)."""
-        held, self.held = self.held, []
-        return held
-
-    def note_delivered(self, ok: bool, delivered_to=()) -> bool:
-        """Исход вызова инструмента: он сам сообщает типизированным полем `delivered_to`, КУДА доставил сообщение (адреса в
-        формате `reply_channel.target`). Ни имён инструментов, ни разбора текста и параметров: адреса каноничны и сравниваются
-        точно. True, если ЭТОТ вызов доставил сообщение в адрес обращения (резидент запишет отправленный текст как её реплику)."""
-        ch = self.channel
-        if ok and ch is not None and ch.kind == "module" and ch.target and ch.target in tuple(delivered_to or ()):
-            self.answered = True
-            return True
-        return False
-
-
-# защита от дублей ответа в текущем ходе (None вне хода единого агента)
-turn_replies: contextvars.ContextVar[ModuleReplyGuard | None] = contextvars.ContextVar("turn_replies", default=None)
-
-
 class ConversationIO:
     """Вход обращений из любых каналов и доставка ответов в каналы модулей."""
 
@@ -107,11 +70,6 @@ class ConversationIO:
 
     async def from_dashboard(self, text: str) -> None:
         await self.submit(UserInput(text, DASHBOARD))
-
-    async def from_module(self, text: str, reply_channel: dict, sender: dict | None = None) -> None:
-        """Обращение из модуля-канала (владельца или другого человека, R1): reply_channel события {"module", "target"}."""
-        channel = Channel("module", str(reply_channel.get("module") or ""), str(reply_channel.get("target") or ""))
-        await self.submit(UserInput(text, channel, sender))
 
     async def deliver(self, channel: Channel, text: str) -> bool:
         """Доставить ответ в канал модуля (запрос `deliver`). False, если модуль офлайн, не принимает доставку или

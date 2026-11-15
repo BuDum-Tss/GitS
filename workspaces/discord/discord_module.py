@@ -16,7 +16,7 @@ from common import parse_target, scrub, split_place
 from discord_bot import ChatModeError, DiscordBot, LeakError, SendDenied
 from discord_panel import ACTIONS as PANEL_ACTIONS
 from discord_panel import DiscordPanel
-from gits_sdk import ToolError, ToolReply, WorkspaceClient
+from gits_sdk import ToolError, WorkspaceClient
 from privacy import Privacy
 
 logger = logging.getLogger("discord.app")
@@ -258,7 +258,7 @@ class DiscordModule:
             target = f"dm:{owner}"
         return await self._bot(self.bot.react, who, emoji, mid, bool(remove), target)
 
-    async def message(self, args: dict) -> ToolReply:
+    async def message(self, args: dict) -> str:
         kind, who = self._target(args.get("to"))
         text = _text_arg(args, "text", required=False).strip()
         if not text:
@@ -276,9 +276,8 @@ class DiscordModule:
                 raise ToolError("Discord-id владельца не задан или ещё не известен (настройка «Владелец»: числовой id; имя "
                                 "запоминается после его первого сообщения)", code="unavailable")
             target = f"dm:{owner}"
-        sent_to = await self._bot(self._send, who, text, reply_to, target, kind == "chat")      # разрешённый адрес отправки
-        shown = "отправлено владельцу" if kind == "owner" else f"отправлено в «{str(who or sent_to)[:60]}»"
-        return ToolReply(shown, (sent_to,))                     # адрес доставки сообщает ядру, ушло ли в канал обращения
+        sent = await self._bot(self._send, who, text, reply_to, target, kind == "chat")
+        return "отправлено владельцу" if kind == "owner" else sent
 
     async def _send(self, who: str, text: str, reply_to, target, leak_check: bool) -> str:
         return await self.bot.send(who, text, reply_to=reply_to, target=target, leak_check=leak_check)

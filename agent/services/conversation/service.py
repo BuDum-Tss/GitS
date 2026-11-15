@@ -22,20 +22,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger("companion")
 
 # отправитель текущего обращения (узнанный голос: новый человек даёт яркость, ТЗ 24 TRC-4)
-def _channel_sender_label(sender: dict | None, channel) -> str | None:
-    """Подпись в чате дашборда у ЛЮБОГО обращения из канала модуля, и владельца тоже: «Имя · Модуль» (нет имени: «Модуль»).
-    От имени пользователя в чате дашборда пишет только он сам в дашборде, поэтому «Ты» остаётся у ввода из дашборда и голоса.
-    Только показ: роль в памяти, текст обращения и контекст агента от подписи не зависят."""
-    if channel is None or channel.kind != "module":
-        return None
-    module = str(channel.module or "").strip()
-    module = module[:1].upper() + module[1:]
-    name = str((sender or {}).get("name") or (sender or {}).get("id") or "").strip()
-    if name and module:
-        return f"{name} · {module}"
-    return name or module or None
-
-
 _sender_ctx: contextvars.ContextVar = contextvars.ContextVar("companion_sender", default=None)
 
 WRITE_WAIT_S = 0.05      # сколько ответ ждёт запись реплики в диалог (ТЗ 25, FAST-7); дальше запись доходит в фоне
@@ -89,16 +75,15 @@ class ConversationService:
         # запись реплики (диалог, очередь графа) уходит в поток и идёт параллельно разбору; ответ её дожидается (FAST-7)
         sal, reasons = salience.score(salience.factors_of(memorable=bool(_EXPLICIT_MEMORY.search(text)),
                                                           novelty=bool((_sender_ctx.get() or {}).get("new"))))
-        who = _channel_sender_label(_sender_ctx.get(), current_channel.get())
-        writes = asyncio.ensure_future(asyncio.to_thread(self._write_user, text, who))
+        writes = asyncio.ensure_future(asyncio.to_thread(self._write_user, text))
         try:
-            await self._handle(text, hard, writes, sal, reasons, who)
+            await self._handle(text, hard, writes, sal, reasons)
         finally:
             await asyncio.gather(writes, return_exceptions=True)
 
-    def _write_user(self, text: str, who: str | None = None) -> None:
+    def _write_user(self, text: str) -> None:
         h = self._h
-        h._memory_writer.add_dialogue("user", text, **({"who": who} if who else {}))
+        h._memory_writer.add_dialogue("user", text)
 
     async def _reflex(self, text: str, hard) -> None:
         """Рефлекс жёсткого правила (FAST-2, FAST-5): оборвать генерацию ответа и речь сразу, без вызовов моделей."""
@@ -110,9 +95,9 @@ class ConversationService:
         else:
             await h.speech.stop(None)
 
-    async def _handle(self, text: str, hard, writes, sal, reasons, who: str | None = None) -> None:
+    async def _handle(self, text: str, hard, writes, sal, reasons) -> None:
         h = self._h
-        h._log.log_nowait("user", text, salience=sal, reasons=reasons, **({"who": who} if who else {}))   # без ожидания коммита (ТЗ 24: трасса)
+        h._log.log_nowait("user", text, salience=sal, reasons=reasons)   # без ожидания коммита (ТЗ 24: трасса)
         h._pending_memory += 1
         h._last_user_ts = time.time()
         h.presence.update(last_user_ts=h._last_user_ts)

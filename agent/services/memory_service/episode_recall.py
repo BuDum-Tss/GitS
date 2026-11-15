@@ -104,7 +104,7 @@ class EpisodeRecall:
         if self.source is None:
             return []
         upto = await asyncio.to_thread(self.store.get_meta, "moments_upto", 0)
-        rows = await asyncio.to_thread(self.source.after, upto or 0, n, {"user", "say", "module_event"})
+        rows = await asyncio.to_thread(self.source.after, upto or 0, n, {"user", "say", "module_event", "module_out"})
         return [{"id": r["id"], "kind": r["kind"], "text": r["text"], "ts": r["ts"]} for r in rows]
 
     async def diary(self, limit: int = 30) -> list[dict]:

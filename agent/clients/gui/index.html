@@ -346,6 +346,7 @@
               <option value="setting">Настройки</option>
               <option value="module">Модули</option>
               <option value="module_event">События модулей</option>
+              <option value="module_out">Её сообщения в каналы</option>
               <option value="profile">Профили</option>
               <option value="attention">Внимание</option>
               <option value="error">Ошибки</option>
@@ -714,11 +715,10 @@ function renderChat(dialogue, waiting, tools) {
   const html = rows.map(r => {
     if (r.e) return toolRow(r.e);
     const m = r.m, i = r.i;
-    const other = m.role === 'user' && !!m.who;            // обращение другого человека из канала модуля: не от имени владельца
-    const mine = m.role === 'user' && !other;
+    const mine = m.role === 'user';
     const t = new Date(m.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
     return `<div class="chat ${mine ? 'chat-end' : 'chat-start'}">
-      <div class="chat-header text-xs opacity-60">${esc(other ? m.who : mine ? 'Ты' : 'Ассистент')} <time>${t}</time>${mine || other ? '' : ` <button class="link link-hover" data-ctx="${i}" title="Показать запрос к модели, по которому родилась эта фраза">контекст</button>`}</div>
+      <div class="chat-header text-xs opacity-60">${mine ? 'Ты' : 'Ассистент'} <time>${t}</time>${mine ? '' : ` <button class="link link-hover" data-ctx="${i}" title="Показать запрос к модели, по которому родилась эта фраза">контекст</button>`}</div>
       <div class="chat-bubble ${mine ? 'chat-bubble-neutral' : ''} bubble-text">${esc(m.text)}</div></div>`;
   }).join('') + (waiting ? `<div class="chat chat-start"><div class="chat-bubble"><span class="loading loading-dots loading-sm"></span></div></div>` : '');
   if ($('chat').dataset.sig !== html) {
@@ -889,7 +889,7 @@ function renderMemory(core) {
 const KIND = {user: ['Ты', 'badge-neutral'], say: ['Ассистент', 'badge-primary'], proactive: ['Сама', 'badge-secondary'],
   reflex: ['Реакция', 'badge-accent'], vision: ['Зрение', 'badge-info'], hearing: ['Слух', 'badge-info'], telegram: ['Telegram', 'badge-secondary'], plan: ['План', 'badge-primary'], audit: ['Аудит', 'badge-warning'], memory: ['Память', 'badge-accent'], game: ['Игра', 'badge-success'],
   approval: ['Разрешение', 'badge-warning'], setting: ['Настройка', 'badge-ghost'],
-  module: ['Модуль', 'badge-accent'], module_event: ['Событие модуля', 'badge-accent'], profile: ['Профиль', 'badge-secondary'], attention: ['Внимание', 'badge-info'], error: ['Ошибка', 'badge-error']};
+  module: ['Модуль', 'badge-accent'], module_event: ['Событие модуля', 'badge-accent'], module_out: ['Она в канал', 'badge-primary'], profile: ['Профиль', 'badge-secondary'], attention: ['Внимание', 'badge-info'], error: ['Ошибка', 'badge-error']};
 function evDetails(e) {
   const d = e.data || {}; const bits = [];
   if (d.action && d.action !== 'none') bits.push('команда: ' + d.action);
@@ -905,8 +905,7 @@ async function loadEvents() {
   const kind = $('ev-kind').value;
   const r = await fetch('/api/events?limit=150' + (kind ? '&kind=' + kind : '')).then(x => x.json());
   const html = r.events.slice().reverse().map(e => {
-    let [name, cls] = KIND[e.kind] || [e.kind, 'badge-ghost'];
-    if (e.kind === 'user' && e.data && e.data.who) { name = e.data.who; cls = 'badge-ghost'; }    // чужое обращение: не «Ты»
+    const [name, cls] = KIND[e.kind] || [e.kind, 'badge-ghost'];
     const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
     const det = evDetails(e);
     return `<li class="flex gap-2"><span class="badge ${cls} badge-sm shrink-0 mt-1">${esc(name)}</span>

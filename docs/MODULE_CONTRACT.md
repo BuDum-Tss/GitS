@@ -2,7 +2,7 @@
 
 Файл создан скриптом `agent/interfaces/workspace/tools/gen_contract_doc.py` из `agent/interfaces/workspace/gits_sdk/contract/`. Руками не правится: меняйте описания в коде и запускайте скрипт. Тест `agent/interfaces/workspace/tests/test_contract_doc.py` сверяет файл с кодом. Руководство автора участника шины: `docs/MODULES.md`, код контракта: `agent/interfaces/workspace/gits_sdk/contract/`.
 
-Версия протокола `PROTOCOL = 3`, версия контракта `3.3`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
+Версия протокола `PROTOCOL = 3`, версия контракта `3.4`. JSON-схемы тел лежат в `docs/contract/<имя>.json`.
 
 ## Версии и совместимость
 
@@ -32,7 +32,8 @@
 - `3.0`: PROTOCOL 3, только pi: удалены запросы core.claude_usage и core.claude.locate, тема battery и поле battery в welcome (батарейки Claude нет), клиентские методы claude_usage, claude_locate, поле client.battery и модуль claude_path
 - `3.1`: core.tts и tts.synthesize: необязательное поле volume_path в ответе (файл относительно папки персонажа: участники в контейнерах обмениваются файлами через общий том персонажа, `shared/tts/`)
 - `3.2`: рабочее окружение агента (docs/WORKSPACE_CONTRACT.md): необязательные поля блока workspace манифеста brief, skills, area, commands, site (неверные поля не отклоняют модуль, а попадают в предупреждения); запрос workspace.afk (выход без отпускания аренды, тело как у workspace.exit); ответ на workspace.enter может нести brief, skills, units, site
-- `3.3`: tool.call: необязательная типизированная форма ответа `{text, delivered_to}` (SDK: `ToolReply`); `delivered_to` - адреса (формат reply_channel.target, до 8 по 200 символов), куда инструмент реально доставил сообщение: ядро не дублирует туда итоговую реплику хода
+- `3.3`: tool.call: необязательная типизированная форма ответа `{text, delivered_to}` (SDK: `ToolReply`)
+- `3.4`: у инструмента манифеста необязательный флаг `sends` (инструмент отправляет текст людям: ядро пишет исходящее событие `module_out` в журнал); типизированный ответ `{text, delivered_to}` и `ToolReply` из 3.3 убраны (ядро на них не опирается, получатель и так игнорирует неизвестные поля ответа)
 
 Устаревшее: `emotion` до 2027-01-01, заменить на тег стикера в тексте ответа; сообщение игнорируется ядром
 
@@ -635,7 +636,7 @@
 
 Коды ошибок: `bad_request`, `unknown`, `unavailable`, `denied`, `internal`, `timeout`, `cancelled`.
 
-Результат: любое JSON-значение. Необязательная типизированная форма (контракт 3.3): объект `{"text": строка, "delivered_to": [адреса]}`, `delivered_to` сообщает, КУДА инструмент реально доставил сообщение: если среди адресов адрес обращения (`reply_channel.target`), ядро не доставляет туда итоговую фразу хода второй раз.
+Результат: любое JSON-значение.
 
 Тело:
 
@@ -646,10 +647,7 @@
 
 Ответ (`result.value`):
 
-| Поле | Тип | Обязательно | Ограничения | Описание |
-|---|---|---|---|---|
-| `text` | string | нет | - | текст результата (типизированный ответ ToolReply) |
-| `delivered_to` | array[string] | нет | до 8 элем. | адреса, куда инструмент доставил сообщение (формат reply_channel.target: `channel:123`, `dm:456`, `user:789#6`); до 8 адресов по 200 символов, контракт 3.3 |
+Произвольное JSON-значение или пустой объект.
 
 Пример:
 
