@@ -47,10 +47,6 @@ async def fast_loudnorm(src, dst, **_kw):
     return {}
 
 
-async def fast_extract_frame(video, t_s, out, *, width=None):
-    out.write_bytes(b"png")
-
-
 def fast_prepare_work(job_dir: Path, layout) -> Path:
     """Рабочая папка без копирования шаблона и junction (отдельный тест workspace проверяет настоящую)."""
     work = job_dir / "work"

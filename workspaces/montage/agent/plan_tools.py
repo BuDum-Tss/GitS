@@ -1,6 +1,6 @@
-"""Помощники плана монтажа: озвучка реплик, подгонка закадра, текстовые виды истории и плана для сайта (ТЗ 20, раздел 6).
+"""Помощники плана монтажа: озвучка реплик, подгонка закадра, текстовый вид истории для сайта (ТЗ 20, раздел 6).
 
-Раньше это жило в конвейере стадий; теперь команды окружения (`voiceover`) и сайт берут отсюда: логика одна и та же.
+Команды окружения (`voiceover`) и сайт берут отсюда: логика одна и та же.
 """
 from __future__ import annotations
 
@@ -87,20 +87,4 @@ def story_markdown(story: dict) -> str:
         out.append(f"- {b['id']} [{b['role']}] {b['t_from_ms'] / 1000:.1f}–{b['t_to_ms'] / 1000:.1f} с: {b['purpose']}")
     for sp in story.get("setups_payoffs") or []:
         out.append(f"- подготовка {sp['setup']} → отдача {sp['payoff']}: {sp.get('what', '')}")
-    return "\n".join(out) + "\n"
-
-
-def plan_markdown(plan: dict) -> str:
-    out = [f"# План монтажа: {plan['title']}", "", f"Длительность {plan['duration_ms'] / 1000:.1f} с, кадр {plan['format']['width']}×{plan['format']['height']}.",
-           "", "## Сцены"]
-    for s in plan["segments"]:
-        out.append(f"- {s['id']} ({s['beat']}): {s['source']} {s['in_ms']}–{s['out_ms']} мс, на {s['at_ms']} мс")
-    out.append("\n## Вставки")
-    for i in plan["inserts"]:
-        out.append(f"- {i['id']} ({i['beat']}) {i['kind']} на {i['at_ms']} мс, {i['dur_ms']} мс")
-    if plan.get("voiceover"):
-        out.append("\n## Закадр")
-        out += [f"- {v['id']} на {v['at_ms']} мс: {v['text']}" for v in plan["voiceover"]]
-    if plan.get("cta"):
-        out.append(f"\n## Призыв\n{plan['cta']['text']} (на {plan['cta']['at_ms']} мс)")
     return "\n".join(out) + "\n"

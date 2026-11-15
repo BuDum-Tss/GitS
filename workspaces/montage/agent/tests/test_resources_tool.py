@@ -28,12 +28,6 @@ def test_short_names_resolve_to_the_resource(tmp_path):
     assert lay.resolve_resource("character/pet/settings.json") is None
 
 
-def test_listing_skips_code_and_previews(tmp_path):
-    lay = make(tmp_path)
-    names = [p.name for p, _ in lay.list_resources()]
-    assert names == ["Aperture_Boot_dark.mp4"]
-
-
 # ---------------------------------------------------------------- компактный каталог и группы
 
 import pytest

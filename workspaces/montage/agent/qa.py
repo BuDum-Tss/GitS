@@ -1,11 +1,11 @@
-"""Контроль качества (ТЗ 20, раздел 12a, MON-QA-1…QA-4; ТЗ 22, CRAFT-3, CRAFT-4).
+"""Контроль качества (ТЗ 20, раздел 12a, MON-QA-1, MON-QA-4; ТЗ 22, CRAFT-4).
 
 Технические проверки черновика и финала — только ffmpeg/ffprobe и код, без модели (`run_technical`); их вызывает команда
 окружения `check` (и `final` для готового файла). Смысловую оценку кадров по рубрике навыка `montage-regulation/qa-rubric.md` делает
-сама ГЛаДОС (её отдельного агента-проверяющего больше нет). Итог пишется в отчёт `qa/report.json` и `qa/report.md`.
+сама ГЛаДОС. Итог пишется в отчёт `qa/report.json` и `qa/report.md`.
 
 Что и как проверяется (честно о границах):
-  - формат, громкость, чёрные и застывшие кадры, тишина: ffmpeg по отрендеренному файлу;
+  - формат и (в финале) громкость: ffprobe/ffmpeg по отрендеренному файлу;
   - субтитры: страницы строятся тем же алгоритмом, что в шаблоне (порт `template/src/timeline.ts`), и сравниваются со
     словами `words.json` (расхождение времени > 150 мс — ошибка, слово без страницы — ошибка). Появление субтитров
     в самом видео по пикселям не проверяется; текст на кадрах проверяет OCR, когда он установлен;
@@ -27,15 +27,11 @@ from layout import Layout
 LUFS_TARGET, LUFS_TOL, PEAK_MAX = -14.0, 1.0, -1.0           # регламент §5
 DURATION_TOL_S = 0.5
 CAPTION_TOL_MS = 150
-BLACK_MIN_S, FREEZE_MIN_S, SILENCE_MIN_S = 0.5, 2.0, 1.5
-SILENCE_DB = -45.0
-FIRST_SECONDS_S = 3.0
 SPEECH_OVERLAP_MS = 300
 OCR_MIN_SIMILARITY = 0.85
 OCR_MAX_FRAMES = 14
 RHYTHM_S = {"shorts": (1.2, 2.5), "reels": (1.2, 2.5), "telegram": (2.0, 3.0), "youtube": (3.0, 6.0)}   # ТЗ 22 §3.3
 JUMP_CUT_MAX_MS = 1000
-MAX_FIX_ITERATIONS = 2
 
 
 @dataclass
@@ -242,44 +238,12 @@ def caption_pages(plan: dict, words: list[dict], zones: dict) -> list[dict]:
 
 # ---------------------------------------------------------------------------------------------------- интервалы
 
-def subtract(span: tuple[float, float], holes: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    parts = [span]
-    for lo, hi in sorted(holes):
-        nxt = []
-        for a, b in parts:
-            if hi <= a or lo >= b:
-                nxt.append((a, b))
-                continue
-            if lo > a:
-                nxt.append((a, lo))
-            if hi < b:
-                nxt.append((hi, b))
-        parts = nxt
-    return [(a, b) for a, b in parts if b - a > 1e-6]
-
-
 def overlap(a: tuple[float, float], b: tuple[float, float]) -> float:
     return max(0.0, min(a[1], b[1]) - max(a[0], b[0]))
 
 
 def _voice_span(v: dict) -> tuple[int, int]:
     return v["at_ms"], v["at_ms"] + (v.get("duration_ms") or max(1000, len(v["text"]) * 62))
-
-
-def _speech_spans(plan: dict, words: list[dict], gap_ms: int = 400) -> list[tuple[int, int]]:
-    """Где по плану должна быть речь (мс): закадр и слова людей, слитые в фразы."""
-    spans = [_voice_span(v) for v in plan.get("voiceover") or []]
-    cluster: tuple[int, int] | None = None
-    for a, b in sorted((w["start"], w["end"]) for w in human_words(plan, words)):
-        if cluster and a - cluster[1] <= gap_ms:
-            cluster = (cluster[0], max(cluster[1], b))
-        else:
-            if cluster:
-                spans.append(cluster)
-            cluster = (a, b)
-    if cluster:
-        spans.append(cluster)
-    return spans
 
 
 # ---------------------------------------------------------------------------------------------------- проверки ремесла по плану (CRAFT-4)
@@ -493,81 +457,12 @@ def zone_findings(plan: dict, pages: list[dict], zones: dict) -> list[Finding]:
     return out
 
 
-# ---------------------------------------------------------------------------------------------------- смысловая проверка (MON-QA-2)
-
-CRITERIA = ("readability", "overlaps", "palette_fonts", "scenes", "rhythm", "brief_match", "character_voice", "cta", "no_foreign_marks",
-            "hook", "story_clarity", "cuts", "sound", "voiceover", "ending")
-
-
-def key_frame_times(plan: dict, story: dict | None, limit: int = 16) -> list[tuple[int, str]]:
-    """8–16 ключевых моментов: начало, середина каждой вставки, начало каждого бита, призыв, конец."""
-    D = plan["duration_ms"]
-    pts: list[tuple[int, str]] = [(min(300, D // 2), "начало")]
-    for ins in plan.get("inserts") or []:
-        pts.append((ins["at_ms"] + ins["dur_ms"] // 2, f"вставка {ins['id']} ({ins['kind']})"))
-    for b in (story or {}).get("beats") or []:
-        pts.append((b["t_from_ms"] + (b["t_to_ms"] - b["t_from_ms"]) // 3, f"бит {b['id']} ({b['role']})"))
-    if plan.get("cta"):
-        pts.append((min(D - 100, plan["cta"]["at_ms"] + 500), "призыв"))
-    pts.append((max(0, D - 400), "конец"))
-    pts = sorted({(max(0, min(D - 50, t)), what) for t, what in pts})
-    merged: list[tuple[int, str]] = []
-    for t, what in pts:                                       # кадры ближе 700 мс друг к другу сливаются
-        if merged and t - merged[-1][0] < 700:
-            merged[-1] = (merged[-1][0], merged[-1][1] + "; " + what)
-        else:
-            merged.append((t, what))
-    while len(merged) > limit:                                # слишком много: выбросить самые близкие
-        k = min(range(1, len(merged)), key=lambda i: merged[i][0] - merged[i - 1][0])
-        merged[k - 1] = (merged[k - 1][0], merged[k - 1][1] + "; " + merged[k][1])
-        del merged[k]
-    return merged
-
-
-def parse_semantic(text: str) -> dict | None:
-    """JSON-ответ проверяющего -> {"criteria", "overall", "verdict"}; None, если разобрать нельзя."""
-    a, b = text.find("{"), text.rfind("}")
-    if a < 0 or b <= a:
-        return None
-    try:
-        doc = json.loads(text[a:b + 1])
-    except ValueError:
-        return None
-    crit = doc.get("criteria")
-    if not isinstance(crit, dict):
-        return None
-    clean: dict = {}
-    for name, v in crit.items():
-        if not isinstance(v, dict):
-            continue
-        score = v.get("score")
-        issues = [{"t_ms": i.get("t_ms") if isinstance(i, dict) else None,
-                   "text": str(i.get("text") if isinstance(i, dict) else i)[:300]} for i in v.get("issues") or []]
-        clean[str(name)] = {"score": int(score) if isinstance(score, (int, float)) else None, "issues": issues}
-    overall = doc.get("overall")
-    verdict = doc.get("verdict")
-    if verdict not in ("pass", "fix"):
-        verdict = "pass" if isinstance(overall, (int, float)) and overall >= 4 else "fix"
-    return {"criteria": clean, "overall": int(overall) if isinstance(overall, (int, float)) else None, "verdict": verdict}
-
-
-def semantic_fix_notes(sem: dict) -> list[str]:
-    notes = []
-    for name, v in sem.get("criteria", {}).items():
-        for issue in v.get("issues") or []:
-            t = f" ({issue['t_ms'] / 1000:.1f} с)" if isinstance(issue.get("t_ms"), (int, float)) else ""
-            notes.append(f"[{name}, оценка {v.get('score')}]{t}: {issue['text']}")
-    return notes
-
-
 # ---------------------------------------------------------------------------------------------------- отчёт (MON-QA-4)
 
 @dataclass
 class QAOutcome:
     findings: list[Finding] = field(default_factory=list)
-    semantic: dict | None = None
     checked: dict = field(default_factory=dict)
-    iterations: list[dict] = field(default_factory=list)
 
     @property
     def errors(self) -> list[Finding]:
@@ -575,53 +470,38 @@ class QAOutcome:
 
     @property
     def passed(self) -> bool:
-        return not self.errors and (self.semantic is None or self.semantic.get("verdict") == "pass")
-
-    def fix_notes(self) -> list[str]:
-        notes = [f.line() for f in self.errors]
-        if self.semantic and self.semantic.get("verdict") == "fix":
-            notes += semantic_fix_notes(self.semantic)
-        return notes
+        return not self.errors
 
     def summary(self) -> dict:
         return {"technical_errors": len(self.errors), "technical_warnings": len(self.findings) - len(self.errors),
-                "semantic_overall": (self.semantic or {}).get("overall"), "semantic_verdict": (self.semantic or {}).get("verdict"),
                 "passed": self.passed}
 
 
-def write_report(qa_dir: Path, job_id: str, outcome: QAOutcome, *, draft: bool, fixed: list[str],
-                 stem: str = "report") -> tuple[Path, Path]:
+def write_report(qa_dir: Path, job_id: str, outcome: QAOutcome, *, draft: bool, stem: str = "report") -> tuple[Path, Path]:
     qa_dir.mkdir(parents=True, exist_ok=True)
     doc = {"job_id": job_id, "draft": draft, "summary": outcome.summary(), "checked": outcome.checked,
-           "findings": [asdict(f) for f in outcome.findings], "semantic": outcome.semantic, "iterations": outcome.iterations,
-           "fixed": fixed}
+           "findings": [asdict(f) for f in outcome.findings]}
     jp, mp = qa_dir / f"{stem}.json", qa_dir / f"{stem}.md"
     jp.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
     s = outcome.summary()
     md = [f"# Отчёт контроля качества ({'черновик' if draft else 'финал'}), задача {job_id}", "",
           f"Итог: {'проверки пройдены' if s['passed'] else 'остались замечания'}. Ошибок {s['technical_errors']}, предупреждений "
-          f"{s['technical_warnings']}, смысловая оценка {s['semantic_overall']} ({s['semantic_verdict']}).", ""]
-    if fixed:
-        md += ["## Исправлено автоматически", *[f"- {x}" for x in fixed], ""]
+          f"{s['technical_warnings']}.", ""]
     md += ["## Технические проверки"]
-    errs = [f for f in outcome.findings if f.severity == "error"]
+    errs = outcome.errors
     warns = [f for f in outcome.findings if f.severity != "error"]
     md += [*(f"- ОШИБКА {f.line()}" for f in errs), *(f"- предупреждение {f.line()}" for f in warns)] or ["- замечаний нет"]
     chk = outcome.checked
     if chk:
         md += ["", "Проверено: " + ", ".join(f"{k}" for k in chk if k not in ("video", "draft"))]
-    if outcome.semantic:
-        md += ["", "## Смысловая проверка", f"Оценка {outcome.semantic.get('overall')} из 5, вердикт: {outcome.semantic.get('verdict')}"]
-        for name, v in outcome.semantic.get("criteria", {}).items():
-            md.append(f"- {name}: {v.get('score')}" + ("".join(f"\n  - {i['text']}" for i in v.get("issues") or [])))
     mp.write_text("\n".join(md) + "\n", encoding="utf-8")
     return jp, mp
 
 
-# ---------------------------------------------------------------------------------------------------- служба для конвейера
+# ---------------------------------------------------------------------------------------------------- служба проверок
 
 class QAService:
-    """Технические проверки для конвейера: собирает OCR и кадры Remotion, если OCR установлен."""
+    """Технические проверки для команд окружения: собирает OCR и кадры Remotion, если OCR установлен."""
 
     def __init__(self, layout: Layout, renderer=None, ocr: OcrFn | None = None):
         self.layout = layout

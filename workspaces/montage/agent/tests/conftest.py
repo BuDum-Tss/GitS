@@ -19,4 +19,3 @@ def fast(monkeypatch):
     from tests import stubs
     monkeypatch.setattr(manager, "prepare_work", stubs.fast_prepare_work)
     monkeypatch.setattr(media, "loudnorm", stubs.fast_loudnorm)
-    monkeypatch.setattr(media, "extract_frame", stubs.fast_extract_frame)

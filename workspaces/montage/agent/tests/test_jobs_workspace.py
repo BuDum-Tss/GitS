@@ -39,7 +39,7 @@ def test_save_is_atomic_and_thread_safe(tmp_path):
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert json.loads((job.folder / "job.json").read_text(encoding="utf-8"))["job_id"] == job.job_id
-    assert not (job.folder / "job.json.tmp").exists() and len(store.read_log(job, 1000)) == 120
+    assert not (job.folder / "job.json.tmp").exists() and len(job.log_path.read_text(encoding="utf-8").splitlines()) == 120
 
 
 def test_unfinished_jobs_are_found_after_restart(tmp_path):

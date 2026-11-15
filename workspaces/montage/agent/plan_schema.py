@@ -3,7 +3,7 @@
 Проверка ручная, без новых зависимостей (pydantic в requirements.txt нет): исполнитель выбрал явные правила и понятные
 сообщения для агента. Ошибки возвращаются агенту списком строк «путь: что не так» (до 3 попыток исправления). Форма плана
 совпадает с zod-схемой шаблона `template/src/schema.ts` (источник правды о форме): тест сверяет эту проверку с
-`template/plan.schema.json` на наборе верных и неверных планов, а конвейер дополнительно гоняет план через
+`template/plan.schema.json` на наборе верных и неверных планов, а команда `check` дополнительно гоняет план через
 `template/scripts/validate-plan.mjs` (та же схема, что в `calculateMetadata`).
 """
 from __future__ import annotations
@@ -20,7 +20,6 @@ INSERT_KINDS = ("intro", "blueprint", "glados_room", "chamber_sign", "result_sig
 CAPTION_PLATFORMS = ("shorts", "reels", "telegram", "none")      # субтитры вжигаются только в вертикальных коротких роликах
 BEAT_ROLES = ("hook", "setup", "inciting", "rise", "turn", "climax", "payoff", "button", "cta")
 MAX_ON_SCREEN = 60          # тексты на экране (ТЗ 20 MON-13), заголовки 40 (регламент §6), CTA 80
-MAX_TITLE = 40
 MAX_CTA = 80
 MAX_VOICEOVER = 400
 SFX_MIN_GAP_MS = 1000       # регламент §5: не больше одного эффекта в секунду
@@ -293,7 +292,7 @@ def validate_plan(plan, ctx: PlanContext) -> list[str]:
             vertical = _is_int(fmt_.get("width")) and _is_int(fmt_.get("height")) and fmt_["height"] > fmt_["width"]
             if ctx.platform not in CAPTION_PLATFORMS or not vertical:
                 c.add("captions.enabled", "субтитры вжигаются только в вертикальные короткие ролики (shorts, reels, telegram); "
-                      "в горизонтальных (youtube) captions.enabled = false, конвейер выдаст файл .srt рядом с финалом")
+                      "в горизонтальных (youtube) captions.enabled = false, команда `final` выдаст файл .srt рядом с финалом")
         if cap.get("enabled") and cap.get("source", "transcript") != "voiceover" and not segs:
             c.add("captions.source", "субтитры по расшифровке без сегментов исходника невозможны: используй source «voiceover»")
 

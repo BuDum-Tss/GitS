@@ -142,8 +142,3 @@ def make_audible(parts: list[tuple[Path, float, float]]) -> Audible:
             return level is not None and level > SILENCE_FLOOR_DB
         return False
     return check
-
-
-def words_between(words: list[dict], from_ms: int, to_ms: int, limit: int = 400) -> list[dict]:
-    """Слова с таймингами в отрезке (инструмент агента `transcript_words`): не весь файл, не больше `limit`."""
-    return [w for w in words if w["end_ms"] > from_ms and w["start_ms"] < to_ms][:limit]

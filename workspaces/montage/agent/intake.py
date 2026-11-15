@@ -79,7 +79,7 @@ def detect_kind(files: list[Path], brief: str, infos: dict[str, media.MediaInfo]
 
 
 async def run_intake(job_dir: Path, request: dict, progress: Progress | None = None) -> dict:
-    """Выполнить стадию. Возвращает `info` (то же, что записано в `sources/info.json`). Идемпотентно: готовые перекодировки
+    """Подготовить исходники (команда `intake`). Возвращает `info` (то же, что записано в `sources/info.json`). Идемпотентно: готовые перекодировки
     не повторяются, если файл уже есть."""
     sources_dir = job_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)

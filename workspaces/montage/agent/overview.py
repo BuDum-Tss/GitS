@@ -1,0 +1,76 @@
+"""Обзор модуля монтажа для начальной страницы сайта: краткое описание, как идёт работа и всё, что модуль добавляет.
+
+Списки инструментов, команд, навыков, событий и настроек строятся из манифеста, поэтому не отстают от кода. Манифест импортируется
+внутри функции: он сам импортирует сайт, и наверху получился бы круг.
+"""
+from __future__ import annotations
+
+import html
+
+SUMMARY = ("Монтаж собирает ролики для Telegram, YouTube, Shorts и Reels: принимает исходники или собирает ролик из сцен, "
+           "озвучивает его голосом персонажа, рендерит черновик, проверяет и выпускает финал. Работает ГЛаДОС, человек следит "
+           "за ходом на этом сайте и открывает Remotion Studio.")
+
+# порядок работы: (шаг, что происходит, чем выполняется)
+PROCESS = (
+    ("Вход", "Персонаж берёт модуль в аренду (workspace.enter), читает краткую инструкцию и регламент.", "workspace.enter, skills"),
+    ("Ролик", "Находит существующий ролик или создаёт новую единицу: бриф, площадка, ориентация, режим закадра.", "work create/list/status"),
+    ("Исходники", "Если есть видео или звук, они копируются, проверяются и перекодируются; речь расшифровывается.", "run intake, run transcribe"),
+    ("Сцены", "Ролик описывается сценами: вид, что на картинке, фразы, материалы. Времена считает система.", "work scenes"),
+    ("Сборка листа", "Фразы озвучиваются, сцены раскладываются встык, реплики встают внутрь своей сцены, пишется plan.json.", "run compose"),
+    ("Черновик", "Remotion рендерит предпросмотр; Studio показывает композицию без рендера.", "run render, run still, site"),
+    ("Проверка", "Проверяются правила плана, типы проекта, формат файла, субтитры и зоны; отчёт <id>/qa/report.md.", "run check"),
+    ("Финал", "После свежей успешной проверки выполняется финальный рендер в папку готовых роликов.", "run final"),
+    ("Выход", "Персонаж выходит из окружения; идущие операции доделываются, аренда освобождается.", "workspace.exit"),
+)
+
+# правила, которые держит код (а не только инструкция)
+RULES = (
+    "Заставка Aperture Boot идёт первой, полные 7100 мс со своим звуком; поверх неё нет реплик, эффектов, призыва и других вставок.",
+    "Закадр идёт по картинке: реплика целиком лежит внутри сцены, сцена растягивается на всю свою речь.",
+    "Финал не запускается без свежей успешной проверки текущего плана.",
+    "Агент пишет только план, сцены, идею, сценарий и свои вставки в work/src/custom; рендеры, отчёты и исходники только для чтения.",
+    "Studio живёт в контейнере и не гаснет, когда агент выходит; её гасит простой 30 минут или отмена ролика.",
+)
+
+
+def _e(value) -> str:
+    return html.escape(str(value if value is not None else ""))
+
+
+def _table(head: tuple[str, ...], rows: list[tuple]) -> str:
+    th = "".join(f"<th>{_e(h)}</th>" for h in head)
+    body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
+    return f"<table><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table>"
+
+
+def overview_html() -> str:
+    """HTML-обзор модуля: описание, процесс, инструменты, команды, навыки, события, настройки, правила."""
+    from manifest import MANIFEST
+
+    work = MANIFEST.get("workspace") or {}
+    tools = [(f"<code>{_e(t['name'])}</code>", _e(t.get("description", "")),
+              " ".join(f"<span class='badge'>{_e(p)}</span>" for p in (t.get("params") or {}))) for t in MANIFEST.get("tools", [])]
+    commands = [(f"<code>run {_e(c['id'])}</code>", _e(c.get("title", "")),
+                 ("в фоне" if c.get("background") else "сразу") + (", спрашивает согласие" if c.get("irreversible") else ""))
+                for c in work.get("commands", [])]
+    skills = [(f"<code>{_e(s.get('name'))}</code>", _e(s.get("description", ""))) for s in work.get("skills", [])]
+    events = [(f"<code>{_e(e['kind'])}</code>", _e(e.get("description", ""))) for e in MANIFEST.get("emits", [])]
+    settings = [(f"<code>{_e(k)}</code>", _e(v.get("title", ""))) for k, v in (MANIFEST.get("settings_schema") or {}).items()]
+    area = work.get("area") or {}
+    steps = [(f"<b>{n}. {_e(name)}</b>", _e(text), f"<code>{_e(by)}</code>") for n, (name, text, by) in enumerate(PROCESS, 1)]
+    return (
+        f"<section class='overview'><h1>{_e(MANIFEST.get('title', 'Монтаж'))}</h1>"
+        f"<p class='lead'>{_e(SUMMARY)}</p>"
+        f"<p class='muted'>{_e(MANIFEST.get('description', ''))} Версия {_e(MANIFEST.get('version'))}.</p>"
+        "<h2>Как идёт работа</h2>" + _table(("Шаг", "Что происходит", "Чем выполняется"), steps)
+        + "<h2>Инструменты агента</h2>" + _table(("Инструмент", "Назначение", "Параметры"), tools)
+        + "<h2>Команды окружения (run)</h2>" + _table(("Команда", "Назначение", "Режим"), commands)
+        + "<h2>Навыки</h2>" + _table(("Навык", "Описание"), skills)
+        + "<h2>События модуля</h2>" + _table(("Событие", "Когда"), events)
+        + "<h2>Настройки</h2>" + _table(("Параметр", "Что задаёт"), settings)
+        + "<h2>Область агента</h2><p class='muted'>Корень: <code>" + _e(area.get("root", "")) + "</code>. Пишет: "
+        + ", ".join(f"<code>{_e(p)}</code>" for p in area.get("writable", [])) + ". Только читает: "
+        + ", ".join(f"<code>{_e(p)}</code>" for p in area.get("readonly", [])) + ".</p>"
+        + "<h2>Правила, которые держит код</h2><ul>" + "".join(f"<li>{_e(r)}</li>" for r in RULES) + "</ul></section>"
+    )

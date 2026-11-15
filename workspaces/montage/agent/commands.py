@@ -377,7 +377,7 @@ class Commands:
                 findings += tech
                 checked.update(tech_checked)
         outcome = qa_mod.QAOutcome(findings=findings, checked=checked)
-        _, md = await asyncio.to_thread(qa_mod.write_report, job.qa, job.job_id, outcome, draft=True, fixed=[])
+        _, md = await asyncio.to_thread(qa_mod.write_report, job.qa, job.job_id, outcome, draft=True)
         errors = [f for f in findings if f.severity == "error"]
         passed = not errors
         job.data["check"] = {"passed": passed, "plan_hash": plan_hash, "at": round(time.time(), 1), "errors": len(errors),
@@ -435,7 +435,7 @@ class Commands:
         story = read_json(job.plan_dir / "story.json")
         findings, checked = await self.qa.technical(job, plan, words, story, final, draft=False, scale=1.0, platform=platform)
         outcome = qa_mod.QAOutcome(findings=findings, checked=checked)
-        _, mp = await asyncio.to_thread(qa_mod.write_report, job.qa, job.job_id, outcome, draft=False, fixed=[], stem="report_final")
+        _, mp = await asyncio.to_thread(qa_mod.write_report, job.qa, job.job_id, outcome, draft=False, stem="report_final")
         out_dir = Path(resolve_output_dir(self.setting("output_dir")))
         copy = await asyncio.to_thread(self._copy_out, final, out_dir, platform, job.job_id)
         fmt = plan.get("format") or {}

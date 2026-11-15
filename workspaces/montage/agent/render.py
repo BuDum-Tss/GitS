@@ -16,7 +16,6 @@ import media
 NODE_FLAGS = ["--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"]
 RENDER_TIMEOUT_S = 3 * 60 * 60
 STILL_TIMEOUT_S = 300
-_PROGRESS = re.compile(r"Rendered\s+(\d+)/(\d+)|\((\d+)/(\d+)\)|(\d+)/(\d+)")
 
 
 class RenderError(RuntimeError):

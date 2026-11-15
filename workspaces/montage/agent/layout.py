@@ -84,31 +84,20 @@ class Layout:
         p = resource_path("/".join(parts), home=self.character)
         return p if p is not None and p.exists() else None
 
-    def list_resources(self, limit: int = 120) -> list[tuple[Path, int]]:
-        """Файлы ресурсов персонажа для монтажа (папка montage без подготовленных превью и кода): путь и размер."""
-        out: list[tuple[Path, int]] = []
-        base = self.character
-        if not base.is_dir():
-            return out
-        for p in sorted(base.rglob("*")):
-            rel = p.relative_to(base).parts
-            if not p.is_file() or "out" in rel[:1] or "components" in rel or p.suffix.lower() in (".html", ".css", ".json"):
-                continue
-            out.append((p, p.stat().st_size))
-            if len(out) >= limit:
-                break
-        return out
-
     def catalog_files(self) -> list[tuple[str, int]]:
         """Ресурсы и компоненты дизайна с путями для files и размером."""
         base = self.character
         out: list[tuple[str, int]] = []
         if not base.is_dir():
             return out
-        for p in sorted(base.rglob("*")):
+        skip = {"node_modules", ".git", ".claude"}
+        found: list[Path] = []
+        for folder, dirs, names in os.walk(base):                 # пропускаемые папки не обходим вовсе (node_modules бывает огромной)
+            top = Path(folder) == base
+            dirs[:] = [d for d in dirs if d not in skip and not (top and d == "out")]
+            found += [Path(folder, n) for n in names if n not in skip and not (top and n == "out")]
+        for p in sorted(found):
             rel = p.relative_to(base).parts
-            if not p.is_file() or rel[0] == "out" or any(part in {"node_modules", ".git", ".claude"} for part in rel):
-                continue
             out.append(("resources/" + "/".join(rel), p.stat().st_size))
         return out
 

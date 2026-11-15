@@ -1,5 +1,4 @@
-"""Контроль качества (MON-QA-1…QA-6, CRAFT-3, CRAFT-4): каждая техническая проверка на синтетических файлах ffmpeg (громкость,
-blackdetect, freezedetect, silencedetect — на настоящем ffmpeg, файл 8 секунд), логика субтитров, зон, ремесла, режимов приёмки."""
+"""Контроль качества (MON-QA-1…QA-6, CRAFT-3, CRAFT-4): каждая техническая проверка на синтетических файлах ffmpeg (формат и громкость на настоящем ffmpeg, файл 8 секунд), логика субтитров, зон, ремесла, режимов приёмки."""
 import copy
 import json
 import subprocess
@@ -37,17 +36,9 @@ def small_plan():
     return plan
 
 
-async def test_ffmpeg_checks_find_black_freeze_silence_and_loudness(clip):
-    black = await media.blackdetect(clip, min_s=0.5)
-    assert black and black[0][0] < 0.1 and 1.0 < black[0][1] < 1.4
-    freeze = await media.freezedetect(clip, min_s=2.0)
-    assert any(a < 1.5 and b > 4.0 for a, b in freeze)
-    silences = await media.silencedetect(clip, noise_db=-45, min_s=1.5)
-    assert silences and 0.8 < silences[0][0] < 1.3 and 4.5 < silences[0][1] < 5.5
+async def test_ffmpeg_loudness_is_measured(clip):
     loud = await media.loudness(clip)
     assert loud["integral"] is not None and -40 < loud["integral"] < 0 and loud["true_peak"] is not None
-    head = await media.silencedetect(clip, noise_db=-45, min_s=0.5, limit_s=3.0)
-    assert head and head[0][1] <= 3.01
 
 
 async def test_run_technical_reports_each_problem(clip):
@@ -74,9 +65,7 @@ async def test_format_mismatch_is_an_error(clip):
 
 # ------------------------------------------------------------------------------------------------ чистая логика
 
-def test_interval_helpers():
-    assert qa.subtract((0.0, 10.0), [(2.0, 3.0), (8.0, 12.0)]) == [(0.0, 2.0), (3.0, 8.0)]
-    assert qa.subtract((1.0, 2.0), [(0.0, 5.0)]) == []
+def test_overlap_helper():
     assert qa.overlap((0, 5), (3, 9)) == 2 and qa.overlap((0, 1), (2, 3)) == 0
 
 
@@ -211,30 +200,10 @@ async def test_ocr_mismatch_is_an_error_and_match_passes(tmp_path, monkeypatch):
     assert qa.text_recall(items[0][1], await ocr(tmp_path)) < qa.OCR_MIN_SIMILARITY
 
 
-def test_key_frames_cover_start_inserts_beats_cta_and_end():
-    frames = qa.key_frame_times(make_plan(), STORY)
-    assert 8 <= len(frames) + 6 and len(frames) <= 16
-    times = [t for t, _ in frames]
-    assert times == sorted(times) and times[0] <= 300 and times[-1] >= 11000
-    assert any("призыв" in w for _, w in frames) and any("вставка i1" in w for _, w in frames)
-
-
-def test_semantic_answer_parsing_and_fix_notes():
-    text = 'Вот оценка:\n```json\n{"criteria": {"readability": {"score": 2, "issues": [{"t_ms": 4000, "text": "мелко"}]}, "hook": {"score": 5, "issues": []}}, "overall": 3, "verdict": "fix"}\n```'
-    sem = qa.parse_semantic(text)
-    assert sem["verdict"] == "fix" and sem["overall"] == 3 and sem["criteria"]["readability"]["issues"][0]["t_ms"] == 4000
-    assert any("мелко" in n and "4.0 с" in n for n in qa.semantic_fix_notes(sem))
-    assert qa.parse_semantic("нет json") is None
-    assert qa.parse_semantic('{"criteria": {}, "overall": 5}')["verdict"] == "pass"
-    rubric = (DEFAULT.skills / "montage-regulation" / "qa-rubric.md").read_text(encoding="utf-8")
-    assert all(name in rubric for name in qa.CRITERIA)                                    # рубрика покрывает критерии MON-QA-2 и CRAFT-3
-
-
 def test_report_files_are_written(tmp_path):
-    out = qa.QAOutcome(findings=[qa.Finding("blackdetect", "error", "чёрный кадр", 1000), qa.Finding("ocr", "warning", "OCR нет")],
-                       semantic={"criteria": {"hook": {"score": 4, "issues": []}}, "overall": 4, "verdict": "pass"})
-    jp, mp = qa.write_report(tmp_path / "qa", "j-aaaaaaaa", out, draft=True, fixed=["круг 1: исправлено"])
+    out = qa.QAOutcome(findings=[qa.Finding("blackdetect", "error", "чёрный кадр", 1000), qa.Finding("ocr", "warning", "OCR нет")])
+    jp, mp = qa.write_report(tmp_path / "qa", "j-aaaaaaaa", out, draft=True)
     doc = json.loads(jp.read_text(encoding="utf-8"))
-    assert doc["summary"]["technical_errors"] == 1 and doc["fixed"] == ["круг 1: исправлено"]
+    assert doc["summary"]["technical_errors"] == 1
     md = mp.read_text(encoding="utf-8")
-    assert "чёрный кадр" in md and "Исправлено автоматически" in md and not out.passed
+    assert "чёрный кадр" in md and not out.passed

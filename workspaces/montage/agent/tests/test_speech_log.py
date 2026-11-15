@@ -8,7 +8,7 @@ import pytest
 from gits_sdk import ToolError
 
 import transcribe
-from transcribe import Utterance, load_speech_log, make_audible, words_between, words_from_speech_log
+from transcribe import Utterance, load_speech_log, make_audible, words_from_speech_log
 
 
 def test_say_events_become_utterances(tmp_path):
@@ -88,13 +88,6 @@ async def test_audible_checks_the_real_audio_window(tmp_path):
     assert await check(12.5, 1.0) is True                                       # тон в окне
     assert await check(15.0, 1.5) is False                                      # окно в тишине
     assert await check(30.0, 2.0) is False                                      # окна нет в звуке (сбой записи)
-
-
-def test_words_between_returns_only_the_window():
-    words = [{"i": k, "text": "с", "start_ms": k * 1000, "end_ms": k * 1000 + 500} for k in range(10)]
-    got = words_between(words, 2500, 5200)
-    assert [w["i"] for w in got] == [3, 4, 5]
-    assert len(words_between(words * 100, 0, 10 ** 9)) == 400
 
 
 def test_live_speech_transcription_is_unavailable():

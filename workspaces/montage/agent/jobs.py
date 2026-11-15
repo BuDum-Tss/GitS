@@ -19,7 +19,6 @@ from pathlib import Path
 
 from gits_sdk import protocol as P
 
-STATES = ("new", "working", "waiting_user", "done", "failed", "cancelled")
 FINISHED = ("done", "failed", "cancelled")
 CLOSED = ("done", "cancelled")                      # единица закрыта: открытые (new, working, waiting_user, failed) ещё в работе
 SUBDIRS = ("sources", "transcript", "plan", "work", "renders", "qa")
@@ -82,12 +81,6 @@ class Job:
     @property
     def log_path(self) -> Path:
         return self.folder / "log.jsonl"
-
-    def artifact(self, kind: str) -> str | None:
-        for a in reversed(self.data.get("artifacts") or []):
-            if a.get("kind") == kind:
-                return a["path"]
-        return None
 
     def add_artifact(self, path: Path | str, kind: str) -> None:
         arts = [a for a in self.data.get("artifacts") or [] if a.get("kind") != kind]
@@ -166,19 +159,6 @@ class JobStore:
         row = {"ts": round(time.time(), 3), "kind": kind, **fields}
         with self._lock, open(job.log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-    def read_log(self, job: Job, limit: int = 200) -> list[dict]:
-        try:
-            lines = job.log_path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            return []
-        rows = []
-        for line in lines[-limit:]:
-            try:
-                rows.append(json.loads(line))
-            except ValueError:
-                continue
-        return rows
 
     def read_actions(self, job: Job, limit: int = 300) -> list[dict]:
         """Последние `limit` записей-действий (`kind` = `action`) единицы, по времени от старых к новым."""

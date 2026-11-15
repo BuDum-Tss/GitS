@@ -1,6 +1,6 @@
-"""Всё, что конвейер берёт у ядра (ТЗ 20, раздел 11): тонкая обёртка над `gits_sdk.WorkspaceClient`.
+"""Всё, что модуль берёт у ядра (ТЗ 20, раздел 11): тонкая обёртка над `gits_sdk.WorkspaceClient`.
 
-Конвейер зависит от этого интерфейса, а не от клиента: тесты подставляют заглушку (`agent/tests/stubs.py`), живой прогон
+Менеджер и команды зависят от этого интерфейса, а не от клиента: тесты подставляют заглушку (`agent/tests/stubs.py`), живой прогон
 идёт против FakeCore из SDK. Ошибки ядра приходят как `ToolError` с кодами ТЗ 01.
 """
 from __future__ import annotations
@@ -38,11 +38,6 @@ class ClientCore:
     @property
     def settings(self) -> dict:
         return self.client.module_settings
-
-    @property
-    def runtime_settings(self) -> dict:
-        """Общие настройки ядра (`shared_settings` манифеста): `pi_model_heavy`, `pi_thinking`."""
-        return self.client.settings
 
     async def tts(self, text: str, emotion: str = "neutral") -> dict:
         """core.tts -> {"path", "duration_ms"}: синтез её голосом в файл (модуль голоса, ТЗ 12)."""

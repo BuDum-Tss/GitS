@@ -19,6 +19,7 @@ from aiohttp import web
 from gits_sdk import ToolError
 
 from journal import active_task, hms, plan_steps
+from overview import overview_html
 from plan_tools import story_markdown
 
 log = logging.getLogger("montage.site")
@@ -53,62 +54,25 @@ INTRO_MEDIA = {
     "IntroVertical": ("5fb907f9c7bca416514b1ea768a38ab8", "Aperture_Boot_vertical_dark.mp4"),
     "IntroVerticalLight": ("be853705e93c450ae74b3d3a7615ad65", "Aperture_Boot_vertical_light.mp4"),
 }
-STYLE = """main{max-width:1440px;margin:0 auto;padding:20px 24px}
-h1,h2,h3{font-weight:700;margin:1rem 0 .65rem}
-h1{font-size:1.75rem}h2{font-size:1.35rem}h3{font-size:1.15rem}
-nav a.on{font-weight:700;border-bottom:2px solid currentColor}
-main table{border-collapse:collapse;width:100%}main td,main th{border-bottom:1px solid oklch(var(--b3));padding:8px 12px;text-align:left;vertical-align:top}
-pre{background:oklch(var(--b1));border:1px solid oklch(var(--b3));padding:12px;overflow:auto;white-space:pre-wrap}
-.now{background:#fff3e6;border-left:4px solid #c55a00;padding:8px 12px;margin:8px 0}.warn{background:#fff0c2;border:1px solid #d4a800;padding:8px 12px;font-weight:700}
-.plan{list-style:none;padding:0;margin:6px 0}.plan li{padding:2px 0}.plan .active{font-weight:700;color:#c55a00}.plan .done{color:#4a7a4a}.plan .skipped{color:#8a8a85}.bad{color:#b00020;font-weight:700}
-.muted{opacity:.7}.bar{height:10px;background:oklch(var(--p));border-radius:2px;min-width:2px}video,img{max-width:100%}
-.browser{display:grid;grid-template-columns:minmax(190px,1fr) minmax(0,3fr);gap:20px;margin-top:20px}
-.file-nav{max-height:75vh;overflow:auto;background:white;padding:12px;border:1px solid #d8d8d4}
-.file-nav a{display:block;margin:0;padding:6px;overflow-wrap:anywhere}.file-nav a[aria-current]{background:#fff3e6}
-.preview{min-width:0;background:white;border:1px solid #d8d8d4;padding:16px;overflow-wrap:anywhere}
-.preview iframe{width:100%;height:65vh;border:0}.preview img,.preview video{max-height:65vh;object-fit:contain}
-.font-sample{font-size:clamp(20px,4vw,42px)}
-.design-table{table-layout:fixed;overflow-wrap:anywhere}.design-table th:first-child{width:24%}
-.design-table th:nth-child(2){width:26%}.design-scroll{overflow-x:auto}.design-table{min-width:630px}
-.inline-preview{height:180px;min-height:90px;max-height:80vh;resize:vertical;overflow:auto;border:1px solid oklch(var(--b3));border-radius:.5rem}
-.inline-preview iframe,.inline-preview img,.inline-preview video{display:block;width:100%;height:100%;border:0;object-fit:contain}
-.inline-preview audio{max-width:100%}.inline-preview pre{margin:0}.inline-preview .font-sample{padding:.6rem}
-@media(max-width:650px){.browser{grid-template-columns:1fr}.file-nav{max-height:25vh}}"""
-WORKSPACE_STYLE = """
-main:has(.editor){max-width:none;padding:0}
-.editor{display:flex;flex-direction:column;height:calc(100dvh - 64px);min-height:440px}
-.editor-head{padding:.45rem .8rem;border-bottom:1px solid oklch(var(--b3))}
-.editor-head h1{font-size:1rem;margin:0}.editor-main,.editor-bottom{display:flex;min-height:0}
-.editor-main{flex:1}.editor-bottom{height:var(--bottom,34%);min-height:130px;flex-direction:column;border-top:1px solid oklch(var(--b3))}
-.editor-bottom:not(:has(.editor-panel:not([hidden]))){height:auto;min-height:0}
-.editor-panel[hidden]{display:none}.editor-panel{min-width:0;overflow:auto;padding:.55rem}
-.editor-side{width:clamp(160px,25vw,480px);flex:none;border-inline:1px solid oklch(var(--b3))}
-.editor-left .editor-side{width:var(--left,clamp(160px,25vw,480px))}
-.editor-right .editor-side{width:var(--right,clamp(160px,25vw,480px))}
-.editor-left,.editor-right{display:flex;min-height:0;flex:none}
-.editor-bottom .editor-panel{flex:1}.editor-rail{display:flex;flex-direction:column;flex:none;background:oklch(var(--b1));border-inline:1px solid oklch(var(--b3))}
-.editor-rail button{writing-mode:vertical-rl;padding:.55rem .35rem;border-radius:0;border:0;min-height:0;height:auto}
-.editor-rail button[aria-expanded=true]{background:oklch(var(--b3));box-shadow:inset 2px 0 oklch(var(--p))}
-.editor-bottom .editor-rail{flex-direction:row}
-.editor-bottom .editor-rail button{writing-mode:horizontal-tb;padding:.35rem .75rem}
-.editor-split{flex:0 0 7px;touch-action:none;background:oklch(var(--b2))}
-.editor-split:hover,.editor-split:focus-visible{background:oklch(var(--p))}
-.editor-split[aria-orientation=vertical]{cursor:col-resize}.editor-split[aria-orientation=horizontal]{cursor:row-resize}
-.editor-left:not(:has(.editor-panel:not([hidden]))) .editor-split,
-.editor-right:not(:has(.editor-panel:not([hidden]))) .editor-split,
-.editor-bottom:not(:has(.editor-panel:not([hidden]))) .editor-split{display:none}
-.editor.resizing{user-select:none}.editor.resizing iframe{pointer-events:none}
-.editor-studio{display:flex;flex:1;min-width:0;background:#171717}.editor-studio iframe{flex:1;width:100%;border:0}
-.editor-studio p{margin:auto;color:#eee}.editor-table{overflow:auto}
-.agent-tree,.agent-tree ul{padding:0;margin:0;list-style:none}
-.agent-tree ul{margin-left:.65rem;padding-left:.65rem;border-left:1px solid oklch(var(--b3))}
-.agent-tree summary,.agent-tree a{display:block;padding:.2rem .4rem;overflow-wrap:anywhere}
-.agent-tree summary{cursor:pointer;list-style:none}.agent-tree summary::-webkit-details-marker{display:none}
-.agent-tree summary::before{content:'›';display:inline-block;width:1rem}
-.agent-tree details[open]>summary::before{transform:rotate(90deg)}
-.agent-tree a{padding-left:1.4rem}.agent-tree a:hover,.agent-tree summary:hover{background:oklch(var(--b2))}
-@media(max-width:800px){.editor-side{width:29vw;min-width:110px}.editor-panel{padding:.35rem}}
-"""
+STATIC_DIR = Path(__file__).resolve().parent / "static"          # montage-ui.css и montage-ui.js: оформление в стиле shadcn/ui, без CDN
+UI_FILES = {"montage-ui.css": "text/css", "montage-ui.js": "text/javascript"}
+THEME_INIT = ("<script>try{var t=localStorage.getItem('montage-theme');"
+              "var d=t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches;"
+              "document.documentElement.classList.toggle('dark',d)}catch(e){}</script>")     # в <head>: тема ставится до отрисовки, без мигания
+ICON_SUN = ("<svg class='i-sun' viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4"
+            "M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/></svg>")
+ICON_MOON = "<svg class='i-moon' viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'/></svg>"
+ICON_FULLSCREEN = ("<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3"
+                   "M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3'/></svg>")
+ICON_CLOSE = "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M18 6 6 18M6 6l12 12'/></svg>"
+PREVIEW_STYLE = ("<style>html,body{margin:0;height:100%;overflow:hidden}#stage{position:fixed;inset:0;overflow:hidden}"
+                 "#scene{position:absolute;left:0;top:0;width:max-content;transform-origin:0 0}</style>")
+# Сцена компонента нарисована в фиксированном размере (1920x1080, вертикаль и т.п.): вписываем её в окно с сохранением пропорций
+PREVIEW_SCALE = ("<script>(function(){var st=document.getElementById('stage'),sc=document.getElementById('scene');"
+                 "function fit(){var w=sc.offsetWidth,h=sc.offsetHeight,W=st.clientWidth,H=st.clientHeight;if(!w||!h||!W||!H)return;"
+                 "var k=Math.min(W/w,H/h);sc.style.transform='translate('+(W-w*k)/2+'px,'+(H-h*k)/2+'px) scale('+k+')'}"
+                 "if(window.ResizeObserver){var ro=new ResizeObserver(fit);ro.observe(st);ro.observe(sc)}"
+                 "else addEventListener('resize',fit);addEventListener('load',fit);fit()})();</script>")
 WORKSPACE_SCRIPT = """<script>
 const editor = document.querySelector('.editor');
 for (const splitter of editor.querySelectorAll('[data-resize]')) {
@@ -211,7 +175,15 @@ document.getElementById('refresh-agent-files').onclick = () => {
   loadBranch('.', list);
 };
 </script>"""
-DASHBOARD_CSS = Path(__file__).resolve().parents[3] / "agent/clients/gui/vendor/tailwind.css"
+
+PREVIEW_DIALOG = (
+    "<dialog id='preview-dialog' class='dialog' aria-labelledby='preview-title'>"
+    "<div class='dialog-head'><h3 id='preview-title' class='dialog-title'>Предпросмотр</h3>"
+    f"<button type='button' class='btn btn-outline btn-icon btn-sm' data-fullscreen='#preview-stage' data-tip='На весь экран (Esc выход)' "
+    f"aria-label='На весь экран'>{ICON_FULLSCREEN}</button>"
+    f"<button type='button' class='btn btn-ghost btn-icon btn-sm' data-close data-tip='Закрыть (Esc)' aria-label='Закрыть'>{ICON_CLOSE}</button></div>"
+    "<div id='preview-stage' class='dialog-stage'><iframe id='preview-frame' title='Предпросмотр компонента' sandbox='allow-scripts' "
+    "referrerpolicy='no-referrer' src='about:blank'></iframe></div></dialog>")
 
 
 def _e(value) -> str:
@@ -246,14 +218,15 @@ def _preview_markup(path: Path, raw: str, *, inline: bool = False) -> str:
 
 def _page(title: str, owner: str, body: str) -> web.Response:
     owner_text = f"хозяин: {_e(owner)}" if owner else "хозяина нет"
-    text = (f"<!doctype html><html lang=ru data-theme=light><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-            "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css'>"
-            "<link rel='stylesheet' href='/static/ui/vendor/tailwind.css'>"
+    text = (f"<!doctype html><html lang=ru><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+            f"{THEME_INIT}<link rel='stylesheet' href='/static/montage-ui.css'>"
             "<link rel='stylesheet' href='/design/components/bundle.css'>"
-            f"<title>{_e(title)}</title><style>{STYLE}{WORKSPACE_STYLE}</style><body class='bg-base-200'>"
-            "<div class='navbar bg-base-100 border-b border-base-300 px-4'>"
-            "<a href='/' class='btn btn-ghost text-lg'>Монтаж</a>"
-            f"<span class='badge badge-outline'>{owner_text}</span></div><main>{body}</main></body></html>")
+            f"<title>{_e(title)}</title><body>"
+            "<header class='app-header'><a href='/' class='brand'>Монтаж</a>"
+            f"<span class='badge'>{owner_text}</span><span class='spacer'></span>"
+            "<button type='button' id='theme-toggle' class='btn btn-ghost btn-icon btn-sm theme-toggle' data-tip='Тема: светлая / тёмная' "
+            f"aria-label='Переключить тему'>{ICON_SUN}{ICON_MOON}</button></header>"
+            f"<main>{body}</main><script src='/static/montage-ui.js'></script></body></html>")
     return web.Response(text=text, content_type="text/html")
 
 
@@ -429,8 +402,9 @@ class Site:
 
         @web.middleware
         async def lease_required(request, handler):
-            if self.manager is None and request.path != "/static/ui/vendor/tailwind.css":
-                return _page("Монтаж свободен", "", "<div class='alert'>Сейчас модуль монтажа никто не использует.</div>")
+            if self.manager is None and not request.path.startswith("/static/montage-ui."):
+                return _page("Монтаж свободен", "", overview_html()
+                             + "<div class='alert'>Сейчас модуль монтажа никто не использует.</div>")
             return await handler(request)
 
         self.app = web.Application(middlewares=[lease_required])
@@ -440,10 +414,14 @@ class Site:
                              web.get("/workspace-raw/{path:.*}", self.workspace_file),
                              web.get("/job/{job}/raw/{path:.*}", self.raw), web.get("/job/{job}/view/{path:.*}", self.view),
                              web.get("/design/{path:.*}", self.design),
-                             web.get("/static/ui/vendor/tailwind.css", self.dashboard_css)])
+                             web.get("/static/{name}", self.static)])
 
-    async def dashboard_css(self, request):
-        return web.FileResponse(DASHBOARD_CSS)
+    async def static(self, request):
+        """Оформление сайта (css и js): отдаётся из agent/static, доступно и без аренды."""
+        name = request.match_info["name"]
+        if name not in UI_FILES:
+            raise web.HTTPNotFound(text="файла нет")
+        return web.FileResponse(STATIC_DIR / name, headers={"Content-Type": UI_FILES[name] + "; charset=utf-8"})
 
     @property
     def owner(self) -> str:
@@ -484,7 +462,7 @@ class Site:
         rows = "".join(
             f"<tr><td><a href='/job/{quote(j.job_id)}'>{_e(j.data.get('title') or j.job_id)}</a></td><td>{_e(j.job_id)}</td>"
             f"<td>{_e(j.state)}</td><td>{_now_text(j)}</td></tr>" for j in self.manager.store.all())
-        body = ("<h1>Ролики</h1><table><tr><th>Ролик</th><th>Единица</th><th>Состояние</th><th>Сейчас</th></tr>"
+        body = (overview_html() + "<h2>Ролики</h2><table><tr><th>Ролик</th><th>Единица</th><th>Состояние</th><th>Сейчас</th></tr>"
                 f"{rows or '<tr><td colspan=4>Роликов пока нет.</td></tr>'}</table>")
         env = self.manager.store.read_env_actions(20) if hasattr(self.manager.store, "read_env_actions") else []
         if env:
@@ -517,9 +495,9 @@ class Site:
         labels["tasks"] = "Задачи"
 
         def rail(group, keys, active):
-            buttons = "".join(f"<button class='btn btn-ghost' data-panel='{key}' aria-controls='panel-{key}' "
+            buttons = "".join(f"<button class='tabs-trigger' data-panel='{key}' aria-controls='panel-{key}' "
                               f"aria-expanded='{str(key == active).lower()}'>{labels[key]}</button>" for key in keys)
-            return f"<nav class='editor-rail' data-panel-group='{group}'>{buttons}</nav>"
+            return f"<nav class='editor-rail tabs-list' data-panel-group='{group}'>{buttons}</nav>"
 
         def panel(key, body, active, css=""):
             hidden = "" if key == active else " hidden"
@@ -530,18 +508,20 @@ class Site:
                     f"aria-label='{label}' data-resize='{target}'></div>")
 
         tasks = f"<p class=now id=now>{_now_text(job, with_label=True)}</p><div id=plan>{plan_html}</div>"
-        files = ("<h2>Файлы</h2><button id='refresh-agent-files' class='btn btn-ghost btn-xs'>Обновить</button>"
+        files = ("<h2>Файлы</h2><button id='refresh-agent-files' class='btn btn-outline btn-sm'>Обновить</button>"
                  "<ul id='agent-files' class='agent-tree'></ul>")
         title = str(job.data.get("title") or job.job_id)
         body = (f"<div class='editor'><div class='editor-head'><h1>{_e(title)}</h1></div>"
                 f"<div class='editor-main'><div class='editor-left'>{rail('left', ('sheet', 'actions'), left)}"
                 f"{panel('sheet', sheet, left, 'editor-side editor-table')}{panel('actions', actions, left, 'editor-side')}"
-                f"{splitter('left', 'Ширина левой панели')}</div><section class='editor-studio'>{studio}</section>"
+                f"{splitter('left', 'Ширина левой панели')}</div><section class='editor-studio' id='editor-studio'>"
+                f"<button type='button' class='btn btn-icon btn-sm fs-btn' data-fullscreen='#editor-studio' data-tip='На весь экран (Esc выход)' "
+                f"aria-label='На весь экран'>{ICON_FULLSCREEN}</button>{studio}</section>"
                 f"<div class='editor-right'>{splitter('right', 'Ширина правой панели')}{panel('tasks', tasks, 'tasks', 'editor-side')}"
                 f"{rail('right', ('tasks',), 'tasks')}</div></div>"
                 f"<div class='editor-bottom'>{splitter('bottom', 'Высота нижней панели', 'horizontal')}"
-                f"{rail('bottom', ('files', 'design'), bottom)}"
-                f"{panel('files', files, bottom)}{panel('design', design, bottom)}</div></div>")
+                f"{panel('files', files, bottom)}{panel('design', design, bottom)}"
+                f"{rail('bottom', ('files', 'design'), bottom)}</div></div>")
         return _page(title, self.owner, body + _live_script(job.job_id) + WORKSPACE_SCRIPT)
 
     async def _plan_html(self) -> str:
@@ -646,16 +626,20 @@ class Site:
                         preview = _preview_markup(target, f"/design/{quote(rel)}", inline=True)
                     except OSError:
                         preview = "<p class='muted'>Файл недоступен</p>"
-                    rows.append(f"<tr><td><a class='link' href='{url}'>{_e(name)}</a>"
-                                f"<div class='muted'>{_e(kind)}</div></td><td>{_e(description) or '—'}</td>"
+                    popup = ""
+                    if path.suffix.lower() == ".html":          # предпросмотр в попапе: страница сама вписывает сцену в окно
+                        popup = (f"<div><button type='button' class='btn btn-outline btn-sm' data-preview='/design/{quote(rel)}' "
+                                 f"data-title='{_e(name)}'>Просмотр</button></div>")
+                    rows.append(f"<tr><td><a href='{url}'>{_e(name)}</a>"
+                                f"<div class='muted'>{_e(kind)}</div>{popup}</td><td>{_e(description) or '—'}</td>"
                                 f"<td><div class='inline-preview'>{preview}</div></td></tr>")
             panels.append(f"<section id='{anchor}'><h3>{_e(label)}</h3><div class='design-scroll'>"
-                          "<table class='table table-sm design-table'>"
+                          "<table class='design-table'>"
                           "<thead><tr><th>Название</th><th>Описание</th><th>Просмотр</th></tr></thead>"
                           f"<tbody>{''.join(rows)}</tbody></table></div></section>")
         return (f"<h2>Библиотека Aperture</h2><div class='browser'><nav aria-label='Разделы дизайна'>"
-                f"<ul class='menu bg-base-100 rounded-box'>{''.join(links)}</ul></nav>"
-                f"<div class='card bg-base-100'><div class='card-body'>{''.join(panels)}</div></div></div>") if panels else ""
+                f"<ul class='design-menu'>{''.join(links)}</ul></nav>"
+                f"<div class='card'><div class='card-content'>{''.join(panels)}</div></div></div>{PREVIEW_DIALOG}") if panels else ""
 
     def _file_links(self, job, scope: str, selected: str = "") -> str:
         if scope == "design":
@@ -739,7 +723,8 @@ class Site:
             return web.Response(
                 text=("<!doctype html><meta charset=utf-8>"
                       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-                      "<link rel='stylesheet' href='/design/components/bundle.css'>" + markup),
+                      "<link rel='stylesheet' href='/design/components/bundle.css'>" + PREVIEW_STYLE
+                      + f"<div id=stage><div id=scene>{markup}</div></div>" + PREVIEW_SCALE),
                 content_type="text/html",
                 headers={"Content-Security-Policy": PREVIEW_CSP, "X-Content-Type-Options": "nosniff"},
             )

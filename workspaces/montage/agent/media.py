@@ -1,8 +1,8 @@
-"""ffmpeg и ffprobe: поиск программ (MON-2), проверка файлов, перекодирование, кадры, анализ звука и картинки (ТЗ 20).
+"""ffmpeg и ffprobe: поиск программ (MON-2), проверка файлов, перекодирование, кадры, измерение звука (ТЗ 20).
 
 Любой внешний процесс запускается через `run_cmd`: асинхронно, без окна консоли, с убийством всего дерева процессов при
-отмене задачи (MON-12). Быстрые вспомогательные вызовы (ffprobe, silencedetect, кадры) пользователю не объявляются
-(README, правило 14); долгие (перекодирование, рендер) объявляет конвейер.
+отмене задачи (MON-12). Быстрые вспомогательные вызовы (ffprobe, кадры, громкость) пользователю не объявляются
+(README, правило 14); долгие (перекодирование, рендер) объявляют команды окружения.
 """
 import asyncio
 import glob
@@ -171,10 +171,6 @@ class MediaInfo:
     pix_fmt: str = ""
     streams: list = field(default_factory=list)
 
-    def as_dict(self) -> dict:
-        return {k: getattr(self, k) for k in ("path", "duration_s", "size_bytes", "has_video", "has_audio", "width",
-                                              "height", "fps", "vcodec", "acodec", "pix_fmt")}
-
 
 def _fps(rate: str) -> float:
     try:
@@ -222,7 +218,7 @@ def needs_transcode(info: MediaInfo) -> bool:
 
 
 async def transcode_h264(src: Path, dst: Path, *, fps: int | None = None, audio: Path | None = None) -> None:
-    """`ffmpeg -c:v libx264 -crf 18 -c:a aac` (стадия intake). `fps` приводит запись с переменной частотой кадров (захват
+    """`ffmpeg -c:v libx264 -crf 18 -c:a aac` (команда intake). `fps` приводит запись с переменной частотой кадров (захват
     окна пишет кадр только при изменении картинки) к постоянной; `audio` подмешивает готовую дорожку."""
     args = ["-i", str(src)]
     if audio is not None:
@@ -236,75 +232,7 @@ async def transcode_h264(src: Path, dst: Path, *, fps: int | None = None, audio:
         raise MediaError(f"не удалось перекодировать {src.name} в H.264: {_tail(res.err)}")
 
 
-async def extract_audio_16k(src: Path, dst: Path) -> None:
-    res = await ffmpeg(["-i", str(src), "-vn", "-ar", "16000", "-ac", "1", str(dst)])
-    if not res.ok:
-        raise MediaError(f"не удалось извлечь звук из {src.name}: {_tail(res.err)}")
-
-
-async def extract_frame(video: Path, t_s: float, out: Path, *, width: int | None = None) -> None:
-    """Один кадр в момент t (быстро: ffmpeg, не Remotion)."""
-    vf = ["-vf", f"scale={width}:-2"] if width else []
-    res = await ffmpeg(["-ss", f"{max(0.0, t_s):.3f}", "-i", str(video), "-frames:v", "1", *vf, str(out)])
-    if not res.ok or not out.is_file():
-        raise MediaError(f"не удалось взять кадр {t_s:.1f} с из {video.name}: {_tail(res.err)}")
-
-
-# ---------------------------------------------------------------------------------------------------- анализ
-
-_SIL_START = re.compile(r"silence_start: (-?[\d.]+)")
-_SIL_END = re.compile(r"silence_end: (-?[\d.]+)")
-
-
-def parse_intervals(text: str, start_re: re.Pattern, end_re: re.Pattern, end_of: float | None = None) -> list[tuple[float, float]]:
-    out: list[tuple[float, float]] = []
-    start = None
-    for line in text.splitlines():
-        s, e = start_re.search(line), end_re.search(line)
-        if s:
-            start = max(0.0, float(s.group(1)))
-        if e and start is not None:
-            out.append((start, float(e.group(1))))
-            start = None
-    if start is not None and end_of is not None and end_of > start:
-        out.append((start, end_of))
-    return out
-
-
-async def silencedetect(path: Path, *, noise_db: float = -32, min_s: float = 0.05,
-                        limit_s: float | None = None) -> list[tuple[float, float]]:
-    """Паузы в звуке: [(начало, конец)] в секундах (MON-QA-1). Пауза до конца файла закрывается длительностью файла
-    (или `limit_s`, если проверяется только начало)."""
-    limit = ["-t", f"{limit_s:.3f}"] if limit_s else []
-    res = await ffmpeg([*limit, "-i", str(path), "-vn", "-af", f"silencedetect=noise={noise_db}dB:d={min_s}", "-f", "null", "-"])
-    if not res.ok:
-        raise MediaError(f"silencedetect не сработал: {_tail(res.err)}")
-    end = min((await probe(path)).duration_s, limit_s) if limit_s else (await probe(path)).duration_s
-    return parse_intervals(res.err, _SIL_START, _SIL_END, end_of=end)
-
-
-_BLACK = re.compile(r"black_start:([\d.]+)\s+black_end:([\d.]+)")
-_FREEZE_S = re.compile(r"freeze_start: ([\d.]+)")
-_FREEZE_E = re.compile(r"freeze_end: ([\d.]+)")
-
-
-async def blackdetect(path: Path, *, min_s: float = 0.5, pix_th: float = 0.05) -> list[tuple[float, float]]:
-    """Чёрные участки. Порог 0.05 ниже яркости фона `chamberDark` (около 0.09): фон вставок чёрным не считается."""
-    res = await ffmpeg(["-i", str(path), "-an", "-vf", f"blackdetect=d={min_s}:pix_th={pix_th}:pic_th=0.98", "-f", "null", "-"])
-    if not res.ok:
-        raise MediaError(f"blackdetect не сработал: {_tail(res.err)}")
-    return [(float(a), float(b)) for a, b in _BLACK.findall(res.err)]
-
-
-async def freezedetect(path: Path, *, min_s: float = 2.0, noise_db: float = -60,
-                       limit_s: float | None = None) -> list[tuple[float, float]]:
-    limit = ["-t", f"{limit_s:.3f}"] if limit_s else []
-    res = await ffmpeg([*limit, "-i", str(path), "-an", "-vf", f"freezedetect=n={noise_db}dB:d={min_s}", "-f", "null", "-"])
-    if not res.ok:
-        raise MediaError(f"freezedetect не сработал: {_tail(res.err)}")
-    end = min((await probe(path)).duration_s, limit_s) if limit_s else (await probe(path)).duration_s
-    return parse_intervals(res.err, _FREEZE_S, _FREEZE_E, end_of=end)
-
+# ---------------------------------------------------------------------------------------------------- анализ звука
 
 _EBU_I = re.compile(r"^\s*I:\s+(-?[\d.]+|-inf)\s+LUFS", re.M)
 _EBU_PEAK = re.compile(r"True peak:\s*\n\s*Peak:\s+(-?[\d.]+|-inf)\s+dBFS", re.M)
@@ -353,16 +281,6 @@ async def loudnorm(src: Path, dst: Path, *, target: float = -14.0, peak: float =
     if not second.ok or not dst.is_file():
         raise MediaError(f"loudnorm, второй проход не удался: {_tail(second.err)}")
     return stats
-
-
-# ---------------------------------------------------------------------------------------------------- синтетика
-
-async def synth_tone(path: Path, seconds: float, *, freq: float = 220.0, volume: float = 0.3) -> None:
-    """Тон нужной длины в WAV 48 кГц (заглушка синтеза речи для тестов и живого прогона против FakeCore)."""
-    res = await ffmpeg(["-f", "lavfi", "-i", f"sine=frequency={freq}:duration={seconds}:sample_rate=48000", "-af",
-                        f"volume={volume}", "-ac", "1", str(path)])
-    if not res.ok:
-        raise MediaError(f"не удалось синтезировать тон: {_tail(res.err)}")
 
 
 _FMT = "aformat=sample_rates=48000:channel_layouts=stereo:sample_fmts=fltp"

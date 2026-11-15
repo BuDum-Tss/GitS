@@ -656,12 +656,6 @@ class Manager:
 
     # ================================================================================================ Studio и сайт (TZ 15)
 
-    async def open_site(self, job_id: str) -> dict:
-        """Сайт единицы (сценарий, монтажный лист, файлы, кнопка Remotion Studio): поднимает сервер при первом обращении."""
-        job = self._find(job_id)
-        await self.site.start()
-        return {"url": self.site.url(job.job_id), "job_id": job.job_id}
-
     async def open_studio(self, job_id: str) -> dict:
         """Remotion Studio единицы (кнопка на сайте): поднимает (если его нет) и отдаёт адрес. Новый запуск объявляется событием
         montage.launch (факт, объявление звучит всегда: правило 14)."""

@@ -85,10 +85,6 @@ def parse_scenes(spec, ctx: PlanContext, beat_ids: set[str] | None = None) -> tu
     return out, errors
 
 
-def scene_ids(count: int) -> list[str]:
-    return [f"s{n}" for n in range(1, count + 1)]
-
-
 def phrase_id(scene_n: int, phrase_n: int) -> str:
     return f"s{scene_n}p{phrase_n}"
 

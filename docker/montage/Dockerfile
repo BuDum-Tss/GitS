@@ -54,7 +54,6 @@ RUN npm ci --no-audit --no-fund && npm cache clean --force \
 
 WORKDIR /app
 COPY --chown=gits:gits agent/interfaces/workspace agent/interfaces/workspace
-COPY --chown=gits:gits agent/clients/gui/vendor/tailwind.css agent/clients/gui/vendor/tailwind.css
 COPY --chown=gits:gits workspaces/montage workspaces/montage
 RUN test -s workspaces/montage/template/demo/plan.horizontal.json \
     && test -s workspaces/montage/template/demo/plan.vertical.json
