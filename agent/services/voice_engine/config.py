@@ -68,7 +68,7 @@ class EngineConfig:
     tts_voice: str = ""
     tts_emotion: str = ""
     # облачный синтез (OpenRouter, Fish Audio) с запасным локальным; ключ OPENROUTER_API_KEY читает только wiring
-    tts_provider: str = "auto"          # auto (облако, если есть ключ) | openrouter | local
+    tts_provider: str = "local"         # local (по умолчанию: свой ESpeech) | auto (облако, если есть ключ) | openrouter
     has_openrouter_key: bool = False
     openrouter_model: str = "fish-audio/s2.1-pro"
     cloud_connect_timeout_s: float = 5.0
@@ -101,8 +101,8 @@ class EngineConfig:
         else:
             enabled, reason = True, ""
         barge = _first(environ, "GITS_VOICE_BARGE_IN", default="auto").lower()
-        provider = _first(environ, "GITS_TTS_PROVIDER", default="auto").lower()
-        provider = provider if provider in ("auto", "openrouter", "local") else "auto"
+        provider = _first(environ, "GITS_TTS_PROVIDER", default="local").lower()
+        provider = provider if provider in ("auto", "openrouter", "local") else "local"
         vad = _first(environ, "GITS_VOICE_VAD", default="energy").lower()
         return cls(
             enabled=enabled, disabled_reason=reason, stt_url=stt, tts_url=tts,

@@ -326,7 +326,7 @@ async def test_local_speed_takes_tempo_and_cloud_gets_it_too(tmp_path):
     svc = build({"GITS_TTS_TEMPO": "1.0", "GITS_TTS_SPEED": "1.2"})
     assert svc.engine.tts.settings.speed == pytest.approx(1.2)
     await svc.stop()
-    svc = build({"OPENROUTER_API_KEY": KEY, "GITS_TTS_TEMPO": "1.2"}, memory_dir=tmp_path)
+    svc = build({"OPENROUTER_API_KEY": KEY, "GITS_TTS_PROVIDER": "auto", "GITS_TTS_TEMPO": "1.2"}, memory_dir=tmp_path)
     assert svc.engine.tts.primary.tempo == 1.2 and svc.engine.tts.fallback.settings.speed == pytest.approx(1.2)
     await svc.stop()
     assert EngineConfig.from_env({"GITS_TTS_TEMPO": "9"}).tts_tempo == 1.5 and EngineConfig.from_env({}).tts_tempo == 1.08
@@ -335,11 +335,11 @@ async def test_local_speed_takes_tempo_and_cloud_gets_it_too(tmp_path):
 def test_cloud_config_defaults_and_env():
     d = EngineConfig.from_env({})
     assert (d.tts_provider, d.openrouter_model, d.cloud_daily_chars, d.cloud_usd_per_char, d.tts_first_max_cloud) == (
-        "auto", "fish-audio/s2.1-pro", 200000, 0.000015, 45)
+        "local", "fish-audio/s2.1-pro", 200000, 0.000015, 45)     # облако только по явному выбору (приватность, деньги, сеть)
     assert d.cloud_connect_timeout_s == 5 and d.cloud_timeout_s == 12 and not d.has_openrouter_key
     cfg = EngineConfig.from_env({"OPENROUTER_API_KEY": KEY, "GITS_TTS_PROVIDER": "bogus", "GITS_TTS_CLOUD_DAILY_CHARS": "0",
                                  "GITS_TTS_OPENROUTER_MODEL": "x/y", "GITS_TTS_FIRST_MAX_CLOUD": "60"})
-    assert cfg.has_openrouter_key and cfg.tts_provider == "auto" and cfg.cloud_daily_chars == 0
+    assert cfg.has_openrouter_key and cfg.tts_provider == "local" and cfg.cloud_daily_chars == 0      # неизвестное значение = локально
     assert cfg.openrouter_model == "x/y" and cfg.tts_first_max_cloud == 60
     assert KEY not in json.dumps(cfg.public())
 
@@ -352,7 +352,7 @@ async def test_state_in_api_and_key_never_visible(tmp_path, caplog, ref):
 
     c = Cloud(leaky)
     await c.start()
-    svc = build({"OPENROUTER_API_KEY": KEY}, memory_dir=tmp_path)
+    svc = build({"OPENROUTER_API_KEY": KEY, "GITS_TTS_PROVIDER": "auto"}, memory_dir=tmp_path)
     fb = svc.engine.tts
     fb.primary.url, fb.primary.settings = f"{c.base}/audio/speech", ref
     fb.fallback = FakeTts()

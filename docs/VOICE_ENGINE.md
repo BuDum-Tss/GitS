@@ -364,7 +364,7 @@ POST https://openrouter.ai/api/v1/audio/speech      Authorization: Bearer <OPENR
 читается целиком кусками, звук ресемплируется в 16 кГц моно. Модель `GITS_TTS_OPENROUTER_MODEL` (бесплатный `-free` не брать:
 4-7 с). Референс голоса тот же, что у локального синтеза (`espeech_ref.wav` и `espeech_ref.txt` персонажа).
 
-**Выбор** `GITS_TTS_PROVIDER`: `auto` (по умолчанию: облако, если задан `OPENROUTER_API_KEY`, иначе локально), `openrouter`,
+**Выбор** `GITS_TTS_PROVIDER`: `local` (по умолчанию: свой ESpeech, облако не используется; неизвестное значение тоже `local`), `auto` (облако, если задан `OPENROUTER_API_KEY`, иначе локально), `openrouter`,
 `local`. С `local` или без ключа облачных запросов нет совсем (поведение прежнее). Локальный `GITS_TTS_URL` нужен всегда:
 это запасной синтез.
 
@@ -433,7 +433,7 @@ POST {GITS_TTS_URL}/tts         JSON {"text", "ref_audio_b64", "ref_text", "spee
 | `GITS_STT_TIMEOUT_S`, `GITS_TTS_TIMEOUT_S` | 15, 60 | таймауты |
 | `GITS_TTS_REF_AUDIO`, `GITS_TTS_REF_TEXT`, `GITS_TTS_SPEED`, `GITS_TTS_VOICE`, `GITS_TTS_EMOTION` | нет, нет, 1.0, нет, нет | голос персонажа |
 | `OPENROUTER_API_KEY` | нет | ключ облачного синтеза (читается только из окружения, нигде не показывается) |
-| `GITS_TTS_PROVIDER` | `auto` | `auto` / `openrouter` / `local` |
+| `GITS_TTS_PROVIDER` | `local` | `local` / `auto` / `openrouter`; облако включается только явно. Замер 15.11.2026: с компьютера запрос к OpenRouter идёт 1-2 с, из контейнера ядра за Docker/VPN 30-90 с, поэтому облако по умолчанию выключено |
 | `GITS_TTS_OPENROUTER_MODEL` | `fish-audio/s2.1-pro` | модель облака |
 | `GITS_TTS_CLOUD_TIMEOUT_S`, `GITS_TTS_CLOUD_CONNECT_TIMEOUT_S` | 12, 5 | таймауты облака |
 | `GITS_TTS_CLOUD_DAILY_CHARS`, `GITS_TTS_CLOUD_USD_PER_CHAR` | 200000, 0.000015 | суточный лимит символов (0 без лимита), цена для оценки |
