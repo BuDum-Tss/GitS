@@ -1,11 +1,15 @@
 """Панель «Telegram» в дашборде: вход в аккаунт, список всех диалогов с режимами и открытый чат (ТЗ 15, блоки panel.set).
 
-Панель собирается из готовых блоков (`text`, `buttons`, `table`, `input`, `image`, `progress`): отдельного блока «чат» нет.
-Сообщения открытого чата это таблица (у строки свои кнопки «Ответить» и «Удалить»), поле «написать» это блок `input`. Так не
-нужен ещё один тип блока со своим экранированием, а действия строк уже есть у таблицы.
+Панель собирается из общих блоков (`text`, `buttons`, `table`, `input`, `image`, `progress`, `cards`, `split`): отдельного
+блока «чат» нет. Две колонки (`split`): слева карточки диалогов (`cards`: аватарка, название, последнее сообщение, непрочитанные,
+выпадающий список режима), справа открытый чат. Сообщения чата это таблица (у строки свои кнопки «Ответить» и «Удалить»), поле
+«написать» это блок `input`. У супергруппы-форума карточка раскрывается во вложенный список тем (у темы свой режим: пункт «Как в
+группе» снимает его).
 
-Состояние панели (какой чат открыт, на какое сообщение отвечаем, сколько сообщений показано, поиск) живёт здесь, в окружении, и
-не хранится нигде, кроме памяти процесса. Историю и список диалогов читает Telethon по запросу и держит в коротких кэшах, чтобы
+Состояние панели (какой чат и тема открыты, какие форумы раскрыты, на какое сообщение отвечаем, сколько сообщений показано, поиск)
+живёт здесь, в окружении, и не хранится нигде, кроме памяти процесса. Раскрытие хранится здесь, а не в дашборде: в блок идут
+темы только раскрытых форумов (иначе до 50 тем у каждого чата не влезли бы в 64 КБ), их Telegram читает лениво, а состояние
+не теряется при обновлении страницы и общее для всех открытых вкладок. Историю и список диалогов читает Telethon по запросу и держит в коротких кэшах, чтобы
 панель не дёргала Telegram на каждое обновление; сами обновления панели ограничивает `PanelClient.set` (не чаще
 `PANEL_SET_MIN_INTERVAL_S`). Любое действие возвращает `{ok, message}` и добавляется в `ACTIONS` и в `manifest.panel.actions`:
 структура расширяема (закреп, пересылка, вложения, выход из групп добавятся новыми id, ничего не ломая).
@@ -18,8 +22,9 @@ import json
 import logging
 import time
 
-from common import CHAT_MODES, MODE_IGNORE, MODE_READ, MODE_REPLY, MODE_WORDS, scrub
-from gits_sdk.protocol import PANEL_CELL_MAX, PANEL_SET_MAX_BYTES, PANEL_ROWS_MAX
+from common import CHAT_MODES, GENERAL_TOPIC, MODE_IGNORE, MODE_READ, MODE_REPLY, MODE_WORDS, chat_key, scrub
+from gits_sdk.protocol import PANEL_CARDS_MAX, PANEL_CELL_MAX, PANEL_COLOR_RE, PANEL_SET_MAX_BYTES, PANEL_ROWS_MAX
+from telegram_user import AVATAR_NEW_MAX
 from tg_qr_login import DONE, ERROR, PASSWORD, WAITING, is_network_error
 
 logger = logging.getLogger("tg_panel")
@@ -27,7 +32,7 @@ logger = logging.getLogger("tg_panel")
 # все действия панели (кроме них в manifest.panel.actions ничего нет)
 ACTIONS = ("login_start", "login_cancel", "login_password", "logout",
            "open_chat", "close_chat", "set_mode", "send_message", "reply_to", "cancel_reply", "history_more",
-           "mark_read", "delete_message", "refresh", "more_chats", "filter_chats")
+           "mark_read", "delete_message", "refresh", "more_chats", "filter_chats", "toggle_topics")
 
 DIALOGS_TTL_S = 20.0             # список диалогов обновляется у Telegram не чаще
 HISTORY_TTL_S = 6.0              # история открытого чата
@@ -36,6 +41,11 @@ CHATS_PAGE = 50                  # сколько чатов показыват�
 HISTORY_PAGE, HISTORY_MAX = 50, 200
 TEXT_CLIP = 300                  # длина текста сообщения в строке таблицы
 BUDGET_BYTES = PANEL_SET_MAX_BYTES - 6000     # запас под остальные блоки
+COUNTS_NEW_MAX = 10              # сколько новых «число тем» у свёрнутых форумов спрашивать у Telegram за обновление
+COUNTS_TTL_S = 600.0
+INHERIT = "inherit"              # пункт списка темы «Как в группе»
+MODE_LABELS = {MODE_IGNORE: "Игнорировать", MODE_READ: "Только читать", MODE_REPLY: "Читать и отвечать"}
+MODE_OPTIONS = [{"value": m, "label": MODE_LABELS[m]} for m in CHAT_MODES]
 
 MODE_HINT = {MODE_IGNORE: "событий из этого чата в ядро нет, содержимое она не читает",
              MODE_READ: "она читает (для внимания и памяти), но писать от своего имени не может",
@@ -55,15 +65,38 @@ def _size(blocks: list) -> int:
     return len(json.dumps({"blocks": blocks}, ensure_ascii=False).encode("utf-8"))
 
 
-def fit(blocks: list, from_front: bool) -> list:
-    """Уложить блоки в предел panel.set: из самой большой таблицы убираются строки (с начала для истории, с конца для списка)."""
+def _walk(blocks):
+    """Все блоки, включая вложенные в колонки split."""
+    for b in blocks:
+        yield b
+        if b.get("type") == "split":
+            for side in ("left", "right"):
+                yield from _walk(b.get(side) or [])
+
+
+def fit(blocks: list) -> list:
+    """Уложить блоки в предел panel.set: из самого большого блока убираются строки: у истории (table) самые старые, у списка
+    карточек (cards) последние."""
     while _size(blocks) > BUDGET_BYTES:
-        tables = [b for b in blocks if b.get("type") == "table" and len(b.get("rows") or []) > 1]
-        if not tables:
+        found = [b for b in _walk(blocks) if (b.get("type") == "table" and len(b.get("rows") or []) > 1)
+                 or (b.get("type") == "cards" and len(b.get("items") or []) > 1)]
+        if not found:
             break
-        rows = max(tables, key=lambda b: len(json.dumps(b, ensure_ascii=False)))["rows"]
-        rows.pop(0 if from_front else -1)
+        big = max(found, key=lambda b: len(json.dumps(b, ensure_ascii=False)))
+        if big["type"] == "table":
+            big["rows"].pop(0)
+        else:
+            big["items"].pop()
     return blocks
+
+
+def _topic_arg(args: dict) -> int | None:
+    topic = args.get("topic")
+    if topic is None:
+        return None
+    if isinstance(topic, bool) or not isinstance(topic, int) or topic <= 0:
+        raise ValueError("тема: положительное число")
+    return topic
 
 
 def _chat_arg(args: dict) -> int:
@@ -79,6 +112,10 @@ class TelegramPanel:
         self.module = module
         self.user = module.user
         self.chat: int | None = None                # открытый чат
+        self.topic: int | None = None               # открытая тема форума (у обычного чата None)
+        self.expanded: list[int] = []               # раскрытые форумы (id чатов)
+        self._counts: dict[int, tuple[float, int]] = {}      # форум -> (когда спросили, сколько тем)
+        self._topics_err = ""
         self.reply_to: int | None = None            # на какое сообщение отвечаем
         self.history_limit = HISTORY_PAGE
         self.chat_limit = CHATS_PAGE
@@ -108,7 +145,7 @@ class TelegramPanel:
             self._dialogs_err = self.explain(e)
 
     async def _load_history(self) -> None:
-        key = (self.chat, self.history_limit)
+        key = (self.chat, self.topic, self.history_limit)
         if key == self._history_key and time.monotonic() - self._history_at < HISTORY_TTL_S:
             return
         self._history_at = time.monotonic()
@@ -116,7 +153,7 @@ class TelegramPanel:
             self._history = []
         self._history_key = key
         try:
-            self._history = await self.user.history(self.chat, self.history_limit)
+            self._history = await self.user.history(self.chat, self.history_limit, self.topic)
             self._history_err = ""
         except Exception as e:
             self._history_err = self.explain(e)
@@ -141,15 +178,11 @@ class TelegramPanel:
         out = self.account_blocks()
         user = self.user
         if user.state_word() in ("подключён", "подключается"):
-            if self.chat is None:
-                await self._load_dialogs()
-                out += self.list_blocks()
-                fit(out, from_front=False)
-            else:
-                await self._load_dialogs()
+            await self._load_dialogs()
+            if self.chat is not None:
                 await self._load_history()
-                out += self.chat_blocks()
-                fit(out, from_front=True)
+            out.append({"type": "split", "left": await self.list_blocks(), "right": await self.right_blocks()})
+            fit(out)
         out.append(self.channel_block())
         return out
 
@@ -212,15 +245,104 @@ class TelegramPanel:
             out.append({"type": "buttons", "items": [start]})
         return out
 
-    def _row_actions(self, d: dict) -> list[dict]:
-        acts = [{"id": "open_chat", "label": "Открыть", "args": {"chat": d["id"]}}]
-        if not d.get("owner"):
-            acts += [{"id": "set_mode", "label": "→ " + MODE_WORDS[m], "args": {"chat": d["id"], "mode": m}}
-                     for m in CHAT_MODES if m != d["mode"]]
-        return acts
+    # ── список диалогов (левая колонка) ──────────────────────────────────────
 
-    def list_blocks(self) -> list[dict]:
-        from telegram_user import KIND_WORDS
+    @staticmethod
+    def _subtitle(last: str, out: bool) -> str:
+        return ("Вы: " if out and last else "") + _clip(last, 80)
+
+    async def _forum_count(self, chat: int, budget: list[int]) -> int | None:
+        """Сколько тем в форуме: из раскрытого списка, из кэша или (не больше COUNTS_NEW_MAX новых за обновление) у Telegram."""
+        cached = self._counts.get(chat)
+        if cached is not None and time.monotonic() - cached[0] < COUNTS_TTL_S:
+            return cached[1]
+        if budget[0] <= 0:
+            return cached[1] if cached else None
+        budget[0] -= 1
+        try:
+            n = await self.user.topic_count(chat)
+        except Exception:
+            self._counts[chat] = (time.monotonic(), cached[1] if cached else 0)
+            return cached[1] if cached else None
+        self._counts[chat] = (time.monotonic(), n)
+        return n
+
+    async def _dialog_card(self, d: dict, allm: dict, avatars: list[int], counts: list[int]) -> dict:
+        chat, forum = d["id"], bool(d.get("forum"))
+        card: dict = {"title": _clip(d["name"], 80)}
+        sub = self._subtitle(d["last"], d.get("last_out", False))
+        if sub:
+            card["subtitle"] = sub
+        if d["unread"]:
+            card["badge"] = str(d["unread"])
+        tag = ""
+        if forum:
+            n = await self._forum_count(chat, counts)
+            tag = f"темы: {n}" if n is not None else "темы"
+        elif d.get("owner"):
+            tag = "владелец"
+        elif d["kind"] in ("channel", "bot"):
+            tag = {"channel": "канал", "bot": "бот"}[d["kind"]]
+        if tag:
+            card["tag"] = tag
+        name = await self.user.avatar_file(chat, d.get("entity"), avatars)
+        d["avatar_file"] = name
+        if name:
+            card["avatar"] = name
+        if d["mode"] == MODE_IGNORE and not d.get("owner"):
+            card["muted"] = True
+        if not d.get("owner"):
+            card["select"] = {"options": MODE_OPTIONS, "value": d["mode"], "action": "set_mode", "args": {"chat": chat},
+                              "arg": "mode",
+                              "hint": "Режим всей группы и всех тем без своего режима" if forum else "Режим чата"}
+        if forum:
+            card["action"], card["args"], card["expanded"] = "toggle_topics", {"chat": chat}, chat in self.expanded
+            if chat in self.expanded:
+                card["children"] = await self._topic_cards(d, allm, avatars)
+        else:
+            card["action"], card["args"] = "open_chat", {"chat": chat}
+            card["selected"] = self.chat == chat
+        return card
+
+    def topic_select(self, chat: int, topic: int, group_mode: str, allm: dict) -> dict:
+        """Список режима темы: «Как в группе (<режим группы>)», затем три режима; выбрано явное значение темы."""
+        own = allm.get(chat_key(chat, topic))
+        options = [{"value": INHERIT, "label": f"Как в группе ({MODE_WORDS[group_mode]})"}] + MODE_OPTIONS
+        return {"options": options, "value": own or INHERIT, "action": "set_mode", "args": {"chat": chat, "topic": topic},
+                "arg": "mode", "hint": "Режим темы"}
+
+    async def _topic_cards(self, d: dict, allm: dict, avatars: list[int]) -> list[dict]:
+        chat = d["id"]
+        try:
+            topics = await self.user.forum_topics(chat, ttl=DIALOGS_TTL_S)
+            self._topics_err = ""
+        except Exception as e:
+            self._topics_err = self.explain(e)
+            return []
+        self._counts[chat] = (time.monotonic(), len(topics))
+        out = []
+        for t in sorted(topics.values(), key=lambda t: (not t["pinned"], -t["ts"]))[:PANEL_CARDS_MAX]:
+            tid = t["id"]
+            card: dict = {"title": _clip(t["title"], 80), "action": "open_chat", "args": {"chat": chat, "topic": tid},
+                          "selected": self.chat == chat and self.topic == tid,
+                          "select": self.topic_select(chat, tid, d["mode"], allm)}
+            if tid == GENERAL_TOPIC:
+                card["icon"] = "#"
+            if PANEL_COLOR_RE.match(t.get("color") or ""):
+                card["color"] = t["color"]
+            sub = self._subtitle(t["last"], t["out"])
+            if sub:
+                card["subtitle"] = sub
+            if t["unread"]:
+                card["badge"] = str(t["unread"])
+            if t["closed"]:
+                card["tag"] = "закрыта"
+            if (allm.get(chat_key(chat, tid)) or d["mode"]) == MODE_IGNORE:
+                card["muted"] = True
+            out.append(card)
+        return out
+
+    async def list_blocks(self) -> list[dict]:
         out: list[dict] = []
         if self._dialogs_err and not self._dialogs:
             return [{"type": "text", "title": "Чаты", "text": "Список чатов не получен: " + self._dialogs_err}]
@@ -228,23 +350,21 @@ class TelegramPanel:
         rows_all = [d for d in self._dialogs if not needle or needle in d["name"].lower()]
         shown = rows_all[:self.chat_limit]
         default = self.user.default_mode()
-        out.append({"type": "text", "title": "Чаты аккаунта",
-                    "text": f"Режимы: «игнор» - событий в ядро нет; «чтение» - читает, но писать не может; «ответы» - как обычно. "
-                            f"Новый чат: «{MODE_WORDS[default]}» (настройка default_chat_mode). Личка владельца всегда «ответы»."
+        out.append({"type": "text", "title": "Режимы чатов", "collapsed": True,
+                    "text": f"«Игнорировать» - событий в ядро нет; «Только читать» - читает, но писать не может; «Читать и отвечать» - как "
+                            f"обычно. Новый чат: «{MODE_WORDS[default]}» (настройка default_chat_mode). Личка владельца всегда "
+                            "«ответы». У форума режим в карточке действует на всю группу; у темы свой режим, «Как в группе» его снимает."
                             + (f" Ошибка обновления: {self._dialogs_err}" if self._dialogs_err else "")})
         out.append({"type": "input", "label": "Поиск чата", "placeholder": "часть названия", "submit": "Найти",
                     "action": "filter_chats"})
         if self.filter:
             out.append({"type": "buttons", "items": [{"label": f"Сбросить поиск «{_clip(self.filter, 30)}»",
                                                       "action": "filter_chats", "args": {"clear": True}}]})
-        rows = []
-        for d in shown:
-            mode = MODE_WORDS[d["mode"]] + ("" if d["explicit"] or d.get("owner") else " (по умолчанию)")
-            last = (_stamp(d["ts"]) + " " if d["ts"] else "") + _clip(d["last"], 80)
-            rows.append({"cells": [_clip(d["name"], 80), KIND_WORDS[d["kind"]], d["unread"], last.strip(), mode],
-                         "actions": self._row_actions(d)})
-        out.append({"type": "table", "title": f"Чатов: {len(rows_all)}",
-                    "columns": ["Чат", "Тип", "Непрочит.", "Последнее", "Режим"], "rows": rows})
+        allm, avatars, counts = self.user.modes.all(), [AVATAR_NEW_MAX], [COUNTS_NEW_MAX]
+        cards = [await self._dialog_card(d, allm, avatars, counts) for d in shown]
+        out.append({"type": "cards", "title": f"Чатов: {len(rows_all)}", "items": cards[:PANEL_CARDS_MAX]})
+        if self._topics_err:
+            out.append({"type": "text", "text": "Темы не получены: " + self._topics_err})
         if len(rows_all) > len(shown):
             out.append({"type": "buttons", "items": [{"label": f"Показать ещё (показано {len(shown)} из {len(rows_all)})",
                                                        "action": "more_chats"}]})
@@ -253,28 +373,49 @@ class TelegramPanel:
         out.append({"type": "buttons", "items": [{"label": "Обновить", "action": "refresh"}]})
         return out
 
-    def chat_blocks(self) -> list[dict]:
-        from telegram_user import KIND_WORDS
-        chat = self.chat
+    # ── открытый чат (правая колонка) ────────────────────────────────────────
+
+    async def _topic_title(self, chat: int, topic: int) -> str:
+        try:
+            info = (await self.user.forum_topics(chat, ttl=DIALOGS_TTL_S)).get(topic)
+        except Exception:
+            info = None
+        return info["title"] if info else ("General" if topic == GENERAL_TOPIC else f"тема {topic}")
+
+    async def right_blocks(self) -> list[dict]:
+        if self.chat is None:
+            return [{"type": "text", "text": "Выбери диалог слева: откроется переписка. У форума сначала раскрой темы."}]
+        ttitle = await self._topic_title(self.chat, self.topic) if self.topic else ""
+        return self.chat_blocks(ttitle)
+
+    def chat_blocks(self, topic_title: str = "") -> list[dict]:
+        chat, topic = self.chat, self.topic
         d = self._dialog(chat) or {"id": chat, "name": f"чат {chat}", "kind": "user", "mode": self.user.mode_of(chat),
                                    "owner": False, "read_out": 0, "explicit": False}
-        mode = d["mode"]
-        out: list[dict] = [{"type": "buttons", "items": [
-            {"label": "← К списку", "action": "close_chat"}, {"label": "Обновить", "action": "refresh"},
-            {"label": "Отметить прочитанным", "action": "mark_read", "args": {"chat": chat}}]}]
+        mode = self.user.mode_of(chat, None, topic) if topic else d["mode"]
+        arg = {"chat": chat, **({"topic": topic} if topic else {})}
         head = f"Режим: «{MODE_WORDS[mode]}»: {MODE_HINT[mode]}."
-        out.append({"type": "text", "title": f"{d['name']} ({KIND_WORDS[d['kind']]})", "text": head if not d.get("owner")
-                    else "Личка владельца: режим всегда «ответы»."})
+        card: dict = {"title": _clip(d["name"], 60) + (f" › {_clip(topic_title, 50)}" if topic else ""),
+                      "subtitle": head if not d.get("owner") else "Личка владельца: режим всегда «ответы»."}
+        if d.get("avatar_file"):
+            card["avatar"] = d["avatar_file"]
         if not d.get("owner"):
-            out.append({"type": "buttons", "items": [
-                {"label": MODE_WORDS[m].capitalize(), "action": "set_mode", "args": {"chat": chat, "mode": m},
-                 "style": "primary" if m == mode else "default"} for m in CHAT_MODES]})
+            if topic:
+                card["select"] = self.topic_select(chat, topic, d["mode"], self.user.modes.all())
+            else:
+                card["select"] = {"options": MODE_OPTIONS, "value": d["mode"], "action": "set_mode", "args": {"chat": chat},
+                                  "arg": "mode", "hint": "Режим чата"}
+        out: list[dict] = [{"type": "cards", "items": [card]},
+                           {"type": "buttons", "items": [
+                               {"label": "← К списку", "action": "close_chat"}, {"label": "Обновить", "action": "refresh"},
+                               {"label": "Отметить прочитанным", "action": "mark_read", "args": arg}]}]
         if self._history_err:
             out.append({"type": "text", "text": "История не получена: " + self._history_err})
         rows = []
         for m in self._history[-PANEL_ROWS_MAX:]:
             who = ("→ " if m["out"] else "← ") + _clip(m["who"], 40)
-            text = (f"↩#{m['reply_to']} " if m.get("reply_to") else "") + _clip(m["text"], TEXT_CLIP) + (" (ред.)" if m["edited"] else "")
+            text = (f"↩#{m['reply_to']} " if m.get("reply_to") and m["reply_to"] != topic else "") + _clip(m["text"], TEXT_CLIP) + (
+                " (ред.)" if m["edited"] else "")
             status = ("✓✓" if m["id"] <= d.get("read_out", 0) else "✓") if m["out"] else ""
             acts = [{"id": "reply_to", "label": "Ответить", "args": {"chat": chat, "id": m["id"]}}]
             if m["out"]:
@@ -283,8 +424,7 @@ class TelegramPanel:
         out.append({"type": "table", "title": f"Сообщения (последние {len(rows)})",
                     "columns": ["№", "Время", "Кто", "Сообщение", ""], "rows": rows})
         if len(self._history) >= self.history_limit and self.history_limit < HISTORY_MAX:
-            out.append({"type": "buttons", "items": [{"label": "Ещё (более старые)", "action": "history_more",
-                                                       "args": {"chat": chat}}]})
+            out.append({"type": "buttons", "items": [{"label": "Ещё (более старые)", "action": "history_more", "args": arg}]})
         label = "Написать от лица агента" if mode == MODE_REPLY else "Написать от имени владельца (режим без ответов)"
         if self.reply_to:
             quoted = next((m for m in self._history if m["id"] == self.reply_to), None)
@@ -292,7 +432,7 @@ class TelegramPanel:
             out.append({"type": "buttons", "items": [{"label": "Отменить ответ", "action": "cancel_reply"}]})
             label += f" (ответом на #{self.reply_to})"
         out.append({"type": "input", "label": label, "placeholder": "текст сообщения", "submit": "Отправить", "multiline": True,
-                    "action": "send_message", "args": {"chat": chat}})
+                    "action": "send_message", "args": arg})
         return out
 
     # ── действия ─────────────────────────────────────────────────────────────
@@ -334,41 +474,64 @@ class TelegramPanel:
             self._logout_until = time.time() + LOGOUT_ARM_S
             return f"Выход из аккаунта: нажми «Точно выйти?» ещё раз в течение {int(LOGOUT_ARM_S)} с."
         self._logout_until = 0.0
-        self.chat, self.reply_to = None, None
+        self.chat, self.topic, self.reply_to = None, None, None
         self._dialogs, self._history = [], []
         return await self.user.logout()
 
     async def act_open_chat(self, args: dict) -> str:
         self._need_account()
-        self.chat, self.reply_to, self.history_limit = _chat_arg(args), None, HISTORY_PAGE
+        chat, topic = _chat_arg(args), _topic_arg(args)
+        if topic is None and (self._dialog(chat) or {}).get("forum"):
+            topic = GENERAL_TOPIC                                   # форум без темы: открывается General
+        self.chat, self.topic, self.reply_to, self.history_limit = chat, topic, None, HISTORY_PAGE
         self.invalidate()
         return "Чат открыт."
 
+    async def act_toggle_topics(self, args: dict) -> str:
+        """Раскрыть или свернуть список тем форума (состояние раскрытия живёт здесь, см. docstring модуля)."""
+        chat = _chat_arg(args)
+        if chat in self.expanded:
+            self.expanded.remove(chat)
+            self.invalidate()
+            return "Темы свёрнуты."
+        self._need_account()
+        self.expanded.append(chat)
+        self.invalidate()
+        return "Темы раскрыты."
+
     async def act_close_chat(self, args: dict) -> str:
-        self.chat, self.reply_to, self.history_limit = None, None, HISTORY_PAGE
+        self.chat, self.topic, self.reply_to, self.history_limit = None, None, None, HISTORY_PAGE
         self.invalidate()
         return "Список чатов."
 
     async def act_set_mode(self, args: dict) -> str:
-        chat, mode = _chat_arg(args), args.get("mode")
-        if mode not in CHAT_MODES:
-            raise ValueError(f"режим: одно из {list(CHAT_MODES)}")
-        d = self._dialog(chat)
-        if self.user.is_owner_chat(chat, None) or (d or {}).get("owner"):
-            raise ValueError("личка владельца всегда в режиме «ответы»: её режим не меняется")
-        if not await asyncio.to_thread(self.user.modes.set, chat, mode):
+        """Режим чата или (с topic) темы форума; для темы mode=inherit снимает её режим («Как в группе»)."""
+        chat, mode, topic = _chat_arg(args), args.get("mode"), _topic_arg(args)
+        if topic and mode == INHERIT:
+            mode = None
+        elif mode not in CHAT_MODES:
+            raise ValueError(f"режим: одно из {list(CHAT_MODES)}" + (" или inherit" if topic else ""))
+        if not topic:
+            d = self._dialog(chat)
+            if self.user.is_owner_chat(chat, None) or (d or {}).get("owner"):
+                raise ValueError("личка владельца всегда в режиме «ответы»: её режим не меняется")
+        if not await asyncio.to_thread(self.user.modes.set, chat, mode, topic):
             raise RuntimeError("режим не сохранён: не записался файл")
-        if d is not None:
-            d["mode"], d["explicit"] = mode, True
-        self._dialogs_at = 0.0
-        return f"Режим чата: «{MODE_WORDS[mode]}»."
+        if not topic:
+            d = self._dialog(chat)
+            if d is not None:
+                d["mode"], d["explicit"] = mode, True
+            self._dialogs_at = 0.0
+            return f"Режим чата: «{MODE_WORDS[mode]}»."
+        self.wake.set()
+        return f"Режим темы: «{MODE_WORDS[mode]}»." if mode else "Режим темы: как в группе."
 
     async def act_send_message(self, args: dict) -> str:
         self._need_account()
         chat, text = _chat_arg(args), str(args.get("value") or "").strip()
         if not text:
             raise ValueError("пустое сообщение")
-        await self.user.send(str(chat), text, reply_to=self.reply_to, by_owner=True)
+        await self.user.send(str(chat), text, reply_to=self.reply_to, by_owner=True, topic=_topic_arg(args))
         self.reply_to = None
         self.invalidate()
         return "Отправлено."
@@ -391,7 +554,7 @@ class TelegramPanel:
 
     async def act_mark_read(self, args: dict) -> str:
         self._need_account()
-        await self.user.mark_chat_read(_chat_arg(args))
+        await self.user.mark_chat_read(_chat_arg(args), _topic_arg(args))
         self.invalidate()
         return "Отмечено прочитанным."
 

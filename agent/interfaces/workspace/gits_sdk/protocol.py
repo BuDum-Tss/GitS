@@ -244,7 +244,7 @@ PANEL_LINK_KINDS = ("url", "tool", "reveal_path")
 PANEL_ARGS_FROM = ("job",)
 PANEL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")          # id ссылок, действий и вкладок
 PANEL_BLOCK_TYPES = ("stats", "table", "list", "text", "progress", "buttons", "link", "image", "video", "log", "tabs",
-                     "input")
+                     "input", "cards", "split")
 PANEL_BUTTON_STYLES = ("default", "primary", "danger")
 PANEL_SET_MAX_BYTES = 64 * 1024              # panel.set: тело целиком (ТЗ 15, раздел 3)
 PANEL_SET_MIN_INTERVAL_S = 1.0               # не чаще раза в секунду на модуль (ядро отбрасывает лишнее)
@@ -255,6 +255,9 @@ PANEL_LABEL_MAX = 80
 PANEL_INPUT_VALUE_MAX = 4096                 # значение поля ввода (блок input): уходит действием как args.value
 PANEL_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")      # image.file: только картинки из panel.serve_dirs
 PANEL_ACTION_RESULT_MESSAGE_MAX = 300
+PANEL_CARDS_MAX = 50                         # карточек в блоке cards и вложенных карточек у одной карточки (children)
+PANEL_SELECT_OPTIONS_MAX = 8                 # пунктов выпадающего списка карточки
+PANEL_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def new_id() -> str:
@@ -1362,12 +1365,8 @@ def _check_image(where: str, b: dict, actions, depth: int) -> list[str]:
     if ("artifact" in b) == ("file" in b):
         return [f"{where}: нужно ровно одно из artifact ({{job, name}}) или file (имя файла)"]
     if "file" in b:
-        name = b["file"]
-        if not isinstance(name, str) or not name or len(name) > 200 or name in (".", "..") or "/" in name or "\\" in name \
-                or not name.lower().endswith(PANEL_IMAGE_EXTS):
-            problems = [f"{where}.file: имя файла без путей, расширение из {list(PANEL_IMAGE_EXTS)}"]
-        else:
-            problems = []
+        problems = [] if _image_name_ok(b["file"]) else [
+            f"{where}.file: имя файла без путей, расширение из {list(PANEL_IMAGE_EXTS)}"]
     else:
         problems = _artifact_problems(where, b.get("artifact"))
     return problems + [p for p in [_text_problem(where, b, "alt", 200, required=False)] if p]
@@ -1401,6 +1400,96 @@ def _check_input(where: str, b: dict, actions, depth: int) -> list[str]:
     return problems
 
 
+def _image_name_ok(name: Any) -> bool:
+    """Имя файла-картинки прямо в panel.serve_dirs: без путей, расширение из PANEL_IMAGE_EXTS."""
+    return (isinstance(name, str) and bool(name) and len(name) <= 200 and name not in (".", "..") and "/" not in name
+            and "\\" not in name and name.lower().endswith(PANEL_IMAGE_EXTS))
+
+
+def _select_problems(where: str, sel: Any, actions: set[str] | None) -> list[str]:
+    """Выпадающий список карточки: options [{value, label}], value (выбранный), action и args (как у кнопки), arg: под каким
+    именем выбранное значение уходит в args действия (по умолчанию «value»), hint: подсказка при наведении."""
+    if not isinstance(sel, dict):
+        return [f"{where}: объект {{options, value, action}}"]
+    problems = _action_problems(where, {"id": sel.get("action"), "label": "x", "args": sel.get("args")}, actions)
+    opts = sel.get("options")
+    values: list = []
+    if not isinstance(opts, list) or not 1 <= len(opts) <= PANEL_SELECT_OPTIONS_MAX:
+        problems.append(f"{where}.options: список 1–{PANEL_SELECT_OPTIONS_MAX} пунктов {{value, label}}")
+    else:
+        for k, o in enumerate(opts):
+            w = f"{where}.options[{k}]"
+            if not isinstance(o, dict):
+                problems.append(f"{w}: объект {{value, label}}")
+                continue
+            values.append(o.get("value"))
+            problems += [p for p in [_text_problem(w, o, "value", 40), _text_problem(w, o, "label", PANEL_LABEL_MAX)] if p]
+            if isinstance(o.get("value"), str) and not o["value"]:
+                problems.append(f"{w}.value: непустая строка")
+    if sel.get("value") is not None and (not isinstance(sel["value"], str) or (values and sel["value"] not in values)):
+        problems.append(f"{where}.value: значение одного из пунктов")
+    problems += [p for p in [_text_problem(where, sel, "hint", 200, required=False)] if p]
+    arg = sel.get("arg")
+    if arg is not None and (not isinstance(arg, str) or not PANEL_ID_RE.match(arg)):
+        problems.append(f"{where}.arg: имя параметра «[a-z][a-z0-9_]*»")
+    return problems
+
+
+def _card_problems(where: str, c: Any, actions: set[str] | None, nested: bool) -> list[str]:
+    """Карточка списка: title (обязательно), subtitle, badge (число непрочитанных), tag (маленькая серая метка), avatar (имя
+    файла-картинки в serve_dirs; нет: кружок с буквой), icon (короткий значок вместо буквы) и color (#RRGGBB кружка), select,
+    action с args (клик), selected, muted, expanded и children (вложенные карточки, не глубже одного уровня)."""
+    if not isinstance(c, dict):
+        return [f"{where}: объект"]
+    problems = [p for p in [_text_problem(where, c, "title", 120), _text_problem(where, c, "subtitle", 300, required=False),
+                            _text_problem(where, c, "badge", 40, required=False), _text_problem(where, c, "tag", 40, required=False),
+                            _text_problem(where, c, "icon", 16, required=False)] if p]
+    if c.get("avatar") is not None and not _image_name_ok(c["avatar"]):
+        problems.append(f"{where}.avatar: имя файла без путей, расширение из {list(PANEL_IMAGE_EXTS)}")
+    if c.get("color") is not None and not (isinstance(c["color"], str) and PANEL_COLOR_RE.match(c["color"])):
+        problems.append(f"{where}.color: цвет #RRGGBB")
+    for key in ("selected", "muted", "expanded"):
+        if c.get(key) is not None and not isinstance(c[key], bool):
+            problems.append(f"{where}.{key}: true или false")
+    if c.get("action") is not None:
+        problems += _action_problems(f"{where}.action", {"id": c["action"], "label": "x", "args": c.get("args")}, actions)
+    elif c.get("args") is not None:
+        problems.append(f"{where}.args: без action не нужны")
+    if c.get("select") is not None:
+        problems += _select_problems(f"{where}.select", c["select"], actions)
+    children = c.get("children")
+    if children is not None:
+        if nested:
+            problems.append(f"{where}.children: вложенные карточки не глубже одного уровня")
+        elif not isinstance(children, list) or len(children) > PANEL_CARDS_MAX:
+            problems.append(f"{where}.children: список до {PANEL_CARDS_MAX} карточек")
+        else:
+            for k, child in enumerate(children):
+                problems += _card_problems(f"{where}.children[{k}]", child, actions, True)
+    return problems
+
+
+def _check_cards(where: str, b: dict, actions, depth: int) -> list[str]:
+    """Список карточек (диалоги, темы): до PANEL_CARDS_MAX карточек, у каждой до PANEL_CARDS_MAX вложенных."""
+    items = b.get("items")
+    if not isinstance(items, list) or len(items) > PANEL_CARDS_MAX:
+        return [f"{where}.items: список до {PANEL_CARDS_MAX} карточек"]
+    problems: list[str] = []
+    for j, c in enumerate(items):
+        problems += _card_problems(f"{where}.items[{j}]", c, actions, False)
+    return problems
+
+
+def _check_split(where: str, b: dict, actions, depth: int) -> list[str]:
+    """Две колонки: left (список) и right (содержимое) - списки блоков; на узком экране колонки идут друг под другом."""
+    if depth >= PANEL_DEPTH_MAX:
+        return [f"{where}: колонки вложены глубже {PANEL_DEPTH_MAX} уровней"]
+    problems: list[str] = []
+    for side in ("left", "right"):
+        problems += [f"{where}.{side}.{p}" for p in validate_panel_blocks(b.get(side), actions, depth=depth + 1)]
+    return problems
+
+
 def _check_tabs(where: str, b: dict, actions, depth: int) -> list[str]:
     if depth >= PANEL_DEPTH_MAX:
         return [f"{where}: вкладки вложены глубже {PANEL_DEPTH_MAX} уровней"]
@@ -1422,6 +1511,7 @@ _BLOCK_CHECKERS = {
     "stats": _check_stats, "table": _check_table, "list": _check_list, "text": _check_text,
     "progress": _check_progress, "buttons": _check_buttons, "link": _check_link, "image": _check_image,
     "video": _check_video, "log": _check_log, "tabs": _check_tabs, "input": _check_input,
+    "cards": _check_cards, "split": _check_split,
 }
 
 

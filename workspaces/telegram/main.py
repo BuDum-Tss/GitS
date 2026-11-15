@@ -30,7 +30,9 @@ async def amain() -> int:
     memory_dir = default_memory_dir()
     qr_dir = Path(memory_dir).resolve() / "tg_login"                # картинку QR входа ядро отдаёт из panel.serve_dirs
     qr_dir.mkdir(parents=True, exist_ok=True)
-    client = WorkspaceClient(build_manifest([str(qr_dir)]))
+    avatar_dir = Path(memory_dir).resolve() / "tg_avatars"           # маленькие аватарки диалогов для панели (блок cards)
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+    client = WorkspaceClient(build_manifest([str(qr_dir), str(avatar_dir)]))
     module = TelegramModule(client, memory_dir)
     module.start()
     try:

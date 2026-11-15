@@ -82,6 +82,8 @@ def secret_actions(blocks) -> set[str]:
         for tab in b.get("tabs") or []:
             if isinstance(tab, dict):
                 found |= secret_actions(tab.get("blocks"))
+        for side in ("left", "right"):                                 # колонки блока split
+            found |= secret_actions(b.get(side))
     return found
 
 

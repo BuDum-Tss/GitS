@@ -145,6 +145,37 @@ class OwnerBook:
         return info
 
 
+GENERAL_TOPIC = 1                    # тема «General» форума (супергруппы с темами): её id в Telegram всегда 1
+
+
+def chat_key(chat_id, topic=None) -> str:
+    """Ключ чата в файлах памяти: «<id чата>» либо «<id чата>#<id темы>» для темы форума (топик 1 это General)."""
+    return f"{chat_id}#{topic}" if topic else str(chat_id)
+
+
+def valid_key(key) -> bool:
+    """Ключ вида «-100123» или «-100123#5» (число или число и #номер темы)."""
+    if not isinstance(key, str):
+        return False
+    chat, sep, topic = key.partition("#")
+    return chat.lstrip("-").isdigit() and (not sep or topic.isdigit())
+
+
+def split_target(raw) -> tuple[str, str]:
+    """Адресат чата и темы из одной строки: «Клуб / ПРОГРЕСС», «Клуб › ПРОГРЕСС» (название темы), «-100123#5» или «Клуб#5»
+    (id темы). Возвращает (чат, тема); темы нет: пустая строка. Разделитель «/» только с пробелами вокруг, чтобы не резать
+    названия вроде «A/B»."""
+    text = str(raw or "").strip()
+    for sep in (" › ", " / "):
+        if sep in text:
+            chat, _, topic = text.rpartition(sep)
+            return chat.strip(), topic.strip()
+    chat, sep, topic = text.rpartition("#")
+    if sep and topic.strip().isdigit() and chat.strip():
+        return chat.strip(), topic.strip()
+    return text, ""
+
+
 class KnownChats:
     """Чаты, из которых ей уже писали (входящие бота и её аккаунта): в такие можно отвечать без вопроса. Хранятся только
     ключи для сопоставления (id чата, название, @имя, имя собеседника в нижнем регистре), не тексты; файл tg_known.json."""
@@ -189,7 +220,7 @@ class Dialogs:
     чтобы инструмент inbox показывал ей её же активность вместо жёстких лимитов. Хранятся только числа и id, не тексты."""
 
     FILE = "tg_dialogs.json"
-    MAX_CHATS = 200
+    MAX_CHATS = 400
     KEEP_S = 2 * 86400                   # сколько помнить её сообщения (нужны последний час и сутки)
     SENT_MAX = 300
 
@@ -203,7 +234,7 @@ class Dialogs:
             chats = json.loads(self._file.read_text(encoding="utf-8")).get("chats", {})
         except Exception:
             return {}
-        return {k: v for k, v in chats.items() if isinstance(k, str) and isinstance(v, dict)}
+        return {k: v for k, v in chats.items() if valid_key(k) and isinstance(v, dict)}
 
     def _save(self, chats: dict) -> None:
         if len(chats) > self.MAX_CHATS:                                  # старейшие по последней активности уходят
@@ -217,39 +248,39 @@ class Dialogs:
         except OSError:
             pass
 
-    def note_out(self, chat_id) -> None:
-        """Она написала в чат (ответ, сообщение, файл)."""
+    def note_out(self, chat_id, topic=None) -> None:
+        """Она написала в чат (ответ, сообщение, файл); в форуме запись ведётся по (чат, тема)."""
         if chat_id is None:
             return
         now = self._clock()
         with self._lock:
             chats = self._load()
-            rec = chats.setdefault(str(chat_id), {})
+            rec = chats.setdefault(chat_key(chat_id, topic), {})
             sent = [t for t in rec.get("sent", []) if now - t < self.KEEP_S]
             sent.append(now)
             rec["sent"] = sent[-self.SENT_MAX:]
             rec["reply_ts"] = now
             self._save(chats)
 
-    def note_in(self, chat_id, sender_id=None, addressed: bool = False) -> None:
+    def note_in(self, chat_id, sender_id=None, addressed: bool = False, topic=None) -> None:
         """Ей написали в чат; addressed - обращение к ней (в личке всегда): этот человек становится её собеседником."""
         with self._lock:
             chats = self._load()
-            rec = chats.setdefault(str(chat_id), {})
+            rec = chats.setdefault(chat_key(chat_id, topic), {})
             rec["in_ts"] = self._clock()
             if addressed and sender_id is not None:
                 rec["peer"] = sender_id
             self._save(chats)
 
-    def in_dialog(self, chat_id, sender_id, window_s: float) -> bool:
-        """Она недавно (не позже window_s назад) отвечала в этом чате, а sender_id тот, с кем она говорила."""
-        rec = self._load().get(str(chat_id)) or {}
+    def in_dialog(self, chat_id, sender_id, window_s: float, topic=None) -> bool:
+        """Она недавно (не позже window_s назад) отвечала в этом чате (в форуме: в этой теме), а sender_id тот, с кем она говорила."""
+        rec = self._load().get(chat_key(chat_id, topic)) or {}
         return bool(window_s > 0 and sender_id is not None and rec.get("peer") == sender_id
                     and self._clock() - float(rec.get("reply_ts") or 0.0) <= window_s)
 
-    def activity(self, chat_id) -> dict:
-        """{"hour": сколько она написала за час, "day": за сутки, "last_out": ts или 0, "last_in": ts или 0}."""
-        rec = self._load().get(str(chat_id)) or {}
+    def activity(self, chat_id, topic=None) -> dict:
+        """{"hour": сколько она написала за час, "day": за сутки, "last_out": ts или 0, "last_in": ts или 0}; для темы форума её."""
+        rec = self._load().get(chat_key(chat_id, topic)) or {}
         now = self._clock()
         sent = [t for t in rec.get("sent", []) if isinstance(t, (int, float))]
         return {"hour": sum(1 for t in sent if now - t < 3600), "day": sum(1 for t in sent if now - t < 86400),
@@ -269,8 +300,10 @@ def valid_mode(value, default: str = MODE_REPLY) -> str:
 
 class ChatModes:
     """Режим каждого чата её аккаунта: ignore (событий в ядро нет), read (события есть, писать нельзя), reply (как обычно).
-    Файл tg_chat_modes.json рядом с остальной памятью; хранятся только id чата и режим, не тексты. Запись атомарная (временный
-    файл и замена). Для чата без записи действует режим по умолчанию (настройка `default_chat_mode`, по умолчанию reply)."""
+    У супергруппы-форума режим бывает и у темы: ключ «<чат>#<тема>». Эффективный режим темы: режим темы, если задан, иначе режим
+    всей группы, иначе режим по умолчанию. Файл tg_chat_modes.json рядом с остальной памятью; хранятся только id и режим, не
+    тексты. Запись атомарная (временный файл и замена). Для чата без записи действует режим по умолчанию (настройка
+    `default_chat_mode`, по умолчанию reply)."""
 
     FILE = "tg_chat_modes.json"
 
@@ -283,7 +316,7 @@ class ChatModes:
             chats = json.loads(self._file.read_text(encoding="utf-8")).get("chats", {})
         except Exception:
             return {}
-        return {k: v for k, v in chats.items() if isinstance(k, str) and k.lstrip("-").isdigit() and v in CHAT_MODES}
+        return {k: v for k, v in chats.items() if valid_key(k) and v in CHAT_MODES}
 
     def _save(self, chats: dict[str, str]) -> bool:
         tmp = self._file.with_name(self._file.name + ".tmp")
@@ -295,20 +328,33 @@ class ChatModes:
             return False
         return True
 
-    def get(self, chat_id, default: str = MODE_REPLY) -> str:
-        return self._load().get(str(chat_id)) or valid_mode(default)
+    def get(self, chat_id, default: str = MODE_REPLY, topic=None) -> str:
+        """Эффективный режим: темы (если topic задан), затем всего чата, затем default."""
+        chats = self._load()
+        return (topic and chats.get(chat_key(chat_id, topic))) or chats.get(str(chat_id)) or valid_mode(default)
 
-    def explicit(self, chat_id) -> str | None:
-        """Режим, который для чата выбрали явно; None, если чат на значении по умолчанию."""
-        return self._load().get(str(chat_id))
+    def explicit(self, chat_id, topic=None) -> str | None:
+        """Режим, который для чата (или темы) выбрали явно; None, если на значении по умолчанию (у темы: «как в группе»)."""
+        return self._load().get(chat_key(chat_id, topic))
 
-    def set(self, chat_id, mode: str) -> bool:
-        if mode not in CHAT_MODES:
+    def set(self, chat_id, mode: str | None, topic=None) -> bool:
+        """Задать режим чата или темы. mode=None у темы: вернуть «как в группе» (запись темы удаляется)."""
+        if mode is None and not topic:
+            raise ValueError("режим чата: одно из " + str(list(CHAT_MODES)))
+        if mode is not None and mode not in CHAT_MODES:
             raise ValueError(f"режим чата: одно из {list(CHAT_MODES)}")
         with self._lock:
             chats = self._load()
-            chats[str(chat_id)] = mode
+            if mode is None:
+                chats.pop(chat_key(chat_id, topic), None)
+            else:
+                chats[chat_key(chat_id, topic)] = mode
             return self._save(chats)
+
+    def topics(self, chat_id) -> dict[int, str]:
+        """Явные режимы тем чата: {id темы: режим}."""
+        prefix = f"{chat_id}#"
+        return {int(k[len(prefix):]): v for k, v in self._load().items() if k.startswith(prefix)}
 
     def all(self) -> dict[str, str]:
         return self._load()

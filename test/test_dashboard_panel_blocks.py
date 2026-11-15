@@ -83,6 +83,48 @@ def test_text_stays_escaped_in_every_new_block():
     assert "<script>" not in html and "&lt;script&gt;" in html and "&lt;i&gt;t&lt;/i&gt;" in html
 
 
+@needs_node
+def test_cards_render_avatar_letter_badge_select_and_nested_children():
+    card = {"title": "Клуб <b>x</b>", "subtitle": "Вы: привет", "badge": "3", "tag": "темы: 2", "avatar": "av_m1_2.jpg",
+            "action": "open_chat", "args": {"chat": -1}, "expanded": True, "selected": True,
+            "select": {"options": [{"value": "ignore", "label": "Игнорировать"}, {"value": "read", "label": "Читать"}],
+                       "value": "read", "action": "set_mode", "args": {"chat": -1}, "arg": "mode"},
+            "children": [{"title": "ПРОГРЕСС", "color": "#A0B0C0", "icon": "#", "action": "open_chat",
+                          "args": {"chat": -1, "topic": 5}, "badge": "1"}]}
+    plain = {"title": "маша", "color": "red\" onmouseover=\"x"}                 # нет аватарки, цвет не по шаблону
+    html = render([{"type": "cards", "items": [card, plain]}])["html"]
+    assert "/api/artifact?module=telegram&amp;file=av_m1_2.jpg" in html and "Клуб &lt;b&gt;x&lt;/b&gt;" in html and "<b>x" not in html
+    assert 'data-panel-action="open_chat"' in html and 'data-args="{&quot;chat&quot;:-1}"' in html and "pn-sel" in html
+    assert 'data-panel-select="set_mode"' in html and 'data-arg="mode"' in html and '<option value="read" selected>' in html
+    assert html.count("<option") == 2 and "pn-nested" in html and "ПРОГРЕСС" in html and "background:#A0B0C0" in html
+    assert ">М<" in html and "onmouseover" not in html and "background:hsl(" in html                 # буква-заглушка, цвет только по шаблону
+    assert "темы: 2" in html and ">3<" in html and "▾" in html
+
+
+@needs_node
+def test_collapsed_card_hides_children_and_split_has_two_columns_with_own_paths():
+    cards = {"type": "cards", "items": [{"title": "Форум", "expanded": False, "action": "toggle_topics",
+                                          "children": [{"title": "Тема"}]}]}
+    html = render([{"type": "split", "left": [cards], "right": [{"type": "text", "text": "справа <i>"}]}])["html"]
+    assert "Тема" not in html and "▸" in html and "pn-left" in html and "pn-right" in html and "справа &lt;i&gt;" in html
+    assert html.index("pn-left") < html.index("Форум") < html.index("pn-right") < html.index("справа")
+    assert 'data-keep-scroll="telegram:0"' in html
+
+
+@needs_node
+def test_input_draft_key_depends_on_args_so_drafts_do_not_leak_between_chats():
+    def key(chat):
+        html = render([{"type": "input", "action": "send", "label": "x", "args": {"chat": chat}}])["html"]
+        return re.search(r'data-draft-key="([^"]*)"', html).group(1)
+    assert key(1) != key(2) and key(1) == key(1)
+
+
+def test_card_controls_are_wired_in_the_page_script():
+    """Список режима отправляет действие без открытия карточки; сохраняется позиция прокрутки левой колонки."""
+    assert "data-panel-select" in HTML and "if (e.target.closest('[data-panel-select]')) return;" in HTML
+    assert "el.blur()" in HTML and "data-keep-scroll" in HTML and "container-type: inline-size" in HTML
+
+
 def test_settings_of_every_workspace_are_collapsible_and_closed_by_default():
     """Настройки окружений: и в карточке «Обзора», и на странице окружения это сворачиваемая секция, по умолчанию свёрнутая."""
     assert "function collapsible(" in HTML and "gits.collapsed" in HTML

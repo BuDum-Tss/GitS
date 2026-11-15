@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 import httpx
-from common import scrub
+from common import scrub, split_target
 from gits_sdk import WorkspaceClient, ToolError
 from privacy import Privacy
 from telegram_channel import TelegramChannel
@@ -344,6 +344,7 @@ class TelegramModule:
         reason = self.privacy.reason(text) if text else None
         if reason:
             return reason
+        who = split_target(who)[0]                                  # «Группа / Тема»: известность считается по группе
         known = await asyncio.to_thread(lambda: self.channel.known.has(who) or self.user.known.has(who))
         if not known:
             return f"написать с её личного аккаунта в чат «{who[:60]}», из которого ей ещё не писали"
@@ -443,8 +444,9 @@ class TelegramModule:
         return "опубликован пост" + (f": «{text}»" if text else f" (файлов: {len(files)})")
 
     async def deliver(self, body: dict) -> dict:
-        """Доставить ответ ядра в Telegram. target: bot:<chat_id> - от бота, user:<chat_id> - с её аккаунта, owner - личка
-        владельца от бота (вопросы ядра, когда пользователь отошёл)."""
+        """Доставить ответ ядра в Telegram. target: bot:<chat_id> - от бота, user:<chat_id> - с её аккаунта (в теме форума
+        user:<chat_id>#<id темы>: ответ уходит в ту же тему, режим берётся у темы), owner - личка владельца от бота (вопросы
+        ядра, когда пользователь отошёл)."""
         target, text = body.get("target"), body.get("text")
         if not isinstance(target, str) or not isinstance(text, str) or not text.strip():
             raise ToolError("deliver: нужны target и непустой text", code="bad_request")
@@ -454,9 +456,11 @@ class TelegramModule:
                 raise ToolError("Telegram-id владельца не задан", code="unavailable")        # TG-20
             target = f"bot:{owner}"
         kind, _, ident = target.partition(":")
-        if kind not in ("bot", "user") or not ident.lstrip("-").isdigit():
+        ident, _, topic_raw = ident.partition("#")
+        if kind not in ("bot", "user") or not ident.lstrip("-").isdigit() or (topic_raw and not (
+                topic_raw.isdigit() and int(topic_raw) > 0 and kind == "user")):
             raise ToolError(f"deliver: неизвестный адресат «{target}»", code="bad_request")
-        chat_id = int(ident)
+        chat_id, topic = int(ident), (int(topic_raw) if topic_raw else None)
         ogg = await self._voice_bytes(body.get("voice_path"))
         try:
             if kind == "bot":
@@ -465,7 +469,7 @@ class TelegramModule:
                 ok, why = self.user.state()
                 if not ok:
                     raise ToolError(why, code="unavailable")
-                await self.user.reply(chat_id, text, ogg)
+                await self.user.reply(chat_id, text, ogg, topic)
         except ToolError:
             raise
         except ChatModeError as e:

@@ -23,11 +23,12 @@ class Msg:
 
 
 class Dlg:
-    def __init__(self, ident, name, kind="user", unread=0, last=""):
+    def __init__(self, ident, name, kind="user", unread=0, last="", forum=False, photo=None, out=False):
         self.id, self.name, self.unread_count = ident, name, unread
         self.is_user, self.is_group, self.is_channel = kind == "user", kind in ("group", "super"), kind in ("channel", "super")
-        self.entity = SimpleNamespace(username=None, bot=False, megagroup=kind == "super")
-        self.message = Msg(1, last) if last else None
+        self.entity = SimpleNamespace(username=None, bot=False, megagroup=kind == "super", forum=forum,
+                                      photo=SimpleNamespace(photo_id=photo) if photo else None)
+        self.message = Msg(1, last, out=out) if last else None
         self.dialog = SimpleNamespace(read_outbox_max_id=10)
 
 
@@ -61,8 +62,24 @@ def install(rig, dialogs, messages=None):
     rig.mod.user._me = SimpleNamespace(first_name="Глэдис", username="glados")
 
 
+def flat(blocks):
+    """Блоки панели с содержимым колонок split (сначала левая, потом правая)."""
+    out = []
+    for b in blocks:
+        if b["type"] == "split":
+            out += flat(b["left"]) + flat(b["right"])
+        else:
+            out.append(b)
+    return out
+
+
 def find(blocks, kind, **kw):
-    return [b for b in blocks if b["type"] == kind and all(b.get(k) == v for k, v in kw.items())]
+    return [b for b in flat(blocks) if b["type"] == kind and all(b.get(k) == v for k, v in kw.items())]
+
+
+def cards(blocks):
+    """Карточки диалогов (первый блок cards левой колонки) по названию."""
+    return {c["title"]: c for c in find(blocks, "cards")[0]["items"]}
 
 
 async def blocks_of(rig):
@@ -126,22 +143,24 @@ async def test_password_action_goes_straight_to_the_login_and_is_not_echoed(tmp_
         assert "СЕКРЕТ" not in json.dumps(await blocks_of(rig), ensure_ascii=False)
 
 
-async def test_dialog_list_shows_every_kind_with_modes_and_row_actions(tmp_path, monkeypatch):
+async def test_dialog_list_is_cards_with_mode_select_and_two_columns(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, telethon=True, module_settings={"owner_tg_id": OWNER,
                                                                          "default_chat_mode": "read"}) as rig:
-        install(rig, [Dlg(5, "Маша", "user", 2, "привет"), Dlg(OWNER, "Аня", "user"), Dlg(-1, "Соседи", "group", 0, "ау"),
+        install(rig, [Dlg(5, "Маша", "user", 2, "привет"), Dlg(OWNER, "Аня", "user"), Dlg(-1, "Соседи", "group", 0, "ау", out=True),
                       Dlg(-1002, "Клуб", "super"), Dlg(-1003, "Новости", "channel", 9)])
         rig.mod.user.modes.set(-1, "ignore")
         blocks = await blocks_of(rig)
-    table = find(blocks, "table")[0]
-    rows = {r["cells"][0]: r for r in table["rows"]}
-    assert set(rows) == {"Маша", "Аня", "Соседи", "Клуб", "Новости"}
-    assert [rows[n]["cells"][1] for n in ("Маша", "Соседи", "Клуб", "Новости")] == ["личный", "группа", "супергруппа", "канал"]
-    assert rows["Маша"]["cells"][2] == 2 and "привет" in rows["Маша"]["cells"][3]
-    assert rows["Маша"]["cells"][4] == "чтение (по умолчанию)" and rows["Соседи"]["cells"][4] == "игнор"
-    assert rows["Аня"]["cells"][4].startswith("ответы")                              # личка владельца всегда reply
-    assert [a["id"] for a in rows["Аня"]["actions"]] == ["open_chat"]                 # режим владельца не переключается
-    assert [a["args"].get("mode") for a in rows["Соседи"]["actions"]] == [None, "read", "reply"]
+    split = [b for b in blocks if b["type"] == "split"][0]
+    assert split["left"] and split["right"][0]["type"] == "text"                       # чат не открыт: подсказка справа
+    by = cards(blocks)
+    assert set(by) == {"Маша", "Аня", "Соседи", "Клуб", "Новости"}
+    assert by["Маша"]["badge"] == "2" and by["Маша"]["subtitle"] == "привет" and by["Маша"]["action"] == "open_chat"
+    assert by["Маша"]["args"] == {"chat": 5} and by["Маша"]["select"]["value"] == "read"       # по умолчанию «чтение»
+    assert [o["value"] for o in by["Маша"]["select"]["options"]] == ["ignore", "read", "reply"]
+    assert by["Маша"]["select"]["action"] == "set_mode" and by["Маша"]["select"]["arg"] == "mode"
+    assert by["Соседи"]["subtitle"] == "Вы: ау" and by["Соседи"]["select"]["value"] == "ignore" and by["Соседи"]["muted"] is True
+    assert "select" not in by["Аня"] and by["Аня"]["tag"] == "владелец"                         # режим владельца не переключается
+    assert by["Новости"]["tag"] == "канал" and "children" not in by["Клуб"]
 
 
 async def test_set_mode_persists_and_rejects_owner_and_bad_mode(tmp_path, monkeypatch):
@@ -167,11 +186,11 @@ async def test_open_chat_history_reply_send_delete_mark_read(tmp_path, monkeypat
         assert table["rows"][2]["cells"][3].startswith("↩#9 ") and table["rows"][2]["cells"][4] == ""
         assert [a["id"] for a in table["rows"][0]["actions"]] == ["reply_to"]
         assert [a["id"] for a in table["rows"][1]["actions"]] == ["reply_to", "delete_message"]   # удалять только своё
-        assert find(blocks, "input")[0]["label"] == "Написать от лица агента"
-        modes = [b for b in find(blocks, "buttons") if b["items"][0]["action"] == "set_mode"][0]["items"]
-        assert [i["style"] for i in modes] == ["default", "default", "primary"]
+        assert find(blocks, "input")[-1]["label"] == "Написать от лица агента"
+        head = find(blocks, "cards")[-1]["items"][0]                                       # шапка чата: название и режим
+        assert head["title"] == "Маша" and head["select"]["value"] == "reply" and head["select"]["args"] == {"chat": 5}
         assert (await act(rig, "reply_to", {"chat": 5, "id": 8}))["ok"] is True
-        assert "ответом на #8" in find(await blocks_of(rig), "input")[0]["label"]
+        assert "ответом на #8" in find(await blocks_of(rig), "input")[-1]["label"]
         assert (await act(rig, "send_message", {"chat": 5, "value": "  привет!  "}))["ok"] is True
         assert rig.tl.sent[-1] == (("chat", 5), "привет!") and rig.mod.panel.reply_to is None
         assert rig.mod.user.dialogs.activity(5)["hour"] == 1                             # попало в её активность как её сообщение
@@ -180,7 +199,7 @@ async def test_open_chat_history_reply_send_delete_mark_read(tmp_path, monkeypat
         assert (await act(rig, "delete_message", {"chat": 5, "id": 8}))["ok"] is False and rig.tl.deleted == [[9]]
         assert (await act(rig, "mark_read", {"chat": 5}))["ok"] is True and rig.tl.reads == [("chat", 5)]
         assert (await act(rig, "close_chat"))["ok"] is True
-        assert find(await blocks_of(rig), "table")[0]["columns"][0] == "Чат"
+        assert find(await blocks_of(rig), "table") == [] and find(await blocks_of(rig), "cards")[0]["items"][0]["title"] == "Маша"
 
 
 async def test_owner_sends_from_panel_in_read_and_ignore_but_label_says_so(tmp_path, monkeypatch):
@@ -188,7 +207,7 @@ async def test_owner_sends_from_panel_in_read_and_ignore_but_label_says_so(tmp_p
         install(rig, [Dlg(-1, "Соседи", "group")], [Msg(1, "x")])
         rig.mod.user.modes.set(-1, "read")
         await act(rig, "open_chat", {"chat": -1})
-        assert "от имени владельца (режим без ответов)" in find(await blocks_of(rig), "input")[0]["label"]
+        assert "от имени владельца (режим без ответов)" in find(await blocks_of(rig), "input")[-1]["label"]
         assert (await act(rig, "send_message", {"chat": -1, "value": "от владельца"}))["ok"] is True
         rig.mod.user.modes.set(-1, "ignore")
         assert (await act(rig, "send_message", {"chat": -1, "value": "и в игноре"}))["ok"] is True
@@ -199,12 +218,12 @@ async def test_paging_search_history_more_and_logout_double_press(tmp_path, monk
     async with Rig(tmp_path, monkeypatch, telethon=True) as rig:
         install(rig, [Dlg(i, f"Чат {i}", "user") for i in range(1, 121)], [Msg(i, "m") for i in range(1, 60)])
         blocks = await blocks_of(rig)
-        assert len(find(blocks, "table")[0]["rows"]) == 50
+        assert len(find(blocks, "cards")[0]["items"]) == 50
         assert any(b["items"][0]["action"] == "more_chats" for b in find(blocks, "buttons"))
         await act(rig, "more_chats")
-        assert len(find(await blocks_of(rig), "table")[0]["rows"]) == 100
+        assert len(find(await blocks_of(rig), "cards")[0]["items"]) == 50                # блок cards держит не больше 50
         await act(rig, "filter_chats", {"value": "Чат 11"})
-        assert {r["cells"][0] for r in find(await blocks_of(rig), "table")[0]["rows"]} >= {"Чат 11", "Чат 110"}
+        assert set(cards(await blocks_of(rig))) >= {"Чат 11", "Чат 110"}
         await act(rig, "filter_chats", {"clear": True})
         await act(rig, "open_chat", {"chat": 1})
         assert find(await blocks_of(rig), "buttons")[-1]["items"][0]["action"] == "history_more"
@@ -258,7 +277,7 @@ async def test_panel_reaches_core_through_run_state_and_actions_work_over_the_bu
         try:
             await rig.core.wait_for(lambda: rig.core.panels.get("telegram"))
             await rig.core.panel_action("open_chat", {"chat": 5})
-            await rig.core.wait_for(lambda: any(b.get("type") == "input" for b in rig.core.panels["telegram"]["blocks"]))
+            await rig.core.wait_for(lambda: any(b.get("action") == "send_message" for b in flat(rig.core.panels["telegram"]["blocks"])))
         finally:
             task.cancel()
         assert rig.core.violations == []

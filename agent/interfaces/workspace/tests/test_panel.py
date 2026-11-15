@@ -160,6 +160,12 @@ def blocks_ok():
         {"type": "input", "label": "Пароль", "secret": True, "action": "approve_plan"},
         {"type": "image", "file": "qr-1a2b.png", "alt": "QR"},
         {"type": "text", "text": "сворачиваемый", "title": "Секция", "collapsed": True},
+        {"type": "cards", "items": [{"title": "Клуб", "subtitle": "Вы: привет", "badge": "3", "tag": "темы: 2", "avatar": "av_m100_1.jpg", "color": "#A0B0C0",
+         "action": "open_studio", "args": {"chat": 1}, "selected": False, "muted": False, "expanded": True,
+         "select": {"options": [{"value": "ignore", "label": "Игнорировать"}, {"value": "read", "label": "Читать"}],
+                    "value": "read", "action": "approve_plan", "args": {"chat": 1}, "arg": "mode", "hint": "режим"},
+         "children": [{"title": "ПРОГРЕСС", "icon": "#", "action": "open_studio", "args": {"chat": 1, "topic": 5}}]}]},
+        {"type": "split", "left": [{"type": "cards", "items": []}], "right": [{"type": "text", "text": "справа"}]},
     ]
 
 
@@ -211,6 +217,27 @@ BAD_BLOCKS = [
     ({"type": "image", "file": "a.png", "artifact": {"job": "j-1a2b3c4d", "name": "a.png"}}, "ровно одно"),
     ({"type": "image", "file": "../a.png"}, "file"),
     ({"type": "image", "file": "a.exe"}, "file"),
+    ({"type": "cards"}, "items"),
+    ({"type": "cards", "items": [{"title": "x"}] * (P.PANEL_CARDS_MAX + 1)}, "items"),
+    ({"type": "cards", "items": [{"subtitle": "без названия"}]}, "title"),
+    ({"type": "cards", "items": [{"title": "x", "avatar": "../a.jpg"}]}, "avatar"),
+    ({"type": "cards", "items": [{"title": "x", "avatar": "a.exe"}]}, "avatar"),
+    ({"type": "cards", "items": [{"title": "x", "color": "red"}]}, "color"),
+    ({"type": "cards", "items": [{"title": "x", "action": "drop_db"}]}, "не объявлено"),
+    ({"type": "cards", "items": [{"title": "x", "args": {"a": 1}}]}, "args"),
+    ({"type": "cards", "items": [{"title": "x", "selected": "да"}]}, "selected"),
+    ({"type": "cards", "items": [{"title": "x", "children": [{"title": "y", "children": []}]}]}, "не глубже"),
+    ({"type": "cards", "items": [{"title": "x", "select": {"options": [], "action": "approve_plan"}}]}, "options"),
+    ({"type": "cards", "items": [{"title": "x", "select": {"options": [{"value": "a", "label": "A"}], "value": "b",
+                                                            "action": "approve_plan"}}]}, "value"),
+    ({"type": "cards", "items": [{"title": "x", "select": {"options": [{"value": "a", "label": "A"}],
+                                                            "action": "drop_db"}}]}, "не объявлено"),
+    ({"type": "cards", "items": [{"title": "x", "select": {"options": [{"value": "a", "label": "A"}],
+                                                            "action": "approve_plan", "arg": "Bad Name"}}]}, "arg"),
+    ({"type": "split", "left": [], "right": "не список"}, "right"),
+    ({"type": "split", "left": [{"type": "text"}], "right": []}, "left"),
+    ({"type": "split", "left": [], "right": [{"type": "split", "left": [], "right": [
+        {"type": "split", "left": [], "right": []}]}]}, "глубже"),
 ]
 
 

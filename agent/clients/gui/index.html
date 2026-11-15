@@ -22,6 +22,31 @@
     body.dragging-split { cursor: col-resize; user-select: none; }
   }
   .bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* блоки панели окружений: split (две колонки) и cards (карточки диалогов) */
+  .pn-split-wrap { container-type: inline-size; }
+  .pn-split { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+  .pn-col { min-width: 0; }
+  @container (min-width: 640px) {
+    .pn-split { grid-template-columns: minmax(250px, 2fr) minmax(0, 3fr); align-items: start; }
+    .pn-left { max-height: 78vh; overflow-y: auto; padding-right: .25rem; }
+  }
+  .pn-cards { display: flex; flex-direction: column; gap: .25rem; }
+  .pn-card { display: flex; align-items: center; gap: .6rem; padding: .4rem .5rem; border-radius: .6rem; border: 1px solid transparent;
+    background: oklch(var(--b1)); }
+  .pn-card[data-panel-action] { cursor: pointer; }
+  .pn-card[data-panel-action]:hover { background: oklch(var(--b2)); }
+  .pn-card.pn-sel { border-color: oklch(var(--p)); background: oklch(var(--b2)); }
+  .pn-card.pn-muted .pn-main { opacity: .55; }
+  .pn-nested { margin-left: 1.4rem; padding-left: .5rem; border-left: 2px solid oklch(var(--b3)); display: flex; flex-direction: column; gap: .2rem; }
+  .pn-nested .pn-card { padding: .25rem .4rem; }
+  .pn-nested .pn-av { width: 1.75rem; height: 1.75rem; font-size: .75rem; }
+  .pn-av { flex: 0 0 auto; width: 2.5rem; height: 2.5rem; border-radius: 9999px; object-fit: cover; display: inline-flex; align-items: center;
+    justify-content: center; color: #fff; font-weight: 600; background: oklch(var(--b3)); }
+  .pn-main { flex: 1 1 auto; min-width: 0; }
+  .pn-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pn-sub { font-size: .75rem; opacity: .65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pn-side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: .2rem; max-width: 45%; }
+  .pn-side select { max-width: 100%; }
   .resource-tree, .resource-tree ul { list-style: none; margin: 0; padding: 0; }
   .resource-tree ul { margin-left: .65rem; padding-left: .65rem; border-left: 1px solid oklch(var(--b3)); }
   .resource-tree summary, .resource-tree a { display: block; padding: .2rem .4rem; border-radius: .25rem; overflow-wrap: anywhere; }
@@ -1302,6 +1327,26 @@ function renderLinks(module, links, job) {
     : `<button class="btn btn-xs" data-panel-link="${esc(l.id)}" data-module="${esc(module)}"${job ? ` data-job="${esc(job)}"` : ''}>${esc(l.label)}</button>`).join(' ');
 }
 
+// Карточки (блок cards): цвет кружка-заглушки берётся из #RRGGBB карточки (только по шаблону) или считается из названия.
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+function avatarColor(title) {
+  let h = 0; for (const ch of String(title || '')) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return `hsl(${h % 360}, 45%, 48%)`;
+}
+function cardHtml(module, c, nested) {
+  const title = String(c.title || ''), letter = c.icon || (Array.from(title.trim())[0] || '?').toUpperCase();
+  const avatar = c.avatar
+    ? `<img class="pn-av" src="${esc(imageFileUrl(module, c.avatar))}" alt="" loading="lazy">`
+    : `<span class="pn-av" style="background:${HEX_COLOR.test(c.color || '') ? c.color : avatarColor(title)}" aria-hidden="true">${esc(letter)}</span>`;
+  const chevron = typeof c.expanded === 'boolean' ? `<span class="opacity-60 text-xs" aria-hidden="true">${c.expanded ? '▾' : '▸'}</span> ` : '';
+  const sel = c.select ? (s => `<select class="select select-bordered select-xs" data-panel-select="${esc(s.action)}" data-module="${esc(module)}" data-args="${esc(JSON.stringify(s.args || {}))}" data-arg="${esc(s.arg || 'value')}" title="${esc(s.hint || '')}">${(s.options || []).map(o => `<option value="${esc(o.value)}" ${o.value === s.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`)(c.select) : '';
+  const act = c.action ? ` data-panel-action="${esc(c.action)}" data-module="${esc(module)}" data-args="${esc(JSON.stringify(c.args || {}))}" role="button" tabindex="0"` : '';
+  const head = `<div class="pn-card ${c.selected ? 'pn-sel' : ''} ${c.muted ? 'pn-muted' : ''}"${act}>${avatar}<div class="pn-main"><div class="pn-title bubble-text" style="white-space:nowrap">${chevron}${esc(title)}${c.tag ? ` <span class="badge badge-ghost badge-xs">${esc(c.tag)}</span>` : ''}</div>${c.subtitle ? `<div class="pn-sub" style="white-space:nowrap">${esc(c.subtitle)}</div>` : ''}</div><div class="pn-side">${c.badge ? `<span class="badge badge-primary badge-sm">${esc(c.badge)}</span>` : ''}${sel}</div></div>`;
+  const kids = !nested && c.expanded !== false && (c.children || []).length
+    ? `<div class="pn-nested">${c.children.map(k => cardHtml(module, k, true)).join('')}</div>` : '';
+  return head + kids;
+}
+
 function actionButton(module, a, size, style) {
   return `<button class="btn ${size || ''} ${STYLE_CLS[style] || ''}" data-panel-action="${esc(a.id)}" data-module="${esc(module)}" data-args="${esc(JSON.stringify(a.args || {}))}">${esc(a.label)}</button>`;
 }
@@ -1340,12 +1385,16 @@ function panelBlock(module, b, p) {
     case 'image':
       return `<img class="rounded-box max-h-64 bg-base-200" src="${esc(b.file ? imageFileUrl(module, b.file) : artifactUrl(module, (b.artifact || {}).job, (b.artifact || {}).name))}" alt="${esc(b.alt || '')}" loading="lazy">`;
     case 'input': {
-      const key = `${module}:${p}`, secret = b.secret === true;
+      const key = `${module}:${p}:${JSON.stringify(b.args || {})}`, secret = b.secret === true;   // черновик у каждого чата и темы свой
       const field = b.multiline
         ? `<textarea class="textarea textarea-bordered textarea-sm w-full" rows="3" data-draft="${esc(key)}" placeholder="${esc(b.placeholder || '')}" autocomplete="off"></textarea>`
         : `<input class="input input-bordered input-sm w-full" type="${secret ? 'password' : 'text'}" data-draft="${esc(key)}" placeholder="${esc(b.placeholder || '')}" autocomplete="${secret ? 'new-password' : 'off'}">`;
       return `<form class="space-y-1" data-panel-input="${esc(b.action)}" data-module="${esc(module)}" data-draft-key="${esc(key)}" data-args="${esc(JSON.stringify(b.args || {}))}"${secret ? ' data-secret="1"' : ''}><label class="text-xs opacity-70 bubble-text">${esc(b.label)}</label><div class="flex gap-2 items-end">${field}<button type="submit" class="btn btn-sm btn-neutral shrink-0">${esc(b.submit || 'Отправить')}</button></div></form>`;
     }
+    case 'cards':
+      return `<div class="pn-cards">${(b.items || []).map(c => cardHtml(module, c, false)).join('')}</div>`;
+    case 'split':
+      return `<div class="pn-split-wrap"><div class="pn-split"><div class="pn-col pn-left" data-keep-scroll="${esc(module + ':' + p)}">${panelBlocks(module, b.left, `${p}.l`)}</div><div class="pn-col pn-right">${panelBlocks(module, b.right, `${p}.r`)}</div></div></div>`;
     case 'video':
       return `<video class="w-full rounded-box bg-black" controls preload="metadata" src="${esc(artifactUrl(module, (b.artifact || {}).job, (b.artifact || {}).name))}"></video>`;
     case 'log':
@@ -1413,7 +1462,12 @@ async function renderModPage(mods, jobs) {
   const events = await modEvents(m.id);
   const html = modPageHtml(m, data, jobs.filter(j => j.module === m.id), events);
   const typing = $('mod-page').contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
-  if (!typing && MODTAB.pageSig !== html) { MODTAB.pageSig = html; $('mod-page').innerHTML = html; restoreDrafts(); }
+  if (!typing && MODTAB.pageSig !== html) {
+    MODTAB.pageSig = html;
+    const scroll = {}; document.querySelectorAll('#mod-page [data-keep-scroll]').forEach(el => { scroll[el.dataset.keepScroll] = el.scrollTop; });
+    $('mod-page').innerHTML = html; restoreDrafts();
+    document.querySelectorAll('#mod-page [data-keep-scroll]').forEach(el => { if (scroll[el.dataset.keepScroll]) el.scrollTop = scroll[el.dataset.keepScroll]; });
+  }
 }
 
 async function loadModules() {
@@ -1480,7 +1534,21 @@ $('mod-page').addEventListener('submit', async e => {
   const r = await post(`/api/peers/${encodeURIComponent(form.dataset.module)}/panel/action`, body);
   await showPanelReply(form.dataset.module, r);
 });
+// Выпадающий список карточки (режим чата): выбранное значение уходит действием как args[arg]; клик по списку карточку не открывает
+$('mod-page').addEventListener('change', async e => {
+  const el = e.target.closest('[data-panel-select]'); if (!el) return;
+  let args = {}; try { args = JSON.parse(el.dataset.args || '{}'); } catch (_) { args = {}; }
+  args[el.dataset.arg || 'value'] = el.value;
+  el.blur();                                                // сфокусированный select останавливает перерисовку страницы
+  const r = await post(`/api/peers/${encodeURIComponent(el.dataset.module)}/panel/action`, {action_id: el.dataset.panelSelect, args});
+  await showPanelReply(el.dataset.module, r);
+});
+$('mod-page').addEventListener('keydown', e => {
+  const card = e.target.closest && e.target.closest('.pn-card[data-panel-action]');
+  if (card && card === e.target && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); card.click(); }
+});
 $('mod-page').addEventListener('click', async e => {
+  if (e.target.closest('[data-panel-select]')) return;
   const tab = e.target.closest('[data-panel-tab]');
   if (tab) { MODTAB.tabSel[tab.dataset.panelTab] = Number(tab.dataset.index) || 0; MODTAB.pageSig = ''; loadModules().catch(() => {}); return; }
   const act = e.target.closest('[data-panel-action]');

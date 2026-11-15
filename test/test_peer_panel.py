@@ -277,6 +277,27 @@ async def test_panel_set_accepts_new_blocks_and_rejects_bad_ones(tmp_path):
             assert core.modules.get("paneled").panel_blocks["blocks"] == good
 
 
+async def test_panel_set_accepts_cards_and_split_and_avatar_comes_from_a_second_serve_dir(tmp_path):
+    """Аватарки лежат в своём каталоге serve_dirs рядом с каталогом QR: image.file находит файл в любом из каталогов."""
+    qr, avatars = tmp_path / "qr", tmp_path / "avatars"
+    qr.mkdir()
+    avatars.mkdir()
+    (avatars / "av_m100_7.jpg").write_bytes(b"JPG")
+    blocks = [{"type": "split", "left": [{"type": "cards", "items": [
+        {"title": "Клуб", "avatar": "av_m100_7.jpg", "action": "approve", "args": {"chat": 1}}]}],
+        "right": [{"type": "text", "text": "x"}]}]
+    async with running_core(tmp_path / "core") as core:
+        async with connected(core, paneled(dict(PANEL, serve_dirs=[str(qr), str(avatars)]))) as raw:
+            await raw.send("panel.set", {"blocks": blocks})
+            await core.wait_for(lambda: core.modules.get("paneled").panel_blocks)
+            assert core.modules.get("paneled").panel_blocks["blocks"] == blocks
+            async with panel_http(core) as http:
+                resp = await http.get("/api/artifact", params={"module": "paneled", "file": "av_m100_7.jpg"})
+                assert resp.status == 200 and resp.headers["Content-Type"] == "image/jpeg" and await resp.read() == b"JPG"
+                resp = await http.get("/api/artifact", params={"module": "paneled", "file": "../avatars/av_m100_7.jpg"})
+                assert resp.status == 404
+
+
 async def test_image_file_is_served_only_from_serve_dirs(tmp_path):
     """Блок image с file: картинка лежит прямо в каталоге из serve_dirs; чужие расширения, пути и файлы вне каталога не отдаются."""
     shown = tmp_path / "shown"
@@ -471,8 +492,9 @@ def test_action_result_rules():
 
 def test_secret_actions_and_mask_helpers():
     blocks = [{"type": "input", "action": "a", "label": "x", "secret": True}, {"type": "input", "action": "b", "label": "x"},
-              {"type": "tabs", "tabs": [{"label": "t", "blocks": [{"type": "input", "action": "c", "label": "x", "secret": True}]}]}]
-    assert peer_panel.secret_actions(blocks) == {"a", "c"}
+              {"type": "tabs", "tabs": [{"label": "t", "blocks": [{"type": "input", "action": "c", "label": "x", "secret": True}]}]},
+              {"type": "split", "left": [], "right": [{"type": "input", "action": "d", "label": "x", "secret": True}]}]
+    assert peer_panel.secret_actions(blocks) == {"a", "c", "d"}              # и во вкладках, и в колонках split
     assert peer_panel.secret_actions(None) == set()
     assert peer_panel.mask_secret("пароль qwe тут", "qwe") == "пароль *** тут"
     assert peer_panel.mask_secret("без секрета", None) == "без секрета"
