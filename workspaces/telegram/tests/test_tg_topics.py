@@ -1,5 +1,6 @@
 """Темы супергрупп-форумов: режим у каждой темы, события и ответы по теме, панель с карточками и аватарками. Telethon подменён."""
 import datetime
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -45,6 +46,8 @@ class TopicTL(FakeTelethon):
 
     async def download_profile_photo(self, entity, file=None, download_big=False):
         self.downloads.append(file)
+        if getattr(self, "hang_photo", False):
+            await asyncio.sleep(3600)                      # как скачивание через недоступный CDN-сервер: ни ответа, ни ошибки
         if self.fail_photo:
             raise OSError("нет сети")
         with open(file, "wb") as f:
@@ -421,6 +424,23 @@ async def test_no_more_than_20_new_avatars_per_refresh(tmp_path, monkeypatch):
         assert len(tl.downloads) == 20 and sum(1 for c in first.values() if "avatar" in c) == 20
         second = cards(await blocks_of(rig))
         assert len(tl.downloads) == 40 and all("avatar" in c for c in second.values())
+
+
+async def test_hung_avatar_download_times_out_and_does_not_freeze_the_panel(tmp_path, monkeypatch):
+    import telegram_user
+    monkeypatch.setattr(telegram_user, "AVATAR_TIMEOUT_S", 0.05)
+    async with Rig(tmp_path, monkeypatch, telethon=True) as rig:
+        install(rig, [Dlg(i, f"Чат {i}", "user", photo=1000 + i) for i in range(1, 41)])
+        rig.net.tl.__class__ = TopicTL
+        tl = rig.net.tl
+        TopicTL.__init__(tl)
+        tl.hang_photo = True
+        for k in range(1, 4):                                                       # каждое обновление: одна зависшая попытка, не 20
+            first = cards(await asyncio.wait_for(blocks_of(rig), 5))
+            assert len(tl.downloads) == k and not any("avatar" in c for c in first.values())
+        await asyncio.wait_for(blocks_of(rig), 5)
+        assert len(tl.downloads) == 3                                               # три таймаута подряд: аватарки выключены
+        assert not list((rig.mem / "tg_avatars").glob("*.tmp"))
 
 
 def test_avatar_dir_is_declared_in_serve_dirs_next_to_the_qr_dir():

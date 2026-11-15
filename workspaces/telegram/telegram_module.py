@@ -32,6 +32,7 @@ logger = logging.getLogger("telegram.app")
 
 STATE_EVERY_S = 300.0            # TG-21: состояние при изменении и раз в 5 минут
 STATE_POLL_S = 5.0
+PANEL_BUILD_TIMEOUT_S = 25.0     # сборка панели (диалоги, история, аватарки) дольше этого прерывается, цикл идёт дальше
 VOICE_EXT = (".ogg", ".opus")
 
 # статус публикации в канал (`TelegramChannel.ready_for_posts`) и отказ фильтра -> (текст отказа, код ошибки MOD-9)
@@ -135,7 +136,7 @@ class TelegramModule:
                 if key != last_key or time.monotonic() - sent_at >= STATE_EVERY_S:
                     await self.client.state(summary, data)
                     last_key, sent_at = key, time.monotonic()
-                blocks = await self.panel_blocks()
+                blocks = await asyncio.wait_for(self.panel_blocks(), PANEL_BUILD_TIMEOUT_S)    # зависание не замораживает панель
                 pkey = json.dumps(blocks, ensure_ascii=False, sort_keys=True)
                 if pkey != self._panel_key and await self.client.panel.set(blocks):     # частоту держит PanelClient.set
                     self._panel_key = pkey

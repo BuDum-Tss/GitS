@@ -89,6 +89,8 @@ TOPICS_RETRY_S = 30.0
 TOPICS_LIMIT = 100                   # сколько тем форума читаем у Telegram за раз (панель показывает не больше 50)
 AVATAR_DIR = "tg_avatars"
 AVATAR_NEW_MAX = 20                  # новых аватарок за одно обновление панели (остальные придут со следующим)
+AVATAR_TIMEOUT_S = 6.0                # скачивание одной аватарки: Telegram может увести на CDN, до которого не дойти (VPN), и зависнуть
+AVATAR_TIMEOUTS_OFF = 3               # столько таймаутов подряд, и аватарки на AVATAR_RETRY_S отключаются (панель без них живёт)
 AVATAR_RETRY_S = 600.0               # не скачавшуюся (или не существующую) аватарку повторно просим не раньше
 
 
@@ -139,6 +141,7 @@ class TelegramUser:
         self._login: QrLogin | None = None
         self._topics: dict[int, tuple[float, dict[int, dict]]] = {}     # чат -> (когда прочитаны, {id темы: описание})
         self._avatar_fail: dict[str, float] = {}                         # имя файла аватарки -> когда не вышло скачать
+        self._avatar_timeouts, self._avatar_off_until = 0, 0.0           # подряд зависших скачиваний; до какого момента аватарки выключены
         self._inbox_file = self._dir / "tg_inbox.json"
         self._seen_file = self._dir / "tg_inbox_seen.json"
 
@@ -976,16 +979,19 @@ class TelegramUser:
         if path.is_file():
             return name
         now = time.monotonic()
-        if budget[0] <= 0 or now - self._avatar_fail.get(name, -AVATAR_RETRY_S) < AVATAR_RETRY_S:
+        if (budget[0] <= 0 or now < self._avatar_off_until
+                or now - self._avatar_fail.get(name, -AVATAR_RETRY_S) < AVATAR_RETRY_S):
             return None
         budget[0] -= 1
         tmp = path.with_suffix(".tmp")
         try:
             self.avatar_dir.mkdir(parents=True, exist_ok=True)
             client = await self._connect()
-            got = await client.download_profile_photo(entity, file=str(tmp), download_big=False)
+            got = await asyncio.wait_for(client.download_profile_photo(entity, file=str(tmp), download_big=False),
+                                         AVATAR_TIMEOUT_S)
             if not got or not tmp.is_file() or tmp.stat().st_size == 0:
                 raise OSError("нет фото")
+            self._avatar_timeouts = 0
             os.replace(tmp, path)
             for old in self.avatar_dir.glob(f"av_{str(chat_id).replace('-', 'm')}_*.jpg"):      # прежнее фото этого чата
                 if old.name != name:
@@ -994,6 +1000,13 @@ class TelegramUser:
             logger.debug("аватарка не скачана: %s", type(e).__name__)
             self._avatar_fail[name] = now
             tmp.unlink(missing_ok=True)
+            if isinstance(e, asyncio.TimeoutError):                   # зависло: в это обновление больше не пробуем
+                budget[0] = 0
+                self._avatar_timeouts += 1
+                if self._avatar_timeouts >= AVATAR_TIMEOUTS_OFF:
+                    self._avatar_off_until = now + AVATAR_RETRY_S
+                    self._avatar_timeouts = 0
+                    logger.warning("аватарки не скачиваются (таймаут), отключены на %d с", int(AVATAR_RETRY_S))
             return None
         return name
 
