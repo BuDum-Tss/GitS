@@ -8,7 +8,7 @@
   - общие настройки (стример, «не отвлекать», модель игрока и др.) приходят в `welcome` и темой `settings` и пишутся в
     `settings.json` модуля;
   - события игры уходят в ядро как события модуля `rimworld.*` (RW-9): ядро решает, важны ли они сейчас;
-  - итог забега: при настройке `telegram_after_run` модуль сам просит ядро вызвать `telegram.post` (RW-12).
+  - итог забега: модуль сам просит ядро вызвать `telegram.post` с after_run (RW-12); включён ли пост-итог, решает настройка окружения Telegram.
 """
 import asyncio
 import logging
@@ -199,7 +199,7 @@ class CoreLink:
 
     def _after_run(self, data: dict) -> None:
         prompt = str(data.get("prompt") or "").strip()
-        if not prompt or not self.online or not self.client.settings.get("telegram_after_run"):
+        if not prompt or not self.online:
             return
         task = asyncio.get_running_loop().create_task(self._post_run_summary(prompt))
         self._background.add(task)
@@ -207,9 +207,9 @@ class CoreLink:
 
     async def _post_run_summary(self, prompt: str) -> bool:
         """Попросить ядро вызвать telegram.post с темой из итога забега (публикует модуль Telegram, разрешения и текст
-        поста его). Сбой только в журнал: забегу он не мешает."""
+        поста его; включён ли пост-итог, решает настройка Telegram `after_run`). Сбой только в журнал: забегу он не мешает."""
         try:
-            await self.client.request("core.tool.call", {"tool": "telegram.post", "args": {"topic": prompt}},
+            await self.client.request("core.tool.call", {"tool": "telegram.post", "args": {"topic": prompt, "after_run": True}},
                                       timeout=POST_TIMEOUT_S)
             return True
         except (ToolError, asyncio.TimeoutError) as e:

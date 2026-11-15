@@ -22,7 +22,7 @@ from gits_sdk.resources import shared_catalog
 
 # настройки, которые модули меняют инструментом core.set_setting (TG-13): белый список, остальное только человек.
 STEP_CHARS = 120                              # длина шага плана, который агент задаёт сам
-MODULE_SETTINGS = ("telegram", "telegram_after_run", "telegram_voice", "telegram_confirm", "autoplay")
+MODULE_SETTINGS = ("autoplay",)       # настройки Telegram стали собственными настройками окружения Telegram (peers.telegram)
 
 
 def _tool(env, name, description, params, call, risk="auto", keywords=(), self_confirming=False,
@@ -92,7 +92,7 @@ def register(registry, companion, memory):
         extra = "\n".join([
             "## Инструменты и окружения сейчас", registry.describe(),
             f"\n## Настройки\nголос {'выкл' if cfg['voice_muted'] else 'вкл'}, зрение {'вкл' if cfg['vision'] else 'выкл'}, "
-            f"слух {'вкл' if cfg['hearing'] else 'выкл'}, Telegram-посты {'вкл' if cfg['telegram'] else 'выкл'}.",
+            f"слух {'вкл' if cfg['hearing'] else 'выкл'}.",
             "\n## Обещала или заявила действие, но в журнале его нет\n" + ("\n".join(f"- {c}" for c in claims) or "нет"),
         ])
 
@@ -608,14 +608,14 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
     ]
 
 
-def register_core_tools(registry, modules, attention=None, switch=None, workspaces=None):
-    """Инструменты ядра про задачи модулей (окружение core, всегда видны, ТЗ 02 раздел 11) и про внимание (ТЗ 03, ATT-24).
-    modules - PeerRegistry: jobs_all() и async cancel_job(module, job_id); attention - менеджер внимания (attention.py)."""
+def register_core_tools(registry, modules, attention=None, workspaces=None):
+    """Инструменты ядра про задачи окружений (окружение core, всегда видны, ТЗ 02 раздел 11) и про внимание (ТЗ 03, ATT-24).
+    modules - PeerRegistry (окружения и сервисы): jobs_all() и async cancel_job(module, job_id); attention - менеджер внимания (attention.py)."""
 
     async def jobs(a):
         rows = modules.jobs_all()
         if not rows:
-            return "задач у модулей сейчас нет"
+            return "задач у окружений сейчас нет"
         lines = []
         for j in rows:
             pct = f", {round(j['progress'] * 100)}%" if isinstance(j.get("progress"), (int, float)) else ""
@@ -639,11 +639,6 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
 
     async def job_cancel(a):
         return await modules.cancel_job(a["module"], a["job_id"])
-
-    async def set_character(a):
-        if switch is None:
-            raise ToolError("смена персонажа пока недоступна", code="unavailable")
-        return await switch(str(a["id"]))
 
     async def set_setting(a):
         key = a["key"]
@@ -728,8 +723,8 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
             repair_status, informative=True, keywords=("баг", "статус", "исправление"),
         ))
     registry.add(Environment(
-        id="core", title="Ядро: задачи модулей и внимание",
-        description="Долгие задачи модулей (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "
+        id="core", title="Ядро: задачи окружений и внимание",
+        description="Долгие задачи окружений (монтаж, рендер и т.п.): посмотреть список и отменить. Внимание: временные правила "
                     "«не отвлекай / выдели» и сводка накопившегося. Общие настройки Telegram для модулей.",
         tools=attention_tools + workspace_tools + repair_tools + [
             _tool("core", "resources", "Рабочие файлы персонажа, включая дизайн и готовые ролики монтажа. Доступно в любом окружении. "
@@ -737,7 +732,7 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
                   {"query": {"type": "string", "required": False, "description": "часть имени файла или папки"},
                    "offset": {"type": "integer", "required": False, "description": "позиция следующей страницы"}},
                   resources, informative=True, keywords=("ресурсы", "файлы", "ролик", "видео", "экспорт")),
-            _tool("core", "jobs", "Перечень задач всех модулей: модуль, название, состояние, стадия, прогресс. "
+            _tool("core", "jobs", "Перечень задач всех окружений: окружение, название, состояние, стадия, прогресс. "
                   "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",
                   {}, jobs, informative=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),
             _tool("core", "modules_status", "Состояние модулей: какие подключены, включены ли и что у каждого сейчас (игра, Telegram, "
@@ -750,17 +745,14 @@ def register_core_tools(registry, modules, attention=None, switch=None, workspac
                   {"module": {"type": "string", "required": False, "enum": _ModuleIds(modules), "description": "id модуля; без него все"},
                    "limit": {"type": "integer", "required": False, "description": "сколько событий, по умолчанию 15"}},
                   module_events, informative=True, keywords=("события", "что было", "что произошло", "что нового", "в игре", "колония")),
-            _tool("core", "set_setting", "Включить или выключить общую настройку для модулей: telegram (посты-мысли), "
-                  "telegram_after_run (пост-итог после забега), telegram_voice (посты голосом), telegram_confirm (спрашивать "
-                  "перед публикацией), autoplay (играть самой: рабочие циклы в среде игры; включай, когда пользователь просит начать стрим или играть сама, выключай, когда просит закончить).",
+            _tool("core", "set_setting", "Включить или выключить общую настройку ядра: "
+                  "autoplay (играть самой: рабочие циклы в среде игры; включай, когда пользователь просит начать стрим или играть сама, выключай, когда просит закончить).",
                   {"key": {"type": "string", "enum": list(MODULE_SETTINGS), "description": "какая настройка"},
                    "value": {"type": "boolean", "description": "true - включить, false - выключить"}},
                   set_setting, keywords=("настройка",)),
-            _tool("core", "set_character", "Сменить персонажа на другого из папки characters (id персонажа). Вместе с персонажем переключается его память и голос. Для просьб «смени персонажа», «переключись на ...».",
-                  {"id": {"type": "string", "description": "id персонажа из папки characters (список в состоянии дашборда)"}},
-                  set_character, risk="ask", keywords=("персонаж", "смени", "переключись", "переключи")),
-            _tool("core", "job_cancel", "Отменить задачу модуля (по модулю и номеру задачи из перечня задач).",
-                  {"module": {"type": "string", "description": "id модуля, например montage"},
+            _tool("core", "job_cancel", "Отменить задачу окружения (по окружению и номеру задачи из перечня задач). "
+                  "Спрашивать разрешения не нужно.",
+                  {"module": {"type": "string", "description": "id окружения, например montage"},
                    "job_id": {"type": "string", "description": "номер задачи вида j-xxxxxxxx"}},
-                  job_cancel, risk="ask", informative=True, keywords=("отмени", "останови", "задачу", "рендер")),
+                  job_cancel, risk="auto", informative=True, keywords=("отмени", "останови", "задачу", "рендер")),
         ]))

@@ -37,7 +37,6 @@ from services.spaces.manager import WorkspaceManager
 from services.attention import Attention, AttentionEventSink
 from services.spaces.link import WorkspaceLink
 from services.spaces.lease import LeaseAdapter
-from services.character.character_switch import CharacterSwitch
 from services.conversation.companion import Companion
 from services.conversation.conversation_io import ConversationIO
 from services.peers import requests as core_requests
@@ -237,7 +236,6 @@ def wire_modules(companion, registry, *, specs=None,
                                     only_core=lambda: bool(settings.load().get("only_core")))
     modules.supervisor = sup
     builtin.register_core_tools(registry, modules, attention,
-                                switch=lambda cid: layer.character_switch.tool(cid),   # ТЗ 05, CHR-7
                                 workspaces=workspaces)                                  # ТЗ 32: workspace.enter / exit / afk, workspace.status
 
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, focus=focus,
@@ -349,9 +347,6 @@ async def _run(config: dict):
     layer.requests.privacy_terms = lambda: core_requests.collect_privacy_terms(rel.people_terms(), note_texts())      # core.privacy_terms (TG-12)
     companion.world = ColonyState(Path(mem_dir) / "colony_state.json")        # состояние игры (колония): не память
     http_api.set_tasks(lambda: getattr(companion, "tasks", None))
-    layer.character_switch = CharacterSwitch(companion=companion, rel=rel, attention=layer.attention,
-                                             hub=layer.hub)
-    http_api.set_character(layer.character_switch)
     try:
         companion.memory_writer.loop = loop             # планы из рабочих потоков ставятся задачами в цикл ядра
     except AttributeError:

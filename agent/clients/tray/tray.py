@@ -186,35 +186,11 @@ def _is_volume(pct):
     return check
 
 
-def _switch_character(char_id: str):
-    """Смена персонажа из трея: запрос к API дашборда ядра (живое переключение памяти и речи, ТЗ 05, CHR-7)."""
-    def run(icon, item):
-        import json
-        import urllib.request
-        body = json.dumps({"id": char_id}).encode("utf-8")
-        req = urllib.request.Request(DASHBOARD_URL.rstrip("/") + "/api/character", data=body, method="POST",
-                                     headers={"Content-Type": "application/json"})
-        try:
-            urllib.request.urlopen(req, timeout=60).read()
-        except Exception:
-            pass
-    return run
-
-
-def _character_menu() -> pystray.Menu:
-    """Персонажи из папки resources: выбранный отмечен."""
-    from services.character import character
-    M, Menu = pystray.MenuItem, pystray.Menu
-    return Menu(*[M(cid, _switch_character(cid), checked=lambda it, c=cid: character.configured_id() == c, radio=True)
-                  for cid in character.list_ids()])
-
-
 def build_menu() -> pystray.Menu:
     M, Menu = pystray.MenuItem, pystray.Menu
     return Menu(
         M("Открыть дашборд", lambda i, it: webbrowser.open(DASHBOARD_URL), default=True),
         Menu.SEPARATOR,
-        M("Персонаж", _character_menu()),
         M("Не отвлекать", _toggle_quiet, checked=lambda it: settings.quiet_active()),
         M("Озвучка", lambda i, it: settings.update(voice_muted=not settings.load()["voice_muted"]),
           checked=lambda it: not settings.load()["voice_muted"]),
@@ -225,9 +201,6 @@ def build_menu() -> pystray.Menu:
         M("Слушать системный звук", _toggle("hearing"), checked=lambda it: settings.load()["hearing"]),
         M("Режим стримера (комментировать игру)", _toggle("streamer"), checked=lambda it: settings.load()["streamer"]),
         M("Микрофон: разговор голосом", _toggle("mic"), checked=lambda it: settings.load()["mic"]),
-        M("Публиковать мысли в Telegram", _toggle("telegram"), checked=lambda it: settings.load()["telegram"]),
-        M("Спрашивать подтверждение перед постом", _toggle("telegram_confirm"),
-          checked=lambda it: settings.load()["telegram_confirm"]),
         M("Смотреть на экран", _toggle("vision"), checked=lambda it: settings.load()["vision"]),
         M("Разговорчивость", Menu(
             M("Редко", _set("chattiness", "quiet"), checked=_is("chattiness", "quiet"), radio=True),

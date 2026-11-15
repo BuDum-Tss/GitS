@@ -79,19 +79,18 @@ async def test_event_names_sender_free_with_urgency_and_text(tmp_path):
             assert "sender" not in e                                                    # иначе TG-14 заведёт людей на колонистов
 
 
-async def test_run_ended_posts_to_telegram_through_core_when_enabled(tmp_path):
-    async with Rig(tmp_path, shared={"telegram_after_run": True}) as rig:
-        await rig.core.wait_for(lambda: rig.client.settings.get("telegram_after_run") is True)
+async def test_run_ended_posts_to_telegram_through_core(tmp_path):
+    async with Rig(tmp_path) as rig:
         await rig.link.event("run_ended", {"prompt": "Колония погибла. Напиши итог."}, text="Забег закончен.")
         await rig.core.wait_for(lambda: rig.tool_calls)
-        assert rig.tool_calls == [{"tool": "telegram.post", "args": {"topic": "Колония погибла. Напиши итог."}}]
+        assert rig.tool_calls == [{"tool": "telegram.post", "args": {"topic": "Колония погибла. Напиши итог.", "after_run": True}}]
         ended = [e for e in rig.core.events if e["kind"] == "rimworld.run_ended"]
         assert len(ended) == 1 and ended[0]["urgency_hint"] == 3
 
 
-async def test_run_ended_does_not_post_when_setting_is_off(tmp_path):
-    async with Rig(tmp_path, shared={"telegram_after_run": False}) as rig:
-        await rig.link.event("run_ended", {"prompt": "Итог."}, text="Забег закончен.")
+async def test_run_ended_without_prompt_does_not_post(tmp_path):
+    async with Rig(tmp_path) as rig:                         # включён ли пост-итог, решает Telegram: настройка after_run его окружения
+        await rig.link.event("run_ended", {}, text="Забег закончен.")
         await rig.core.wait_message("event")
         await asyncio.sleep(0.15)
         assert rig.tool_calls == []
@@ -102,11 +101,10 @@ async def test_failed_post_is_only_logged(tmp_path, monkeypatch):
     from gits_sdk import ToolError
     logged = []
     monkeypatch.setattr(events_log, "log", lambda kind, text="", **kw: logged.append((kind, text)))
-    async with Rig(tmp_path, shared={"telegram_after_run": True}) as rig:
+    async with Rig(tmp_path) as rig:
         @rig.core.on_request("core.tool.call")
         def refuse(body):
             raise ToolError("модуль Telegram не подключён", code="unavailable")
-        await rig.core.wait_for(lambda: rig.client.settings.get("telegram_after_run") is True)
         await rig.link.event("run_ended", {"prompt": "Итог."}, text="Забег закончен.")
         await rig.core.wait_for(lambda: logged)
     assert logged[0][0] == "telegram" and "не опубликован" in logged[0][1]

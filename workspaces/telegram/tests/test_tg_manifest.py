@@ -18,9 +18,11 @@ def test_manifest_is_valid_and_matches_the_spec():
     m = MANIFEST
     assert m["id"] == "telegram" and m["title"] == "Telegram" and m["capabilities"] == ["chat.channel"]
     assert m["subscribe"] == ["settings", "presence", "module", "character"] and m["state"] is True
-    assert m["shared_settings"] == ["telegram", "telegram_voice", "telegram_confirm", "quiet_until", "dnd"]
+    assert m["shared_settings"] == ["quiet_until", "dnd"]
     schema = m["settings_schema"]
     assert schema["owner_tg_id"]["default"] == 0
+    assert {k: (schema[k]["type"], schema[k]["default"]) for k in ("publish", "after_run", "voice", "confirm")} == {
+        k: ("boolean", False) for k in ("publish", "after_run", "voice", "confirm")}             # бывшие общие настройки ядра
     assert (schema["every_mins"]["default"], schema["every_mins"]["min"], schema["every_mins"]["max"]) == (180, 30, 1440)
     assert (schema["post_hours_from"]["default"], schema["post_hours_to"]["default"]) == (9, 23)
     assert not any(s.get("secret") for s in schema.values())                 # секретов в настройках нет

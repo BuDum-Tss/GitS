@@ -69,9 +69,8 @@ async def test_set_setting_changes_only_whitelisted_boolean_settings(tmp_path):
             await raw.hello()
             tool = core.envs.get("core.set_setting")
             assert tool.risk == "auto" and tool.availability == "always" and tool.env == "core"
-            assert tool.params["key"]["enum"] == ["telegram", "telegram_after_run", "telegram_voice", "telegram_confirm",
-                                                  "autoplay"]
-            for key in ("telegram", "telegram_after_run", "telegram_voice", "telegram_confirm"):
+            assert tool.params["key"]["enum"] == ["autoplay"]            # настройки Telegram стали его собственными (peers.telegram)
+            for key in ("autoplay",):
                 body = await call_core_tool(raw, "core.set_setting", {"key": key, "value": True})
                 assert body["ok"] is True, body
                 assert settings.load()[key] is True
@@ -79,7 +78,8 @@ async def test_set_setting_changes_only_whitelisted_boolean_settings(tmp_path):
                 assert settings.load()[key] is False
             before = settings.load()
             for args in ({"key": "auto_accept", "value": True}, {"key": "voice_muted", "value": True},
-                         {"key": "telegram", "value": "возможно"}, {"key": "telegram"}, {"value": True},
+                         {"key": "autoplay", "value": "возможно"}, {"key": "autoplay"}, {"value": True},
+                         {"key": "telegram", "value": True}, {"key": "telegram_confirm", "value": True},
                          {"key": "pet_visible", "value": True}):                  # настройки питомца принадлежат ему, не ядру
                 body = await call_core_tool(raw, "core.set_setting", args)
                 assert body["ok"] is False and body["error"]["code"] == "bad_request", args

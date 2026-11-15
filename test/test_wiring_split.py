@@ -106,7 +106,7 @@ def test_outbound_is_the_hub_outbound_and_limits_presence_rate():
 # ── R7 ────────────────────────────────────────────────────────────────────────────────────────
 
 PUBLIC_ROUTES = {
-    ("GET", "/"), ("GET", "/api/state"), ("POST", "/api/chat"), ("POST", "/api/settings"), ("POST", "/api/character"),
+    ("GET", "/"), ("GET", "/api/state"), ("POST", "/api/chat"), ("POST", "/api/settings"),
     ("GET", "/api/core"), ("GET", "/api/events"), ("GET", "/api/latency"), ("GET", "/api/flow"), ("GET", "/api/flow/stream"), ("GET", "/api/flow/node/{node}"), ("GET", "/api/flow/turn/{turn}"), ("POST", "/api/rating"),
     ("GET", "/api/decisions"), ("GET", "/api/capabilities"), ("GET", "/api/space"), ("POST", "/api/appraisal_label"),
     ("POST", "/api/menu_click"), ("POST", "/api/approval"), ("POST", "/api/memory/forget"),

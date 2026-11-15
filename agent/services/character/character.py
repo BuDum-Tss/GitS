@@ -2,7 +2,7 @@
 
 Всё, что относится к конкретному персонажу (имя, алиасы, голос, характер, воспоминания, память), читается из его папки
 или из памяти по `character.id`. Активный персонаж хранится в настройке `character` (memory/settings.json), по умолчанию
-персонаж по умолчанию. Переключение во время работы делает `character_switch.CharacterSwitch`; здесь только данные.
+персонаж по умолчанию. Один персонаж на контейнер: переключения во время работы нет.
 """
 from __future__ import annotations
 
@@ -112,11 +112,6 @@ def load(char_id: str = DEFAULT_ID) -> Character:
                      defaults=dict(defaults), folder=folder)
 
 
-def list_ids() -> list[str]:
-    """Персонажи, у которых есть character.yaml. Папки с подчёркиванием (шаблон `_template`) не считаются."""
-    return sorted(_folders())
-
-
 def memory_dir(char_id: str = DEFAULT_ID, base: Path | None = None) -> Path:
     """Папка памяти персонажа (CHR-10): `resources/<Имя>/memory`. В томе (`CHARACTER_HOME`) это `CHARACTER_HOME/memory`.
     Явная `base` (тесты, перенос): для персонажа по умолчанию сама `base`, для других `base/characters/<id>/`."""
@@ -129,7 +124,7 @@ def memory_dir(char_id: str = DEFAULT_ID, base: Path | None = None) -> Path:
     return folder / "memory" if folder is not None else settings.memory_dir()
 
 
-# ── активный персонаж (в памяти процесса; ядро читает настройку при старте и при переключении) ─────────────────────────
+# ── активный персонаж (в памяти процесса; ядро читает настройку при старте) ─────────────────────────
 _active: Character | None = None
 
 
@@ -163,21 +158,9 @@ def active() -> Character:
     return _active
 
 
-def set_active(char_id: str) -> Character:
-    """Сменить активного в памяти процесса (без сохранения настройки и без переключения памяти: это делает ядро)."""
-    global _active
-    _active = load(char_id)
-    return _active
-
-
-def persist(char_id: str) -> None:
-    """Запомнить выбор персонажа в настройках (`character`). Проверку папки делает вызывающий код через load()."""
-    settings.update(character=char_id)
-
-
 def fill(text: str) -> str:
     """Подставить имя активного персонажа в текст промпта, где стоит {name} (ТЗ 05, CHR-4). Имя читается при вызове,
-    поэтому переключение персонажа сразу меняет промпты."""
+    а не при импорте."""
     return text.replace("{name}", active().name)
 
 

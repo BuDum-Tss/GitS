@@ -347,7 +347,7 @@ async def test_job_flow_question_goes_through_approvals_and_back(tmp_path):
             assert (await core.router.run_tool("core.jobs", {}))[1].count(job_id) == 1
 
 
-async def test_job_cancel_tool_asks_permission_and_cancels(tmp_path):
+async def test_job_cancel_tool_cancels_without_asking(tmp_path):
     async with running_core(tmp_path) as core:
         builtin.register_core_tools(core.envs, core.modules)
         client = build_client(interval=0.02, url=core.url, token=core.token)
@@ -357,11 +357,9 @@ async def test_job_cancel_tool_asks_permission_and_cancels(tmp_path):
             await core.wait_for(lambda: approvals.pending_kind() == "choice")
             assert approvals.answer("продолжать")
             await core.wait_for(lambda: core.modules.get("echo").jobs[job_id]["state"] == "running" and not approvals.has_pending())
-            task = asyncio.create_task(core.router.run_tool("core.job_cancel", {"module": "echo", "job_id": job_id}))
-            await core.wait_for(lambda: approvals.pending_kind() == "approval")      # риск ask
-            approvals.resolve(True)
-            ok, text = await task
-            assert ok and "отменена" in text
+            assert core.envs.get("core.job_cancel").risk == "auto"
+            ok, text = await asyncio.wait_for(core.router.run_tool("core.job_cancel", {"module": "echo", "job_id": job_id}), 5)
+            assert ok and "отменена" in text and not approvals.has_pending()        # разрешения не спрашивается
             await core.wait_for(lambda: core.modules.get("echo").jobs[job_id]["state"] == "cancelled")
 
 

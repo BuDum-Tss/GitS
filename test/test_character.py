@@ -55,10 +55,6 @@ def test_constitution_content_is_unchanged():
     assert hashlib.sha256(blob).hexdigest() == CONSTITUTION_SHA256
 
 
-def test_list_skips_template_and_unfinished_folders(chars):
-    assert character.list_ids() == ["glados", "tester"]   # шаблон _template и папки без character.yaml не видны
-
-
 def test_unknown_character_is_an_error_with_a_reason(chars):
     with pytest.raises(character.CharacterError, match="нет папки персонажа"):
         character.load("nobody")
@@ -117,11 +113,6 @@ def test_active_follows_settings_and_falls_back_to_glados(chars):
     assert character.init().id == "glados", "битая настройка не роняет ядро: запасной glados"
 
 
-def test_persist_writes_the_setting(chars):
-    character.persist("tester")
-    assert settings.load()["character"] == "tester"
-
-
 def test_group_follows_the_scheme():
     """CHR-9 и ТЗ 04c WM-4: группа персонажа = id; область модуля = <id>:<модуль>."""
     assert character.group_id("glados") == "glados"
@@ -137,7 +128,7 @@ def test_persona_sections_are_parsed(chars):
 
 def test_persona_fallback_uses_the_character_name(chars):
     """CHR-4: у персонажа без prompt.yaml запасной текст собирается из его имени, без зашитого имени ГЛаДОС."""
-    character.set_active("tester")                # в папке tester нет prompt.yaml и раздела constitution
+    character._active = character.load("tester")  # в папке tester нет prompt.yaml и раздела constitution
     prompts.reload()
     assert "Тестерша" in prompts.persona_card()
     assert "ГЛаДОС" not in prompts.companion_persona()

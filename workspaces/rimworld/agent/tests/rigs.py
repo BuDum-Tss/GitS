@@ -13,7 +13,7 @@ import workspace_module
 import settings
 from core_link import CoreLink
 
-SHARED = {"streamer": False, "dnd": False, "quiet_until": 0.0, "voice_muted": False, "telegram_after_run": False, "record_runs": False}
+SHARED = {"streamer": False, "dnd": False, "quiet_until": 0.0, "voice_muted": False, "record_runs": False}
 
 
 class Rig:

@@ -104,10 +104,6 @@
               <span id="st-env" class="badge badge-primary" title="В какой среде она сейчас"></span>
               <span id="st-speech" class="badge badge-ghost badge-sm"></span>
               <span id="st-game" class="badge badge-ghost badge-sm"></span>
-              <span class="ml-auto flex items-center gap-2">
-                <select id="character-pick" class="select select-xs select-bordered" title="Персонаж" onchange="switchCharacter(this.value)"></select>
-                <span id="character-msg" class="text-xs opacity-70"></span>
-              </span>
             </div>
             <div id="now-goal" class="text-sm mt-2"></div>
             <div id="now-meta" class="text-xs opacity-70 mt-1"></div>
@@ -762,12 +758,8 @@ const SETTINGS_CATALOG = [
     {key: 'chattiness', type: 'select', label: 'Разговорчивость', hint: 'Как часто она сама начинает разговор.',
      options: [['quiet', 'Редко'], ['normal', 'Обычно'], ['chatty', 'Часто']]},
     {key: 'dnd', type: 'quiet', label: 'Не отвлекать', hint: 'Она сама не заговаривает и не комментирует игру, пока включено. Включается и сама, если сказать «буду смотреть сериал».'}]},
-  {title: 'Telegram', items: [
-    {key: 'telegram', type: 'toggle', label: 'Публиковать мысли в канал', hint: 'Токен бота и канал задаются в .env.'},
-    {key: 'telegram_after_run', type: 'toggle', label: 'Пост-итог после каждого забега', hint: 'Когда колония погибает, она пишет в канал короткий итог.'},
-    {key: 'record_runs', type: 'toggle', label: 'Записывать забеги на видео', hint: 'Модуль RimWorld снимает каждый забег (нужен ffmpeg): сценарий, основное видео и вертикальные клипы лежат в папке памяти модуля.'},
-    {key: 'telegram_voice', type: 'toggle', label: 'Посты голосом', hint: 'Пост уходит голосовым сообщением её голосом, текст остаётся подписью.'},
-    {key: 'telegram_confirm', type: 'toggle', label: 'Спрашивать перед публикацией', hint: 'Если выключено, она публикует сама.'}]},
+  {title: 'RimWorld', items: [
+    {key: 'record_runs', type: 'toggle', label: 'Записывать забеги на видео', hint: 'Модуль RimWorld снимает каждый забег (нужен ffmpeg): сценарий, основное видео и вертикальные клипы лежат в папке памяти модуля.'}]},
   {title: 'Для разработчиков', items: [
     {key: 'only_core', type: 'toggle', label: 'Только ядро (без окружений и сервисов)', hint: 'Супервизор не запускает окружения и сервисы (голос, Telegram, питомец, игры), службы вроде классификатора остаются. Применяется при следующем запуске ядра. То же делает переменная GITS_NO_MODULES=1.'},
     {key: 'dev_mode', type: 'toggle', label: 'Режим разработчика', hint: 'Во вкладке «Окружения» показывает примеры для разработчиков (пример окружения на SDK).'}]},
@@ -778,8 +770,7 @@ const SETTINGS_CATALOG = [
 const MODULE_SETTING_KEYS = {
   voice: ['voice_muted', 'volume', 'tts_speed', 'tts_fx', 'mic', 'hearing'],
   desktop: ['vision'],
-  telegram: ['telegram', 'telegram_voice', 'telegram_confirm'],
-  rimworld: ['game_model', 'streamer', 'record_runs', 'telegram_after_run'],
+  rimworld: ['game_model', 'streamer', 'record_runs'],
 };
 const MODULE_OWNED = new Set(Object.values(MODULE_SETTING_KEYS).flat());
 const SETTINGS_SCHEMA = SETTINGS_CATALOG.map(sec => ({...sec, items: sec.items.filter(it => !MODULE_OWNED.has(it.key))})).filter(sec => sec.items.length);
@@ -811,32 +802,6 @@ function buildSettings() {
   }));
   settingsBuilt = true;
 }
-function renderCharacter(ch) {
-  const sel = document.getElementById('character-pick');
-  if (!sel || !ch || !Array.isArray(ch.ids)) return;
-  if (sel.dataset.current === ch.id && sel.options.length === ch.ids.length) return;   // список не перерисовываем зря
-  sel.innerHTML = '';
-  for (const cid of ch.ids) {
-    const o = document.createElement('option');
-    o.value = cid; o.textContent = cid; o.selected = cid === ch.id;
-    sel.appendChild(o);
-  }
-  sel.dataset.current = ch.id;
-}
-
-async function switchCharacter(id) {
-  const msg = document.getElementById('character-msg');
-  if (msg) msg.textContent = 'переключаю…';
-  try {
-    const r = await fetch('/api/character', {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                             body: JSON.stringify({id: id})});
-    const j = await r.json();
-    if (msg) msg.textContent = r.ok ? (j.changed ? 'переключено: ' + j.name : 'уже активен') : (j.error || 'ошибка');
-  } catch (e) {
-    if (msg) msg.textContent = 'нет связи с ядром';
-  }
-}
-
 function renderSettings(s) {
   if (!s) return;
   lastSettings = s;
@@ -1538,7 +1503,7 @@ async function poll() {
   if (polling) return; polling = true;
   try {
     const [st, core] = await Promise.all([fetch('/api/state').then(r => r.json()), fetch('/api/core').then(r => r.json())]);
-  if (st.character) { CHAR_NAME = st.character.name; renderCharacter(st.character); }   // ТЗ 05, CHR-4, CHR-7
+  if (st.character) CHAR_NAME = st.character.name;   // ТЗ 05, CHR-4
   document.querySelectorAll('[data-char-name]').forEach(e => { e.textContent = CHAR_NAME; });
     $('badge-core').textContent = 'ядро работает'; $('badge-core').className = 'badge badge-success badge-outline';
     $('badge-game').textContent = st.connected ? ('игра: ' + (st.colony_name || 'онлайн')) : 'игра не запущена';

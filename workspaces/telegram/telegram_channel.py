@@ -5,10 +5,13 @@
     TELEGRAM_CHANNEL=@имя_канала            (или числовой id вида -100...)
 Бот должен быть администратором канала с правом публиковать сообщения.
 
-Настройки приходят от ядра (ТЗ 10, TG-2): общие в client.settings (telegram, telegram_voice, telegram_confirm, quiet_until,
-dnd), свои в client.module_settings (every_mins, post_hours_from, post_hours_to, owner_tg_id).
-    telegram          - публиковать ли «мысли» сама (по умолчанию выключено);
-    telegram_confirm  - спрашивать ли разрешение перед каждым постом (client.ask; по умолчанию нет: публикует сама).
+Настройки приходят от ядра (ТЗ 10, TG-2): общие в client.settings (quiet_until, dnd), свои в client.module_settings
+(settings_schema, хранятся в peers.telegram):
+    publish     - публиковать ли «мысли» сама (по умолчанию выключено);
+    after_run   - писать ли пост-итог после забега (просит модуль игры, tool telegram.post с after_run);
+    voice       - посты голосовым сообщением (текст идёт подписью);
+    confirm     - спрашивать ли разрешение перед каждым постом (client.ask; по умолчанию нет: публикует сама);
+    every_mins, post_hours_from, post_hours_to, owner_tg_id - частота, окно часов и владелец.
 
 Приватность: «мысль» строится только из безопасного материала (время суток, события игры, её прошлые посты). Экран,
 услышанное, разговор и данные о пользователе в запрос не попадают, а готовый текст проверяется фильтром (ссылки,
@@ -77,6 +80,10 @@ class TelegramChannel:
     @property
     def cfg(self) -> dict:
         return self.client.settings
+
+    def flag(self, name: str) -> bool:
+        """Логическая собственная настройка (publish, after_run, voice, confirm); нет значения - выключена."""
+        return (self.client.module_settings or {}).get(name) is True
 
     def mod_cfg(self, name: str, default):
         value = (self.client.module_settings or {}).get(name, default)
@@ -221,7 +228,7 @@ class TelegramChannel:
 
     async def send_post(self, text: str, voice: bool | None = None) -> bool:
         """Опубликовать текст: голосом (если voice или включено в настройках), при сбое голоса обычным текстом."""
-        want = bool(self.cfg.get("telegram_voice", False)) if voice is None else voice
+        want = self.flag("voice") if voice is None else voice
         if want and await self.send_voice(text):
             return True
         return await self.send(text)
@@ -254,8 +261,8 @@ class TelegramChannel:
     # ── публикация ───────────────────────────────────────────────────────────
 
     async def _confirm(self, what: str, timeout_s: float) -> bool:
-        """telegram_confirm: вопрос владельцу через ядро (client.ask, TG-3). Нет ответа или ядро недоступно - отказ."""
-        if not self.cfg.get("telegram_confirm"):
+        """Настройка confirm: вопрос владельцу через ядро (client.ask, TG-3). Нет ответа или ядро недоступно - отказ."""
+        if not self.flag("confirm"):
             return True
         try:
             return bool(await self.client.ask(f"Хочу опубликовать в канал: {what}.", kind="approval", timeout_s=timeout_s))
@@ -334,7 +341,7 @@ class TelegramChannel:
         if not await self._confirm(what, ASK_TIMEOUT_S):
             self.log("публикация отклонена пользователем")
             return "declined", text
-        want_voice = bool(self.cfg.get("telegram_voice", False)) if voice is None else voice
+        want_voice = self.flag("voice") if voice is None else voice
         if photos:
             ok = await self.send_photos(photos, "" if (want_voice and text) else text)
             if ok and want_voice and text:
@@ -468,7 +475,7 @@ class TelegramChannel:
 
     async def _tick(self):
         cfg = self.cfg
-        if not cfg.get("telegram") or not self.client.enabled or not self.client.connected:
+        if not self.flag("publish") or not self.client.enabled or not self.client.connected:
             return
         if not self.configured():
             if not self._warned:

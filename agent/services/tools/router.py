@@ -65,6 +65,11 @@ class Router:
         self._settings = settings_provider if settings_provider is not None else settings
         self._approver = approver if approver is not None else approvals
 
+    def _publish_confirm(self) -> bool:
+        """Спрашивать ли разрешение перед публичным действием: собственная настройка `confirm` окружения Telegram."""
+        entry = (self._settings.load().get("peers") or {}).get("telegram")
+        return bool(isinstance(entry, dict) and entry.get("confirm"))
+
     async def _step(self, step: dict, candidates: dict, executor: str = "fast") -> tuple[bool, str, str, str | None]:
         """(успех, название, результат/причина, код ошибки по MOD-9 или None); шаг пишется в трассу потока (ТЗ 17)
         и в журнал запусков для чата (`tool_trace`; executor: fast - планировщик, external - вызов со стороны)."""
@@ -98,7 +103,7 @@ class Router:
             danger = await tool.check(args)       # модуль сам называет опасность (tool.check, CORE-35)
         public_unconfirmed = tool.risk == "public" and not tool.self_confirming
         needs_ask = _needs_ask(danger, tool.risk, tool.self_confirming,
-                                          public_unconfirmed and self._settings.load()["telegram_confirm"])
+                                          public_unconfirmed and self._publish_confirm())
         if needs_ask and not danger and tool.risk == "ask" and self.auto_ok():
             needs_ask = False                    # она играет сама: владельца обычными вопросами не отвлекаем; опасное и публичное спрашивается
         if needs_ask:

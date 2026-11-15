@@ -215,11 +215,11 @@ asyncio.run(main())
   есть у каждого окружения.
 - Кнопка, которая меняет общую настройку ядра, идёт через `core.tool.call` с инструментом `core.set_setting`. Участник может менять
   только настройки из белого списка `MODULE_SETTINGS` (`agent/environments/builtin.py`), значение должно быть `true` или `false`;
-  остальные меняет только человек. Белый список сейчас: `telegram`, `telegram_after_run`, `telegram_voice`, `telegram_confirm`,
-  `autoplay`. Новая настройка в список добавляется решением владельца и тестом в `test/test_telegram_core.py`.
+  остальные меняет только человек. Белый список сейчас: `autoplay`. Новая настройка в список добавляется решением владельца и тестом в `test/test_telegram_core.py`.
 - Собственные настройки участника (окно, позиция, клавиши) лежат в его `settings_schema` и хранятся в `peers.<id>` (ядро их не
-  знает). Меняются через дашборд (`POST /api/peers/<id>/settings`): так делают кнопки «Показать» и «Скрыть» сервиса `pet` и запись
-  позиции его окна.
+  знает). Меняются через дашборд (`POST /api/peers/<id>/settings`): так делают кнопки «Показать» и «Скрыть» сервиса `pet`, запись
+  позиции его окна и инструменты `telegram.set_periodic` / `telegram.set_after_run` (настройки Telegram `publish`, `after_run`, `voice`,
+  `confirm` хранятся в `peers.telegram`; старые общие ключи `telegram*` при загрузке `settings.json` переносятся туда).
 
 ### Среда агента (ТЗ 32)
 

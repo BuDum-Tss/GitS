@@ -19,11 +19,6 @@ class UserMemory:
         self._dir = Path(memory_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
 
-    def rebind(self, memory_dir) -> None:
-        """Переключение персонажа (ТЗ 05, CHR-7, CHR-10): та же память, но в папке другого персонажа."""
-        self._dir = Path(memory_dir)
-        self._dir.mkdir(parents=True, exist_ok=True)
-
     def _load(self, name: str, default):
         try:
             return json.loads((self._dir / name).read_text(encoding="utf-8"))

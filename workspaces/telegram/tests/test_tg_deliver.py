@@ -55,7 +55,7 @@ async def test_owner_target_without_owner_id_is_unavailable(tmp_path, monkeypatc
 async def test_voice_path_sends_voice_with_caption_when_enabled(tmp_path, monkeypatch):
     voice = tmp_path / "ответ.ogg"
     voice.write_bytes(b"OggS-reply")
-    async with Rig(tmp_path, monkeypatch, settings={"telegram_voice": True}) as rig:
+    async with Rig(tmp_path, monkeypatch, module_settings={"voice": True}) as rig:
         await deliver(rig, target="bot:555", text="Голосом.", voice_path=str(voice))
         uploads = rig.uploads
     assert [(m, d["chat_id"], d["caption"], f["voice"][1]) for m, d, f in uploads] == \
@@ -66,7 +66,7 @@ async def test_voice_path_sends_voice_with_caption_when_enabled(tmp_path, monkey
 async def test_voice_path_is_ignored_without_telegram_voice(tmp_path, monkeypatch):
     voice = tmp_path / "ответ.ogg"
     voice.write_bytes(b"OggS-reply")
-    async with Rig(tmp_path, monkeypatch, settings={"telegram_voice": False}) as rig:
+    async with Rig(tmp_path, monkeypatch, module_settings={"voice": False}) as rig:
         await deliver(rig, target="bot:555", text="Текстом.", voice_path=str(voice))
     assert rig.uploads == [] and rig.api_calls("sendMessage") == [{"chat_id": 555, "text": "Текстом."}]
 
@@ -75,14 +75,14 @@ async def test_wav_voice_is_not_converted_here_and_goes_as_text(tmp_path, monkey
     """ТЗ 12: перекодирования в OGG в модуле Telegram больше нет (его делает модуль голоса, core.tts вернёт OGG)."""
     wav = tmp_path / "ответ.wav"
     wav.write_bytes(b"RIFF")
-    async with Rig(tmp_path, monkeypatch, settings={"telegram_voice": True}) as rig:
+    async with Rig(tmp_path, monkeypatch, module_settings={"voice": True}) as rig:
         await deliver(rig, target="bot:555", text="Из wav.", voice_path=str(wav))
     assert rig.uploads == [] and rig.api_calls("sendMessage") == [{"chat_id": 555, "text": "Из wav."}]
     assert not (Path(__file__).resolve().parent.parent / "opus_encoder.py").exists()
 
 
 async def test_voice_failure_falls_back_to_text(tmp_path, monkeypatch):
-    async with Rig(tmp_path, monkeypatch, settings={"telegram_voice": True}) as rig:
+    async with Rig(tmp_path, monkeypatch, module_settings={"voice": True}) as rig:
         await deliver(rig, target="bot:555", text="Всё равно скажу.", voice_path=str(tmp_path / "нет-файла.ogg"))
     assert rig.uploads == [] and rig.api_calls("sendMessage") == [{"chat_id": 555, "text": "Всё равно скажу."}]
 
@@ -90,7 +90,7 @@ async def test_voice_failure_falls_back_to_text(tmp_path, monkeypatch):
 async def test_voice_to_her_account_uses_voice_note(tmp_path, monkeypatch):
     voice = tmp_path / "в.ogg"
     voice.write_bytes(b"OggS-x")
-    async with Rig(tmp_path, monkeypatch, telethon=True, settings={"telegram_voice": True}) as rig:
+    async with Rig(tmp_path, monkeypatch, telethon=True, module_settings={"voice": True}) as rig:
         await deliver(rig, target="user:5", text="Привет.", voice_path=str(voice))
     f = rig.tl.files[0]
     assert (f["voice_note"], f["caption"], f["data"]) == (True, "Привет.", b"OggS-x") and rig.tl.sent == []

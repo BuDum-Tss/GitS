@@ -1,4 +1,4 @@
-"""Том персонажа (CHARACTER_HOME): раскладка, отказ переключения, перенос export и проверка check."""
+"""Том персонажа (CHARACTER_HOME): раскладка, перенос export и проверка check."""
 import sqlite3
 from pathlib import Path
 
@@ -6,7 +6,6 @@ import pytest
 
 from services.character import character
 from host import settings
-from services.character.character_switch import CharacterSwitch
 from tools import character_home
 
 
@@ -23,7 +22,6 @@ def test_home_layout(tmp_path, monkeypatch):
     monkeypatch.setenv("CHARACTER_HOME", str(home))
     monkeypatch.delenv("MEMORY_DIR", raising=False)
     assert character.in_container()
-    assert character.list_ids() == ["tester"]
     assert character.load("tester").folder == home
     assert character.memory_dir("tester", home / "memory") == home / "memory"
     assert settings.default_memory_dir() == str(home / "memory")
@@ -36,14 +34,6 @@ def test_home_character_is_the_active_one_whatever_its_id(tmp_path, monkeypatch)
     assert character.configured_id() == "tester"                  # настройки character нет, а в томе один персонаж
     monkeypatch.delenv("CHARACTER_HOME")
     assert character.configured_id() == character.DEFAULT_ID     # без тома как раньше
-
-
-async def test_switch_refused_in_container(tmp_path, monkeypatch):
-    monkeypatch.setenv("CHARACTER_HOME", str(_make_home(tmp_path)))
-    sw = CharacterSwitch(companion=None, rel=None, attention=None, hub=None, mem_root=tmp_path)
-    with pytest.raises(character.CharacterError, match="один персонаж"):
-        await sw.switch("glados")
-    assert "один персонаж" in await sw.tool("glados")
 
 
 def _source(tmp_path):

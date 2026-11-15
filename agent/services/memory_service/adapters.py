@@ -130,8 +130,4 @@ class UserMemoryAdapter:
         if mem is not None:
             mem.set_meta(key, value)
 
-    def rebind(self, memory_dir: Any) -> None:
-        mem = self._get_mem()
-        if mem is not None:
-            mem.rebind(memory_dir)
 

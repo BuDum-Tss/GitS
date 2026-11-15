@@ -1,4 +1,4 @@
-"""Роутер дашборда: страница, состояние, журналы, оценки, настройки, профили, персонаж (ТЗ 29, ARC-8)."""
+"""Роутер дашборда: страница, состояние, журналы, оценки, настройки, профили (ТЗ 29, ARC-8)."""
 import asyncio
 import json
 import os
@@ -35,7 +35,7 @@ def char_dir() -> Path:
 
 def _character_state() -> dict:
     ch = character.active()
-    return {"id": ch.id, "name": ch.name, "ids": character.list_ids()}
+    return {"id": ch.id, "name": ch.name}
 
 
 async def handle_root(request: web.Request) -> web.Response:
@@ -208,19 +208,6 @@ async def handle_api_appraisal_label(request: web.Request) -> web.Response:
         return web.json_response({"saved": False, "error": str(e)}, status=502)
 
 
-async def handle_api_character_post(request: web.Request) -> web.Response:
-    """Смена персонажа (ТЗ 05, CHR-7): тело {"id": "..."}; память и речь переключаются ядром."""
-    body, err = await raw_json_body(request)
-    if err:
-        return err
-    if ctx.character is None:
-        return web.json_response({"error": "персонажи ещё не готовы"}, status=503)
-    try:
-        return web.json_response(await ctx.character.switch(str(body.get("id") or "")))
-    except character.CharacterError as e:
-        return web.json_response({"error": str(e)}, status=400)
-
-
 async def handle_api_settings_post(request: web.Request) -> web.Response:
     from host import settings
     body, err = await raw_json_body(request)
@@ -255,7 +242,6 @@ ROUTES = [
     ("GET", "/", handle_root),
     ("GET", "/api/state", handle_api_state),
     ("POST", "/api/settings", handle_api_settings_post),
-    ("POST", "/api/character", handle_api_character_post),
     ("GET", "/api/events", handle_api_events),
     ("GET", "/api/latency", handle_api_latency),
     ("GET", "/api/flow", handle_api_flow),

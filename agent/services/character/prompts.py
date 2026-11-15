@@ -71,7 +71,7 @@ def behaviour() -> dict:
 
 
 def reload():
-    """Перечитать файлы (после ручной правки prompt.yaml или переключения персонажа)."""
+    """Перечитать файлы (после ручной правки prompt.yaml или смены персонажа в настройках)."""
     _constitution_of.cache_clear()
     _behaviour_of.cache_clear()
 

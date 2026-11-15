@@ -120,8 +120,6 @@ class FakeMemory:
     def forget_matching(self, text):
         return 0
 
-    def rebind(self, memory_dir):
-        pass
 
 
 async def test_companion_converses_on_fake_contracts_and_leaves_no_files(tmp_path, monkeypatch):

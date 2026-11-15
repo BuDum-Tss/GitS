@@ -10,7 +10,7 @@ from gits_sdk.testing import FakeCore
 from telegram_module import TelegramModule
 from manifest import build_manifest
 
-SHARED = {"telegram": False, "telegram_voice": False, "telegram_confirm": False, "quiet_until": 0.0, "dnd": False}
+SHARED = {"quiet_until": 0.0, "dnd": False}
 BOT_ME = {"id": 42, "username": "glados_bot"}
 
 

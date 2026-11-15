@@ -1,8 +1,10 @@
 """Публикации, черновики, отправка с аккаунта, приватность и настройки (ТЗ 10: TG-2..TG-6, TG-13..TG-14 со стороны модуля)."""
 import asyncio
+import contextlib
 import time
 
 import pytest
+from aiohttp import web
 from tg_rig import Rig
 
 from gits_sdk import ToolError
@@ -26,7 +28,7 @@ async def test_post_publishes_to_channel_and_reports_event(tmp_path, monkeypatch
 
 
 async def test_confirm_asks_through_the_core_and_publishes_on_yes(tmp_path, monkeypatch):
-    async with Rig(tmp_path, monkeypatch, settings={"telegram_confirm": True}) as rig:
+    async with Rig(tmp_path, monkeypatch, module_settings={"confirm": True}) as rig:
         rig.stub_model(monkeypatch, POST)
         await rig.core.call_tool("post", {"topic": "понедельник"})
         assert [(a["kind"], POST in a["question"]) for a in rig.asks] == [("approval", True)]
@@ -34,7 +36,7 @@ async def test_confirm_asks_through_the_core_and_publishes_on_yes(tmp_path, monk
 
 
 async def test_confirm_refusal_does_not_publish(tmp_path, monkeypatch):
-    async with Rig(tmp_path, monkeypatch, settings={"telegram_confirm": True}) as rig:
+    async with Rig(tmp_path, monkeypatch, module_settings={"confirm": True}) as rig:
         rig.stub_model(monkeypatch, POST)
         rig.ask_answer = False
         with pytest.raises(ToolError) as e:
@@ -116,7 +118,7 @@ async def test_voice_post_uses_core_tts_ogg(tmp_path, monkeypatch):
 
 
 async def test_voice_failure_falls_back_to_text(tmp_path, monkeypatch):
-    async with Rig(tmp_path, monkeypatch, settings={"telegram_voice": True}) as rig:
+    async with Rig(tmp_path, monkeypatch, module_settings={"voice": True}) as rig:
         rig.stub_model(monkeypatch, POST)
 
         @rig.core.on_request("core.tts")
@@ -254,37 +256,67 @@ async def test_account_tools_explain_missing_setup(tmp_path, monkeypatch):
 
 # ── настройки и фон ──
 
-async def test_set_periodic_uses_core_set_setting(tmp_path, monkeypatch):
-    async with Rig(tmp_path, monkeypatch) as rig:
+@contextlib.asynccontextmanager
+async def dashboard(monkeypatch, status=200):
+    """Дашборд ядра: запоминает записи собственных настроек (POST /api/peers/telegram/settings)."""
+    got: list[dict] = []
+
+    async def handler(request):
+        got.append(await request.json())
+        return web.json_response({"ok": status == 200}, status=status)
+
+    app = web.Application()
+    app.router.add_post("/api/peers/telegram/settings", handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    monkeypatch.setenv("GITS_DASHBOARD_URL", f"http://127.0.0.1:{port}")
+    try:
+        yield got
+    finally:
+        await runner.cleanup()
+
+
+async def test_set_periodic_changes_own_setting_through_dashboard(tmp_path, monkeypatch):
+    async with dashboard(monkeypatch) as got, Rig(tmp_path, monkeypatch) as rig:
         assert "включены" in await rig.core.call_tool("set_periodic", {"enabled": True})
+        assert rig.mod.channel.flag("publish")                                   # значение сразу видно модулю
         assert "выключены" in await rig.core.call_tool("set_periodic", {"enabled": False})
         assert "будет писать" in await rig.core.call_tool("set_after_run", {"enabled": True})
         assert "больше не будет" in await rig.core.call_tool("set_after_run", {"enabled": False})
         with pytest.raises(ToolError):
             await rig.core.call_tool("set_periodic", {"enabled": "да"})
-    assert rig.tool_calls == [
-        {"tool": "core.set_setting", "args": {"key": "telegram", "value": True}},
-        {"tool": "core.set_setting", "args": {"key": "telegram", "value": False}},
-        {"tool": "core.set_setting", "args": {"key": "telegram_after_run", "value": True}},
-        {"tool": "core.set_setting", "args": {"key": "telegram_after_run", "value": False}}]
+    assert got == [{"key": "publish", "value": True}, {"key": "publish", "value": False},
+                   {"key": "after_run", "value": True}, {"key": "after_run", "value": False}]
+    assert rig.tool_calls == []                                                  # общие настройки ядра не трогаются
 
 
-async def test_core_set_setting_refusal_reaches_the_caller(tmp_path, monkeypatch):
-    async with Rig(tmp_path, monkeypatch) as rig:
-        @rig.core.on_request("core.tool.call")
-        def refuse(body):
-            raise ToolError("настройка не разрешена", code="denied")
+async def test_dashboard_refusal_reaches_the_caller(tmp_path, monkeypatch):
+    async with dashboard(monkeypatch, status=400), Rig(tmp_path, monkeypatch) as rig:
         with pytest.raises(ToolError) as e:
             await rig.core.call_tool("set_periodic", {"enabled": True})
-    assert e.value.code == "denied"
+        assert e.value.code == "denied" and not rig.mod.channel.flag("publish")
 
 
-def tick_settings(**more):
-    return dict(module_settings={"every_mins": 30, "post_hours_from": 0, "post_hours_to": 24}, **more)
+async def test_after_run_post_needs_the_after_run_setting(tmp_path, monkeypatch):
+    async with Rig(tmp_path, monkeypatch) as rig:
+        rig.stub_model(monkeypatch, POST)
+        out = await rig.core.call_tool("post", {"topic": "забег", "after_run": True})
+        assert "выключен" in out and rig.api_calls("sendMessage") == []
+    async with Rig(tmp_path / "b", monkeypatch, module_settings={"after_run": True}) as rig:
+        rig.stub_model(monkeypatch, POST)
+        assert (await rig.core.call_tool("post", {"topic": "забег", "after_run": True})).startswith("опубликован пост")
+        assert len(rig.api_calls("sendMessage")) == 1
+
+
+def tick_settings(**own):
+    return dict(module_settings={"every_mins": 30, "post_hours_from": 0, "post_hours_to": 24, **own})
 
 
 async def test_periodic_tick_posts_when_enabled(tmp_path, monkeypatch):
-    async with Rig(tmp_path, monkeypatch, settings={"telegram": True}, **tick_settings()) as rig:
+    async with Rig(tmp_path, monkeypatch, **tick_settings(publish=True)) as rig:
         rig.stub_model(monkeypatch, POST)
         await rig.mod.channel._tick()
         assert rig.api_calls("sendMessage") == [{"chat_id": "@chan", "text": POST}]
@@ -293,12 +325,12 @@ async def test_periodic_tick_posts_when_enabled(tmp_path, monkeypatch):
 
 
 async def test_periodic_tick_respects_switches(tmp_path, monkeypatch):
-    async with Rig(tmp_path, monkeypatch, settings={"telegram": False}, **tick_settings()) as rig:
+    async with Rig(tmp_path, monkeypatch, **tick_settings(publish=False)) as rig:
         rig.stub_model(monkeypatch, POST)
         await rig.mod.channel._tick()                                            # периодические выключены
         assert rig.api_calls("sendMessage") == []
-        await rig.core.update_settings({"telegram": True, "dnd": True})
-        await rig.core.wait_for(lambda: rig.client.settings.get("dnd"))
+        await rig.core.update_settings({"dnd": True}, module_settings={"publish": True})
+        await rig.core.wait_for(lambda: rig.client.settings.get("dnd") and rig.mod.channel.flag("publish"))
         await rig.mod.channel._tick()                                            # «не отвлекать»
         assert rig.api_calls("sendMessage") == []
         await rig.core.update_settings({"dnd": False, "quiet_until": time.time() + 600})
@@ -313,13 +345,12 @@ async def test_periodic_tick_respects_switches(tmp_path, monkeypatch):
 
 async def test_periodic_tick_hours_and_confirmation(tmp_path, monkeypatch):
     hour = time.localtime().tm_hour
-    off = {"every_mins": 30, "post_hours_from": (hour + 2) % 24, "post_hours_to": (hour + 3) % 24 or 24}
-    async with Rig(tmp_path, monkeypatch, settings={"telegram": True}, module_settings=off) as rig:
+    off = {"every_mins": 30, "post_hours_from": (hour + 2) % 24, "post_hours_to": (hour + 3) % 24 or 24, "publish": True}
+    async with Rig(tmp_path, monkeypatch, module_settings=off) as rig:
         rig.stub_model(monkeypatch, POST)
         await rig.mod.channel._tick()
         assert rig.api_calls("sendMessage") == []                                # ночью (вне часов публикации) молчит
-    async with Rig(tmp_path / "b", monkeypatch, settings={"telegram": True, "telegram_confirm": True},
-                   **tick_settings()) as rig:
+    async with Rig(tmp_path / "b", monkeypatch, **tick_settings(publish=True, confirm=True)) as rig:
         rig.stub_model(monkeypatch, POST)
         rig.ask_answer = False
         await rig.mod.channel._tick()

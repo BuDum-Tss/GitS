@@ -231,11 +231,6 @@ class Companion:
 
     # ── входящее сообщение ─────────────────────────────────────────────────────
 
-    def rebind_memory(self, memory_dir) -> None:
-        """Переключение персонажа (ТЗ 05, CHR-7): личная память этого персонажа, та же беседа и тон."""
-        self._memory_writer.rebind(memory_dir)
-        self._dir = Path(memory_dir)                 # задачи (tasks.db) открываются в папке нового персонажа
-
     def is_speaking(self) -> bool:
         return self.speech.is_speaking()
 

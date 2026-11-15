@@ -145,7 +145,7 @@ async def test_questions_service_uses_shared_focus(tmp_path):
 def test_facade_keeps_public_interface():
     names = ("submit", "submit_speech", "submit_question", "on_job_update", "enqueue_say", "enqueue_fact", "submit_announce",
              "take_digest", "digest_counts", "set_rule", "rules_text", "clear_rules", "snapshot", "stop_speech",
-             "on_user_input", "classify_input", "set_user_speaking", "top_focus", "reset_for_character", "settle",
+             "on_user_input", "classify_input", "set_user_speaking", "top_focus", "settle",
              "start", "stop", "tick", "looks_like_stop", "is_announce_event")
     assert all(callable(getattr(Attention, n)) for n in names)
 

@@ -21,17 +21,13 @@ DEFAULTS = {
     "pi_thinking": "minimal",   # глубина размышления среды pi: minimal / low / medium / high
     "pi_model_heavy": "gpt-6-sol",   # модель среды pi для тяжёлой работы с кодом (помощник на ПК, монтаж)
     "game_model": "haiku",      # модель игровых ходов и планирования: haiku (быстро, дёшево) / sonnet (думает глубже, дороже)
-    "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); переключает ядро (core.set_character), не правьте вручную
+    "character": "glados",      # id данных; персонаж: папка resources/<Имя> (id в character.yaml) (ТЗ 05); один персонаж на контейнер, во время работы не меняется
     "streamer": False,          # режим стримера: в игре она вслух говорит мысли, планы и цель (контент)
     "mic": False,               # слушать микрофон и разговаривать голосом (распознавание локальное, GigaAM)
     "context": {"mode": "push", "budget_tokens": {"reply": {"dialogue": 500, "capabilities": 350, "total": 1800}}},   # ТЗ 04: push/pull память; бюджет токенов на роль и блок
     "hearing": False,           # слушать системный звук (речь в колонках); по умолчанию выключено
     "auto_accept": False,       # авто-разрешать ВСЕ действия (кроме опасных, см. services/tools/safety.py); включает только пользователь
-    "telegram": False,          # публиковать мысли в Telegram-канал
-    "telegram_after_run": False,   # писать пост-итог в канал после каждого забега (гибель колонии)
     "record_runs": True,        # записывать каждый забег RimWorld на видео (общая настройка для модуля rimworld, ТЗ 11)
-    "telegram_voice": False,       # посты в канал голосовым сообщением (текст идёт подписью)
-    "telegram_confirm": False,  # спрашивать разрешение перед каждым постом (False: публикует сама)
     "chattiness": "normal",     # quiet / normal / chatty — как часто говорит сама
     # размышление (ТЗ 30, IMP-7): шагов и токенов на мысль, размышлений в час, глубина цепочки напоминаний
     "reflection": {"max_steps": 4, "max_tokens": 1500, "max_per_hour": 6, "max_depth": 3},
@@ -125,7 +121,7 @@ def _write(data: dict) -> None:
 
 
 # Миграции уже существующих settings.json (убрать после 2026-12-01): `modules` -> `peers`, `twitch`/`obs` -> `streamer`,
-# настройки питомца из общих в `peers.pet`.
+# настройки питомца из общих в `peers.pet`, настройки Telegram из общих в `peers.telegram`.
 def _migrate_modules_key(data: dict) -> bool:
     """Миграция: ключ `modules` (участники шины) -> `peers`. True, если файл надо переписать."""
     if "modules" not in data:
@@ -182,12 +178,35 @@ def _migrate_pet_settings(data: dict) -> bool:
     return True
 
 
+_TELEGRAM_LEGACY = {"telegram": "publish", "telegram_after_run": "after_run", "telegram_voice": "voice",
+                    "telegram_confirm": "confirm"}
+
+
+def _migrate_telegram_settings(data: dict) -> bool:
+    """Миграция: настройки Telegram раньше лежали в общих настройках ядра (`telegram`, `telegram_voice`...), теперь это
+    собственные настройки окружения в `peers.telegram` (`publish`, `voice`, `confirm`, `after_run`). Значение из общих
+    настроек переносится, если собственное ещё не задано. True, если файл надо переписать."""
+    old = {k: data.pop(k) for k in _TELEGRAM_LEGACY if k in data}
+    if not old:
+        return False
+    peers = data.setdefault("peers", {})
+    if not isinstance(peers, dict):
+        return True
+    entry = peers.setdefault("telegram", {})
+    if isinstance(entry, dict):
+        for legacy, name in _TELEGRAM_LEGACY.items():
+            if legacy in old and isinstance(old[legacy], bool) and name not in entry:
+                entry[name] = old[legacy]
+    return True
+
+
 def load() -> dict:
     try:
         data = json.loads(_file().read_text(encoding="utf-8"))
     except Exception:
         data = {}
-    if isinstance(data, dict) and (_migrate_modules_key(data) | _migrate_streamer_peers(data) | _migrate_pet_settings(data)):
+    if isinstance(data, dict) and (_migrate_modules_key(data) | _migrate_streamer_peers(data) | _migrate_pet_settings(data)
+                                  | _migrate_telegram_settings(data)):
         _write(data)
     elif not isinstance(data, dict):
         data = {}

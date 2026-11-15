@@ -104,10 +104,10 @@ def test_core_tools_exist_and_are_always_visible():
             return "ок"
     builtin.register_core_tools(reg, Mods())
     reg.focus = lambda: set()
-    assert {t.id for t in reg.active_tools()} == {"core.jobs", "core.job_cancel", "core.set_setting", "core.set_character", "core.modules_status", "core.module_events"}
+    assert {t.id for t in reg.active_tools()} == {"core.resources", "core.jobs", "core.job_cancel", "core.set_setting", "core.modules_status", "core.module_events"}
     assert reg.get("core.jobs").risk == "auto" and reg.get("core.jobs").informative
-    assert reg.get("core.job_cancel").risk == "ask"
-    assert asyncio.run(reg.get("core.jobs").call({})) == "задач у модулей сейчас нет"
+    assert reg.get("core.job_cancel").risk == "auto"
+    assert asyncio.run(reg.get("core.jobs").call({})) == "задач у окружений сейчас нет"
 
 
 async def test_job_listing_format():
@@ -211,6 +211,21 @@ def test_pet_settings_migrate_from_core_settings_to_peers_pet(tmp_path):
     assert "pet_visible" not in saved and saved["peers"]["pet"]["pinned"] is True        # файл переписан
     settings.update(peers={"pet": {"visible": True}})
     assert settings.load()["peers"]["pet"]["visible"] is True and settings.load()["peers"]["pet"]["x"] == 120
+
+
+def test_telegram_settings_migrate_from_core_settings_to_peers_telegram(tmp_path):
+    """Настройки Telegram раньше лежали в общих настройках ядра; теперь это собственные настройки окружения `peers.telegram`."""
+    import json
+    from host import settings
+    (tmp_path / "settings.json").write_text(json.dumps({
+        "telegram": True, "telegram_after_run": True, "telegram_voice": False, "telegram_confirm": True, "volume": 70,
+        "peers": {"telegram": {"owner_tg_id": 5, "voice": True}}}), encoding="utf-8")
+    settings.init(str(tmp_path))
+    data = settings.load()
+    assert data["volume"] == 70 and not any(k.startswith("telegram") for k in data)
+    assert data["peers"]["telegram"] == {"owner_tg_id": 5, "voice": True, "publish": True, "after_run": True, "confirm": True}   # своё не затирается
+    saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
+    assert "telegram" not in saved and saved["peers"]["telegram"]["publish"] is True        # файл переписан
 
 
 def test_profile_tool_is_gone_and_scope_follows_the_workspace():

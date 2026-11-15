@@ -30,7 +30,7 @@ async def test_main_process_connects_reports_state_and_shuts_down(tmp_path):
     env = {k: v for k, v in os.environ.items() if not k.startswith(("RIMWORLD_", "GLADOS_"))}
     env["GITS_NO_LAUNCH"] = "1"          # наблюдатель за игрой иначе запустил бы настоящую RimWorld (игры нет => launch_game)
     async with FakeCore(settings={"streamer": False, "dnd": False, "quiet_until": 0.0,
-                                  "voice_muted": False, "telegram_after_run": False,
+                                  "voice_muted": False,
                                   "record_runs": False}) as core:
         env.update(GITS_CORE_URL=core.url, GITS_TOKEN=core.token, GITS_ID="rimworld",
                    MEMORY_DIR=str(core_memory),                     # так передаёт супервизор: чужая, ядровая папка памяти

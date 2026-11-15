@@ -34,7 +34,6 @@ class DashboardContext:
     focus: Any = None              # SpaceFocus (текущая среда: видимые модули)
     router: Any = None             # Router (POST /api/menu_click)
     tasks: Callable[[], Any] | None = None   # () -> TaskService (цели и планы во вкладке «Память»)
-    character: Any = None          # CharacterSwitch
     attention: Any = None          # Attention
     workspace: Any = None          # WorkspaceManager (ТЗ 32)
     impulses: Any = None           # импульсы и размышление (ТЗ 30)

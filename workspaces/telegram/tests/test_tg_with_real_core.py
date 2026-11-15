@@ -139,7 +139,7 @@ async def test_post_tool_through_the_router_with_confirmation_asked_via_core(tmp
     async def model(system, user, **kw):
         return '{"post": true, "text": "Объявление: кофе закончился, эксперименты отменяются."}'
     monkeypatch.setattr(fast_brain, "_ask", model)
-    async with stack(tmp_path, monkeypatch, state={"telegram_confirm": True}) as s:
+    async with stack(tmp_path, monkeypatch, state={"peers": {"telegram": {"owner_tg_id": OWNER, "confirm": True}}}) as s:
         job = asyncio.create_task(s.core.router.run_tool("telegram.post", {"topic": "кофе"}))
         await s.core.wait_for(approvals.has_pending)                           # маршрутизатор не спрашивал: self_confirming
         assert "кофе закончился" in approvals.pending_text()
@@ -160,14 +160,17 @@ async def test_send_tool_asks_and_warns_about_private_words_through_the_router(t
         assert await tool.check({"chat": "Маша", "text": "привет"}) is None
 
 
-async def test_set_periodic_changes_the_core_setting_through_core_tool_call(tmp_path, monkeypatch):
+async def test_set_periodic_changes_own_setting_of_the_environment(tmp_path, monkeypatch):
     async with stack(tmp_path, monkeypatch) as s:
+        async def save(key, value):                       # то, что делает дашборд ядра: запись в peers.telegram
+            await asyncio.to_thread(lambda: settings.update(peers={"telegram": {key: value}}))
+        s.mod._set_setting = save
         ok, text = await s.core.router.run_tool("telegram.set_periodic", {"enabled": True})
-        assert ok and "включены" in text and settings.load()["telegram"] is True
+        assert ok and "включены" in text and settings.load()["peers"]["telegram"]["publish"] is True
         ok, _ = await s.core.router.run_tool("telegram.set_after_run", {"enabled": True})
-        assert ok and settings.load()["telegram_after_run"] is True
+        assert ok and settings.load()["peers"]["telegram"]["after_run"] is True
         ok, _ = await s.core.router.run_tool("telegram.set_periodic", {"enabled": False})
-        assert ok and settings.load()["telegram"] is False
+        assert ok and settings.load()["peers"]["telegram"]["publish"] is False
 
 
 async def test_privacy_terms_come_from_the_real_core_request(tmp_path, monkeypatch):

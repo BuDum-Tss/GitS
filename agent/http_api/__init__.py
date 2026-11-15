@@ -31,7 +31,7 @@ from .routes_peers import (  # noqa: F401
     handle_api_module_restart, handle_api_module_settings, handle_api_services,
     handle_api_workspaces)
 from .routes_system import (  # noqa: F401
-    handle_api_appraisal_label, handle_api_capabilities, handle_api_character_post, handle_api_decisions,
+    handle_api_appraisal_label, handle_api_capabilities, handle_api_decisions,
     handle_api_events, handle_api_latency, handle_api_menu_click, handle_api_focus,
     handle_api_rating, handle_api_settings_post, handle_api_state, handle_root)
 
@@ -59,10 +59,6 @@ def set_focus(focus):
 
 def set_router(router):
     ctx.router = router
-
-
-def set_character(switch):
-    ctx.character = switch
 
 
 def set_tasks(get_tasks):

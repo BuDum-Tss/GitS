@@ -32,8 +32,7 @@ DESCRIPTION_MAX = 300
 PARAM_DESCRIPTION_MAX = 420
 RESULT_MAX = 2000               # как у прежнего MCP-источника ядра: длиннее ответ инструмента обрезался
 
-SHARED_SETTINGS = ["streamer", "dnd", "quiet_until", "voice_muted", "telegram_after_run",
-                   "record_runs"]
+SHARED_SETTINGS = ["streamer", "dnd", "quiet_until", "voice_muted", "record_runs"]
 SETTINGS_SCHEMA = {
     "auto_montage": {"type": "boolean", "title": "Отдавать монтаж забега модулю montage (если он подключён)",
                      "default": False},

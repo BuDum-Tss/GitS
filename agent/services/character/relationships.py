@@ -59,11 +59,6 @@ class Relationships:
 
     # ── хранилище ────────────────────────────────────────────────────────────
 
-    def rebind(self, memory_dir) -> None:
-        """Переключение персонажа (ТЗ 05, CHR-7, CHR-10): отношения этого персонажа в его папке памяти."""
-        self._file = Path(memory_dir) / "relationships.json"
-        Path(memory_dir).mkdir(parents=True, exist_ok=True)
-
     def _load(self) -> dict:
         try:
             return json.loads(self._file.read_text(encoding="utf-8"))
@@ -213,7 +208,7 @@ class Relationships:
 
 class RelationshipsAdapter:
     """PeopleDirectory (контракт) поверх профилей людей `Relationships`. `get_rel` возвращает текущий объект профилей:
-    он может смениться (переключение персонажа, тесты), поэтому читается при каждом вызове; None: методы ничего не делают."""
+    он может смениться (тесты), поэтому читается при каждом вызове; None: методы ничего не делают."""
 
     def __init__(self, get_rel: Callable[[], Any]):
         self._get_rel = get_rel

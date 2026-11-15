@@ -10,6 +10,7 @@ import logging
 import time
 from pathlib import Path
 
+import httpx
 from common import scrub
 from gits_sdk import WorkspaceClient, ToolError
 from privacy import Privacy
@@ -17,6 +18,7 @@ from telegram_channel import TelegramChannel
 from telegram_user import LeakError, TelegramUser
 
 from gits_sdk import host
+from gits_sdk.envcompat import env
 
 log = logging.getLogger("tg_app")
 
@@ -173,14 +175,28 @@ class TelegramModule:
         except Exception as e:
             raise ToolError("Telegram-аккаунт: " + scrub(str(e), self.user._api_hash)[:160], code="unavailable") from e
 
+    def _dashboard_url(self) -> str:
+        """Адрес дашборда ядра: GITS_DASHBOARD_URL, иначе хост и порт ядра из адреса шины."""
+        explicit = env("GITS_DASHBOARD_URL")
+        if explicit:
+            return explicit.rstrip("/")
+        return "http://" + self.client.url.split("://", 1)[-1].split("/", 1)[0]
+
     async def _set_setting(self, key: str, value: bool) -> None:
-        """TG-2/TG-13: общая настройка меняется встроенным инструментом ядра core.set_setting."""
-        await self.client.call_tool("core.set_setting", {"key": key, "value": value}, timeout=30)
+        """Собственная настройка окружения (settings_schema, peers.telegram) меняется через дашборд ядра: как у питомца."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as http:
+                r = await http.post(f"{self._dashboard_url()}/api/peers/telegram/settings", json={"key": key, "value": value})
+        except httpx.HTTPError as e:
+            raise ToolError(f"ядро недоступно, настройка не сохранена: {e}", code="unavailable") from e
+        if r.status_code != 200:
+            raise ToolError(f"настройка не сохранена: {r.text[:160]}", code="denied")
+        self.client.module_settings = {**(self.client.module_settings or {}), key: value}
 
     async def _voice_bytes(self, path) -> bytes | None:
         """OGG/Opus из voice_path (TG-17): только .ogg/.opus (OGG делает модуль голоса: core.tts, ТЗ 12). Другой формат, нет
         настройки или сбой: None, ответ пойдёт текстом."""
-        if not path or not self.client.settings.get("telegram_voice"):
+        if not path or not self.channel.flag("voice"):
             return None
         try:
             if not str(path).lower().endswith(VOICE_EXT):
@@ -214,6 +230,8 @@ class TelegramModule:
         # ── публикации ──
         @c.tool("post")
         async def post(args):
+            if args.get("after_run") and not ch.flag("after_run"):
+                return "пост-итог после забега выключен в настройках Telegram"
             status, text = await ch.post_on_request(args.get("topic") or "приветственный пост", args.get("voice"))
             if status != "ok":
                 msg, code = POST_FAILURES.get(status, ("публикация не удалась", "unavailable"))
@@ -336,13 +354,13 @@ class TelegramModule:
         @c.tool("set_periodic")
         async def set_periodic(args):
             enabled = self._flag(args)
-            await self._set_setting("telegram", enabled)
+            await self._set_setting("publish", enabled)
             return ("периодические посты в Telegram включены" if enabled else "периодические посты в Telegram выключены")
 
         @c.tool("set_after_run")
         async def set_after_run(args):
             enabled = self._flag(args)
-            await self._set_setting("telegram_after_run", enabled)
+            await self._set_setting("after_run", enabled)
             return ("после каждого забега (гибели колонии) будет писать пост-итог в канал" if enabled
                     else "постов-итогов после забега больше не будет")
 
