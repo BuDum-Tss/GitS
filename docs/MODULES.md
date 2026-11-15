@@ -218,8 +218,8 @@ asyncio.run(main())
   остальные меняет только человек. Белый список сейчас: `autoplay`. Новая настройка в список добавляется решением владельца и тестом в `test/test_telegram_core.py`.
 - Собственные настройки участника (окно, позиция, клавиши) лежат в его `settings_schema` и хранятся в `peers.<id>` (ядро их не
   знает). Меняются через дашборд (`POST /api/peers/<id>/settings`): так делают кнопки «Показать» и «Скрыть» сервиса `pet`, запись
-  позиции его окна и инструменты `telegram.set_periodic` / `telegram.set_after_run` (настройки Telegram `publish`, `after_run`, `voice`,
-  `confirm` хранятся в `peers.telegram`; старые общие ключи `telegram*` при загрузке `settings.json` переносятся туда).
+  позиции его окна и инструмент `telegram.settings` (настройки Telegram `publish`, `after_run`, `voice`,
+  `owner`, `owner_tg_id` хранятся в `peers.telegram`; старые общие ключи `telegram*` при загрузке `settings.json` переносятся туда).
 
 ### Среда агента (ТЗ 32)
 

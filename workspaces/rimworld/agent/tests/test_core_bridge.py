@@ -55,7 +55,7 @@ async def test_core_tool_forwards_allowed_screen_tools(api):
 
 async def test_core_tool_refuses_other_tools_and_non_json(api):
     core, base = api
-    status, body = await post(base, "/api/core/tool", {"tool": "telegram.send", "args": {}})
+    status, body = await post(base, "/api/core/tool", {"tool": "telegram.message", "args": {}})
     assert status == 403 and body["ok"] is False and core.requests == []
     async with aiohttp.ClientSession() as http:
         async with http.post(base + "/api/core/tool", data="{}") as r:

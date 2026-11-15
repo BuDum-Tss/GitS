@@ -295,7 +295,7 @@ class DesktopModule:
                 raise ToolError(str(e), code="unavailable")
             size = await asyncio.to_thread(_image_size, path)
             return (f"снимок {'экрана' if target == 'screen' else 'игры'} сохранён: {path.name} ({size}). "
-                    "Его можно приложить к черновику поста (draft_attach).")
+                    "Его можно отправить через telegram.message (files: имя снимка или last).")
 
         @c.check("take_screenshot")
         async def check_screenshot(args):

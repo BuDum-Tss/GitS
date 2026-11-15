@@ -86,11 +86,12 @@ async def test_module_manifest_is_accepted_and_tools_reach_the_planner(tmp_path,
         rec = s.core.modules.get("telegram")
         assert rec.connected and rec.title == "Telegram" and "chat.channel" in rec.manifest["capabilities"]
         env = s.core.envs.envs["telegram"]
-        assert env.module == "telegram" and {t.name for t in env.tools} >= {"post", "send", "unread", "draft_publish"}
+        assert env.module == "telegram" and {t.name for t in env.tools} == {"message", "inbox", "settings"}
         s.core.envs.focus = lambda: set()                                     # ни один профиль модуль не focus: always видны
         visible = {t.id for t in s.core.envs.active_tools()}
-        assert {"telegram.post", "telegram.send", "telegram.chats", "telegram.draft_show"} <= visible
-        assert s.core.envs.get("telegram.send").danger_check and s.core.envs.get("telegram.post").self_confirming
+        assert {"telegram.message", "telegram.inbox", "telegram.settings"} <= visible
+        msg = s.core.envs.get("telegram.message")
+        assert msg.danger_check and msg.risk == "auto" and not msg.self_confirming      # разрешение решает проверка адресата
 
 
 async def test_owner_message_goes_to_conversation_and_the_reply_comes_back_to_the_same_chat(tmp_path, monkeypatch):
@@ -107,18 +108,35 @@ async def test_owner_message_goes_to_conversation_and_the_reply_comes_back_to_th
         assert s.net.api[-1] == ("sendMessage", {"chat_id": OWNER, "text": "Сносно. Подопытные не взорвались."})
 
 
-async def test_stranger_message_is_not_answered_but_recorded_and_remembered(tmp_path, monkeypatch):
+async def test_stranger_message_goes_to_the_guest_path_and_is_registered(tmp_path, monkeypatch):
     async with stack(tmp_path, monkeypatch) as s:
         await s.mod.channel._on_private(bot_msg(555, "я переезжаю в Казань", name="Маша"))
-        await s.core.wait_for(lambda: s.core.attention.last_decision)
+        await s.core.wait_for(lambda: s.core.io.guests)
         d = s.core.attention.last_decision
-        assert d["rule"] != "R1" and not s.core.io.inputs                     # TG-18: разговор не заводится
-        assert all(m != "sendMessage" for m, _ in s.net.api)                   # и бот никому не пишет
+        assert d["rule"] == "R5" and not s.core.io.inputs                     # не разговор владельца и не обычное внимание
+        text, channel, sender = s.core.io.guests[0]
+        assert "Казань" in text and channel == {"module": "telegram", "target": "bot:555"} and sender["is_owner"] is False
         assert s.rel.people["tg:555"]["source"] == "telegram" and s.rel.people["tg:555"]["name"] == "Маша"   # TG-14
         assert "Казань" in s.rel.people["tg:555"]["notes"][0]
-        assert s.core.companion.graph.items[0][0] == "Маша" and "Казань" in s.core.companion.mem_text() \
-            if hasattr(s.core.companion, "mem_text") else True
         assert not s.core.companion._mem.facts                                  # сырой текст чужого сообщения в долгую память не пишется
+
+
+async def test_guest_gets_a_reply_in_the_same_chat_without_tools(tmp_path, monkeypatch):
+    class Llm:
+        def __init__(self):
+            self.calls = []
+
+        async def ask(self, system, user, **kw):
+            self.calls.append((system, user))
+            return "Привет, Маша. Подопытным тут рады."
+
+    async with stack(tmp_path, monkeypatch) as s:
+        s.core.companion.llm = llm = Llm()
+        s.core.companion.people = s.rel
+        await s.io.from_guest("Сообщение от Маша в личке бота: «привет»", {"module": "telegram", "target": "bot:555"},
+                              {"id": "tg:555", "name": "Маша", "is_owner": False})
+        assert s.net.api[-1] == ("sendMessage", {"chat_id": 555, "text": "Привет, Маша. Подопытным тут рады."})
+        assert len(llm.calls) == 1
 
 
 async def test_question_to_the_owner_is_delivered_to_the_owners_bot_chat(tmp_path, monkeypatch):
@@ -133,44 +151,44 @@ async def test_owner_id_zero_makes_owner_delivery_unavailable(tmp_path, monkeypa
         assert not [1 for m, _ in s.net.api if m == "sendMessage"]
 
 
-async def test_post_tool_through_the_router_with_confirmation_asked_via_core(tmp_path, monkeypatch):
+async def test_message_to_channel_through_the_router_does_not_ask_for_permission(tmp_path, monkeypatch):
     from services.runtime import fast_brain
 
     async def model(system, user, **kw):
-        return '{"post": true, "text": "Объявление: кофе закончился, эксперименты отменяются."}'
+        return '{"text": "Объявление: кофе закончился, эксперименты отменяются."}'
     monkeypatch.setattr(fast_brain, "_ask", model)
-    async with stack(tmp_path, monkeypatch, state={"peers": {"telegram": {"owner_tg_id": OWNER, "confirm": True}}}) as s:
-        job = asyncio.create_task(s.core.router.run_tool("telegram.post", {"topic": "кофе"}))
-        await s.core.wait_for(approvals.has_pending)                           # маршрутизатор не спрашивал: self_confirming
-        assert "кофе закончился" in approvals.pending_text()
-        approvals.resolve(False)
-        ok, text = await asyncio.wait_for(job, 10)
-        assert not ok and "не разрешил" in text and [m for m, _ in s.net.api if m == "sendMessage"] == []
-        job = asyncio.create_task(s.core.router.run_tool("telegram.post", {"topic": "кофе"}))
-        await s.core.wait_for(approvals.has_pending)
-        approvals.resolve(True)
-        ok, text = await asyncio.wait_for(job, 10)
-        assert ok and text.startswith("опубликован пост") and s.net.api[-1][0] == "sendMessage"
+    async with stack(tmp_path, monkeypatch) as s:
+        ok, text = await asyncio.wait_for(s.core.router.run_tool("telegram.message", {"topic": "кофе"}), 10)
+        assert ok and text.startswith("опубликован пост") and not approvals.has_pending()    # публикация без вопроса
+        assert s.net.api[-1][0] == "sendMessage"
 
 
-async def test_send_tool_asks_and_warns_about_private_words_through_the_router(tmp_path, monkeypatch):
+async def test_message_asks_only_for_unknown_chats_through_the_router(tmp_path, monkeypatch):
     async with stack(tmp_path, monkeypatch, terms=["Анна"]) as s:
-        tool = s.core.envs.get("telegram.send")
-        assert await tool.check({"chat": "Маша", "text": "Анна просила привет"})            # tool.check -> причина
-        assert await tool.check({"chat": "Маша", "text": "привет"}) is None
+        tool = s.core.envs.get("telegram.message")
+        assert await tool.check({"to": "Маша", "text": "привет"})                       # незнакомый чат: причина, роутер спросит
+        assert await tool.check({"to": "Маша", "text": "Анна просила привет"})          # личные слова: тоже причина
+        assert await tool.check({"to": "channel", "text": "привет"}) is None             # канал и владелец: без вопроса
+        assert await tool.check({"to": "owner", "text": "привет"}) is None
+        await s.mod.channel._on_private(bot_msg(555, "привет", name="Маша"))            # теперь Маша писала боту
+        assert await tool.check({"to": "Маша", "text": "привет"}) is None
+        assert await tool.check({"to": "555", "text": "привет"}) is None
 
 
-async def test_set_periodic_changes_own_setting_of_the_environment(tmp_path, monkeypatch):
+async def test_settings_tool_changes_own_setting_of_the_environment(tmp_path, monkeypatch):
     async with stack(tmp_path, monkeypatch) as s:
         async def save(key, value):                       # то, что делает дашборд ядра: запись в peers.telegram
             await asyncio.to_thread(lambda: settings.update(peers={"telegram": {key: value}}))
+            s.mod.client.module_settings = {**(s.mod.client.module_settings or {}), key: value}
         s.mod._set_setting = save
-        ok, text = await s.core.router.run_tool("telegram.set_periodic", {"enabled": True})
+        ok, text = await s.core.router.run_tool("telegram.settings", {"periodic": True})
         assert ok and "включены" in text and settings.load()["peers"]["telegram"]["publish"] is True
-        ok, _ = await s.core.router.run_tool("telegram.set_after_run", {"enabled": True})
+        ok, _ = await s.core.router.run_tool("telegram.settings", {"after_run": True})
         assert ok and settings.load()["peers"]["telegram"]["after_run"] is True
-        ok, _ = await s.core.router.run_tool("telegram.set_periodic", {"enabled": False})
+        ok, _ = await s.core.router.run_tool("telegram.settings", {"periodic": False})
         assert ok and settings.load()["peers"]["telegram"]["publish"] is False
+        ok, text = await s.core.router.run_tool("telegram.settings", {})
+        assert ok and "периодические посты: выключены" in text and "пост-итог после забега: включён" in text
 
 
 async def test_privacy_terms_come_from_the_real_core_request(tmp_path, monkeypatch):
@@ -192,7 +210,7 @@ async def test_disabling_the_module_hides_its_tools_and_drops_its_events(tmp_pat
         assert s.core.attention.last_decision is before
 
 
-@pytest.mark.parametrize("path", ["post", "send"])
+@pytest.mark.parametrize("path", ["message", "inbox"])
 def test_planner_search_finds_telegram_tools_by_old_requests(path):
     from environments.registry import Registry
     from services.peers.registry import PeerRegistry
@@ -203,7 +221,7 @@ def test_planner_search_finds_telegram_tools_by_old_requests(path):
                            spec=__import__("gits_sdk.protocol", fromlist=["Manifest"]).Manifest.from_dict(build_manifest()))
     mods.on_connected(conn)
     reg.focus = lambda: set()
-    request = {"post": "опубликуй пост про понедельник в телеграм", "send": "напиши Маше привет в телеге"}[path]
+    request = {"message": "опубликуй пост про понедельник в телеграм", "inbox": "что мне писали в телеге"}[path]
     found = {t.id for t in reg.search(request, k=6)}
     assert f"telegram.{path}" in found
-    assert "telegram.unread" in {t.id for t in reg.search("что мне писали в телеге", k=6)}
+    assert "telegram.message" in {t.id for t in reg.search("напиши Маше привет в телеге", k=6)}

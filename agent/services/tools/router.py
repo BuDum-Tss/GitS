@@ -47,10 +47,10 @@ def format_tool_result(tool_id: str, args: dict, result) -> str:
 
 
 
-def _needs_ask(danger, risk: str, self_confirming: bool, telegram_confirm: bool) -> bool:
-    """True, если перед действием нужно разрешение. `telegram_confirm` имеет смысл только для публичных действий
-    без самоподтверждения; вызывающий код читает настройку лениво, только в этом случае."""
-    return bool(danger) or risk == "ask" or (risk == "public" and not self_confirming and bool(telegram_confirm))
+def _needs_ask(danger, risk: str) -> bool:
+    """True, если перед действием нужно разрешение: опасная часть (всегда) или риск `ask`. Публичные действия (пост в канал)
+    разрешения не требуют: она публикует сама."""
+    return bool(danger) or risk == "ask"
 
 
 class Router:
@@ -64,11 +64,6 @@ class Router:
         self._log = event_log if event_log is not None else events_log
         self._settings = settings_provider if settings_provider is not None else settings
         self._approver = approver if approver is not None else approvals
-
-    def _publish_confirm(self) -> bool:
-        """Спрашивать ли разрешение перед публичным действием: собственная настройка `confirm` окружения Telegram."""
-        entry = (self._settings.load().get("peers") or {}).get("telegram")
-        return bool(isinstance(entry, dict) and entry.get("confirm"))
 
     async def _step(self, step: dict, candidates: dict, executor: str = "fast") -> tuple[bool, str, str, str | None]:
         """(успех, название, результат/причина, код ошибки по MOD-9 или None); шаг пишется в трассу потока (ТЗ 17)
@@ -101,11 +96,9 @@ class Router:
         danger = tool.danger(args) if tool.danger else None
         if tool.danger_check and tool.check is not None and not danger:
             danger = await tool.check(args)       # модуль сам называет опасность (tool.check, CORE-35)
-        public_unconfirmed = tool.risk == "public" and not tool.self_confirming
-        needs_ask = _needs_ask(danger, tool.risk, tool.self_confirming,
-                                          public_unconfirmed and self._publish_confirm())
+        needs_ask = _needs_ask(danger, tool.risk)
         if needs_ask and not danger and tool.risk == "ask" and self.auto_ok():
-            needs_ask = False                    # она играет сама: владельца обычными вопросами не отвлекаем; опасное и публичное спрашивается
+            needs_ask = False                    # она играет сама: владельца обычными вопросами не отвлекаем; опасное спрашивается
         if needs_ask:
             shown = ", ".join(f"{k}={str(v)[:60]}" for k, v in args.items())
             # факт для модели, а не готовая реплика: она сама спросит своими словами (в факт не входит описание инструмента:

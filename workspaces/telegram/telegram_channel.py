@@ -8,17 +8,20 @@
 Настройки приходят от ядра (ТЗ 10, TG-2): общие в client.settings (quiet_until, dnd), свои в client.module_settings
 (settings_schema, хранятся в peers.telegram):
     publish     - публиковать ли «мысли» сама (по умолчанию выключено);
-    after_run   - писать ли пост-итог после забега (просит модуль игры, tool telegram.post с after_run);
+    after_run   - писать ли пост-итог после забега (просит модуль игры, tool telegram.message с after_run);
     voice       - посты голосовым сообщением (текст идёт подписью);
-    confirm     - спрашивать ли разрешение перед каждым постом (client.ask; по умолчанию нет: публикует сама);
-    every_mins, post_hours_from, post_hours_to, owner_tg_id - частота, окно часов и владелец.
+    every_mins, post_hours_from, post_hours_to - частота и окно часов;
+    owner, owner_tg_id - владелец (@имя или числовой id).
+Разрешения на публикацию в канал нет: она публикует сама (отправка с её личного аккаунта в незнакомые чаты спрашивается).
 
 Приватность: «мысль» строится только из безопасного материала (время суток, события игры, её прошлые посты). Экран,
 услышанное, разговор и данные о пользователе в запрос не попадают, а готовый текст проверяется фильтром (ссылки,
 @упоминания, телефоны, личные слова от ядра, пароли) и отбрасывается, если что-то нашлось.
 
-Личные сообщения боту становятся событиями telegram.bot_message: ядро само решает, что с ними делать (ответить владельцу,
-запомнить собеседника). Сама бот не отвечает никому, кроме ответа ядра владельцу (deliver).
+Личные сообщения боту становятся событиями telegram.bot_message: ядро само решает, что с ними делать. Владельцу отвечает
+она сама (разговор, deliver), любому другому человеку отвечает ядро гостевым путём: лёгкая модель без инструментов и без
+памяти владельца, с лимитами (R5, `services/conversation/guest.py`), ответ тоже приходит запросом deliver. Сам модуль никому
+не отвечает: он только доставляет то, что прислало ядро. Владелец определяется настройками owner_tg_id и owner (@имя или id).
 """
 import asyncio
 import json
@@ -30,9 +33,8 @@ import time
 from pathlib import Path
 
 import httpx
-from common import CAPTION_MAX, chunks, full_name, message_fact, quiet_active, scrub, sender_info
-from gits_sdk import ToolError
-from tg_draft import TgDraft
+from common import CAPTION_MAX, KnownChats, OwnerBook, chunks, full_name, message_fact, quiet_active, scrub
+from shots import Shots
 
 from gits_sdk import host
 
@@ -40,8 +42,9 @@ logger = logging.getLogger("telegram")
 
 API = "https://api.telegram.org"
 MAX_CHARS = 700
-ASK_TIMEOUT_S = 60            # вопрос о публикации в вызове инструмента: ядро ждёт ответ инструмента не дольше 120 с
 STATE_FILE = "telegram.json"
+_MEDIA = {"photo": ("sendPhoto", "photo"), "video": ("sendVideo", "video"), "voice": ("sendVoice", "voice"),
+          "document": ("sendDocument", "document")}
 
 _UNSAFE = re.compile(r"https?://|www\.|@\w|\S+@\S+\.\S+|\+?\d[\d\s\-()]{8,}|парол|password|token|токен", re.I)
 _BANNED_OPENERS = ("итак", "наблюдаю", "кажется", "ну вот", "что ж", "ох")
@@ -64,7 +67,9 @@ class TelegramChannel:
     def __init__(self, memory_dir: str, client, privacy):
         """client - WorkspaceClient (settings, ask, request, event); privacy - Privacy (личные слова от ядра, TG-5)."""
         self._file = Path(memory_dir) / STATE_FILE
-        self.draft = TgDraft(memory_dir)
+        self.shots = Shots(memory_dir)
+        self.owner = OwnerBook(memory_dir, client)
+        self.known = KnownChats(memory_dir)
         self.client = client
         self.privacy = privacy
         self._token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -82,7 +87,7 @@ class TelegramChannel:
         return self.client.settings
 
     def flag(self, name: str) -> bool:
-        """Логическая собственная настройка (publish, after_run, voice, confirm); нет значения - выключена."""
+        """Логическая собственная настройка (publish, after_run, voice); нет значения - выключена."""
         return (self.client.module_settings or {}).get(name) is True
 
     def mod_cfg(self, name: str, default):
@@ -90,7 +95,8 @@ class TelegramChannel:
         return default if isinstance(value, bool) or not isinstance(value, type(default)) else value
 
     def owner_id(self) -> int:
-        return self.mod_cfg("owner_tg_id", 0)
+        """Числовой id владельца (для deliver target=owner): owner_tg_id, число в `owner` или выученный по @имени."""
+        return self.owner.owner_id()
 
     def every_mins(self) -> int:
         """Как часто она задумывается о посте: настройка модуля; TELEGRAM_EVERY_MINS остаётся запасной, пока настройка
@@ -183,25 +189,32 @@ class TelegramChannel:
         self.verified = await self.verify()
         return self.verified
 
-    async def send_photos(self, paths: list[Path], caption: str = "") -> bool:
-        """Фото в канал: одно через sendPhoto, 2-4 альбомом. Подпись до 1024 символов; длиннее уйдёт отдельным сообщением."""
-        try:
-            cap = caption if len(caption) <= CAPTION_MAX else ""
-            blobs = [await asyncio.to_thread(p.read_bytes) for p in paths]
-            if len(paths) == 1:
-                await self._upload("sendPhoto", {"chat_id": self._channel, "caption": cap},
-                                   {"photo": (paths[0].name, blobs[0])})
-            else:
-                media = [{"type": "photo", "media": f"attach://p{i}", **({"caption": cap} if i == 0 and cap else {})}
-                         for i in range(len(paths))]
-                await self._upload("sendMediaGroup", {"chat_id": self._channel, "media": json.dumps(media)},
-                                   {f"p{i}": (p.name, blobs[i]) for i, p in enumerate(paths)})
-            if caption and not cap:
-                await self._call("sendMessage", chat_id=self._channel, text=caption)
-            return True
-        except Exception as e:
-            self.log(f"не удалось отправить фото: {e}", error=True)
-            return False
+    async def send_files(self, chat_id, items: list[tuple[Path, str]], caption: str = "", reply_to: int | None = None) -> None:
+        """Файлы в чат от бота (канал или личка). items - (путь, вид: photo | video | voice | document). Один файл: text подписью
+        (до 1024 символов; длиннее уйдёт отдельным сообщением). Несколько фото (2-10) идут альбомом с подписью на первом;
+        остальное по одному, текст после них отдельным сообщением. Бросает RuntimeError."""
+        extra = {"reply_to_message_id": reply_to} if reply_to else {}
+        cap = caption if len(caption) <= CAPTION_MAX else ""
+        blobs = [await asyncio.to_thread(path.read_bytes) for path, _ in items]
+        album = 1 < len(items) <= 10 and all(kind == "photo" for _, kind in items)
+        in_caption = False
+        if album:
+            media = [{"type": "photo", "media": f"attach://p{i}", **({"caption": cap} if i == 0 and cap else {})}
+                     for i in range(len(items))]
+            await self._upload("sendMediaGroup", {"chat_id": chat_id, "media": json.dumps(media), **extra},
+                               {f"p{i}": (items[i][0].name, blobs[i]) for i in range(len(items))})
+            in_caption = bool(cap)
+        else:
+            for i, ((path, kind), blob) in enumerate(zip(items, blobs, strict=True)):
+                method, field = _MEDIA[kind]
+                data = {"chat_id": chat_id, **(extra if i == 0 else {})}
+                if len(items) == 1 and cap:
+                    data["caption"], in_caption = cap, True
+                if kind == "video":
+                    data["supports_streaming"] = "true"
+                await self._upload(method, data, {field: (path.name, blob)})
+        if caption and not in_caption:
+            await self._call("sendMessage", chat_id=chat_id, text=caption)
 
     async def synth_ogg(self, text: str) -> bytes:
         """TG-4: озвучка её голосом запросом core.tts (ядро возвращает путь к OGG/Opus); файл читается и удаляется."""
@@ -213,29 +226,20 @@ class TelegramChannel:
         finally:
             await asyncio.to_thread(_unlink, path)
 
-    async def send_voice(self, text: str) -> bool:
-        """Голосовое сообщение в канал: текст озвучивает ядро (core.tts), OGG/Opus, текст подписью."""
+    async def try_ogg(self, text: str) -> bytes | None:
+        """Голос для текста или None (сбой синтеза: сообщение пойдёт текстом)."""
         try:
-            ogg = await self.synth_ogg(text)
-            cap = text if len(text) <= CAPTION_MAX else ""
-            await self._upload("sendVoice", {"chat_id": self._channel, "caption": cap}, {"voice": ("voice.ogg", ogg)})
-            if text and not cap:
-                await self._call("sendMessage", chat_id=self._channel, text=text)
-            return True
+            return await self.synth_ogg(text)
         except Exception as e:
-            self.log(f"голосовое не отправилось, пойдёт текстом: {e}", error=True)
-            return False
+            self.log(f"голосовое не получилось, пойдёт текстом: {e}", error=True)
+            return None
 
     async def send_post(self, text: str, voice: bool | None = None) -> bool:
-        """Опубликовать текст: голосом (если voice или включено в настройках), при сбое голоса обычным текстом."""
+        """Опубликовать текст в канал: голосом (если voice или включено в настройках), при сбое голоса обычным текстом."""
         want = self.flag("voice") if voice is None else voice
-        if want and await self.send_voice(text):
-            return True
-        return await self.send(text)
-
-    async def send(self, text: str) -> bool:
+        ogg = await self.try_ogg(text) if want else None
         try:
-            await self._call("sendMessage", chat_id=self._channel, text=text)
+            await self.reply(self._channel, text, ogg)
             return True
         except Exception as e:
             self.log(f"не удалось опубликовать: {e}", error=True)
@@ -243,148 +247,63 @@ class TelegramChannel:
 
     # ── ответы в личные чаты бота (deliver) ──────────────────────────────────
 
-    async def reply(self, chat_id: int | str, text: str, ogg: bytes | None = None) -> None:
-        """Отправить текст от бота в чат (владельцу); с ogg - голосовым сообщением с текстом подписью. Бросает RuntimeError."""
+    async def reply(self, chat_id: int | str, text: str, ogg: bytes | None = None, reply_to: int | None = None) -> None:
+        """Отправить текст от бота в чат (владельцу, в канал или гостю); с ogg - голосовым сообщением с текстом подписью.
+        Бросает RuntimeError."""
         if not self._token:
             raise RuntimeError("бот не настроен: нет TELEGRAM_BOT_TOKEN в .env")
         rest = text
+        extra = {"reply_to_message_id": reply_to} if reply_to else {}
         if ogg is not None:
             cap = text if len(text) <= CAPTION_MAX else ""
             try:
-                await self._upload("sendVoice", {"chat_id": chat_id, "caption": cap}, {"voice": ("voice.ogg", ogg)})
-                rest = "" if cap else text
+                await self._upload("sendVoice", {"chat_id": chat_id, "caption": cap, **extra}, {"voice": ("voice.ogg", ogg)})
+                rest, extra = ("" if cap else text), {}
             except Exception as e:
                 self.log(f"голосовой ответ не ушёл, отправляю текстом: {e}", error=True)
         for part in chunks(rest):
-            await self._call("sendMessage", chat_id=chat_id, text=part)
+            await self._call("sendMessage", chat_id=chat_id, text=part, **extra)
+            extra = {}
 
     # ── публикация ───────────────────────────────────────────────────────────
-
-    async def _confirm(self, what: str, timeout_s: float) -> bool:
-        """Настройка confirm: вопрос владельцу через ядро (client.ask, TG-3). Нет ответа или ядро недоступно - отказ."""
-        if not self.flag("confirm"):
-            return True
-        try:
-            return bool(await self.client.ask(f"Хочу опубликовать в канал: {what}.", kind="approval", timeout_s=timeout_s))
-        except (ToolError, asyncio.TimeoutError, ValueError) as e:
-            self.log(f"разрешение на публикацию не получено: {e}")
-            return False
 
     async def _record_post(self, text: str, how: str) -> None:
         data = await self.aload()
         data["last_post"] = time.time()
-        data["posts"].append({"ts": data["last_post"], "text": text or "[скриншоты]"})
+        data["posts"].append({"ts": data["last_post"], "text": text or "[файлы]"})
         await self.asave(data)
-        self.log(f"{how}: " + (text or "[скриншоты]"))
-        await self.client.event("telegram.posted", f"Опубликован пост в канале: «{(text or '[скриншоты]')[:150]}»")
+        self.log(f"{how}: " + (text or "[файлы]"))
+        await self.client.event("telegram.posted", f"Опубликован пост в канале: «{(text or '[файлы]')[:150]}»")
 
-    async def compose(self, instruction: str, current: str = "") -> str | None:
-        """Написать или переписать текст поста по задаче; при непустом current правит его.
-        None, если не получилось или текст не прошёл фильтр приватности."""
-        game = await host.tail(limit=8, kinds={"game"}, since=time.time() - 6 * 3600)
-        material = ("\nСобытия игры за последние часы (колония, безопасно упоминать):\n"
-                    + "\n".join(f"  - {e['text'][:140]}" for e in game)) if game else ""
-        past = [p["text"][:140] for p in (await self.aload())["posts"][-3:]]
-        system = (self._persona_text() + " Ты ведёшь черновик поста для канала. Выполни задачу: если дан текущий черновик, "
-                  "перепиши его по задаче и сохрани то, что не просили менять; если черновика нет, напиши новый. "
-                  "Пиши 2-5 предложений. НЕЛЬЗЯ: имена людей, что делает или говорит пользователь, что у него на "
-                  "экране, личные данные, ссылки, @упоминания, выдуманные факты о канале. Ответь ТОЛЬКО JSON: "
-                  '{"text": "<текст поста>"}')
-        user = (f"Текущий черновик: {current or '(пусто)'}\nЗадача: {instruction}{material}"
-                + (("\nПрошлые посты (не повторяйся): " + " | ".join(past)) if past else ""))
-        try:
-            res = await host.llm_json(system, user, timeout=90, max_tokens=400, temperature=0.8)
-        except Exception as e:
-            self.log(f"не удалось написать черновик: {e}", error=True)
-            return None
-        return self._safe(str(res.get("text", ""))) if res else None
-
-    async def publish_video(self, path: Path, caption: str) -> str:
+    async def ready_for_posts(self) -> str | None:
+        """None, если в канал можно публиковать; иначе статус (not_configured, unavailable, not_verified)."""
         if not self.configured():
             return "not_configured"
         if not self.privacy.ready:
             return "unavailable"
         if not await self.ensure_verified():
             return "not_verified"
-        safe = self._safe(caption) if caption else ""
-        if caption and not safe:
-            return "unsafe"
-        if not await self._confirm(f"Видео {path.name}\n{safe}", ASK_TIMEOUT_S):
-            return "declined"
-        try:
-            with path.open("rb") as video:
-                await self._upload("sendVideo", {"chat_id": self._channel, "caption": safe, "supports_streaming": "true"},
-                                   {"video": (path.name, video, "video/mp4")})
-        except (OSError, httpx.HTTPError, RuntimeError):
-            self.log("не удалось загрузить видео Telegram", error=True)
-            return "failed"
-        await self._record_post(safe, f"опубликовано видео {path.name}")
-        return "ok"
+        return None
 
-    async def publish(self, text: str, photos: list[Path], voice: bool | None = None) -> tuple[str, str]:
-        """Опубликовать готовое: текст и/или снимки. Статусы как у post_on_request, плюс empty и unavailable."""
-        if not self.configured():
-            return "not_configured", ""
-        if not self.privacy.ready:
-            return "unavailable", ""
-        if not await self.ensure_verified():
-            return "not_verified", ""
-        text = text.strip()
-        if text:
-            text = self._safe(text)
-            if not text:
-                self.log("черновик отброшен фильтром приватности")
-                return "unsafe", ""
-        if not text and not photos:
-            return "empty", ""
-        what = f"«{text}»" + (f" и {len(photos)} скриншот(а)" if photos else "")
-        if not await self._confirm(what, ASK_TIMEOUT_S):
-            self.log("публикация отклонена пользователем")
-            return "declined", text
-        want_voice = self.flag("voice") if voice is None else voice
-        if photos:
-            ok = await self.send_photos(photos, "" if (want_voice and text) else text)
-            if ok and want_voice and text:
-                await self.send_post(text, True)
-        else:
-            ok = await self.send_post(text, want_voice)
-        if not ok:
-            return "failed", text
-        await self._record_post(text, f"опубликовано из черновика ({len(photos)} фото)")
-        return "ok", text
-
-    async def post_on_request(self, instruction: str, voice: bool | None = None) -> tuple[str, str]:
-        """Пост по прямой просьбе пользователя (работает и при выключенных периодических постах).
-        Возвращает (статус, текст): ok / not_configured / not_verified / unavailable / unsafe / declined / failed."""
-        if not self.configured():
-            return "not_configured", ""
-        if not self.privacy.ready:
-            return "unavailable", ""
-        if not await self.ensure_verified():
-            return "not_verified", ""
-        system = (self._persona_text() + f" Владелец канала «{self.title}» просит тебя написать пост. Выполни его "
+    async def compose_post(self, instruction: str) -> str | None:
+        """Текст по просьбе (тема `topic`) из безопасного материала. None, если не получилось или фильтр приватности
+        отбросил."""
+        system = (self._persona_text() + f" Владелец просит тебя написать сообщение для канала «{self.title or ''}». Выполни его "
                   "просьбу: если тема не названа, напиши короткий приветственный пост в своём характере. "
                   "Пиши 1-4 предложения. НЕЛЬЗЯ: имена людей, что делает или говорит пользователь, что у "
                   "него на экране, личные данные, ссылки, @упоминания; и ничего не выдумывай о канале "
                   "(его темы, игры, проекты), если об этом не сказано. Ответь ТОЛЬКО JSON: "
-                  '{"text": "<текст поста>"}')
+                  '{"text": "<текст>"}')
         try:
             res = await host.llm_json(system, f"Просьба владельца: {instruction}", timeout=90, max_tokens=300,
                                       temperature=0.8)
         except Exception as e:
-            self.log(f"не удалось сочинить пост: {e}", error=True)
-            return "failed", ""
+            self.log(f"не удалось сочинить текст: {e}", error=True)
+            return None
         text = self._safe(str(res.get("text", ""))) if res else None
-        if text is None:
+        if text is None and res:
             self.log("черновик по просьбе отброшен фильтром приватности")
-            return "unsafe", ""
-        if not await self._confirm(f"«{text}»", ASK_TIMEOUT_S):
-            self.log("публикация отклонена пользователем")
-            return "declined", text
-        if not await self.send_post(text, voice):
-            return "failed", text
-        await self._record_post(text, "опубликовано по просьбе")
-        return "ok", text
+        return text
 
     # ── входящие: кто-то написал боту ────────────────────────────────────────
 
@@ -400,12 +319,13 @@ class TelegramChannel:
             return True
         name = full_name(sender.get("first_name"), sender.get("last_name"), sender.get("username"), uid)
         text = (msg.get("text") or msg.get("caption") or "[не текст]").strip()
+        await asyncio.to_thread(self.known.add, chat_id, name, sender.get("username"), sender.get("first_name"))
         self.log(f"сообщение в боте: {name}: {text[:120]}")
         try:
             return bool(await self.client.event(
                 "telegram.bot_message", message_fact(name, "личке бота", text),
                 data={"chat_id": chat_id, "message_id": msg.get("message_id")},
-                addressed_to_me=True, sender=sender_info(uid, name, self.owner_id()),
+                addressed_to_me=True, sender=self.owner.sender(uid, name, sender.get("username")),
                 reply_channel={"module": "telegram", "target": f"bot:{chat_id}"}, memorable=True,
                 dedupe_key=f"tg:bot:{chat_id}:{msg.get('message_id')}"))
         except ValueError as e:
@@ -500,9 +420,6 @@ class TelegramChannel:
         self._last_consult = now
         text = await self._think(data)
         if not text:
-            return
-        if not await self._confirm(f"«{text}»", 300):
-            self.log("публикация отклонена пользователем")
             return
         if await self.send_post(text):
             await self._record_post(text, "опубликовано")

@@ -48,7 +48,7 @@ async def test_state_is_sent_on_change_and_periodically(tmp_path, monkeypatch):
             await rig.core.wait_for(lambda: len(rig.core.messages_of("state")) > n)      # раз в период, даже без изменений
             rig.stub_model(monkeypatch, POST)
             n = len(rig.core.messages_of("state"))
-            await rig.core.call_tool("post", {})
+            await rig.core.call_tool("message", {"topic": "день"})
             await rig.core.wait_for(lambda: rig.core.messages_of("state")[-1].body["data"]["last_post_ts"] > 0)
             last = rig.core.messages_of("state")[-1].body
             assert last["summary"].startswith("канал: готов") and last["data"]["channel_ok"] is True

@@ -19,7 +19,7 @@ import re
 import time
 from pathlib import Path
 
-from common import SERVICE_USER_ID, TEXT_MAX, chunks, full_name, message_fact, scrub, sender_info
+from common import SERVICE_USER_ID, TEXT_MAX, KnownChats, OwnerBook, chunks, full_name, message_fact, scrub
 from gits_sdk.protocol import clip
 
 from gits_sdk import host
@@ -42,6 +42,8 @@ class TelegramUser:
         """client - WorkspaceClient (event, settings, module_settings); privacy - Privacy (личные слова от ядра, TG-5)."""
         self._dir = Path(memory_dir)
         self.client = client
+        self.owner = OwnerBook(memory_dir, client)
+        self.known = KnownChats(memory_dir)
         self.privacy = privacy
         self._api_id = os.getenv("TELEGRAM_API_ID", "").strip()
         self._api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
@@ -142,10 +144,6 @@ class TelegramUser:
 
     # ── входящие ─────────────────────────────────────────────────────────────
 
-    def _owner_id(self) -> int:
-        value = (self.client.module_settings or {}).get("owner_tg_id", 0)
-        return value if isinstance(value, int) and not isinstance(value, bool) else 0
-
     async def _on_incoming(self, ev):
         try:
             sender = await ev.get_sender()
@@ -156,6 +154,7 @@ class TelegramUser:
             text = (ev.raw_text or "[не текст]").strip()[:TEXT_MAX]
             rec = {"ts": time.time(), "chat": title, "chat_id": ev.chat_id, "from": who, "text": text,
                    "private": bool(ev.is_private)}
+            await asyncio.to_thread(self.known.add, ev.chat_id, title, getattr(sender, "username", None), who)
             await asyncio.to_thread(self._append_inbox, rec)             # TG-11: tg_inbox.json как прежде
             host.log_nowait("telegram", f"написали в её аккаунт ({'личное' if ev.is_private else title}): "
                                               f"{who}: {text[:100]}")
@@ -183,7 +182,7 @@ class TelegramUser:
             return
         await self.client.event(
             kind, message_fact(who, place, text), data={"chat_id": ev.chat_id, "message_id": ev.id},
-            addressed_to_me=addressed, sender=sender_info(uid, who, self._owner_id()),
+            addressed_to_me=addressed, sender=self.owner.sender(uid, who, getattr(sender, "username", None)),
             reply_channel={"module": "telegram", "target": f"user:{ev.chat_id}"}, memorable=memorable,
             dedupe_key=f"tg:{tag}:{ev.chat_id}:{ev.id}")
 
@@ -279,7 +278,8 @@ class TelegramUser:
         """Нельзя отправлять имя пользователя и подобные личные слова, которые ядро назвало (TG-5)."""
         return self.privacy.leaks(text)
 
-    async def send(self, chat: str, text: str) -> str:
+    async def send(self, chat: str, text: str, ogg: bytes | None = None, reply_to: int | None = None) -> str:
+        """Текст (или голосовое с текстом подписью) в чат по названию, @имени или id. Личные слова режутся здесь же."""
         text = text.strip()
         if not text:
             raise ValueError("пустое сообщение")
@@ -288,9 +288,45 @@ class TelegramUser:
         async with self._lock:
             client = await self._connect()
             ent = await self._entity(client, chat)
-            await client.send_message(ent, text)
+            rest = text
+            if ogg is not None:
+                cap = text if len(text) <= 1024 else ""
+                voice = io.BytesIO(ogg)
+                voice.name = "voice.ogg"
+                try:
+                    await client.send_file(ent, voice, voice_note=True, caption=cap, reply_to=reply_to)
+                    rest, reply_to = ("" if cap else text), None
+                except Exception as e:
+                    host.log_nowait("error", "telegram: голосовое с аккаунта не ушло, отправляю текстом: " + clip(str(e), 160))
+            for part in chunks(rest):
+                await client.send_message(ent, part, **({"reply_to": reply_to} if reply_to else {}))
+                reply_to = None
         host.log_nowait("telegram", f"она написала с аккаунта в «{chat}»: {text[:120]}")
         return f"отправлено в «{chat}»"
+
+    async def send_files(self, chat: str, items: list[tuple[Path, str]], caption: str = "",
+                         reply_to: int | None = None) -> str:
+        """Файлы в чат с её аккаунта (вид: photo | video | voice | document); один файл: текст подписью до 1024 символов."""
+        caption = caption.strip()
+        if caption and self.leaks(caption):
+            raise LeakError("в тексте есть личные данные пользователя (имя): такое не отправляю")
+        blobs = []
+        for path, kind in items:
+            data = io.BytesIO(await asyncio.to_thread(path.read_bytes))
+            data.name = path.name
+            blobs.append((data, kind))
+        cap = caption if len(items) == 1 and len(caption) <= 1024 else ""
+        async with self._lock:
+            client = await self._connect()
+            ent = await self._entity(client, chat)
+            for i, (data, kind) in enumerate(blobs):
+                extra = {"reply_to": reply_to} if reply_to and i == 0 else {}
+                await client.send_file(ent, data, voice_note=kind == "voice", caption=cap, **extra,
+                                       **({"force_document": True} if kind == "document" else {}))
+            if caption and not cap:
+                await client.send_message(ent, caption)
+        host.log_nowait("telegram", f"она отправила файлы с аккаунта в «{chat}»: {len(items)}")
+        return f"отправлено в «{chat}»: файлов {len(items)}"
 
     async def reply(self, chat_id: int, text: str, ogg: bytes | None = None) -> None:
         """Ответ владельцу в чат, из которого он написал (deliver, target user:<chat_id>): с её аккаунта, без проверки

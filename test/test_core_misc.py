@@ -196,6 +196,34 @@ async def test_agent_playing_in_an_autonomous_environment_is_not_asking_for_ordi
     assert ok and len(asked) == 1                                      # вне игры всё как раньше
 
 
+async def test_publishing_never_asks_for_permission_in_the_core():
+    """Посты в канал разрешения не просят: ни риск public, ни старая настройка confirm в peers.telegram на это не влияют."""
+    from types import SimpleNamespace
+
+    asked = []
+
+    class Approver:
+        async def request(self, text, announce, danger=None):
+            asked.append(text)
+            return False
+
+    class Settings:
+        @staticmethod
+        def load():
+            return {"peers": {"telegram": {"confirm": True}}}      # устаревшее значение игнорируется
+
+    async def call(args):
+        return "опубликовано"
+
+    tool = SimpleNamespace(id="telegram.message", env="telegram", name="message", params={}, danger=None, danger_check=False,
+                           check=None, risk="public", self_confirming=False, timeout_s=5, informative=True,
+                           description="d", call=call)
+    router = Router(SimpleNamespace(), lambda t: None, approver=Approver(), settings_provider=Settings)
+    ok, _name, result, _code = await router._step({"tool": "telegram.message", "args": {}}, {"telegram.message": tool})
+    assert ok and result == "опубликовано" and asked == []
+    assert not hasattr(router, "_publish_confirm")
+
+
 def test_pet_settings_migrate_from_core_settings_to_peers_pet(tmp_path):
     """Настройки питомца раньше лежали в общих настройках ядра; теперь это собственные настройки участника `peers.pet`."""
     import json
@@ -223,7 +251,7 @@ def test_telegram_settings_migrate_from_core_settings_to_peers_telegram(tmp_path
     settings.init(str(tmp_path))
     data = settings.load()
     assert data["volume"] == 70 and not any(k.startswith("telegram") for k in data)
-    assert data["peers"]["telegram"] == {"owner_tg_id": 5, "voice": True, "publish": True, "after_run": True, "confirm": True}   # своё не затирается
+    assert data["peers"]["telegram"] == {"owner_tg_id": 5, "voice": True, "publish": True, "after_run": True}   # telegram_confirm отброшен; своё не затирается
     saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
     assert "telegram" not in saved and saved["peers"]["telegram"]["publish"] is True        # файл переписан
 

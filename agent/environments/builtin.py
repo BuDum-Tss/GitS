@@ -728,7 +728,7 @@ def register_core_tools(registry, modules, attention=None, workspaces=None):
                     "«не отвлекай / выдели» и сводка накопившегося. Общие настройки Telegram для модулей.",
         tools=attention_tools + workspace_tools + repair_tools + [
             _tool("core", "resources", "Рабочие файлы персонажа, включая дизайн и готовые ролики монтажа. Доступно в любом окружении. "
-                  "Идентификатор MP4 можно передать в telegram.publish_video после перехода в Telegram.",
+                  "Идентификатор MP4 можно передать в telegram.message (files) после перехода в Telegram.",
                   {"query": {"type": "string", "required": False, "description": "часть имени файла или папки"},
                    "offset": {"type": "integer", "required": False, "description": "позиция следующей страницы"}},
                   resources, informative=True, keywords=("ресурсы", "файлы", "ролик", "видео", "экспорт")),

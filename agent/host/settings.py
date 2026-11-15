@@ -178,17 +178,18 @@ def _migrate_pet_settings(data: dict) -> bool:
     return True
 
 
-_TELEGRAM_LEGACY = {"telegram": "publish", "telegram_after_run": "after_run", "telegram_voice": "voice",
-                    "telegram_confirm": "confirm"}
+_TELEGRAM_LEGACY = {"telegram": "publish", "telegram_after_run": "after_run", "telegram_voice": "voice"}
+_TELEGRAM_OBSOLETE = ("telegram_confirm",)         # разрешение на посты упразднено: старое значение отбрасывается
 
 
 def _migrate_telegram_settings(data: dict) -> bool:
     """Миграция: настройки Telegram раньше лежали в общих настройках ядра (`telegram`, `telegram_voice`...), теперь это
-    собственные настройки окружения в `peers.telegram` (`publish`, `voice`, `confirm`, `after_run`). Значение из общих
-    настроек переносится, если собственное ещё не задано. True, если файл надо переписать."""
+    собственные настройки окружения в `peers.telegram` (`publish`, `voice`, `after_run`). Значение из общих
+    настроек переносится, если собственное ещё не задано; `telegram_confirm` (и `confirm` в `peers.telegram`) игнорируется. True, если файл надо переписать."""
     old = {k: data.pop(k) for k in _TELEGRAM_LEGACY if k in data}
+    dropped = [data.pop(k) for k in _TELEGRAM_OBSOLETE if k in data]
     if not old:
-        return False
+        return bool(dropped)
     peers = data.setdefault("peers", {})
     if not isinstance(peers, dict):
         return True

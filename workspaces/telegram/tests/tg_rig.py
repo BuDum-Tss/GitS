@@ -27,11 +27,12 @@ class FakeTelethon:
     async def get_input_entity(self, chat_id):
         return ("entity", chat_id)
 
-    async def send_message(self, ent, text):
+    async def send_message(self, ent, text, **kw):
         self.sent.append((ent, text))
 
-    async def send_file(self, ent, file, voice_note=False, caption=""):
-        self.files.append({"ent": ent, "data": file.read(), "name": file.name, "voice_note": voice_note, "caption": caption})
+    async def send_file(self, ent, file, voice_note=False, caption="", **kw):
+        self.files.append({"ent": ent, "data": file.read(), "name": file.name, "voice_note": voice_note, "caption": caption,
+                           **kw})
 
 
 class NetStubs:

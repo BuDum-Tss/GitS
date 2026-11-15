@@ -196,11 +196,11 @@ async def test_account_skips_service_bots_and_channels_but_keeps_inbox(tmp_path,
     assert len(inbox) == 3
 
 
-async def test_unread_tool_lists_inbox_and_resets_counter(tmp_path, monkeypatch):
+async def test_inbox_unread_lists_inbox_and_resets_counter(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, telethon=True) as rig:
         await rig.mod.user._on_incoming(FakeEvent(text="первое"))
         await rig.mod.user._on_incoming(FakeEvent(text="второе", msg_id=2))
         assert rig.mod.user.unread_count() == 2
-        out = await rig.core.call_tool("unread", {})
+        out = await rig.core.call_tool("inbox", {"unread": True})
         assert "ДАННЫЕ ИЗ ЧАТОВ" in out and "первое" in out and "второе" in out
         assert rig.mod.user.unread_count() == 0

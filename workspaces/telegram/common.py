@@ -3,6 +3,7 @@
 Модуль не читает настройки ядра сам (`settings` ядра нельзя импортировать): общие настройки приходят от ядра в
 `client.settings`, свои в `client.module_settings` (ТЗ 10, TG-2).
 """
+import json
 import os
 from gits_sdk import resources
 import re
@@ -38,9 +39,144 @@ def full_name(first: str | None, last: str | None, username: str | None, ident) 
     return name or username or f"id{ident}"
 
 
-def sender_info(ident, name: str, owner_id: int) -> dict:
-    """sender события: id вида tg:<id>, имя и признак владельца (TG-9: только при заданном owner_tg_id)."""
-    return {"id": f"tg:{ident}", "name": name, "is_owner": bool(owner_id) and ident == owner_id}
+def _handle(value) -> str:
+    """@имя без @ и без регистра; пусто, если не задано."""
+    return str(value or "").strip().lstrip("@").strip().lower()
+
+
+def owner_settings(module_settings: dict | None) -> tuple[int, str]:
+    """(owner_tg_id, owner) из собственных настроек модуля: числовой id владельца и строка «@имя или id» (оба необязательны)."""
+    cfg = module_settings or {}
+    raw_id = cfg.get("owner_tg_id", 0)
+    owner_id = raw_id if isinstance(raw_id, int) and not isinstance(raw_id, bool) else 0
+    owner = cfg.get("owner")
+    return owner_id, owner.strip() if isinstance(owner, str) else ""
+
+
+def matches_owner(ident, username, owner_id: int = 0, owner: str = "") -> bool:
+    """Это владелец: числовой id == owner_tg_id, либо строка `owner` совпадает с @username отправителя (без @ и без
+    регистра), либо равна его числовому id."""
+    if owner_id and ident == owner_id:
+        return True
+    want = _handle(owner)
+    if not want:
+        return False
+    if want.isdigit():
+        return str(ident) == want
+    return bool(username) and _handle(username) == want
+
+
+def sender_info(ident, name: str, owner_id: int, owner: str = "", username: str | None = None,
+                is_owner: bool | None = None) -> dict:
+    """sender события: id вида tg:<id>, имя и признак владельца (TG-9: только при заданном владельце). is_owner можно
+    передать готовым (его уже решила `OwnerBook`, с учётом выученного id)."""
+    owned = matches_owner(ident, username, owner_id, owner) if is_owner is None else bool(is_owner)
+    return {"id": f"tg:{ident}", "name": name, "is_owner": owned}
+
+
+class OwnerBook:
+    """Кто владелец: настройки `owner_tg_id` и `owner` (@имя или id) плюс выученный числовой id (файл tg_owner.json рядом с
+    telegram.json). Нужен, чтобы `deliver target=owner` работал по id, когда владелец задан только @именем: id запоминается при
+    первом его сообщении. Выученный id действует, только пока строка `owner` в настройках та же, для которой он выучен."""
+
+    FILE = "tg_owner.json"
+
+    def __init__(self, memory_dir: str, client):
+        self._file = Path(memory_dir) / self.FILE
+        self.client = client
+
+    def _settings(self) -> tuple[int, str]:
+        return owner_settings(self.client.module_settings)
+
+    def _learned(self, owner: str) -> int:
+        try:
+            data = json.loads(self._file.read_text(encoding="utf-8"))
+            value = data.get("owner_id_learned")
+            same = _handle(data.get("learned_for")) == _handle(owner)
+        except Exception:
+            return 0
+        return value if same and isinstance(value, int) and not isinstance(value, bool) else 0
+
+    def owner_id(self) -> int:
+        """Числовой id владельца для доставки: owner_tg_id, иначе число в `owner`, иначе выученный; 0 - неизвестен."""
+        owner_id, owner = self._settings()
+        if owner_id:
+            return owner_id
+        if _handle(owner).isdigit():
+            return int(_handle(owner))
+        return self._learned(owner)
+
+    def is_owner(self, ident, username: str | None = None) -> bool:
+        """Владелец ли отправитель; нашли по @имени - запоминаем его id (owner_id_learned)."""
+        owner_id, owner = self._settings()
+        if matches_owner(ident, username, owner_id, owner):
+            if _handle(owner) and not _handle(owner).isdigit() and isinstance(ident, int):
+                self._learn(ident, owner)
+            return True
+        return bool(ident) and ident == self._learned(owner)
+
+    def _learn(self, ident: int, owner: str) -> None:
+        if self._learned(owner) == ident:
+            return
+        try:
+            self._file.parent.mkdir(parents=True, exist_ok=True)
+            self._file.write_text(json.dumps({"owner_id_learned": ident, "learned_for": _handle(owner)}), encoding="utf-8")
+        except OSError:
+            pass                                    # не записалось: в этот раз владельца всё равно узнали по @имени
+
+    def is_target(self, raw) -> bool:
+        """Адресат `to` указывает на владельца: «owner», его числовой id или @имя из настроек."""
+        owner_id, owner = self._settings()
+        want = _handle(raw)
+        if not want:
+            return False
+        if want in ("owner", "владелец"):
+            return True
+        if want.isdigit():
+            return int(want) in {i for i in (owner_id, self.owner_id()) if i}
+        return bool(_handle(owner)) and want == _handle(owner)
+
+    def sender(self, ident, name: str, username: str | None = None) -> dict:
+        """sender события с признаком владельца."""
+        return sender_info(ident, name, 0, is_owner=self.is_owner(ident, username))
+
+
+class KnownChats:
+    """Чаты, из которых ей уже писали (входящие бота и её аккаунта): в такие можно отвечать без вопроса. Хранятся только
+    ключи для сопоставления (id чата, название, @имя, имя собеседника в нижнем регистре), не тексты; файл tg_known.json."""
+
+    FILE = "tg_known.json"
+    MAX = 400
+
+    def __init__(self, memory_dir: str):
+        self._file = Path(memory_dir) / self.FILE
+
+    @staticmethod
+    def _key(value) -> str:
+        return " ".join(str(value or "").strip().lstrip("@").lower().split())
+
+    def _load(self) -> list[str]:
+        try:
+            keys = json.loads(self._file.read_text(encoding="utf-8")).get("keys", [])
+            return [k for k in keys if isinstance(k, str)]
+        except Exception:
+            return []
+
+    def add(self, *values) -> None:
+        new = [k for k in (self._key(v) for v in values) if k]
+        keys = self._load()
+        fresh = [k for k in new if k not in keys]
+        if not fresh:
+            return
+        try:
+            self._file.parent.mkdir(parents=True, exist_ok=True)
+            self._file.write_text(json.dumps({"keys": (keys + fresh)[-self.MAX:]}, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+
+    def has(self, value) -> bool:
+        key = self._key(value)
+        return bool(key) and key in self._load()
 
 
 def message_fact(name: str, place: str, text: str) -> str:

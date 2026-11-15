@@ -37,14 +37,14 @@ async def test_main_process_connects_reports_not_configured_and_shuts_down(tmp_p
             assert state["data"] == {"channel_ok": False, "account_ok": False, "last_post_ts": 0.0, "unread": 0}
             await core.wait_for(lambda: core.messages_of("core.privacy_terms"), timeout=30)    # список личных слов запрошен
             assert proc.returncode is None                                                      # не упал
-            danger = await core.check_tool("send", {"chat": "Маша", "text": "привет, Анна"})
+            danger = await core.check_tool("message", {"to": "Маша", "text": "привет, Анна"})
             assert danger is not None
             try:
-                await core.call_tool("post", {})
+                await core.call_tool("message", {"topic": "привет"})
             except Exception as e:                                                              # честный отказ, а не сбой
                 assert "не настроен" in str(e)
             else:
-                raise AssertionError("post без настройки должен отказать")
+                raise AssertionError("message без настройки должен отказать")
             await core.shutdown("тест")
             code = await asyncio.wait_for(proc.wait(), 15)
             assert code == 0

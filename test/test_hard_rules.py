@@ -44,7 +44,7 @@ def test_decisions_map_to_routes_by_table():
     assert routes.of_decision("D0") == ["ignore"] and routes.of_decision("D1") == ["ignore"]
     assert routes.of_decision("D3") == ["chat"] and routes.of_decision("D4") == ["reflex", "chat"]
     assert routes.of_decision("R2") == ["reflex"] and routes.of_decision("D2", think=True) == ["chat", "think"]
-    assert set(routes.DECISION_ROUTES) == {"D0", "D1", "D2", "D3", "D4", "R1", "R2", "R3", "R4"}
+    assert set(routes.DECISION_ROUTES) == {"D0", "D1", "D2", "D3", "D4", "R1", "R2", "R3", "R4", "R5"}
 
 
 def test_input_routes_reflex_with_already_done_then_chat():

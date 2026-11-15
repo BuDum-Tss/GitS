@@ -2,6 +2,8 @@
 
 `TelegramModule(client, memory_dir)` вешает обработчики на `WorkspaceClient` и создаёт фоновые задачи (`start()`):
 личные слова от ядра (privacy), входящие бота, цикл постов, проверка канала, её аккаунт (Telethon), состояние раз в 5 минут.
+Инструменты: `message` (канал, владелец или чат с её аккаунта; текст, тема, файлы; разрешение спрашивается по адресату),
+`inbox` (чтение её аккаунта), `settings` (периодические посты и пост-итог).
 Тесты собирают модуль против `gits_sdk.testing.FakeCore`, а сеть Telegram подменяют (`_call`, `_upload`, клиент Telethon).
 """
 import asyncio
@@ -28,15 +30,17 @@ STATE_EVERY_S = 300.0            # TG-21: состояние при измене
 STATE_POLL_S = 5.0
 VOICE_EXT = (".ogg", ".opus")
 
-# статус публикации (telegram_channel.publish / post_on_request) -> (текст отказа, код ошибки MOD-9)
+# статус публикации в канал (`TelegramChannel.ready_for_posts`) и отказ фильтра -> (текст отказа, код ошибки MOD-9)
+MAX_FILES = 10
+FILE_MAX_BYTES = 50_000_000                       # лимит Telegram Bot API
+FILE_KINDS = {".png": "photo", ".jpg": "photo", ".jpeg": "photo", ".webp": "photo", ".mp4": "video", ".ogg": "voice",
+              ".opus": "voice"}
+
 POST_FAILURES = {
     "not_configured": ("Telegram не настроен: нет токена бота или канала в .env", "unavailable"),
     "not_verified": ("связь с каналом не прошла проверку: токен неверный или бот не администратор канала", "unavailable"),
     "unavailable": ("список личных слов от ядра ещё не получен: публиковать пока нельзя", "unavailable"),
     "unsafe": ("текст не прошёл проверку приватности, ничего не опубликовано", "denied"),
-    "declined": ("пользователь не разрешил публикацию", "denied"),
-    "failed": ("Telegram вернул ошибку, пост не опубликован", "unavailable"),
-    "empty": ("черновик пуст: ни текста, ни снимков", "bad_request"),
 }
 
 
@@ -221,148 +225,35 @@ class TelegramModule:
         await self.load_persona()
 
     def _register(self) -> None:
-        c, ch, user, privacy = self.client, self.channel, self.user, self.privacy
+        c, user, privacy = self.client, self.user, self.privacy
         @c.on_topic("character")
         async def _on_character(data):
             await self.load_persona()
 
 
-        # ── публикации ──
-        @c.tool("post")
-        async def post(args):
-            if args.get("after_run") and not ch.flag("after_run"):
-                return "пост-итог после забега выключен в настройках Telegram"
-            status, text = await ch.post_on_request(args.get("topic") or "приветственный пост", args.get("voice"))
-            if status != "ok":
-                msg, code = POST_FAILURES.get(status, ("публикация не удалась", "unavailable"))
-                raise ToolError(msg, code=code)
-            return f"опубликован пост: «{text}»"
+        # ── сообщения ──
+        @c.tool("message")
+        async def message(args):
+            return await self.message(args)
 
-        @c.tool("draft_show")
-        async def draft_show(args):
-            return await asyncio.to_thread(ch.draft.preview)
+        @c.check("message")
+        async def message_check(args):
+            return await self.message_check(args)
 
-        @c.tool("draft_write")
-        async def draft_write(args):
-            text = _text_arg(args, "text", required=False).strip()
-            if not text:
-                privacy.require()
-                text = await ch.compose(args.get("topic") or "приветственный пост", (await asyncio.to_thread(ch.draft.get))["text"])
-            if not text:
-                raise ToolError("текст не получился или не прошёл проверку приватности", code="unavailable")
-            await asyncio.to_thread(ch.draft.set_text, text)
-            ch.log("черновик написан: " + text)
-            return "черновик написан:\n" + text
-
-        @c.tool("draft_append")
-        async def draft_append(args):
-            text = _text_arg(args, "text", required=False).strip()
-            if not text:
-                raise ToolError("нечего добавлять: текст пуст", code="bad_request")
-            await asyncio.to_thread(ch.draft.append, text)
-            return "добавлено в конец черновика"
-
-        @c.tool("draft_edit")
-        async def draft_edit(args):
-            current = (await asyncio.to_thread(ch.draft.get))["text"]
-            if not current:
-                raise ToolError("черновик пуст, сначала его нужно написать", code="bad_request")
-            privacy.require()
-            text = await ch.compose(_text_arg(args, "instruction"), current)
-            if not text:
-                raise ToolError("правка не получилась или не прошла проверку приватности, черновик не изменён", code="unavailable")
-            await asyncio.to_thread(ch.draft.set_text, text)
-            ch.log("черновик отредактирован: " + text)
-            return "черновик переписан:\n" + text
-
-        @c.tool("draft_replace")
-        async def draft_replace(args):
-            if not await asyncio.to_thread(ch.draft.replace, _text_arg(args, "find"), _text_arg(args, "replace", required=False)):
-                raise ToolError("такого фрагмента в черновике нет", code="bad_request")
-            return "заменено"
-
-        @c.tool("draft_attach")
-        async def draft_attach(args):
-            try:
-                name = await asyncio.to_thread(ch.draft.attach, args.get("shot") or "last")
-            except ValueError as e:
-                raise ToolError(str(e), code="bad_request") from e
-            return f"снимок {name} приложен к черновику"
-
-        @c.tool("draft_detach")
-        async def draft_detach(args):
-            n = await asyncio.to_thread(ch.draft.detach, args.get("shot") or "all")
-            return f"снято снимков: {n}"
-
-        @c.tool("draft_clear")
-        async def draft_clear(args):
-            await asyncio.to_thread(ch.draft.clear)
-            return "черновик очищен"
-
-        @c.tool("draft_publish")
-        async def draft_publish(args):
-            d = await asyncio.to_thread(ch.draft.get)
-            photos = [p for p in (ch.draft.shots.resolve(n) for n in d["photos"]) if p]
-            status, text = await ch.publish(d["text"], photos, args.get("voice"))
-            if status != "ok":
-                msg, code = POST_FAILURES.get(status, ("публикация не удалась", "unavailable"))
-                raise ToolError(msg, code=code)
-            await asyncio.to_thread(ch.draft.clear)
-            return "опубликовано из черновика" + (f" (со снимками: {len(photos)})" if photos else "") + (f": «{text}»" if text else "")
-
-        @c.tool("publish_video")
-        async def publish_video(args):
-            from gits_sdk.resources import shared_file
-
-            path = await asyncio.to_thread(shared_file, _text_arg(args, "resource"))
-            if path is None or path.suffix.lower() != ".mp4":
-                raise ToolError("Нужен MP4 из core.resources.", code="bad_request")
-            caption = str(args.get("caption") or "").strip()
-            if len(caption) > 1024:
-                raise ToolError("Подпись длиннее 1024 символов.", code="bad_request")
-            if await asyncio.to_thread(lambda: path.stat().st_size) > 50_000_000:
-                raise ToolError("Видео превышает лимит Telegram Bot API 50 МБ.", code="bad_request")
-            status = await ch.publish_video(path, caption)
-            if status != "ok":
-                msg, code = POST_FAILURES.get(status, ("публикация не удалась", "unavailable"))
-                raise ToolError(msg, code=code)
-            return {"published": True, "resource": args["resource"]}
-
-        # ── её аккаунт ──
-        @c.tool("chats")
-        async def chats(args):
+        # ── чтение её аккаунта ──
+        @c.tool("inbox")
+        async def inbox(args):
+            limit = _int_arg(args, "limit", 15)
+            if args.get("chat"):
+                return await self._account(user.read, _text_arg(args, "chat"), limit)
+            if args.get("unread") is True:
+                return await asyncio.to_thread(user.unread, limit)
             return await self._account(user.chats, _int_arg(args, "limit", 20))
 
-        @c.tool("read")
-        async def read(args):
-            return await self._account(user.read, _text_arg(args, "chat"), _int_arg(args, "limit", 15))
-
-        @c.tool("unread")
-        async def unread(args):
-            return await asyncio.to_thread(user.unread, _int_arg(args, "limit", 15))
-
-        @c.tool("send")
-        async def send(args):
-            privacy.require()
-            return await self._account(user.send, _text_arg(args, "chat"), _text_arg(args, "text"))
-
-        @c.check("send")
-        async def send_check(args):
-            return privacy.reason(str(args.get("text") or ""))
-
         # ── настройки ──
-        @c.tool("set_periodic")
-        async def set_periodic(args):
-            enabled = self._flag(args)
-            await self._set_setting("publish", enabled)
-            return ("периодические посты в Telegram включены" if enabled else "периодические посты в Telegram выключены")
-
-        @c.tool("set_after_run")
-        async def set_after_run(args):
-            enabled = self._flag(args)
-            await self._set_setting("after_run", enabled)
-            return ("после каждого забега (гибели колонии) будет писать пост-итог в канал" if enabled
-                    else "постов-итогов после забега больше не будет")
+        @c.tool("settings")
+        async def settings(args):
+            return await self.settings(args)
 
         # ── ответы ядра в Telegram (TG-17, TG-19, TG-20) ──
         @c.on_request("deliver")
@@ -373,12 +264,148 @@ class TelegramModule:
         async def reconnected():
             await privacy.refresh()
 
-    @staticmethod
-    def _flag(args: dict) -> bool:
-        value = args.get("enabled")
-        if not isinstance(value, bool):
-            raise ToolError("параметр «enabled» должен быть true или false", code="bad_request")
-        return value
+    async def settings(self, args: dict) -> str:
+        """Периодические посты и пост-итог после забега: значения меняются через дашборд ядра; без параметров - текущие."""
+        done = []
+        for key, name, words in (("periodic", "publish", ("периодические посты в Telegram включены",
+                                                          "периодические посты в Telegram выключены")),
+                                 ("after_run", "after_run", ("после каждого забега (гибели колонии) будет писать пост-итог в канал",
+                                                            "постов-итогов после забега больше не будет"))):
+            value = args.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, bool):
+                raise ToolError(f"параметр «{key}» должен быть true или false", code="bad_request")
+            await self._set_setting(name, value)
+            done.append(words[0] if value else words[1])
+        if done:
+            return "; ".join(done)
+        ch = self.channel
+        return (f"периодические посты: {'включены' if ch.flag('publish') else 'выключены'}; "
+                f"пост-итог после забега: {'включён' if ch.flag('after_run') else 'выключен'}")
+
+    # ── сообщения (инструмент message) ───────────────────────────────────────
+
+    def _target(self, raw) -> tuple[str, str]:
+        """(вид, адресат): channel, owner или chat (название, @имя или id как их написали)."""
+        text = str(raw or "").strip()
+        low = text.lstrip("@").lower()
+        if low in ("", "channel", "канал"):
+            return "channel", ""
+        chan = self.channel._channel.lstrip("@").lower()
+        if chan and low == chan:
+            return "channel", ""
+        if self.channel.owner.is_target(text):
+            return "owner", ""
+        return "chat", text
+
+    async def message_check(self, args: dict) -> str | None:
+        """tool.check: разрешение спрашивается по АДРЕСАТУ. Канал и владелец: без вопроса. Чат с её личного аккаунта: без
+        вопроса, только если из него уже писали (бот или аккаунт), иначе вопрос. Личные слова в тексте тоже поднимают вопрос."""
+        kind, who = self._target(args.get("to"))
+        if kind != "chat":
+            return None
+        text = str(args.get("text") or "")
+        reason = self.privacy.reason(text) if text else None
+        if reason:
+            return reason
+        known = await asyncio.to_thread(lambda: self.channel.known.has(who) or self.user.known.has(who))
+        if not known:
+            return f"написать с её личного аккаунта в чат «{who[:60]}», из которого ей ещё не писали"
+        return None
+
+    def _resolve_files(self, names) -> list[tuple[Path, str]]:
+        """files -> [(путь, вид)]: снимок (имя или last) из папки снимков либо идентификатор из core.resources."""
+        from gits_sdk.resources import shared_file
+
+        if names is None:
+            return []
+        if not isinstance(names, list) or not all(isinstance(n, str) and n.strip() for n in names):
+            raise ToolError("параметр «files» должен быть списком строк", code="bad_request")
+        if len(names) > MAX_FILES:
+            raise ToolError(f"файлов не больше {MAX_FILES}", code="bad_request")
+        out = []
+        for name in names:
+            name = name.strip()
+            path = self.channel.shots.last() if name == "last" else self.channel.shots.resolve(name)
+            if path is None:
+                path = shared_file(name)
+            if path is None:
+                raise ToolError(f"файла «{name[:80]}» нет среди снимков и ресурсов ядра", code="bad_request")
+            kind = FILE_KINDS.get(path.suffix.lower(), "document")
+            if path.stat().st_size > FILE_MAX_BYTES:
+                raise ToolError(f"файл «{path.name}» больше лимита Telegram Bot API (50 МБ)", code="bad_request")
+            out.append((path, kind))
+        return out
+
+    async def message(self, args: dict) -> str:
+        ch, privacy = self.channel, self.privacy
+        if args.get("after_run") and not ch.flag("after_run"):
+            return "пост-итог после забега выключен в настройках Telegram"
+        kind, who = self._target(args.get("to"))
+        text = _text_arg(args, "text", required=False).strip()
+        topic = _text_arg(args, "topic", required=False).strip()
+        reply_to = args.get("reply_to")
+        if reply_to is not None and (isinstance(reply_to, bool) or not isinstance(reply_to, int)):
+            raise ToolError("параметр «reply_to» должен быть числом", code="bad_request")
+        files = await asyncio.to_thread(self._resolve_files, args.get("files"))
+        if not text and not topic and not files:
+            raise ToolError("нужен text, topic или files", code="bad_request")
+        if kind == "channel":
+            status = await ch.ready_for_posts()
+            if status:
+                msg, code = POST_FAILURES[status]
+                raise ToolError(msg, code=code)
+        privacy.require()                                  # TG-5: без списка личных слов ничего не уходит
+        if not text and topic:
+            text = await ch.compose_post(topic) or ""
+            if not text:
+                raise ToolError(POST_FAILURES["unsafe"][0], code="denied")
+        # фильтр приватности на каждый исходящий текст: канал строже всего (ссылки, @упоминания, длина), чат - личные слова;
+        # владелец вправе слышать своё имя
+        if text and kind == "channel" and ch._safe(text) is None:
+            raise ToolError(POST_FAILURES["unsafe"][0], code="denied")
+        if text and kind == "chat" and privacy.leaks(text):
+            raise ToolError(POST_FAILURES["unsafe"][0], code="denied")
+        voice = args.get("voice")
+        voice = (ch.flag("voice") if kind == "channel" else False) if voice is None else bool(voice)
+        try:
+            return await self._send_message(kind, who, text, files, voice, reply_to)
+        except ToolError:
+            raise
+        except LeakError as e:
+            raise ToolError(str(e), code="denied") from e
+        except ValueError as e:
+            raise ToolError(str(e), code="bad_request") from e
+        except Exception as e:
+            raise ToolError("не удалось отправить в Telegram: " + scrub(str(e), ch._token)[:160], code="unavailable") from e
+
+    async def _send_message(self, kind: str, who: str, text: str, files: list, voice: bool, reply_to) -> str:
+        ch = self.channel
+        if kind == "chat":
+            ok, why = self.user.state()
+            if not ok:
+                raise ToolError(why, code="unavailable")
+            if files:
+                return await self.user.send_files(who, files, text, reply_to)
+            ogg = await ch.try_ogg(text) if voice else None
+            return await self.user.send(who, text, ogg, reply_to)
+        chat_id = ch._channel
+        if kind == "owner":
+            chat_id = ch.owner_id()
+            if not chat_id:
+                raise ToolError("Telegram-аккаунт владельца не задан в настройках (поле «Аккаунт владельца»)", code="unavailable")
+        if files:
+            await ch.send_files(chat_id, files, "" if (voice and text) else text, reply_to)
+            if voice and text:
+                await ch.reply(chat_id, text, await ch.try_ogg(text))
+        else:
+            ogg = await ch.try_ogg(text) if voice else None
+            await ch.reply(chat_id, text, ogg, reply_to)
+        if kind == "owner":
+            return "отправлено владельцу"
+        await ch._record_post(text, "опубликовано")
+        return "опубликован пост" + (f": «{text}»" if text else f" (файлов: {len(files)})")
 
     async def deliver(self, body: dict) -> dict:
         """Доставить ответ ядра в Telegram. target: bot:<chat_id> - от бота, user:<chat_id> - с её аккаунта, owner - личка

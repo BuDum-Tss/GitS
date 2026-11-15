@@ -8,7 +8,7 @@
   - общие настройки (стример, «не отвлекать», модель игрока и др.) приходят в `welcome` и темой `settings` и пишутся в
     `settings.json` модуля;
   - события игры уходят в ядро как события модуля `rimworld.*` (RW-9): ядро решает, важны ли они сейчас;
-  - итог забега: модуль сам просит ядро вызвать `telegram.post` с after_run (RW-12); включён ли пост-итог, решает настройка окружения Telegram.
+  - итог забега: модуль сам просит ядро вызвать `telegram.message` с after_run (RW-12); включён ли пост-итог, решает настройка окружения Telegram.
 """
 import asyncio
 import logging
@@ -25,7 +25,7 @@ logger = logging.getLogger("core_link")
 SETTINGS_SYNC_S = 1.0           # как часто сверять общие настройки ядра с файлом настроек модуля
 FACT_EXPIRES_S = 120             # факты хода ждут очереди речи дольше готовой реплики
 SAY_EXPIRES_S = 20              # реплика комментатора устаревает за столько секунд (ядро не озвучит запоздавшую)
-POST_TIMEOUT_S = 150            # telegram.post может ждать разрешения; ядро само ограничивает инструмент 120 с
+POST_TIMEOUT_S = 150            # telegram.message пишет текст моделью; ядро само ограничивает инструмент 120 с
 MONTAGE_TIMEOUT_S = 150          # montage.start имеет риск ask: ядро может ждать ответа пользователя
 RECENT_KEEP = 10                # сколько последних реплик ассистентки помнить для проверки повторов
 
@@ -206,11 +206,11 @@ class CoreLink:
         task.add_done_callback(self._background.discard)
 
     async def _post_run_summary(self, prompt: str) -> bool:
-        """Попросить ядро вызвать telegram.post с темой из итога забега (публикует модуль Telegram, разрешения и текст
+        """Попросить ядро вызвать telegram.message с темой из итога забега (публикует модуль Telegram, текст
         поста его; включён ли пост-итог, решает настройка Telegram `after_run`). Сбой только в журнал: забегу он не мешает."""
         try:
-            await self.client.request("core.tool.call", {"tool": "telegram.post", "args": {"topic": prompt, "after_run": True}},
-                                      timeout=POST_TIMEOUT_S)
+            args = {"to": "channel", "topic": prompt, "after_run": True}
+            await self.client.request("core.tool.call", {"tool": "telegram.message", "args": args}, timeout=POST_TIMEOUT_S)
             return True
         except (ToolError, asyncio.TimeoutError) as e:
             events_log.log("telegram", f"пост-итог после забега не опубликован: {getattr(e, 'message', None) or e!r}")

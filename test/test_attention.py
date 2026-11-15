@@ -863,3 +863,43 @@ async def test_tg14_storage_failure_does_not_stop_the_event(rig):
     d = await rig.submit("telegram", kind="telegram.dm", text="т", urgency_hint=2, addressed_to_me=False, sender=MASHA)
     assert d["decision"] in ("D1", "D2", "D3", "D4")
 
+
+# ── R5: гость - личное сообщение боту Telegram не от владельца ──────────────────────────────────
+
+BOT = {"module": "telegram", "target": "bot:5"}
+
+
+async def test_r5_stranger_message_goes_to_guest_talk_and_is_registered(rig):
+    rel, mem = tg14_rig(rig)
+    d = await rig.submit("telegram", kind="telegram.bot_message", text=FACT, addressed_to_me=True, memorable=True,
+                         sender=MASHA, reply_channel=BOT)
+    assert d["rule"] == "R5" and rig.io.guests == [(FACT, BOT, MASHA)] and rig.io.inputs == []
+    assert rig.candidates() == [] and rig.decider.calls == []                 # ни обычного внимания, ни разговора владельца
+    assert [c[:2] for c in rel.calls] == [("ensure", "tg:5"), ("note", "tg:5")]      # человек регистрируется как раньше
+    assert mem.facts == []
+    assert evt_log("attention") is not None and rig.att.last_decision["rule"] == "R5"    # решение в журнале решений
+
+
+async def test_r5_does_not_fire_for_owner_without_address_channel_or_other_kinds(rig):
+    tg14_rig(rig)
+    owner = {"id": "tg:777", "name": "Аня", "is_owner": True}
+    d = await rig.submit("telegram", kind="telegram.bot_message", text=FACT, addressed_to_me=True, sender=owner,
+                         reply_channel=BOT)
+    assert d["rule"] == "R1" and len(rig.io.inputs) == 1                      # владелец идёт как раньше
+    cases = [dict(kind="telegram.bot_message", addressed_to_me=False, sender=MASHA, reply_channel=BOT),
+             dict(kind="telegram.bot_message", addressed_to_me=True, sender=MASHA),
+             dict(kind="telegram.dm", addressed_to_me=True, sender=MASHA, reply_channel=BOT),
+             dict(kind="telegram.group", addressed_to_me=True, sender=MASHA, reply_channel=BOT),
+             dict(kind="telegram.bot_message", addressed_to_me=True, sender={"name": "Без id"}, reply_channel=BOT)]
+    for ev in cases:
+        d = await rig.submit("telegram", text=FACT, urgency_hint=1, **ev)
+        assert d["rule"] != "R5"
+    assert rig.io.guests == []
+
+
+async def test_r5_respects_mute_rule(rig):
+    tg14_rig(rig)
+    await rig.att.set_rule(module="telegram", effect="mute", minutes=60)
+    d = await rig.submit("telegram", kind="telegram.bot_message", text=FACT, addressed_to_me=True, sender=MASHA,
+                         reply_channel=BOT)
+    assert d["rule"] == "R3" and rig.io.guests == []

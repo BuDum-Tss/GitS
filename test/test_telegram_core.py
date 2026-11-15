@@ -100,7 +100,7 @@ async def test_set_setting_direct_call_refuses_other_keys(tmp_path):
 
 
 # ── TG-15: пост-итог после забега ──────────────────────────────────────────────────────────────
-# С ТЗ 11 пост-итог запрашивает сам модуль игры (core.tool.call telegram.post, тесты в rimworld-module); в ядре его нет.
+# С ТЗ 11 пост-итог запрашивает сам модуль игры (core.tool.call telegram.message, тесты в rimworld-module); в ядре его нет.
 
 def test_core_no_longer_posts_run_summaries():
     import core_service
@@ -148,7 +148,7 @@ def test_module_notes_describe_connected_modules_with_tools():
     from services.peers.registry import PeerRecord, PeerRegistry
     reg = PeerRegistry(SimpleNamespace(envs={}, load_errors={}), settings_source=lambda: {"peers": {}})
     reg.records["telegram"] = PeerRecord("telegram", title="Telegram", description="Telegram: канал и бот.", connected=True,
-                                           manifest={"tools": [{"name": "post"}]},
+                                           manifest={"tools": [{"name": "message"}]},
                                            state={"summary": "канал: готов, аккаунт: нет сессии", "data": {}, "ts": 1})
     reg.records["quiet"] = PeerRecord("quiet", title="Тихий", connected=True, manifest={"tools": []})      # без инструментов
     reg.records["off"] = PeerRecord("off", title="Нет", connected=False, manifest={"tools": [{"name": "x"}]})

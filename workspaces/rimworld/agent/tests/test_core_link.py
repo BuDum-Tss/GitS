@@ -83,7 +83,7 @@ async def test_run_ended_posts_to_telegram_through_core(tmp_path):
     async with Rig(tmp_path) as rig:
         await rig.link.event("run_ended", {"prompt": "Колония погибла. Напиши итог."}, text="Забег закончен.")
         await rig.core.wait_for(lambda: rig.tool_calls)
-        assert rig.tool_calls == [{"tool": "telegram.post", "args": {"topic": "Колония погибла. Напиши итог.", "after_run": True}}]
+        assert rig.tool_calls == [{"tool": "telegram.message", "args": {"to": "channel", "topic": "Колония погибла. Напиши итог.", "after_run": True}}]
         ended = [e for e in rig.core.events if e["kind"] == "rimworld.run_ended"]
         assert len(ended) == 1 and ended[0]["urgency_hint"] == 3
 

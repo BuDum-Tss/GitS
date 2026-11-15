@@ -20,11 +20,12 @@ import yaml
 REFLEX, CHAT, TASK, IGNORE, THINK = "reflex", "chat", "task", "ignore", "think"
 ROUTES = (REFLEX, CHAT, TASK, IGNORE, THINK)
 
-# Решения менеджера внимания (ТЗ 03) и правила R1-R4 -> маршруты. D1 уходит в сводку без речи; D4 вдобавок к реплике
+# Решения менеджера внимания (ТЗ 03) и правила R1-R5 -> маршруты. D1 уходит в сводку без речи; D4 вдобавок к реплике
 # даёт мгновенную реакцию (фокус reaction); R2 - ответ на вопрос; R3 - в сводку; R4 - срочное, объявленное модулем.
 DECISION_ROUTES = {
     "D0": (IGNORE,), "D1": (IGNORE,), "D2": (CHAT,), "D3": (CHAT,), "D4": (REFLEX, CHAT),
     "R1": (CHAT,), "R2": (REFLEX,), "R3": (IGNORE,), "R4": (REFLEX, CHAT),
+    "R5": (IGNORE,),           # гость: ответ незнакомому человеку идёт отдельным путём (`conversation/guest.py`), не разговором
 }
 
 HARD_RULES_FILE = Path(__file__).resolve().with_name("hard_rules.yaml")
