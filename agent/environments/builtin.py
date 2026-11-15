@@ -26,10 +26,10 @@ MODULE_SETTINGS = ("autoplay",)       # настройки Telegram стали �
 
 
 def _tool(env, name, description, params, call, risk="auto", keywords=(), self_confirming=False,
-          informative=False):
+          informative=False, danger=None):
     return Tool(id=f"{env}.{name}", env=env, name=name, description=description, params=params,
                 risk=risk, keywords=tuple(keywords), call=call, self_confirming=self_confirming,
-                informative=informative)
+                informative=informative, danger=danger)
 
 
 def register(registry, companion, memory):
@@ -262,9 +262,12 @@ def register(registry, companion, memory):
         id="assistant", title="Сама ассистентка",
         description="Её собственные настройки и память: голос, зрение, слух, разговорчивость.",
         tools=[
-            _tool("assistant", "set_voice", "Заглушить или вернуть её ГОЛОС (озвучку ответов вслух). Для просьб «замолчи», «выключи голос», «без звука», «говори вслух».",
-                  {"muted": bool_p("true - выключить озвучку, false - включить")}, set_voice,
-                  keywords=("голос", "озвучка", "звук", "замолчи", "молчи", "тихо", "заглуши", "говори", "вслух")),
+            _tool("assistant", "set_voice", "Заглушить или вернуть озвучку ответов на колонках ПК (десктопный голос). Не относится к голосовым "
+                  "каналам Discord: там говорят инструментом voice.say, заглушка ПК ему не мешает. Заглушку ставит владелец; "
+                  "снять её можно только с его разрешения.",
+                  {"muted": bool_p("true - выключить озвучку на ПК, false - включить (спросит владельца)")}, set_voice,
+                  keywords=("озвучка колонки", "заглуши колонки", "без звука на ПК", "замолчи", "молчи", "тихо"),
+                  danger=lambda a: None if a.get("muted") else "включить озвучку на колонках ПК: она выключена по решению владельца"),
             _tool("assistant", "set_vision", "Включить или выключить зрение: слежение за активным окном на экране.",
                   {"enabled": bool_p("true - смотреть на экран, false - не смотреть")}, set_vision,
                   keywords=("зрение", "экран", "смотри", "отвернись", "подглядывай")),

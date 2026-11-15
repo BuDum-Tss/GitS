@@ -260,3 +260,15 @@ def test_profile_tool_is_gone_and_scope_follows_the_workspace():
     reg = Registry()
     builtin.register(reg, FakeCompanion(), UserMemory("."))
     assert reg.get("assistant.set_profile") is None
+
+
+def test_agent_can_mute_the_desktop_voice_but_unmuting_needs_the_owner():
+    """Заглушку озвучки на ПК ставит владелец: она сама её не снимает (раньше сама включала озвучку «чтобы говорить в войсчате»).
+    Заглушить себя она может без вопроса; вернуть звук только с разрешения владельца."""
+    reg = Registry()
+    builtin.register(reg, FakeCompanion(), UserMemory("."))
+    tool = reg.get("assistant.set_voice")
+    assert tool.danger({"muted": True}) is None
+    reason = tool.danger({"muted": False})
+    assert reason and "владельц" in reason
+    assert "voice.say" in tool.description and "Discord" in tool.description          # не путает ПК-колонки с голосовыми каналами
