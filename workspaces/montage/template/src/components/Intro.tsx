@@ -9,7 +9,7 @@ export const Intro: React.FC<{insert?: InsertOf<'intro'>; durationInFrames?: num
     const suffix = height > width ? 'vertical_light' : 'light';
     return (
         <AbsoluteFill style={{backgroundColor: colors['sign-paper']}}>
-            <Video src={staticFile(`intro/Aperture_Boot_${suffix}.mp4`)} muted
+            <Video src={staticFile(`intro/Aperture_Boot_${suffix}.mp4`)}
                 style={{width: '100%', height: '100%', objectFit: 'contain'}} />
         </AbsoluteFill>
     );

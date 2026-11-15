@@ -44,17 +44,17 @@ def resolve_output_dir(value: str | None = None) -> str:
 
 _KEYWORDS = ("монтаж", "смонтируй", "ролик", "видео", "шортс", "рилс", "клип", "субтитры", "нарезка")
 
-BRIEF = ("Сначала montage.skills(name=montage-regulation, file=START.md): устройство среды, пути, инструменты и порядок работы. "
-         "Найди текущий ролик через montage.work list/status; создавай единицу только для нового ролика. "
-         "montage.files читает ресурсы и пишет план; montage.run выполняет voiceover → render → check. "
-         "План: одно предложение на запись озвучки. Интро Aperture Boot по умолчанию без наложений. "
-         "Проверка черновика с ошибкой: прочитай qa/report.md, исправь и проверь снова. Studio — просмотр.")
+BRIEF = ("Сначала montage.skills(name=montage-regulation, file=START.md). Ролик ищи через montage.work list/status, "
+         "новую единицу создавай только для нового. Пути в files начинаются с id ролика, отчёт проверки: <id>/qa/report.md. "
+         "Ролик собирай сценами: work op=scenes (без времён), затем run compose. Веди список задач ядра и отмечай шаги.")
 
 # разрешённые команды (`run`): исчерпывающий список, оболочки нет; первый аргумент каждой это id единицы (ролика)
 COMMANDS = [
     WorkspaceCommand("intake", "Приём исходников единицы: копирование, проверка, перекодирование", background=True, timeout_s=3600),
     WorkspaceCommand("transcribe", "Слова для субтитров (журнал речи забега)", timeout_s=600),
-    WorkspaceCommand("voiceover", "Озвучка реплик плана её голосом", background=True, timeout_s=1800),
+    WorkspaceCommand("compose", "Монтажный лист из сцен (work op=scenes): озвучка фраз и раскладка по времени, пишет plan.json",
+                     background=True, timeout_s=1800),
+    WorkspaceCommand("voiceover", "Озвучка реплик готового plan.json её голосом", background=True, timeout_s=1800),
     WorkspaceCommand("render", "Черновик ролика (половинный размер, renders/preview.mp4)", background=True, timeout_s=10800),
     WorkspaceCommand("still", "Кадр плана: renders/still_<кадр>.png (аргумент: номер кадра)", timeout_s=300),
     WorkspaceCommand("compositions", "Список композиций проекта Remotion", timeout_s=300),
@@ -90,11 +90,16 @@ def _tools() -> list[dict]:
         *_standard_tools(),
         {
             "name": "work",
-            "description": "Рабочие единицы монтажа (ролики): create (бриф, исходники, площадка; создаёт папку с копией шаблона), list, "
-                           "status (состояние, файлы, итоги запусков, ссылка на сайт), update (сменить режим закадра существующего ролика), "
-                           "cancel (остановить операции и закрыть единицу).",
+            "description": "Ролики монтажа: create (бриф, исходники, площадка), list, status, update (режим закадра), "
+                           "scenes (описать ролик сценами без времён; лист соберёт run compose), cancel.",
             "params": {
-                "op": {"type": "string", "enum": ["create", "list", "status", "update", "cancel"], "required": True, "description": "действие"},
+                "op": {"type": "string", "enum": ["create", "list", "status", "update", "scenes", "cancel"], "required": True,
+                       "description": "действие"},
+                "scenes": {"type": "array", "required": False,
+                           "description": "scenes: список сцен по порядку. Сцена: kind (intro, glados_room, chamber_sign, result_sign, "
+                                          "blueprint, custom), description (что на картинке), say (список фраз закадра), assets (какие "
+                                          "материалы берёшь), props (параметры вставки), mood, emotion, hold_ms, beat. Времён нет."},
+                "cta": {"type": "string", "required": False, "description": "scenes: текст призыва в конце (если площадка его требует)"},
                 "id": {"type": "string", "required": False, "description": "id единицы (status, update, cancel)"},
                 "brief": {"type": "string", "required": False, "description": "create: что за ролик, своими словами пользователя"},
                 "title": {"type": "string", "required": False, "description": "create: название (по умолчанию из брифа)"},

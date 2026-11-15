@@ -31,7 +31,7 @@ def test_workspace_block_has_brief_skills_area_commands_site():
     assert area.writable == ["*/plan", "*/work/src/custom", "*/work/public/design"]
     assert {"template/demo/plan.*.json", "resources", "*/sources", "*/renders", "*/qa"} <= set(area.readonly)
     assert {"node_modules", ".git", ".claude"} == set(area.hidden)
-    assert [c.id for c in spec.commands] == ["intake", "transcribe", "voiceover", "render", "still", "compositions", "check", "final"]
+    assert [c.id for c in spec.commands] == ["intake", "transcribe", "compose", "voiceover", "render", "still", "compositions", "check", "final"]
     assert spec.command("render").background and spec.command("final").background and spec.command("final").irreversible
     assert not spec.command("still").background and not spec.command("check").irreversible
     assert spec.site_url.startswith("http://127.0.0.1:")
@@ -58,7 +58,7 @@ def test_tools():
     assert tools["files"]["danger_check"] is True and tools["run"]["danger_check"] is True      # удаление и final спрашивают согласие
     assert "final" in tools["run"]["params"]["command"]["enum"]
     work = tools["work"]
-    assert work["params"]["op"]["enum"] == ["create", "list", "status", "update", "cancel"]
+    assert work["params"]["op"]["enum"] == ["create", "list", "status", "update", "scenes", "cancel"]
     assert {"монтаж", "смонтируй", "ролик", "видео", "шортс", "рилс", "клип", "субтитры", "нарезка"} <= set(work["keywords"])
     assert work["params"]["sources"]["type"] == "array"
     assert "platform" not in work["params"]

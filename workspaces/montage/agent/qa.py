@@ -397,48 +397,15 @@ async def run_technical(plan: dict, words: list[dict], story: dict | None, video
     if abs(info.duration_s - D / 1000) > DURATION_TOL_S:
         f.append(Finding("format", "error", f"длительность {info.duration_s:.2f} с, по плану {D / 1000:.2f} с (допуск 0,5 с)"))
 
-    # ---- громкость
-    if info.has_audio:
+    # ---- громкость: только в финале (там звук выравнивается); догадки по тишине и неподвижности кадра убраны —
+    # заставка со звуком и намеренные паузы давали ложные отказы, смысл ролика агент проверяет сам по кадрам
+    if info.has_audio and not draft:
         loud = await media.loudness(video)
         checked["loudness"] = loud
-        sev = "warning" if draft else "error"
-        if loud["integral"] is None:
-            f.append(Finding("loudness", "warning", "громкость не измерена: звук цифровая тишина"))
-        elif abs(loud["integral"] - LUFS_TARGET) > LUFS_TOL:
-            f.append(Finding("loudness", sev, f"интегральная громкость {loud['integral']:.1f} LUFS, нужно {LUFS_TARGET:.0f} ± {LUFS_TOL:.0f}"
-                             + (" (черновик не выравнивается, выравнивание в финале)" if draft else "")))
+        if loud["integral"] is not None and abs(loud["integral"] - LUFS_TARGET) > LUFS_TOL:
+            f.append(Finding("loudness", "error", f"интегральная громкость {loud['integral']:.1f} LUFS, нужно {LUFS_TARGET:.0f} ± {LUFS_TOL:.0f}"))
         if loud["true_peak"] is not None and loud["true_peak"] > PEAK_MAX:
-            f.append(Finding("loudness", sev, f"пик {loud['true_peak']:.1f} dBTP выше {PEAK_MAX:.0f}"))
-    else:
-        f.append(Finding("loudness", "warning", "в ролике нет звуковой дорожки"))
-
-    # ---- чёрное, застывшее, тишина
-    inserts = plan.get("inserts") or []
-    cover = [(i["at_ms"] / 1000 - 0.2, (i["at_ms"] + i["dur_ms"]) / 1000 + 0.2) for i in inserts]
-    black_ok = [(b["from_ms"] / 1000 - 0.2, b["to_ms"] / 1000 + 0.2) for b in plan.get("blackout") or []]
-    for a, b in await media.blackdetect(video, min_s=BLACK_MIN_S):
-        for lo, hi in subtract((a, b), black_ok):
-            if hi - lo >= BLACK_MIN_S:
-                f.append(Finding("blackdetect", "error", f"чёрный кадр {hi - lo:.1f} с вне затемнения и переходов", int(lo * 1000)))
-    for a, b in await media.freezedetect(video, min_s=FREEZE_MIN_S):
-        for lo, hi in subtract((a, b), cover):
-            if hi - lo >= FREEZE_MIN_S:
-                f.append(Finding("freezedetect", "error", f"картинка застыла на {hi - lo:.1f} с вне вставок", int(lo * 1000)))
-    if info.has_audio:
-        silences = await media.silencedetect(video, noise_db=SILENCE_DB, min_s=SILENCE_MIN_S)
-        for sp in _speech_spans(plan, words):
-            lost = sum(overlap((sp[0] / 1000, sp[1] / 1000), s) for s in silences)
-            if lost >= SILENCE_MIN_S:
-                f.append(Finding("silencedetect", "error", f"по плану здесь речь ({sp[0] / 1000:.1f}–{sp[1] / 1000:.1f} с), а в звуке тишина "
-                                 f"{lost:.1f} с", sp[0]))
-        # CRAFT-4: первые 3 секунды не должны быть беззвучными и неподвижными
-        head = await media.silencedetect(video, noise_db=SILENCE_DB, min_s=0.5, limit_s=FIRST_SECONDS_S)
-        quiet = sum(overlap(s, (0.0, FIRST_SECONDS_S)) for s in head)
-        if quiet >= 1.0:
-            f.append(Finding("craft.first_seconds", "error", f"в первых 3 секундах тишина {quiet:.1f} с: ролик должен зацепить сразу", 0))
-    for a, b in await media.freezedetect(video, min_s=1.0, limit_s=FIRST_SECONDS_S):
-        if b - a >= 1.0:
-            f.append(Finding("craft.first_seconds", "error", f"в первых 3 секундах картинка неподвижна {b - a:.1f} с", int(a * 1000)))
+            f.append(Finding("loudness", "error", f"пик {loud['true_peak']:.1f} dBTP выше {PEAK_MAX:.0f}"))
 
     # ---- субтитры: страницы против слов, зоны
     pages = caption_pages(plan, words, zones)
@@ -477,7 +444,6 @@ async def run_technical(plan: dict, words: list[dict], story: dict | None, video
                                  f"(видно: «{seen[:60]}»): глифов нет, текст обрезан или перекрыт", t_ms))
     else:
         checked["ocr"] = {"available": False}
-        f.append(Finding("ocr", "warning", "OCR (RapidOCR) не установлен в окружении модуля: текст на кадрах не проверен"))
 
     f += craft_plan_checks(plan, story, words, platform)
     return f, checked

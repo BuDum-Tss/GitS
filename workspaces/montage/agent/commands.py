@@ -20,6 +20,7 @@ from pathlib import Path
 import intake as intake_mod
 import media
 import qa as qa_mod
+import scenes as scenes_mod
 import srt as srt_mod
 import transcribe
 from core_api import CoreAPI
@@ -234,6 +235,55 @@ class Commands:
         return {"voiceover": len(vos), "synthesized": made, "fit": "plan/voiceover_fit.json",
                 "text": f"закадр синтезирован: реплик {len(vos)}, заново {made}{note}"}
 
+    # ================================================================================================ compose
+
+    async def _cmd_compose(self, job: Job, args: dict, progress: Progress) -> dict:
+        """Монтажный лист из сцен (`plan/scenes.json`, его пишет `work op=scenes`): озвучивает фразы, раскладывает сцены встык,
+        ставит реплики внутрь своей сцены и пишет `plan/plan.json` (только если он прошёл проверку правил)."""
+        spec = read_json(job.plan_dir / scenes_mod.SCENES_FILE)
+        if not isinstance(spec, dict) or not spec.get("scenes"):
+            raise ToolError("сцен ещё нет: сначала work op=scenes с описанием сцен", code="unavailable")
+        story = read_json(job.plan_dir / "story.json")
+        story = story if isinstance(story, dict) else None
+        ctx = self._plan_context(job, story)
+        scenes, problems = scenes_mod.parse_scenes(spec["scenes"], ctx, story_beat_ids(story) if story else None)
+        if problems:
+            raise ToolError("сцены не приняты: " + "; ".join(problems[:8]), code="invalid")
+        mode = normalize_voiceover(job.request.get("voiceover"))
+        if any(s["say"] for s in scenes) and mode != "character":
+            job.request["voiceover"] = "character"          # фразы в сценах означают закадр её голосом
+            job.data.pop("check", None)
+        cache = load_voice_cache(job)
+        durations: dict[str, int] = {}
+        todo = [(n, k, text, s["emotion"]) for n, s in enumerate(scenes, 1) for k, text in enumerate(s["say"], 1)]
+        made = 0
+        for index, (n, k, text, emotion) in enumerate(todo):
+            pid = scenes_mod.phrase_id(n, k)
+            cached, wav = cache.get(pid), job.work / "public" / "vo" / f"{pid}.wav"
+            if cached and cached.get("hash") == voice_digest(text, emotion) and wav.is_file():
+                durations[pid] = int(cached["duration_ms"])
+                continue
+            await progress(index / max(1, len(todo)), f"фраза {index + 1} из {len(todo)}")
+            durations[pid] = (await synthesize_to(self.core, job, pid, text, emotion))["duration_ms"]
+            made += 1
+        plan, layout = scenes_mod.build_plan(scenes, durations, title=str(spec.get("title") or job.data.get("title") or "Ролик"),
+                                             fmt=job.request.get("format") or "horizontal", fps=30, platform=self._platform(job),
+                                             cta_text=spec.get("cta") or None, ctx=ctx)
+        for row in layout:
+            high = scenes_mod.HOLD[row["kind"]][2]
+            if row["dur_ms"] > high:
+                problems.append(f"сцена {row['id']} ({row['kind']}): фразы занимают {row['dur_ms']} мс, а такая сцена держится не дольше "
+                                f"{high} мс; для речи используй комнату (glados_room) или сократи фразы")
+        problems += validate_plan(plan, ctx)
+        if problems:
+            raise ToolError("монтажный лист по сценам не прошёл проверку: " + "; ".join(problems[:8]), code="invalid")
+        await asyncio.to_thread((job.plan_dir / "plan.json").write_text, json.dumps(plan, ensure_ascii=False, indent=2), "utf-8")
+        job.data.pop("check", None)
+        await self._save(job)
+        timeline = ", ".join(f"{r['id']} {r['kind']} {r['at_ms']}–{r['at_ms'] + r['dur_ms']} мс" for r in layout)
+        return {"scenes": len(scenes), "phrases": len(todo), "synthesized": made, "duration_ms": plan["duration_ms"], "layout": layout,
+                "text": f"монтажный лист собран: {len(scenes)} сцен, {plan['duration_ms'] / 1000:.1f} с ({timeline})"}
+
     # ================================================================================================ render / still / compositions
 
     async def _cmd_render(self, job: Job, args: dict, progress: Progress) -> dict:
@@ -296,6 +346,7 @@ class Commands:
                                 f"Если нужен закадр, вызови work op=update, id={job.job_id}, voiceover=character, затем run voiceover. "
                                 "Если закадр не нужен, убери реплики из плана.")
             if not problems:
+                await asyncio.to_thread(sync_intro, job.work, self.layout)
                 problems += await self.renderer.validate_plan(job.work, path)
             if not problems:
                 have = custom_components(job.work)
@@ -334,7 +385,7 @@ class Commands:
         job.add_artifact(md, "qa_report")
         await self._save(job)
         text = ("проверка пройдена" if passed else f"проверка не пройдена: ошибок {len(errors)}") + f", предупреждений {len(findings) - len(errors)}"
-        return {"passed": passed, "errors": len(errors), "warnings": len(findings) - len(errors), "report": "qa/report.md",
+        return {"passed": passed, "errors": len(errors), "warnings": len(findings) - len(errors), "report": f"{job.job_id}/qa/report.md",
                 "problems": [f.line() for f in errors][:25], "warnings_list": [f.line() for f in findings if f.severity != "error"][:15],
                 "text": text}
 

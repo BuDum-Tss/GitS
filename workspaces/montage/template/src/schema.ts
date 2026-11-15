@@ -86,7 +86,7 @@ const range = {from_ms: ms, to_ms: ms};
 export const insertSchema = z.discriminatedUnion('kind', [
 	z.strictObject({
 		...insertBase,
-		dur_ms: dur(durations.intro - 600, durations.intro + 2000),
+		dur_ms: dur(3400, 7100),
 		kind: z.literal('intro'),
 		props: z.strictObject({subtitle: text(limits.subtitle), wordmark: text(limits.wordmark).default('APERTURE SCIENCE')}),
 	}),

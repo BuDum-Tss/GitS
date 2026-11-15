@@ -148,6 +148,9 @@ def test_scenes_of_design_system_v2_pass_and_are_checked():
 
     bad_scene(scene("intro", subtitle="я" * 61), "предел 60")
     bad_scene({**scene("intro", subtitle="т"), "dur_ms": 1000}, "интро длится")
+    full_intro = make_plan()
+    full_intro["inserts"] = [{**scene("intro", subtitle="т"), "dur_ms": 7100}]
+    assert not any("интро длится" in e for e in validate_plan(full_intro, ctx()))
     bad_scene({**scene("chamber_sign", big="1", small="м", done=1, active=[], title="т"), "dur_ms": 1000}, "bumper-hold")
     bad_scene(scene("chamber_sign", big="1", small="м", done=5, total=3, active=[], title="т"), "штрихов всего")
     bad_scene(scene("result_sign", big="1", small="м", done=1, active=["костёр"], title="т"), "нет иконки")

@@ -21,7 +21,14 @@ COPY_DIRS = ("src", "scripts")
 PUBLIC_DIRS = ("fonts", "sfx", "scenes", "pet", "hud")   # шрифты, звуки, фон комнаты, питомец, рамка HUD (ТЗ 23)
 MEDIA_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".wav", ".mp3", ".m4a",
                   ".aac", ".flac", ".ogg"}
-LEGACY_INTRO = "199b77f974ab3a5028e1cccbbaef7c38af08c69a04f038dc39271ac85aeb20f7"
+INTRO_TEMPLATE_UPGRADES = {
+    "src/components/Intro.tsx": {
+        "199b77f974ab3a5028e1cccbbaef7c38af08c69a04f038dc39271ac85aeb20f7",
+        "dd8b7b91e662228905eaf3b29cfe0b248f456815da09676e45fae61752b82c40",
+        "3434121514fd827b91419c25425c5212c70efdf36ab200f815c447e084205e9e",
+    },
+    "src/schema.ts": {"7e02adbf3f17ef3e0f39a491e5d740e5227d769287a67d94375152c09319e9b2"},
+}
 
 
 def sync_intro(work: Path, layout: Layout) -> None:
@@ -30,10 +37,10 @@ def sync_intro(work: Path, layout: Layout) -> None:
     for name in ("Aperture_Boot_light.mp4", "Aperture_Boot_vertical_light.mp4"):
         if (assets / name).is_file():
             link_or_copy(assets / name, work / "public" / "intro" / name)
-    relative = Path("src/components/Intro.tsx")
-    component = work / relative
-    if component.is_file() and hashlib.sha256(component.read_bytes().replace(b"\r\n", b"\n")).hexdigest() == LEGACY_INTRO:
-        shutil.copyfile(layout.template / relative, component)
+    for relative, previous in INTRO_TEMPLATE_UPGRADES.items():
+        component = work / relative
+        if component.is_file() and hashlib.sha256(component.read_bytes().replace(b"\r\n", b"\n")).hexdigest() in previous:
+            shutil.copyfile(layout.template / relative, component)
 
 
 def link_or_copy(src: Path, dst: Path) -> None:

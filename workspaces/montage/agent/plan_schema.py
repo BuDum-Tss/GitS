@@ -33,7 +33,7 @@ MAX_BP_TITLE, MAX_BP_KICKER, MAX_BP_NOTE, MAX_BP_LABEL = 40, 40, 120, 40
 MAX_CALLOUTS, MAX_DRAWING = 4, 200
 MAX_TICKS = 30
 MAX_HUD_LABEL = 40
-INTRO_MS = (3400, 6000)     # интро 4 с, анимация заканчивается к 3,4 с
+INTRO_MS = (3400, 7100)     # полное Aperture Boot — 7100 мс; старые планы поддерживают короткую вставку
 BUMPER_MS = (2500, 3500)    # отбивка-табличка держится bumper-hold
 BLUEPRINT_MIN_MS = 3000     # линии рисуются 2,5 с, затем подписи
 ICONS = ("colonists", "build", "sleep", "research", "fire", "raid", "loss", "animals", "cold", "night", "health", "cube",
@@ -425,6 +425,42 @@ def validate_plan(plan, ctx: PlanContext) -> list[str]:
     elif ctx.platform not in ("none",) and D > NO_CTA_UNDER_MS and D < 10 ** 9:
         c.add("cta", f"для площадки {ctx.platform} нужен призыв (cta): ролик длиннее 10 секунд (ТЗ 21 §8)")
 
+    # ---- заставка самостоятельна: поверх неё нет ни закадра, ни звуковых эффектов, ни призыва, ни других вставок
+    for ins in inserts:
+        if not isinstance(ins, dict) or ins.get("kind") != "intro" or not _is_num(ins.get("at_ms")) or not _is_num(ins.get("dur_ms")):
+            continue
+        lo, hi = ins["at_ms"], ins["at_ms"] + ins["dur_ms"]
+        what = f"заставка {ins.get('id')} ({lo}–{hi} мс) идёт со своим звуком, поверх неё нельзя: "
+        for v in vo:
+            if isinstance(v, dict) and _is_num(v.get("at_ms")) and v["at_ms"] < hi and v["at_ms"] + (v.get("duration_ms") or 1) > lo:
+                c.add("voiceover", what + f"реплику {v.get('id')} начни не раньше {hi} мс")
+        for s in sfx:
+            if isinstance(s, dict) and _is_num(s.get("at_ms")) and lo <= s["at_ms"] < hi:
+                c.add("sfx", what + f"эффект на {s['at_ms']} мс перенеси на {hi} мс или позже")
+        if isinstance(cta, dict) and _is_num(cta.get("at_ms")) and lo <= cta["at_ms"] < hi:
+            c.add("cta.at_ms", what + f"призыв начни не раньше {hi} мс")
+        for other in inserts:
+            if (isinstance(other, dict) and other is not ins and _is_num(other.get("at_ms")) and _is_num(other.get("dur_ms"))
+                    and other["at_ms"] < hi and other["at_ms"] + other["dur_ms"] > lo):
+                c.add("inserts", what + f"вставку {other.get('id')} начни не раньше {hi} мс")
+
+    # ---- закадр идёт по картинке: без исходного видео реплика целиком лежит внутри вставок (кроме заставки)
+    if not plan.get("segments") and isinstance(vo, list):
+        scenes = sorted((i["at_ms"], i["at_ms"] + i["dur_ms"]) for i in inserts if isinstance(i, dict) and i.get("kind") != "intro"
+                        and _is_num(i.get("at_ms")) and _is_num(i.get("dur_ms")))
+        merged: list[list[int]] = []
+        for a, b in scenes:
+            if merged and a <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        for v in vo:
+            if isinstance(v, dict) and _is_num(v.get("at_ms")) and _is_num(v.get("duration_ms")) and v["duration_ms"] > 0:
+                s, e = v["at_ms"], v["at_ms"] + v["duration_ms"]
+                if not any(a <= s and e <= b + 50 for a, b in merged):
+                    c.add("voiceover", f"реплика {v.get('id')} ({s}–{e} мс) должна целиком идти по картинке: продли вставку "
+                                       "(например комнату) на всю реплику или сдвинь реплику внутрь вставки")
+
     # ---- биты (CRAFT-2): бит без материала это ошибка
     if beats is not None:
         orphans = sorted(beats - used_beats)
@@ -435,7 +471,7 @@ def validate_plan(plan, ctx: PlanContext) -> list[str]:
 
 def _check_insert_duration(c: _Check, where: str, kind, dur: int) -> None:
     if kind == "intro" and not INTRO_MS[0] <= dur <= INTRO_MS[1]:
-        c.add(f"{where}.dur_ms", f"интро длится {INTRO_MS[0]}–{INTRO_MS[1]} мс, обычно 4000 (получено {dur})")
+        c.add(f"{where}.dur_ms", f"интро длится {INTRO_MS[0]}–{INTRO_MS[1]} мс, полный клип — 7100 мс (получено {dur})")
     elif kind in ("chamber_sign", "result_sign") and not BUMPER_MS[0] <= dur <= BUMPER_MS[1]:
         c.add(f"{where}.dur_ms", f"табличка держится {BUMPER_MS[0]}–{BUMPER_MS[1]} мс (bumper-hold, получено {dur})")
     elif kind == "blueprint" and dur < BLUEPRINT_MIN_MS:

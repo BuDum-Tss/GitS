@@ -79,15 +79,25 @@ main:has(.editor){max-width:none;padding:0}
 .editor{display:flex;flex-direction:column;height:calc(100dvh - 64px);min-height:440px}
 .editor-head{padding:.45rem .8rem;border-bottom:1px solid oklch(var(--b3))}
 .editor-head h1{font-size:1rem;margin:0}.editor-main,.editor-bottom{display:flex;min-height:0}
-.editor-main{flex:1}.editor-bottom{height:34%;min-height:130px;border-top:1px solid oklch(var(--b3))}
-.editor-bottom:not(:has(.editor-panel:not([hidden]))){height:4.7rem;min-height:0}
+.editor-main{flex:1}.editor-bottom{height:var(--bottom,34%);min-height:130px;flex-direction:column;border-top:1px solid oklch(var(--b3))}
+.editor-bottom:not(:has(.editor-panel:not([hidden]))){height:auto;min-height:0}
 .editor-panel[hidden]{display:none}.editor-panel{min-width:0;overflow:auto;padding:.55rem}
-.editor-side{width:clamp(160px,25vw,480px);border-inline:1px solid oklch(var(--b3))}
+.editor-side{width:clamp(160px,25vw,480px);flex:none;border-inline:1px solid oklch(var(--b3))}
+.editor-left .editor-side{width:var(--left,clamp(160px,25vw,480px))}
+.editor-right .editor-side{width:var(--right,clamp(160px,25vw,480px))}
+.editor-left,.editor-right{display:flex;min-height:0;flex:none}
 .editor-bottom .editor-panel{flex:1}.editor-rail{display:flex;flex-direction:column;flex:none;background:oklch(var(--b1));border-inline:1px solid oklch(var(--b3))}
 .editor-rail button{writing-mode:vertical-rl;padding:.55rem .35rem;border-radius:0;border:0;min-height:0;height:auto}
 .editor-rail button[aria-expanded=true]{background:oklch(var(--b3));box-shadow:inset 2px 0 oklch(var(--p))}
-.editor-bottom .editor-rail{flex-direction:row;align-self:flex-start}
-.editor-bottom .editor-rail button{padding:.3rem .45rem}
+.editor-bottom .editor-rail{flex-direction:row}
+.editor-bottom .editor-rail button{writing-mode:horizontal-tb;padding:.35rem .75rem}
+.editor-split{flex:0 0 7px;touch-action:none;background:oklch(var(--b2))}
+.editor-split:hover,.editor-split:focus-visible{background:oklch(var(--p))}
+.editor-split[aria-orientation=vertical]{cursor:col-resize}.editor-split[aria-orientation=horizontal]{cursor:row-resize}
+.editor-left:not(:has(.editor-panel:not([hidden]))) .editor-split,
+.editor-right:not(:has(.editor-panel:not([hidden]))) .editor-split,
+.editor-bottom:not(:has(.editor-panel:not([hidden]))) .editor-split{display:none}
+.editor.resizing{user-select:none}.editor.resizing iframe{pointer-events:none}
 .editor-studio{display:flex;flex:1;min-width:0;background:#171717}.editor-studio iframe{flex:1;width:100%;border:0}
 .editor-studio p{margin:auto;color:#eee}.editor-table{overflow:auto}
 .agent-tree,.agent-tree ul{padding:0;margin:0;list-style:none}
@@ -100,6 +110,41 @@ main:has(.editor){max-width:none;padding:0}
 @media(max-width:800px){.editor-side{width:29vw;min-width:110px}.editor-panel{padding:.35rem}}
 """
 WORKSPACE_SCRIPT = """<script>
+const editor = document.querySelector('.editor');
+for (const splitter of editor.querySelectorAll('[data-resize]')) {
+  const name = splitter.dataset.resize;
+  const horizontal = name === 'bottom';
+  const direction = name === 'left' ? 1 : -1;
+  const panel = () => splitter.parentElement.querySelector('.editor-panel:not([hidden])');
+  const size = () => horizontal ? splitter.parentElement.offsetHeight : panel().offsetWidth;
+  const setSize = (value) => {
+    const max = horizontal ? editor.clientHeight * .72 : editor.clientWidth * .38;
+    editor.style.setProperty('--' + name, Math.min(max, Math.max(horizontal ? 130 : 110, value)) + 'px');
+  };
+  splitter.onpointerdown = (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const start = horizontal ? event.clientY : event.clientX;
+    const initial = size();
+    splitter.setPointerCapture(event.pointerId);
+    editor.classList.add('resizing');
+    splitter.onpointermove = (move) => {
+      const point = horizontal ? move.clientY : move.clientX;
+      setSize(initial + direction * (point - start));
+    };
+    splitter.onlostpointercapture = () => {
+      splitter.onpointermove = null;
+      editor.classList.remove('resizing');
+    };
+  };
+  splitter.onkeydown = (event) => {
+    const keys = horizontal ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+    const step = keys.indexOf(event.key);
+    if (step < 0) return;
+    event.preventDefault();
+    setSize(size() + direction * (step === 0 ? -20 : 20));
+  };
+}
 for (const rail of document.querySelectorAll('[data-panel-group]')) {
   const tabs = Array.from(rail.querySelectorAll('[data-panel]'));
   for (const tab of tabs) {
@@ -253,30 +298,68 @@ def safe_file(root: Path, rel: str) -> Path | None:
     return path if path.is_file() else None
 
 
-def sheet_rows(plan: dict) -> list[dict]:
-    """Монтажный лист: все дорожки плана одной таблицей по времени (начало, длительность, дорожка, что, текст)."""
+def sheet_rows(plan: dict, scenes: dict | None = None) -> list[dict]:
+    """Монтажный лист по времени: «картинка» (`what` — что происходит на экране) и «голос» (`text` — что говорят)."""
     rows: list[dict] = []
+
+    def add(at, dur, track, what="", text="", assets=()):
+        rows.append({"at": at, "dur": dur, "track": track, "what": what, "text": text, "assets": list(dict.fromkeys(assets))})
+
     for seg in plan.get("segments") or []:
-        rows.append({"at": seg.get("at_ms", seg.get("start_ms")), "dur": seg.get("dur_ms"), "track": "видео",
-                     "what": seg.get("id") or seg.get("source") or "", "text": seg.get("note") or seg.get("source") or ""})
+        source = str(seg.get("source") or "")
+        add(seg.get("at_ms", seg.get("start_ms")), seg.get("dur_ms"), "картинка",
+            seg.get("note") or f"Исходное видео {source}".strip(), assets=[source] if source else [])
     for ins in plan.get("inserts") or []:
-        props = ins.get("props") or {}
-        text = props.get("subtitle") or props.get("wordmark") or props.get("title") or ""
-        rows.append({"at": ins.get("at_ms"), "dur": ins.get("dur_ms"), "track": "вставка",
-                     "what": f"{ins.get('kind', '')} {ins.get('id', '')}".strip(), "text": text})
-    for vo in plan.get("voiceover") or []:
-        rows.append({"at": vo.get("at_ms"), "dur": vo.get("duration_ms"), "track": "голос",
-                     "what": f"{vo.get('id', '')} · {vo.get('emotion', '')}", "text": vo.get("text", "")})
-    for sfx in plan.get("sfx") or []:
-        rows.append({"at": sfx.get("at_ms"), "dur": None, "track": "звук", "what": sfx.get("name", ""),
-                     "text": f"громкость {sfx.get('volume', '')}"})
-    for blk in plan.get("blackout") or []:
-        rows.append({"at": blk.get("at_ms"), "dur": blk.get("dur_ms"), "track": "затемнение", "what": "", "text": ""})
+        own = (scenes or {}).get(ins.get("id")) or {}           # сцена агента: её описание и материалы важнее догадок по параметрам
+        add(ins.get("at_ms"), ins.get("dur_ms"), "картинка", own.get("description") or _insert_description(ins),
+            assets=[*own.get("assets", []), *_insert_assets(ins)])
     cta = plan.get("cta")
     if cta:
-        rows.append({"at": cta.get("at_ms"), "dur": None, "track": "призыв", "what": cta.get("platform", ""),
-                     "text": cta.get("text", "")})
+        add(cta.get("at_ms"), None, "картинка", f"Призыв на экране: {cta.get('text', '')}".rstrip(": "))
+    for vo in plan.get("voiceover") or []:
+        who = vo.get("speaker") or vo.get("character") or ""
+        add(vo.get("at_ms"), vo.get("duration_ms"), "голос", text=f"{who}: {vo.get('text', '')}" if who else vo.get("text", ""))
+    for sfx in plan.get("sfx") or []:
+        add(sfx.get("at_ms"), None, "звук", assets=[f"sfx/{sfx.get('name')}"] if sfx.get("name") else [])
+    music = plan.get("music")
+    if isinstance(music, dict) and music.get("src"):
+        add(music.get("at_ms", 0), None, "звук", assets=[str(music["src"])])
     return sorted(rows, key=lambda r: (r["at"] if isinstance(r["at"], (int, float)) else 10 ** 12))
+
+
+# Названия известных видов вставок; неизвестный вид (плейбук может выбрать и другие) показывается как есть
+_INSERT_TITLES = {"intro": "Заставка Aperture Science", "glados_room": "Комната ГЛаДОС", "chamber_sign": "Табличка камеры",
+                  "result_sign": "Итог испытания", "blueprint": "Схема на чертёжной сетке", "custom": "Своя сцена"}
+_ASSET_SUFFIXES = (".mp4", ".mov", ".webm", ".mkv", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".wav", ".mp3", ".m4a", ".ogg")
+
+
+def _insert_description(ins: dict) -> str:
+    kind = ins.get("kind", "")
+    props = ins.get("props") or {}
+    title = _INSERT_TITLES.get(kind, kind)
+    detail = props.get("title") or props.get("subtitle") or props.get("component") or ""
+    return f"{title}: {detail}" if detail else title
+
+
+def _insert_assets(ins: dict) -> list[str]:
+    """Материалы вставки без закрытого списка: готовое видео заставки, компонент своей сцены и любые строки props с файлами."""
+    kind, props = ins.get("kind"), ins.get("props") or {}
+    found = ["Aperture_Boot (видео заставки)"] if kind == "intro" else []
+    if props.get("component"):
+        found.append(f"компонент {props['component']}")
+
+    def walk(value) -> None:
+        if isinstance(value, str) and value.lower().endswith(_ASSET_SUFFIXES):
+            found.append(value)
+        elif isinstance(value, dict):
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(props)
+    return found
 
 
 def _read_text(path: Path) -> str:
@@ -442,16 +525,22 @@ class Site:
             hidden = "" if key == active else " hidden"
             return f"<section id='panel-{key}' class='editor-panel {css}'{hidden}>{body}</section>"
 
+        def splitter(target, label, axis="vertical"):
+            return (f"<div class='editor-split' role='separator' tabindex='0' aria-orientation='{axis}' "
+                    f"aria-label='{label}' data-resize='{target}'></div>")
+
         tasks = f"<p class=now id=now>{_now_text(job, with_label=True)}</p><div id=plan>{plan_html}</div>"
         files = ("<h2>Файлы</h2><button id='refresh-agent-files' class='btn btn-ghost btn-xs'>Обновить</button>"
                  "<ul id='agent-files' class='agent-tree'></ul>")
         title = str(job.data.get("title") or job.job_id)
         body = (f"<div class='editor'><div class='editor-head'><h1>{_e(title)}</h1></div>"
-                f"<div class='editor-main'>{rail('left', ('sheet', 'actions'), left)}"
+                f"<div class='editor-main'><div class='editor-left'>{rail('left', ('sheet', 'actions'), left)}"
                 f"{panel('sheet', sheet, left, 'editor-side editor-table')}{panel('actions', actions, left, 'editor-side')}"
-                f"<section class='editor-studio'>{studio}</section>{panel('tasks', tasks, 'tasks', 'editor-side')}"
-                f"{rail('right', ('tasks',), 'tasks')}</div>"
-                f"<div class='editor-bottom'>{rail('bottom', ('files', 'design'), bottom)}"
+                f"{splitter('left', 'Ширина левой панели')}</div><section class='editor-studio'>{studio}</section>"
+                f"<div class='editor-right'>{splitter('right', 'Ширина правой панели')}{panel('tasks', tasks, 'tasks', 'editor-side')}"
+                f"{rail('right', ('tasks',), 'tasks')}</div></div>"
+                f"<div class='editor-bottom'>{splitter('bottom', 'Высота нижней панели', 'horizontal')}"
+                f"{rail('bottom', ('files', 'design'), bottom)}"
                 f"{panel('files', files, bottom)}{panel('design', design, bottom)}</div></div>")
         return _page(title, self.owner, body + _live_script(job.job_id) + WORKSPACE_SCRIPT)
 
@@ -505,14 +594,20 @@ class Site:
         total = float(plan.get("duration_ms") or 0) or 1.0
         fmt = plan.get("format") or {}
         out = [f"<p>{_e(fmt.get('width'))}×{_e(fmt.get('height'))}, {_e(fmt.get('fps'))} к/с, "
-               f"длительность {_ms(plan.get('duration_ms'))}</p><table><tr><th>Время</th><th>Длит.</th><th>Дорожка</th>"
-               "<th>Что</th><th>Текст</th><th>Шкала</th></tr>"]
-        for r in sheet_rows(plan):
+               f"длительность {_ms(plan.get('duration_ms'))}</p><table><tr><th>Время</th><th>Длит.</th>"
+               "<th>Описание</th><th>Фразы</th><th>Материалы</th><th>Шкала</th></tr>"]
+        scenes = {}
+        try:
+            spec = json.loads((job.plan_dir / "scenes.json").read_text(encoding="utf-8"))
+            scenes = {f"s{n}": s for n, s in enumerate(spec.get("scenes") or [], 1) if isinstance(s, dict)}
+        except (OSError, ValueError, AttributeError):
+            pass
+        for r in sheet_rows(plan, scenes):
             at = r["at"] if isinstance(r["at"], (int, float)) else 0
             width = (r["dur"] or 0) / total * 100 if isinstance(r["dur"], (int, float)) else 0
             bar = f"<div class=bar style='margin-left:{at / total * 100:.1f}%;width:{max(width, 0.5):.1f}%'></div>"
-            out.append(f"<tr><td>{_ms(r['at'])}</td><td>{_ms(r['dur']) if r['dur'] else ''}</td><td>{_e(r['track'])}</td>"
-                       f"<td>{_e(r['what'])}</td><td>{_e(r['text'])}</td><td style='width:220px'>{bar}</td></tr>")
+            out.append(f"<tr><td>{_ms(r['at'])}</td><td>{_ms(r['dur']) if r['dur'] else ''}</td>"
+                       f"<td>{_e(r['what'])}</td><td>{_e(r['text'])}</td><td>{'<br>'.join(_e(a) for a in r['assets'])}</td><td style='width:220px'>{bar}</td></tr>")
         out.append("</table>")
         return "".join(out)
 

@@ -323,7 +323,7 @@ async def test_final_refuses_without_a_fresh_passed_check_and_passes_after_it(tm
     assert chk["passed"] is False and any("vo1" in p for p in chk["problems"])
     await rig.wait_run((await rig.run("voiceover", jid))["job_id"])                         # озвучка меняет план: проверка нужна заново
     chk = (await rig.run("check", jid))["result"]
-    assert chk["passed"] is True and chk["errors"] == 0 and chk["report"] == "qa/report.md"
+    assert chk["passed"] is True and chk["errors"] == 0 and chk["report"].endswith("/qa/report.md")
     assert (rig.unit(jid).qa / "report.md").is_file() and (rig.unit(jid).qa / "report.json").is_file()
     st = (await rig.tool("work", {"op": "status", "id": jid}))["check"]
     assert st["fresh"] is True and st["passed"] is True

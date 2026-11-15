@@ -230,10 +230,6 @@
   ],
   "sfx": [
     {
-      "at_ms": 300,
-      "name": "chime_up"
-    },
-    {
       "at_ms": 4000,
       "name": "whoosh"
     },

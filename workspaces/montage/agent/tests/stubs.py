@@ -121,7 +121,7 @@ def make_plan(*, platform="shorts", duration=12000, voiceover=True, captions=Tru
             {"id": "i1", "kind": "chamber_sign", "at_ms": 200, "dur_ms": 3000, "beat": "b1",
              "props": {"big": "07", "small": "07/19 · колония · день 1", "done": 7, "total": 19, "active": ["colonists", "build"],
                        "title": "Правило безопасности"}},
-            {"id": "i2", "kind": "result_sign", "at_ms": 6800, "dur_ms": 2600, "beat": "b3",
+            {"id": "i2", "kind": "result_sign", "at_ms": 6800, "dur_ms": 3000, "beat": "b3",
              "props": {"big": "ПРОЙДЕНО", "small": "потерь 0 · дней 12", "done": 19, "total": 19, "active": ["colonists"],
                        "title": "Правило принято"}}],
         "blackout": [], "sfx": [{"at_ms": 200, "name": "chime_up"}, {"at_ms": 6800, "name": "chime_up"}], "music": None,
@@ -131,7 +131,7 @@ def make_plan(*, platform="shorts", duration=12000, voiceover=True, captions=Tru
     if voiceover:
         plan["voiceover"] = [{"id": "vo1", "at_ms": 300, "text": "Протокол нарушен.", "emotion": "neutral", "tts_path": None,
                               "duration_ms": None, "beat": "b1", "duck": False},
-                             {"id": "vo2", "at_ms": 4000, "text": "Правило простое: не трогать то, что не твоё.", "emotion": "neutral",
+                             {"id": "vo2", "at_ms": 6900, "text": "Правило простое: не трогать то, что не твоё.", "emotion": "neutral",
                               "tts_path": None, "duration_ms": None, "beat": "b2", "duck": False}]
     return plan
 

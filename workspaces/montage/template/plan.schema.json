@@ -285,7 +285,7 @@
               "dur_ms": {
                 "type": "integer",
                 "minimum": 3400,
-                "maximum": 6000
+                "maximum": 7100
               },
               "kind": {
                 "type": "string",

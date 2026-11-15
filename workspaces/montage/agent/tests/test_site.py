@@ -66,10 +66,11 @@ async def test_pages_files_and_studio_redirect(job):
         main = await (await c.get(f"/job/{j.job_id}")).text()
         assert all(t in main for t in ("Монтажный лист", "Действия", "Файлы", "Дизайн", "Задачи"))
         assert f"<iframe src='/job/{j.job_id}/studio'" in main
+        assert all(f"data-resize='{side}'" in main for side in ("left", "right", "bottom"))
         assert "data-panel='sheet' aria-controls='panel-sheet' aria-expanded='true'" in main
         assert "Агент ещё не завёл план действий" in main and "Сейчас:" in main
         sheet = await (await c.get(f"/job/{j.job_id}?s=sheet")).text()
-        assert "ПРОТОКОЛ" in sheet and "chime_up" in sheet and "0:30.00" in sheet
+        assert "ПРОТОКОЛ" in sheet and "Материалы" in sheet and "chime_up" in sheet and "0:30.00" in sheet
         files = await (await c.get(f"/job/{j.job_id}?s=files")).text()
         assert "id='agent-files'" in files
         params = {"path": f"{j.job_id}/plan"}
@@ -128,7 +129,7 @@ async def test_visual_preview_and_isolated_html(job):
 def test_sheet_rows_sorted_by_time_and_safe_file(job):
     store, j = job
     plan = json.loads((j.plan_dir / "plan.json").read_text(encoding="utf-8"))
-    assert [r["track"] for r in sheet_rows(plan)] == ["голос", "вставка", "звук"]
+    assert [r["track"] for r in sheet_rows(plan)] == ["голос", "картинка", "звук"]
     assert safe_file(j.folder, "plan/../../x") is None and safe_file(j.folder, "plan/story.md") is not None
 
 

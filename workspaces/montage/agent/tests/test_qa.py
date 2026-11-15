@@ -56,14 +56,11 @@ async def test_run_technical_reports_each_problem(clip):
     by = {}
     for f in findings:
         by.setdefault(f.check, []).append(f)
-    assert by["blackdetect"][0].severity == "error" and by["blackdetect"][0].t_ms < 200
-    assert by["freezedetect"] and by["silencedetect"]                                     # реплика закадра попала в тишину
-    assert by["craft.first_seconds"]                                                      # тишина в первых 3 с
+    assert not {"blackdetect", "freezedetect", "silencedetect", "craft.first_seconds", "ocr"} & set(by)   # догадки по звуку и кадру убраны
     assert by["loudness"][0].severity == "error"                                          # финал: громкость вне -14 ± 1
     assert not any(f.check == "format" for f in findings) and checked["format"]["width"] == 64
-    assert by["ocr"][0].severity == "warning"                                             # OCR не установлен: пропуск с предупреждением
     draft, _ = await qa.run_technical(plan, [], STORY, clip, DEFAULT, draft=True, scale=1.0, platform="none")
-    assert [f.severity for f in draft if f.check == "loudness"] == ["warning"] * len([f for f in draft if f.check == "loudness"])
+    assert not [f for f in draft if f.check == "loudness"]                                # черновик громкость не проверяет
 
 
 async def test_format_mismatch_is_an_error(clip):

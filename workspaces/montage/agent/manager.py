@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import shutil
@@ -28,7 +29,9 @@ from jobs import Job, JobStore, default_title
 from journal import Journal, hms, plan_state, active_task
 from layout import Layout
 from manifest import BRIEF, COMMANDS, FORMATS, MANIFEST, PLATFORMS, SOURCE_KINDS, VOICEOVERS, normalize_voiceover, resolve_output_dir
+import scenes as scenes_mod
 from montage_site import Site
+from plan_schema import story_beat_ids
 from studio import StudioError, StudioPool
 from workspace import prepare_work, sync_intro
 
@@ -40,9 +43,9 @@ UNITS_SHOWN = 20                # сколько единиц в сводке и
 DEFAULTS = {k: v["default"] for k, v in MANIFEST["settings_schema"].items()}
 EXCLUSIVE = ("intake", "transcribe", "voiceover", "render", "check", "final")     # у единицы одна такая операция за раз
 HEAVY = ("render", "final")                                                      # рендеры идут по одному на весь контейнер
-RUN_TITLES = {"intake": "Приём исходников", "transcribe": "Расшифровка", "voiceover": "Озвучка", "render": "Черновик",
+RUN_TITLES = {"intake": "Приём исходников", "transcribe": "Расшифровка", "compose": "Сборка листа", "voiceover": "Озвучка", "render": "Черновик",
               "still": "Кадр", "compositions": "Композиции", "check": "Проверка", "final": "Финальный рендер"}
-WORK_OPS = ("create", "list", "status", "update", "cancel")
+WORK_OPS = ("create", "list", "status", "update", "scenes", "cancel")
 
 
 def total_size(paths: list[Path]) -> int:
@@ -82,6 +85,7 @@ class Manager:
         self._heavy = asyncio.Semaphore(1)
         self.site = Site(self, port=site_port)          # сайт монтажа: ролики, сценарий, монтажный лист, файлы, кнопка Studio
         self.studios = StudioPool()                     # Remotion Studio по единицам (TZ 15, TAB-4)
+        self._own_studios = True                        # False: Studio общие на контейнер и переживают возврат аренды (lease_host)
         self._reaper: asyncio.Task | None = None
         self._panel: asyncio.Task | None = None
         self.env = WorkspaceState()                     # окружение агента «Монтаж» (ТЗ 32, контракт 3.2)
@@ -358,6 +362,31 @@ class Manager:
             await self.publish_state()
         return {"ok": True, "id": job.job_id, "voiceover": voiceover}
 
+    async def _work_scenes(self, args: dict) -> dict:
+        """Описание ролика сценами (вид, описание, фразы, материалы): проверяется и пишется в plan/scenes.json; лист собирает run compose."""
+        job = self._find(str(args.get("id") or ""))
+        if job.state in ("done", "cancelled") or self._unit_runs(job.job_id):
+            raise ToolError("Сцены меняются у незакрытой единицы без идущих операций.", code="unavailable")
+        from commands import read_json
+        story = read_json(job.plan_dir / "story.json")
+        story = story if isinstance(story, dict) else None
+        ctx = self.cmds._plan_context(job, story)
+        beats = story_beat_ids(story) if story else None
+        scenes, problems = scenes_mod.parse_scenes(args.get("scenes"), ctx, beats)
+        if problems:
+            raise ToolError("сцены не приняты: " + "; ".join(problems[:8]), code="invalid")
+        cta = str(args.get("cta") or "").strip() or None
+        spec = {"title": str(args.get("title") or job.data.get("title") or "Ролик")[:80], "cta": cta, "scenes": args["scenes"]}
+        await asyncio.to_thread((job.plan_dir / scenes_mod.SCENES_FILE).write_text,
+                                json.dumps(spec, ensure_ascii=False, indent=2), "utf-8")
+        if any(s["say"] for s in scenes) and normalize_voiceover(job.request.get("voiceover")) != "character":
+            job.request["voiceover"] = "character"
+        job.data.pop("check", None)
+        await asyncio.to_thread(self.store.save, job)
+        await self.publish_state()
+        return {"ok": True, "id": job.job_id, "scenes": len(scenes), "phrases": sum(len(s["say"]) for s in scenes),
+                "next": f"run compose {job.job_id}: озвучит фразы и соберёт монтажный лист"}
+
     async def _work_cancel(self, args: dict) -> dict:
         job = await self.cancel_unit(str(args.get("id") or ""))
         return {"ok": True, **self.describe(job)}
@@ -598,8 +627,12 @@ class Manager:
                 await asyncio.to_thread(self.store.log, job, "recovered")
         return len(jobs)
 
+    def use_studios(self, pool: StudioPool) -> None:
+        """Общий пул Studio контейнера: открытое окно просмотра не гаснет, когда агент выходит из монтажа; гасит его только простой."""
+        self.studios, self._own_studios = pool, False
+
     def start_worker(self) -> None:
-        if self._reaper is None or self._reaper.done():
+        if self._own_studios and (self._reaper is None or self._reaper.done()):
             self._reaper = asyncio.create_task(self.studios.run_reaper())     # TZ 15: Studio гаснет без обращений
         if self._panel is None or self._panel.done():
             self._panel = asyncio.create_task(self._panel_loop())             # TZ 15: пространство «Монтаж»
@@ -617,7 +650,8 @@ class Manager:
             if task is not None:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
-        await self.studios.stop_all()
+        if self._own_studios:
+            await self.studios.stop_all()
         await self.site.stop()
 
     # ================================================================================================ Studio и сайт (TZ 15)

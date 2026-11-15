@@ -151,7 +151,6 @@ const base = (kind, duration, extra) => ({
 				resultSign('i4', 26000, 'b5'),
 			],
 			sfx: [
-				{at_ms: 300, name: 'chime_up'},
 				{at_ms: 4000, name: 'whoosh'},
 				{at_ms: 10000, name: 'tick'},
 				{at_ms: 26000, name: 'chime_up'},
@@ -191,7 +190,6 @@ const base = (kind, duration, extra) => ({
 				resultSign('i5', 27000, 'b6'),
 			],
 			sfx: [
-				{at_ms: 300, name: 'chime_up'},
 				{at_ms: 4000, name: 'whoosh'},
 				{at_ms: 7000, name: 'tick'},
 				{at_ms: 27000, name: 'chime_up'},
@@ -219,7 +217,6 @@ const base = (kind, duration, extra) => ({
 			],
 			blackout: [{from_ms: 9800, to_ms: 12400, opacity: 1}],
 			sfx: [
-				{at_ms: 300, name: 'chime_up'},
 				{at_ms: 4000, name: 'whoosh'},
 				{at_ms: 15000, name: 'tick'},
 				{at_ms: 20500, name: 'chime_up'},

@@ -23,6 +23,7 @@ from gits_sdk.control import ControlServer, Lease
 from layout import DEFAULT, Layout
 from manifest import ENV_OUT_DIR, MANIFEST
 from montage_site import Site
+from studio import StudioPool
 
 log = logging.getLogger("montage.lease")
 
@@ -51,6 +52,7 @@ class LeaseHost:
         self.server: ControlServer | None = None
         self.site: Site | None = None
         self.client = self.manager = self.task = None
+        self.studios = StudioPool()                # Studio живут в контейнере, а не в аренде: выход агента их не гасит
         self.lease: Lease | None = None
         self._out_dir_before: str | None = None
         self._closing = False
@@ -66,6 +68,8 @@ class LeaseHost:
         self._closing = False
         client, manager = self.build_fn(layout, url=lease.core_url, token=lease.token)
         self.client, self.manager, self.lease = client, manager, lease
+        if hasattr(manager, "use_studios"):
+            manager.use_studios(self.studios)
         if self.site is not None:
             manager.site = self.site
 
@@ -154,10 +158,14 @@ async def serve(build_fn, run_fn, *, env=None) -> int:
             loop.add_signal_handler(sig, stop.set)
     except (NotImplementedError, RuntimeError, ValueError):               # Windows: остановка по Ctrl+C
         pass
+    reaper = asyncio.create_task(host.studios.run_reaper())      # простой без обращений гасит Studio и между арендами
     try:
         await host.site.start()
         await stop.wait()
     finally:
+        reaper.cancel()
+        await asyncio.gather(reaper, return_exceptions=True)
+        await host.studios.stop_all()
         await server.stop()
         await host.site.close()
     return 0
