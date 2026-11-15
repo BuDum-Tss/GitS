@@ -19,6 +19,18 @@ N_PICK = 3                             # CHR-19: до трёх воспомин�
 SELF_MIN_SCORE = 0.38                  # порог для воспоминаний о себе ниже, чем для фактов (0,5): их мало, и вопрос о прошлом
                                        # («помнишь свою прошлую жизнь?») далёк по смыслу от текста про Кэролайн
 WORD_BONUS = 0.1                       # прибавка к оценке за каждое общее с репликой слово (до двух)
+WORD_ONLY_SCORE = 0.15                 # без эмбеддера (LM Studio недоступен): оценка за каждое общее слово; одно слово проходит порог
+
+
+def word_scores(query_stems: set[str], facts_stems: list[set[str]]) -> list[float]:
+    """Оценки воспоминаний только по общим словам с репликой (запасной путь, когда нет эмбеддинга): нет общих слов - 0,
+    иначе порог SELF_MIN_SCORE плюс прибавка за каждое слово после первого. Так вопрос «помнишь Кэролайн?» находит запись с этим
+    именем и без нейросети, у любого персонажа."""
+    out = []
+    for stems in facts_stems:
+        common = len(query_stems & stems)
+        out.append(0.0 if not common else min(0.95, SELF_MIN_SCORE + WORD_ONLY_SCORE * (common - 1) + 0.02))
+    return out
 
 
 def load_memories(path: Path) -> list[dict[str, Any]]:

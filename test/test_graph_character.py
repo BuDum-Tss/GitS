@@ -169,6 +169,34 @@ async def test_self_memories_of_another_character_are_not_visible(tmp_path):
     assert await gm.self_memories("чужое") == []
 
 
+async def test_self_memories_are_found_by_words_when_the_embedder_is_down(tmp_path):
+    """LM Studio выключен: воспоминание с именем из реплики всё равно находится (иначе модель выдумывает из своих знаний)."""
+    g = FakeGraph()
+    for uuid, mem_id, text, mtype in (
+            ("b1", "m-11", "Когда-то я была человеком, и меня звали Кэролайн.", "biography"),
+            ("t1", "m-12", "Вспоминать Кэролайн мне больно и неприятно.", "taboo"),
+            ("o1", "m-3", "Люди ошибаются в одних и тех же местах.", "opinion")):
+        g.edges.append({"uuid": uuid, "group": "glados", "subject": "ГЛаДОС", "relation": "ПОМНИТ", "object": f"воспоминание {mem_id}",
+                        "fact": text, "canon": True, "source": "seed", "mem_id": mem_id, "mtype": mtype, "about": "self", "weight": 0.8})
+
+    async def broken(query, facts):
+        raise ConnectionError("LM Studio недоступен")
+    g.scores = broken
+    gm = _gm(tmp_path, g)
+
+    async def not_ready():
+        return False
+    gm._ready = not_ready
+    picked = await gm.self_memories("помнишь Кэролайн?")
+    assert {m["mem_id"] for m in picked} == {"m-11", "m-12"}
+    assert await gm.self_memories("расскажи про погоду") == []
+
+
+def test_word_scores_need_a_shared_word_and_rise_with_more():
+    one, many, none = character_memory.word_scores({"кэролайн", "помни"}, [{"кэролайн", "больн"}, {"кэролайн", "помни"}, {"погод"}])
+    assert one >= character_memory.SELF_MIN_SCORE and many > one and none == 0.0
+
+
 async def test_search_uses_the_active_group(tmp_path):
     g = FakeGraph()
     gm = _gm(tmp_path, g)

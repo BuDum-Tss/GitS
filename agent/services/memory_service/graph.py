@@ -584,9 +584,9 @@ class GraphMemory:
     # чтение
     async def search(self, query: str, limit: int = 6, include_old: bool = False) -> list[dict]:
         """Факты по смыслу запроса: без устаревших (если не просили историю) и без слабых совпадений."""
-        if not query.strip() or not await self._ready():
+        if not query.strip():
             return []
-        try:
+        try:                                          # без эмбеддера (LM Studio выключен) поиск идёт по словам: search_service это умеет
             groups = await self.search_groups(query)
             if len(groups) > 1:                       # KB-13: global + области профиля (+ чужая по названной сущности)
                 found = await self.backend.search(query, limit * 2, self.group(), groups=groups)
@@ -629,16 +629,22 @@ class GraphMemory:
 
     async def self_memories(self, query: str, n: int = character_memory.N_PICK) -> list[dict]:
         """Воспоминания персонажа о себе, подходящие к реплике (ТЗ 05, CHR-19). Пусто, если ничего не прошло порог."""
-        if not query.strip() or not await self._ready():
+        if not query.strip():
             return []
         try:
             cands = await self.backend.self_memories(self.group(), self._subject())
             if not cands:
                 return []
-            scores = await self.backend.scores(query, [c["fact"] for c in cands])
             q_stems = stemlib.stems(query)       # общие слова с репликой поднимают оценку: «прошлая жизнь» ↔ «была человеком»
-            scores = [s + character_memory.WORD_BONUS * min(2, len(q_stems & stemlib.stems(c["fact"])))
-                      for s, c in zip(scores, cands, strict=False)]
+            facts_stems = [stemlib.stems(c["fact"]) for c in cands]
+            try:
+                if not await self._ready():
+                    raise RuntimeError("эмбеддер недоступен")
+                scores = await self.backend.scores(query, [c["fact"] for c in cands])
+                scores = [s + character_memory.WORD_BONUS * min(2, len(q_stems & fs)) for s, fs in zip(scores, facts_stems, strict=False)]
+            except Exception as e:               # LM Studio выключен или не ответил: воспоминания о себе не пропадают, подбор по словам
+                logger.info(f"Граф, воспоминания о себе без эмбеддера: {e}")
+                scores = character_memory.word_scores(q_stems, facts_stems)
             self._self_replies += 1
             picked, nudged = character_memory.pick(cands, scores, n=n, min_score=character_memory.SELF_MIN_SCORE,
                                                    nudge=self._self_replies >= character_memory.NUDGE_EVERY)
