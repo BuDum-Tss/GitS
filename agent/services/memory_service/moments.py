@@ -26,7 +26,7 @@ ATTENTION_CONTEXT_MIN = 0.3          # запись внимания слабе�
 
 # вид события журнала -> яркость (разговор и жизнь без записи внимания)
 KIND_WEIGHTS = {"mistake": 0.7, "approval": 0.4, "memory": 0.3, "telegram": 0.5, "hearing": 0.2, "say": 0.1, "game": 0.3,
-                "module_out": 0.1}      # module_out: её сообщение в канал модуля (исходящее событие), как её реплика
+                "module_out": 0.4}      # module_out: её сообщение в канал модуля (исходящее событие), как её реплика
 TASK_STATUS_WEIGHTS = {"done": 0.5, "completed": 0.5, "failed": 0.65, "error": 0.65}
 EMOTION_MAX = 0.4                    # эмоция стикера: сила * EMOTION_MAX, фоновая и нейтральная это 0
 EMOTION_NEUTRAL = ("idle", "thinking", "looking", "question", "neutral")
@@ -35,7 +35,8 @@ USER_BASE, USER_LONG, USER_LONG_CHARS = 0.15, 0.1, 80
 # запасная таблица для module_event без записи внимания: `data.event_kind` -> яркость (telegram.*, discord.* по префиксу)
 MODULE_EVENT_WEIGHTS = {"rimworld.death": 0.9, "rimworld.letter": 0.5, "rimworld.game_started": 0.5, "rimworld.run_video": 0.5,
                         "montage.failed": 0.7, "montage.done": 0.6, "voice.heard": 0.35, "self.after_conversation": 0.3}
-MODULE_EVENT_PREFIX = (("telegram.", 0.5), ("discord.", 0.5))
+# voicechat.: фраза живого человека в голосовом канале это разговор с ней (ярче текстового чата: сказано вслух, ей в лицо)
+MODULE_EVENT_PREFIX = (("telegram.", 0.5), ("discord.", 0.5), ("voicechat.", 0.6))
 
 # признаки в реплике пользователя: (основы слов в нижнем регистре, прибавка)
 USER_SIGNS = {

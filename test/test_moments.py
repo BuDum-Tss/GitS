@@ -265,3 +265,12 @@ async def test_selector_writes_thought_into_the_episode_sources(tmp_path):
     assert (await sel.run())["episodes"] == 1
     ep = store.select()[0]
     assert [e["kind"] for e in store.events_of(ep["id"])] == ["thought", "user"] and ep["peak_id"] == 2
+
+
+def test_voice_chat_speech_is_a_bright_conversation_moment_not_background_noise():
+    """Фраза человека в голосовом канале и её голосовой ответ весомы (раньше фраза имела вес 0, её ответ 0,1)."""
+    from services.memory_service import moments as M
+    said = {"kind": "module_event", "text": "Расскажи анекдот.", "data": {"event_kind": "voicechat.utterance"}}
+    out = {"kind": "module_out", "text": "Ладно, слушай.", "data": {"event_kind": "voicechat.spoken"}}
+    assert M.event_score(said)[0] >= 0.5
+    assert M.event_score(out)[0] >= 0.4
