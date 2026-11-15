@@ -19,8 +19,8 @@ reply_channel, с пометкой «писать сюда нельзя»; пи�
 сообщений от одного человека в личке (`dm_flood_per_10min`) понижает срочность до сводки, ничего не блокируя. Только текст:
 вложения, стикеры и эмбеды заменяются словами «[прислал картинку]» и т. п. без скачивания.
 
-Голос и аудио в первую очередь не делаются; расширять есть куда: `_make_client` выбирает intents (добавится voice_states),
-а события и инструменты живут отдельно от соединения.
+Голос: intent voice_states включён; весь голос живёт в `discord_voice.py` (адаптер движка голоса ядра), бот лишь пробрасывает ему
+события (`self.voice`: on_ready, on_voice_state, on_client_lost).
 """
 import asyncio
 import json
@@ -52,8 +52,8 @@ AVATAR_RETRY_S = 600.0               # не скачавшуюся аватар�
 AVATAR_MAX_BYTES = 1_000_000
 CDN_HOSTS = ("discordapp.com", "discordapp.net", "discord.com", "discord.gg")   # аватарки качаем только с CDN Discord
 # права в ссылке-приглашении: View Channels, Send Messages, Send Messages in Threads, Read Message History, Embed Links,
-# Attach Files, Add Reactions
-INVITE_PERMISSIONS = (1 << 10) | (1 << 11) | (1 << 38) | (1 << 16) | (1 << 14) | (1 << 15) | (1 << 6)
+# Attach Files, Add Reactions; голос: Connect, Speak, Use Voice Activity (итого 274914724928)
+INVITE_PERMISSIONS = (1 << 10) | (1 << 11) | (1 << 38) | (1 << 16) | (1 << 14) | (1 << 15) | (1 << 6) | (1 << 20) | (1 << 21) | (1 << 25)
 READ_ONLY_NOTE = " [чат только для чтения: писать сюда нельзя]"
 INTENT_HELP = ("не включён Message Content Intent: открой Discord Developer Portal, твоё приложение, раздел Bot, "
                "Privileged Gateway Intents, включи «Message Content Intent» и сохрани; бот переподключится сам (или нажми «Проверить снова»)")
@@ -188,6 +188,7 @@ class DiscordBot:
         self._problem, self._problem_kind = "", ""        # почему не работает: текст и вид (token | intent | net | error)
         self._lock = asyncio.Lock()                       # отправка и чтение от её имени идут по очереди
         self._wake = asyncio.Event()                      # разбудить цикл подключения (кнопка «Проверить снова»)
+        self.voice = None                                 # DiscordVoiceAdapter (его создаёт модуль): события голоса
         self.on_change = None                             # функция без аргументов: состояние изменилось (будит панель)
         self._aliases: tuple[str, ...] = ()
         self._avatar_fail: dict[str, float] = {}          # имя файла аватарки -> когда не вышло скачать
@@ -277,13 +278,14 @@ class DiscordBot:
 
     def _make_client(self):
         """Клиент discord.py с минимальными intents: guilds, guild_messages, dm_messages, message_content. members и presence
-        не включаются. Сюда же добавится voice_states, когда дойдёт до голоса."""
+        не включаются. Плюс voice_states (голос)."""
         import discord
         intents = discord.Intents.none()
         intents.guilds = True
         intents.guild_messages = True
         intents.dm_messages = True
         intents.message_content = True                 # привилегированный: включается в Developer Portal
+        intents.voice_states = True                    # состав голосовых каналов и приём голоса (не привилегированный)
         client = discord.Client(intents=intents, chunk_guilds_at_startup=False)
         bot = self
 
@@ -293,6 +295,13 @@ class DiscordBot:
             bot._problem, bot._problem_kind = "", ""
             logger.info("бот Discord подключён: %s, серверов: %d", person_name(client.user), len(client.guilds))
             bot._changed()
+            if bot.voice is not None:
+                bot.voice.on_ready()
+
+        @client.event
+        async def on_voice_state_update(member, before, after):
+            if bot.voice is not None:
+                await bot.voice.on_voice_state(member, before, after)
 
         @client.event
         async def on_message(message):
@@ -333,6 +342,8 @@ class DiscordBot:
                 delay = RETRY_PROBLEM_S if self._problem_kind in ("token", "intent") else RETRY_ERROR_S
             finally:
                 self._client, self._me = None, None
+                if self.voice is not None:
+                    await self.voice.on_client_lost()
                 if client is not None:
                     try:
                         await asyncio.wait_for(client.close(), NET_TIMEOUT_S)

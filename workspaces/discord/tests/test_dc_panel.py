@@ -90,9 +90,9 @@ async def test_status_and_invite_link_use_the_logged_in_bots_application_id(tmp_
         blocks = await blocks_of(rig)
         assert find(blocks, "text", title="Бот")[0]["text"] == "Вошла как ГЛаДОС. Серверов: 1."
         link = find(blocks, "link")[0]
-    perms = (1 << 10) | (1 << 11) | (1 << 38) | (1 << 16) | (1 << 14) | (1 << 15) | (1 << 6)
+    perms = (1 << 10) | (1 << 11) | (1 << 38) | (1 << 16) | (1 << 14) | (1 << 15) | (1 << 6) | (1 << 20) | (1 << 21) | (1 << 25)
     assert link["url"] == f"https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions={perms}"
-    assert perms == 274878024768 and "Пригласить" in link["label"]
+    assert perms == 274914724928 and "Пригласить" in link["label"]
 
 
 async def test_guild_cards_with_mode_select_expand_to_channels_and_threads(tmp_path, monkeypatch):

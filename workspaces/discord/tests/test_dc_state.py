@@ -18,7 +18,8 @@ def test_manifest_is_valid_and_matches_the_task():
     assert m["id"] == "discord" and m["ownership"] == "owned" and m["role"] == "workspace" and len(m["description"]) <= 300
     assert {e["kind"]: e["default_urgency"] for e in m["emits"]} == {"discord.dm": 3, "discord.message": 1}
     schema = m["settings_schema"]
-    assert set(schema) == {"owner", "names", "default_chat_mode", "dm_flood_per_10min", "dialog_window_mins"}
+    assert set(schema) == {"owner", "names", "default_chat_mode", "dm_flood_per_10min", "dialog_window_mins",
+                      "voice_announce", "voice_announce_text", "voice_alone_timeout_s", "voice_autojoin"}
     assert (schema["dm_flood_per_10min"]["default"], schema["dialog_window_mins"]["default"], schema["default_chat_mode"]["default"]) == (20, 15, "reply")
     assert schema["default_chat_mode"]["enum"] == ["ignore", "read", "reply"]
     assert not any(s.get("secret") for s in schema.values()) and "token" not in str(schema).lower()      # токен только в .env

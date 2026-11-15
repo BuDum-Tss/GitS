@@ -20,13 +20,14 @@ import time
 
 from common import (CHAT_MODES, MODE_IGNORE, MODE_READ, MODE_REPLY, MODE_WORDS, channel_target, dm_target, parse_target, scrub)
 from discord_bot import AVATAR_NEW_MAX, ChatModeError, SendDenied, is_network_error, kind_name
+from discord_voice import VoiceError
 from gits_sdk.protocol import PANEL_CARDS_MAX, PANEL_CELL_MAX, PANEL_ROWS_MAX, PANEL_SET_MAX_BYTES
 
 logger = logging.getLogger("discord.panel")
 
 # все действия панели (кроме них в manifest.panel.actions ничего нет)
 ACTIONS = ("refresh", "reconnect", "toggle_guild", "open_chat", "close_chat", "set_mode", "send_message", "reply_to", "cancel_reply",
-           "history_more", "delete_message", "filter_guilds")
+           "history_more", "delete_message", "filter_guilds", "voice_connect", "voice_disconnect")
 
 HISTORY_TTL_S = 6.0              # история открытого чата
 HISTORY_TIMEOUT_S = 12.0         # загрузка истории целиком (поиск канала и чтение)
@@ -132,7 +133,7 @@ class DiscordPanel:
 
     def explain(self, e: BaseException) -> str:
         """Понятный текст ошибки для панели (без секретов и без сырых трассировок)."""
-        if isinstance(e, (ChatModeError, SendDenied)):
+        if isinstance(e, (ChatModeError, SendDenied, VoiceError)):
             return str(e)
         if isinstance(e, asyncio.TimeoutError):
             return "Discord не ответил вовремя: попробуй обновить позже"
@@ -149,6 +150,7 @@ class DiscordPanel:
         if self.bot.ready():
             if self.target is not None:
                 await self._load_history()
+            out += self.voice_blocks()
             out.append({"type": "split", "left": await self.list_blocks(), "right": self.right_blocks()})
             fit(out)
         return out
@@ -176,6 +178,77 @@ class DiscordPanel:
             out.append({"type": "buttons", "items": [{"label": "Проверить снова", "action": "reconnect"}]})
         return out
 
+    def voice_blocks(self) -> list[dict]:
+        """Блок «Голос» сверху: сессия, кто в ней, говорит ли она, связь с движком голоса, ошибки и подсказки по правам. Без сети."""
+        st = self.module.voice.status()
+        lines: list[str] = []
+        buttons: list[dict] = []
+        for s in st["sessions"]:
+            where = f"«{s['guild']} / {s['channel']}»"
+            people = ", ".join(s["members"]) or "никого, кроме неё"
+            state = {"connected": "подключена", "connecting": "подключается", "reconnecting": "переподключается"}.get(s["state"], s["state"])
+            lines.append(f"Сессия {where}: {state}. Слушаются: {people}.")
+            if not s["listening"]:
+                lines.append("Режим «игнор»: она в канале по твоей команде, но не слушает и не говорит.")
+            elif not s["can_speak"]:
+                lines.append("Режим «чтение»: слушает, говорить не будет (voice.say в этом канале не звучит).")
+            else:
+                lines.append("Говорит: " + ("да, сейчас играет реплику." if s["speaking"] else "нет, молчит (ждёт voice.say)."))
+            eng = "подключён" if s["engine"] else "нет связи (движок выключен или перезапускается)"
+            if not s["engine"] and s["engine_error"]:
+                eng += f": {s['engine_error']}"
+            lines.append(f"Движок голоса: {eng}.")
+            dave = s["dave"]
+            if dave.get("ready") is False:
+                lines.append("DAVE: сессия шифрования ещё не готова (смена участников или подключение), часть звука может теряться.")
+            if s["announce"]:
+                lines.append("Объявление о прослушивании: " + s["announce"] + ".")
+            if s["error"]:
+                lines.append("Ошибка: " + s["error"])
+            if s["alone"]:
+                lines.append("В канале никого нет: выйдет по тайм-ауту.")
+            c = s["counters"]
+            lines.append(f"Счётчики: принято кадров {c.get('frames_in', 0)}, расшифровано {c.get('decoded', 0)}, "
+                         f"сбоев {c.get('decode_errors', 0)}, реплик сыграно {c.get('plays', 0)}.")
+            buttons.append({"label": _clip(f"Отключить: {s['channel']}", 60), "action": "voice_disconnect", "args": {"id": str(s["id"].split(":")[1])}})
+        if not st["sessions"]:
+            lines.append("Не в голосовом канале. Зайти: «Подключить» у голосового канала в списке сервера ниже.")
+        if st["note"] and not st["sessions"]:
+            lines.append("Последний раз: " + st["note"] + ".")
+        if st["last_error"]:
+            lines.append("Ошибка: " + st["last_error"])
+        if st["problems"]:
+            lines.append("Голос недоступен: " + "; ".join(st["problems"]))
+        if st["autojoin"]:
+            lines.append(f"Автовход: «{st['autojoin']}».")
+        out = [{"type": "text", "title": "Голос", "text": "\n".join(lines)[:1800]}]
+        if buttons:
+            out.append({"type": "buttons", "items": buttons})
+        return out
+
+    def _voice_cards(self, gid: int, gmode: str, allm: dict) -> list[dict]:
+        """Голосовые каналы сервера карточками: участники, режим, клик подключает или отключает (действия владельца)."""
+        out = []
+        for v in self.module.voice.channels_view(gid):
+            own = allm["channel"].get(str(v["id"]))
+            mode = own or gmode
+            people = ", ".join(v["members"]) or "пусто"
+            sub = f"в канале: {people}" + (f" (+ботов {v['bots']})" if v["bots"] else "") + (f", лимит {v['limit']}" if v["limit"] else "")
+            if v["missing"]:
+                sub += "; нет прав: " + ", ".join(v["missing"])
+            card: dict = {"title": _clip("♪ " + v["name"], 80), "subtitle": _clip(sub, 300), "icon": "♪",
+                          "select": self._select("channel", v["id"], own, "Режим голосового канала", f"Как в сервере ({MODE_WORDS[gmode]})")}
+            if v["here"]:
+                card["tag"], card["selected"] = "она здесь", True
+                card["action"], card["args"] = "voice_disconnect", {"id": str(gid)}
+            else:
+                card["tag"] = "подключить"
+                card["action"], card["args"] = "voice_connect", {"id": str(v["id"])}
+            if mode == MODE_IGNORE:
+                card["muted"] = True
+            out.append(card)
+        return out
+
     # ── список (левая колонка) ───────────────────────────────────────────────
 
     def _select(self, scope: str, ident: int, value: str | None, hint: str, inherit: str | None = None) -> dict:
@@ -197,8 +270,11 @@ class DiscordPanel:
         name = await bot.avatar_file("g", gid, g.get("icon"), avatars)
         if name:
             card["avatar"] = name
+        nvoice = len(self.module.voice.channels_view(gid))
+        if nvoice:
+            card["subtitle"] += f", голосовых: {nvoice}"
         if str(gid) in self.expanded:
-            card["children"] = self._channel_cards(g, allm, gmode)
+            card["children"] = (self._channel_cards(g, allm, gmode) + self._voice_cards(gid, gmode, allm))[:PANEL_CARDS_MAX]
         return card
 
     def _channel_cards(self, g: dict, allm: dict, gmode: str) -> list[dict]:
@@ -444,6 +520,21 @@ class DiscordPanel:
             self.reply_to = None
         self.invalidate()
         return "Сообщение удалено."
+
+    async def act_voice_connect(self, args: dict) -> str:
+        """Владелец подключает её к голосовому каналу (режим «игнор» не мешает зайти, но тогда она не слушает и не говорит)."""
+        self._need_bot()
+        voice = self.module.voice
+        channel = voice.find_channel(str(_id_arg(args)))
+        return (await voice.join(channel, by_owner=True)).capitalize()
+
+    async def act_voice_disconnect(self, args: dict) -> str:
+        """Отключить её от голосового канала сервера (id сервера)."""
+        voice = self.module.voice
+        sess = voice.sessions.get(_id_arg(args))
+        if sess is None:
+            return "Она и так не в голосовом канале."
+        return (await voice.leave(f"channel:{sess.channel.id}")).capitalize()
 
     async def act_filter_guilds(self, args: dict) -> str:
         self.filter = "" if args.get("clear") else str(args.get("value") or "").strip()[:80]

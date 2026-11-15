@@ -94,7 +94,7 @@ class VoiceSession:
         return {
             "id": self.id, "adapter": self.adapter, "capabilities": asdict(self.caps),
             "barge_in": self.barge_in_policy, "speakers": [s.public() for s in self.speakers.values()],
-            "speaking": pb.audible if pb is not None else False, "queue": len(pb.waiting_uids()) if pb is not None else 0,
+            "speaking": pb.audible if pb is not None else False, "metrics": pb.metrics.public() if pb is not None else {}, "queue": len(pb.waiting_uids()) if pb is not None else 0,
             "age_s": round(time.time() - self.created, 1), "stats": asdict(self.stats),
         }
 

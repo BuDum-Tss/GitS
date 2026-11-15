@@ -63,6 +63,11 @@ class EngineConfig:
     tts_speed: float = 1.0
     tts_voice: str = ""
     tts_emotion: str = ""
+    # конвейерный синтез: деление реплики на предложения и предзагрузка
+    tts_split: str = "sentences"         # sentences | off
+    tts_prefetch: int = 1
+    split_min_chars: int = 25
+    split_max_chars: int = 220
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "EngineConfig":
@@ -96,6 +101,10 @@ class EngineConfig:
             tts_speed=_num(environ, "GITS_TTS_SPEED", 1.0, 0.5, 1.5),
             tts_voice=_first(environ, "GITS_TTS_VOICE"),
             tts_emotion=_first(environ, "GITS_TTS_EMOTION"),
+            tts_split="off" if _first(environ, "GITS_TTS_SPLIT", "TTS_SPLIT", default="sentences").lower() == "off" else "sentences",
+            tts_prefetch=int(_num(environ, "GITS_TTS_PREFETCH", _num(environ, "TTS_PREFETCH", 1, 0, 3), 0, 3)),
+            split_min_chars=int(_num(environ, "GITS_TTS_SPLIT_MIN", 25, 1, 200)),
+            split_max_chars=int(_num(environ, "GITS_TTS_SPLIT_MAX", 220, 40, 600)),
         )
 
     def public(self) -> dict:

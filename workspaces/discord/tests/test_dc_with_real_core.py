@@ -88,7 +88,7 @@ async def test_manifest_is_accepted_and_tools_reach_the_planner(tmp_path, monkey
         rec = s.core.modules.get("discord")
         assert rec.connected and rec.title == "Discord" and "chat.channel" in rec.manifest["capabilities"]
         env = s.core.envs.envs["discord"]
-        assert env.module == "discord" and {t.name for t in env.tools} == {"message", "react", "inbox"}
+        assert env.module == "discord" and {t.name for t in env.tools} == {"message", "react", "inbox", "voice_join", "voice_leave"}
         s.core.envs.focus = lambda: set()
         assert {"discord.message", "discord.inbox"} <= {t.id for t in s.core.envs.active_tools()}
         msg = s.core.envs.get("discord.message")

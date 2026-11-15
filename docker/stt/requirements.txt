@@ -1,0 +1,12 @@
+# Зависимости контейнера распознавания речи stt (только процессор, без torch). Версии те же, что в рабочем окружении разработки;
+# колёса под linux x86_64 cp312 проверены командой pip download --no-deps --only-binary=:all: --platform manylinux_2_28_x86_64
+# --python-version 3.12 (остальное, например tqdm, click, httpx, pyyaml, приходит зависимостями).
+aiohttp==3.14.3
+numpy==2.5.2
+onnxruntime==1.30.0             # GigaAM v3 (onnx, int8): основной движок
+onnx-asr==0.12.0
+huggingface_hub==1.30.0         # чтение кэша весов; скачивание только командой python -m stt.fetch
+faster-whisper==1.2.1           # запасной движок (если GigaAM не открылся); тянет ctranslate2, av, tokenizers
+ctranslate2==4.8.2
+av==19.0.0
+tokenizers==0.23.2

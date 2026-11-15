@@ -2,6 +2,7 @@
 import copy
 
 from common import CHAT_MODES, MODE_REPLY
+from discord_voice import DEFAULT_ANNOUNCE
 from discord_panel import ACTIONS as PANEL_ACTIONS
 
 _GENERIC = ("дискорд", "discord", "сервер", "канал", "ветка", "личка", "написать", "чат")      # общие слова просьб про Discord
@@ -47,6 +48,15 @@ TOOLS = [
            "unread": {"type": "boolean", "required": False, "description": "true: что писали боту недавно"},
            "limit": {"type": "integer", "required": False, "description": "сколько записей, по умолчанию 15"}},
           informative=True, timeout_s=60, keywords=("прочитай", "переписка", "сообщения", "чаты", "новые", "входящие")),
+    _tool("voice_join", "Зайти в голосовой канал Discord и слушать его: речь участников идёт к ней фразами, отвечает она инструментом "
+                        "voice.say. Без channel заходит туда, где сидит владелец. В незнакомый канал спрашивает разрешение; "
+                        "режим «игнор» не пускает, «чтение» слушает молча.",
+          {"channel": {"type": "string", "required": False,
+                       "description": "«Сервер / Канал», #название, название или id голосового канала (по умолчанию где сидит владелец)"}},
+          informative=True, danger_check=True, timeout_s=90, keywords=("голос", "голосовой", "зайди", "войс", "созвон", "подключись")),
+    _tool("voice_leave", "Выйти из голосового канала Discord (из текущего; если их несколько, укажи channel).",
+          {"channel": {"type": "string", "required": False, "description": "сервер или канал, откуда выйти (если она сидит в нескольких)"}},
+          informative=True, keywords=("голос", "голосовой", "выйди", "войс", "отключись")),
 ]
 
 MANIFEST = {
@@ -72,6 +82,13 @@ MANIFEST = {
         "dm_flood_per_10min": {"type": "integer", "title": "Лавина в личке: если один человек написал за 10 минут больше "
                                "стольких сообщений, следующие идут в сводку (0: выключено; ничего не блокируется)",
                                "default": 20, "min": 0, "max": 1000},
+        "voice_announce": {"type": "boolean", "default": True,
+                           "title": "Голос: при входе в голосовой канал писать в его текстовый чат объявление, что канал слушается"},
+        "voice_announce_text": {"type": "string", "default": DEFAULT_ANNOUNCE, "title": "Голос: текст объявления при входе (без пингов)"},
+        "voice_alone_timeout_s": {"type": "integer", "default": 120, "min": 0, "max": 3600,
+                                  "title": "Голос: через сколько секунд выйти, если в канале остался только бот (0: не выходить)"},
+        "voice_autojoin": {"type": "string", "default": "",
+                           "title": "Голос: канал («Сервер / Канал» или id), куда заходить самой, когда в нём есть люди (пусто: нет)"},
         "dialog_window_mins": {"type": "integer", "title": "Продолжение диалога: сколько минут после её ответа собеседник "
                                "считается говорящим с ней без упоминания (0: выключено)", "default": 15, "min": 0, "max": 240},
     },

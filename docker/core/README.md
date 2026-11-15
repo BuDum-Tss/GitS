@@ -19,6 +19,16 @@
 ядро ходит к нему по `GITS_DECIDER_URL=http://decider:8768` (запуск из корня: `docker compose up -d decider`). Остальные сервисы хоста (LM Studio, OBS,
 RimWorld) ядро находит по `host.docker.internal`; адреса меняются переменными `GITS_DECIDER_URL`, `GITS_LM_URL`, `OBS_WEBSOCKET_URL`, `RIMWORLD_API`.
 
+## Голос: распознавание и синтез (общие контейнеры `stt` и `espeech`)
+Движок голоса ядра (`agent/services/voice_engine`, `docs/VOICE_ENGINE.md`) использует два общих контейнера из корневого `docker-compose.yml`
+(та же сеть `gits_default`): распознавание `stt` (GigaAM на процессоре, `services/stt/README.md`) и синтез `espeech` (ESpeech, видеокарта).
+Ядро получает адреса по умолчанию: `GITS_STT_URL=http://stt:8772`, `GITS_TTS_URL=http://espeech:8771` (меняются в `.env`), поэтому движок
+включён без ручной настройки. Запуск из корня: `docker compose up -d stt espeech`. Если контейнеры не подняты, ядро всё равно стартует:
+подключения адаптеров принимаются, но фразы не распознаются (предупреждение в журнале, `stats.stt_errors`), а ответы не озвучиваются.
+Выключить движок совсем: `GITS_VOICE_ENGINE=0`. Веса `stt` берёт из кэша Hugging Face хоста (только чтение, путь `HF_HOME_HOST`); если кэша нет:
+`docker compose --profile fetch run --rm stt-fetch`.
+
+
 ## Монтаж (необязательно, общий контейнер `montage`)
 Монтаж (`workspaces/montage`) это пространство: ОДИН общий контейнер `montage` на всех персонажей (образ `gits-montage:dev`, `docker/montage/Dockerfile`; описан в корневом `docker-compose.yml` рядом с espeech, а не в compose ядра):
 Python 3.12, Node 22, ffmpeg/ffprobe, шрифты, chrome-headless-shell для Remotion (скачан при сборке `npx remotion browser ensure`),

@@ -190,7 +190,7 @@ async def test_speech_frames_every_20ms_and_ack(rig):
     await rig.clock.advance(0.001)
     t0 = rig.clock.monotonic()
     start = rig.transport.of("play.start")[0]
-    assert start["utterance_id"] == ticket.uid and start["total_ms"] == 1000 and start["text"] == text
+    assert start["utterance_id"] == ticket.uid and start["total_ms"] == 0 and start["text"] == text
     await rig.clock.advance(1.2)
     frames = rig.transport.frames
     assert len(frames) == 50 and {f[1] for f in frames} == {start["play_id"]} and [f[2] for f in frames] == list(range(50))
@@ -204,7 +204,7 @@ async def test_speech_frames_every_20ms_and_ack(rig):
     rig.engine.ack("s1", ticket.uid, 1000, "completed")
     await rig.clock.settle()
     ended = rig.ended()
-    assert len(ended) == 1 and ended[0]["completed"] is True and ended[0]["spoken_upto"] == 1000
+    assert len(ended) == 1 and ended[0]["completed"] is True and ended[0]["spoken_upto"] == 1 and ended[0]["spoken_ms"] == 1000
     assert "reason" not in ended[0] and ended[0]["spoken_text"] == text
     assert not rig.sess.playback.audible
 
@@ -215,7 +215,7 @@ async def test_no_ack_falls_back_to_clock(rig):
     assert not rig.ended()
     await rig.clock.advance(2.0)                             # хвост и время ожидания подтверждения
     ended = rig.ended()
-    assert len(ended) == 1 and ended[0]["completed"] and ended[0]["spoken_upto"] == 1000 and ended[0]["utterance_id"] == ticket.uid
+    assert len(ended) == 1 and ended[0]["completed"] and ended[0]["spoken_ms"] == 1000 and ended[0]["utterance_id"] == ticket.uid
 
 
 async def test_spoken_event_goes_to_journal_as_module_out(rig):
@@ -240,7 +240,7 @@ async def test_stop_now_reports_spoken_upto_and_partial_text(rig):
     rig.engine.ack("s1", ticket.uid, 480, "stop")
     await rig.clock.settle()
     ended = rig.ended()[0]
-    assert ended["completed"] is False and ended["reason"] == "stop" and ended["spoken_upto"] == 480
+    assert ended["completed"] is False and ended["reason"] == "stop" and ended["spoken_ms"] == 480 and ended["spoken_upto"] == 0
     assert 0 < len(ended["spoken_text"]) < len(text) and text.startswith(ended["spoken_text"])
     assert rig.journal[-1][2]["completed"] is False
 
@@ -251,7 +251,7 @@ async def test_stop_without_adapter_ack_uses_clock_estimate(rig):
     rig.engine.stop("s1", "now")
     await rig.clock.advance(1.5)
     ended = rig.ended()[0]
-    assert ended["reason"] == "stop" and 400 <= ended["spoken_upto"] <= 600
+    assert ended["reason"] == "stop" and 400 <= ended["spoken_ms"] <= 600
 
 
 async def test_queue_overflow_drops_oldest_waiting(rig):

@@ -1,7 +1,7 @@
 # Общие сервисы GitS: голос ГЛаДОС (локально, на GPU) и монтаж видео (общий контейнер montage, см. его описание ниже). Голос по умолчанию ESpeech: `docker compose up -d` поднимает espeech;
 # Fish Speech запасной и стоит за профилем fish: `docker compose --profile fish up -d fish-speech`.
-# Сервисы необязательны: без ESpeech и Fish Speech сервис voice говорит запасным голосом edge-tts. Распознавание речи в
-# docker не нужно: оно идёт внутри сервис voice (GigaAM на процессоре, запасной faster-whisper). Веса: Fish Speech в models/tts/checkpoints, веса ESpeech в
+# Сервисы необязательны: без ESpeech и Fish Speech сервис voice говорит запасным голосом edge-tts. Распознавание речи для движка голоса
+# ядра это общий контейнер stt (GigaAM на процессоре, запасной faster-whisper; ниже); голос ПК пока распознаёт сам внутри сервиса voice. Веса: Fish Speech в models/tts/checkpoints, веса ESpeech в
 # services/f5-tts/weights, референс голоса у сервис voice). ESpeech в контейнере: в .env ESPEECH_EXTERNAL=1, чтобы супервизор
 # ядра не поднимал второй процесс на том же порту. На видеокарте с 6 ГБ вместе с локальной моделью (LM Studio) и игрой видеопамяти
 # может не хватить, поэтому поднимай то, что нужно сейчас.
@@ -79,6 +79,60 @@ services:
       retries: 5
       start_period: 90s
 
+  # Распознавание речи stt (GigaAM v3 через onnx-asr на процессоре, запасной faster-whisper): ОДИН общий контейнер для всех ядер, как decider.
+  # Движок голоса ядра ходит к нему по имени stt в сети gits_default (GITS_STT_URL=http://stt:8772, POST /v1/transcribe); порт на хост НЕ
+  # публикуется (чтобы открыть для отладки: добавь ports: ["127.0.0.1:8772:8772"]). Сервис ничего не качает: кэш моделей Hugging Face
+  # монтируется только для чтения. По умолчанию это готовый кэш хоста ~/.cache/huggingface (нужны istupakov/gigaam-v3-onnx и
+  # Systran/faster-whisper-small); другой путь: HF_HOME_HOST в .env. Если кэша нет: разовая загрузка в том stt_models одной командой
+  #   docker compose --profile fetch run --rm stt-fetch        и затем HF_HOME_HOST=stt_models в .env
+  # Подробности: services/stt/README.md. /health отвечает 503, пока модель не загружена.
+  stt:
+    build:
+      context: .
+      dockerfile: docker/stt/Dockerfile
+    image: gits-stt:latest
+    container_name: stt
+    restart: unless-stopped
+    mem_limit: ${STT_MEM_LIMIT:-2g}
+    environment:
+      GITS_STT_ENGINE: ${GITS_STT_ENGINE:-gigaam}              # gigaam (запасной whisper) | whisper
+      GITS_STT_GIGAAM: ${GITS_STT_GIGAAM:-gigaam-v3-e2e-rnnt}
+      GITS_STT_MODEL: ${GITS_STT_MODEL:-small}                 # модель запасного faster-whisper
+      GITS_STT_LANGUAGE: ${GITS_STT_LANGUAGE:-ru}
+      GITS_STT_THREADS: ${GITS_STT_THREADS:-2}                 # потоков процессора на одно распознавание
+      STT_WORKERS: ${STT_WORKERS:-2}                           # распознаваний одновременно
+      STT_QUEUE: ${STT_QUEUE:-8}                               # ожидающих сверх воркеров; больше: 503
+      STT_TIMEOUT_S: ${STT_TIMEOUT_S:-30}
+    expose:
+      - "8772"
+    volumes:
+      - ${HF_HOME_HOST:-~/.cache/huggingface}:/models/hf:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8772/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # Разовая загрузка весов распознавания в том stt_models (нужна, только если готового кэша Hugging Face на хосте нет). Профиль fetch: сам
+  # не поднимается. Сеть здесь нужна (при VPN запускай с включённым VPN); повтор безопасен: скачанное не качается заново.
+  stt-fetch:
+    profiles: ["fetch"]
+    build:
+      context: .
+      dockerfile: docker/stt/Dockerfile
+    image: gits-stt:latest
+    container_name: stt-fetch
+    restart: "no"
+    command: ["python", "-m", "stt.fetch"]
+    environment:
+      HF_HUB_OFFLINE: "0"
+      GITS_STT_GIGAAM: ${GITS_STT_GIGAAM:-gigaam-v3-e2e-rnnt}
+      GITS_STT_MODEL: ${GITS_STT_MODEL:-small}
+      # при необходимости прокси: HTTPS_PROXY: ${HTTPS_PROXY:-}
+    volumes:
+      - stt_models:/models/hf
+
   # Монтаж видео: ОДИН общий контейнер на всех персонажей (пространство, которое ядро берёт в аренду как семафор). К ядру при старте
   # не подключается: ждёт аренды на порту управления 8780 (только сеть compose gits_default, на хост не публикуется; ядро
   # персонажа видит его по имени montage, control_url в agent/peers.container.yaml). Запуск:
@@ -121,5 +175,7 @@ services:
 
 volumes:
   espeech_cache:
+  stt_models:
+    name: gits-stt-models
   montage_work:
     name: gits-montage-work

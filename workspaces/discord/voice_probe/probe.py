@@ -7,17 +7,14 @@
 флаг --save пишет по 5 секунд звука каждого участника в WAV 16 кГц моно (для прослушивания).
 Все тяжёлые импорты (discord, nacl, davey) ленивые: --help и тесты работают без них и без сети.
 
-Схема приёма: расширение discord-ext-voice-recv отдаёт сырой Opus после транспортной расшифровки
-(PyNaCl), но ДО снятия сквозного шифрования DAVE (в расширении поддержки DAVE нет). Снимаем DAVE сами:
-DaveSession из discord.py 2.7 (vc._connection.dave_session).decrypt(user_id, audio, кадр), затем
-декодируем Opus штатным discord.opus.Decoder.
+Схема приёма (расшифровка DAVE, декодер Opus, приёмник для discord-ext-voice-recv) вынесена в общий модуль
+workspaces/discord/voice_rx.py: его же использует адаптер голосового канала (discord_voice.py).
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import importlib
 import io
 import math
 import os
@@ -28,15 +25,22 @@ import time
 import wave
 from array import array
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from pathlib import Path
+from typing import Optional
+
+# общая часть приёма (расшифровка DAVE, декодер, приёмник) лежит рядом, в workspaces/discord: её же использует адаптер
+_HERE = str(Path(__file__).resolve().parent.parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+from voice_rx import (  # noqa: E402,F401  (часть имён переэкспортируется для тестов и совместимости)
+    OPUS_SILENCE, REQUIRED, FrameDecoder, build_sink, check_dependencies, dave_info, describe_connect_error)
 
 # --- форматы звука -------------------------------------------------------------------------------
 DISCORD_RATE = 48000  # Opus в Discord: 48 кГц, стерео
 OUT_RATE = 16000  # для распознавания речи и WAV: 16 кГц, моно
 DECIM = DISCORD_RATE // OUT_RATE  # 3
 SAVE_SECONDS = 5
-# кадр тишины Opus: Discord шлёт его без DAVE-шифрования, расшифровывать нельзя
-OPUS_SILENCE = b"\xf8\xff\xfe"
 
 
 # --- чистые функции (проверяются без сети) -------------------------------------------------------
@@ -153,51 +157,6 @@ def verdict(stats: dict) -> str:
     return "ИТОГ: ПРОВАЛ, пакеты приходят, но ни один кадр не расшифрован/декодирован (см. ошибки выше)."
 
 
-# --- зависимости ---------------------------------------------------------------------------------
-# (модуль, сообщение при отсутствии)
-REQUIRED = (
-    ("discord", "нет discord.py (pip install discord.py==2.7.1)"),
-    ("nacl", "нет PyNaCl: без него нет голоса (pip install 'PyNaCl>=1.5,<1.6')"),
-    ("davey", "нет davey: без него нет DAVE, звонки Discord с 2026-03 не работают (pip install 'davey>=0.1.6,<0.2')"),
-    (
-        "discord.ext.voice_recv",
-        "нет discord-ext-voice-recv: нечем принимать звук (pip install discord-ext-voice-recv==0.5.2a179)",
-    ),
-)
-
-
-def check_dependencies(importer: Callable[[str], object] = importlib.import_module) -> list:
-    """Список сообщений о недостающих пакетах (пустой, если всё на месте)."""
-    problems = []
-    for name, message in REQUIRED:
-        try:
-            importer(name)
-        except ImportError:
-            problems.append(message)
-    return problems
-
-
-def describe_connect_error(exc: BaseException) -> str:
-    """Понятное сообщение по типичным ошибкам входа и подключения."""
-    name = type(exc).__name__
-    code = getattr(exc, "code", None)
-    if name == "LoginFailure":
-        return "неверный токен бота (DISCORD_BOT_TOKEN)"
-    if name == "PrivilegedIntentsRequired":
-        return "не включён привилегированный intent в портале разработчика (Bot -> Privileged Gateway Intents)"
-    if name == "ConnectionClosed" and code == 4014:
-        return "доступ к голосовому каналу запрещён или бота выгнали: нужны права View Channel и Connect"
-    if name == "ConnectionClosed" and code == 4017:
-        return "канал требует DAVE, а сессия E2EE не поднялась: проверьте davey и версию discord.py"
-    if name == "Forbidden":
-        return "нет прав Connect/Speak в этом канале (Forbidden)"
-    if name == "TimeoutError":
-        return "таймаут подключения к голосовому каналу (сеть/UDP из контейнера, права Connect)"
-    if name == "OpusNotLoaded":
-        return "нет libopus в образе (apt install libopus0)"
-    return f"{name}: {exc}"
-
-
 # --- ядро пробы (нужен discord) ------------------------------------------------------------------
 class Probe:
     """Собирает статистику приёма. handle_opus() вызывается из потока приёма, поэтому под замком."""
@@ -207,48 +166,23 @@ class Probe:
         self.lock = threading.Lock()
         self.save = save
         self.save_dir = save_dir
-        self.decoders: dict = {}
         self.save_buf: dict = {}
         self.saved: set = set()
         self.last_error: Optional[str] = None
         self.vc = None  # голосовой клиент, заполняется после входа
+        self.decoder = FrameDecoder()
 
     def dave_info(self) -> dict:
-        conn = getattr(self.vc, "_connection", None)
-        session = getattr(conn, "dave_session", None)
-        info = {"protocol_version": getattr(conn, "dave_protocol_version", "?")}
-        if session is not None:
-            info["ready"] = bool(getattr(session, "ready", False))
-            status = getattr(session, "status", None)
-            info["status"] = getattr(status, "name", str(status)) if status is not None else None
-        else:
-            info["ready"] = None
-        info["error"] = self.last_error
-        return info
+        return dave_info(self.vc, self.last_error)
 
     def handle_opus(self, uid, opus: bytes) -> None:
         """Один кадр Opus от участника: DAVE-расшифровка, декодирование, счётчики."""
-        import davey
-        import discord
-
         with self.lock:
             st = self.stats.setdefault(uid, UserStats())
             st.packets += 1
-        frame = bytes(opus)
-        conn = getattr(self.vc, "_connection", None)
-        session = getattr(conn, "dave_session", None)
-        version = getattr(conn, "dave_protocol_version", 0)
+        self.decoder.vc = self.vc
         try:
-            if isinstance(uid, str):
-                raise RuntimeError("UnknownUser (ssrc не сопоставлен с участником)")
-            if frame != OPUS_SILENCE and version:
-                if session is None or not session.ready:
-                    raise RuntimeError("DaveSessionNotReady")
-                frame = bytes(session.decrypt(uid, davey.MediaType.audio, frame))
-            dec = self.decoders.get(uid)
-            if dec is None:
-                dec = self.decoders[uid] = discord.opus.Decoder()
-            pcm = dec.decode(frame, fec=False)
+            pcm = self.decoder.decode(uid, opus)
         except Exception as e:  # статистика важнее падения: считаем и идём дальше
             msg = f"{type(e).__name__}: {str(e)[:80]}"
             with self.lock:
@@ -274,32 +208,6 @@ class Probe:
             w.setframerate(OUT_RATE)
             w.writeframes(data)
         print(f"   сохранён WAV участника {uid}: {path}", flush=True)
-
-
-def build_sink(probe: Probe):
-    """Приёмник для discord-ext-voice-recv: просит сырой Opus (после транспортной, но до DAVE-расшифровки)."""
-    from discord.ext import voice_recv
-
-    class ProbeSink(voice_recv.AudioSink):
-        def wants_opus(self) -> bool:
-            return True
-
-        def write(self, user, data) -> None:
-            opus = data.opus
-            if not opus:  # фейковые пакеты потерь и пустые
-                return
-            uid = user.id if user is not None else None
-            if uid is None:
-                ssrc = getattr(data.packet, "ssrc", None)
-                uid = probe.vc._get_id_from_ssrc(ssrc) if ssrc is not None else None
-                if uid is None:
-                    uid = f"ssrc:{ssrc}"
-            probe.handle_opus(uid, opus)
-
-        def cleanup(self) -> None:
-            pass
-
-    return ProbeSink()
 
 
 async def run(args) -> int:
@@ -352,7 +260,7 @@ async def run(args) -> int:
         probe.vc = vc
         print(f"Вошёл в канал «{channel.name}». Говорите в канале; проба идёт {args.seconds} с.", flush=True)
         print(format_dave(probe.dave_info()), flush=True)
-        vc.listen(build_sink(probe))
+        vc.listen(build_sink(probe.handle_opus, lambda: probe.vc))
 
         async def play_test():
             await asyncio.sleep(2)

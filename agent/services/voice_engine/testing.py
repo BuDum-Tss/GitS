@@ -82,3 +82,32 @@ class RecordingTransport:
 
 
 
+
+
+class ClockTts:
+    """Синтез на поддельных часах: время ответа задаётся (`latencies` по вызовам, затем `latency_s`), звук длиной `ms_per_char`
+    на символ. Помнит тексты, одновременные вызовы (`max_active`) и может падать на заданных текстах."""
+
+    def __init__(self, clock: FakeClock, *, ms_per_char: int = 40, latency_s: float = 0.5, latencies: list[float] | None = None,
+                 fail_on: tuple[str, ...] = ()):
+        self.clock, self.ms_per_char, self.latency_s = clock, ms_per_char, latency_s
+        self.latencies = list(latencies or [])
+        self.fail_on = fail_on
+        self.calls: list[str] = []
+        self.active = self.max_active = 0
+
+    async def synthesize(self, text: str, *, voice=None, emotion=None) -> bytes:
+        from .tts import TtsServerError
+        self.calls.append(text)
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            await self.clock.sleep(self.latencies.pop(0) if self.latencies else self.latency_s)
+            if any(f in text for f in self.fail_on):
+                raise TtsServerError(500)
+            return b"\x10\x00" * (len(text) * self.ms_per_char * 16)
+        finally:
+            self.active -= 1
+
+    async def aclose(self) -> None:
+        pass

@@ -95,7 +95,7 @@ async def test_end_to_end_utterance_and_speech(env):
     assert len(fake.played[ticket.uid]) == 640 * 6               # 120 мс = 6 кадров по 20 мс, без потерь и дублей
     await env.until(lambda: any(s["phase"] == "ended" for s in env.speech))
     ended = [s for s in env.speech if s["phase"] == "ended"][0]
-    assert ended["completed"] is True and ended["spoken_upto"] == 120 and ended["utterance_id"] == ticket.uid
+    assert ended["completed"] is True and ended["spoken_ms"] == 120 and ended["spoken_upto"] == 1 and ended["utterance_id"] == ticket.uid
     assert env.journal[-1][0] == "module_out" and env.journal[-1][1] == "привет, Маша"
     await fake.stop()
 
@@ -124,7 +124,7 @@ async def test_barge_in_over_the_wire(env):
     assert fake.stops[0] == (ticket.uid, "barge_in")
     await env.until(lambda: any(s["phase"] == "ended" for s in env.speech))
     ended = [s for s in env.speech if s["phase"] == "ended"][0]
-    assert ended["reason"] == "barge_in" and 0 < ended["spoken_upto"] < 4000
+    assert ended["reason"] == "barge_in" and 0 < ended["spoken_ms"] < 4000
     assert env.engine.session("s1").stats.barge_ins == 1
     await fake.stop()
 

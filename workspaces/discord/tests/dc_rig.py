@@ -70,6 +70,11 @@ class Channel:
         self.messages: list = []
         self.deny = False
         self.hang = False
+        self.perms = SimpleNamespace(view_channel=True, send_messages=True, connect=True, speak=True, use_voice_activation=True,
+                                     move_members=False, administrator=False)
+
+    def permissions_for(self, member):
+        return self.perms
 
     def typing(self):
         return _Typing(self.typing_log, self)
@@ -102,6 +107,8 @@ class Guild:
         self.id, self.name, self.icon = gid, name, icon
         self.channels: list[Channel] = []
         self.threads: list[Channel] = []
+        self.me = None
+        self.system_channel = None
 
     def add(self, channel):
         channel.guild = self
@@ -223,6 +230,16 @@ class Rig:
         self.me = User(BOT_ID, "glados_bot", display="ГЛаДОС", bot=True)
         if self.connected:
             self.bot._client, self.bot._me = self.dc, self.me
+        self.voice = self.mod.voice
+        self.engines: list = []
+        self.voice.importer = lambda name: object()                  # зависимости «установлены»
+        self.voice.sink_base = object
+        self.voice.vc_class = object
+        self.voice.decoder_factory = FakeOpusDecoder
+        self.voice.davey_module = SimpleNamespace(MediaType=SimpleNamespace(audio="audio"))
+        self.voice.source_factory = lambda pipe: pipe
+        self.voice.mentions_factory = lambda: "no-mentions"
+        self.voice.client_factory = lambda **kw: self.engines.append(StubEngine(**kw)) or self.engines[-1]
         core, rig = self.core, self
 
         @core.on_request("core.privacy_terms")
@@ -265,3 +282,147 @@ class Rig:
         g = self.dc.guild(gid, name)
         made = [self.dc.register(g.add(Channel(cid, cname))) for cname, cid in channels]
         return g, made
+
+
+# ── голос ──────────────────────────────────────────────────────────────────────────────────────
+
+class Member(User):
+    """Участник сервера в голосовом канале."""
+
+
+class FakeOpusDecoder:
+    """Подмена discord.opus.Decoder: кадр «Opus» это байты вида b'v<число>'; PCM 20 мс стерео, все отсчёты равны этому числу."""
+
+    def decode(self, frame, fec=False):
+        if frame.startswith(b"bad"):
+            raise ValueError("corrupted stream")
+        level = int(frame[1:] or b"0")
+        return int(level).to_bytes(2, "little", signed=True) * 2 * 960
+
+
+class FakeDave:
+    def __init__(self):
+        self.ready, self.status, self.calls = True, SimpleNamespace(name="active"), []
+
+    def decrypt(self, uid, media, frame):
+        self.calls.append((uid, media))
+        return frame
+
+
+class FakeVC:
+    """Голосовой клиент: запоминает приёмник, играет источник по требованию теста (`play_all`), отвечает is_connected и т. п."""
+
+    def __init__(self, channel):
+        self.channel, self.connected, self.sink, self.source, self.after = channel, True, None, None, None
+        self.stopped_listening, self.disconnected, self.stops = False, False, 0
+        self.dave = FakeDave()
+        self._connection = SimpleNamespace(dave_session=self.dave, dave_protocol_version=1)
+        self.ssrc: dict = {}
+
+    def is_connected(self):
+        return self.connected
+
+    def listen(self, sink):
+        self.sink = sink
+
+    def stop_listening(self):
+        self.stopped_listening = True
+
+    def play(self, source, after=None):
+        if self.source is not None:
+            raise RuntimeError("Already playing audio.")
+        self.source, self.after = source, after
+
+    def is_playing(self):
+        return self.source is not None
+
+    def stop(self):
+        self.stops += 1
+        self.finish()
+
+    def finish(self):
+        src, after, self.source, self.after = self.source, self.after, None, None
+        if src is not None and after is not None:
+            after(None)
+
+    async def disconnect(self, force=False):
+        self.disconnected, self.connected = True, False
+
+    def _get_id_from_ssrc(self, ssrc):
+        return self.ssrc.get(ssrc)
+
+    def read_frames(self, limit=10_000):
+        """Что прочёл бы плеер: кадры PcmPipe до пустого ответа (или до limit)."""
+        frames = []
+        while self.source is not None and len(frames) < limit:
+            data = self.source.read()
+            if not data:
+                break
+            frames.append(data)
+        return frames
+
+    def feed(self, user, opus, ssrc=None):
+        """Пакет участника в приёмник (как поток приёма расширения)."""
+        self.sink.write(user, SimpleNamespace(opus=opus, packet=SimpleNamespace(ssrc=ssrc)))
+
+
+class VoiceChannel(Channel):
+    def __init__(self, cid, name, guild=None, **kw):
+        super().__init__(cid, name, "voice", guild, **kw)
+        self.members: list = []
+        self.user_limit = 0
+        self.connect_error: Exception | None = None
+        self.vcs: list[FakeVC] = []
+
+    async def connect(self, cls=None, timeout=30, **kw):
+        if self.connect_error is not None:
+            raise self.connect_error
+        vc = FakeVC(self)
+        self.vcs.append(vc)
+        return vc
+
+
+class StubEngine:
+    """Подмена VoiceAdapterClient: записывает вызовы адаптера и позволяет тесту играть реплики и останавливать их."""
+
+    def __init__(self, **kw):
+        self.kw = kw
+        self.ok, self.ready, self.last_error = True, False, None
+        self.started = self.stopped = False
+        self.joined: dict = {}
+        self.audio: dict[str, bytearray] = {}
+        self.left: list = []
+
+    async def start(self):
+        self.started = True
+
+    async def wait_ready(self, timeout=0):
+        self.ready = self.ok
+        return self.ok
+
+    async def stop(self):
+        self.stopped, self.ready = True, False
+
+    async def speaker_join(self, sid, name="", *, is_owner=False, is_bot=False):
+        self.joined[sid] = {"name": name, "is_owner": is_owner, "is_bot": is_bot}
+        return len(self.joined)
+
+    async def speaker_leave(self, sid):
+        self.joined.pop(sid, None)
+        self.left.append(sid)
+
+    async def send_audio(self, sid, pcm):
+        if sid not in self.joined or not self.ready:
+            return False
+        self.audio.setdefault(sid, bytearray()).extend(pcm)
+        return True
+
+    async def play(self, pcm16k_chunks, uid="u1", text="привет"):
+        """Реплика движка: кадры по 640 байт в PlayStream и вызов on_play; результат (сыгранные мс, stop_reason)."""
+        from gits_sdk.voice import PlayStream
+        stream = PlayStream(uid, 1, text, len(pcm16k_chunks) * 20)
+        for c in pcm16k_chunks:
+            stream._put(c)
+        stream._close()
+        spoken = await self.kw["on_play"](stream, uid)
+        return spoken, stream.stop_reason

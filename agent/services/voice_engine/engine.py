@@ -17,7 +17,7 @@ from typing import Any, Awaitable, Callable, Iterable
 from . import events
 from .clock import SystemClock
 from .config import EngineConfig
-from .playback import Playback, PlaybackConfig, PlaybackEvent
+from .playback import Playback, PlaybackConfig, PlaybackEvent, PlaybackMetrics
 from .session import Capabilities, SessionLimitError, SessionManager, SessionTransport, Speaker, VoiceSession
 from .stt import SttClient, SttError
 from .tts import TtsClient, clean_text
@@ -58,6 +58,7 @@ class VoiceEngine:
         self._patterns_key: tuple = ()
         self._patterns: list = []
         self._play_counter = 0
+        self.metrics = PlaybackMetrics()                  # задержка первого звука и разрывы по всем сессиям
         self.started_at = time.time()
 
     # ── сессии ───────────────────────────────────────────────────────────────────
@@ -77,8 +78,11 @@ class VoiceEngine:
         sess = VoiceSession(session_id, adapter, caps, transport, self.resolve_barge_in(caps, barge_in), self.config.barge_in_ms)
         sess.playback = Playback(transport, self.tts, self.clock, lambda ev: self._on_playback(sess, ev),
                                  PlaybackConfig(max_waiting=self.config.max_waiting, lead_ms=self.config.lead_ms,
-                                                voice=self.config.tts_voice, emotion=self.config.tts_emotion),
-                                 play_ids=self._next_play_id)
+                                                voice=self.config.tts_voice, emotion=self.config.tts_emotion,
+                                                split=self.config.tts_split == "sentences", prefetch=self.config.tts_prefetch,
+                                                split_min_chars=self.config.split_min_chars,
+                                                split_max_chars=self.config.split_max_chars),
+                                 play_ids=self._next_play_id, sinks=(self.metrics,))
         old = self.sessions_manager.add(sess)             # SessionLimitError пробрасывается адаптеру отказом
         if old is not None:
             await self._shutdown(old, "replaced", close_transport=True)
@@ -261,15 +265,19 @@ class VoiceEngine:
     def _on_playback(self, sess: VoiceSession, ev: PlaybackEvent) -> None:
         if ev.phase == "ended" and ev.spoken_ms > 0:
             sess.stats.spoken += 1
+        if ev.phase == "ended":
             if self._journal is not None and ev.spoken_text:
                 self._journal("module_out", ev.spoken_text[:events.EVENT_TEXT_MAX], {
                     "module": events.PEER_ID, "tool": "voice.say", "to": sess.id, "own": True, "event_kind": events.KIND_SPOKEN,
                     "adapter": sess.adapter, "utterance_id": ev.uid, "completed": ev.completed, "reason": ev.reason,
-                    "spoken_ms": ev.spoken_ms, "interrupted": ev.reason == "barge_in"})
+                    "spoken_ms": ev.spoken_ms, "spoken_segments": ev.spoken_segments, "interrupted": ev.reason == "barge_in"})
         if self._on_speech is not None:
             data: dict[str, Any] = {"phase": ev.phase, "utterance_id": ev.uid, "session": sess.id, "adapter": sess.adapter}
+            if ev.phase == "segment":
+                data.update(seq=ev.segment, segment=ev.text)
             if ev.phase == "ended":
-                data.update(completed=ev.completed, spoken_upto=ev.spoken_ms, total_ms=ev.total_ms, spoken_text=ev.spoken_text)
+                data.update(completed=ev.completed, spoken_upto=ev.spoken_segments, spoken_ms=ev.spoken_ms, total_ms=ev.total_ms,
+                            spoken_text=ev.spoken_text)
                 if ev.reason:
                     data["reason"] = ev.reason
             try:
@@ -287,6 +295,7 @@ class VoiceEngine:
     def snapshot(self) -> dict:
         return {"enabled": True, "uptime_s": round(time.time() - self.started_at, 1), "sessions": self.sessions(),
                 "limits": {"max_sessions": self.sessions_manager.max_sessions, "max_speakers": self.sessions_manager.max_speakers},
+                "metrics": self.metrics.public(), "tts_split": self.config.tts_split, "tts_prefetch": self.config.tts_prefetch,
                 "stt_url": self.config.stt_url, "tts_url": self.config.tts_url, "lang": self.config.lang}
 
     async def aclose(self) -> None:

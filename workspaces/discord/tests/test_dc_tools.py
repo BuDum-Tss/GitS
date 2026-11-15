@@ -19,12 +19,13 @@ async def server(rig, known=True):
 
 async def test_tool_table_and_handlers(tmp_path, monkeypatch):
     t = tools()
-    assert set(t) == {"message", "react", "inbox"} and all(x["risk"] == "auto" and x["availability"] == "always" for x in t.values())
+    assert set(t) == {"message", "react", "inbox", "voice_join", "voice_leave"} and all(x["risk"] == "auto" and x["availability"] == "always" for x in t.values())
     assert t["message"]["danger_check"] is True and t["message"]["informative"] is True and not t["inbox"].get("danger_check")
     assert t["react"]["danger_check"] is True and t["react"]["risk"] == t["message"]["risk"]
     assert all(len(x["description"]) <= 300 for x in t.values()) and all(p.get("required") is False for p in t["message"]["params"].values())
     async with Rig(tmp_path, monkeypatch) as rig:
-        assert set(rig.client._tools) == {"message", "react", "inbox"} and set(rig.client._checks) == {"message", "react"}
+        assert set(rig.client._tools) == {"message", "react", "inbox", "voice_join", "voice_leave"}
+        assert set(rig.client._checks) == {"message", "react", "voice_join"}
         assert rig.core.violations == [] and rig.core.rejected == []
 
 

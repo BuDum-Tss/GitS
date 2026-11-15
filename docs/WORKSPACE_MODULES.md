@@ -335,9 +335,13 @@ members и presence. События: `discord.dm` (личка, срочност�
 `ignore`: событий и inbox нет, `read`: события без обращения и без `reply_channel`, отправка закрыта на всех путях; личка владельца всегда
 `reply`. Инструменты: `message` (`to`: `owner`, `channel`, название, `#название`, `Сервер / канал`, `@имя`, id; `reply_to`; перед ответом
 `channel.typing()`, текст длиннее 2000 символов режется), `react` (реакция-эмодзи: `emoji` юникод или `<:имя:id>`, `message_id`, `to` как у `message`, `remove`; без `message_id` последнее входящее сообщение канала, откуда ей писали; режим и разрешение как у `message`: в `read` и `ignore` нельзя; входящие реакции не обрабатываются), `inbox` (серверы и каналы; сообщения с id `#id`; `channel` читает историю и показывает «ТВОЯ АКТИВНОСТЬ
-В ЭТОМ КАНАЛЕ»; `unread`). Нет права писать (Forbidden): понятная ошибка инструменту, режим сам не меняется. Настройки `peers.discord`:
+В ЭТОМ КАНАЛЕ»; `unread`). Нет права писать (Forbidden): понятная ошибка инструменту, режим сам не меняется. Голос (`discord_voice.py`, адаптер `discord` движка голоса, сессия `discord:<guild>:<channel>`):
+инструменты `voice_join` (`channel`: «Сервер / Канал», `#название`, id; без него канал, где сидит владелец; в незнакомый канал без владельца
+спрашивает разрешение, как `message`) и `voice_leave`. Режим канала действует и на голос: `ignore` не пускает, `read` слушает, но `voice.say`
+не звучит, `reply` как обычно. Звук не сохраняется, при входе в текстовый чат канала пишется объявление. Настройки: `voice_announce`,
+`voice_announce_text`, `voice_alone_timeout_s`, `voice_autojoin`. Подробности: docs/DISCORD_VOICE_PROBE.md. Настройки `peers.discord`:
 `owner`, `names`, `default_chat_mode`, `dm_flood_per_10min`, `dialog_window_mins`. Панель: статус бота, ссылка-приглашение (OAuth2, scope
-`bot`, права View Channels, Send Messages, Send Messages in Threads, Read Message History, Embed Links, Attach Files, Add Reactions), карточки
+`bot`, права View Channels, Send Messages, Send Messages in Threads, Read Message History, Embed Links, Attach Files, Add Reactions, Connect, Speak, Use Voice Activity), карточки
 серверов с режимами (клик раскрывает каналы и ветки), группа «Личные сообщения», открытый чат и ручная отправка владельцем; аватарки с CDN
 качаются с таймаутом 6 с и отключаются на 10 минут после трёх таймаутов подряд; сборка панели ограничена 25 с.
 

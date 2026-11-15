@@ -33,6 +33,12 @@ services:
       # не задан: аренда отключена, монтаж недоступен
       # decider: общий контейнер из корневого docker-compose.yml (та же сеть gits_default, имя decider)
       GITS_DECIDER_URL: ${GITS_DECIDER_URL:-http://decider:8768}
+      # движок голоса: распознавание stt и синтез espeech, общие контейнеры из корневого docker-compose.yml (имена stt и espeech в сети
+      # gits_default). Адреса заданы: движок голоса включён и принимает адаптеры на /voice/ws; контейнеры не подняты: ядро работает,
+      # фразы голосового канала отклоняются с предупреждением (считаются в stats), повтор после запуска сервисов не нужен. Выключить
+      # движок совсем: GITS_VOICE_ENGINE=0 (в .env)
+      GITS_STT_URL: ${GITS_STT_URL:-http://stt:8772}
+      GITS_TTS_URL: ${GITS_TTS_URL:-http://espeech:8771}
       # сервисы на хосте
       GITS_LM_URL: ${GITS_LM_URL:-http://host.docker.internal:1234/v1}
       OBS_WEBSOCKET_URL: ${OBS_WEBSOCKET_URL:-ws://host.docker.internal:4455}

@@ -16,6 +16,7 @@ from common import parse_target, scrub, split_place
 from discord_bot import ChatModeError, DiscordBot, LeakError, SendDenied
 from discord_panel import ACTIONS as PANEL_ACTIONS
 from discord_panel import DiscordPanel
+from discord_voice import DiscordVoiceAdapter, VoiceError
 from gits_sdk import ToolError, WorkspaceClient
 from privacy import Privacy
 
@@ -50,6 +51,8 @@ class DiscordModule:
         self.memory_dir = memory_dir
         self.privacy = Privacy(client.privacy_terms)
         self.bot = DiscordBot(memory_dir, client, self.privacy)
+        self.voice = DiscordVoiceAdapter(self.bot)
+        self.bot.voice = self.voice
         self.panel = DiscordPanel(self)
         self.bot.on_change = self.panel.wake.set          # подключение, сбой и выход обновляют панель сразу
         self.tasks: list[asyncio.Task] = []
@@ -73,6 +76,7 @@ class DiscordModule:
             task.cancel()
         await asyncio.gather(*self.tasks, return_exceptions=True)
         self.tasks.clear()
+        await self.voice.close()
         await self.bot.close()
 
     # ── состояние для дашборда ───────────────────────────────────────────────
@@ -81,7 +85,8 @@ class DiscordModule:
         """(summary, data): статус бота, серверы, непрочитанные. Читает файлы: звать через to_thread."""
         bot = self.bot
         word = bot.state_word() if self.client.enabled else "выключен"
-        data = {"bot_ok": bot.state_word() == "подключён", "guilds": bot.guild_count(), "unread": bot.unread_count()}
+        data = {"bot_ok": bot.state_word() == "подключён", "guilds": bot.guild_count(), "unread": bot.unread_count(),
+                "voice_sessions": len(self.voice.sessions)}
         return f"бот: {word}" + (f", серверов: {data['guilds']}" if data["bot_ok"] else ""), data
 
     async def panel_blocks(self) -> list[dict]:
@@ -148,6 +153,18 @@ class DiscordModule:
         async def react_check(args):
             return await self.react_check(args)
 
+        @c.tool("voice_join")
+        async def voice_join(args):
+            return await self.voice_join(args)
+
+        @c.check("voice_join")
+        async def voice_join_check(args):
+            return await self.voice_join_check(args)
+
+        @c.tool("voice_leave")
+        async def voice_leave(args):
+            return await self.voice_leave(args)
+
         @c.tool("inbox")
         async def inbox(args):
             return await self.inbox(args)
@@ -185,6 +202,56 @@ class DiscordModule:
             raise ToolError(scrub(e, self.bot._token)[:200], code="unavailable") from e
         except Exception as e:
             raise ToolError("Discord: " + scrub(f"{type(e).__name__}: {e}", self.bot._token)[:160], code="unavailable") from e
+
+    # ── голос ────────────────────────────────────────────────────────────────
+
+    async def _voice(self, fn, *args, **kw):
+        """Вызов голосового адаптера: понятные отказы вместо сбоев."""
+        try:
+            return await fn(*args, **kw)
+        except ToolError:
+            raise
+        except VoiceError as e:
+            raise ToolError(str(e), code=e.code) from e
+        except ChatModeError as e:
+            raise ToolError(str(e), code="denied") from e
+        except ValueError as e:
+            raise ToolError(str(e), code="bad_request") from e
+        except Exception as e:
+            raise ToolError("Discord: " + scrub(f"{type(e).__name__}: {e}", self.bot._token)[:160], code="unavailable") from e
+
+    def _voice_channel(self, args: dict):
+        ok, why = self.bot.state()
+        if not ok:
+            raise ToolError(why, code="unavailable")
+        raw = args.get("channel")
+        if raw is not None and not isinstance(raw, str):
+            raise ToolError("параметр «channel» должен быть строкой", code="bad_request")
+        try:
+            return self.voice.find_channel(raw)
+        except ValueError as e:
+            raise ToolError(str(e), code="bad_request") from e
+
+    async def voice_join_check(self, args: dict) -> str | None:
+        """tool.check: вход в голосовой канал с прослушиванием это действие с приватностью. Канал, где сидит владелец, или тот,
+        куда она уже заходила: без вопроса; иначе вопрос. Канал не найден: без вопроса (инструмент сам объяснит ошибку)."""
+        try:
+            channel = self.voice.find_channel(args.get("channel") if isinstance(args.get("channel"), str) else None)
+        except ValueError:
+            return None
+        if self.voice.is_unknown(channel):
+            return f"зайти в голосовой канал «{channel.guild.name} / {channel.name}» и слушать его: она там ещё не была и владельца там нет"
+        return None
+
+    async def voice_join(self, args: dict) -> str:
+        channel = self._voice_channel(args)
+        return await self._voice(self.voice.join, channel, by_owner=False)
+
+    async def voice_leave(self, args: dict) -> str:
+        raw = args.get("channel")
+        if raw is not None and not isinstance(raw, str):
+            raise ToolError("параметр «channel» должен быть строкой", code="bad_request")
+        return await self._voice(self.voice.leave, raw)
 
     # ── inbox ────────────────────────────────────────────────────────────────
 
