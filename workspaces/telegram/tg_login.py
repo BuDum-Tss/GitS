@@ -59,24 +59,35 @@ def _describe(sent) -> None:
 
 async def _login_qr(client) -> None:
     """Вход по QR-коду: код доставки не нужен. В Telegram на телефоне: Настройки -> Устройства -> Подключить устройство,
-    навести камеру на код в терминале. Код обновляется каждые 30 секунд."""
+    навести камеру на код. По умолчанию код пишется картинкой PNG (в терминале QR часто не сканируется из-за тёмной темы и
+    шрифта), файл обновляется каждые 30 секунд и удаляется при выходе; `--ascii` рисует его ещё и в терминале.
+    Путь картинки: TG_QR_PNG, иначе /data/tg_login_qr.png (папка персонажа на хосте), иначе рядом со скриптом."""
     try:
         import segno
     except ImportError:
         print("Для QR нужен пакет segno: pip install segno")
         raise SystemExit(1) from None
+    png = Path(os.getenv("TG_QR_PNG") or (Path("/data") if Path("/data").is_dir() else HERE) / "tg_login_qr.png")
+    ascii_too = "--ascii" in sys.argv[1:]
     qr = await client.qr_login()
-    while True:
-        print("\nTelegram на телефоне: Настройки -> Устройства -> Подключить устройство, наведи камеру на код:\n")
-        segno.make(qr.url).terminal(compact=True)
-        try:
-            await qr.wait(30)
-            return
-        except asyncio.TimeoutError:
-            await qr.recreate()
-        except SessionPasswordNeededError:
-            await client.sign_in(password=await asyncio.to_thread(getpass.getpass, "Пароль двух шагов (ввод не виден): "))
-            return
+    try:
+        while True:
+            segno.make(qr.url, error="m").save(str(png), scale=12, border=4, dark="black", light="white")
+            print(f"\nQR-код сохранён в файл: {png}")
+            print("Если контейнер Docker: на хосте это resources\\GlaDOS\\tg_login_qr.png в папке проекта. Открой картинку.")
+            print("Telegram на телефоне: Настройки -> Устройства -> Подключить устройство, наведи камеру на картинку.")
+            if ascii_too:
+                segno.make(qr.url).terminal(compact=True)
+            try:
+                await qr.wait(30)
+                return
+            except asyncio.TimeoutError:
+                await qr.recreate()
+            except SessionPasswordNeededError:
+                await client.sign_in(password=await asyncio.to_thread(getpass.getpass, "Пароль двух шагов (ввод не виден): "))
+                return
+    finally:
+        png.unlink(missing_ok=True)
 
 
 async def main():
