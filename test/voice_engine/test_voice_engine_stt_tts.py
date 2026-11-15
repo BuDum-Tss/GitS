@@ -177,7 +177,9 @@ async def test_tts_client_posts_reference_and_resamples(tmp_path):
     assert len(seen["ref_audio_b64"]) > 100
 
 
-async def test_tts_errors_are_typed():
+async def test_tts_errors_are_typed(tmp_path):
+    ref = tmp_path / "ref.wav"
+    ref.write_bytes(make_wav())
     async def boom(request):
         return web.Response(status=503)
 
@@ -186,7 +188,7 @@ async def test_tts_errors_are_typed():
         return web.Response(body=make_wav())
 
     server = await serve({("POST", "/tts"): boom})
-    c = T.HttpTtsClient(T.TtsSettings(url=url(server), timeout_s=1))
+    c = T.HttpTtsClient(T.TtsSettings(url=url(server), ref_audio=str(ref), ref_text="т", timeout_s=1))
     with pytest.raises(T.TtsServerError):
         await c.synthesize("привет")
     with pytest.raises(T.TtsError):
@@ -194,14 +196,36 @@ async def test_tts_errors_are_typed():
     await c.aclose()
     await server.close()
     server = await serve({("POST", "/tts"): slow})
-    c = T.HttpTtsClient(T.TtsSettings(url=url(server), timeout_s=0.2))
+    c = T.HttpTtsClient(T.TtsSettings(url=url(server), ref_audio=str(ref), ref_text="т", timeout_s=0.2))
     with pytest.raises(T.TtsTimeout):
         await c.synthesize("привет")
     await c.aclose()
     await server.close()
     server = await serve({("POST", "/tts"): drop})
-    c = T.HttpTtsClient(T.TtsSettings(url=url(server), timeout_s=2))
+    c = T.HttpTtsClient(T.TtsSettings(url=url(server), ref_audio=str(ref), ref_text="т", timeout_s=2))
     with pytest.raises(T.TtsUnavailable):
+        await c.synthesize("привет")
+    await c.aclose()
+    await server.close()
+
+
+async def test_reference_comes_from_the_character_resolver_and_missing_reference_is_a_config_error(tmp_path):
+    """Референс по умолчанию берётся у активного персонажа (резолвер ядра); без него ESpeech не говорит, и это честная ошибка."""
+    ref = tmp_path / "espeech_ref.wav"
+    ref.write_bytes(make_wav())
+    seen = {}
+
+    async def ok(request):
+        seen.update(await request.json())
+        return web.Response(body=make_wav())
+
+    server = await serve({("POST", "/tts"): ok})
+    c = T.HttpTtsClient(T.TtsSettings(url=url(server), ref_resolver=lambda: (ref, "дословный текст"), timeout_s=3))
+    await c.synthesize("привет")
+    assert seen["ref_text"] == "дословный текст" and len(seen["ref_audio_b64"]) > 100
+    await c.aclose()
+    c = T.HttpTtsClient(T.TtsSettings(url=url(server), ref_resolver=lambda: None, timeout_s=3))
+    with pytest.raises(T.TtsError, match="референса"):                 # не TtsServerError: до сервиса дело не доходит
         await c.synthesize("привет")
     await c.aclose()
     await server.close()

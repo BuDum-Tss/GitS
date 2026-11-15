@@ -31,9 +31,10 @@ class VoiceService:
     @classmethod
     def build(cls, environ: Mapping[str, str], *, submit: Callable[[str, dict], Any], token: Callable[[], str],
               allow: Callable[[str | None], bool], names: Callable[[], Iterable[str]],
-              journal: Callable[[str, str, dict], None]) -> "VoiceService":
+              journal: Callable[[str, str, dict], None],
+              ref_resolver: Callable[[], Any] | None = None) -> "VoiceService":
         """`submit(peer_id, event)` это `attention.submit`, `token` и `allow` берутся у шины модулей, `journal(kind, text, data)`
-        это запись в журнал событий ядра."""
+        это запись в журнал событий ядра, `ref_resolver()` отдаёт (WAV, текст) референса голоса активного персонажа."""
         config = EngineConfig.from_env(environ)
         if not config.enabled:
             logger.info("Движок голоса выключен: %s", config.disabled_reason)
@@ -51,7 +52,7 @@ class VoiceService:
         stt = HttpSttClient(config.stt_url, timeout_s=config.stt_timeout_s, lang=config.lang)
         tts = HttpTtsClient(TtsSettings(url=config.tts_url, ref_audio=config.tts_ref_audio, ref_text=config.tts_ref_text,
                                         speed=config.tts_speed, voice=config.tts_voice, emotion=config.tts_emotion,
-                                        timeout_s=config.tts_timeout_s))
+                                        timeout_s=config.tts_timeout_s, ref_resolver=ref_resolver))
         vad_factory = load_silero_factory(config.silero_model, config.silero_threshold) if config.vad == "silero" else None
         engine = VoiceEngine(stt=stt, tts=tts, config=config, emit_event=emit, journal=journal, names=names,
                              vad_factory=vad_factory)
@@ -100,8 +101,19 @@ def wire_voice(layer, registry, environ: Mapping[str, str] | None = None) -> Voi
         card = character.active()
         return [card.name, *card.aliases]
 
+    def character_reference():
+        """Референс ESpeech активного персонажа: espeech_ref.wav и espeech_ref.txt рядом с основным референсом (как у голоса ПК)."""
+        ref = character.active().voice_reference()
+        if ref is None:
+            return None
+        audio, text = ref.parent / "espeech_ref.wav", ref.parent / "espeech_ref.txt"
+        if audio.is_file() and text.is_file():
+            return audio, text.read_text(encoding="utf-8").strip()
+        return None
+
     service = VoiceService.build(os.environ if environ is None else environ, submit=layer.attention.submit,
                                  token=lambda: layer.hub.token, allow=lambda remote: remote_allowed(remote, layer.hub.allow),
-                                 names=names, journal=lambda kind, text, data: events_log.log_nowait(kind, text, **data))
+                                 names=names, journal=lambda kind, text, data: events_log.log_nowait(kind, text, **data),
+                                 ref_resolver=character_reference)
     service.register_tools(registry)
     return service

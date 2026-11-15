@@ -9,6 +9,7 @@ API контейнера (`services/f5-tts/f5_server.py`, образ `docker/esp
 Референс голоса персонажа (аудио и дословный текст) задаётся настройками и читается один раз.
 """
 import asyncio
+from collections.abc import Callable
 import base64
 import logging
 import re
@@ -77,6 +78,8 @@ class TtsSettings:
     url: str = ""
     ref_audio: str = ""            # WAV референса голоса персонажа (читается один раз)
     ref_text: str = ""             # его дословный текст
+    # () -> (путь к WAV, текст) референса активного персонажа; зовётся при первом синтезе, если ref_audio не задан настройкой
+    ref_resolver: Callable[[], tuple[Path, str] | None] | None = None
     speed: float = 1.0
     voice: str = ""                # необязательные: передаются сервису, если он их понимает (ESpeech их игнорирует)
     emotion: str = ""
@@ -133,23 +136,32 @@ class HttpTtsClient:
     def __init__(self, settings: TtsSettings):
         self.settings = settings
         self._http: aiohttp.ClientSession | None = None
-        self._ref_b64: str | None = None
+        self._ref: tuple[str, str] | None = None
 
-    async def _reference(self) -> str:
-        if self._ref_b64 is None:
-            path = Path(self.settings.ref_audio) if self.settings.ref_audio else None
+    async def _reference(self) -> tuple[str, str]:
+        """(WAV референса в base64, его текст): явная настройка, иначе референс активного персонажа. ESpeech без референса не
+        говорит, поэтому его отсутствие это ошибка конфигурации, а не «голос по умолчанию»."""
+        if self._ref is None:
+            cfg = self.settings
+            path = Path(cfg.ref_audio) if cfg.ref_audio else None
+            text = cfg.ref_text
+            if (path is None or not path.is_file()) and cfg.ref_resolver is not None:
+                found = await asyncio.to_thread(cfg.ref_resolver)
+                if found is not None:
+                    path, text = found
             if path is None or not path.is_file():
-                self._ref_b64 = ""
-            else:
-                self._ref_b64 = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode("ascii")
-        return self._ref_b64
+                raise TtsError("нет референса голоса: положи espeech_ref.wav и espeech_ref.txt в папку voice/ персонажа "
+                               "или задай GITS_TTS_REF_AUDIO и GITS_TTS_REF_TEXT")
+            self._ref = (base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode("ascii"), text)
+        return self._ref
 
     async def synthesize(self, text: str, *, voice: str | None = None, emotion: str | None = None) -> bytes:
         text = clean_text(text)
         if not text:
             raise TtsError("пустой текст")
         cfg = self.settings
-        payload = {"text": text, "ref_audio_b64": await self._reference(), "ref_text": cfg.ref_text, "speed": cfg.speed}
+        ref_b64, ref_text = await self._reference()
+        payload = {"text": text, "ref_audio_b64": ref_b64, "ref_text": ref_text, "speed": cfg.speed}
         if voice or cfg.voice:
             payload["voice"] = voice or cfg.voice
         if emotion or cfg.emotion:
