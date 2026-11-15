@@ -314,15 +314,30 @@ class ResidentAgent:
         # состояние хода: канал обращения и «ответила ли инструментом message в тот же адресат» (инструменты зовутся из
         # задачи среды исполнения, где контекстной переменной хода нет, поэтому объект лежит ещё и на агенте; ходы идут по очереди)
         guard = ModuleReplyGuard(current_channel.get())
+        from_module = guard.channel is not None and guard.channel.kind == "module"
         token = turn_replies.set(guard)
         self._replies = guard
         try:
-            await self._run_turn(prompt, source)
+            try:
+                ok = await self._run_turn(prompt, source)
+            except BaseException:                        # ошибка, тайм-аут, отмена: накопленное не доставляется
+                if from_module:
+                    await self._h.release_channel_replies(guard, False)
+                raise
+            if from_module:
+                await self._h.release_channel_replies(guard, ok)  # конец хода: ответ уходит в канал (или молча отбрасывается)
         finally:
             self._replies = None
             turn_replies.reset(token)
 
-    async def _run_turn(self, prompt: str, source: str) -> None:
+    def _drop_comments(self) -> None:
+        """Начался вызов инструмента: реплики до него это промежуточные комментарии, они никуда не уходят (только лог)."""
+        if self._replies is not None:
+            for text, _ in self._replies.take():
+                logger.info(f"(комментарий до инструмента, не показан) {text}")
+
+    async def _run_turn(self, prompt: str, source: str) -> bool:
+        """Один ход; True, если он закончился штатно (не ошибкой и не обрывом)."""
         h = self._h
         runtime = await self._runtime_for_turn()
         await runtime.start(self._system(), self._tool_specs())
@@ -331,6 +346,7 @@ class ResidentAgent:
             self._last_montage_read = None
         if self._note:
             prompt, self._note = f"=== ЗАМЕТКА ===\n{self._note}\n\n{prompt}", ""
+        ok = True
         latency_trace.mark("route")                        # запрос собран, ход ушёл в среду (трасса задержки, ТЗ 24)
         async for event in runtime.run(prompt):
             if isinstance(event, TextEvent):
@@ -340,15 +356,18 @@ class ResidentAgent:
                     continue                               # «не отвлекать»: событие не повод говорить
                 await h.say(h._declutter(strip_tags(event.text)), first_sticker(event.text))   # тег реакции -> стикер питомца
             elif isinstance(event, ToolEvent):
+                self._drop_comments()
                 tool_id = str(event.args.get("tool_id") or event.args.get("query") or "")[:120]   # для find_tools в журнале виден запрос
                 logger.info(f"[агент] {event.name} {tool_id}".rstrip())
             elif isinstance(event, EndEvent):
                 latency_trace.mark("llm_done")
+                ok = event.status == "ok"
             if isinstance(event, EndEvent) and event.status == "error":
                 if llm_gate.note_pi_error(event.error):
                     logger.warning("Лимит подписки на pi: агент отдыхает")
                 else:
                     logger.error(f"Резидентный агент: {event.error}")
+        return ok
 
     @staticmethod
     def _quiet() -> bool:

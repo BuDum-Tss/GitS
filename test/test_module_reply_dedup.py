@@ -1,21 +1,24 @@
-"""Ответ в канал модуля не дублируется: если единый агент уже отправил сообщение инструментом `<модуль>.message` в тот же адресат,
-его итоговая фраза («Ответила: ...») в канал не идёт, но остаётся в диалоге и журнале. Настоящие Companion и ResidentAgent,
-среда исполнения и инструмент модуля заглушены (как pi, инструмент зовётся из отдельной задачи, а не из задачи хода)."""
+"""Реплики хода из канала модуля копятся до конца хода: комментарии до инструмента не уходят никуда, ответ после последнего
+инструмента доставляется один раз, ход с доставкой инструментом в адрес обращения не добавляет ничего (его текст записан как её
+реплика), оборванный ход молчит. Настоящие Companion и ResidentAgent; среда исполнения и инструмент модуля заглушены
+(как pi: ToolEvent приходит в потоке событий, а инструмент исполняется в отдельной задаче, не в задаче хода)."""
 import asyncio
 
-from interfaces.contracts import EndEvent, TextEvent
-from services.tracing import events_log
+import pytest
+
+from interfaces.contracts import EndEvent, TextEvent, ToolEvent
 from services.conversation.companion import Companion
-from services.conversation.conversation_io import Channel, ConversationIO, ModuleReplyGuard
+from services.conversation.conversation_io import Channel, ConversationIO, ModuleReplyGuard, current_channel, turn_replies
 from services.conversation.resident import ResidentAgent
 from services.tools.router import ToolOutcome
+from services.tracing import events_log
 
 
 class ScriptedRuntime:
-    """Среда исполнения: перед текстами вызывает call_tool по сценарию `calls` из отдельной задачи; `gate` держит ход."""
+    """Ход по сценарию шагов: ("text", t), ("tool", id, args), ("raise",), ("end", status), ("wait",) - ждать `gate`."""
 
-    def __init__(self, calls, texts, gate: asyncio.Event | None = None):
-        self.calls, self.texts, self.gate = calls, texts, gate
+    def __init__(self, steps, gate: asyncio.Event | None = None):
+        self.steps, self.gate = list(steps), gate
         self.can_steer = False
         self.tools = []
 
@@ -24,13 +27,20 @@ class ScriptedRuntime:
 
     async def run(self, prompt):
         handler = next(t for t in self.tools if t.name == "call_tool").handler
-        for tool_id, args in self.calls:
-            await asyncio.create_task(handler({"tool_id": tool_id, "args": args}))     # как pi: не из контекста хода
-        if self.gate is not None:
-            await self.gate.wait()
-        for text in self.texts:
-            yield TextEvent(text)
-        yield EndEvent("ok")
+        status = "ok"
+        for step in self.steps:
+            if step[0] == "text":
+                yield TextEvent(step[1])
+            elif step[0] == "tool":
+                yield ToolEvent("call_tool", {"tool_id": step[1], "args": step[2]})
+                await asyncio.create_task(handler({"tool_id": step[1], "args": step[2]}))
+            elif step[0] == "raise":
+                raise RuntimeError("сбой среды")
+            elif step[0] == "end":
+                status = step[1]
+            elif step[0] == "wait":
+                await self.gate.wait()
+        yield EndEvent(status)
 
     async def abort(self):
         pass
@@ -79,11 +89,11 @@ class Speech:
         return ""
 
 
-def make(tmp_path, calls, texts, fail=(), gate=None, delivered=()):
+def make(tmp_path, steps, fail=(), gate=None, delivered=()):
     c = Companion(str(tmp_path / "memory"), rel=None, speech=Speech())
     c.io = FakeIO()
     c.router = FakeRouter(delivered, fail)
-    c.resident = ResidentAgent(c, runtime=ScriptedRuntime(calls, texts, gate))
+    c.resident = ResidentAgent(c, runtime=ScriptedRuntime(steps, gate))
     c._handle_text = lambda text: c.resident.handle_user(text, use_memory=False)
     return c
 
@@ -92,102 +102,126 @@ def dialogue(c):
     return [m["text"] for m in c._mem.recent_dialogue(20) if m["role"] != "user"]
 
 
+def sent(c):
+    return [t for _, t in c.io.delivered]
+
+
 TG = {"module": "discord", "target": "channel:7"}
+MSG = ("tool", "discord.message", {"to": "Aperture Science / #общее", "text": "Пожалуйста"})
 
 
-async def test_delivery_to_the_reply_address_mutes_even_when_to_is_a_name(tmp_path):
-    """Как на скриншоте: to по названию сервера и канала, адрес обращения channel:7; модуль вернул delivered_to=[channel:7]."""
-    c = make(tmp_path, [("discord.message", {"to": "Aperture Science / #общее", "text": "Пожалуйста"})], ["Ответила, всё готово"],
-             delivered=["channel:7"])
-    await ConversationIO(c).from_module("привет", {"module": "discord", "target": "channel:7"})
-    assert c.io.delivered == []                                       # второго сообщения в канале нет
-    # в диалоге (чат дашборда) и журнале одна её реплика: отправленный текст; отчёта «Ответила…» нет нигде
-    assert dialogue(c) == ["Пожалуйста"]
-    says = [e for e in events_log.tail(50, {"say"}) if e["text"] in ("Пожалуйста", "Ответила, всё готово")]
+async def ask(c, reply_channel=TG):
+    await ConversationIO(c).from_module("привет", reply_channel)
+
+
+async def test_delivery_to_the_reply_address_leaves_one_reply_and_no_report(tmp_path):
+    """Как на скриншоте: to по названию, адрес обращения channel:7, модуль вернул delivered_to=[channel:7]."""
+    c = make(tmp_path, [("text", "Сейчас напишу"), MSG, ("text", "Ответила, всё готово")], delivered=["channel:7"])
+    await ask(c)
+    assert c.io.delivered == []                                       # ни комментария, ни отчёта в канале
+    assert dialogue(c) == ["Пожалуйста"]                              # в диалоге одна её реплика: отправленный текст
+    says = [e for e in events_log.tail(50, {"say"}) if e["text"] in ("Пожалуйста", "Сейчас напишу", "Ответила, всё готово")]
     assert [e["text"] for e in says] == ["Пожалуйста"] and says[0]["data"]["channel"] == "discord:channel:7"
-    assert c.speech.spoken == []                                      # и не озвучена
+    assert c.speech.spoken == []                                      # и ничего не озвучено
 
 
-async def test_whole_tail_after_delivery_is_muted_but_other_turns_unaffected(tmp_path):
-    """Все реплики хода после доставки глушатся, не только одна; в следующем ходе без доставки ответ идёт как обычно."""
-    c = make(tmp_path, [("discord.message", {"to": "x", "text": "Вот"})], ["Ответила", "И ещё скажу", "Готово"], delivered=["channel:7"])
-    await ConversationIO(c).from_module("привет", {"module": "discord", "target": "channel:7"})
-    assert c.io.delivered == [] and dialogue(c) == ["Вот"]
-    c.resident._runtime.calls = []
-    await ConversationIO(c).from_module("ещё", {"module": "discord", "target": "channel:7"})
-    assert [t for _, t in c.io.delivered] == ["Ответила", "И ещё скажу", "Готово"]
+async def test_comment_before_tool_is_dropped_and_reply_after_last_tool_is_delivered_once(tmp_path):
+    c = make(tmp_path, [("text", "Сейчас посмотрю"), ("tool", "discord.inbox", {}), ("text", "Вот что нашла")])
+    await ask(c)
+    assert sent(c) == ["Вот что нашла"] and dialogue(c) == ["Вот что нашла"]
 
 
-async def test_dashboard_turn_is_not_affected_by_delivery_to_a_channel(tmp_path):
-    """Ход из дашборда: инструмент доставил в канал, но канал обращения не модуль: итоговая реплика идёт как раньше."""
-    c = make(tmp_path, [("discord.message", {"to": "x", "text": "Вот"})], ["Отправила"], delivered=["channel:7"])
-    await c.on_user_message("привет")
-    assert dialogue(c) == ["Отправила"] and c.speech.spoken == ["Отправила"]
+async def test_two_tool_calls_in_a_row_and_comment_between_are_dropped(tmp_path):
+    c = make(tmp_path, [("text", "Раз"), ("tool", "a.one", {}), ("text", "Между вызовами"), ("tool", "a.two", {}), ("text", "Итог")])
+    await ask(c)
+    assert sent(c) == ["Итог"] and dialogue(c) == ["Итог"]
 
 
-async def test_delivery_to_another_address_or_none_does_not_mute(tmp_path):
+async def test_turn_without_tools_delivers_every_reply_in_order(tmp_path):
+    c = make(tmp_path, [("text", "Раз"), ("text", "Два")])
+    await ask(c)
+    assert sent(c) == ["Раз", "Два"] and dialogue(c) == ["Раз", "Два"] and c.speech.spoken == []
+
+
+async def test_delivery_to_another_address_or_none_keeps_the_reply(tmp_path):
     for n, delivered in enumerate((["channel:99"], [])):
-        c = make(tmp_path / str(n), [("discord.message", {"to": "channel", "text": "x"})], ["Вот ответ"], delivered=delivered)
-        await ConversationIO(c).from_module("привет", TG)
-        assert [t for _, t in c.io.delivered] == ["Вот ответ"], delivered
+        c = make(tmp_path / str(n), [("tool", "discord.message", {"to": "x", "text": "в другой"}), ("text", "Вот ответ")],
+                 delivered=delivered)
+        await ask(c)
+        assert sent(c) == ["Вот ответ"], delivered
 
 
-async def test_without_message_tool_reply_is_delivered_once(tmp_path):
-    c = make(tmp_path, [("discord.inbox", {"channel": "x"})], ["Вот ответ"], delivered=["channel:7"])
-    await ConversationIO(c).from_module("привет", TG)
-    assert c.io.delivered == [(Channel("module", "discord", "channel:7"), "Вот ответ")]    # inbox ничего не доставлял
+async def test_failed_delivery_keeps_the_reply(tmp_path):
+    c = make(tmp_path, [MSG, ("text", "Не вышло")], fail={"discord.message"}, delivered=["channel:7"])
+    await ask(c)
+    assert sent(c) == ["Не вышло"]
 
 
-async def test_failed_tool_does_not_mute(tmp_path):
-    c = make(tmp_path, [("discord.message", {"to": "channel", "text": "x"})], ["Не вышло"], fail={"discord.message"},
-             delivered=["channel:7"])
-    await ConversationIO(c).from_module("привет", TG)
-    assert [t for _, t in c.io.delivered] == ["Не вышло"]
+async def test_owner_dm_delivery_counts_only_for_the_owner_dm_address(tmp_path):
+    steps = [("tool", "discord.message", {"to": "owner", "text": "тебе"}), ("text", "Ответила")]
+    c = make(tmp_path, steps, delivered=["dm:5"])
+    await ask(c, {"module": "discord", "target": "dm:5"})
+    assert c.io.delivered == [] and dialogue(c) == ["тебе"]
+    c = make(tmp_path / "other", steps, delivered=["dm:5"])
+    await ask(c)                                                      # обращение из канала, ушло в личку: ответ в канал остаётся
+    assert sent(c) == ["Ответила"]
 
 
-async def test_owner_dm_message_mutes_reply_in_owner_dm(tmp_path):
-    """message(to=owner) доставил в dm:<id владельца>; обращение пришло из лички владельца: ответ уже там."""
-    c = make(tmp_path, [("discord.message", {"to": "owner", "text": "x"})], ["Ответила"], delivered=["dm:5"])
-    await ConversationIO(c).from_module("привет", {"module": "discord", "target": "dm:5"})
-    assert c.io.delivered == []
-    c = make(tmp_path / "other", [("discord.message", {"to": "owner", "text": "x"})], ["Ответила"], delivered=["dm:5"])
-    await ConversationIO(c).from_module("привет", TG)                 # обращение из канала, а ушло в личку: ответ в канал остаётся
-    assert [t for _, t in c.io.delivered] == ["Ответила"]
+@pytest.mark.parametrize("steps", [[("text", "Скажу"), ("raise",)], [("text", "Скажу"), ("end", "error")],
+                                   [("text", "Скажу"), ("end", "aborted")]])
+async def test_broken_turn_delivers_nothing(tmp_path, steps):
+    c = make(tmp_path, steps)
+    await ask(c)
+    assert c.io.delivered == [] and dialogue(c) == []
+
+
+async def test_cancelled_turn_delivers_nothing(tmp_path):
+    gate = asyncio.Event()
+    c = make(tmp_path, [("text", "Скажу"), ("wait",)], gate=gate)
+    task = asyncio.create_task(ask(c))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert c.io.delivered == [] and dialogue(c) == []
+
+
+async def test_dashboard_turn_is_not_touched(tmp_path):
+    """Ход из дашборда: реплики идут в речь сразу, комментарий до инструмента тоже (там ничего не копится)."""
+    c = make(tmp_path, [("text", "Сейчас"), MSG, ("text", "Отправила")], delivered=["channel:7"])
+    await c.on_user_message("привет")
+    assert c.speech.spoken == ["Сейчас", "Отправила"] and dialogue(c) == ["Сейчас", "Отправила"] and c.io.delivered == []
+
+
+async def test_state_is_per_turn_and_does_not_leak_into_the_next_one(tmp_path):
+    c = make(tmp_path, [MSG, ("text", "Первый")], delivered=["channel:7"])
+    await ask(c)
+    c.resident._runtime.steps = [("text", "Второй")]
+    await ask(c)
+    assert sent(c) == ["Второй"]                                       # первый ход ответил инструментом, второй обычным текстом
+
+
+async def test_parallel_turns_from_different_channels_are_independent(tmp_path):
+    """Два хода одновременно (разные каналы): у первого была доставка в свой адрес, у второго нет; каждый решает за себя."""
+    c = make(tmp_path, [])
+    a, b = ModuleReplyGuard(Channel("module", "discord", "channel:1")), ModuleReplyGuard(Channel("module", "discord", "channel:2"))
+
+    async def turn(guard, text, delivered):
+        current_channel.set(guard.channel)
+        turn_replies.set(guard)
+        await c.say(text)
+        await asyncio.sleep(0.01)
+        if delivered:
+            guard.note_delivered(True, ("channel:1",))
+        await c.release_channel_replies(guard, True)
+
+    await asyncio.gather(turn(a, "из первого", True), turn(b, "из второго", False))
+    assert c.io.delivered == [(b.channel, "из второго")] and dialogue(c) == ["из второго"]
 
 
 def test_guard_compares_addresses_exactly():
     g = ModuleReplyGuard(Channel("module", "telegram", "user:-100#5"))
-    g.note_delivered(True, ("user:-100",))
+    assert not g.note_delivered(True, ("user:-100",)) and not g.note_delivered(False, ("user:-100#5",))
     assert not g.answered
-    g.note_delivered(False, ("user:-100#5",))
-    assert not g.answered
-    g.note_delivered(True, ("user:-100#5",))
-    assert g.answered
-    assert not ModuleReplyGuard(None).answered
-
-
-async def test_state_is_per_turn_and_does_not_leak_into_the_next_one(tmp_path):
-    c = make(tmp_path, [("discord.message", {"to": "channel", "text": "x"})], ["Первый"], delivered=["channel:7"])
-    await ConversationIO(c).from_module("раз", TG)
-    c.resident._runtime.calls = []                                   # во втором ходе message не зовётся
-    await ConversationIO(c).from_module("два", TG)
-    assert [t for _, t in c.io.delivered] == ["Первый"]            # первый ход заглушён, второй (без message) доставлен
-
-
-async def test_parallel_turns_from_different_channels_are_independent(tmp_path):
-    """Два хода одновременно (разные каналы, у одного был message): второй свою защиту не наследует и не отдаёт первому."""
-    from services.conversation.conversation_io import current_channel, turn_replies
-    c = make(tmp_path, [], [])
-    a, b = ModuleReplyGuard(Channel("module", "discord", "channel:1")), ModuleReplyGuard(Channel("module", "discord", "channel:2"))
-
-    async def turn(guard, text, answered):
-        current_channel.set(guard.channel)
-        turn_replies.set(guard)
-        if answered:
-            guard.note_delivered(True, ("channel:1",))
-        await asyncio.sleep(0.01)
-        await c.say(text)
-
-    await asyncio.gather(turn(a, "из первого", True), turn(b, "из второго", False))
-    assert c.io.delivered == [(b.channel, "из второго")]
-    assert dialogue(c) == ["из второго"]              # хвост первого хода после доставки не показан
+    assert g.note_delivered(True, ("user:-100#5",)) and g.answered
+    assert not ModuleReplyGuard(None).note_delivered(True, ("x",))

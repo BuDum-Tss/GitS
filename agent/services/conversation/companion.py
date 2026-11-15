@@ -185,16 +185,10 @@ class Companion:
         channel = current_channel.get()
         if channel is not None and channel.kind == "module":
             guard = turn_replies.get()
-            if guard is not None and guard.silenced(channel):
-                # ответ уже ушёл в этот адрес инструментом этого хода (резидент записал отправленный текст как её реплику):
-                # остальной текст хода («Ответила: ...») это отчёт, он не доставляется, не пишется в чат дашборда и не озвучивается
-                logger.info(f"[{character.active().name}] (после доставки инструментом, не показана) {text}")
+            if guard is not None and guard.channel == channel:
+                guard.hold(text, sticker)     # ход единого агента: что из реплик ответ, решается в конце хода
                 return
-            # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
-            self._record_say(text, channel)
-            if self.io is not None:
-                await self.io.deliver(channel, text)
-            self._publish_sticker(sticker)
+            await self._deliver_channel_reply(text, sticker, channel)
         else:
             utterance = new_utterance_id()
             self.last_utterance_id = utterance
@@ -202,7 +196,30 @@ class Companion:
             # а не когда она только отправлена на синтез (синтез занимает секунды); без голоса сразу
             await self.speech.speak(utterance, text, sticker, priority or 50)      # реплика попадает среди звучащих до ожидания
             self._when_audible(utterance, lambda: (self._record_say(text, channel), self._publish_sticker(sticker)))
+            logger.info(f"[{character.active().name}] {text}")
+
+    async def _deliver_channel_reply(self, text: str, sticker: str | None, channel) -> None:
+        """Ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда."""
+        self._record_say(text, channel)
+        if self.io is not None:
+            await self.io.deliver(channel, text)
+        self._publish_sticker(sticker)
         logger.info(f"[{character.active().name}] {text}")
+
+    async def release_channel_replies(self, guard, ok: bool) -> None:
+        """Конец хода из канала модуля (`ResidentAgent._run`): накопленные реплики после последнего инструмента доставляются как
+        ответ, по порядку. Не доставляются, если ход не закончился штатно (`ok` ложно: ошибка, обрыв) или инструмент уже
+        доставил ответ в адрес обращения (резидент записал его текст как её реплику): остаток это отчёт. Отброшенное только в логе."""
+        held = guard.take()
+        if not held:
+            return
+        if not ok or guard.answered:
+            why = "ответ уже доставлен инструментом" if ok else "ход прерван"
+            for text, _ in held:
+                logger.info(f"[{character.active().name}] (не показана: {why}) {text}")
+            return
+        for text, sticker in held:
+            await self._deliver_channel_reply(text, sticker, guard.channel)
 
     def _when_audible(self, utterance: str, action) -> None:
         """Выполнить action, когда реплика зазвучала (`speech.when_audible`); у вывода речи без такого метода сразу."""
