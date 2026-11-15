@@ -45,8 +45,9 @@ def resolve_output_dir(value: str | None = None) -> str:
 _KEYWORDS = ("монтаж", "смонтируй", "ролик", "видео", "шортс", "рилс", "клип", "субтитры", "нарезка")
 
 BRIEF = ("Сначала montage.skills(name=montage-regulation, file=START.md). Ролик ищи через montage.work list/status, "
-         "новую единицу создавай только для нового. Пути в files начинаются с id ролика, отчёт проверки: <id>/qa/report.md. "
-         "Ролик собирай сценами: work op=scenes (без времён), затем run compose. Веди список задач ядра и отмечай шаги.")
+         "новую единицу создавай только для нового. Пути в files начинаются с id ролика. "
+         "Ролик собирай сценами: work op=scenes (без времён), затем run compose. "
+         "Задачи: assistant.tasks найди открытую; сделанный шаг сразу отмечай assistant.task_step (done); в конце close_task.")
 
 # разрешённые команды (`run`): исчерпывающий список, оболочки нет; первый аргумент каждой это id единицы (ролика)
 COMMANDS = [

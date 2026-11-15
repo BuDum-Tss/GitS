@@ -324,8 +324,8 @@ def register(registry, companion, memory):
                               "description": "user - просьба пользователя, self - её собственное дело"}},
                   create_task, keywords=("задача", "заведи", "запланируй", "сделай по шагам", "цель", "разбей")),
             _tool("assistant", "task_step", "Отметить шаг задачи по ходу работы (пользователь видит план): done (сделан), skipped "
-                  "(пропущен) или pending (вернуть). Можно добавить новый шаг в конец (add). Когда все шаги сделаны, задача остаётся "
-                  "открытой: закрой её assistant.close_task.",
+                  "(пропущен) или pending (вернуть в план; это не «в работе»). Отмечай шаг сразу, как он сделан. Новый шаг в конец: add. "
+                  "Когда все шаги сделаны, задача остаётся открытой: закрой её assistant.close_task.",
                   {"id": {"type": "string", "description": "id задачи"},
                    "step": {"type": "string", "required": False, "description": "номер шага с 1 или его точный текст"},
                    "status": {"type": "string", "enum": ["done", "skipped", "pending"], "required": False, "description": "по умолчанию done"},
