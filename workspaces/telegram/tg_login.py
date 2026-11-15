@@ -59,11 +59,26 @@ def _describe(sent) -> None:
         print(f"(Повторный запрос возможен примерно через {timeout} с.)")
 
 
+def _write_qr_page(path: Path, qr) -> None:
+    """HTML со встроенной картинкой и автообновлением: браузер не держит файл открытым (PNG в просмотрщике Windows блокируется,
+    и перезапись падала). Пишем во временный файл и подменяем, чтобы страница никогда не читалась недописанной."""
+    import io
+    buf = io.BytesIO()
+    qr.save(buf, kind="png", scale=10, border=4, dark="black", light="white")
+    data = base64.b64encode(buf.getvalue()).decode()
+    html = ('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="2"><title>Вход в Telegram</title>'
+            '<body style="background:#fff;text-align:center;font-family:sans-serif">'
+            f'<p>Telegram на телефоне: Настройки - Устройства - Подключить устройство. Код меняется каждые ~30 с.</p><img src="data:image/png;base64,{data}">')
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(html, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 async def _login_qr(client) -> None:
     """Вход по QR-коду: код доставки не нужен. В Telegram на телефоне: Настройки -> Устройства -> Подключить устройство,
     навести камеру на код. По умолчанию код пишется картинкой PNG (в терминале QR часто не сканируется из-за тёмной темы и
     шрифта), файл обновляется каждые 30 секунд и удаляется при выходе; `--ascii` рисует его ещё и в терминале.
-    Путь картинки: TG_QR_PNG, иначе /data/tg_login_qr.png (папка персонажа на хосте), иначе рядом со скриптом."""
+    Путь картинки: TG_QR_PNG, иначе /data/tg_login_qr.html (папка персонажа на хосте), иначе рядом со скриптом."""
     try:
         import segno
     except ImportError:
@@ -72,10 +87,10 @@ async def _login_qr(client) -> None:
     from telethon.tl.functions.auth import ExportLoginTokenRequest, ImportLoginTokenRequest
     from telethon.tl.types.auth import LoginToken, LoginTokenMigrateTo, LoginTokenSuccess
 
-    png = Path(os.getenv("TG_QR_PNG") or (Path("/data") if Path("/data").is_dir() else HERE) / "tg_login_qr.png")
+    png = Path(os.getenv("TG_QR_PNG") or (Path("/data") if Path("/data").is_dir() else HERE) / "tg_login_qr.html")
     ascii_too = "--ascii" in sys.argv[1:]
     api_id, api_hash = int(os.getenv("TELEGRAM_API_ID", "0")), os.getenv("TELEGRAM_API_HASH", "")
-    shown, started, last_note = None, time.monotonic(), 0.0
+    shown, started, last_note, announced = None, time.monotonic(), 0.0, False
     try:
         while True:
             # Опрос вместо ожидания события: подтверждение на телефоне видно по ответу, а не по обновлению, которое может не дойти
@@ -97,9 +112,11 @@ async def _login_qr(client) -> None:
             if res.token != shown:                                        # новый код: картинку перезаписываем
                 shown = res.token
                 url = "tg://login?token=" + base64.urlsafe_b64encode(res.token).decode().rstrip("=")
-                segno.make(url, error="m").save(str(png), scale=12, border=4, dark="black", light="white")
-                print(f"\nQR-код сохранён в файл: {png}")
-                print("Если контейнер Docker: на хосте это resources\\GlaDOS\\tg_login_qr.png в папке проекта. Открой картинку.")
+                _write_qr_page(png, segno.make(url, error="m"))
+                if not announced:
+                    announced = True
+                    print(f"\nQR-код сохранён в файл: {png}")
+                    print("Если контейнер Docker: на хосте это resources\\GlaDOS\\tg_login_qr.html. Открой его в БРАУЗЕРЕ: страница сама обновляет код.")
                 print("Telegram на телефоне: Настройки -> Устройства -> Подключить устройство, наведи камеру на картинку.")
                 print("После сканирования подтверди вход на телефоне (кнопка «Подтвердить»/«Войти»); скрипт сам это увидит.")
                 if ascii_too:
