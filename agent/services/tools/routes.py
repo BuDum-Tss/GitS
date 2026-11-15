@@ -25,7 +25,7 @@ ROUTES = (REFLEX, CHAT, TASK, IGNORE, THINK)
 DECISION_ROUTES = {
     "D0": (IGNORE,), "D1": (IGNORE,), "D2": (CHAT,), "D3": (CHAT,), "D4": (REFLEX, CHAT),
     "R1": (CHAT,), "R2": (REFLEX,), "R3": (IGNORE,), "R4": (REFLEX, CHAT),
-    "R5": (IGNORE,),           # гость: ответ незнакомому человеку идёт отдельным путём (`conversation/guest.py`), не разговором
+    "R5": (CHAT,),           # личное сообщение не от владельца: тот же разговор, что у R1
 }
 
 HARD_RULES_FILE = Path(__file__).resolve().with_name("hard_rules.yaml")

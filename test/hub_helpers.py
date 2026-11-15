@@ -82,13 +82,9 @@ class FakeCompanion:
 class FakeIO:
     def __init__(self):
         self.inputs: list[tuple] = []
-        self.guests: list[tuple] = []
 
     async def from_module(self, text, reply_channel, sender=None):
         self.inputs.append((text, reply_channel, sender))
-
-    async def from_guest(self, text, reply_channel, sender=None):
-        self.guests.append((text, reply_channel, sender))
 
 
 class Core:

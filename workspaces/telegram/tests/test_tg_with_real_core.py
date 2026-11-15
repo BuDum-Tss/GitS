@@ -108,35 +108,17 @@ async def test_owner_message_goes_to_conversation_and_the_reply_comes_back_to_th
         assert s.net.api[-1] == ("sendMessage", {"chat_id": OWNER, "text": "Сносно. Подопытные не взорвались."})
 
 
-async def test_stranger_message_goes_to_the_guest_path_and_is_registered(tmp_path, monkeypatch):
+async def test_stranger_message_goes_to_the_same_conversation_and_is_registered(tmp_path, monkeypatch):
     async with stack(tmp_path, monkeypatch) as s:
         await s.mod.channel._on_private(bot_msg(555, "я переезжаю в Казань", name="Маша"))
-        await s.core.wait_for(lambda: s.core.io.guests)
+        await s.core.wait_for(lambda: s.core.io.inputs)
         d = s.core.attention.last_decision
-        assert d["rule"] == "R5" and not s.core.io.inputs                     # не разговор владельца и не обычное внимание
-        text, channel, sender = s.core.io.guests[0]
-        assert "Казань" in text and channel == {"module": "telegram", "target": "bot:555"} and sender["is_owner"] is False
+        assert d["rule"] == "R5" and len(s.core.io.inputs) == 1        # тот же разговор, что у владельца
+        text, channel, sender = s.core.io.inputs[0]
+        assert "Казань" in text and "не владелец" not in text and channel == {"module": "telegram", "target": "bot:555"} and sender["is_owner"] is False
         assert s.rel.people["tg:555"]["source"] == "telegram" and s.rel.people["tg:555"]["name"] == "Маша"   # TG-14
         assert "Казань" in s.rel.people["tg:555"]["notes"][0]
         assert not s.core.companion._mem.facts                                  # сырой текст чужого сообщения в долгую память не пишется
-
-
-async def test_guest_gets_a_reply_in_the_same_chat_without_tools(tmp_path, monkeypatch):
-    class Llm:
-        def __init__(self):
-            self.calls = []
-
-        async def ask(self, system, user, **kw):
-            self.calls.append((system, user))
-            return "Привет, Маша. Подопытным тут рады."
-
-    async with stack(tmp_path, monkeypatch) as s:
-        s.core.companion.llm = llm = Llm()
-        s.core.companion.people = s.rel
-        await s.io.from_guest("Сообщение от Маша в личке бота: «привет»", {"module": "telegram", "target": "bot:555"},
-                              {"id": "tg:555", "name": "Маша", "is_owner": False})
-        assert s.net.api[-1] == ("sendMessage", {"chat_id": 555, "text": "Привет, Маша. Подопытным тут рады."})
-        assert len(llm.calls) == 1
 
 
 async def test_question_to_the_owner_is_delivered_to_the_owners_bot_chat(tmp_path, monkeypatch):

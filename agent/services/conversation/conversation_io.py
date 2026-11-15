@@ -3,8 +3,8 @@
 Любое обращение пользователя к ней - один вид входа `UserInput(text, channel, sender, ts)`, где канал:
   voice      - микрофон (модуль voice: событие `voice.utterance` -> `Companion.on_voice`);
   dashboard  - чат дашборда и строка быстрого ввода питомца (`POST /api/chat`);
-  module     - модуль-канал (Telegram и т.п.): обращение владельца, которое менеджер внимания признал обращением к ней.
-Незнакомым людям, написавшим боту, отвечает отдельный гостевой путь `from_guest` (без инструментов и без контекста владельца).
+  module     - модуль-канал (Telegram и т.п.): обращение к ней, которое менеджер внимания признал обращением (владельца или другого человека).
+Личное сообщение боту от не владельца (правило R5) идёт тем же `from_module`: отвечает тот же агент, что и владельцу.
 Ответ уходит в тот канал, откуда пришло обращение. На время обработки обращения канал лежит в контекстной переменной
 `current_channel`, поэтому `Companion.say` находит его без передачи параметров через весь путь (маршрутизатор,
 планировщик, оговорки «сейчас посмотрю»). Для канала `module` ответ идёт запросом `deliver` модулю и вслух не
@@ -63,7 +63,6 @@ class ConversationIO:
     def __init__(self, companion, hub=None):
         self.companion = companion
         self.hub = hub                       # PeerHub: для deliver; ставится ядром после создания шины
-        self._guest = None                   # GuestTalk: гостевые ответы (создаётся при первом госте)
 
     async def submit(self, ui: UserInput) -> None:
         """Обращение пользователя: обычный путь компаньона, ответ уйдёт в канал обращения."""
@@ -73,17 +72,9 @@ class ConversationIO:
         await self.submit(UserInput(text, DASHBOARD))
 
     async def from_module(self, text: str, reply_channel: dict, sender: dict | None = None) -> None:
-        """Обращение владельца из модуля-канала: reply_channel события {"module", "target"}."""
+        """Обращение из модуля-канала (владельца или другого человека, R1/R5): reply_channel события {"module", "target"}."""
         channel = Channel("module", str(reply_channel.get("module") or ""), str(reply_channel.get("target") or ""))
         await self.submit(UserInput(text, channel, sender))
-
-    async def from_guest(self, text: str, reply_channel: dict, sender: dict | None = None) -> None:
-        """Сообщение незнакомого человека боту (не владелец): ответ лёгкой моделью без инструментов и без контекста владельца,
-        с лимитами; единый агент и память владельца в нём не участвуют (`services/conversation/guest.py`)."""
-        if self._guest is None:
-            from services.conversation.guest import GuestTalk
-            self._guest = GuestTalk(self.companion, self)
-        await self._guest.reply(text, reply_channel, sender)
 
     async def deliver(self, channel: Channel, text: str) -> bool:
         """Доставить ответ в канал модуля (запрос `deliver`). False, если модуль офлайн, не принимает доставку или

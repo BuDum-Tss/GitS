@@ -869,12 +869,12 @@ async def test_tg14_storage_failure_does_not_stop_the_event(rig):
 BOT = {"module": "telegram", "target": "bot:5"}
 
 
-async def test_r5_stranger_message_goes_to_guest_talk_and_is_registered(rig):
+async def test_r5_stranger_message_goes_to_the_same_conversation_and_is_registered(rig):
     rel, mem = tg14_rig(rig)
     d = await rig.submit("telegram", kind="telegram.bot_message", text=FACT, addressed_to_me=True, memorable=True,
                          sender=MASHA, reply_channel=BOT)
-    assert d["rule"] == "R5" and rig.io.guests == [(FACT, BOT, MASHA)] and rig.io.inputs == []
-    assert rig.candidates() == [] and rig.decider.calls == []                 # ни обычного внимания, ни разговора владельца
+    assert d["rule"] == "R5" and rig.io.inputs == [(FACT, BOT, MASHA)]
+    assert rig.candidates() == [] and rig.decider.calls == []                 # текст как есть, без пометок; обычного внимания нет
     assert [c[:2] for c in rel.calls] == [("ensure", "tg:5"), ("note", "tg:5")]      # человек регистрируется как раньше
     assert mem.facts == []
     assert evt_log("attention") is not None and rig.att.last_decision["rule"] == "R5"    # решение в журнале решений
@@ -894,7 +894,7 @@ async def test_r5_does_not_fire_for_owner_without_address_channel_or_other_kinds
     for ev in cases:
         d = await rig.submit("telegram", text=FACT, urgency_hint=1, **ev)
         assert d["rule"] != "R5"
-    assert rig.io.guests == []
+    assert len(rig.io.inputs) == 1                                            # только владелец
 
 
 async def test_r5_respects_mute_rule(rig):
@@ -902,4 +902,4 @@ async def test_r5_respects_mute_rule(rig):
     await rig.att.set_rule(module="telegram", effect="mute", minutes=60)
     d = await rig.submit("telegram", kind="telegram.bot_message", text=FACT, addressed_to_me=True, sender=MASHA,
                          reply_channel=BOT)
-    assert d["rule"] == "R3" and rig.io.guests == []
+    assert d["rule"] == "R3" and rig.io.inputs == []

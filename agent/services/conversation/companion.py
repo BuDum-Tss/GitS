@@ -122,11 +122,6 @@ class Companion:
         return self._people
 
     @property
-    def llm(self):
-        """LanguageModel: лёгкая модель без инструментов (гостевые ответы, `services/conversation/guest.py`)."""
-        return self._llm
-
-    @property
     def memory_reader(self):
         """MemoryReader: чтение памяти для ответа."""
         return self._memory_reader

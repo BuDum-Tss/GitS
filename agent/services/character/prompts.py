@@ -92,17 +92,6 @@ def companion_persona() -> str:
     return " ".join(p for p in parts if p)
 
 
-def guest_persona() -> str:
-    """Характер для разговора с незнакомым человеком (гостевой путь, `services/conversation/guest.py`): то же лицо, но без
-    обстановки владельца (`setting`), правила памяти и всего, что связано с ним."""
-    c, b = constitution(), behaviour().get("companion", {})
-    head = str(c.get("identity") or "").strip()
-    anchor = " ".join(character.active().anchor.split())
-    parts = [head + "." if head else "", str(c.get("language", "")).strip(), str(c.get("character", "")).strip(),
-             ("Опорные черты: " + anchor) if anchor else "", " ".join(str(b.get("style", "")).split()), _rules()]
-    return " ".join(p for p in parts if p)
-
-
 def action_rule() -> str:
     """Правило честности о действиях: она не заявляет, что делает или сделала, если исполнитель (Claude, планировщик) этого не
     начал и не подтвердил. Список того, что реально идёт и сделано, лежит в контексте блоком «Что реально делается»."""
