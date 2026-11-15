@@ -139,7 +139,10 @@ class OwnerBook:
 
     def sender(self, ident, name: str, username: str | None = None) -> dict:
         """sender события с признаком владельца."""
-        return sender_info(ident, name, 0, is_owner=self.is_owner(ident, username))
+        info = sender_info(ident, name, 0, is_owner=self.is_owner(ident, username))
+        if username:
+            info["username"] = "@" + _handle(username)                     # как к человеку обратиться в чате
+        return info
 
 
 class KnownChats:
@@ -178,6 +181,79 @@ class KnownChats:
     def has(self, value) -> bool:
         key = self._key(value)
         return bool(key) and key in self._load()
+
+
+class Dialogs:
+    """Её собственная активность по чатам аккаунта (файл tg_dialogs.json): когда и сколько она писала, когда ей отвечали и
+    с кем она сейчас говорит. Нужна для продолжения диалога (повышенное внимание к тому, с кем она только что говорила) и
+    чтобы инструмент inbox показывал ей её же активность вместо жёстких лимитов. Хранятся только числа и id, не тексты."""
+
+    FILE = "tg_dialogs.json"
+    MAX_CHATS = 200
+    KEEP_S = 2 * 86400                   # сколько помнить её сообщения (нужны последний час и сутки)
+    SENT_MAX = 300
+
+    def __init__(self, memory_dir: str, clock=time.time):
+        self._file = Path(memory_dir) / self.FILE
+        self._lock = threading.Lock()
+        self._clock = clock
+
+    def _load(self) -> dict:
+        try:
+            chats = json.loads(self._file.read_text(encoding="utf-8")).get("chats", {})
+        except Exception:
+            return {}
+        return {k: v for k, v in chats.items() if isinstance(k, str) and isinstance(v, dict)}
+
+    def _save(self, chats: dict) -> None:
+        if len(chats) > self.MAX_CHATS:                                  # старейшие по последней активности уходят
+            last = lambda k: max(chats[k].get("reply_ts", 0), chats[k].get("in_ts", 0))     # noqa: E731
+            chats = {k: chats[k] for k in sorted(chats, key=last)[-self.MAX_CHATS:]}
+        tmp = self._file.with_name(self._file.name + ".tmp")
+        try:
+            self._file.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps({"chats": chats}, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, self._file)
+        except OSError:
+            pass
+
+    def note_out(self, chat_id) -> None:
+        """Она написала в чат (ответ, сообщение, файл)."""
+        if chat_id is None:
+            return
+        now = self._clock()
+        with self._lock:
+            chats = self._load()
+            rec = chats.setdefault(str(chat_id), {})
+            sent = [t for t in rec.get("sent", []) if now - t < self.KEEP_S]
+            sent.append(now)
+            rec["sent"] = sent[-self.SENT_MAX:]
+            rec["reply_ts"] = now
+            self._save(chats)
+
+    def note_in(self, chat_id, sender_id=None, addressed: bool = False) -> None:
+        """Ей написали в чат; addressed - обращение к ней (в личке всегда): этот человек становится её собеседником."""
+        with self._lock:
+            chats = self._load()
+            rec = chats.setdefault(str(chat_id), {})
+            rec["in_ts"] = self._clock()
+            if addressed and sender_id is not None:
+                rec["peer"] = sender_id
+            self._save(chats)
+
+    def in_dialog(self, chat_id, sender_id, window_s: float) -> bool:
+        """Она недавно (не позже window_s назад) отвечала в этом чате, а sender_id тот, с кем она говорила."""
+        rec = self._load().get(str(chat_id)) or {}
+        return bool(window_s > 0 and sender_id is not None and rec.get("peer") == sender_id
+                    and self._clock() - float(rec.get("reply_ts") or 0.0) <= window_s)
+
+    def activity(self, chat_id) -> dict:
+        """{"hour": сколько она написала за час, "day": за сутки, "last_out": ts или 0, "last_in": ts или 0}."""
+        rec = self._load().get(str(chat_id)) or {}
+        now = self._clock()
+        sent = [t for t in rec.get("sent", []) if isinstance(t, (int, float))]
+        return {"hour": sum(1 for t in sent if now - t < 3600), "day": sum(1 for t in sent if now - t < 86400),
+                "last_out": float(rec.get("reply_ts") or 0.0), "last_in": float(rec.get("in_ts") or 0.0)}
 
 
 class Subscribers:

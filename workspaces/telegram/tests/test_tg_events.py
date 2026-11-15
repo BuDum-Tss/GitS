@@ -50,12 +50,14 @@ async def test_inbox_does_not_poll_while_module_is_disabled(tmp_path, monkeypatc
 
 class FakeEvent:
     def __init__(self, *, text="привет", sender_id=555, chat_id=555, msg_id=1, private=True, group=False, title=None,
-                 first="Маша", bot=False, reply_out=None, mentioned=False):
+                 first="Маша", bot=False, reply_out=None, mentioned=False, media=None, out=False, username=None,
+                 client=None):
         self.raw_text, self.sender_id, self.chat_id, self.id = text, sender_id, chat_id, msg_id
+        self.out, self.client = out, client
         self.is_private, self.is_group, self.is_channel = private, group, not private and not group
         self.is_reply = reply_out is not None
-        self.message = SimpleNamespace(mentioned=mentioned)
-        self._sender = SimpleNamespace(first_name=first, last_name=None, username=None, bot=bot)
+        self.message = SimpleNamespace(mentioned=mentioned, **({media: True} if media else {}))      # media: voice, photo, sticker...
+        self._sender = SimpleNamespace(first_name=first, last_name=None, username=username, bot=bot)
         self._chat = SimpleNamespace(title=title)
         self._reply = SimpleNamespace(out=reply_out) if reply_out is not None else None
 

@@ -20,9 +20,26 @@ class FakeTelethon:
     def __init__(self):
         self.sent: list[tuple] = []
         self.files: list[dict] = []
+        self.actions: list[tuple] = []                     # «печатает»: (чат, вид действия)
+        self.read_acks: list[tuple] = []                   # помечено прочитанным: (чат, id сообщения)
 
     def is_connected(self):
         return True
+
+    def action(self, ent, kind):
+        """«Печатает…»: запоминает, куда и что показали (контекстный менеджер Telethon)."""
+        tl = self
+
+        class _Action:
+            async def __aenter__(self_):
+                tl.actions.append((ent, kind))
+
+            async def __aexit__(self_, *exc):
+                return False
+        return _Action()
+
+    async def send_read_acknowledge(self, ent, message=None, max_id=None, **kw):
+        self.read_acks.append((ent, max_id))
 
     async def get_input_entity(self, chat_id):
         return ("entity", chat_id)
@@ -105,6 +122,7 @@ class Rig:
         self.mod.channel.set_persona({"telegram_channel": "Ты — тестовый персонаж канала.",
                                       "telegram_formats": "- тестовый формат"})
         self.mod.user.set_aliases(["ГЛаДОС", "glados"])
+        self.mod.user.typing_scale = 0                                  # тесты не ждут «печатает»
         self._wire()
 
     def _wire(self):

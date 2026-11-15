@@ -46,7 +46,7 @@ TOOLS = [
           informative=True, danger_check=True, timeout_s=120,
           keywords=("напиши", "отправь", "опубликуй", "запости", "выложи", "ответь", "видео", "скриншот", "сообщение")),
     _tool("inbox", "Читать Telegram её аккаунта: без параметров список диалогов с числом непрочитанных; chat - последние "
-                   "сообщения чата (название, @имя или id); unread=true - что писали недавно.",
+                   "сообщения чата (название, @имя или id) и сколько она сама в нём писала за час и сутки; unread=true - что писали недавно.",
           {"chat": {"type": "string", "required": False, "description": "название чата, @имя или id"},
            "unread": _bool("true: что писали в её аккаунт недавно", required=False),
            "limit": {"type": "integer", "required": False, "description": _LIMIT.format("записей", 15)}},
@@ -69,8 +69,9 @@ MANIFEST = {
     "role": "workspace",
     "ownership": "owned",
     "title": "Telegram",
-    "description": "Telegram: сообщения и посты в канал, её собственный аккаунт (чтение и отправка) и бот-витрина: "
-                   "описание, ссылки и рассылка объявлений о стримах и видео подписчикам.",
+    "description": "Telegram: её собственный аккаунт (общается с людьми в личке и группах: слушатель Telethon, события "
+                   "telegram.dm и telegram.group, тег или ответ в группе обязательны к ответу), посты в канал и бот-витрина "
+                   "(описание, ссылки, рассылка объявлений о стримах и видео).",
     "version": "1.0.0",
     "capabilities": ["chat.channel"],
     "subscribe": ["settings", "presence", "module", "character"],
@@ -88,6 +89,13 @@ MANIFEST = {
                                                     "(пусто: кнопки нет)", "default": ""},
         "twitch_url": {"type": "string", "title": "Бот-витрина: ссылка на Twitch (пусто: кнопки нет)", "default": ""},
         "youtube_url": {"type": "string", "title": "Бот-витрина: ссылка на YouTube (пусто: кнопки нет)", "default": ""},
+        "names": {"type": "string", "title": "Как её зовут в группах: имена через запятую (к ней обратились, если имя есть в "
+                                             "тексте; тег и ответ на её сообщение считаются всегда)", "default": ""},
+        "dm_flood_per_10min": {"type": "integer", "title": "Лавина в личке: если один человек написал за 10 минут больше "
+                               "стольких сообщений, следующие идут в сводку (0: выключено; ничего не блокируется)",
+                               "default": 20, "min": 0, "max": 1000},
+        "dialog_window_mins": {"type": "integer", "title": "Продолжение диалога: сколько минут после её ответа собеседник "
+                               "считается говорящим с ней без тега (0: выключено)", "default": 15, "min": 0, "max": 240},
         "owner": {"type": "string", "title": "Аккаунт владельца в Telegram: @имя или числовой id", "default": ""},
         "owner_tg_id": {"type": "integer", "title": "Telegram id владельца (0: не задан; можно указать аккаунт выше)",
                         "default": 0, "min": 0},
@@ -98,8 +106,8 @@ MANIFEST = {
     },
     "tools": TOOLS,
     "emits": [
-        {"kind": "telegram.dm", "description": "Личное сообщение в её аккаунт", "default_urgency": 3},
-        {"kind": "telegram.group", "description": "Сообщение в группе её аккаунта", "default_urgency": 1},
+        {"kind": "telegram.dm", "description": "Личное сообщение в её аккаунт (чужому отвечает она сама, лавина идёт в сводку)", "default_urgency": 3},
+        {"kind": "telegram.group", "description": "Сообщение в группе её аккаунта (тег или ответ ей: обязательный разговор, правило R6)", "default_urgency": 1},
         {"kind": "telegram.posted", "description": "Опубликован пост в канале", "default_urgency": 1},
     ],
     "state": True,

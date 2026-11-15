@@ -205,6 +205,95 @@ async def test_r3_mute_rule_sends_to_digest_without_classifier(tmp_path):
     assert d["rule"] is None and d["decision"] == "D4"
 
 
+# ── R6: обращение к ней в группе Telegram и личка чужого человека ─────────────────────────────────
+
+STRANGER = {"id": "tg:9", "name": "Петя", "is_owner": False}
+GROUP_CHAT = {"module": "telegram", "target": "user:-100"}
+DM_CHAT = {"module": "telegram", "target": "user:9"}
+
+
+async def test_r6_tag_or_reply_in_group_from_anyone_goes_to_conversation(rig):
+    d = await rig.submit("telegram", kind="telegram.group", text="ГЛаДОС, ты тут?", addressed_to_me=True, sender=STRANGER,
+                         reply_channel=GROUP_CHAT)
+    assert d["rule"] == "R6" and d["decision"] == "R6"
+    assert rig.io.inputs == [("ГЛаДОС, ты тут?", GROUP_CHAT, STRANGER)]       # тот же путь, что R1: ответ уйдёт в тот же чат
+    assert rig.candidates() == [] and rig.decider.calls == []                 # ни очереди речи, ни классификатора
+
+
+async def test_r6_bypasses_mute_rule_and_quiet_mode(rig):
+    await rig.att.set_rule(module="telegram", effect="mute", minutes=60)
+    rig.cfg["dnd"] = True
+    d = await rig.submit("telegram", kind="telegram.group", text="эй, ты", addressed_to_me=True, sender=STRANGER,
+                         reply_channel=GROUP_CHAT)
+    assert d["rule"] == "R6" and len(rig.io.inputs) == 1                      # «не отвлекать» и mute тегу не помеха
+
+
+async def test_r6_owner_in_group_stays_with_r1(rig):
+    d = await rig.submit("telegram", kind="telegram.group", text="ГЛаДОС, привет", addressed_to_me=True, sender=OWNER,
+                         reply_channel=GROUP_CHAT)
+    assert d["rule"] == "R1" and len(rig.io.inputs) == 1
+
+
+async def test_r6_does_not_fire_without_address_channel_or_for_other_kinds(rig):
+    cases = [dict(kind="telegram.group", addressed_to_me=False, reply_channel=GROUP_CHAT),       # болтовня мимо неё
+             dict(kind="telegram.group", addressed_to_me=True),                                   # ответить некуда
+             dict(kind="other.group", addressed_to_me=True, reply_channel=GROUP_CHAT),            # чужой модуль
+             dict(kind="telegram.channel_post", addressed_to_me=True, reply_channel=GROUP_CHAT)]
+    for i, ev in enumerate(cases):
+        d = await rig.submit("telegram", text=f"т{i}", sender=STRANGER, urgency_hint=1, **ev)
+        assert d["rule"] != "R6"
+    assert rig.io.inputs == []
+
+
+async def test_r2_answers_a_question_before_r6(rig):
+    q = asyncio.create_task(approvals.ask("approval", "Удалить?", timeout_s=30))
+    await _until(approvals.has_pending)
+    rig.att._question_channel = Channel("module", "telegram", "owner")
+    d = await rig.submit("telegram", kind="telegram.group", text="да", addressed_to_me=True, sender=STRANGER,
+                         reply_channel=GROUP_CHAT)
+    assert d["rule"] == "R2" and await q == (True, "user") and rig.io.inputs == []
+
+
+async def test_stranger_dm_is_taken_by_the_agent_through_attention(rig):
+    """Личка чужого: обычный путь (срочность 4 как обращённое, D3), а единый агент берёт её разговором: ответ уйдёт в чат."""
+    rig.att.set_alert_handler(lambda item: True)
+    rig.modules.declare("telegram", emits=[("telegram.dm", 3)])
+    d = await rig.submit("telegram", kind="telegram.dm", text="Привет, это Петя", addressed_to_me=True, sender=STRANGER,
+                         reply_channel=DM_CHAT)
+    assert d["rule"] is None and d["decision"] == "D3" and d["urgency"] == 4
+    assert rig.io.inputs == [("Привет, это Петя", DM_CHAT, STRANGER)]
+    assert rig.candidates() == []                                             # вслух пользователю не пересказывается
+
+
+async def test_stranger_dm_without_unified_agent_is_voiced_as_before(rig):
+    d = await rig.submit("telegram", kind="telegram.dm", text="Привет", addressed_to_me=True, sender=STRANGER,
+                         reply_channel=DM_CHAT)
+    assert d["decision"] == "D3" and rig.io.inputs == [] and len(rig.candidates()) == 1
+
+
+async def test_flooded_dm_goes_to_digest_and_is_not_answered(rig):
+    """Лавина (модуль ставит urgency_hint 1 и addressed_to_me False): сводка, разговора нет, ничего не потеряно."""
+    rig.att.set_alert_handler(lambda item: True)
+    d = await rig.submit("telegram", kind="telegram.dm", text="спам 25", addressed_to_me=False, urgency_hint=1,
+                         sender=STRANGER, reply_channel=DM_CHAT)
+    assert d["decision"] == "D1" and rig.io.inputs == [] and rig.att.digest_counts() == {"telegram": 1}
+
+
+async def test_stranger_dm_in_quiet_mode_waits_in_digest(rig):
+    rig.att.set_alert_handler(lambda item: True)
+    rig.cfg["dnd"] = True
+    d = await rig.submit("telegram", kind="telegram.dm", text="Привет", addressed_to_me=True, sender=STRANGER,
+                         reply_channel=DM_CHAT)
+    assert d["decision"] == "D1" and rig.io.inputs == []
+
+
+async def test_owner_dm_stays_r1_even_with_unified_agent(rig):
+    rig.att.set_alert_handler(lambda item: True)
+    d = await rig.submit("telegram", kind="telegram.dm", text="Ты скоро?", addressed_to_me=True, sender=OWNER,
+                         reply_channel=DM_CHAT)
+    assert d["rule"] == "R1" and len(rig.io.inputs) == 1
+
+
 # ── склейка повторов ATT-6 ────────────────────────────────────────────────────────────────────────
 
 async def test_dedupe_key_merges_repeats_within_a_minute(rig):

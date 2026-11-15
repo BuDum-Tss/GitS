@@ -4,6 +4,7 @@
   2. дедупликация (`items.py`, решение в `services/attention/dedupe.py`);
   3. HardRules (здесь): правила до классификатора (ATT-7) R1 обращение владельца -> разговор; R2 ответ на вопрос в том же
      канале; R3 временное правило mute -> в сводку; R4 критичное (urgency_hint 5 и объявлено в манифесте) -> срочность 5;
+     R6 тег или ответ ей в группе (telegram.group, addressed_to_me) от любого человека -> разговор, как R1;
   4. срочность без классификатора (`Normalizer.assign_urgency`): подсказка модуля, обращение к ней поднимает до «сказать»;
   5. Dispatcher (`dispatcher.py`): D0-D4 по срочности; сказать сразу (срочность 4+) или во входящую очередь (`inbox.py`).
 """
@@ -21,9 +22,11 @@ from .questions import QuestionService
 
 logger = logging.getLogger("attention")
 
+GROUP_KIND = "telegram.group"          # R6: обращение к ней в группе Telegram
+
 
 class HardRules:
-    """Правила R1-R4 до классификатора. `apply` возвращает True, если событие уже обработано."""
+    """Правила R1-R4 и R6 до классификатора. `apply` возвращает True, если событие уже обработано."""
 
     def __init__(self, ctx: AttentionContext, dispatcher: Dispatcher, decisions: DecisionLog, questions: QuestionService):
         self.ctx, self.dispatcher, self.decisions, self.questions = ctx, dispatcher, decisions, questions
@@ -44,6 +47,13 @@ class HardRules:
                 item.decision = "R2"
                 self.decisions.write(item, att, rule="R2")
                 return True
+        # R6: ей написали в группе напрямую (тег, ответ на её сообщение, её имя): обязательно к ответу, от любого человека,
+        # в обход фильтра внимания. Тот же путь, что R1: ответ уйдёт в тот же чат. Владелец с обращением сюда не доходит (R1).
+        if item.kind == GROUP_KIND and item.addressed_to_me is True and item.reply_channel:
+            item.decision = "R6"
+            ctx.spawn(ctx.io.from_module(item.text, item.reply_channel, item.sender))
+            self.decisions.write(item, att, rule="R6")
+            return True
         # R3: временное правило mute - в сводку, классификатор не нужен
         muted = ctx.rules.muted(item.module, item.kind, ctx.sender_name(item.sender))
         if muted is not None:

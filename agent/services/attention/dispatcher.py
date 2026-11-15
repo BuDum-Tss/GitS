@@ -61,6 +61,9 @@ class Dispatcher:
         ttl = (item.expires - ctx.clock()) if item.expires is not None else 600.0
         if ttl <= 0:
             return
+        if self.converse(item):
+            self.digest.note(item, "said")
+            return
         if self.alerted(item):
             self.digest.note(item, "said")
             return
@@ -70,6 +73,22 @@ class Dispatcher:
         if decision == "D4":
             self.react(item, item.text[:80], f"attention:{item.id}")
         self.speech.kick()
+
+    @staticmethod
+    def is_chat_dm(item: Item) -> bool:
+        """Личное сообщение человека, которому ей есть куда ответить (вид `<модуль>.dm`, не от владельца: владелец это R1)."""
+        return bool(item.origin == "external" and item.needs_reply and item.reply_channel and item.kind.endswith(".dm")
+                    and not (item.sender and item.sender.get("is_owner")))
+
+    def converse(self, item: Item) -> bool:
+        """Личка чужого человека, прошедшая отбор внимания (срочность 4+: не лавина, не «не отвлекать»): это реплика ей, а не
+        новость пользователю. Единый агент отвечает в разговоре (как R1: ответ уходит в тот же чат), а не пересказывает её
+        вслух. Событие без срочности (лавина сообщений, режим «не отвлекать») сюда не доходит: оно в сводке."""
+        if not self.is_chat_dm(item) or self.ctx.on_alert is None:
+            return False                                         # без единого агента путь прежний (озвучить пользователю)
+        ctx = self.ctx
+        ctx.spawn(ctx.io.from_module(item.text, item.reply_channel, item.sender))
+        return True
 
     def alerted(self, item: Item) -> bool:
         """Важное событие модуля (D3/D4) берёт единый агент: он прерывает текущую работу и разбирает его первым."""
