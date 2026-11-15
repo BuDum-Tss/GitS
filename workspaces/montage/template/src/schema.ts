@@ -5,10 +5,8 @@ import {z} from 'zod';
 import {iconNames} from './style/icons.ts';
 import {durations, limits, room} from './style/tokens.ts';
 
-export const insertKinds = ['intro', 'blueprint', 'glados_room', 'chamber_sign', 'result_sign', 'custom'] as const;
 export const sfxNames = ['chime_up', 'chime_down', 'beep', 'tick', 'whoosh', 'buzz_error', 'elevator_ding'] as const;
 export const platforms = ['shorts', 'reels', 'telegram', 'youtube', 'none'] as const;
-export const beatRoles = ['hook', 'setup', 'inciting', 'rise', 'turn', 'climax', 'payoff', 'button', 'cta'] as const;
 
 const ms = z.number().int().min(0);
 const text = (max: number) => z.string().min(1).max(max);
@@ -165,8 +163,6 @@ export const wordSchema = z.strictObject({
 // props композиции Main: план + слова расшифровки, которые calculateMetadata подгружает из words_file
 export const mainPropsSchema = planSchema.extend({words: z.array(wordSchema).optional()});
 
-export type Plan = z.infer<typeof planSchema>;
-export type PlanInput = z.input<typeof planSchema>;
 export type Segment = z.infer<typeof segmentSchema>;
 export type Insert = z.infer<typeof insertSchema>;
 export type InsertOf<K extends Insert['kind']> = Extract<Insert, {kind: K}>;

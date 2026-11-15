@@ -48,7 +48,6 @@ export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x:
 export const easeOutCss = cubicBezier(0, 0, 0.58, 1); // CSS ease-out: вход без отскока
 export const easeInOutCss = cubicBezier(0.42, 0, 0.58, 1); // CSS ease-in-out
 export const easeIris = cubicBezier(0.2, 0.7, 0.1, 1); // кривая ириса в превью
-export const easeOutCubic = (x: number): number => 1 - Math.pow(1 - clamp01(x), 3);
 export const easeInCubic = (x: number): number => Math.pow(clamp01(x), 3);
 
 // ---------- интро ----------
@@ -67,12 +66,6 @@ export function introState(tMs: number): IntroState {
 		wordTrackEm: lerp(intro.trackFrom, intro.trackTo, w),
 		subOpacity: s,
 	};
-}
-
-// Размер надписи интро: 104 px, а в узком кадре (вертикаль) уменьшается, чтобы строка с разрядкой влезла в 88 % ширины
-export function introWordPx(text: string, width: number): number {
-	const n = Math.max(1, [...text].length);
-	return Math.max(40, Math.min(intro.wordPx, Math.floor((width * 0.88) / (n * (0.58 + intro.trackTo)))));
 }
 
 const rad = (deg: number): number => (deg * Math.PI) / 180;

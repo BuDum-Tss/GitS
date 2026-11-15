@@ -68,7 +68,7 @@ Python-часть (`agent/`) ведёт рабочие единицы (роли�
 
 ## Как добавить компонент графики
 Токены (если нужны новые значения) -> `template/src/style/tokens.ts` и регламент -> компонент в `template/src/components/` ->
-вид вставки в `template/src/schema.ts` (`insertKinds`) и в `Inserts.tsx` -> зона в `tokens.ts` (`zones`) и
+вид вставки в `template/src/schema.ts` (`insertSchema`) и в `Inserts.tsx` -> зона в `tokens.ts` (`zones`) и
 `npm run gen:qa-zones` -> кадр в `template/demo/render-demo-stills.mjs` (и демо-план в `make-demo-plans.mjs`) -> `npx remotion still` и просмотр
 кадра -> проверка в `template/scripts/check-scenes.mjs` (математика сцены без браузера), тесты `agent/tests/test_template.py` и `test_plan_schema.py` -> `CHANGELOG.md`.
 Старые виды вставок (`chamber_card`, `hazard_banner`, `test_result`, `pixel_transition`, `lower_third`) удалены (ТЗ 23); ролик собирается из пяти сцен. Агент-монтажёр может добавлять только компоненты в `work/src/custom/`.
