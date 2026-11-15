@@ -143,8 +143,8 @@ class ResidentAgent:
                     logger.debug(f"ожидание речи: {e}")
             outcome = await host.router.run_tool_outcome(tool_id, params)
             ok, result, code = outcome.ok, outcome.text, outcome.code
-            if agent._replies is not None:                    # доставка в адрес обращения: итоговая фраза в канал не пойдёт
-                agent._replies.note_delivered(ok, outcome.delivered_to)
+            if agent._replies is not None and agent._replies.note_delivered(ok, outcome.delivered_to):
+                agent._record_sent(params)                    # доставка в адрес обращения: её реплика это отправленный текст
             if ok and file_read:
                 agent._last_montage_read = read_key
             text = result if ok else f"НЕ ПОЛУЧИЛОСЬ ({code}): {result}"
@@ -169,6 +169,19 @@ class ResidentAgent:
                      {"type": "object", "properties": {"tool_id": {"type": "string"}, "args": {"type": "object"}},
                       "required": ["tool_id", "args"]}, call_tool)]
         return self._specs
+
+    def _record_sent(self, params: dict) -> None:
+        """Инструмент доставил сообщение в адрес обращения: отправленный текст (аргумент `text`) записывается как её реплика в
+        канале (диалог, журнал say с подписью канала, присутствие) без повторной доставки и озвучки. Остальной текст хода после
+        этого глушится (`Companion._say_now`), поэтому реальный ответ остаётся в памяти ровно один раз, а отчёта нет."""
+        guard, record = self._replies, getattr(self._h, "_record_say", None)
+        text = str(params.get("text") or "").strip()
+        if guard is None or record is None or not text:
+            return
+        try:
+            record(text, guard.channel)
+        except Exception as e:
+            logger.warning(f"запись отправленного ответа: {e}")
 
     def _system(self) -> str:
         h = self._h

@@ -4,6 +4,7 @@
 import asyncio
 
 from interfaces.contracts import EndEvent, TextEvent
+from services.tracing import events_log
 from services.conversation.companion import Companion
 from services.conversation.conversation_io import Channel, ConversationIO, ModuleReplyGuard
 from services.conversation.resident import ResidentAgent
@@ -100,7 +101,28 @@ async def test_delivery_to_the_reply_address_mutes_even_when_to_is_a_name(tmp_pa
              delivered=["channel:7"])
     await ConversationIO(c).from_module("привет", {"module": "discord", "target": "channel:7"})
     assert c.io.delivered == []                                       # второго сообщения в канале нет
-    assert dialogue(c) == ["Ответила, всё готово"]                    # но реплика в диалоге (чат дашборда)
+    # в диалоге (чат дашборда) и журнале одна её реплика: отправленный текст; отчёта «Ответила…» нет нигде
+    assert dialogue(c) == ["Пожалуйста"]
+    says = [e for e in events_log.tail(50, {"say"}) if e["text"] in ("Пожалуйста", "Ответила, всё готово")]
+    assert [e["text"] for e in says] == ["Пожалуйста"] and says[0]["data"]["channel"] == "discord:channel:7"
+    assert c.speech.spoken == []                                      # и не озвучена
+
+
+async def test_whole_tail_after_delivery_is_muted_but_other_turns_unaffected(tmp_path):
+    """Все реплики хода после доставки глушатся, не только одна; в следующем ходе без доставки ответ идёт как обычно."""
+    c = make(tmp_path, [("discord.message", {"to": "x", "text": "Вот"})], ["Ответила", "И ещё скажу", "Готово"], delivered=["channel:7"])
+    await ConversationIO(c).from_module("привет", {"module": "discord", "target": "channel:7"})
+    assert c.io.delivered == [] and dialogue(c) == ["Вот"]
+    c.resident._runtime.calls = []
+    await ConversationIO(c).from_module("ещё", {"module": "discord", "target": "channel:7"})
+    assert [t for _, t in c.io.delivered] == ["Ответила", "И ещё скажу", "Готово"]
+
+
+async def test_dashboard_turn_is_not_affected_by_delivery_to_a_channel(tmp_path):
+    """Ход из дашборда: инструмент доставил в канал, но канал обращения не модуль: итоговая реплика идёт как раньше."""
+    c = make(tmp_path, [("discord.message", {"to": "x", "text": "Вот"})], ["Отправила"], delivered=["channel:7"])
+    await c.on_user_message("привет")
+    assert dialogue(c) == ["Отправила"] and c.speech.spoken == ["Отправила"]
 
 
 async def test_delivery_to_another_address_or_none_does_not_mute(tmp_path):
@@ -168,4 +190,4 @@ async def test_parallel_turns_from_different_channels_are_independent(tmp_path):
 
     await asyncio.gather(turn(a, "из первого", True), turn(b, "из второго", False))
     assert c.io.delivered == [(b.channel, "из второго")]
-    assert set(dialogue(c)) == {"из первого", "из второго"}
+    assert dialogue(c) == ["из второго"]              # хвост первого хода после доставки не показан

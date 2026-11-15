@@ -11,7 +11,7 @@ import pytest
 
 from services.conversation.companion import Companion
 from services.conversation.conversation_io import ConversationIO
-from services.conversation.service import _other_sender_label
+from services.conversation.service import _channel_sender_label
 from services.conversation.conversation_io import Channel
 
 HTML = (Path(__file__).resolve().parents[1] / "agent" / "clients" / "gui" / "index.html").read_text(encoding="utf-8")
@@ -19,12 +19,13 @@ NODE = shutil.which("node")
 DC = Channel("module", "discord", "channel:7")
 
 
-def test_label_only_for_non_owner_from_a_module_channel():
-    assert _other_sender_label({"id": "d:5", "name": "NektoKtoto", "is_owner": False}, DC) == "NektoKtoto · Discord"
-    assert _other_sender_label({"id": "d:5"}, DC) == "d:5 · Discord"
-    assert _other_sender_label({"id": "d:1", "name": "Аня", "is_owner": True}, DC) is None
-    assert _other_sender_label(None, DC) is None
-    assert _other_sender_label({"name": "X"}, Channel("dashboard")) is None
+def test_label_for_any_module_channel_sender_owner_included():
+    assert _channel_sender_label({"id": "d:5", "name": "NektoKtoto", "is_owner": False}, DC) == "NektoKtoto · Discord"
+    assert _channel_sender_label({"id": "d:1", "name": "BaDumTss", "is_owner": True}, DC) == "BaDumTss · Discord"    # владелец тоже
+    assert _channel_sender_label({"id": "d:5"}, DC) == "d:5 · Discord"
+    assert _channel_sender_label(None, DC) == "Discord" and _channel_sender_label({"name": ""}, DC) == "Discord"
+    assert _channel_sender_label({"name": "X"}, Channel("dashboard")) is None           # «Ты» только у дашборда
+    assert _channel_sender_label({"name": "X"}, Channel("voice")) is None               # голос не меняется
 
 
 async def test_dialogue_and_journal_carry_who_but_role_and_text_stay(tmp_path):
@@ -42,8 +43,10 @@ async def test_dialogue_and_journal_carry_who_but_role_and_text_stay(tmp_path):
     await io.from_module("и я", {"module": "discord", "target": "channel:7"}, {"id": "d:1", "name": "Аня", "is_owner": True})
     first, second = [m for m in c._mem.recent_dialogue(5) if m["role"] == "user"]
     assert first["who"] == "NektoKtoto · Discord" and first["text"] == "привет"        # роль и текст прежние
-    assert "who" not in second
-    assert logged[0][2]["who"] == "NektoKtoto · Discord" and "who" not in logged[1][2]
+    assert second["who"] == "Аня · Discord" and second["text"] == "и я"                 # владелец из канала тоже подписан
+    assert logged[0][2]["who"] == "NektoKtoto · Discord" and logged[1][2]["who"] == "Аня · Discord"
+    await c.on_user_message("из дашборда")                                              # дашборд: подписи нет, «Ты»
+    assert "who" not in [m for m in c._mem.recent_dialogue(5) if m["role"] == "user"][-1]
 
 
 @pytest.mark.skipif(NODE is None, reason="нет node: рендер дашборда проверить нечем")

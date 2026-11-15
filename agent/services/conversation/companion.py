@@ -184,11 +184,15 @@ class Companion:
             return
         channel = current_channel.get()
         if channel is not None and channel.kind == "module":
+            guard = turn_replies.get()
+            if guard is not None and guard.silenced(channel):
+                # ответ уже ушёл в этот адрес инструментом этого хода (резидент записал отправленный текст как её реплику):
+                # остальной текст хода («Ответила: ...») это отчёт, он не доставляется, не пишется в чат дашборда и не озвучивается
+                logger.info(f"[{character.active().name}] (после доставки инструментом, не показана) {text}")
+                return
             # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
             self._record_say(text, channel)
-            guard = turn_replies.get()
-            if self.io is not None and not (guard is not None and guard.silenced(channel)):
-                # ответ уже ушёл в этот адресат инструментом message этого хода: фраза-пересказ вторым сообщением не нужна
+            if self.io is not None:
                 await self.io.deliver(channel, text)
             self._publish_sticker(sticker)
         else:

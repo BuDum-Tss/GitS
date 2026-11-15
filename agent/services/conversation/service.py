@@ -22,16 +22,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger("companion")
 
 # отправитель текущего обращения (узнанный голос: новый человек даёт яркость, ТЗ 24 TRC-4)
-def _other_sender_label(sender: dict | None, channel) -> str | None:
-    """Подпись в чате дашборда у обращения из канала модуля от НЕ владельца: «Имя · Модуль». Только показ: у владельца, голоса и
-    дашборда подписи нет (там «Ты»); текст обращения и то, что видит агент, от подписи не зависят."""
-    if not sender or sender.get("is_owner") or channel is None or channel.kind != "module":
-        return None
-    name = str(sender.get("name") or sender.get("id") or "").strip()
-    if not name:
+def _channel_sender_label(sender: dict | None, channel) -> str | None:
+    """Подпись в чате дашборда у ЛЮБОГО обращения из канала модуля, и владельца тоже: «Имя · Модуль» (нет имени: «Модуль»).
+    От имени пользователя в чате дашборда пишет только он сам в дашборде, поэтому «Ты» остаётся у ввода из дашборда и голоса.
+    Только показ: роль в памяти, текст обращения и контекст агента от подписи не зависят."""
+    if channel is None or channel.kind != "module":
         return None
     module = str(channel.module or "").strip()
-    return f"{name} · {module[:1].upper() + module[1:]}" if module else name
+    module = module[:1].upper() + module[1:]
+    name = str((sender or {}).get("name") or (sender or {}).get("id") or "").strip()
+    if name and module:
+        return f"{name} · {module}"
+    return name or module or None
 
 
 _sender_ctx: contextvars.ContextVar = contextvars.ContextVar("companion_sender", default=None)
@@ -87,7 +89,7 @@ class ConversationService:
         # запись реплики (диалог, очередь графа) уходит в поток и идёт параллельно разбору; ответ её дожидается (FAST-7)
         sal, reasons = salience.score(salience.factors_of(memorable=bool(_EXPLICIT_MEMORY.search(text)),
                                                           novelty=bool((_sender_ctx.get() or {}).get("new"))))
-        who = _other_sender_label(_sender_ctx.get(), current_channel.get())
+        who = _channel_sender_label(_sender_ctx.get(), current_channel.get())
         writes = asyncio.ensure_future(asyncio.to_thread(self._write_user, text, who))
         try:
             await self._handle(text, hard, writes, sal, reasons, who)

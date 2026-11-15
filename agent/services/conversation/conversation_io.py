@@ -68,13 +68,16 @@ class ModuleReplyGuard:
         self.channel = channel
         self.answered = False        # какой-то инструмент уже доставил сообщение в адрес обращения
 
-    def note_delivered(self, ok: bool, delivered_to=()) -> None:
+    def note_delivered(self, ok: bool, delivered_to=()) -> bool:
         """Исход вызова инструмента: он сам сообщает типизированным полем `delivered_to`, КУДА доставил сообщение (адреса в
         формате `reply_channel.target`). Адрес обращения среди них: ответ уже ушёл, дальнейшие реплики хода в канал не идут.
-        Ни имён инструментов, ни разбора текста и параметров: адреса каноничны и сравниваются точно."""
+        Ни имён инструментов, ни разбора текста и параметров: адреса каноничны и сравниваются точно.
+        True, если ЭТОТ вызов доставил сообщение в адрес обращения (резидент запишет отправленный текст как её реплику)."""
         ch = self.channel
         if ok and ch is not None and ch.kind == "module" and ch.target and ch.target in tuple(delivered_to or ()):
             self.answered = True
+            return True
+        return False
 
     def silenced(self, channel: Channel | None) -> bool:
         """Не доставлять реплику в `channel`: на этот адресат уже отправлено инструментом."""
