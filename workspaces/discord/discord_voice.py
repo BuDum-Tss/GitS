@@ -59,7 +59,9 @@ FRAME16_BYTES = 640                # 20 мс, 16 кГц моно s16
 FRAME48_BYTES = 3840               # 20 мс, 48 кГц стерео s16
 PREBUFFER_MS = 60                  # столько накопить, прежде чем начать играть (гасит джиттер подачи)
 PIPE_MAX_MS = 3000                 # не накапливать больше (движок подаёт в реальном времени, это защита)
-PLAY_TAIL_S = 3.0                  # запас ожидания конца воспроизведения сверх длины буфера
+PLAY_TAIL_S = 3.0                  # столько без прогресса (плеер не читает буфер) значит «игра зависла»
+MAX_PLAYER_RESTARTS = 5            # перезапусков плеера на одну реплику
+PLAY_STOP_REASONS = ("stop", "replaced", "barge_in", "closed", "error")
 AUTOJOIN_RETRY_S = 60.0
 PERM_NAMES = {"view_channel": "View Channel", "connect": "Connect", "speak": "Speak", "use_voice_activation": "Use Voice Activity"}
 
@@ -87,6 +89,7 @@ class PcmPipe:
         self._lock = threading.Lock()
         self.done = False
         self.aborted = False
+        self.abort_reason = ""
         self.frames = 0                # настоящих (не тишины) кадров отдано
         self.underruns = 0
 
@@ -99,9 +102,11 @@ class PcmPipe:
         with self._lock:
             self.done = True
 
-    def abort(self) -> None:
+    def abort(self, reason: str = "stop") -> None:
         with self._lock:
             self._buf.clear()
+            if not self.aborted:
+                self.abort_reason = reason
             self.done = self.aborted = True
 
     @property
@@ -655,79 +660,137 @@ class DiscordVoiceAdapter:
 
     async def _on_play(self, sess: VoiceSession, frames, uid: str) -> int:
         """Играет реплику движка (кадры 16 кГц моно). Возвращает сыгранные мс. Нельзя говорить (режим «чтение» или «игнор»,
-        нет соединения): кадры выбрасываются, движку уходит ack с причиной error и 0 мс."""
+        нет соединения): кадры выбрасываются, движку уходит ack с причиной error и 0 мс.
+
+        Плеер discord.py может закончиться раньше времени (обрыв соединения, чужой stop): тогда, пока в буфере есть звук, он
+        запускается заново (счётчик player_restarts), а не бросает остаток реплики. Конец игры ждём по прогрессу (буфер
+        продолжает читаться), а не по длине буфера на момент конца подачи. На каждую реплику одна строка INFO в журнал."""
         vc = sess.vc
         if not sess.can_speak() or vc is None or not vc.is_connected():
             sess.count("refused_plays")
             frames.stop_reason = "error"
             frames.drain()
+            logger.info("голос: реплика %s: отказ (говорить нельзя или нет соединения), режим %s", uid, sess.mode)
             return 0
         from gits_sdk.voice import to_48k_stereo_stream
-        self._abort_play(sess)
+        self._abort_play(sess, "replaced")
         pipe = PcmPipe()
         sess.pipe, sess.playing_uid, sess.started_playing = pipe, uid, False
-        done = asyncio.Event()
         loop = asyncio.get_running_loop()
-
-        def after(err) -> None:                    # из потока плеера discord.py
-            try:
-                loop.call_soon_threadsafe(done.set)
-            except RuntimeError:
-                pass
+        cur = {"done": asyncio.Event(), "restarts": 0}
+        fed, outcome, timed_out = 0, "completed", False
 
         def start() -> None:
+            done = cur["done"] = asyncio.Event()
+
+            def after(err) -> None:                # из потока плеера discord.py
+                try:
+                    loop.call_soon_threadsafe(done.set)
+                except RuntimeError:
+                    pass
+
             vc.play(self._source(pipe), after=after)
             sess.started_playing = True
+
+        async def restart() -> bool:
+            """Плеер кончился, а звук в буфере ещё есть: запустить снова (дождавшись соединения не дольше 5 с)."""
+            if cur["restarts"] >= MAX_PLAYER_RESTARTS:
+                return False
+            for _ in range(50):
+                if vc.is_connected():
+                    break
+                await asyncio.sleep(0.1)
+            cur["restarts"] += 1
+            sess.count("player_restarts")
+            logger.warning("голос: плеер остановился раньше времени (реплика %s, сыграно %d мс, в буфере %d мс): запускаю снова",
+                           uid, pipe.played_ms, pipe.buffered_ms)
+            try:
+                start()
+            except Exception as e:
+                logger.warning("голос: плеер не перезапущен: %s", type(e).__name__)
+                return False
+            return True
 
         rs = to_48k_stereo_stream()
         try:
             async for pcm in frames:
+                fed += 1
                 if pipe.aborted:
                     break
                 pipe.feed(rs.process(pcm))
-                if not sess.started_playing and pipe.buffered_ms >= PREBUFFER_MS:
-                    start()
+                if not sess.started_playing:
+                    if pipe.buffered_ms >= PREBUFFER_MS:
+                        start()
+                elif cur["done"].is_set() and pipe.buffered_ms and not await restart():
+                    outcome = "error"
+                    break
                 while pipe.buffered_ms > PIPE_MAX_MS and not pipe.aborted:      # движок подаёт в реальном времени: это страховка
                     await asyncio.sleep(0.02)
-            if not pipe.aborted:
+            if not pipe.aborted and outcome == "completed":
                 pipe.feed(rs.flush())
             pipe.finish()
             if not sess.started_playing and not pipe.aborted and pipe.buffered_ms:
                 start()
-            if sess.started_playing:
-                try:
-                    await asyncio.wait_for(done.wait(), pipe.buffered_ms / 1000 + PLAY_TAIL_S)
+            last_frames, last_move = -1, self.clock()
+            while sess.started_playing and not pipe.aborted and outcome == "completed":
+                if cur["done"].is_set():
+                    if not pipe.buffered_ms:
+                        break
+                    if not await restart():
+                        outcome = "error"
+                    continue
+                try:                                # конец игры ждём по прогрессу: буфер читается, значит, игра идёт
+                    await asyncio.wait_for(cur["done"].wait(), 0.25)
                 except asyncio.TimeoutError:
+                    pass
+                if pipe.frames != last_frames:
+                    last_frames, last_move = pipe.frames, self.clock()
+                elif self.clock() - last_move > PLAY_TAIL_S:
+                    timed_out = True
                     sess.count("play_timeouts")
+                    break
         except Exception:
-            self._abort_play(sess)
+            outcome = "error"
+            self._abort_play(sess, "error")
             raise
         finally:
+            if pipe.aborted:
+                outcome = pipe.abort_reason or outcome
+                sess.count("aborted_plays")
+                if not frames.stop_reason:          # оборвала не просьба движка: ack не должен выглядеть как «доиграно»
+                    frames.stop_reason = pipe.abort_reason if pipe.abort_reason in PLAY_STOP_REASONS else "stop"
+            elif outcome == "error":
+                frames.stop_reason = frames.stop_reason or "error"
             if sess.pipe is pipe:
                 if sess.started_playing:
                     self._stop_vc(sess)
                 sess.pipe, sess.playing_uid, sess.started_playing = None, None, False
             sess.count("underruns", pipe.underruns)
+            logger.info("голос: реплика %s: кадров подано %d, сыграно %d мс, недогрузов %d, перезапусков плеера %d, итог %s%s", uid, fed,
+                        pipe.played_ms, pipe.underruns, cur["restarts"], frames.stop_reason or outcome,
+                        ", ТАЙМАУТ ожидания конца" if timed_out else "")
         sess.count("plays")
         return pipe.played_ms
 
     def _stop_vc(self, sess: VoiceSession) -> None:
+        """Остановить ТОЛЬКО воспроизведение: у VoiceRecvClient `stop()` останавливает ещё и приём звука."""
+        vc = sess.vc
         try:
-            if sess.vc is not None and sess.vc.is_playing():
-                sess.vc.stop()
+            if vc is not None and vc.is_playing():
+                getattr(vc, "stop_playing", vc.stop)()
         except Exception as e:
             logger.debug("голос: stop: %s", type(e).__name__)
 
-    def _abort_play(self, sess: VoiceSession) -> None:
+    def _abort_play(self, sess: VoiceSession, reason: str = "stop") -> None:
         pipe = sess.pipe
         if pipe is not None:
-            pipe.abort()
+            pipe.abort(reason)
             self._stop_vc(sess)
 
     def _on_stop(self, sess: VoiceSession, uid: str, reason: str) -> None:
         """play.stop движка (стоп, замена, перебивание): оборвать воспроизведение сразу."""
         if sess.pipe is not None and (not uid or sess.playing_uid in (None, uid)):
-            self._abort_play(sess)
+            self._abort_play(sess, reason)
             sess.count("stops")
 
     async def _on_engine_leave(self, sess: VoiceSession) -> None:

@@ -209,7 +209,9 @@ class DiscordPanel:
                 lines.append("В канале никого нет: выйдет по тайм-ауту.")
             c = s["counters"]
             lines.append(f"Счётчики: принято кадров {c.get('frames_in', 0)}, расшифровано {c.get('decoded', 0)}, "
-                         f"сбоев {c.get('decode_errors', 0)}, реплик сыграно {c.get('plays', 0)}.")
+                         f"сбоев {c.get('decode_errors', 0)}, реплик сыграно {c.get('plays', 0)}; недогрузов {c.get('underruns', 0)}, "
+                         f"оборвано {c.get('aborted_plays', 0)}, таймаутов {c.get('play_timeouts', 0)}, "
+                         f"перезапусков плеера {c.get('player_restarts', 0)}.")
             buttons.append({"label": _clip(f"Отключить: {s['channel']}", 60), "action": "voice_disconnect", "args": {"id": str(s["id"].split(":")[1])}})
         if not st["sessions"]:
             lines.append("Не в голосовом канале. Зайти: «Подключить» у голосового канала в списке сервера ниже.")
