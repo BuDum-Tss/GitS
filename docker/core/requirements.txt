@@ -2,3 +2,4 @@
 # httpx, aiohttp и python-dotenv (нужны streamer, telegram) уже входят в requirements ядра.
 -r ../../agent/requirements.txt
 telethon>=1.36
+segno>=1.6          # вход в аккаунт Telegram по QR (workspaces/telegram/tg_login.py --qr)

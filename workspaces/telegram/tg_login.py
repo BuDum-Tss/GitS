@@ -7,6 +7,7 @@
 остаётся сессия tg_user.session.
 Нужны TELEGRAM_API_ID и TELEGRAM_API_HASH в .env (my.telegram.org, API development tools).
 
+Если код не доходит вообще, вход по QR (нужен пакет segno): python workspaces/telegram/tg_login.py --qr
 Код приходит в приложение Telegram на устройстве, где этот аккаунт уже открыт (служебный чат «Telegram»), а если аккаунт нигде не
 открыт, по SMS. Не пришёл: нажми Enter вместо кода, и Telegram пришлёт его следующим способом (SMS, звонок).
 """
@@ -56,6 +57,28 @@ def _describe(sent) -> None:
         print(f"(Повторный запрос возможен примерно через {timeout} с.)")
 
 
+async def _login_qr(client) -> None:
+    """Вход по QR-коду: код доставки не нужен. В Telegram на телефоне: Настройки -> Устройства -> Подключить устройство,
+    навести камеру на код в терминале. Код обновляется каждые 30 секунд."""
+    try:
+        import segno
+    except ImportError:
+        print("Для QR нужен пакет segno: pip install segno")
+        raise SystemExit(1) from None
+    qr = await client.qr_login()
+    while True:
+        print("\nTelegram на телефоне: Настройки -> Устройства -> Подключить устройство, наведи камеру на код:\n")
+        segno.make(qr.url).terminal(compact=True)
+        try:
+            await qr.wait(30)
+            return
+        except asyncio.TimeoutError:
+            await qr.recreate()
+        except SessionPasswordNeededError:
+            await client.sign_in(password=await asyncio.to_thread(getpass.getpass, "Пароль двух шагов (ввод не виден): "))
+            return
+
+
 async def main():
     memory = default_memory_dir()
     api_id, api_hash = os.getenv("TELEGRAM_API_ID", "").strip(), os.getenv("TELEGRAM_API_HASH", "").strip()
@@ -69,6 +92,11 @@ async def main():
         if await client.is_user_authorized():
             me = await client.get_me()
             print(f"Уже выполнен вход как {me.first_name} (@{me.username}).")
+            return
+        if "--qr" in sys.argv[1:]:
+            await _login_qr(client)
+            me = await client.get_me()
+            print(f"Готово: вход выполнен как {me.first_name} (@{me.username}). Сессия сохранена в {memory}.")
             return
         phone = (await asyncio.to_thread(input, "Номер телефона аккаунта (с +, например +79991234567): ")).strip()
         try:
