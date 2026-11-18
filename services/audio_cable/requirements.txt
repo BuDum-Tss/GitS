@@ -1,0 +1,6 @@
+# Зависимости адаптера «виртуальные кабели». Окружение Python ядра: ставить в него же.
+#   pip install -r services/audio_cable/requirements.txt
+soundcard            # запись с кабеля A и воспроизведение на кабель B
+numpy                # ресемплер gits_sdk.voice
+aiohttp              # клиент движка голоса
+python-dotenv        # секреты из .env

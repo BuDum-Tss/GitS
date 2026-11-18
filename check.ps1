@@ -25,6 +25,9 @@ $twitchtests = $LASTEXITCODE
 Write-Host "== pytest services/voice (модуль голоса) ==" -ForegroundColor Cyan
 python -m pytest -q services/voice/tests
 $voicetests = $LASTEXITCODE
+Write-Host "== pytest services/audio_cable (адаптер виртуальных кабелей) ==" -ForegroundColor Cyan
+python -m pytest -q services/audio_cable/tests
+$cabletests = $LASTEXITCODE
 Write-Host "== pytest services/pet (модуль питомца) ==" -ForegroundColor Cyan
 python -m pytest -q services/pet/tests
 $pettests = $LASTEXITCODE
@@ -42,6 +45,6 @@ $montagepy = if (Test-Path .venv\Scripts\python.exe) { ".venv\Scripts\python.exe
 & $montagepy -m pytest -q
 $montagetests = $LASTEXITCODE
 Pop-Location
-if ($lint -ne 0 -or $tests -ne 0 -or $sdktests -ne 0 -or $modtests -ne 0 -or $dctests -ne 0 -or $twitchtests -ne 0 -or $voicetests -ne 0 -or $pettests -ne 0 -or $desktoptests -ne 0 -or $rimtests -ne 0 -or $montagetests -ne 0) { Write-Host "Есть замечания: линтер=$lint, тесты=$tests, тесты sdk=$sdktests, тесты telegram=$modtests, тесты twitch=$twitchtests, тесты voice=$voicetests, тесты pet=$pettests, тесты desktop=$desktoptests, тесты rimworld=$rimtests, тесты montage=$montagetests" -ForegroundColor Yellow; exit 1 }
+if ($lint -ne 0 -or $tests -ne 0 -or $sdktests -ne 0 -or $modtests -ne 0 -or $dctests -ne 0 -or $twitchtests -ne 0 -or $voicetests -ne 0 -or $cabletests -ne 0 -or $pettests -ne 0 -or $desktoptests -ne 0 -or $rimtests -ne 0 -or $montagetests -ne 0) { Write-Host "Есть замечания: линтер=$lint, тесты=$tests, тесты sdk=$sdktests, тесты telegram=$modtests, тесты twitch=$twitchtests, тесты voice=$voicetests, тесты audio_cable=$cabletests, тесты pet=$pettests, тесты desktop=$desktoptests, тесты rimworld=$rimtests, тесты montage=$montagetests" -ForegroundColor Yellow; exit 1 }
 Write-Host "Всё в порядке" -ForegroundColor Green
 
