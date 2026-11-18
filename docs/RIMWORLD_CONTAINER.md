@@ -21,7 +21,7 @@
 
 Режим выбирается переменной `GITS_RIMWORLD_HOST_URL`:
 - пусто: **локальный** режим (как сейчас, модуль на хосте, хостовые части вызываются прямо в процессе; поведение не меняется);
-- задан (`http://host.docker.internal:8791`): **удалённый** режим (контейнер), хостовые части вызываются по HTTP хостового помощника.
+- задан (`http://host.docker.internal:8796`): **удалённый** режим (контейнер), хостовые части вызываются по HTTP хостового помощника.
 
 Между кодом модуля и хостовыми частями вводится интерфейс `HostBridge` (`workspaces/rimworld/agent/host_bridge.py`) с двумя
 реализациями: `LocalHostBridge` (оборачивает существующие `game_launcher`, `game_watchdog`, `game_ui`, `run_recorder`, `audio_capture`
@@ -42,7 +42,7 @@ Windows-зависимостями (`pyautogui`, `win32*`, `psutil`, `ctypes.win
 
 ## Хостовый помощник (`workspaces/rimworld/host/`)
 
-Процесс на хосте: aiohttp, `127.0.0.1:8791` (порт настраивается), токен `GITS_RIMWORLD_HOST_TOKEN` (заголовок `Authorization: Bearer`,
+Процесс на хосте: aiohttp, `127.0.0.1:8796` (порт настраивается), токен `GITS_RIMWORLD_HOST_TOKEN` (заголовок `Authorization: Bearer`,
 сравнение `hmac.compare_digest`, без токена не стартует). Оборачивает `LocalHostBridge`. Состав (точный контракт исполнитель фиксирует
 в этом документе, раздел «Контракт помощника»):
 - команды (POST): запуск игры, быстрый старт в меню, действия UI (клик, клавиши, скриншот окна, движения), старт и стоп записи забега, и т.п.;
@@ -79,7 +79,7 @@ Windows-зависимостями (`pyautogui`, `win32*`, `psutil`, `ctypes.win
 `{"error": "<текст>", "code": "<код>"}`. Коды: `unauthorized` 401, `bad_request` 400 (неверное поле, точка вне окна, запрещённая клавиша),
 `too_large` 413, `unknown_record` 404, `window_not_found` 409 (окна RimWorld нет), `launch_failed` 409 (запуск не вышел или запрещён
 `GITS_NO_LAUNCH=1`), `no_recorder` 503, `internal` 500. Лимиты тела: 64 КБ (команды), 16 МБ (`/record/finish`), 1 МБ (прокси). Помощник слушает только
-`127.0.0.1:<GITS_RIMWORLD_HOST_PORT>` (по умолчанию 8791). Клиент при недоступности помощника бросает `HostUnavailable` (код `unavailable`), цикл опроса
+`127.0.0.1:<GITS_RIMWORLD_HOST_PORT>` (по умолчанию 8796). Клиент при недоступности помощника бросает `HostUnavailable` (код `unavailable`), цикл опроса
 событий при этом живёт и повторяет попытки с ростом паузы до 30 с.
 
 | Метод и путь | Запрос | Ответ |
@@ -119,5 +119,5 @@ Windows-зависимостями (`pyautogui`, `win32*`, `psutil`, `ctypes.win
 коды мода (200, 4xx, 5xx) возвращаются как есть. Потоков (SSE, long-poll, WebSocket) модуль от мода не читает, поэтому прокси их не поддерживает.
 
 **Запуск помощника** (хост, из папки `workspaces/rimworld/host`): `GITS_RIMWORLD_HOST_TOKEN=<секрет> python main.py` (PowerShell: `$env:GITS_RIMWORLD_HOST_TOKEN="<секрет>"; python main.py`).
-Переменные: `GITS_RIMWORLD_HOST_TOKEN` (обязательна), `GITS_RIMWORLD_HOST_PORT` (8791), `RIMWORLD_API` (адрес мода для прокси), `GITS_RIMWORLD_HOST_MEMORY` (данные: протокол событий, видео; по умолчанию `host/memory`), `GITS_VIDEO_DIR`, `GITS_FFMPEG`, `GITS_RIMWORLD_EXE`.
+Переменные: `GITS_RIMWORLD_HOST_TOKEN` (обязательна), `GITS_RIMWORLD_HOST_PORT` (8796), `RIMWORLD_API` (адрес мода для прокси), `GITS_RIMWORLD_HOST_MEMORY` (данные: протокол событий, видео; по умолчанию `host/memory`), `GITS_VIDEO_DIR`, `GITS_FFMPEG`, `GITS_RIMWORLD_EXE`.
 Тесты: `cd workspaces/rimworld && python -m pytest agent/tests host -q -p no:cacheprovider -m "not slow and not game"`.

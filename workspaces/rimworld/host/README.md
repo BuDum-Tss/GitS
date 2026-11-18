@@ -15,8 +15,8 @@ $env:GITS_RIMWORLD_HOST_TOKEN = "<длинная случайная строка
 python main.py
 ```
 
-Без `GITS_RIMWORLD_HOST_TOKEN` помощник не стартует. Слушает только `127.0.0.1:8791` (`GITS_RIMWORLD_HOST_PORT`); контейнер достаёт его по
-`http://host.docker.internal:8791`. Токен в журнал не пишется; тот же токен контейнеру задаётся переменной `GITS_RIMWORLD_HOST_TOKEN`.
+Без `GITS_RIMWORLD_HOST_TOKEN` помощник не стартует. Слушает только `127.0.0.1:8796` (`GITS_RIMWORLD_HOST_PORT`); контейнер достаёт его по
+`http://host.docker.internal:8796`. Токен в журнал не пишется; тот же токен контейнеру задаётся переменной `GITS_RIMWORLD_HOST_TOKEN`.
 
 Пример записи для `peers.yaml` (запуск супервизором ядра; сам `peers.yaml` не менялся, это образец):
 
@@ -33,7 +33,7 @@ python main.py
 | Переменная | Значение |
 |---|---|
 | `GITS_RIMWORLD_HOST_TOKEN` | токен (обязателен) |
-| `GITS_RIMWORLD_HOST_PORT` | порт, по умолчанию 8791 |
+| `GITS_RIMWORLD_HOST_PORT` | порт, по умолчанию 8796 |
 | `RIMWORLD_API` | адрес мода для прокси `/game-api`, по умолчанию `http://localhost:8765` (запасной `http://[::1]:8765`) |
 | `GITS_RIMWORLD_HOST_MEMORY` | папка данных помощника (протокол событий, видео), по умолчанию `host/memory` |
 | `GITS_VIDEO_DIR`, `GITS_FFMPEG`, `GITS_RIMWORLD_EXE`, `GITS_NO_LAUNCH` | как у модуля (`GITS_NO_LAUNCH=1` запрещает запуск игры) |

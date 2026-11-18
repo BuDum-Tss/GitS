@@ -202,8 +202,9 @@ async def mcp_tool_specs(mcp=None) -> list[dict]:
 
 def launch_spec() -> dict:
     """Инструмент «запустить игру» (ТЗ 11e, POL-12): только по явной просьбе, с объявлением. Обработчик в attach, не в MCP."""
-    return {"name": "launch_game", "description": "Запустить игру RimWorld (если она не запущена). Пользователь слышит объявление "
-                                                  "о запуске заранее; reason обязателен: зачем.",
+    desc = ("Запустить игру RimWorld (вызывай после workspace.enter). Пользователь слышит объявление; reason обязателен: зачем. "
+            "Игра грузится около минуты: оставайся в среде (workspace.exit не вызывай), потом проверь where.")
+    return {"name": "launch_game", "description": desc,
             "params": {"reason": {"type": "string", "description": "зачем запускаем, одной фразой", "required": True}},
             "risk": "auto", "availability": "profile", "timeout_s": 120, "keywords": list(KEYWORDS)}
 

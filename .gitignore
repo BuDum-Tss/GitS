@@ -52,3 +52,6 @@ resources/*/montage/jobs/
 
 # временный QR для входа в аккаунт Telegram (tg_login.py --qr)
 resources/*/tg_login_qr.*
+
+# данные хостового помощника RimWorld (создаются при запуске из папки host)
+workspaces/rimworld/host/memory/

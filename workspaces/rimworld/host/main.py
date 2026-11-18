@@ -1,7 +1,7 @@
 """Хостовый помощник RimWorld: запуск игры, окно, UI, запись забега и прокси к моду для модуля в контейнере.
 
 Запуск на хосте Windows из этой папки: `python main.py` (токен в GITS_RIMWORLD_HOST_TOKEN обязателен, порт GITS_RIMWORLD_HOST_PORT,
-по умолчанию 8791; слушает только 127.0.0.1). Контракт: docs/RIMWORLD_CONTAINER.md, раздел «Контракт помощника».
+по умолчанию 8796; слушает только 127.0.0.1). Контракт: docs/RIMWORLD_CONTAINER.md, раздел «Контракт помощника».
 """
 import asyncio
 import logging
@@ -40,7 +40,7 @@ from host_bridge import LocalHostBridge  # noqa: E402
 from server import build_app  # noqa: E402
 
 logger = logging.getLogger("rimworld_host")
-DEFAULT_PORT = 8791
+DEFAULT_PORT = 8796
 BIND = "127.0.0.1"          # только петля: контейнер достаёт помощника по host.docker.internal
 
 

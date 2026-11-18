@@ -89,7 +89,7 @@ Chrome внутри контейнера работает от пользова�
 за хостовым помощником (`workspaces/rimworld/host`, дизайн: `docs/RIMWORLD_CONTAINER.md`). В образе нет Windows-пакетов и секретов `.env`.
 
 Порядок:
-1. На хосте запустить игру с модом и хостовый помощник (порт 8791, токен `GITS_RIMWORLD_HOST_TOKEN`; команда запуска описана в
+1. На хосте запустить игру с модом и хостовый помощник (порт 8796, токен `GITS_RIMWORLD_HOST_TOKEN`; команда запуска описана в
    `workspaces/rimworld/host`, раздел «Контракт помощника» в `docs/RIMWORLD_CONTAINER.md`).
 2. Из корня репозитория: `docker compose --env-file .env up -d rimworld` (`--env-file .env` подставляет `GITS_CONTROL_TOKEN` и `GITS_RIMWORLD_HOST_TOKEN`),
    журнал `docker logs -f rimworld`. Образ заранее: `docker build -f docker/rimworld/Dockerfile -t gits-rimworld:dev .`.
@@ -98,7 +98,7 @@ Chrome внутри контейнера работает от пользова�
    показывается как не запущенное, ядро работает. В режиме «ядро на хосте» (`agent/peers.yaml`) модуль запускается локально, как раньше.
 
 Переменные сервиса: `GITS_CONTROL_TOKEN` (общий с ядром), `GITS_CONTROL_PORT=8782` (только сеть compose), `GITS_RIMWORLD_HOST_URL`
-(по умолчанию `http://host.docker.internal:8791`), `GITS_RIMWORLD_HOST_TOKEN`, `RIMWORLD_MEMORY_DIR=/work/rimworld` (том `gits-rimworld-memory`),
+(по умолчанию `http://host.docker.internal:8796`), `GITS_RIMWORLD_HOST_TOKEN`, `RIMWORLD_MEMORY_DIR=/work/rimworld` (том `gits-rimworld-memory`),
 `GITS_DASHBOARD_HOST=0.0.0.0` (оверлей для OBS опубликован на `127.0.0.1:8767`). Папка персонажа монтируется в `/characters/<id>`
 (новому персонажу добавить свою строку тома).
 

@@ -32,7 +32,7 @@ def test_compose_service_rimworld():
     env = svc["environment"]
     assert env["GITS_CONTROL_TOKEN"].startswith("${GITS_CONTROL_TOKEN") and env["GITS_CONTROL_PORT"] == "8782"
     assert "RIMWORLD_API" not in env                                        # мод достижим только через прокси помощника (порт 8765 занят, мод на IPv6)
-    assert env["GITS_RIMWORLD_HOST_URL"].startswith("${GITS_RIMWORLD_HOST_URL:-http://host.docker.internal:8791")
+    assert env["GITS_RIMWORLD_HOST_URL"].startswith("${GITS_RIMWORLD_HOST_URL:-http://host.docker.internal:8796")
     assert env["GITS_RIMWORLD_HOST_TOKEN"].startswith("${GITS_RIMWORLD_HOST_TOKEN")
     assert env["RIMWORLD_MEMORY_DIR"] == "/work/rimworld" and env["GITS_DASHBOARD_HOST"] == "0.0.0.0"
     assert "host.docker.internal:host-gateway" in svc["extra_hosts"]

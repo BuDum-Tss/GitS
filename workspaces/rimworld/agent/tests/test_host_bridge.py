@@ -202,13 +202,13 @@ async def test_blocking_works_from_worker_and_loop_threads():
 def test_factory_picks_implementation(monkeypatch):
     monkeypatch.delenv("GITS_RIMWORLD_HOST_URL", raising=False)
     assert isinstance(hb.make_host_bridge(), hb.LocalHostBridge)
-    monkeypatch.setenv("GITS_RIMWORLD_HOST_URL", "http://host.docker.internal:8791/")
+    monkeypatch.setenv("GITS_RIMWORLD_HOST_URL", "http://host.docker.internal:8796/")
     monkeypatch.delenv("GITS_RIMWORLD_HOST_TOKEN", raising=False)
     with pytest.raises(ValueError):
         hb.make_host_bridge()
     monkeypatch.setenv("GITS_RIMWORLD_HOST_TOKEN", "секрет-123")
     bridge = hb.make_host_bridge()
-    assert isinstance(bridge, hb.RemoteHostBridge) and bridge.url == "http://host.docker.internal:8791"
+    assert isinstance(bridge, hb.RemoteHostBridge) and bridge.url == "http://host.docker.internal:8796"
     assert "секрет-123" not in repr(bridge)
 
 
@@ -224,13 +224,13 @@ def test_mod_address_through_helper_proxy(monkeypatch):
     assert gamenet.base_url() == "http://localhost:8765" and not gamenet.is_proxy() and gamenet.auth_headers() == {}
     monkeypatch.setenv("RIMWORLD_API", "http://localhost:9000/")
     assert gamenet.base_url() == "http://localhost:9000" and not gamenet.is_proxy()
-    monkeypatch.setenv("RIMWORLD_API", "http://host.docker.internal:8791/game-api")
-    assert gamenet.is_proxy() and gamenet.base_url() == "http://host.docker.internal:8791/game-api"
+    monkeypatch.setenv("RIMWORLD_API", "http://host.docker.internal:8796/game-api")
+    assert gamenet.is_proxy() and gamenet.base_url() == "http://host.docker.internal:8796/game-api"
     assert gamenet.auth_headers() == {"Authorization": "Bearer tok"}
 
 
 def test_proxy_port_check_is_a_ping_through_the_helper(monkeypatch):
-    monkeypatch.setenv("RIMWORLD_API", "http://host.docker.internal:8791/game-api")
+    monkeypatch.setenv("RIMWORLD_API", "http://host.docker.internal:8796/game-api")
     monkeypatch.setattr(gamenet, "_proxy_ping", lambda timeout: True)
     assert gamenet.port_open() is True
     monkeypatch.setattr(gamenet, "_proxy_ping", lambda timeout: False)
@@ -254,7 +254,7 @@ def test_module_imports_without_windows_packages(tmp_path):
         print("OK")
     """)
     env = {k: v for k, v in os.environ.items() if not k.startswith(("RIMWORLD_", "GLADOS_"))}
-    env.update(GITS_RIMWORLD_HOST_URL="http://host.docker.internal:8791", GITS_RIMWORLD_HOST_TOKEN="t",
+    env.update(GITS_RIMWORLD_HOST_URL="http://host.docker.internal:8796", GITS_RIMWORLD_HOST_TOKEN="t",
                RIMWORLD_MEMORY_DIR=str(tmp_path), GITS_NO_LAUNCH="1")
     done = subprocess.run([sys.executable, "-c", code], cwd=str(AGENT), env=env, capture_output=True, text=True, timeout=120)
     assert done.returncode == 0 and "OK" in done.stdout, done.stderr[-1500:]

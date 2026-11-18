@@ -191,7 +191,7 @@ services:
       GITS_CONTROL_TOKEN: ${GITS_CONTROL_TOKEN:-}
       GITS_CONTROL_PORT: "8782"
       GITS_CHARACTERS_ROOT: /characters
-      GITS_RIMWORLD_HOST_URL: ${GITS_RIMWORLD_HOST_URL:-http://host.docker.internal:8791}     # хостовый помощник
+      GITS_RIMWORLD_HOST_URL: ${GITS_RIMWORLD_HOST_URL:-http://host.docker.internal:8796}     # хостовый помощник
       GITS_RIMWORLD_HOST_TOKEN: ${GITS_RIMWORLD_HOST_TOKEN:-}
       RIMWORLD_MEMORY_DIR: /work/rimworld                     # память модуля в томе, а не в слое контейнера
       GITS_DASHBOARD_HOST: 0.0.0.0                            # оверлей слушает во всех интерфейсах контейнера (на хост только 127.0.0.1)
