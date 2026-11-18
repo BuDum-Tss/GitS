@@ -5,6 +5,8 @@
 ## [Unreleased]
 
 ### Added
+- `inspect_unforbid_area` (`unforbid_area`): разрешить всё запрещённое в прямоугольнике, пачками по 40 id, при ошибке добивает по одному, сводка по видам; предупреждает об упоре в лимит `get_items` (80). Тесты `test_unforbid_area.py`.
+- `idle_watch` и событие `rimworld.idle_colonists`; `speed_plan` и автоскорость (`auto_speed`, `auto_unpause_s`, `GITS_RIMWORLD_AUTO_SPEED`, `GITS_RIMWORLD_AUTO_UNPAUSE_S`); вводная `game_brief.GAME_BRIEF` в `entry.brief`; `work_interval_s` 90 с; описание `set_time_speed` 0..4.
 - Контейнерный режим RimWorld: `agent/host_bridge.py` (`HostBridge`: `LocalHostBridge`, `RemoteHostBridge`, `make_host_bridge()` по `GITS_RIMWORLD_HOST_URL`), `agent/remote_recorder.py`, `agent/lease_host.py`, хостовый помощник `host/` (aiohttp, `127.0.0.1:8796`, токен `GITS_RIMWORLD_HOST_TOKEN`, прокси `/game-api/...`). Настройки `RIMWORLD_API`, `GITS_DASHBOARD_ORIGINS`. Без `GITS_RIMWORLD_HOST_URL` поведение прежнее.
 - `GITS_RIMWORLD_KEEP_WINDOW` (по умолчанию выключено): сторож `game_watchdog` возвращает свёрнутую или закрытую другим окном игру на передний план только при включении; раньше делал это всегда, раз в 20 с.
 - Схема инструментов `docs/TOOLS_SCHEME.html`: интерактивная страница со снимками интерфейса игры (`docs/gui`), деревом узлов и инструментами из манифеста; наведение на часть экрана, узел или инструмент подсвечивает связанное. Создаётся `python workspaces/rimworld/tools/build_tool_scheme.py` (данные из `module_manifest.build()`), тест `agent/tests/test_tool_scheme.py` следит за актуальностью. Схему архитектуры ядра не затрагивает.

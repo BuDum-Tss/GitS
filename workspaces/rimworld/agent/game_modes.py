@@ -69,9 +69,9 @@ MODES: dict[str, GameMode] = {m.id: m for m in (
     GameMode(
         "economy", "Хозяйство и ресурсы",
         "Производство и запасы: заказы на верстаках, склады, огороды, охота, приручение, запреты, добыча.",
-        ("add_bill", "list_recipes", "cancel_bill", "create_stockpile", "create_grow_zone", "delete_zone", "forbid_item",
+        ("add_bill", "list_recipes", "cancel_bill", "create_stockpile", "create_grow_zone", "delete_zone", "forbid_item", "unforbid_area",
          "order_tame", "order_slaughter", "designate_chop", "designate_mine", "force_work", "clear_work_queue"),
-        "Ты ведёшь хозяйство: что производить (add_bill, list_recipes), где склад и огород, что запрещено лишнего (unforbid_item), "
+        "Ты ведёшь хозяйство: что производить (add_bill, list_recipes), где склад и огород, что запрещено лишнего (unforbid_item; всё в области сразу: unforbid_area), "
         "что добывать (designate_chop, designate_mine). Еды меньше 10 дней: огород, охота, готовка."
     ),
     GameMode(

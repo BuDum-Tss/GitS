@@ -26,6 +26,8 @@ ROOT = "root"
 NAV = ("open", "back", "where")
 TOOL_TIMEOUT_S = 60
 KEYWORDS = ["игра", "колония", "колонист", "римворлд", "rimworld"]
+# дополнительные ключевые слова отдельных инструментов (старое имя функции -> слова)
+EXTRA_KEYWORDS = {"unforbid_area": ["разрешить", "область", "запрет", "forbid", "unforbid", "выделение"]}
 # вкладка игры (defName) -> имя для open_game_tab
 TAB_NAMES = {"Architect": "architect", "Work": "work", "Schedule": "schedule", "Assign": "assign", "Research": "research",
              "Animals": "animals"}
@@ -272,7 +274,7 @@ async def tool_specs(mcp=None) -> list[dict]:
         t = old_specs[old]
         spec = {"name": name, "description": first_line(t.description, name),
                 "params": schema_to_params(t.inputSchema, t.description), "risk": "auto", "availability": "profile",
-                "timeout_s": TOOL_TIMEOUT_S, "keywords": list(KEYWORDS)}
+                "timeout_s": TOOL_TIMEOUT_S, "keywords": KEYWORDS + EXTRA_KEYWORDS.get(old, [])}
         if node:
             spec["node"] = node
         if kind == "query":

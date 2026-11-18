@@ -921,6 +921,118 @@ def unforbid_item(thing_id: str) -> str:
     return _post({"type": "unforbid", "thing_id": thing_id})
 
 
+AREA_MAX_SIDE = 300              # сторона области в клетках: больше карта почти не бывает, а запрос тяжелее пользы
+ITEMS_LIMIT = 80                 # мод отдаёт в get_items не больше 80 предметов (Math.Min(max_results, 80) в CombatCommands.cs)
+UNFORBID_BATCH = 40              # id в одной команде unforbid: мод обрабатывает их по очереди, но на неизвестном id обрывается
+AREA_ROUNDS = 8                  # сколько раз перезапрашивать список, если ответ упёрся в лимит (разрешённые из выдачи уходят)
+AREA_CATEGORIES = ("material", "food", "weapon", "apparel", "medicine")
+
+
+def _json_or_none(raw: str):
+    """Ответ мода как JSON; None, если пришла ошибка или предупреждение текстом."""
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _area_summary(groups: dict[str, int], limit: int = 8) -> str:
+    """Короткая сводка «дерево 12, камень 40» по убыванию, хвост видов сворачивается."""
+    top = sorted(groups.items(), key=lambda kv: -kv[1])
+    text = ", ".join(f"{name} {n}" for name, n in top[:limit])
+    return text + (f" и ещё {len(top) - limit} видов" if len(top) > limit else "")
+
+
+@mcp.tool()
+def unforbid_area(x1: int, z1: int, x2: int, z2: int, category: str = "") -> str:
+    """Разрешить всё запрещённое в прямоугольнике (как выделение мышью): x1,z1 и x2,z2 углы в клетках карты (как x,z у предметов), порядок любой, границы входят, не больше 300x300. category (необязательно): material/food/weapon/apparel/medicine. Пример: x1=40,z1=50,x2=70,z2=80."""
+    corners = {"x1": x1, "z1": z1, "x2": x2, "z2": z2}
+    for name, v in corners.items():
+        if isinstance(v, bool) or not isinstance(v, int):
+            return f"ERROR: {name} должен быть целым числом (клетка карты), а не {v!r}"
+        if v < 0:
+            return f"ERROR: {name}={v}: координаты клеток не бывают отрицательными"
+    category = (category or "").strip().lower()
+    if category and category not in AREA_CATEGORIES:
+        return f"ERROR: category «{category}» неизвестна: нужна одна из {'/'.join(AREA_CATEGORIES)} или пусто (всё запрещённое)"
+    lo_x, hi_x, lo_z, hi_z = min(x1, x2), max(x1, x2), min(z1, z2), max(z1, z2)
+    if hi_x - lo_x + 1 > AREA_MAX_SIDE or hi_z - lo_z + 1 > AREA_MAX_SIDE:
+        return (f"ERROR: область {hi_x - lo_x + 1}x{hi_z - lo_z + 1} клеток слишком большая (не больше "
+                f"{AREA_MAX_SIDE}x{AREA_MAX_SIDE}): раздели её на несколько прямоугольников")
+    bad = _need_mod("get_items") or _need_mod("unforbid")
+    if bad:
+        return bad
+    title = f"({lo_x},{lo_z})-({hi_x},{hi_z})"
+    centre = {"x": (lo_x + hi_x) // 2, "z": (lo_z + hi_z) // 2}
+
+    def inside(it: dict) -> bool:
+        return lo_x <= it.get("x", -1) <= hi_x and lo_z <= it.get("z", -1) <= hi_z
+
+    done: dict[str, int] = {}        # label -> число предметов-стопок
+    failed: dict[str, str] = {}      # id -> причина
+    n_done = 0
+    capped = False                   # последний ответ get_items упёрся в лимит: возможно, видны не все
+    for _round in range(AREA_ROUNDS):
+        raw = get_items(category="forbidden", max_results=ITEMS_LIMIT, **centre)
+        data = _json_or_none(raw)
+        if data is None:
+            return raw if _round == 0 else _area_report(title, done, n_done, failed, capped=True, note=raw)
+        items = data.get("items", [])
+        capped = len(items) >= ITEMS_LIMIT
+        pool = [it for it in items if it.get("forbidden") and inside(it) and it.get("id") not in failed]
+        if category and pool:
+            cat = _json_or_none(get_items(category=category, max_results=ITEMS_LIMIT, **centre))
+            if cat is None:
+                return _area_report(title, done, n_done, failed, capped=True, note=f"категория {category} не прочиталась")
+            cat_items = cat.get("items", [])
+            cat_ids = {it.get("id") for it in cat_items}
+            pool = [it for it in pool if it.get("id") in cat_ids]
+            if len(cat_items) >= ITEMS_LIMIT:
+                capped = True        # в категории тоже могли остаться невидимые
+        if not pool:
+            break
+        for i in range(0, len(pool), UNFORBID_BATCH):
+            batch = pool[i:i + UNFORBID_BATCH]
+            if _post({"type": "unforbid", "thing_id": ",".join(it["id"] for it in batch)}).startswith("OK"):
+                results = [(it, "") for it in batch]
+            else:                    # неизвестный id обрывает всю пачку: добиваем по одному, чтобы найти виновника
+                results = []
+                for it in batch:
+                    r = _post({"type": "unforbid", "thing_id": it["id"]})
+                    results.append((it, "" if r.startswith("OK") else r.removeprefix("ERROR:").strip()))
+            for it, err in results:
+                if err:
+                    failed[it["id"]] = err
+                else:
+                    label = str(it.get("label") or it.get("def") or "?")
+                    done[label] = done.get(label, 0) + int(it.get("count") or 1)
+                    n_done += 1
+        if not capped:
+            break
+    else:
+        capped = True                # раунды кончились, а выдача всё ещё упиралась в лимит
+    return _area_report(title, done, n_done, failed, capped=capped, category=category)
+
+
+def _area_report(title: str, done: dict[str, int], n_done: int, failed: dict[str, str], capped: bool,
+                 category: str = "", note: str = "") -> str:
+    """Итог unforbid_area текстом: сколько разрешено и чем, что не вышло, предупреждение о лимите."""
+    what = f" ({category})" if category else ""
+    if not n_done and not failed:
+        text = f"В области {title} запрещённого{what} нет: разрешать нечего."
+    else:
+        text = f"Разрешено {n_done} предметов{what} в области {title}" + (f": {_area_summary(done)}." if done else ".")
+    if failed:
+        reasons = sorted(set(failed.values()))[:3]
+        text += f" Не удалось {len(failed)}: {'; '.join(reasons)}."
+    if capped:
+        text += (f" Мод отдаёт не больше {ITEMS_LIMIT} предметов за запрос: возможно, разрешены не все, сузь область и "
+                 "повтори (или проверь get_items category=forbidden).")
+    if note:
+        text += f" Остановилась: {note}"
+    return text
+
+
 # ── Исследования ─────────────────────────────────────────────────────────────
 
 @mcp.tool()
@@ -1403,7 +1515,7 @@ def resume_game() -> str:
 
 @mcp.tool()
 def set_time_speed(speed: int) -> str:
-    """Установить скорость времени. speed: 1=обычная, 2=быстрая, 3=очень быстрая."""
+    """Скорость времени. speed: 0=пауза, 1=обычная, 2=быстрая, 3=очень быстрая, 4=максимальная."""
     return _post({"type": "set_time_speed", "speed": speed})
 
 

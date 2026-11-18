@@ -37,6 +37,10 @@ import statediff
 from relationships import Relationships
 import focus_checkpoint
 import focus_mode
+import game_brief
+import idle_watch
+import planning_pause
+import speed_plan
 import focus_status
 import policy_actions as pa
 import policy_events
@@ -94,6 +98,11 @@ _GAME_TALK = ("напад", "налёт", "налет", "рейд", "враг", 
               "захват", "пешк", "колонист", "поселен", "оружи", "пистолет", "винтовк", "ранен", "истека", "лечи",
               "ловуш", "турел", "стен", "кроват", "грядк", "постро", "строй", "исслед", "приоритет", "расписан",
               "график", "караван", "торговц", "вооруж", "в бой", "драф", "отбей", "убеж", "бункер")
+
+
+def _with_entry(res: dict) -> dict:
+    """Успешный ответ на workspace.enter/resume несёт вводную: ядро покажет `entry.brief` агенту при входе и в ходах среды."""
+    return {**res, "entry": {"brief": game_brief.GAME_BRIEF}} if res.get("ok") else res
 
 
 def _game_command(cmd: dict) -> bool:
@@ -223,9 +232,11 @@ class Controller:
         self._last_turn_tick: int | None = None
         self._last_turn_at        = 0.0
         self._speed               = 1                      # скорость игры, которую поставила политика наблюдения
-        self._speed_reset_req     = False
         self._quiet_since         = time.time()
-        self._last_speed_step     = 0.0
+        self._idle                = idle_watch.IdleWatch()   # наблюдатель простоя колонистов (событие rimworld.idle_colonists)
+        self._speed_set_at        = 0.0                    # когда модуль последний раз сам менял скорость (автоскорость)
+        self._danger_at: float | None = None               # когда в последний раз была угроза или бой (автоскорость)
+        self._paused_since: float | None = None            # с какого момента игра подряд на паузе (автоснятие забытой паузы)
         self._task_first_seen: dict[str, int] = {}
         self._stall_reported: set[str] = set()
         self._forced: dict[str, dict] = {}                 # задача -> {pawn, tick}: принудительная работа
@@ -275,6 +286,50 @@ class Controller:
 
     def _module_setting(self, key: str, default):
         return (self.link.module_settings if self.link else {}).get(key, default)
+
+    def _watch_idle(self, snap: dict) -> None:
+        """Простой колонистов: событие агенту, чтобы он не ждал без дела, а назначал работу. Только в фокусе и при связи с ядром."""
+        if self.link is None or not self.policies.in_focus:
+            self._idle.reset()
+            return
+        try:
+            grace = min(600.0, max(10.0, float(self._module_setting("idle_grace_s", idle_watch.IDLE_GRACE_S))))
+        except (TypeError, ValueError):
+            grace = float(idle_watch.IDLE_GRACE_S)
+        res = self._idle.update(snap, time.time(), grace)
+        if res is not None:
+            events_log.log("game", "простой: " + res["text"])
+            asyncio.create_task(self.link.event("idle_colonists", {"colonists": res["colonists"]}, text=res["text"]))
+
+    async def _auto_speed(self, state: dict) -> None:
+        """Автоскорость (настройка auto_speed, переменная GITS_RIMWORLD_AUTO_SPEED): см. speed_plan. Пишет в протокол при смене."""
+        mode = speed_plan.normalize(env("GITS_RIMWORLD_AUTO_SPEED") or self._module_setting("auto_speed", speed_plan.DEFAULT_MODE))
+        now = time.time()
+        if not state.get("paused"):
+            self._paused_since = None
+        elif self._paused_since is None:
+            self._paused_since = now
+        if mode == "off" or not self.policies.in_focus:
+            return
+        try:
+            unpause_s = min(600.0, max(0.0, float(env("GITS_RIMWORLD_AUTO_UNPAUSE_S")
+                                                  or self._module_setting("auto_unpause_s", speed_plan.AUTO_UNPAUSE_S))))
+        except (TypeError, ValueError):
+            unpause_s = float(speed_plan.AUTO_UNPAUSE_S)
+        if speed_plan.is_danger(state):
+            self._danger_at = now
+        target = speed_plan.plan_speed(state, mode, now, self._speed_set_at, planning_pause.active(), self._danger_at,
+                                      self._paused_since, unpause_s)
+        if target is None:
+            return
+        before, was_paused, paused_for = state.get("time_speed"), bool(state.get("paused")), now - (self._paused_since or now)
+        if await asyncio.to_thread(_game_command, {"type": "set_time_speed", "speed": target}):
+            self._speed, self._speed_set_at = target, now
+            if was_paused:
+                self._paused_since = None
+                events_log.log("game", f"пауза снята автоматически: простояла {round(paused_for)} с, скорость {target}")
+            else:
+                events_log.log("game", f"автоскорость: {before} → {target}" + (" (угроза или бой)" if target == 1 else ""))
 
     def _launch_allowed(self) -> bool:
         """POL-12: сторож и автозапуск поднимают игру только при фокусе модуля (и настройке или после падения)."""
@@ -398,8 +453,8 @@ class Controller:
             return {"ok": False, "error": reason + "; фокус даёт кнопка «Взять фокус» на панели RimWorld"}
         if self.policies.in_focus:
             self._focus_source = "core"
-            return {"ok": True, "already": True}
-        return await self._take_focus("observe", f"фокус возвращён: {goal[:100]}".strip(), source="core")
+            return _with_entry({"ok": True, "already": True})
+        return _with_entry(await self._take_focus("observe", f"фокус возвращён: {goal[:100]}".strip(), source="core"))
 
     async def resume(self, body: dict) -> dict:
         """Запрос ядра workspace.resume (ТЗ 18, FOC-4): возобновить задачу по checkpoint ядра (или по файлу модуля). Подцели
@@ -411,7 +466,7 @@ class Controller:
             return {"ok": False, "error": reason + "; фокус даёт кнопка «Взять фокус» на панели RimWorld"}
         if self.policies.in_focus:
             self._focus_source = "core"
-            return {"ok": True, "already": True}
+            return _with_entry({"ok": True, "already": True})
         goal = str(body.get("goal") or "")
         cp = body.get("checkpoint") if isinstance(body.get("checkpoint"), dict) else None
         if cp is None:
@@ -422,7 +477,7 @@ class Controller:
         res = await self._take_focus(target, f"задача возобновлена: {goal[:100]}".strip(), source="core", cp=cp)
         if res.get("ok") and subgoals:
             self._recent_changes.extend(subgoals)
-        return res
+        return _with_entry(res)
 
     async def release(self, body: dict) -> dict:
         """Запрос ядра workspace.exit (POL-14): сохранить checkpoint, поставить игру на паузу, если она идёт, уйти в afk."""
@@ -591,6 +646,8 @@ class Controller:
                     self._recent_changes.append(line)
                     self._send_change(line)
         self._prev_snap = snap
+        self._watch_idle(snap)
+        await self._auto_speed(state)
         self._rel.sync_colonists((state.get("colony") or {}).get("pawns") or [])
         if self.link is not None and time.time() - self._graph_sent >= 60:
             self._graph_sent = time.time()
@@ -631,6 +688,7 @@ class Controller:
                 self._colony_started      = False
                 self._just_loaded         = True
                 self._prev_snap = self._turn_snap = None
+                self._idle.reset()
                 if self.director is not None:
                     self.director.reset()
             if evt.get("type") == "colony_died":

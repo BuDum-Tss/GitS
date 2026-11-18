@@ -37,7 +37,7 @@ async def test_shared_settings_emits_and_settings_schema():
                      "rimworld.fire": 4, "rimworld.letter": 2, "rimworld.goal": 3, "rimworld.run_video": 2, "rimworld.game_started": 1,
                      "rimworld.pawn_downed": 4, "rimworld.enemy_seen": 3, "rimworld.enemy_down": 2, "rimworld.research_done": 2,
                      "rimworld.resource_out": 3, "rimworld.pawn_mood": 3, "rimworld.pawn_hurt": 3, "rimworld.pawn_lost": 4,
-                     "rimworld.newcomer": 3}
+                     "rimworld.newcomer": 3, "rimworld.idle_colonists": 3}
     assert manifest["settings_schema"]["auto_montage"]["default"] is False
     import settings
     assert set(manifest["shared_settings"]) <= set(settings.DEFAULTS)         # общие настройки есть и в настройках модуля

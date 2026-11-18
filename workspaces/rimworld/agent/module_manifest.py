@@ -54,6 +54,14 @@ SETTINGS_SCHEMA = {
                   "или live (говорит вслух во время игры)", "default": "script", "enum": ["script", "live"]},
     "camera_agent": {"type": "boolean", "title": "Камерой управляет агент (выключено: камера у игрока, агент её не двигает). Главный переключатель - кнопка «CAM» у правого края экрана в игре; настройка передаётся ей при запуске игры и при изменении",
                      "default": True},
+    "idle_grace_s": {"type": "number", "title": "Простой колонистов: через сколько секунд подряд без дела (бродит или ждёт) "
+                     "агенту приходит событие rimworld.idle_colonists", "default": 45, "min": 10, "max": 600},
+    "auto_speed": {"type": "string", "title": "Автоскорость игры: max - в спокойное время держать максимальную скорость, при угрозе "
+                   "или бое снижать до обычной; off - скорость не трогать. Переменная GITS_RIMWORLD_AUTO_SPEED важнее настройки",
+                   "default": "max", "enum": ["off", "max"]},
+    "auto_unpause_s": {"type": "number", "title": "Автоскорость: снимать забытую паузу, если игра на паузе подряд дольше этого (секунд; "
+                       "0 - не снимать). Паузу планирования и паузу при угрозе не трогает. Переменная GITS_RIMWORLD_AUTO_UNPAUSE_S "
+                       "важнее настройки", "default": 40, "min": 0, "max": 600},
     "focus_mode": {"type": "string", "title": "Фокус агента: core - только запросы ядра (среду включает импульс: сообщение или "
                    "решение агента); manual - только кнопки на панели RimWorld; auto - старый режим, модуль сам берёт "
                    "фокус, когда игра запущена (в среду это не входит)",
@@ -65,8 +73,8 @@ WORKSPACE = {"id": PEER_ID, "title": "RimWorld",
              "entry": ["user_message", "self_impulse", "critical"], "interruptible": True,
              "safe_points": ["игра на паузе", "тихо: нет угрозы и боя"], "signals_in": ["telegram.*"],
              "done_when": "забег закончен или игра закрыта",
-             "autonomous": True, "work_interval_s": 120,
-             "default_goal": "Развивать колонию: еда и жильё для колонистов, работы и режим дня, постройки, исследования, защита от угроз"}      # ТЗ 33: пока агент в среде и свободен, ядро раз в 120 с шлёт рабочий цикл
+             "autonomous": True, "work_interval_s": 90,
+             "default_goal": "Развивать колонию: еда и жильё для колонистов, работы и режим дня, постройки, исследования, защита от угроз"}      # ТЗ 33: пока агент в среде и свободен, ядро раз в 90 с шлёт рабочий цикл
 # что модуль шлёт ядру (RW-9): срочности берутся из core_link.EVENTS, чтобы не расходились
 _EMIT_TEXT = {
     "rimworld.colonists": "Обновился список колонистов (служебное: отношения и граф памяти)",
@@ -86,6 +94,7 @@ _EMIT_TEXT = {
     "rimworld.enemy_down": "Враг убит или повержен",
     "rimworld.research_done": "Исследование завершено",
     "rimworld.resource_out": "Кончается запас (еда)",
+    "rimworld.idle_colonists": "Колонисты простаивают: бродят или ждут без дела при идущей игре (в data список {id, name, job, idle_s})",
     "rimworld.game_started": "Игра запущена (сигнал; в среду RimWorld агент входит только по своему импульсу или просьбе)",
 }
 # контракт 1.8: темы события (по ним узел сдвигает срочность), срочность вне фокуса, какие запросы смотреть после события
@@ -119,6 +128,7 @@ _CRITICAL = {"rimworld.raid", "rimworld.death", "rimworld.fire", "rimworld.pawn_
 # чисто информационные виды: сами агента не будят (потолок ниже WAKE_MIN), попадают в ближайшую пачку, в сводку не идут
 _PASSIVE = {"rimworld.colonists", "rimworld.game_started", "rimworld.run_video", "rimworld.enemy_down", "rimworld.research_done"}
 PASSIVE_MAX_PRIORITY = 10
+_REPLACE = {"rimworld.idle_colonists"}      # новое событие заменяет ожидающее: устаревший список простоя не копится
 
 
 def event_kinds() -> list[dict]:
@@ -134,6 +144,8 @@ def event_kinds() -> list[dict]:
             spec["critical"] = True
         if full in COALESCE_KINDS:
             spec["coalesce"] = True
+        if full in _REPLACE:
+            spec["replace"] = True
         if passive:
             spec["passive"] = True
         out.append(spec)

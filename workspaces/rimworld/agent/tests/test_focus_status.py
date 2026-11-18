@@ -191,6 +191,7 @@ async def test_resume_restores_from_the_core_checkpoint(ctrl, monkeypatch):
 
 async def test_resume_without_checkpoint_still_takes_focus(ctrl):
     res = await ctrl.resume({"task_id": "t2", "goal": ""})
+    assert res.pop("entry")["brief"]                       # вводная агента идёт во всех успешных ответах
     assert res == {"ok": True, "restored": False, "goal": ""}
     assert ctrl.policies.current == "observe"                 # без checkpoint: политика по умолчанию (observe)
 

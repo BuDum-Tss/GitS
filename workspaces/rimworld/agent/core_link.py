@@ -49,17 +49,20 @@ EVENTS = {
     "newcomer": ("rimworld.newcomer", 3),           # в колонии новый человек (гость, пленный, новичок)
     "research_done": ("rimworld.research_done", 2),
     "resource_out": ("rimworld.resource_out", 3),   # кончается еда
+    "idle_colonists": ("rimworld.idle_colonists", 3),   # колонисты бродят или ждут без дела (наблюдатель простоя idle_watch)
     "game_started": ("rimworld.game_started", 1),   # игра запущена: сигнал для ядра, среду он не включает (ТЗ 32, WS-5)
 }
 # сколько секунд событие остаётся актуальным (после этого ядро его не озвучивает)
 EXPIRES_S = {"rimworld.raid": 180, "rimworld.fire": 180, "rimworld.death": 300, "rimworld.letter": 300,
              "rimworld.pawn_mood": 300, "rimworld.pawn_hurt": 180, "rimworld.pawn_lost": 300, "rimworld.newcomer": 600,
              "rimworld.pawn_downed": 300, "rimworld.enemy_seen": 180, "rimworld.enemy_down": 120, "rimworld.research_done": 600,
-             "rimworld.resource_out": 600, "rimworld.goal": 600, "rimworld.run_ended": 1800, "rimworld.run_video": 3600, "rimworld.game_started": 300}
+             "rimworld.resource_out": 600, "rimworld.goal": 600, "rimworld.run_ended": 1800, "rimworld.run_video": 3600, "rimworld.game_started": 300,
+             "rimworld.idle_colonists": 120}
 # частые однотипные события одной серии: `event()` ставит им ключ слияния `rimworld:<вид>` (в `data.group_key`), внимание v2 сливает серию
 # в одно событие (виды объявляет манифест, `event_kinds`, с `coalesce`)
 COALESCE_KINDS = frozenset({"rimworld.pawn_downed", "rimworld.enemy_seen", "rimworld.enemy_down", "rimworld.pawn_hurt", "rimworld.pawn_mood",
-                            "rimworld.letter", "rimworld.resource_out", "rimworld.research_done", "rimworld.newcomer"})
+                            "rimworld.letter", "rimworld.resource_out", "rimworld.research_done", "rimworld.newcomer",
+                            "rimworld.idle_colonists"})
 
 
 class CoreLink:

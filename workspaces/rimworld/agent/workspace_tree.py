@@ -91,6 +91,7 @@ TOOLS: dict[str, tuple[str, str, str]] = {
     "cancel_bill": ("action", "inspect", "cancel_bill"),
     "forbid_item": ("action", "inspect", "forbid"),
     "unforbid_item": ("action", "inspect", "unforbid"),
+    "unforbid_area": ("action", "inspect", "unforbid_area"),       # разрешить всё в прямоугольнике, как выделение мышью
     # Уведомления справа: письма читают, выбирают кнопку и закрывают после реакции
     "notice_read": ("action", "notices", "read"),
     "notice_choose": ("action", "notices", "choose"),
