@@ -7,7 +7,7 @@ from typing import Callable
 
 from . import render
 from .clock import ClockScheduler, Scheduler, SystemClock
-from .event import MAX_TEXT, USER, Event, EventState, level_name
+from .event import IMPORTANT, MAX_TEXT, USER, Event, EventState, level_name
 from .eventlog import EventLog
 from .kinds import KindRegistry
 from .queue import QUEUE_MAX, Digest, PriorityQueue
@@ -22,7 +22,8 @@ COALESCE_MS = 400
 ON_TURN_S = 20
 FOCUS_CAP = 60
 INTERRUPT_BUDGET = 3
-INTERRUPT_WINDOW_S = 60
+INTERRUPT_WINDOW_S = 60
+STEER_GAP_S = 4.0                  # важные события одного вида доливаются в идущий ход не чаще (секунды)
 _EPS = 1e-3
 
 
@@ -33,7 +34,7 @@ class AttentionV2:
                  events_batch: int = EVENTS_BATCH, queue_max: int = QUEUE_MAX, wake_min: float = WAKE_MIN,
                  interrupt_margin: float = INTERRUPT_MARGIN, coalesce_ms: float = COALESCE_MS, on_turn_s: float = ON_TURN_S,
                  focus_cap: float = FOCUS_CAP, interrupt_budget: int = INTERRUPT_BUDGET,
-                 interrupt_window_s: float = INTERRUPT_WINDOW_S):
+                 interrupt_window_s: float = INTERRUPT_WINDOW_S, steer_gap_s: float = STEER_GAP_S):
         self.registry = registry
         self.log = eventlog
         self.runtime = runtime
@@ -45,6 +46,8 @@ class AttentionV2:
         self.events_batch, self.wake_min = events_batch, wake_min
         self.interrupt_margin, self.coalesce_ms, self.on_turn_s = interrupt_margin, coalesce_ms, on_turn_s
         self.focus_cap, self.interrupt_budget, self.interrupt_window_s = focus_cap, interrupt_budget, interrupt_window_s
+        self.steer_gap_s = steer_gap_s       # важные события одного вида доливаются в идущий ход не чаще этого (секунды)
+        self._steered_at: dict[tuple[str, str], float] = {}
 
         self.digest = Digest()
         self.queue = PriorityQueue(queue_max, self.digest, self.clock, on_drop=self._on_queue_drop)
@@ -117,7 +120,20 @@ class AttentionV2:
                 await self._interrupt(e, "user" if is_user else ("critical" if critical else "margin"))
                 return
             self._m["interrupts_skipped_budget"] += 1
+        # важное событие (гибель, угроза, падение) не ждёт конца долгого хода: доливается в идущий и агент видит его на ближайшем
+        # шаге модели, а не через минуты; пассивные и слабые ждут в очереди; частые события одного вида не чаще STEER_GAP_S
+        spec = self.registry.get(e.kind)
+        if (e.priority >= IMPORTANT and not (spec and spec.passive) and self.runtime.can_steer and self._steer_gap_ok(e)
+                and await self.runtime.steer(e)):
+            self._m["steered"] += 1
+            self._steered_at[(e.workspace, e.kind)] = self.clock.monotonic()
+            self._mark_delivered(e, "доливается в идущий ход (важное)")
+            return
         self._enqueue(e)
+
+    def _steer_gap_ok(self, e: Event) -> bool:
+        last = self._steered_at.get((e.workspace, e.kind))
+        return last is None or self.clock.monotonic() - last >= self.steer_gap_s
 
     # ---- слияние (4.5) ------------------------------------------------------------------------------------------------
 

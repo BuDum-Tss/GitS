@@ -87,7 +87,7 @@ async def test_interrupt_storm_budget_and_user_passes():
     assert len(r.runtime.interrupts) == 3
     r.runtime.set_batch([r.ev(20)])
     fourth = await r.send(70)
-    assert len(r.runtime.interrupts) == 3 and fourth in r.attention.queue
+    assert len(r.runtime.interrupts) == 3 and r.runtime.steers == [fourth]      # бюджет прерываний исчерпан: важное доливается в идущий ход
     st = r.attention.status()["interrupts"]
     assert st["total"] == 3 and st["skipped_budget"] == 1 and st["budget"]["used"] == 3
 
