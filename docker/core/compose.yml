@@ -48,6 +48,8 @@ services:
       GITS_PI_AUTH: /run/pi/auth.json
       # внимание v2 (docs/RUNTIME_SPEC.md): `v2` включает, пусто или другое значение: прежнее внимание
       GITS_ATTENTION: ${GITS_ATTENTION:-}
+      # Telegram: кто ведёт разговоры, `bot` (бот Bot API) или пусто/`user` (её аккаунт Telethon); см. workspaces/telegram/telegram_bot_user.py
+      GITS_TG_ACCOUNT_MODE: ${GITS_TG_ACCOUNT_MODE:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

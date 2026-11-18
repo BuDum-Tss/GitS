@@ -293,6 +293,17 @@ CHAT_MODES = (MODE_IGNORE, MODE_READ, MODE_REPLY)
 MODE_WORDS = {MODE_IGNORE: "игнор", MODE_READ: "чтение", MODE_REPLY: "ответы"}
 
 
+ACCOUNT_MODES = ("user", "bot")                  # кто ведёт разговоры: её аккаунт (Telethon) или бот (Bot API)
+
+
+def account_mode(module_settings: dict | None) -> str:
+    """Режим разговоров: переменная GITS_TG_ACCOUNT_MODE=bot перекрывает настройку `account_mode`; иначе настройка; по
+    умолчанию и при любом незнакомом значении user (всё как раньше)."""
+    if str(env("GITS_TG_ACCOUNT_MODE") or "").strip().lower() == "bot":
+        return "bot"
+    return "bot" if (module_settings or {}).get("account_mode") == "bot" else "user"
+
+
 def valid_mode(value, default: str = MODE_REPLY) -> str:
     """Режим из настройки или файла: незнакомое значение заменяется на default."""
     return value if value in CHAT_MODES else default

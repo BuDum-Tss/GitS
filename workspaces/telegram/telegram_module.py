@@ -6,6 +6,8 @@
 `inbox` (чтение её аккаунта), `announce` (рассылка объявлений подписчикам бота), `settings` (периодические посты и пост-итог).
 Панель в дашборде (`telegram_panel.py`): вход в аккаунт по QR, список всех диалогов с режимами, открытый чат. Действия панели
 (вход, выход, ручная отправка владельцем, смена режима) это `panel_action`, а не инструменты: агенту они недоступны.
+Режим бота (настройка `account_mode: bot` или `GITS_TG_ACCOUNT_MODE=bot`, см. telegram_bot_user.py): `self.user` становится
+`TelegramBotUser`, разговоры идут через бота, а не через её аккаунт; всё остальное (инструменты, deliver, панель) то же.
 Тесты собирают модуль против `gits_sdk.testing.FakeCore`, а сеть Telegram подменяют (`_call`, `_upload`, клиент Telethon).
 """
 import asyncio
@@ -15,12 +17,13 @@ import time
 from pathlib import Path
 
 import httpx
-from common import scrub, split_target
+from common import account_mode, scrub, split_target
 from gits_sdk import WorkspaceClient, ToolError
 from privacy import Privacy
 from telegram_channel import TelegramChannel
 from telegram_panel import ACTIONS as PANEL_ACTIONS
 from telegram_panel import TelegramPanel
+from telegram_bot_user import TelegramBotUser
 from telegram_user import ChatModeError, LeakError, TelegramUser
 
 from gits_sdk import host
@@ -77,6 +80,10 @@ class TelegramModule:
         self.user = TelegramUser(memory_dir, client, self.privacy)
         self.panel = TelegramPanel(self)
         self.user.on_change = self.panel.wake.set          # вход, выход и сбой связи обновляют панель сразу
+        self._aliases: list = []                            # алиасы персонажа от ядра (нужны и при смене класса её аккаунта)
+        self._mode_ready = False                            # режим разговоров (user | bot) уже выбран
+        if account_mode(None) == "bot":                     # GITS_TG_ACCOUNT_MODE=bot известна сразу; настройка приходит от ядра позже
+            self._use_bot()
         self.tasks: list[asyncio.Task] = []
         self._panel_key: str | None = None          # последние блоки пространства, посланные ядру (TZ 15)
         self._register()
@@ -87,10 +94,43 @@ class TelegramModule:
         await self.client.wait_connected()
         await self.privacy.run()
 
+    def _use_bot(self) -> None:
+        """Разговоры ведёт бот (Bot API) вместо её аккаунта: подменяет `self.user` на TelegramBotUser. Telethon не нужен.
+        Единственный getUpdates с этого момента у него, канал-витрина сам не опрашивает."""
+        old = self.user
+        self.user = TelegramBotUser(self.memory_dir, self.client, self.privacy, self.channel)
+        self.user.typing_scale = old.typing_scale
+        self.user.set_aliases(self._aliases or getattr(old, "_aliases", ()))
+        self.user.on_change = self.panel.wake.set
+        self.panel.user = self.user
+        self.channel.bot_polls = True
+        self._mode_ready = True
+
+    async def _ensure_mode(self) -> None:
+        """Выбрать режим разговоров один раз при старте: настройка `account_mode` приходит от ядра с приветствием, поэтому
+        сначала ждём связь (переменная GITS_TG_ACCOUNT_MODE=bot уже учтена в конструкторе). Смена настройки на лету не
+        действует: нужен перезапуск окружения."""
+        if self._mode_ready:
+            return
+        await self.client.wait_connected()
+        if self._mode_ready:
+            return
+        if account_mode(self.client.module_settings) == "bot":
+            self._use_bot()
+        self._mode_ready = True
+
+    async def _inbox_loop(self) -> None:
+        await self._ensure_mode()
+        await self.channel.run_inbox()
+
+    async def _account_loop(self) -> None:
+        await self._ensure_mode()
+        await self.user.run()
+
     def start(self) -> list[asyncio.Task]:
         loop = asyncio.get_running_loop()
-        for coro in (self._privacy_loop(), self.channel.run_inbox(), self.channel.run(), self.channel.run_verify(),
-                     self.user.run(), self.run_state(), self._persona_loop()):
+        for coro in (self._privacy_loop(), self._inbox_loop(), self.channel.run(), self.channel.run_verify(),
+                     self._account_loop(), self.run_state(), self._persona_loop()):
             self.tasks.append(loop.create_task(coro))
         return self.tasks
 
@@ -118,9 +158,11 @@ class TelegramModule:
         account = user.state_word()
         last = ch.last_post_ts()
         when = time.strftime("%d.%m %H:%M", time.localtime(last)) if last else "ещё не было"
-        data = {"channel_ok": bool(ch.configured() and ch.verified), "account_ok": account == "подключён",
+        data = {"channel_ok": bool(ch.configured() and ch.verified), "account_ok": user.account_ok(),
                 "last_post_ts": last, "unread": user.unread_count()}
-        return f"канал: {channel_word}, аккаунт: {account}, последний пост: {when}", data
+        if user.is_bot_mode:                                 # режим бота: какой он и что видит в группах (без токена)
+            data.update(account_mode="bot", bot_username=user.bot_username, bot_reads_groups=user.reads_all_groups)
+        return f"канал: {channel_word}, {user.summary_label}: {account}, последний пост: {when}", data
 
     async def panel_blocks(self) -> list[dict]:
         """Пространство «Telegram» в дашборде (TZ 15): аккаунт (вход по QR, выход), список всех диалогов с режимами или
@@ -170,7 +212,8 @@ class TelegramModule:
         except RuntimeError as e:
             raise ToolError(str(e), code="unavailable") from e
         except Exception as e:
-            raise ToolError("Telegram-аккаунт: " + scrub(str(e), self.user._api_hash)[:160], code="unavailable") from e
+            raise ToolError("Telegram-аккаунт: " + scrub(str(e), self.user._api_hash, self.channel._token)[:160],
+                            code="unavailable") from e
 
     def _dashboard_url(self) -> str:
         """Адрес дашборда ядра: GITS_DASHBOARD_URL, иначе хост и порт ядра из адреса шины."""
@@ -211,14 +254,15 @@ class TelegramModule:
             log.warning("персона от ядра не получена: %s", e)
             return
         self.channel.set_persona(card.get("sections") or {})
-        self.user.set_aliases(card.get("aliases") or [])
+        self._aliases = list(card.get("aliases") or [])
+        self.user.set_aliases(self._aliases)
 
     async def _persona_loop(self) -> None:
         await self.client.wait_connected()
         await self.load_persona()
 
     def _register(self) -> None:
-        c, user, privacy = self.client, self.user, self.privacy
+        c, privacy = self.client, self.privacy
         @c.on_topic("character")
         async def _on_character(data):
             await self.load_persona()
@@ -246,10 +290,10 @@ class TelegramModule:
         async def inbox(args):
             limit = _int_arg(args, "limit", 15)
             if args.get("chat"):
-                return await self._account(user.read, _text_arg(args, "chat"), limit)
+                return await self._account(self.user.read, _text_arg(args, "chat"), limit)
             if args.get("unread") is True:
-                return await asyncio.to_thread(user.unread, limit)
-            return await self._account(user.chats, _int_arg(args, "limit", 20))
+                return await asyncio.to_thread(self.user.unread, limit)
+            return await self._account(self.user.chats, _int_arg(args, "limit", 20))
 
         # ── объявления подписчикам бота-витрины ──
         @c.tool("announce")

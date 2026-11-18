@@ -116,6 +116,9 @@ def session_path(memory_dir: str) -> str:
 
 
 class TelegramUser:
+    is_bot_mode = False                                   # True у TelegramBotUser (разговоры ведёт бот, а не аккаунт)
+    summary_label = "аккаунт"                             # как называется в сводке состояния
+
     def __init__(self, memory_dir: str, client, privacy):
         """client - WorkspaceClient (event, settings, module_settings); privacy - Privacy (личные слова от ядра, TG-5)."""
         self._dir = Path(memory_dir)
@@ -192,6 +195,14 @@ class TelegramUser:
         if self._problem:
             return "ошибка связи"
         return "подключён" if self._me is not None else "подключается"
+
+    def account_ok(self) -> bool:
+        """Аккаунт работает (для `state.data.account_ok`)."""
+        return self.state_word() == "подключён"
+
+    def panel_ready(self) -> bool:
+        """Можно показывать список диалогов и переписку в панели."""
+        return self.state_word() in ("подключён", "подключается")
 
     def me_text(self) -> str:
         """«Имя @username» вошедшего аккаунта; пусто, пока не известно."""

@@ -166,7 +166,7 @@ class TelegramPanel:
         if is_network_error(e):
             return "нет сети: не удалось связаться с Telegram"
         if isinstance(e, (ValueError, RuntimeError)):
-            return scrub(str(e), self.user._api_hash)[:200]
+            return scrub(str(e), self.user._api_hash, self.module.channel._token)[:200]
         return f"Telegram-аккаунт: {type(e).__name__}"
 
     def _dialog(self, chat_id) -> dict | None:
@@ -177,7 +177,7 @@ class TelegramPanel:
     async def blocks(self) -> list[dict]:
         out = self.account_blocks()
         user = self.user
-        if user.state_word() in ("подключён", "подключается"):
+        if user.panel_ready():
             await self._load_dialogs()
             if self.chat is not None:
                 await self._load_history()
@@ -192,8 +192,21 @@ class TelegramPanel:
         return {"type": "text", "title": "Канал и бот-витрина", "collapsed": True,
                 "text": f"Канал: {m._channel_word()}. Последний пост: {_stamp(last) or 'ещё не было'}."}
 
+    def bot_account_blocks(self) -> list[dict]:
+        """Режим бота (account_mode: bot): состояние бота и его ограничения вместо входа по QR."""
+        u = self.user
+        ok, why = u.state()
+        text = (f"Разговоры ведёт бот: {u.state_word()}." if ok else f"Бот не работает: {why}.")
+        if ok:
+            text += (" " + why + ". " if u.bot_username else " ") + (
+                "Бот не пишет первым (человек сначала жмёт /start), не читает историю: список чатов и переписка это то, "
+                "что бот видел с момента добавления.")
+        return [{"type": "text", "title": "Бот (режим разговоров)", "text": text}]
+
     def account_blocks(self) -> list[dict]:
         u = self.user
+        if u.is_bot_mode:
+            return self.bot_account_blocks()
         word = u.state_word()
         login = u._login.view() if u._login is not None else {"state": "idle", "error": "", "who": "", "qr_file": "",
                                                               "expires_in": 0}

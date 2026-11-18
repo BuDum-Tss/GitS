@@ -22,7 +22,8 @@
 Бот - витрина: он ничего не обсуждает и событий в ядро не шлёт. /start и /help: описание и кнопки-ссылки (канал, аккаунт,
 Twitch, YouTube из настроек окружения), /subscribe и /unsubscribe: подписка на объявления, любое другое сообщение: короткий
 ответ-заглушка со ссылкой на её аккаунт. Объявления (начался стрим, вышло видео) рассылает инструмент announce. Разговоры
-ведёт её аккаунт (Telethon, telegram_user). Владелец определяется настройками owner_tg_id и owner (@имя или id): ему бот
+ведёт её аккаунт (Telethon, telegram_user); в режиме бота (account_mode: bot, telegram_bot_user) их ведёт сам бот, а getUpdates
+опрашивает он один (`bot_polls`), команды витрины ему передаёт сюда же `_on_private`. Владелец определяется настройками owner_tg_id и owner (@имя или id): ему бот
 доставляет вопросы ядра (deliver target=owner).
 """
 import asyncio
@@ -31,6 +32,7 @@ import logging
 import os
 import random
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -86,6 +88,8 @@ class TelegramChannel:
         self._warned = False
         self._last_consult = 0.0
         self._inbox_warned = False
+        self.bot_polls = False                            # True: getUpdates опрашивает TelegramBotUser (режим бота), здесь не опрашиваем
+        self._flock = threading.Lock()                    # load-изменить-save файла состояния одним куском (поллер и посты пишут в него)
 
     # ── настройки ядра ───────────────────────────────────────────────────────
 
@@ -144,6 +148,15 @@ class TelegramChannel:
 
     async def asave(self, data: dict) -> None:
         await asyncio.to_thread(self._save, data)
+
+    async def aupdate(self, change) -> None:
+        """Изменить файл состояния целиком под замком: change(data) правит словарь, чтение и запись не перебиваются."""
+        def run():
+            with self._flock:
+                data = self._load()
+                change(data)
+                self._save(data)
+        await asyncio.to_thread(run)
 
     def last_post_ts(self) -> float:
         return float(self._load().get("last_post") or 0.0)
@@ -275,10 +288,12 @@ class TelegramChannel:
     # ── публикация ───────────────────────────────────────────────────────────
 
     async def _record_post(self, text: str, how: str) -> None:
-        data = await self.aload()
-        data["last_post"] = time.time()
-        data["posts"].append({"ts": data["last_post"], "text": text or "[файлы]"})
-        await self.asave(data)
+        now = time.time()
+
+        def add(data: dict) -> None:
+            data["last_post"] = now
+            data["posts"].append({"ts": now, "text": text or "[файлы]"})
+        await self.aupdate(add)
         self.log(f"{how}: " + (text or "[файлы]"))
         await self.client.event("telegram.posted", f"Опубликован пост в канале: «{(text or '[файлы]')[:150]}»")
 
@@ -392,6 +407,8 @@ class TelegramChannel:
     async def run_inbox(self):
         """Входящие бота (getUpdates): команды витрины и ответ-заглушка. Пока нет связи с ядром (настройки витрины приходят
         от него) или модуль выключен, смещение не двигается: сообщения не теряются, а будут обработаны позже."""
+        if self.bot_polls:                                # режим бота: единственный getUpdates ведёт TelegramBotUser (иначе 409)
+            return
         while True:
             if not self._token:
                 await asyncio.sleep(300)
@@ -414,9 +431,7 @@ class TelegramChannel:
                             break
                     handled = u["update_id"]
                 if handled is not None:
-                    data = await self.aload()
-                    data["update_offset"] = handled + 1
-                    await self.asave(data)
+                    await self.aupdate(lambda d, off=handled + 1: d.__setitem__("update_offset", off))
                 self._inbox_warned = False
                 if stuck:
                     await asyncio.sleep(5)

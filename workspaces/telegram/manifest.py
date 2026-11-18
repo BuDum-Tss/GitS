@@ -2,7 +2,7 @@
 telegram_account (environments/builtin.py ядра) дословно: их читает планировщик."""
 import copy
 
-from common import CHAT_MODES, DEFAULT_ABOUT, MODE_REPLY
+from common import ACCOUNT_MODES, CHAT_MODES, DEFAULT_ABOUT, MODE_REPLY
 from telegram_panel import ACTIONS as PANEL_ACTIONS
 
 _GENERIC = ("телеграм", "телега", "тг", "канал", "пост", "написать", "чат")      # TG-8: общие слова просьб про Telegram
@@ -110,6 +110,11 @@ MANIFEST = {
         "default_chat_mode": {"type": "string", "enum": list(CHAT_MODES), "default": MODE_REPLY,
                               "title": "Режим нового чата её аккаунта: ignore (событий нет), read (читает, не пишет), "
                                        "reply (читает и отвечает); у каждого чата меняется в панели"},
+        "account_mode": {"type": "string", "enum": list(ACCOUNT_MODES), "default": "user",
+                         "title": "Кто ведёт разговоры: user (её аккаунт, Telethon) или bot (бот из TELEGRAM_BOT_TOKEN: "
+                                  "личка, группы, группы обсуждений; Bot API, без истории, не пишет первым). Читается при "
+                                  "старте окружения: после смены перезапусти его. Переменная GITS_TG_ACCOUNT_MODE=bot "
+                                  "перекрывает настройку"},
         "owner": {"type": "string", "title": "Аккаунт владельца в Telegram: @имя или числовой id", "default": ""},
         "owner_tg_id": {"type": "integer", "title": "Telegram id владельца (0: не задан; можно указать аккаунт выше)",
                         "default": 0, "min": 0},

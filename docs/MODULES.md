@@ -236,7 +236,7 @@ asyncio.run(main())
 - Собственные настройки участника (окно, позиция, клавиши) лежат в его `settings_schema` и хранятся в `peers.<id>` (ядро их не
   знает). Меняются через дашборд (`POST /api/peers/<id>/settings`): так делают кнопки «Показать» и «Скрыть» сервиса `pet`, запись
   позиции его окна и инструмент `telegram.settings` (настройки Telegram `publish`, `after_run`, `voice`,
-  `owner`, `owner_tg_id`, `names`, `dm_flood_per_10min`, `dialog_window_mins`, `default_chat_mode` хранятся в `peers.telegram`; старые общие ключи `telegram*` при загрузке `settings.json` переносятся туда).
+  `owner`, `owner_tg_id`, `names`, `dm_flood_per_10min`, `dialog_window_mins`, `default_chat_mode`, `account_mode` хранятся в `peers.telegram`; `account_mode: bot` или `GITS_TG_ACCOUNT_MODE=bot` переводит разговоры с её аккаунта на бота `TELEGRAM_BOT_TOKEN` (Bot API, `telegram_bot_user.py`, читается при старте окружения); старые общие ключи `telegram*` при загрузке `settings.json` переносятся туда).
 
 ### Среда агента (ТЗ 32)
 
