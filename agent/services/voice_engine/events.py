@@ -12,6 +12,11 @@ KIND_UTTERANCE = "voicechat.utterance"
 KIND_SPOKEN = "voicechat.spoken"
 UTTERANCE_TTL_S = 90.0                      # устаревшую фразу отвечать поздно: событие живёт полторы минуты
 EVENT_TEXT_MAX = 600
+SPOKEN_TTL_S = 120.0                        # итог речи для v2: событие-фон, живёт две минуты
+
+# внимание v2 (RUNTIME_SPEC 9): приоритет по причине обращения, у фона BACKGROUND; имена уровней разбирает `from_legacy`
+V2_PRIORITY = {"name": "USER", "owner": "USER", "one_to_one": "USER", "continuation": "IMPORTANT"}
+V2_SAY_TOOL = {"discord": "discord.say"}    # явная дорожка речи по адаптеру; остальные адаптеры отвечают через `voice.say`
 
 _WORD_END = r"\w{0,2}"                      # падежное окончание имени: «Глэдос», «Глэдоса», «Глэдосу»
 
@@ -76,6 +81,14 @@ def recent_tail(phrases, now: float) -> str:
     return "до этого в канале: " + "; ".join(reversed(picked)) if picked else ""
 
 
+def v2_fields(*, session: str, speaker_id: str, adapter: str, addressed: bool, reason: str) -> dict:
+    """Добавка для внимания v2 (`from_legacy` читает ключ `v2`, старое внимание его не видит): приоритет по причине обращения
+    (`name`/`owner`/`one_to_one` это USER, `continuation` это IMPORTANT, не обращённая фраза это BACKGROUND), ключ слияния
+    `<сессия>:<говорящий>`, инструмент ответа по адаптеру (`discord.say` для Discord, иначе `voice.say`)."""
+    return {"priority": V2_PRIORITY.get(reason, "USER") if addressed else "BACKGROUND",
+            "group_key": f"{session}:{speaker_id}", "reply_tool": V2_SAY_TOOL.get(adapter, "voice.say")}
+
+
 def utterance_event(*, text: str, speaker: dict, session: str, adapter: str, duration_ms: int, language: str,
                     addressed: bool, reason: str, interrupted: bool = False, context: str = "",
                     urgency_hint: int | None = None, title: str = "") -> dict:
@@ -94,7 +107,21 @@ def utterance_event(*, text: str, speaker: dict, session: str, adapter: str, dur
             "speaker": speaker, "needs_reply": addressed, "addressed_reason": reason,
             "interrupted_me": interrupted, "title": title, "phrase": text[:EVENT_TEXT_MAX],
         },
+        "v2": v2_fields(session=session, speaker_id=speaker["id"], adapter=adapter, addressed=addressed, reason=reason),
     }
     if urgency_hint is not None and not addressed:
         event["urgency_hint"] = urgency_hint
     return event
+
+
+def spoken_event(*, session: str, adapter: str, uid: str, spoken_text: str, completed: bool, reason: str = "",
+                 spoken_ms: int = 0) -> dict:
+    """Итог её речи для внимания v2 (RUNTIME_SPEC 7.1): фон (BACKGROUND, срок 2 мин), агента не будит. Текст это то, что реально прозвучало."""
+    clipped = spoken_text[:EVENT_TEXT_MAX]
+    tail = "" if completed else f" (оборвано{': ' + reason if reason else ''})"
+    return {
+        "kind": KIND_SPOKEN, "text": f"ты сказала в голосовом канале: «{clipped}»{tail}", "urgency_hint": 1, "expires_in_s": SPOKEN_TTL_S,
+        "data": {"session": session, "adapter": adapter, "utterance_id": uid, "completed": completed, "reason": reason,
+                 "spoken_ms": spoken_ms},
+        "v2": {"priority": "BACKGROUND"},
+    }

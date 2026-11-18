@@ -15,6 +15,8 @@ from kernel.event import KIND_REMINDER
 
 logger = logging.getLogger("impulses")
 
+TEXT_PREFIX = "Напоминание, которое ты назначила себе: "
+
 
 class ImpulseTimer:
     def __init__(self, store: ReminderRepository, emit: Callable[[dict], Awaitable[None]], *,
@@ -100,7 +102,8 @@ class ImpulseTimer:
         for r in recs:
             mark = f" (опоздало на {int((now - r['due']) // 60)} мин)" if late else ""
             lines.append(f"{r['text']}{mark}")
-        text = "Напоминание, которое ты назначила себе: " + "; ".join(lines)
+        text = TEXT_PREFIX + "; ".join(lines)
+        prios = [(r.get("source") or {}).get("priority") for r in recs]
         return {"kind": KIND_REMINDER, "text": text, "urgency_hint": 2,
-                "data": {"reminder_ids": [r["id"] for r in recs], "late": late, "depth": max(int(r.get("depth", 0)) for r in recs),
+                "data": {"priority": next((p for p in prios if p is not None), None), "reminder_ids": [r["id"] for r in recs], "late": late, "depth": max(int(r.get("depth", 0)) for r in recs),
                          "untrusted": any(r.get("untrusted") for r in recs), "source": first.get("source") or {}}}

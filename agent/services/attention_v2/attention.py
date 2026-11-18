@@ -267,7 +267,8 @@ class AttentionV2:
 
     def _enqueue(self, e: Event, reason: str = "") -> None:
         self.log.transition(e, EventState.QUEUED, reason)
-        self.queue.push(e)
+        spec = self.registry.get(e.kind)
+        self.queue.push(e, passive=bool(spec and spec.passive))
 
     def _mark_delivered(self, e: Event, reason: str = "") -> None:
         self.log.transition(e, EventState.DELIVERED, reason)

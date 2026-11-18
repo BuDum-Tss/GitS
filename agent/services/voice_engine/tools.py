@@ -1,4 +1,4 @@
-"""Инструменты ядра для голосовых каналов: `voice.say`, `voice.sessions`, `voice.stop`, `voice.leave`.
+"""Инструменты ядра для голосовых каналов: `voice.say`, `voice.sessions`, `voice.stop`, `voice.leave`; `discord.say` это явная дорожка речи в Discord (то же, что `voice.say`, но только по каналам адаптера discord).
 
 Сказанное участником голосового канала приходит агенту событием `voicechat.utterance`; ответ это вызов `voice.say`, а не
 реплика диалога. Инструмент только ставит реплику в очередь и сразу возвращает uid: о конце речи ядро узнаёт отдельным событием,
@@ -14,36 +14,40 @@ from .session import VoiceSession
 
 ENV_ID = "voicechat"
 LEAVE_TIMEOUT_S = 3.0
+DISCORD_ADAPTER = "discord"
 
 
-def _pick(engine: VoiceEngine, session: str | None) -> VoiceSession:
-    """Сессия по id; без id единственная открытая."""
+def _pick(engine: VoiceEngine, session: str | None, adapter: str | None = None) -> VoiceSession:
+    """Сессия по id; без id единственная открытая (при `adapter` среди каналов этого адаптера)."""
     if session:
         found = engine.session(session)
-        if found is None:
-            raise ToolError(f"голосового канала «{session}» нет; открытые: {_ids(engine)}", "bad_request")
+        if found is None or (adapter and found.adapter != adapter):
+            raise ToolError(f"голосового канала «{session}» нет; открытые: {_ids(engine, adapter)}", "bad_request")
         return found
-    sessions = engine.sessions_manager.all()
+    sessions = [s for s in engine.sessions_manager.all() if not adapter or s.adapter == adapter]
     if not sessions:
-        raise ToolError("сейчас нет ни одного открытого голосового канала", "unavailable")
+        raise ToolError(f"сейчас нет ни одного открытого голосового канала{' ' + adapter if adapter else ''}", "unavailable")
     if len(sessions) > 1:
-        raise ToolError(f"открыто несколько голосовых каналов, укажи session: {_ids(engine)}", "bad_request")
+        raise ToolError(f"открыто несколько голосовых каналов, укажи session: {_ids(engine, adapter)}", "bad_request")
     return sessions[0]
 
 
-def _ids(engine: VoiceEngine) -> str:
-    return ", ".join(s.id for s in engine.sessions_manager.all()) or "нет"
+def _ids(engine: VoiceEngine, adapter: str | None = None) -> str:
+    return ", ".join(s.id for s in engine.sessions_manager.all() if not adapter or s.adapter == adapter) or "нет"
 
 
 def build_tools(engine: VoiceEngine) -> list[Tool]:
-    async def say(a: dict) -> str:
-        sess = _pick(engine, a.get("session"))
+    async def say(a: dict, adapter: str | None = None) -> str:
+        sess = _pick(engine, a.get("session"), adapter)
         try:
             ticket = engine.speak(sess.id, str(a["text"]), replace=bool(a.get("replace")))
         except ValueError as e:
             raise ToolError(str(e), "bad_request") from None
         where = "звучит сразу" if ticket.position == 0 else f"в очереди, перед ней реплик: {ticket.position}"
         return f"поставлено в голосовой канал «{sess.id}» ({where}), uid {ticket.uid}; когда договорит, придёт событие"
+
+    async def discord_say(a: dict) -> str:
+        return await say(a, DISCORD_ADAPTER)
 
     async def sessions(a: dict) -> str:
         rows = engine.sessions()
@@ -91,6 +95,14 @@ def build_tools(engine: VoiceEngine) -> list[Tool]:
                      "replace": {"type": "boolean", "required": False,
                                  "description": "true: оборвать звучащее и очередь и сказать это сразу"}},
              risk="auto", call=say, keywords=("скажи", "ответь", "голосом", "вслух", "войс"), availability="always"),
+        Tool(id="discord.say", env=ENV_ID, name="say",
+             description="Сказать вслух в голосовом канале Discord (явная дорожка речи): реплика ставится в очередь, вызов не ждёт "
+                         "конца речи; итог придёт фоном. Канал можно опустить, если открыт один.",
+             params={"text": {"type": "string", "description": "что сказать, живой устной речью, коротко"},
+                     "session": session_param,
+                     "replace": {"type": "boolean", "required": False,
+                                 "description": "true: оборвать звучащее и очередь и сказать это сразу"}},
+             risk="auto", call=discord_say, keywords=("скажи", "ответь", "голосом", "вслух", "дискорд", "войс"), availability="always"),
         Tool(id="voice.sessions", env=ENV_ID, name="sessions",
              description="Какие голосовые каналы открыты сейчас и кто в них: id, адаптер, говорит ли она, участники.",
              params={}, risk="auto", call=sessions, informative=True, read_only=True, keywords=("голосовой", "канал", "кто в канале", "войс"),

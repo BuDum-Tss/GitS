@@ -3,12 +3,18 @@
 Создаёт реестр видов, журнал событий (записи уходят в общий журнал ядра видом `attention_v2`), Runtime поверх единого агента и само
 внимание; маршрут событий шины (`attention_v2.routing.V2Router`) ставится в `AttentionEventSink`. Ничего не запускает.
 """
+import time
 from types import SimpleNamespace
+
+from environments.base import Environment, Tool, ToolError
 
 from services.attention_v2.attention import AttentionV2
 from services.attention_v2.eventlog import EventLog
 from services.attention_v2.kinds import KindRegistry
-from services.attention_v2.routing import V2Router, kind_prefixes, register_core_kinds
+from services.attention_v2.event import parse_priority
+from services.attention_v2.render import fmt_hms, one_line
+from services.attention_v2.routing import V2Router, kind_prefixes, register_core_kinds, timer_event
+from services.reflection.timer import TEXT_PREFIX
 from services.runtime.turns import ResidentRuntime
 from services.tracing import events_log
 
@@ -51,9 +57,79 @@ def wire_attention_v2(companion, legacy_attention, modules, workspaces, sink, en
         else:
             await legacy_attention.submit(peer_id, event)
 
+    async def timer_emit(body: dict) -> None:
+        """Приёмник `ImpulseTimer`: напоминание агента приходит событием `core.timer` (приоритет из `data.priority`, иначе NOTABLE)."""
+        data = body.get("data") or {}
+        text = str(body.get("text") or "").removeprefix(TEXT_PREFIX)
+        try:
+            priority = parse_priority(data.get("priority"))
+        except ValueError:
+            priority = None
+        await v2.process_event(timer_event(text, priority=priority))
+
     async def close() -> None:
         v2.close()
         await runtime.close()
 
     return SimpleNamespace(attention=v2, runtime=runtime, router=router, registry=registry, log=log,
-                           submit_event=submit_event, close=close)
+                           submit_event=submit_event, timer_emit=timer_emit, close=close)
+
+
+EVENT_LOG_DEFAULT = 20
+EVENT_LOG_MAX = 100
+EVENT_LOG_TEXT = 160
+
+
+def event_log_report(log, args: dict, now: float | None = None) -> str:
+    """Ответ `core.event_log`: по строке на событие (время, последнее состояние, окружение/вид, текст до 160 символов), свежие внизу.
+    `data` событий не показывается. Без журнала (v2 выключен) сообщает об этом."""
+    if log is None:
+        return "журнал событий v2 выключен (внимание v2 включается флагом GITS_ATTENTION=v2)"
+    now = time.time() if now is None else now
+    try:
+        limit = int(args.get("limit") or EVENT_LOG_DEFAULT)
+    except (TypeError, ValueError):
+        raise ToolError("limit должен быть числом", "bad_request")
+    limit = max(1, min(limit, EVENT_LOG_MAX))
+    since = None
+    if args.get("since") not in (None, ""):
+        try:
+            since = now - float(args["since"])
+        except (TypeError, ValueError):
+            raise ToolError("since это секунды назад (число)", "bad_request")
+    query = str(args.get("query") or "").strip().lower()
+    rows: dict[str, dict] = {}
+    for x in log.query(workspace=args.get("workspace") or None, kind=args.get("kind") or None):
+        if x.op not in ("new", "state"):
+            continue
+        row = rows.setdefault(x.event_id, {"ts": x.ts, "ws": x.workspace, "kind": x.kind, "text": "", "state": x.state})
+        row["state"] = x.state
+        if x.op == "new":
+            row["text"] = x.text
+    out = [r for r in rows.values() if (since is None or r["ts"] >= since) and (not query or query in r["text"].lower())]
+    if not out:
+        return "в журнале событий ничего подходящего нет"
+    lines = [f"[{fmt_hms(r['ts'])}] {r['state']} {r['ws']}/{r['kind']}: {one_line(r['text'], EVENT_LOG_TEXT)}" for r in out[-limit:]]
+    return f"События ({len(lines)} из {len(out)}):\n" + "\n".join(lines)
+
+
+def register_v2_tools(registry, v2) -> Environment:
+    """`core.event_log` (только чтение): журнал внимания v2 в памяти; при выключенном v2 инструмент отвечает, что журнал выключен."""
+    log = v2.log if v2 is not None else None
+
+    async def event_log(a: dict) -> str:
+        return event_log_report(log, a)
+
+    tool = Tool(id="core.event_log", env="core", name="event_log",
+                description="Журнал событий внимания: что приходило и что с ним стало (время, состояние, окружение/вид, текст). "
+                            "Для вопросов «что было недавно», «кто писал», «что я пропустила».",
+                params={"query": {"type": "string", "required": False, "description": "слова из текста события"},
+                        "workspace": {"type": "string", "required": False, "description": "окружение (discord, telegram, core)"},
+                        "kind": {"type": "string", "required": False, "description": "вид события, например core.timer"},
+                        "since": {"type": "number", "required": False, "description": "за сколько последних секунд"},
+                        "limit": {"type": "integer", "required": False, "description": "сколько записей, по умолчанию 20, не больше 100"}},
+                risk="auto", call=event_log, informative=True, read_only=True,
+                keywords=("журнал", "события", "что было", "что пропустила", "недавно"), availability="always")
+    env = Environment(id="attention_v2", title="Журнал событий внимания", description="Журнал событий внимания v2.", tools=[tool])
+    registry.add(env)
+    return env

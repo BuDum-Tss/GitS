@@ -149,7 +149,20 @@ def register(registry, companion, memory):
             raise ToolError("нужен текст и срок больше нуля минут")
         if minutes > 60 * 24 * 30:
             raise ToolError("напоминание можно назначить не дальше чем на 30 суток")
-        await impulses.timer.add(time.time() + minutes * 60, text, source={"kind": "conversation"})
+        source = {"kind": "conversation"}
+        if a.get("priority") not in (None, ""):                      # важность для внимания v2 (core.timer); зажимается потолком вида
+            from services.attention_v2.event import parse_priority
+            try:
+                raw = a["priority"]
+                if isinstance(raw, str):
+                    try:
+                        raw = float(raw.replace(",", "."))
+                    except ValueError:
+                        pass
+                source["priority"] = parse_priority(raw)
+            except ValueError as e:
+                raise ToolError(str(e), "bad_request")
+        await impulses.timer.add(time.time() + minutes * 60, text, source=source)
         return f"напомнит себе через {int(minutes)} мин: она сама решит, сказать ли об этом, когда срок придёт"
 
     def _tasks():
@@ -306,7 +319,9 @@ def register(registry, companion, memory):
                   "когда человек сказал «напомни», «вернись к этому позже», «проверь через час»). В срок придёт внутреннее "
                   "событие, она подумает и решит, сказать, сделать или промолчать.",
                   {"text": {"type": "string", "description": "о чём вспомнить, одной фразой"},
-                   "in_minutes": {"type": "number", "description": "через сколько минут напомнить себе"}},
+                   "in_minutes": {"type": "number", "description": "через сколько минут напомнить себе"},
+                   "priority": {"type": "string", "required": False,
+                                "description": "важность: BACKGROUND, NORMAL, NOTABLE (по умолчанию), IMPORTANT или число 0-100"}},
                   remind_self, keywords=("напомни", "напоминание", "вернись", "позже", "через", "проверь", "не забудь")),
             _tool("assistant", "tasks", "Показать открытые задачи текущей среды (цель, статус, шаги, срок): что она сейчас делает и что "
                   "осталось. Для вопросов «чем ты занята», «что в планах», «какие у тебя задачи».",

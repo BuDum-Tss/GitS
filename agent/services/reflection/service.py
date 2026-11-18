@@ -23,14 +23,14 @@ logger = logging.getLogger("impulses")
 REMINDERS_FILE = "reminders.json"
 
 
-def build(companion, attention, *, settings_source=None, clock=None, tasks=None) -> SimpleNamespace:
+def build(companion, attention, *, settings_source=None, clock=None, tasks=None, emit=None) -> SimpleNamespace:
     """companion - Companion (память, модель, контекст, единый агент), attention - Attention,
-    tasks - TaskService (ТЗ 32): напоминания себе и планы пользователя живут в общих задачах; без него прежний `reminders.json`."""
+    emit - приёмник событий таймера (при внимании v2 это `core.timer`, иначе `attention.submit_self`), tasks - TaskService (ТЗ 32): напоминания себе и планы пользователя живут в общих задачах; без него прежний `reminders.json`."""
     import time
     clock = clock or time.time
     folder = lambda: Path(companion._dir)                      # noqa: E731  (папка памяти персонажа меняется при переключении)
     reminders = tasks.reminders if tasks is not None and tasks.reminders is not None else JsonReminders(lambda: folder() / REMINDERS_FILE, clock)
-    timer = ImpulseTimer(reminders, attention.submit_self, clock=clock)
+    timer = ImpulseTimer(reminders, emit or attention.submit_self, clock=clock)
 
     async def plan(text: str):
         with impulse_origin.as_self():          # ТЗ 32: то, что агент сделает по этому намерению, это действие по самоимпульсу

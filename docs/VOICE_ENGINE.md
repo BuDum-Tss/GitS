@@ -251,6 +251,15 @@ await client.send_audio("u42", to_16k_mono(chunk_48k_stereo))   # звук КА�
 - `voice.stop(session?)`: замолчать, очистить очередь.
 - `voice.leave(session?)`: попросить адаптер выйти из канала.
 
+- `discord.say(text, session?, replace?)`: явная дорожка речи для Discord (RUNTIME_SPEC 7.1), та же очередь, что у `voice.say`, но
+  только каналы адаптера `discord`; без `session` работает, если открыт один такой канал. `voice.*` остаются как есть (алиасы).
+
+Внимание v2 (`GITS_ATTENTION=v2`): в событие фразы добавлен ключ `v2` (старое внимание его не читает, формат прежний), из него
+`from_legacy` берёт приоритет по причине обращения (`name`/`owner`/`one_to_one`: USER, `continuation`: IMPORTANT, фон: BACKGROUND),
+`group_key = <session>:<speaker>` (слияние подряд идущих фраз одного человека) и инструмент ответа (`discord.say` для адаптера
+`discord`, иначе `voice.say`); срок 90 с. Итог речи при v2 приходит событием `voicechat.spoken` (движок шлёт его, только если
+включён `emit_spoken`): фон BACKGROUND, срок 2 мин, вид `passive`: не будит агента, даже по таймеру `ON_TURN_S`, и уходит в ближайшую пачку.
+
 Инструменты не помечены `sends`: запись `module_out` пишет сам движок и только про то, что действительно прозвучало.
 
 ## Задержка реакции

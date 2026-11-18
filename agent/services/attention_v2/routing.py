@@ -8,8 +8,8 @@ import os
 from typing import Callable
 
 from .attention import AttentionV2
-from .event import IMPORTANT, NOTABLE, USER, Event, Reply, Sender
-from .kinds import TTL_CHAT, TTL_TIMER, KindRegistry, KindSpec, from_legacy
+from .event import BACKGROUND, IMPORTANT, NOTABLE, USER, Event, Reply, Sender
+from .kinds import TTL_CHAT, TTL_SPOKEN, TTL_TIMER, TTL_VOICE, KindRegistry, KindSpec, from_legacy
 
 ENV_FLAG = "GITS_ATTENTION"
 ENV_KINDS = "GITS_ATTENTION_V2_KINDS"
@@ -19,6 +19,12 @@ DASHBOARD_WORKSPACE = "dashboard"
 DASHBOARD_KIND = "dashboard.message"
 DASHBOARD_REPLY = "dashboard.text"
 DASHBOARD_GROUP = "dashboard:owner"
+
+VOICE_WORKSPACE = "voicechat"
+VOICE_UTTERANCE_KIND = "voicechat.utterance"
+VOICE_SPOKEN_KIND = "voicechat.spoken"
+TIMER_KIND = "core.timer"
+TIMER_TEXT_PREFIX = "напоминание: "
 
 
 def v2_enabled(environ=None) -> bool:
@@ -36,10 +42,16 @@ def kind_prefixes(environ=None) -> tuple[str, ...]:
 
 
 def register_core_kinds(registry: KindRegistry) -> None:
-    """Виды самого ядра: сообщение владельца из чата дашборда и таймер."""
+    """Виды самого ядра: сообщение владельца из чата дашборда, таймер, фраза из голосового канала и итог её речи.
+    Итог речи (`voicechat.spoken`) это фон: потолок BACKGROUND, а `passive` не даёт запускать ход даже таймеру `ON_TURN_S`: агента не будит, а в ближайшую пачку попадает."""
     registry.register(KindSpec(kind=DASHBOARD_KIND, default_priority=USER, max_priority=USER, ttl_s=TTL_CHAT, coalesce=True,
                                reply_tool=DASHBOARD_REPLY), DASHBOARD_WORKSPACE)
-    registry.register(KindSpec(kind="core.timer", default_priority=NOTABLE, max_priority=IMPORTANT, ttl_s=TTL_TIMER), "core")
+    registry.register(KindSpec(kind=TIMER_KIND, default_priority=NOTABLE, max_priority=IMPORTANT, ttl_s=TTL_TIMER), "core")
+    registry.register(KindSpec(kind=VOICE_UTTERANCE_KIND, default_priority=BACKGROUND, max_priority=USER, ttl_s=TTL_VOICE,
+                               coalesce=True), VOICE_WORKSPACE)
+    registry.register(KindSpec(kind=VOICE_SPOKEN_KIND, default_priority=BACKGROUND, max_priority=BACKGROUND, ttl_s=TTL_SPOKEN,
+                               passive=True),
+                      VOICE_WORKSPACE)
 
 
 def dashboard_event(text: str, *, ts: float | None = None) -> Event:
@@ -80,3 +92,9 @@ class V2Router:
     async def submit(self, peer_id: str, event: dict) -> None:
         self.sync_manifest(peer_id)
         await self.attention.process_event(from_legacy(peer_id, event, self.registry))
+
+
+def timer_event(text: str, *, priority=None, ts: float | None = None) -> Event:
+    """Напоминание или таймер агента: событие `core.timer` окружения `core` (по умолчанию NOTABLE, потолок IMPORTANT, срок 10 минут)."""
+    kw = {} if ts is None else {"ts": ts}
+    return Event(workspace="core", kind=TIMER_KIND, text=TIMER_TEXT_PREFIX + text, priority=priority, **kw)

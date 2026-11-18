@@ -42,6 +42,7 @@ class KindSpec:
     coalesce: bool = False                # события с `group_key` этого вида можно сливать (4.5)
     reply_tool: str | None = None
     critical: bool = False                # не режется потолком `FOCUS_CAP` вне фокуса (4.3)
+    passive: bool = False                 # фон: ждёт в очереди и уходит в пачку вместе с другими, но сам ход не запускает (ни по `ON_TURN_S`)
     legacy: bool = False                  # вид выведен из события старой шины, не объявлен манифестом
 
     @classmethod
@@ -56,7 +57,7 @@ class KindSpec:
             raise ValueError(f"{kind}: ttl_s должно быть положительным числом")
         return cls(kind=kind, default_priority=min(df, mx), max_priority=mx, ttl_s=float(ttl),
                    coalesce=bool(d.get("coalesce", False)), reply_tool=d.get("reply_tool"),
-                   critical=bool(d.get("critical", False)))
+                   critical=bool(d.get("critical", False)), passive=bool(d.get("passive", False)))
 
 
 @dataclass
@@ -138,7 +139,7 @@ def from_legacy(peer_id: str, event_dict: dict, registry: KindRegistry, *, now: 
                 event_id: str | None = None) -> Event:
     """Событие старой шины (`kind`, `text`, `urgency_hint` 0-5, `addressed_to_me`, `sender`, `reply_channel`, `dedupe_key`,
     `expires_in_s`, `data`) в `Event`. Срочность 0..5 это приоритет [0, 10, 30, 50, 70, 100]; обращение к ней поднимает до USER,
-    но только если отправитель не бот. Необъявленный вид принимается видом по умолчанию (не отбрасывается)."""
+    но только если отправитель не бот. Ключ `v2` (`priority`, `group_key`, `reply_tool`) от отправителя перекрывает всё это. Необъявленный вид принимается видом по умолчанию (не отбрасывается)."""
     d = event_dict
     ts = d.get("ts") if isinstance(d.get("ts"), (int, float)) else (now if now is not None else time.time())
     kind = d.get("kind") or f"{peer_id}.event"
@@ -158,13 +159,25 @@ def from_legacy(peer_id: str, event_dict: dict, registry: KindRegistry, *, now: 
     if isinstance(exp, (int, float)) and not isinstance(exp, bool) and exp > 0:
         expires_at = ts + exp
 
+    group_key = d.get("dedupe_key") or None
+    v2 = d.get("v2") if isinstance(d.get("v2"), dict) else {}          # добавка отправителя для v2: приоритет, ключ слияния, инструмент ответа
+    try:
+        explicit = parse_priority(v2.get("priority"))
+    except ValueError:
+        explicit = None
+    if explicit is not None:
+        priority = explicit
+    group_key = v2.get("group_key") or group_key
+
     reply = None
     rc = d.get("reply_channel")
     if isinstance(rc, dict) and rc.get("module"):
         reply = Reply(tool=f"{rc['module']}.message", target=rc.get("target"))
     elif isinstance(rc, str) and rc:
         reply = Reply(tool=rc)
+    if v2.get("reply_tool"):
+        reply = Reply(tool=str(v2["reply_tool"]), target=reply.target if reply is not None else None)
 
     return Event(id=event_id or new_event_id(), ts=ts, workspace=peer_id, kind=kind, sender=sender,
                  text=str(d.get("text", "") or ""), data=dict(d.get("data") or {}), priority=priority,
-                 expires_at=expires_at, reply=reply, group_key=d.get("dedupe_key") or None)
+                 expires_at=expires_at, reply=reply, group_key=group_key)

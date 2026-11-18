@@ -60,15 +60,18 @@ class PriorityQueue:
         self._on_drop = on_drop
         self._items: list[Event] = []
         self._seq: dict[str, int] = {}
-        self._queued_at: dict[str, float] = {}
+        self._queued_at: dict[str, float] = {}           # только у «активных» событий: пассивные (фон) таймер ожидания не заводят
+        self._passive: set[str] = set()
         self._counter = itertools.count()
 
     def _now(self) -> float:
         return self._clock.time() if self._clock is not None else time.time()
 
     def _drop(self, e: Event, state: EventState) -> None:
+        passive = e.id in self._passive
         self._remove(e)
-        self.digest.add(e)
+        if not passive:                                  # пассивный фон тихо уходит: сводка про него только шумела бы
+            self.digest.add(e)
         if self._on_drop is not None:
             self._on_drop(e, state)
 
@@ -76,6 +79,7 @@ class PriorityQueue:
         self._items = [x for x in self._items if x.id != e.id]
         self._seq.pop(e.id, None)
         self._queued_at.pop(e.id, None)
+        self._passive.discard(e.id)
 
     def _sorted(self) -> list[Event]:
         return sorted(self._items, key=lambda e: (-e.prio, e.ts, self._seq[e.id]))
@@ -88,13 +92,17 @@ class PriorityQueue:
             self._drop(e, EventState.EXPIRED)
         return gone
 
-    def push(self, e: Event) -> list[Event]:
-        """Поставить событие; возвращает вытесненные при переполнении (возможно, само `e`, если оно самое слабое)."""
+    def push(self, e: Event, passive: bool = False) -> list[Event]:
+        """Поставить событие; возвращает вытесненные при переполнении (возможно, само `e`, если оно самое слабое).
+        `passive`: фоновое событие, которое само не будит и не заводит таймер ожидания."""
         self.expire()
         if e.id not in self._seq:
             self._items.append(e)
             self._seq[e.id] = next(self._counter)
-            self._queued_at[e.id] = self._now()
+            if passive:
+                self._passive.add(e.id)
+            else:
+                self._queued_at[e.id] = self._now()
         evicted = []
         while len(self._items) > self.max_size:
             victim = min(self._items, key=lambda x: (x.prio, x.ts, self._seq[x.id]))

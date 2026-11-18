@@ -34,10 +34,10 @@ class VoiceService:
               allow: Callable[[str | None], bool], names: Callable[[], Iterable[str]],
               journal: Callable[[str, str, dict], None],
               ref_resolver: Callable[[], Any] | None = None, leaks: Callable[[str], Any] | None = None,
-              memory_dir: Any = None) -> "VoiceService":
+              memory_dir: Any = None, emit_spoken: bool = False) -> "VoiceService":
         """`submit(peer_id, event)` это `attention.submit`, `token` и `allow` берутся у шины модулей, `journal(kind, text, data)`
         это запись в журнал событий ядра, `ref_resolver()` отдаёт (WAV, текст) референса голоса активного персонажа; `leaks(text)` (можно async) говорит, есть ли в
-        тексте личные слова, которые нельзя отправлять в облако; `memory_dir` это папка памяти ядра (суточный счётчик облака)."""
+        тексте личные слова, которые нельзя отправлять в облако; `memory_dir` это папка памяти ядра (суточный счётчик облака); `emit_spoken` включает событие итога речи `voicechat.spoken` (внимание v2)."""
         config = EngineConfig.from_env(environ)
         if not config.enabled:
             logger.info("Движок голоса выключен: %s", config.disabled_reason)
@@ -60,7 +60,7 @@ class VoiceService:
         tts = _with_cloud(local, config, environ, ref_resolver, leaks, memory_dir)
         vad_factory = load_silero_factory(config.silero_model, config.silero_threshold) if config.vad == "silero" else None
         engine = VoiceEngine(stt=stt, tts=tts, config=config, emit_event=emit, journal=journal, names=names,
-                             vad_factory=vad_factory)
+                             vad_factory=vad_factory, emit_spoken=emit_spoken)
         logger.info("Движок голоса включён: распознавание %s, синтез %s", config.stt_url, config.tts_url)
         return cls(config, engine, VoiceServer(engine, token, allow))
 
@@ -163,6 +163,7 @@ def wire_voice(layer, registry, environ: Mapping[str, str] | None = None) -> Voi
     service = VoiceService.build(os.environ if environ is None else environ, submit=submit,
                                  token=lambda: layer.hub.token, allow=lambda remote: remote_allowed(remote, layer.hub.allow),
                                  names=names, journal=lambda kind, text, data: events_log.log_nowait(kind, text, **data),
-                                 ref_resolver=character_reference, leaks=leaks, memory_dir=settings.memory_dir())
+                                 ref_resolver=character_reference, leaks=leaks, memory_dir=settings.memory_dir(),
+                                 emit_spoken=getattr(layer, "submit_event", None) is not None)
     service.register_tools(registry)
     return service

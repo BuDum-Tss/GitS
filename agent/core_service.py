@@ -36,7 +36,7 @@ from services.tools import tool_search
 from services.spaces.manager import WorkspaceManager
 from services.attention import Attention, AttentionEventSink
 from services.attention_v2 import routing as attention_v2
-from services.runtime.attention_wiring import wire_attention_v2
+from services.runtime.attention_wiring import register_v2_tools, wire_attention_v2
 from services.spaces.link import WorkspaceLink
 from services.spaces.lease import LeaseAdapter
 from services.conversation.companion import Companion
@@ -245,6 +245,7 @@ def wire_modules(companion, registry, *, specs=None,
     v2 = None                                            # внимание v2 под флагом GITS_ATTENTION=v2 (RUNTIME_PLAN, этап 3): по умолчанию выключено
     if attention_v2.v2_enabled():
         v2 = wire_attention_v2(companion, attention, modules, workspaces, sink)
+    register_v2_tools(registry, v2)                      # core.event_log (без v2 отвечает, что журнал выключен)
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, focus=focus,
                             supervisor=sup, presence=presence, tasks=[], link=link,
                             workspaces=workspaces, v2=v2, attention_v2=v2.attention if v2 else None)
@@ -400,7 +401,8 @@ async def _run(config: dict):
         link_change(rec)
         task_change(rec)
     layer.workspaces.on_change = on_change
-    impulses = impulse_service.build(companion, layer.attention, tasks=companion.tasks)             # ТЗ 30: импульсы и размышление
+    impulses = impulse_service.build(companion, layer.attention, tasks=companion.tasks,
+                                      emit=layer.v2.timer_emit if layer.v2 is not None else None)             # ТЗ 30: импульсы и размышление
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     work_loop = WorkLoop(env_of=lambda: layer.workspaces.current, manifest_of=layer.modules.manifest_of, agent=companion.resident,
                          emit=layer.attention.submit_self, settings=layer.attention.settings_now,

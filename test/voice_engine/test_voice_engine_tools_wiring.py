@@ -104,7 +104,7 @@ async def test_stop_and_leave_tools(engine):
 
 async def test_tool_descriptions_and_schema_are_valid(engine):
     for tool in build_tools(engine):
-        assert tool.id.startswith("voice.") and tool.risk == "auto" and tool.availability == "always" and not tool.sends
+        assert tool.id.startswith(("voice.", "discord.")) and tool.risk == "auto" and tool.availability == "always" and not tool.sends
         assert tool.description and len(tool.description) < 260
     args, err = validate_args(tools_of(engine)["voice.say"], {"text": "привет", "replace": "да"})
     assert err is None and args == {"text": "привет", "replace": True}
@@ -114,7 +114,7 @@ async def test_tool_descriptions_and_schema_are_valid(engine):
 async def test_register_into_registry(engine):
     reg = Registry()
     env = register_voice_tools(reg, engine)
-    assert reg.envs[env.id] is env and {t.id for t in env.tools} == {"voice.say", "voice.sessions", "voice.stop", "voice.leave", "voice.transcript"}
+    assert reg.envs[env.id] is env and {t.id for t in env.tools} == {"discord.say", "voice.say", "voice.sessions", "voice.stop", "voice.leave", "voice.transcript"}
 
 
 # ── настройки и подключение ──────────────────────────────────────────────────────

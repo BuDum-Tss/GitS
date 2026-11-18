@@ -43,8 +43,11 @@ class VoiceEngine:
                  journal: Callable[[str, str, dict], None] | None = None,
                  on_speech: Callable[[dict], None] | None = None,
                  names: Callable[[], Iterable[str]] | None = None,
-                 vad_factory: Callable[[], VadDetector] | None = None):
+                 vad_factory: Callable[[], VadDetector] | None = None, emit_spoken: bool = False):
+        """`emit_spoken`: итог её речи уходит ядру ещё и событием `voicechat.spoken` (для внимания v2, где это фон); по умолчанию нет:
+        старое внимание его не ждёт, итог остаётся только записью журнала."""
         self.config = config or EngineConfig()
+        self._emit_spoken = emit_spoken
         self.stt, self.tts = stt, tts
         self.clock = clock or SystemClock()
         self._emit_event, self._journal, self._on_speech = emit_event, journal, on_speech
@@ -326,6 +329,8 @@ class VoiceEngine:
                     "adapter": sess.adapter, "utterance_id": ev.uid, "completed": ev.completed, "reason": ev.reason,
                     "spoken_ms": ev.spoken_ms, "spoken_segments": ev.spoken_segments, "interrupted": ev.reason == "barge_in",
                     "tts": ev.tts})
+        if ev.phase == "ended" and ev.spoken_text and self._emit_spoken and self._emit_event is not None:
+            self._spawn(sess, self._send_spoken(sess, ev), f"voice-spoken-{sess.id}")
         if self._on_speech is not None:
             data: dict[str, Any] = {"phase": ev.phase, "utterance_id": ev.uid, "session": sess.id, "adapter": sess.adapter}
             if ev.phase == "segment":
@@ -339,6 +344,14 @@ class VoiceEngine:
                 self._on_speech(data)
             except Exception:
                 logger.exception("Обработчик событий речи упал")
+
+    async def _send_spoken(self, sess: VoiceSession, ev: PlaybackEvent) -> None:
+        """Итог речи событием `voicechat.spoken` (фон, не будит агента)."""
+        try:
+            await self._emit_event(events.spoken_event(session=sess.id, adapter=sess.adapter, uid=ev.uid, spoken_text=ev.spoken_text,
+                                                       completed=ev.completed, reason=ev.reason or "", spoken_ms=ev.spoken_ms))
+        except Exception:
+            logger.exception("Событие итога речи не принято ядром")
 
     # ── состояние и остановка ────────────────────────────────────────────────────
 
