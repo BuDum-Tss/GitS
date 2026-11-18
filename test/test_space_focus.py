@@ -14,12 +14,13 @@ def make(current="assistant", streamer=False, config=None):
 def test_config_file_has_the_old_profiles_data():
     spaces, streamer_tone = load_config()
     assert set(spaces) >= {"assistant", "sleep", "rimworld", "montage"} and streamer_tone
-    assert spaces["assistant"].focus == ("desktop", "telegram") and spaces["rimworld"].memory_scopes == ("rimworld",)
+    # Discord стал окружением (коммит 1f6383d) и осознанно добавлен в фокус ассистента рядом с desktop и telegram
+    assert spaces["assistant"].focus == ("desktop", "telegram", "discord") and spaces["rimworld"].memory_scopes == ("rimworld",)
 
 
 def test_focus_follows_the_current_workspace():
     ws, f = make()
-    assert f.focus_modules() == {"desktop", "telegram"} and f.memory_scopes() == ["assistant"]
+    assert f.focus_modules() == {"desktop", "telegram", "discord"} and f.memory_scopes() == ["assistant"]
     ws.current = "rimworld"
     assert f.focus_modules() == {"rimworld"} and f.info() == {"id": "rimworld", "title": "RimWorld", "focus_modules": ["rimworld"]}
     ws.current = "sleep"

@@ -18,7 +18,7 @@ SPOKEN_TTL_S = 120.0                        # итог речи для v2: со�
 V2_PRIORITY = {"name": "USER", "owner": "USER", "one_to_one": "USER", "continuation": "IMPORTANT"}
 V2_SAY_TOOL = {"discord": "discord.say"}    # явная дорожка речи по адаптеру; остальные адаптеры отвечают через `voice.say`
 
-_WORD_END = r"\w{0,2}"                      # падежное окончание имени: «Глэдос», «Глэдоса», «Глэдосу»
+_WORD_END = r"\w{0,2}"                      # падежное окончание имени: до двух букв (имя, имени, имя+окончание); само имя и алиасы приходят из карточки персонажа (`wiring`)
 
 
 def _norm(text: str) -> str:

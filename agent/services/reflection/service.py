@@ -12,8 +12,7 @@ from services.character import prompts
 from services.reflection.store import JsonReminders
 from services.reflection import origin as impulse_origin
 from services.reflection.timer import ImpulseTimer
-from services.attention import event_of
-from services.attention.items import reply_text
+from services.attention import event_of, reply_text
 from services.reflection.plan_nudge import PlanNudger
 from services.reflection.reflection import ReflectionService
 from kernel.event import KIND_AFTER_CONVERSATION
