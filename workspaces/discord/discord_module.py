@@ -137,6 +137,14 @@ class DiscordModule:
         async def _on_character(data):
             await self.load_persona()
 
+        @c.tool("text")                                     # явная дорожка текстового ответа; message его прежнее имя (алиас)
+        async def text(args):
+            return await self.message(args)
+
+        @c.check("text")
+        async def text_check(args):
+            return await self.message_check(args)
+
         @c.tool("message")
         async def message(args):
             return await self.message(args)

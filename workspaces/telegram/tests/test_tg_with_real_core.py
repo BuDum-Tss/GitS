@@ -86,7 +86,7 @@ async def test_module_manifest_is_accepted_and_tools_reach_the_planner(tmp_path,
         rec = s.core.modules.get("telegram")
         assert rec.connected and rec.title == "Telegram" and "chat.channel" in rec.manifest["capabilities"]
         env = s.core.envs.envs["telegram"]
-        assert env.module == "telegram" and {t.name for t in env.tools} == {"message", "inbox", "announce", "settings"}
+        assert env.module == "telegram" and {t.name for t in env.tools} == {"text", "message", "inbox", "announce", "settings"}
         s.core.envs.focus = lambda: set()                                     # ни один профиль модуль не focus: always видны
         visible = {t.id for t in s.core.envs.active_tools()}
         assert {"telegram.message", "telegram.inbox", "telegram.announce", "telegram.settings"} <= visible

@@ -154,3 +154,18 @@ async def test_legacy_event_flows_through_attention():
     r.focus = "telegram"
     await r.attention.process_event(e)
     assert len(r.runtime.triggers) == 1 and r.runtime.last_trigger == [e]
+
+
+def test_from_legacy_takes_reply_tool_and_group_key_from_the_bus_event():
+    """Окружения шины: инструмент ответа берётся из `reply_channel.tool`, ключ слияния из `data.group_key`."""
+    ev = from_legacy("discord", {"kind": "discord.message", "text": "привет", "addressed_to_me": False,
+                                 "reply_channel": {"module": "discord", "target": "channel:1", "tool": "discord.text"},
+                                 "data": {"group_key": "discord:1:5"}, "dedupe_key": "discord:message:1:77"}, KindRegistry())
+    assert ev.reply.tool == "discord.text" and ev.reply.target == "channel:1"
+    assert ev.group_key == "discord:1:5"
+
+
+def test_from_legacy_reply_tool_falls_back_to_message():
+    ev = from_legacy("telegram", {"kind": "telegram.dm", "text": "x", "reply_channel": {"module": "telegram", "target": "user:1"}},
+                     KindRegistry())
+    assert ev.reply.tool == "telegram.message"

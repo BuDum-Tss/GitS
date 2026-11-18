@@ -88,7 +88,7 @@ async def test_manifest_is_accepted_and_tools_reach_the_planner(tmp_path, monkey
         rec = s.core.modules.get("discord")
         assert rec.connected and rec.title == "Discord" and "chat.channel" in rec.manifest["capabilities"]
         env = s.core.envs.envs["discord"]
-        assert env.module == "discord" and {t.name for t in env.tools} == {"message", "react", "inbox", "voice_join", "voice_leave"}
+        assert env.module == "discord" and {t.name for t in env.tools} == {"text", "message", "react", "inbox", "voice_join", "voice_leave"}
         s.core.envs.focus = lambda: set()
         assert {"discord.message", "discord.inbox"} <= {t.id for t in s.core.envs.active_tools()}
         msg = s.core.envs.get("discord.message")
@@ -101,7 +101,7 @@ async def test_mention_in_channel_goes_through_r6_to_conversation(tmp_path, monk
         assert s.core.attention.last_decision["rule"] == "R6"
         [(text, channel, sender)] = s.core.io.inputs
         assert text.startswith("Сообщение от Петя в сервере «Клуб», канале «#общий»") and sender["id"] == "discord:9"
-        assert channel == {"module": "discord", "target": "channel:100"} or getattr(channel, "target", None) == "channel:100"
+        assert channel == {"module": "discord", "target": "channel:100", "tool": "discord.text"} or getattr(channel, "target", None) == "channel:100"
 
 
 async def test_chatter_and_read_mode_do_not_trigger_r6(tmp_path, monkeypatch):

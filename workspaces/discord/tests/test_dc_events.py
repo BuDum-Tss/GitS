@@ -18,8 +18,9 @@ async def test_channel_message_event_has_sender_reply_channel_and_data(tmp_path,
     assert ev["kind"] == "discord.message" and ev["text"] == "Сообщение от Маша в сервере «Клуб», канале «#общий»: «всем привет»"
     assert ev["addressed_to_me"] is False and ev["memorable"] is False
     assert ev["sender"] == {"id": "discord:5", "name": "Маша", "is_owner": False, "username": "@masha"}
-    assert ev["reply_channel"] == {"module": "discord", "target": "channel:100"}
-    assert ev["data"] == {"message_id": 1001, "guild_id": 1, "guild_name": "Клуб", "channel_id": 100, "channel_name": "общий"}
+    assert ev["reply_channel"] == {"module": "discord", "target": "channel:100", "tool": "discord.text"}
+    assert ev["data"] == {"message_id": 1001, "guild_id": 1, "guild_name": "Клуб", "channel_id": 100, "channel_name": "общий",
+                          "group_key": "discord:100:5"}
     assert ev["dedupe_key"] == "discord:message:100:1001"
 
 
@@ -70,7 +71,7 @@ async def test_dm_event_is_always_addressed_and_memorable(tmp_path, monkeypatch)
         [ev] = rig.events()
     assert ev["kind"] == "discord.dm" and ev["addressed_to_me"] is True and ev["memorable"] is True
     assert ev["text"] == "Сообщение от Маша в её личке: «привет, это личка»"
-    assert ev["reply_channel"] == {"module": "discord", "target": "dm:5"} and ev["sender"]["is_owner"] is False
+    assert ev["reply_channel"] == {"module": "discord", "target": "dm:5", "tool": "discord.text"} and ev["sender"]["is_owner"] is False
     assert "guild_id" not in ev["data"]
 
 

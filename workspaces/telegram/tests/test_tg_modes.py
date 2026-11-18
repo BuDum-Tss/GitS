@@ -101,7 +101,7 @@ async def test_reply_mode_is_unchanged(tmp_path, monkeypatch):
         user = setup_user(rig, "reply")
         await user._on_incoming(FakeEvent(text="@glados_acc ау", msg_id=1, mentioned=True, client=rig.tl, **GROUP))
         ev = (await events(rig, 1))[0]
-    assert ev["addressed_to_me"] is True and ev["reply_channel"] == {"module": "telegram", "target": "user:-100"}
+    assert ev["addressed_to_me"] is True and ev["reply_channel"] == {"module": "telegram", "target": "user:-100", "tool": "telegram.text"}
     assert "писать сюда нельзя" not in ev["text"] and "chat_mode" not in ev["data"]
 
 

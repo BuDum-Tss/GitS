@@ -23,17 +23,22 @@ def _tool(name, description, params, *, risk="auto", keywords=(), informative=Fa
     return tool
 
 
+_SEND_DESC = ("Отправить сообщение в Discord от имени бота: владельцу в личку (to=owner), в канал, ветку или пост форума "
+              "(название, #название, «Сервер / канал», id) или человеку (@имя). В незнакомый канал спрашивает разрешение. "
+              "Длинный текст режется по 2000 символов.")
+_SEND_PARAMS = {"to": {"type": "string", "required": False,
+                       "description": "owner, channel (последний канал, откуда ей писали) или канал/человек: название, #название, @имя, "
+                                      "«Сервер / канал», channel:<id>, dm:<id>"},
+                "text": {"type": "string", "required": False, "description": "текст сообщения (до 2000 символов в одном сообщении)"},
+                "reply_to": {"type": "string", "required": False, "description": "id сообщения, на которое ответить"}}
+_SEND_KEYWORDS = ("напиши", "отправь", "ответь", "сообщение", "ответ")
+
 TOOLS = [
-    _tool("message", "Отправить сообщение в Discord от имени бота: владельцу в личку (to=owner), в канал, ветку или пост форума "
-                     "(название, #название, «Сервер / канал», id) или человеку, который уже писал боту (@имя). В незнакомый "
-                     "канал спрашивает разрешение. Длинный текст режется на части по 2000 символов.",
-          {"to": {"type": "string", "required": False,
-                  "description": "owner, channel (последний канал, откуда ей писали) или канал/человек: название, #название, @имя, "
-                                 "«Сервер / канал», channel:<id>, dm:<id>"},
-           "text": {"type": "string", "required": False, "description": "текст сообщения (до 2000 символов в одном сообщении)"},
-           "reply_to": {"type": "string", "required": False, "description": "id сообщения, на которое ответить"}},
-          informative=True, danger_check=True, timeout_s=60,
-          sends=True, keywords=("напиши", "отправь", "ответь", "сообщение", "ответ")),
+    # text: явная дорожка текстового ответа (RUNTIME_SPEC 7.1), message: прежнее имя того же инструмента (алиас)
+    _tool("text", "Основной способ ответить текстом в Discord. " + _SEND_DESC, copy.deepcopy(_SEND_PARAMS),
+          informative=True, danger_check=True, timeout_s=60, sends=True, keywords=_SEND_KEYWORDS),
+    _tool("message", "То же, что text. " + _SEND_DESC, copy.deepcopy(_SEND_PARAMS),
+          informative=True, danger_check=True, timeout_s=60, sends=True, keywords=_SEND_KEYWORDS),
     _tool("react", "Поставить (или снять, remove=true) реакцию-эмодзи на сообщение в Discord: когда хватает короткого отклика "
                    "(согласие, спасибо, смешно), без отдельного ответа. Без message_id реагирует на последнее входящее "
                    "сообщение канала, откуда ей писали; id видны в inbox (#id). В чат «только чтение» нельзя.",
@@ -98,6 +103,12 @@ MANIFEST = {
     "emits": [
         {"kind": "discord.dm", "description": "Личное сообщение боту (чужому отвечает она сама, лавина идёт в сводку)", "default_urgency": 3},
         {"kind": "discord.message", "description": "Сообщение в канале, ветке или посте форума (упоминание или ответ ей: обязательный разговор, правило R6)", "default_urgency": 1},
+    ],
+    # виды для внимания v2 (RUNTIME_SPEC 3.3): приоритет USER ставит адаптер через addressed_to_me, сам вид потолок не режет
+    "event_kinds": [
+        {"kind": "discord.dm", "default_priority": "IMPORTANT", "max_priority": "USER", "ttl_s": 900, "reply_tool": "discord.text"},
+        {"kind": "discord.message", "default_priority": "NORMAL", "max_priority": "USER", "ttl_s": 900, "coalesce": True,
+         "reply_tool": "discord.text"},
     ],
     "state": True,
     # пространство в дашборде (TZ 15): статус бота, приглашение, серверы с режимами, открытый чат; действия владельца (не инструменты агента)

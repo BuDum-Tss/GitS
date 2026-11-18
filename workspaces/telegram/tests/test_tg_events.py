@@ -81,7 +81,7 @@ async def test_account_dm_event_and_inbox(tmp_path, monkeypatch):
     assert ev["kind"] == "telegram.dm" and ev["text"] == "Сообщение от Аня в её личке: «ты скоро?»"
     assert ev["sender"] == {"id": f"tg:{OWNER}", "name": "Аня", "is_owner": True}
     assert ev["addressed_to_me"] is True and ev["memorable"] is True
-    assert ev["reply_channel"] == {"module": "telegram", "target": f"user:{OWNER}"}
+    assert ev["reply_channel"] == {"module": "telegram", "target": f"user:{OWNER}", "tool": "telegram.text"}
     assert ev["dedupe_key"] == f"tg:dm:{OWNER}:1"
     assert inbox[-1]["from"] == "Аня" and inbox[-1]["text"] == "ты скоро?" and inbox[-1]["private"] is True    # TG-11
     assert any("написали в её аккаунт (личное): Аня: ты скоро?" in r["text"] for r in rows)
@@ -104,7 +104,7 @@ async def test_account_group_event_addressed_rules(tmp_path, monkeypatch):
     assert all(e["kind"] == "telegram.group" and e["memorable"] is False for e in evs)
     assert [e["addressed_to_me"] for e in evs] == [False, True, True, False, True, True]
     assert evs[0]["text"] == "Сообщение от Петя в группе «Соседи»: «всем привет»"
-    assert evs[0]["reply_channel"] == {"module": "telegram", "target": "user:-100"}
+    assert evs[0]["reply_channel"] == {"module": "telegram", "target": "user:-100", "tool": "telegram.text"}
 
 
 async def test_account_skips_service_bots_and_channels_but_keeps_inbox(tmp_path, monkeypatch):

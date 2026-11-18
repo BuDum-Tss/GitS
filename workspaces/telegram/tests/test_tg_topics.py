@@ -121,7 +121,7 @@ async def test_topic_message_event_has_topic_data_text_and_reply_target(tmp_path
         act_ = user.dialogs.activity(CHAT, 5)
     assert ev["text"] == "Сообщение от Петя в группе «Клуб», теме «ПРОГРЕСС»: «@glados_acc как успехи?»"
     assert ev["data"]["topic_id"] == 5 and ev["data"]["topic_title"] == "ПРОГРЕСС" and ev["data"]["chat_id"] == CHAT
-    assert ev["reply_channel"] == {"module": "telegram", "target": f"user:{CHAT}#5"} and ev["addressed_to_me"] is True
+    assert ev["reply_channel"] == {"module": "telegram", "target": f"user:{CHAT}#5", "tool": "telegram.text"} and ev["addressed_to_me"] is True
     assert inbox[-1]["chat"] == "Клуб › ПРОГРЕСС" and inbox[-1]["topic_id"] == 5
     assert act_["last_in"] > 0 and user.dialogs.activity(CHAT, 7)["last_in"] == 0 and user.dialogs.activity(CHAT)["last_in"] == 0
     assert len(tl.requests) == 1                                                                 # название темы: один запрос

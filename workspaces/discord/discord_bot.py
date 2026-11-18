@@ -531,11 +531,14 @@ class DiscordBot:
             addressed = False if read_only else (await self._addressed(message, text) or continuing)
         if read_only:
             addressed = False                                             # режим сильнее R6: упоминание ничего не обязывает
+        if kind == "discord.message" and not addressed:
+            fields.setdefault("urgency_hint", 1)                          # болтовня без обращения: фон (в v2 приоритет 10)
         await asyncio.to_thread(self.dialogs.note_in, target, uid, addressed)
         if continuing and not read_only:
             data["continuation"] = True
+        data["group_key"] = f"discord:{channel.id}:{uid}"                  # серия сообщений одного человека в канале сливается в v2
         fact = message_fact(who, place, text)
-        reply_channel = {"module": "discord", "target": target}
+        reply_channel = {"module": "discord", "target": target, "tool": "discord.text"}
         if read_only:
             data["chat_mode"] = MODE_READ
             fact += READ_ONLY_NOTE

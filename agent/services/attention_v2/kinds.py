@@ -167,12 +167,13 @@ def from_legacy(peer_id: str, event_dict: dict, registry: KindRegistry, *, now: 
         explicit = None
     if explicit is not None:
         priority = explicit
-    group_key = v2.get("group_key") or group_key
+    data_key = (d.get("data") or {}).get("group_key") if isinstance(d.get("data"), dict) else None   # ключ слияния от окружения шины (поля group_key в протоколе нет)
+    group_key = v2.get("group_key") or data_key or group_key
 
     reply = None
     rc = d.get("reply_channel")
     if isinstance(rc, dict) and rc.get("module"):
-        reply = Reply(tool=f"{rc['module']}.message", target=rc.get("target"))
+        reply = Reply(tool=str(rc.get("tool") or f"{rc['module']}.message"), target=rc.get("target"))
     elif isinstance(rc, str) and rc:
         reply = Reply(tool=rc)
     if v2.get("reply_tool"):

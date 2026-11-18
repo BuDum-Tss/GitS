@@ -65,7 +65,7 @@ async def test_sender_carries_username_and_owner_flag(tmp_path, monkeypatch):
         a, b = await events(rig, 2)
     assert a["sender"] == {"id": "tg:7", "name": "Шеф", "is_owner": True, "username": "@boss"}
     assert b["sender"]["is_owner"] is False and b["sender"]["username"] == "@masha"
-    assert a["reply_channel"] == {"module": "telegram", "target": "user:7"} and a["addressed_to_me"] is True
+    assert a["reply_channel"] == {"module": "telegram", "target": "user:7", "tool": "telegram.text"} and a["addressed_to_me"] is True
 
 
 # ── в группе обращаются по имени из настройки names ──

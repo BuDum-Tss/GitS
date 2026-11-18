@@ -422,14 +422,18 @@ class TelegramUser:
             return
         if read_only:
             addressed = False                                             # режим сильнее R6: тег и ответ ей ничего не обязывают
+        if kind == "telegram.group" and not addressed:
+            fields.setdefault("urgency_hint", 1)                          # болтовня без обращения: фон (в v2 приоритет 10)
         await asyncio.to_thread(self.dialogs.note_in, ev.chat_id, uid, addressed, topic)
         data = {"chat_id": ev.chat_id, "message_id": ev.id}
         if topic:
             data["topic_id"], data["topic_title"] = topic, topic_title
         if continuing and not read_only:
             data["continuation"] = True
+        data["group_key"] = f"tg:{ev.chat_id}:{uid}"                       # серия сообщений одного человека в чате сливается в v2
         fact = message_fact(who, place, text)
-        reply_channel = {"module": "telegram", "target": f"user:{ev.chat_id}" + (f"#{topic}" if topic else "")}
+        reply_channel = {"module": "telegram", "target": f"user:{ev.chat_id}" + (f"#{topic}" if topic else ""),
+                         "tool": "telegram.text"}
         if read_only:
             data["chat_mode"] = MODE_READ
             fact += READ_ONLY_NOTE

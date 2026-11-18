@@ -4,7 +4,7 @@ from tg_rig import Rig
 from gits_sdk import protocol as P
 from manifest import MANIFEST, build_manifest
 
-TABLE = {"message", "inbox", "announce", "settings"}
+TABLE = {"text", "message", "inbox", "announce", "settings"}
 
 
 def tools():
@@ -61,6 +61,6 @@ def test_descriptions_are_short():
 
 async def test_every_tool_has_a_handler(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch) as rig:
-        assert set(rig.client._tools) == TABLE and set(rig.client._checks) == {"message"}
+        assert set(rig.client._tools) == TABLE and set(rig.client._checks) == {"text", "message"}
         assert rig.core.hellos[0]["manifest"]["id"] == "telegram"
         assert rig.core.violations == [] and rig.core.rejected == []
