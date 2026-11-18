@@ -32,6 +32,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "agent/tests/*.py" = ["E402"]    # sys.path правится до импортов проекта
 "agent/main.py" = ["E402"]       # путь и окружение настраиваются до импортов
+"host/main.py" = ["E402"]        # то же в хостовом помощнике
+"host/tests/*.py" = ["E402"]
 
 # ============================================================
 #  Pytest: тесты в agent/tests, асинхронные без декораторов
@@ -42,4 +44,4 @@ asyncio_mode = "auto"
 markers = ["slow: медленный тест (настоящий ffmpeg, около минуты); по умолчанию check.ps1 его пропускает",
            "game: тест запускает настоящую RimWorld (с объявлением пользователю); по умолчанию check.ps1 его пропускает, -All запускает"]
 testpaths = ["agent/tests"]
-pythonpath = ["agent", "../../sdk"]
+pythonpath = ["agent", "host", "../../sdk"]

@@ -31,6 +31,7 @@ import events_log
 import event_text
 import game_errors
 import gamenet
+import host_bridge
 import settings
 import statediff
 from relationships import Relationships
@@ -100,7 +101,7 @@ def _game_command(cmd: dict) -> bool:
     if not _game_port_open():
         return False
     try:
-        r = httpx.post(f"{_BASE}/command", json=cmd, timeout=6)
+        r = httpx.post(f"{_BASE}/command", json=cmd, headers=gamenet.auth_headers(), timeout=6)
         return r.status_code == 200 and r.json().get("status") != "error"
     except Exception:
         return False
@@ -116,7 +117,7 @@ def _ping() -> bool:
     if not _game_port_open():
         return False
     try:
-        return httpx.get(f"{_BASE}/ping", timeout=2).status_code == 200
+        return httpx.get(f"{_BASE}/ping", headers=gamenet.auth_headers(), timeout=2).status_code == 200
     except Exception:
         return False
 
@@ -125,7 +126,7 @@ def _get_state() -> dict:
     if not _game_port_open():
         return {}
     try:
-        return real_threats.filter_threats(httpx.get(f"{_BASE}/state", timeout=5).json())
+        return real_threats.filter_threats(httpx.get(f"{_BASE}/state", headers=gamenet.auth_headers(), timeout=5).json())
     except Exception:
         return {}
 
@@ -134,7 +135,7 @@ def _get_events() -> list[dict]:
     if not _game_port_open():
         return []
     try:
-        return httpx.get(f"{_BASE}/events", timeout=5).json()
+        return httpx.get(f"{_BASE}/events", headers=gamenet.auth_headers(), timeout=5).json()
     except Exception:
         return []
 
@@ -142,7 +143,7 @@ def _get_events() -> list[dict]:
 def _camera_command(cmd: dict) -> str | None:
     """Команда камеры в мод. Возвращает ответ мода (для camera_state) или None при сбое."""
     try:
-        r = httpx.post(f"{_BASE}/command", json=cmd, timeout=4).json()
+        r = httpx.post(f"{_BASE}/command", json=cmd, headers=gamenet.auth_headers(), timeout=4).json()
         return r.get("result") if r.get("status") == "ok" else None
     except Exception:
         return None
@@ -191,6 +192,7 @@ class Controller:
         self.director             = None   # CameraDirector: куда смотреть камере (только пока идёт запись)
         self._seen_game_errors    = 0      # сколько ошибок игры из state.game_log уже записано в журнал
         self.watchdog             = None   # GameWatchdog: игра запущена, видна, подключена
+        self.host                 = config.get("host_bridge") or host_bridge.LocalHostBridge()   # всё, что работает только на хосте Windows
         self.link                 = None   # CoreLink: речь, эмоции и события игры через ядро (модуль rimworld, ТЗ 11)
         self.on_phase_change      = None   # () -> None: игра загрузилась или забег закончился (модуль отправит состояние сразу)
         self._goal_status         = None   # статусы целей на прошлой проверке (id -> status): событие, когда цель закрыта
@@ -266,7 +268,7 @@ class Controller:
             on_camera_lost=lambda: self.director and self.director.reset(),
             get_state=_get_state, send_command=_game_command,
             module_setting=lambda key, default: (self.link.module_settings if self.link else {}).get(key, default),
-            launch_allowed=self._launch_allowed)
+            launch_allowed=self._launch_allowed, host=self.host)
         asyncio.create_task(self.watchdog.run())
 
     # ── ТЗ 11e: запуск игры, фокус, afk ──────────────────────────────────────────────────────
@@ -483,14 +485,12 @@ class Controller:
         затем навигация через LLM по скриншотам (она долгая и часто упирается в таймаут)."""
         if self._navigating:
             return
-        import game_watchdog
         self._navigating = True
         try:
             for attempt in range(1, QUICK_START_ATTEMPTS + 1):
-                pressed = await asyncio.to_thread(game_watchdog.press_quick_start)
+                pressed = await self.host.press_quick_start()
                 if pressed:
-                    import game_launcher
-                    game_launcher.announce_self("нажимаю «Быстрый запуск» в главном меню: поселения нет, создаю новое, "
+                    self.host.announce_self("нажимаю «Быстрый запуск» в главном меню: поселения нет, создаю новое, "
                                                 "чтобы игра шла", kind="game")       # правило 14: заметное действие в игре
                     logger.info(f"Нажала «Быстрый запуск» (попытка {attempt}): жду загрузку поселения")
                     for _ in range(QUICK_START_WAIT_POLLS):
@@ -531,8 +531,9 @@ class Controller:
 
     def _launch_rimworld(self, reason: str = "наблюдатель за игрой: игра не запущена"):
         try:
-            import game_launcher
-            game_launcher.launch(reason, wait_seconds=0, args=game_launcher.windowed_args())      # всегда окно: полноэкранная игра сворачивается и становится слепой для агента
+            # всегда окно: полноэкранная игра сворачивается и становится слепой для агента (windowed=True)
+            host = getattr(self, "host", None) or host_bridge.LocalHostBridge()
+            host.blocking(host.launch_game(reason, wait_seconds=0, windowed=True))
             logger.info("RimWorld запускается")
         except Exception as e:
             logger.error(f"Не удалось запустить RimWorld: {e}")

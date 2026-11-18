@@ -15,8 +15,6 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-import psutil
-
 import events_log
 import gamenet
 
@@ -43,6 +41,7 @@ def find_exe() -> str | None:
 
 
 def is_running() -> bool:
+    import psutil               # ленивый импорт: в контейнере (режим Remote) psutil не нужен, а объявления отсюда работают
     return any((p.info["name"] or "").lower() == PROCESS.lower() for p in psutil.process_iter(["name"]))
 
 

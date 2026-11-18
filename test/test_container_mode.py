@@ -43,10 +43,13 @@ def test_container_peers_file_is_valid_and_hardware_free(monkeypatch):
     monkeypatch.setenv("GITS_PEERS_FILE", "agent/peers.container.yaml")
     assert supervisor.peers_file() == CONTAINER_FILE
     specs = {s.id: s for s in supervisor.load_specs()}
-    assert set(specs) == {"telegram", "discord", "streamer", "montage"}
+    assert set(specs) == {"telegram", "discord", "streamer", "montage", "rimworld"}
     montage = specs.pop("montage")                                # общее пространство в контейнере: аренда, супервизор не запускает
     assert (montage.ownership, montage.unmanaged, montage.control_url) == ("shared", True, "http://montage:8780")
     assert montage.control_token_env == "GITS_CONTROL_TOKEN"
+    rimworld = specs.pop("rimworld")                              # так же: свой контейнер rimworld, игра на хосте за помощником
+    assert (rimworld.ownership, rimworld.unmanaged, rimworld.control_url) == ("shared", True, "http://rimworld:8782")
+    assert rimworld.control_token_env == "GITS_CONTROL_TOKEN"
     main = {s.id: s for s in supervisor.load_specs(ROOT / "agent" / "peers.yaml")}
     for peer_id, spec in specs.items():
         assert spec.role == "workspace" and spec.ownership == "owned" and spec.autostart == main[peer_id].autostart and spec.restart == main[peer_id].restart
@@ -59,7 +62,7 @@ def test_container_peers_file_is_valid_and_hardware_free(monkeypatch):
 def test_container_peers_file_has_no_hardware_modules_in_text():
     data = yaml.safe_load(CONTAINER_FILE.read_text(encoding="utf-8"))
     ids = {m["id"] for m in data["workspaces"]}
-    assert not ids & (HARDWARE | {"decider", "espeech", "rimworld"})
+    assert not ids & (HARDWARE | {"decider", "espeech"})
     for m in data["workspaces"]:
         if m.get("external"):
             continue

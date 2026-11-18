@@ -17,9 +17,11 @@ import time
 
 import httpx
 
+import gamenet
+
 logger = logging.getLogger("reflex")
 
-BASE     = env("GITS_RIMWORLD_URL", "http://localhost:8765")   # мод отвечает только на имя localhost
+BASE     = env("GITS_RIMWORLD_URL", gamenet.base_url())   # мод отвечает только на имя localhost
 ENABLED  = env("GITS_REFLEX_ACTIONS", "on").lower() != "off"
 COOLDOWN_SECS = 30
 
@@ -57,7 +59,7 @@ def check(action: str, state: dict) -> tuple[bool, str]:
 
 
 def _post(command: dict) -> str:
-    r = httpx.post(f"{BASE}/command", json=command, timeout=6)
+    r = httpx.post(f"{BASE}/command", json=command, headers=gamenet.auth_headers(), timeout=6)
     r.raise_for_status()
     data = r.json()
     if data.get("status") == "error":

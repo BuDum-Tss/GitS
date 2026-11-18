@@ -9,6 +9,7 @@ import asyncio
 import logging
 import os
 import sys
+import types
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -42,7 +43,8 @@ from dotenv import load_dotenv  # noqa: E402
 # Загружаем .env до импорта controller (на случай если задан ANTHROPIC_API_KEY)
 load_dotenv()
 
-import game_launcher  # noqa: E402
+import gamenet  # noqa: E402
+import host_bridge  # noqa: E402
 import game_api  # noqa: E402
 import game_panel  # noqa: E402
 import module_manifest  # noqa: E402
@@ -52,7 +54,6 @@ from camera_director import CameraDirector  # noqa: E402
 from controller import Controller  # noqa: E402
 from core_link import CoreLink  # noqa: E402
 from gits_sdk import WorkspaceClient  # noqa: E402
-from run_recorder import RunRecorder  # noqa: E402
 import core_tasks  # noqa: E402
 from state_reporter import StateReporter  # noqa: E402
 
@@ -66,8 +67,18 @@ def _log_failure(task: asyncio.Task) -> None:
         logger.error(f"Фоновая задача модуля упала: {task.exception()!r}", exc_info=task.exception())
 
 
-async def amain(config: dict) -> int:
-    """Работа модуля до shutdown ядра. Возвращает код выхода (0, или 2 если ядро отклонило манифест)."""
+def _config() -> dict:
+    """Настройки процесса из окружения: данные модуля и адрес мода (RIMWORLD_API, в контейнере прокси помощника)."""
+    return {
+        "rimworld_api": gamenet.base_url(),       # RIMWORLD_API, в контейнере прокси помощника, иначе localhost:8765
+        "memory_dir":   os.environ["MEMORY_DIR"],
+    }
+
+
+async def build(url: str | None = None, token: str | None = None, config: dict | None = None):
+    """Собрать модуль: клиент шины и всё вокруг него. Возвращает `(client, ctx)`. `url` и `token` (ядро хозяина) приходят из `acquire`
+    при аренде, без них клиент берёт их из окружения, как раньше. Фоновые задачи здесь не запускаются: это делает `run`."""
+    config = config or _config()
     for noisy in ("httpx", "httpcore", "aiohttp.access"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     mem_dir = config["memory_dir"]
@@ -76,7 +87,7 @@ async def amain(config: dict) -> int:
 
     manifest = await module_manifest.build()
     tools = [t for t in manifest["tools"] if t["name"] != "launch_game"]
-    client = WorkspaceClient(manifest)
+    client = WorkspaceClient(manifest, url=url, token=token)
     link = CoreLink(client)
 
     def _announce_launch(text: str) -> bool:
@@ -85,12 +96,13 @@ async def amain(config: dict) -> int:
             return False
         asyncio.run_coroutine_threadsafe(link.announce(text), loop)
         return True
-    game_launcher.set_notifier(_announce_launch)
+    host = host_bridge.make_host_bridge()       # Local: хостовые части в этом процессе; Remote: хостовый помощник (контейнер)
+    host.set_notifier(_announce_launch)
 
-    ctrl = Controller(config)
+    ctrl = Controller({**config, "host_bridge": host})
     ctrl.link = link
-    ctrl.recorder = RunRecorder(mem_dir, settings.load,
-                                max_hours=lambda: link.module_settings.get("max_record_hours", 6))
+    ctrl.recorder = host.make_recorder(mem_dir, settings.load,
+                                       max_hours=lambda: link.module_settings.get("max_record_hours", 6))
     ctrl.director = CameraDirector()
     node_state = workspace_module.NodeState()
     reporter = StateReporter(client, recording=lambda: game_panel.recording_info(ctrl.recorder.current),
@@ -100,12 +112,23 @@ async def amain(config: dict) -> int:
 
     module_manifest.attach(client, tools, graph=game_api.graph_data,
                            launch=ctrl.launch_game, focus=ctrl, node_state=node_state)   # ТЗ 11e, ТЗ 33
-    api = await game_api.start(mem_dir, rimworld_url=config["rimworld_api"], core=client)
-    logger.info(f"Манифест: {len(manifest['tools'])} инструментов, ядро {client.url}")
+    ctx = types.SimpleNamespace(config=config, mem_dir=mem_dir, manifest=manifest, link=link, host=host, ctrl=ctrl,
+                                reporter=reporter)
+    return client, ctx
+
+
+async def run(client, ctx) -> int:
+    """Работа модуля до shutdown ядра, остановки клиента (`client.stop()`, отпускание аренды) или падения игровых контуров. Возвращает
+    код выхода (0, или 2 если ядро отклонило манифест) и в конце закрывает всё: запись, события помощника, API оверлея."""
+    loop = asyncio.get_running_loop()
+    ctrl, host, reporter, link = ctx.ctrl, ctx.host, ctx.reporter, ctx.link
+    api = await game_api.start(ctx.mem_dir, rimworld_url=ctx.config["rimworld_api"], core=client)
+    logger.info(f"Манифест: {len(ctx.manifest['tools'])} инструментов, ядро {client.url}")
 
     work = [loop.create_task(coro) for coro in (reporter.run(), core_tasks.run(client))]
     game = loop.create_task(ctrl._run_async())            # игровые контуры; падение контроллера останавливает модуль
     core = loop.create_task(link.run())
+    host.start_events()                                   # Remote: события помощника (объявления, протокол записи) идут в те же обработчики
     for task in (*work, game):
         task.add_done_callback(_log_failure)
     try:
@@ -123,7 +146,14 @@ async def amain(config: dict) -> int:
             await client.stop()
             await asyncio.wait({core}, timeout=5)
         await _stop_recording(ctrl)
+        await host.close()
         await api.cleanup()
+
+
+async def amain(config: dict) -> int:
+    """Обычный запуск (без аренды): `build` из окружения и `run` до shutdown ядра."""
+    client, ctx = await build(config=config)
+    return await run(client, ctx)
 
 
 async def _stop_recording(ctrl: Controller) -> None:
@@ -132,7 +162,7 @@ async def _stop_recording(ctrl: Controller) -> None:
     if rec is None:
         return
     try:
-        await asyncio.wait_for(asyncio.to_thread(RunRecorder._stop_blocking, rec), STOP_RECORDING_S)
+        await asyncio.wait_for(asyncio.to_thread(ctrl.recorder.stop_blocking, rec), STOP_RECORDING_S)
     except asyncio.TimeoutError:
         logger.warning("Запись забега не остановилась за отведённое время")
 
@@ -143,10 +173,13 @@ def main():
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    config = {
-        "rimworld_api": os.getenv("RIMWORLD_API", "http://localhost:8765"),
-        "memory_dir":   os.environ["MEMORY_DIR"],
-    }
+    config = _config()
+    import lease_host
+    if lease_host.enabled():                      # контейнер: сервис ждёт аренды, к ядру хозяина подключается по acquire
+        try:
+            sys.exit(asyncio.run(lease_host.serve(build, run)))     # build(url=, token=) -> (client, ctx); run(client, ctx)
+        except KeyboardInterrupt:
+            sys.exit(0)
     try:
         code = asyncio.run(amain(config))
     except KeyboardInterrupt:

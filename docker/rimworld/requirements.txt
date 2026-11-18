@@ -1,0 +1,9 @@
+# Зависимости контейнера rimworld (без Windows-пакетов: pyautogui, pygetwindow, pywin32, psutil, soundcard, numpy хоста).
+# Игра, окно, ввод и запись остаются на хосте, их делает хостовый помощник workspaces/rimworld/host.
+mcp<2
+httpx>=0.27.0
+python-dotenv>=1.0
+aiohttp>=3.9.0
+Pillow>=10.0.0
+pyyaml>=6.0
+pydantic>=2

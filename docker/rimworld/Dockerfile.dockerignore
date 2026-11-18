@@ -1,0 +1,30 @@
+# Контекст сборки gits-rimworld (файл рядом с Dockerfile имеет приоритет над корневым .dockerignore).
+# Белый список: в образ идут только sdk, зависимости контейнера и модуль RimWorld; остальное репозитория не нужно.
+*
+!agent/interfaces/workspace
+!docker/rimworld/requirements.txt
+!workspaces/rimworld
+
+# окружения хоста
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/*.egg-info
+
+# секреты, память и данные игры (память модуля живёт в томе /work/rimworld)
+**/.env
+**/.env.*
+**/*.env
+workspaces/rimworld/agent/memory
+workspaces/rimworld/memory
+workspaces/rimworld/agent/reports
+workspaces/rimworld/agent/research_notes
+
+# мод игры (C#), хостовые скрипты и тесты в образе не нужны (код хостового помощника ниже подключать не надо: он работает на ПК)
+workspaces/rimworld/mod
+workspaces/rimworld/host
+agent/interfaces/workspace/tests
+**/tests
+**/*.log

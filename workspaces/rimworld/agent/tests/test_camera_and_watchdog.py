@@ -49,7 +49,7 @@ def test_fight_frames_threats_and_zooms_by_spread():
 def base(**kw):
     s = {"game_running": True, "launch_ok": True, "mod_ready": True, "in_game": True, "menu_for_s": 0, "window": "front",
          "need_front": True, "recording_wanted": True, "recording": "alive", "camera_wanted": True,
-         "camera_mode": "auto"}
+         "camera_mode": "auto", "keep_window": True}
     return {**s, **kw}
 
 
@@ -69,6 +69,15 @@ def test_watchdog_restores_minimized_window_and_covered_window_only_when_recordi
                                 camera_wanted=False)) == ["show_window"]
     assert "show_window" not in gw.plan_actions(base(window="background", need_front=False))
     assert "show_window" in gw.plan_actions(base(window="background"))
+
+
+def test_watchdog_never_touches_the_window_by_default():
+    """Без GITS_RIMWORLD_KEEP_WINDOW свёрнутая или закрытая другим окном игра не выводится на передний план (не мешать пользователю)."""
+    for window in ("minimized", "background"):
+        assert "show_window" not in gw.plan_actions(base(window=window, keep_window=False))
+    s = base(window="minimized")
+    s.pop("keep_window")
+    assert "show_window" not in gw.plan_actions(s)
 
 
 def test_watchdog_creates_colony_after_grace_in_menu():

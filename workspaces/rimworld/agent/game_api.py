@@ -22,7 +22,7 @@ import settings
 
 logger = logging.getLogger("game_api")
 
-_RIMWORLD_BASE = "http://localhost:8765"
+_RIMWORLD_BASE = gamenet.base_url()
 _MEMORY_DIR: Path = Path("./memory")
 _CORE = None           # WorkspaceClient: запросы к ядру (core.tool.call, core.web_search) для мостика MCP-сервера
 _STATIC = Path(__file__).parent / "static"
@@ -37,7 +37,7 @@ async def _rw_state() -> dict:
     if not await _game_up():
         return {}
     try:
-        async with httpx.AsyncClient(timeout=3.0) as c:
+        async with httpx.AsyncClient(timeout=3.0, headers=gamenet.auth_headers()) as c:
             r = await c.get(f"{_RIMWORLD_BASE}/state")
             r.raise_for_status()
             return r.json()
@@ -103,12 +103,19 @@ def _read_json(name: str, default):
 
 
 
+def _allowed_origins() -> tuple:
+    """Страницы, с которых принимаются запросы: свои на петле плюс GITS_DASHBOARD_ORIGINS (через запятую, префиксы вида
+    `http://dashboard.local:`). Порт оверлея из контейнера опубликован на 127.0.0.1 хоста, поэтому Origin остаётся петлёй."""
+    extra = tuple(x.strip() for x in (env("GITS_DASHBOARD_ORIGINS") or "").split(",") if x.strip())
+    return ("http://localhost:", "http://127.0.0.1:", *extra)
+
+
 def _is_local_json(request: web.Request) -> bool:
     """Только JSON и только со своей же страницы: браузерный cross-site запрос так не отправить."""
     if request.content_type != "application/json":
         return False
     origin = request.headers.get("Origin")
-    return not (origin and not origin.startswith(("http://localhost:", "http://127.0.0.1:")))
+    return not (origin and not origin.startswith(_allowed_origins()))
 
 
 async def game_snapshot() -> dict:
@@ -251,11 +258,11 @@ def build_app() -> web.Application:
     return app
 
 
-async def start(memory_dir: str, rimworld_url: str = "http://localhost:8765", port: int | None = None, core=None):
+async def start(memory_dir: str, rimworld_url: str | None = None, port: int | None = None, core=None):
     """Поднять HTTP-API. Возвращает AppRunner (его закрывают при остановке модуля). core - WorkspaceClient для мостиков к ядру."""
     global _MEMORY_DIR, _RIMWORLD_BASE, _CORE
     _MEMORY_DIR = Path(memory_dir)
-    _RIMWORLD_BASE = rimworld_url
+    _RIMWORLD_BASE = rimworld_url or gamenet.base_url()
     _CORE = core
     settings.init(memory_dir)
     runner = web.AppRunner(build_app())

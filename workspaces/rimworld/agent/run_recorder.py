@@ -384,6 +384,10 @@ class RunRecorder:
         await asyncio.to_thread(self._stop_blocking, rec)
         return await asyncio.to_thread(self.process, rec)
 
+    def stop_blocking(self, rec: Recording):
+        """Остановить захват закрытой записи (блокирующая; общий вход для `main.py` и контейнерного режима)."""
+        self._stop_blocking(rec)
+
     @staticmethod
     def _stop_blocking(rec: Recording):
         for audio in (*rec.audio_old, rec.audio):

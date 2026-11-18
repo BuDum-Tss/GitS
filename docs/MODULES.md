@@ -371,6 +371,8 @@ async with FakeCore() as core:
 
 ## Тяжёлые участники
 
+Контейнерные общие окружения: `montage` (сервис `montage`, порт управления 8780) и `rimworld` (сервис `rimworld`, порт 8782, образ `gits-rimworld:dev`, игра и ввод на хосте за хостовым помощником; `docs/RIMWORLD_CONTAINER.md`); ядро берёт их в аренду по `control_url` из `agent/peers.container.yaml`.
+
 Тяжёлые окружения живут в `workspaces/<id>` со своими зависимостями и своей проверкой: `rimworld` (игра RimWorld, ТЗ 11) и `montage` (ТЗ 20). Запись в
 `agent/peers.yaml` ссылается на папку через `{GITS}/workspaces/<id>`,
 интерпретатор общий (`{PYTHON}`), если зависимостей участника шины хватает в нём. Такой участник шины хранит данные в своей папке, а не в

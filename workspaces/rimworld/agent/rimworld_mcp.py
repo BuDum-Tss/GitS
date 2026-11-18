@@ -1,6 +1,7 @@
 """MCP-сервер для RimWorld Agent Bridge (localhost:8765)."""
 import json
 import re
+import gamenet
 import knowledge
 import real_threats
 
@@ -12,13 +13,14 @@ import httpx
 import functools
 from mcp.server.fastmcp import FastMCP, Image
 
-# Ленивый импорт game_ui — не ломает MCP инициализацию если окна нет
+# Ленивый доступ к UI игры — не ломает MCP инициализацию если окна нет. На хосте это модуль game_ui, в контейнере
+# (GITS_RIMWORLD_HOST_URL) переходник к хостовому помощнику: Windows-пакеты здесь не импортируются.
 game_ui = None
 def _ensure_game_ui():
     global game_ui
     if game_ui is None:
-        import game_ui as _game_ui
-        game_ui = _game_ui
+        import host_bridge
+        game_ui = host_bridge.ui_facade()
     return game_ui
 
 _PLANS_FILE     = Path(__file__).parent / "memory" / "goals.json"
@@ -55,7 +57,7 @@ def _clipping_tool(*dargs, **dkwargs):
 
 
 mcp.tool = _clipping_tool
-_BASE = "http://localhost:8765"
+_BASE = gamenet.base_url()          # RIMWORLD_API или http://localhost:8765
 
 
 # Счётчик подряд идущих ошибок за этот вызов агента (сбрасывается при
@@ -88,7 +90,7 @@ def _post(command: dict) -> str:
     провалилась (например, невозможный рецепт на этом верстаке), это видно
     здесь, а не притворяется успехом."""
     try:
-        r = httpx.post(f"{_BASE}/command", json=command, timeout=25)
+        r = httpx.post(f"{_BASE}/command", json=command, headers=gamenet.auth_headers(), timeout=25)
         r.raise_for_status()
         data = r.json()
         status = data.get("status")
@@ -105,7 +107,7 @@ def _query(command: dict) -> str:
     """Как _post, но для команд-запросов (find_buildable_spot и т.п.) —
     возвращает JSON-payload результата как есть, а не 'OK: type'."""
     try:
-        r = httpx.post(f"{_BASE}/command", json=command, timeout=25)
+        r = httpx.post(f"{_BASE}/command", json=command, headers=gamenet.auth_headers(), timeout=25)
         r.raise_for_status()
         data = r.json()
         status = data.get("status")
@@ -121,7 +123,7 @@ def _query(command: dict) -> str:
 
 def _get(path: str) -> str:
     try:
-        r = httpx.get(f"{_BASE}{path}", timeout=5)
+        r = httpx.get(f"{_BASE}{path}", headers=gamenet.auth_headers(), timeout=5)
         r.raise_for_status()
         return r.text
     except Exception as e:

@@ -41,7 +41,8 @@ def plan_actions(s: dict) -> list[str]:
         return ["launch_game"] if s["launch_ok"] and s.get("launch_allowed") else []
     if not s["mod_ready"]:
         return []                                   # игра грузится: ждём, ничего не трогаем
-    if s["window"] == "minimized" or (s["window"] == "background" and s["need_front"]):
+    # окно трогаем только по явному включению GITS_RIMWORLD_KEEP_WINDOW: иначе свёрнутая игра выскакивала бы поверх всего каждые 20 с
+    if s.get("keep_window") and (s["window"] == "minimized" or (s["window"] == "background" and s["need_front"])):
         acts.append("show_window")
     if not s["in_game"]:
         if s["menu_for_s"] >= MENU_GRACE_S:
@@ -165,7 +166,7 @@ class GameWatchdog:
 
     def __init__(self, *, settings_get, recorder, launch, new_colony, mod_ready, state_ready, send_camera,
                  on_camera_lost, get_state=None, send_command=None, module_setting=None, idle_seconds=None,
-                 announce=None, clock=time.time, launch_allowed=None):
+                 announce=None, clock=time.time, launch_allowed=None, host=None):
         self._launch_allowed = launch_allowed or (lambda: False)     # ТЗ 11e POL-12: без разрешения игру не поднимаем
         self._settings = settings_get
         self._recorder = recorder
@@ -178,7 +179,9 @@ class GameWatchdog:
         self._get_state = get_state                  # () -> dict: состояние мода (tick, paused, time_speed); без него время не следим
         self._send_command = send_command            # (cmd: dict) -> bool: команда мода
         self._module_setting = module_setting or (lambda key, default: default)
-        self._idle = idle_seconds or user_idle_seconds
+        self._host = host                              # HostBridge: окно, процесс игры и бездействие пользователя берём у него (контейнер)
+        self._hs: dict = {}                            # последний ответ host.game_status()
+        self._idle = idle_seconds or (self._host_idle if host is not None else user_idle_seconds)
         self._announce = announce
         self._clock = clock
         self._tick_seen: tuple[int, float] | None = None
@@ -191,6 +194,9 @@ class GameWatchdog:
         self._menu_since: float | None = None
         self.status: dict = {}
         self._last_notes: dict[str, float] = {}
+
+    def _host_idle(self) -> float:
+        return float(self._hs.get("user_idle_s") or 0.0)
 
     def _note(self, key: str, text: str, every: float = 300):
         """Запись в протокол не чаще раза в `every` секунд на одну тему: наблюдатель не должен его засорять."""
@@ -228,11 +234,18 @@ class GameWatchdog:
         }
 
     def snapshot(self) -> dict:
-        import game_launcher
         now = self._clock()
         cfg = self._settings()
         recording_wanted = bool(cfg.get("record_runs"))
-        running = game_launcher.is_running()
+        if self._host is not None:                    # блокирующая: зовётся из потока (`step` через to_thread)
+            self._hs = self._host.blocking(self._host.game_status())
+            running = bool(self._hs.get("running"))
+            refresh = getattr(self._recorder, "refresh", None)
+            if refresh is not None:
+                refresh()                             # контейнер: состояние записи берём у помощника
+        else:
+            import game_launcher
+            running = game_launcher.is_running()
         mod = running and self._mod_ready()
         in_game = mod and self._state_ready()
         if mod and not in_game:
@@ -253,8 +266,9 @@ class GameWatchdog:
             "launch_ok": now - self._last_launch >= LAUNCH_COOLDOWN_S,
             "launch_allowed": bool(self._launch_allowed()),
             "menu_for_s": now - self._menu_since if self._menu_since else 0.0,
-            "window": window_state() if running else "missing",
+            "window": ((self._hs.get("window") or "missing") if self._host is not None else window_state()) if running else "missing",
             "need_front": recording_wanted and env("GITS_RECORD_SOURCE", "gfxcapture") != "gfxcapture",
+            "keep_window": env("GITS_RIMWORLD_KEEP_WINDOW", "0").strip().lower() in ("1", "true", "yes", "on"),
             "recording_wanted": recording_wanted and in_game, "recording": recording,
             "audio": bool(rec and rec.audio and rec.audio.ok),
             "audio_dead": bool(rec and rec.audio and not rec.audio.ok and not rec.audio.stopping),
@@ -283,7 +297,10 @@ class GameWatchdog:
             if time.time() - self._last_focus >= FOCUS_COOLDOWN_S:
                 self._last_focus = time.time()
                 self._note("window", f"окно RimWorld {s['window']}: возвращаю на передний план", 120)
-                await asyncio.to_thread(show_window)
+                if self._host is not None:
+                    await self._host.show_window()
+                else:
+                    await asyncio.to_thread(show_window)
         elif act == "new_colony":
             self._note("colony", "игра в главном меню: создаю поселение", 120)
             await self._new_colony()
@@ -315,8 +332,11 @@ class GameWatchdog:
         """Объявить факт пользователю через ядро (правило 14 ТЗ, REC-7)."""
         announce = self._announce
         if announce is None:
-            import game_launcher
-            announce = lambda fact: game_launcher.announce_fact(fact, None)       # в протокол пишет вызывающий
+            if self._host is not None:
+                announce = lambda fact: self._host.announce_fact(fact, None)      # в протокол пишет вызывающий
+            else:
+                import game_launcher
+                announce = lambda fact: game_launcher.announce_fact(fact, None)
         await asyncio.to_thread(announce, text)
 
     async def _unpause(self, s: dict, text: str):
