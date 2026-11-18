@@ -100,7 +100,9 @@ class AttentionV2:
     async def _on_busy(self, e: Event, running: list[Event]) -> None:
         if any(x.prio >= USER for x in running):                   # USER-ход: человеку уже отвечают, не прерываем
             keys = {x.group_key for x in running if x.prio >= USER and x.group_key}
-            if e.group_key and e.group_key in keys and self.runtime.can_steer and await self.runtime.steer(e):
+            # доливается только продолжение разговора (не ниже порога пробуждения); поддакивание и фон ждут в очереди
+            if (e.group_key and e.group_key in keys and e.priority >= self.wake_min and self.runtime.can_steer
+                    and await self.runtime.steer(e)):
                 self._m["steered"] += 1
                 self._mark_delivered(e, "доливается в идущий ход")
                 return

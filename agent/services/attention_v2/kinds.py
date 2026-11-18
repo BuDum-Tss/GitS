@@ -145,6 +145,9 @@ def from_legacy(peer_id: str, event_dict: dict, registry: KindRegistry, *, now: 
     d = event_dict
     ts = d.get("ts") if isinstance(d.get("ts"), (int, float)) else (now if now is not None else time.time())
     kind = d.get("kind") or f"{peer_id}.event"
+    v2_kind = (d.get("v2") or {}).get("kind") if isinstance(d.get("v2"), dict) else None
+    if v2_kind:
+        kind = str(v2_kind)                  # отправитель переопределяет вид (например, поддакивание голоса: пассивный вид)
     if kind not in registry:
         registry.ensure_legacy(peer_id, kind)
     sender = Sender.from_obj(d.get("sender"))

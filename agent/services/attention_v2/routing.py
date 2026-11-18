@@ -27,6 +27,7 @@ DASHBOARD_GROUP = "dashboard:owner"
 VOICE_WORKSPACE = "voicechat"
 VOICE_UTTERANCE_KIND = "voicechat.utterance"
 VOICE_SPOKEN_KIND = "voicechat.spoken"
+VOICE_BACKCHANNEL_KIND = "voicechat.backchannel"
 TIMER_KIND = "core.timer"
 TIMER_TEXT_PREFIX = "напоминание: "
 WORK_TICK_KIND = "core.work_tick"                   # рабочий цикл автономной среды (WorkLoop): при v2 вместо `self.work_tick`
@@ -61,6 +62,10 @@ def register_core_kinds(registry: KindRegistry) -> None:
                                coalesce=True), VOICE_WORKSPACE)
     registry.register(KindSpec(kind=VOICE_SPOKEN_KIND, default_priority=BACKGROUND, max_priority=BACKGROUND, ttl_s=TTL_SPOKEN,
                                passive=True),
+                      VOICE_WORKSPACE)
+    # поддакивания человека («угу», «отлично»): фон и passive, не будят агента и не доливаются в идущий ход; в ближайшую пачку попадают
+    registry.register(KindSpec(kind=VOICE_BACKCHANNEL_KIND, default_priority=BACKGROUND, max_priority=BACKGROUND, ttl_s=60,
+                               passive=True, coalesce=True),
                       VOICE_WORKSPACE)
 
 

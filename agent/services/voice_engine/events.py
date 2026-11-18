@@ -81,12 +81,38 @@ def recent_tail(phrases, now: float) -> str:
     return "до этого в канале: " + "; ".join(reversed(picked)) if picked else ""
 
 
-def v2_fields(*, session: str, speaker_id: str, adapter: str, addressed: bool, reason: str) -> dict:
+# Реплики-поддакивания («угу», «отлично», «хороший план»): человек слушает и кивает, ответа не ждёт. Все слова фразы из этого
+# набора и слов не больше BACKCHANNEL_MAX_WORDS. «Да» и «нет» сюда не входят: это могут быть ответы на её вопрос.
+BACKCHANNEL_MAX_WORDS = 6
+BACKCHANNEL_KIND = "voicechat.backchannel"
+_ACK_WORDS = frozenset((
+    "угу ага ок окей окэй ладно хорошо отлично класс круто супер здорово понятно ясно ясненько ну вот так точно верно именно "
+    "согласен согласна интересно прикольно норм нормально молодец неплохо замечательно прекрасно чудесно отличный хороший "
+    "крутой классный отличная хорошая крутая классная идея план мысль решение это такой такая такое очень вполне "
+    "ммм мм эм хм хмм ох ух").split())
+
+
+def is_backchannel(text: str) -> bool:
+    """Фраза из одних слов-поддакиваний (не больше `BACKCHANNEL_MAX_WORDS`): без вопроса и без обращения по имени."""
+    words = re.findall(r"[а-яёa-z]+", (text or "").lower().replace("ё", "е"))
+    if not words or len(words) > BACKCHANNEL_MAX_WORDS or "?" in (text or ""):
+        return False
+    return all(w in _ACK_WORDS_NORM for w in words)
+
+
+_ACK_WORDS_NORM = frozenset(w.replace("ё", "е") for w in _ACK_WORDS)
+
+
+def v2_fields(*, session: str, speaker_id: str, adapter: str, addressed: bool, reason: str, text: str = "") -> dict:
     """Добавка для внимания v2 (`from_legacy` читает ключ `v2`, старое внимание его не видит): приоритет по причине обращения
     (`name`/`owner`/`one_to_one` это USER, `continuation` это IMPORTANT, не обращённая фраза это BACKGROUND), ключ слияния
     `<сессия>:<говорящий>`, инструмент ответа по адаптеру (`discord.say` для Discord, иначе `voice.say`)."""
-    return {"priority": V2_PRIORITY.get(reason, "USER") if addressed else "BACKGROUND",
-            "group_key": f"{session}:{speaker_id}", "reply_tool": V2_SAY_TOOL.get(adapter, "voice.say")}
+    fields = {"priority": V2_PRIORITY.get(reason, "USER") if addressed else "BACKGROUND",
+              "group_key": f"{session}:{speaker_id}", "reply_tool": V2_SAY_TOOL.get(adapter, "voice.say")}
+    if addressed and reason != "name" and is_backchannel(text):
+        # поддакивание не должно доливаться в идущий ход и будить агента: отдельный пассивный вид, фон
+        fields.update({"priority": "BACKGROUND", "kind": BACKCHANNEL_KIND})
+    return fields
 
 
 def utterance_event(*, text: str, speaker: dict, session: str, adapter: str, duration_ms: int, language: str,
@@ -107,7 +133,7 @@ def utterance_event(*, text: str, speaker: dict, session: str, adapter: str, dur
             "speaker": speaker, "needs_reply": addressed, "addressed_reason": reason,
             "interrupted_me": interrupted, "title": title, "phrase": text[:EVENT_TEXT_MAX],
         },
-        "v2": v2_fields(session=session, speaker_id=speaker["id"], adapter=adapter, addressed=addressed, reason=reason),
+        "v2": v2_fields(session=session, speaker_id=speaker["id"], adapter=adapter, addressed=addressed, reason=reason, text=text),
     }
     if urgency_hint is not None and not addressed:
         event["urgency_hint"] = urgency_hint

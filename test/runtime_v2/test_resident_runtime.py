@@ -295,3 +295,14 @@ async def test_foreign_turn_end_wakes_attention_queue():
     await wait_until(lambda: len(r.model.prompts) == 2)
     await r.idle()
     await r.close()
+
+
+async def test_steered_user_phrase_asks_to_answer_first():
+    """Фраза человека посреди работы доливается с инструкцией: сначала коротко ответить вслух, потом продолжать."""
+    r = Rig([[("hold",)], []])
+    await r.send(USER, text="привет", group_key="chan:u1")
+    await r.clock.advance(1)
+    await wait_until(lambda: r.model.prompts)
+    await r.send(USER, text="а теперь вот что", group_key="chan:u1")
+    assert r.model.steered and "а теперь вот что" in r.model.steered[0]
+    assert "сначала ответь ему вслух одной короткой фразой" in r.model.steered[0]

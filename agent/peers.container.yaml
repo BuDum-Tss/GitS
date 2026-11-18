@@ -1,6 +1,6 @@
 # Участники ядра в контейнере (GITS_CONTAINER=1, GITS_PEERS_FILE=agent/peers.container.yaml): только то, что не требует железа
-# ПК. Голос, питомец, «Компьютер» и RimWorld запускаются на хосте и подключаются к ядру по WebSocket (/ws) на опубликованный
-# порт (GITS_CORE_URL, GITS_TOKEN). Монтаж это отдельный контейнер-пространство (compose, профиль montage): ядро его не запускает,
+# ПК. Голос, питомец и «Компьютер» запускаются на хосте и подключаются к ядру по WebSocket (/ws) на опубликованный
+# порт (GITS_CORE_URL, GITS_TOKEN). Монтаж и RimWorld это отдельные контейнеры-пространства (compose, сервисы montage и rimworld): ядро его не запускает,
 # а берёт в аренду (поля `external: true`, `control_url`, `control_token_env`; адрес шины для сервиса: GITS_CORE_PUBLIC_URL). Сервисов decider и espeech здесь нет: они внешние (decider это общий контейнер `decider`, http://decider:8768), ядро ходит к ним по адресам из
 # переменных окружения (GITS_DECIDER_URL и др.). {GITS} в контейнере это /app, {PYTHON} интерпретатор образа.
 # Формат записей тот же, что у agent/peers.yaml (разделы workspaces и services); здесь только окружения со своим владением (owned). Секреты модули читают из окружения контейнера (env_file compose).
@@ -42,4 +42,15 @@ workspaces:
     external: true
     title: Монтаж видео
     control_url: http://montage:8780
+    control_token_env: GITS_CONTROL_TOKEN
+
+  # RimWorld: общее пространство в своём контейнере (как монтаж: compose запускает его, супервизор нет, `external: true`). Игра, окно и
+  # ввод остаются на хосте за хостовым помощником (docs/RIMWORLD_CONTAINER.md). В режиме «ядро на хосте» (agent/peers.yaml) та же
+  # запись rimworld с autostart запускает модуль локально: два режима не смешиваются, потому что файл выбирается GITS_PEERS_FILE.
+  # Контейнер недоступен: окружение показывается как не подключённое, ядро работает.
+  - id: rimworld
+    ownership: shared
+    external: true
+    title: RimWorld
+    control_url: http://rimworld:8782
     control_token_env: GITS_CONTROL_TOKEN
