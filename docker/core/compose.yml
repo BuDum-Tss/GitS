@@ -46,6 +46,8 @@ services:
       GITS_RIMWORLD_URL: ${GITS_RIMWORLD_URL:-http://host.docker.internal:8765}
       # вход pi по подписке (среда исполнения агента): файл auth.json с хоста, не в образе
       GITS_PI_AUTH: /run/pi/auth.json
+      # внимание v2 (docs/RUNTIME_SPEC.md): `v2` включает, пусто или другое значение: прежнее внимание
+      GITS_ATTENTION: ${GITS_ATTENTION:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
