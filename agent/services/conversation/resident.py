@@ -11,6 +11,7 @@
 """
 from typing import TYPE_CHECKING
 import asyncio
+import json
 import logging
 import time
 
@@ -117,6 +118,7 @@ class ResidentAgent:
         self._note = ""                     # что сказать новой сессии после сброса (обрыв хода по времени)
         self.last_end = 0.0                 # когда закончился последний ход (рабочий цикл не торопит свободного агента)
         self._actions: list[ActionRecord] = []   # журнал действий текущего хода (сбрасывается в начале хода)
+        self._call_memo: dict[str, list[int]] = {}   # одинаковые вызовы хода: ключ (инструмент+параметры) -> хэши ответов
         self.on_turn_end = None             # колбэк или список колбэков (обычные или async) без аргументов: ход закончился
 
     # ── состояние ──────────────────────────────────────────────────
@@ -175,6 +177,13 @@ class ResidentAgent:
                                "перейди к следующему шагу задачи или найди короткий пример плана.")
             if tool_id == "montage.files" and not file_read and params.get("op") == "write":
                 agent._last_montage_read = None
+            # зацикливание: тот же вызов с теми же параметрами дважды дал один и тот же ответ, значит состояние не меняется;
+            # третий такой вызов не выполняется (каждый шаг стоит секунды модели)
+            memo_key = tool_id + json.dumps(params, sort_keys=True, ensure_ascii=False, default=str)
+            seen = agent._call_memo.get(memo_key, [])
+            if len(seen) >= 2 and seen[-1] == seen[-2]:
+                return True, (f"Этот же запрос уже выполнялся {len(seen)} раза в этом ходе, ответ каждый раз был тот же: состояние не "
+                              "меняется. Не повторяй его: используй прежний ответ, смени параметры или переходи к действию.")
             if agent._source != "alert":                      # тревога действует сразу, остальное после того, как реплика прозвучала
                 try:
                     await host.wait_speech(SPEECH_SYNC_S)
@@ -196,6 +205,7 @@ class ResidentAgent:
             if ok and file_read:
                 agent._last_montage_read = read_key
             text = result if ok else f"НЕ ПОЛУЧИЛОСЬ ({code}): {result}"
+            agent._call_memo.setdefault(memo_key, []).append(hash(text))
             if not ok and code in ("unknown", "unavailable"):      # инструмент мог быть в среде, куда она ещё не вошла
                 catalog = getattr(host, "workspace_catalog", lambda: "")()
                 if catalog:
@@ -328,6 +338,7 @@ class ResidentAgent:
         async with self._lock:
             self._busy = True
             self._actions = []                         # журнал действий нового хода
+            self._call_memo = {}
             try:
                 await asyncio.wait_for(self._run(prompt, source), TURN_TIMEOUT_S)
             except asyncio.TimeoutError:

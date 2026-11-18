@@ -138,3 +138,30 @@ async def test_find_tools_points_to_other_workspaces_when_little_is_found():
     assert ok and "ничего подходящего" in text and "workspace.enter" in text and "montage" in text
     ok, text = await resident.ResidentAgent(FakeHost(), runtime=FakeRuntime())._tool_specs()[0].handler({"query": "монтаж"})
     assert "workspace.enter" not in text                  # без каталога сред ничего не добавляется
+
+
+async def test_identical_call_with_identical_answer_is_not_repeated_a_third_time():
+    """Зацикливание (живой замер: 16 одинаковых `colony_items` подряд, каждый шаг стоит секунды модели): третий вызов с теми же
+    параметрами после двух одинаковых ответов не выполняется, а возвращает подсказку; смена параметров или нового хода сбрасывает счёт."""
+    host = FakeHost()
+    calls = []
+
+    async def run_tool_ex(tool_id, params):
+        calls.append((tool_id, dict(params)))
+        return True, "ровно один и тот же ответ", None
+
+    async def wait_speech(limit):
+        return None
+    host.router.run_tool_ex = run_tool_ex
+    host.wait_speech = wait_speech
+    agent = resident.ResidentAgent(host, runtime=FakeRuntime())
+    call = agent._tool_specs()[1].handler
+    same = {"tool_id": "rimworld.colony_items", "args": {"max_results": 100}}
+    assert (await call(same))[1] == "ровно один и тот же ответ"
+    assert (await call(same))[1] == "ровно один и тот же ответ"
+    ok, text = await call(same)                                   # третий: не выполняется
+    assert ok and "Не повторяй его" in text and len(calls) == 2
+    ok, text = await call({"tool_id": "rimworld.colony_items", "args": {"max_results": 50}})      # другие параметры: выполняется
+    assert text == "ровно один и тот же ответ" and len(calls) == 3
+    agent._call_memo = {}                                         # новый ход: счёт сброшен
+    assert (await call(same))[1] == "ровно один и тот же ответ" and len(calls) == 4
