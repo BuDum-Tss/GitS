@@ -7,7 +7,9 @@
 Имена: действие узла `<узел>_<действие>` (`architect_orders_mine`), запрос `<путь>` (`colony_resources`), навигация `open`,
 `back`, `where`, время `pause`, `resume`, `set_speed` (глобальные, как кнопки внизу экрана).
 
-Текущий узел хранит `NodeState`. Действие вне своего узла отклоняется с подсказкой, какой узел открыть (WS-10). Навигация
+Текущий узел хранит `NodeState`. Действие вне своего узла отклоняется с подсказкой, какой узел открыть (WS-10), КРОМЕ узлов,
+которые агент уже открывал явным `open` в этой аренде (`NodeState.seen`): их модуль открывает сам, как явный `open`, и
+добавляет к ответу пометку «(перешла в узел N)». Первый вход в узел всегда явный: агент должен увидеть его действия. Навигация
 повторяет игрока: `open("architect/zone")` открывает вкладку «Архитектор» и категорию, `open("pawn", id=...)` выделяет колониста,
 `back()` поднимается на уровень выше, а у корня закрывает окно.
 """
@@ -93,6 +95,8 @@ class NodeState:
         self.path = ROOT
         self.on_change = on_change
         self._by_path = {n.path: n for n in wt.NODES}
+        self.seen: set[str] = set()          # узлы, которые агент открывал явным `open` (только в памяти, на время аренды)
+        self.target: str | None = None       # колонист, для которого открыт узел pawn/* (`open(..., id=...)`)
 
     def known(self, path: str) -> bool:
         return path in self._by_path
@@ -101,6 +105,11 @@ class NodeState:
         """Дочерние узлы: у корня верхний уровень, у остальных узлы с этим родителем."""
         parent = "" if path == ROOT else path
         return sorted(p for p in self._by_path if p != ROOT and p.rpartition("/")[0] == parent)
+
+    def forget_seen(self) -> None:
+        """Новая аренда среды, выход из неё или новая игра: действия узлов снова надо сначала увидеть явным `open`."""
+        self.seen.clear()
+        self.target = None
 
     def set(self, path: str) -> None:
         if path != self.path:
@@ -111,11 +120,30 @@ class NodeState:
                 except Exception as e:                 # сбой отправки состояния не должен ломать навигацию
                     logger.debug(f"on_change: {e}")
 
-    def require(self, node: str, tool: str) -> None:
-        """WS-10: действие вне своего узла отклоняется и называет нужный узел."""
-        if node and node != self.path:
-            raise ToolError(f"«{tool}» делается в узле «{node}», а сейчас открыт «{self.path}». "
-                            f"Сначала open(\"{node}\"), затем это действие.", code="bad_request")
+
+def pawn_id_from(args: dict) -> str:
+    """Колонист из аргументов действия: `pawn_id` или первый из `pawn_ids` (список или строка через запятую)."""
+    args = args or {}
+    one = str(args.get("pawn_id") or "").strip()
+    if one:
+        return one
+    many = args.get("pawn_ids")
+    if isinstance(many, str):
+        try:
+            parsed = json.loads(many)
+            many = parsed if isinstance(parsed, list) else many.split(",")
+        except ValueError:
+            many = many.split(",")
+    if isinstance(many, (list, tuple)):
+        for item in many:
+            if str(item).strip():
+                return str(item).strip()
+    return ""
+
+
+def open_call(node: str, pawn: str = "") -> str:
+    """Точный вызов для копирования: `open("pawn/orders", id="Human1")`."""
+    return f'open("{node}", id="{pawn}")' if pawn and node.startswith("pawn") else f'open("{node}")'
 
 
 # ── обработчики ───────────────────────────────────────────────────────────────
@@ -152,14 +180,15 @@ async def node_actions(module, path: str) -> list[dict]:
 PEER_ID_FOR_CALLS = "rimworld"
 
 
-def make_nav_handlers(state: NodeState, module=None) -> dict[str, Callable]:
-    """open, back, where. `module` - rimworld_mcp (подменяется в тестах)."""
+def _mcp_of(module):
+    if module is not None:
+        return module
+    import rimworld_mcp
+    return rimworld_mcp
 
-    def mcp():
-        if module is not None:
-            return module
-        import rimworld_mcp
-        return rimworld_mcp
+
+def make_opener(state: NodeState, module=None) -> Callable:
+    """Внутренний `open(path, id=...)`: им пользуются и явный `open`, и автопереход к узлу при вызове его действия."""
 
     async def open_node(args: dict):
         path = str((args or {}).get("path") or "").strip().strip("/")
@@ -170,11 +199,14 @@ def make_nav_handlers(state: NodeState, module=None) -> dict[str, Callable]:
         if not state.known(path):
             raise ToolError(f"узла «{path}» нет. Есть: {', '.join(sorted(n.path for n in wt.NODES))}", code="bad_request")
         node = next(n for n in wt.NODES if n.path == path)
-        m = mcp()
+        m = _mcp_of(module)
+        prev = next((n for n in wt.NODES if n.path == state.path), None)
+        prev_window = bool(prev and prev.tab in TAB_NAMES)               # прежний узел держит окно вкладки поверх экрана
         if path == "pawn" and not target and not state.path.startswith("pawn"):      # действия подузлов (приказы, снаряжение, лечение) берут id колонистов сами: выделение не обязательно
             raise ToolError("колонист не выбран: open(\"pawn\", id=<id колониста>)", code="bad_request")
-        if target and path.startswith("pawn"):
-            reply = await _run(m, "select_target", pawn_id=str(target))
+        selecting = bool(target and path.startswith("pawn"))
+        if selecting:
+            reply = await _run(m, "select_target", pawn_id=str(target))      # выделение пешки закрывает открытое окно
             if reply.startswith(("ERROR", "WARNING")):
                 raise ToolError(reply, code="unavailable")
         if node.tab and node.tab in TAB_NAMES:
@@ -183,14 +215,30 @@ def make_nav_handlers(state: NodeState, module=None) -> dict[str, Callable]:
                 raise ToolError(reply, code="unavailable")
         elif path == ROOT:
             await _run(m, "open_game_tab", tab="close")
+        elif prev_window and not selecting:                              # уходим из меню в узел без своего окна: окно закрываем
+            await _run(m, "open_game_tab", tab="close")
         category = ARCHITECT_CATEGORIES.get(path)
         if category:
             reply = await asyncio.to_thread(m._query, {"type": "ui_category", "id": category})
             if str(reply).startswith(("ERROR", "WARNING")):
                 raise ToolError(str(reply), code="unavailable")
+        if path.startswith("pawn"):
+            if target:
+                state.target = str(target)
+            elif not state.path.startswith("pawn"):
+                state.target = None
+        else:
+            state.target = None
+        state.seen.add(path)                                             # действия узла агент видел: дальше модуль откроет его сам
         state.set(path)
         return {"node": path, "title": node.title, "children": state.children(path),
                 "actions": await node_actions(m, path)}
+    return open_node
+
+
+def make_nav_handlers(state: NodeState, module=None) -> dict[str, Callable]:
+    """open, back, where. `module` - rimworld_mcp (подменяется в тестах)."""
+    open_node = make_opener(state, module)
 
     async def back(args: dict):
         parent = state.path.rpartition("/")[0] or ROOT
@@ -199,7 +247,7 @@ def make_nav_handlers(state: NodeState, module=None) -> dict[str, Callable]:
         return await open_node({"path": parent})
 
     async def where(args: dict):
-        text = await _run(mcp(), "ui_state")
+        text = await _run(_mcp_of(module), "ui_state")
         here = [name for _o, kind, _p, name, node in _specs_table() if node == state.path and kind in ("action", "skill")]
         try:
             ui = json.loads(text)
@@ -216,14 +264,34 @@ def make_tool_handler(name: str, node: str, state: NodeState, module=None) -> Ca
     from module_manifest import tool_handler           # аргументы к типам функции, поток, ответ строкой
     old = OLD_BY_NAME[name]
     inner = tool_handler(old, module)
+    open_node = make_opener(state, module)
     tab = next((n.tab for n in wt.NODES if n.path == node and n.tab in TAB_NAMES), "") if node else ""
 
     async def handler(args: dict):
-        state.require(node, name)
+        note = await _go_to_node(state, open_node, node, name, args)
         if tab:
             await _keep_tab_open(module, tab)
-        return await inner(args)
+        return note + await inner(args) if note else await inner(args)
     return handler
+
+
+async def _go_to_node(state: NodeState, open_node: Callable, node: str, tool: str, args: dict) -> str:
+    """Действие делается в своём узле. Чужой узел: если агент уже открывал этот узел явным `open` (`state.seen`) и его можно
+    открыть сам (`wt.NO_AUTO_OPEN`, для pawn/* нужен колонист из аргументов), переходим в него тем же `open`, что и явный,
+    и возвращаем пометку для ответа; иначе ошибка с точным вызовом `open`. Тот же узел, но другой колонист: переоткрываем."""
+    if not node:
+        return ""
+    pawn = pawn_id_from(args) if node.startswith("pawn") else ""
+    elsewhere = node != state.path
+    other_pawn = bool(not elsewhere and pawn and state.target and state.target != pawn and node in state.seen)
+    if not elsewhere and not other_pawn:
+        return ""
+    can_open = node in state.seen and node not in wt.NO_AUTO_OPEN and (pawn or not node.startswith("pawn"))
+    if not can_open:
+        raise ToolError(f"«{tool}» делается в узле «{node}», а сейчас открыт «{state.path}». "
+                        f"Сначала {open_call(node, pawn)}, затем это действие.", code="bad_request")
+    await open_node({"path": node, **({"id": pawn} if pawn else {})})
+    return f"(перешла в узел {node})\n"
 
 
 async def _keep_tab_open(module, tab: str) -> None:
@@ -243,8 +311,9 @@ async def _keep_tab_open(module, tab: str) -> None:
 # ── спецификации инструментов для манифеста ───────────────────────────────────
 
 NAV_SPECS = {
-    "open": ("Открыть узел рабочего места, как игрок открывает вкладку: open(\"architect/zone\"), open(\"work\"), "
-             "open(\"pawn\", id=колонист). Без path показывает дочерние узлы. Действия узла доступны, пока он открыт.",
+    "open": ("Открыть узел (как вкладку игры): open(\"architect/zone\"), open(\"pawn/orders\", id=колонист). Без path: "
+             "дочерние узлы. Узел достаточно открыть один раз (увидеть его действия); потом действия этого узла можно "
+             "вызывать напрямую, модуль сам его откроет.",
              {"path": {"type": "string", "description": "путь узла, например architect/zone, work, schedule, pawn/orders",
                        "required": False},
               "id": {"type": "string", "description": "id колониста для узлов pawn/*", "required": False}}),

@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Added
+- Узлы: действие уже открывавшегося узла можно вызывать из любого другого узла: модуль сам переходит в узел тем же `open` (текущий узел и вкладка игры, закрытие прежнего окна), к ответу добавляется «(перешла в узел N)». Первый вход в узел явный; «виденные» узлы живут до выхода из среды, новой аренды или загрузки новой игры. Для `pawn/*` id из `pawn_id`/`pawn_ids`, смена колониста переоткрывает узел. Ошибка «делается в узле» содержит точный `open(...)`. Флаг `NO_AUTO_OPEN`. Тесты `test_workspace_autoopen.py`.
 - `inspect_unforbid_area` (`unforbid_area`): разрешить всё запрещённое в прямоугольнике, пачками по 40 id, при ошибке добивает по одному, сводка по видам; предупреждает об упоре в лимит `get_items` (80). Тесты `test_unforbid_area.py`.
 - `idle_watch` и событие `rimworld.idle_colonists`; `speed_plan` и автоскорость (`auto_speed`, `auto_unpause_s`, `GITS_RIMWORLD_AUTO_SPEED`, `GITS_RIMWORLD_AUTO_UNPAUSE_S`); вводная `game_brief.GAME_BRIEF` в `entry.brief`; `work_interval_s` 90 с; описание `set_time_speed` 0..4.
 - Контейнерный режим RimWorld: `agent/host_bridge.py` (`HostBridge`: `LocalHostBridge`, `RemoteHostBridge`, `make_host_bridge()` по `GITS_RIMWORLD_HOST_URL`), `agent/remote_recorder.py`, `agent/lease_host.py`, хостовый помощник `host/` (aiohttp, `127.0.0.1:8796`, токен `GITS_RIMWORLD_HOST_TOKEN`, прокси `/game-api/...`). Настройки `RIMWORLD_API`, `GITS_DASHBOARD_ORIGINS`. Без `GITS_RIMWORLD_HOST_URL` поведение прежнее.

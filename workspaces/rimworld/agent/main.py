@@ -109,6 +109,7 @@ async def build(url: str | None = None, token: str | None = None, config: dict |
                              policy=ctrl.policy_state, node=lambda: node_state.path)
     node_state.on_change = reporter.poke                 # смена узла уходит ядру сразу (ТЗ 33)
     ctrl.on_phase_change = reporter.poke
+    ctrl.on_nodes_reset = node_state.forget_seen          # «виденные» узлы живут до выхода из среды, новой аренды или новой игры
 
     module_manifest.attach(client, tools, graph=game_api.graph_data,
                            launch=ctrl.launch_game, focus=ctrl, node_state=node_state)   # ТЗ 11e, ТЗ 33

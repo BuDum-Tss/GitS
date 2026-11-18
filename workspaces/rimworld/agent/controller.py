@@ -203,6 +203,7 @@ class Controller:
         self.watchdog             = None   # GameWatchdog: игра запущена, видна, подключена
         self.host                 = config.get("host_bridge") or host_bridge.LocalHostBridge()   # всё, что работает только на хосте Windows
         self.link                 = None   # CoreLink: речь, эмоции и события игры через ядро (модуль rimworld, ТЗ 11)
+        self.on_nodes_reset       = None   # () -> None: аренда среды началась или кончилась, загружена игра: «виденные» узлы забыть
         self.on_phase_change      = None   # () -> None: игра загрузилась или забег закончился (модуль отправит состояние сразу)
         self._goal_status         = None   # статусы целей на прошлой проверке (id -> status): событие, когда цель закрыта
         self._goal_mtime          = 0.0
@@ -407,6 +408,7 @@ class Controller:
     async def _take_focus(self, target: str, reason: str, source: str, cp: dict | None = None) -> dict:
         """Вернуть фокус в `target` и восстановить контур по checkpoint (POL-14). Общая часть workspace.enter, workspace.resume
         и кнопки. `cp`: checkpoint, который ядро вернуло нам при workspace.exit; без него берётся файл модуля."""
+        self._reset_nodes()                       # новая аренда: узлы снова открываются явным open
         if cp is None:
             cp = await asyncio.to_thread(focus_checkpoint.load)
         if not self.policies.leave_afk(target, reason, source=source):
@@ -421,8 +423,13 @@ class Controller:
             await asyncio.to_thread(focus_checkpoint.clear)
         return {"ok": True, "restored": bool(cp), "goal": (cp or {}).get("goal", "")}
 
+    def _reset_nodes(self) -> None:
+        if self.on_nodes_reset is not None:
+            self.on_nodes_reset()
+
     async def _drop_focus(self, reason: str, source: str) -> dict:
         """Забрать фокус (POL-14): checkpoint, пауза, если игра идёт, уход в afk. Общая часть workspace.exit и кнопки."""
+        self._reset_nodes()                       # выход из среды
         if not self.policies.in_focus:
             return {"ok": True, "already": True}
         st = await asyncio.to_thread(_get_state)
@@ -684,6 +691,7 @@ class Controller:
                 logger.info(f"Колония загружена: {d.get('colony')} (тик {d.get('tick')})")
                 if self.on_phase_change is not None:
                     self.on_phase_change()
+                self._reset_nodes()                  # новая игра: узлы снова открываются явным open
                 self._last_proactive_tick = 0
                 self._colony_started      = False
                 self._just_loaded         = True
