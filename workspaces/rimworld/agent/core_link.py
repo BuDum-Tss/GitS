@@ -56,6 +56,10 @@ EXPIRES_S = {"rimworld.raid": 180, "rimworld.fire": 180, "rimworld.death": 300, 
              "rimworld.pawn_mood": 300, "rimworld.pawn_hurt": 180, "rimworld.pawn_lost": 300, "rimworld.newcomer": 600,
              "rimworld.pawn_downed": 300, "rimworld.enemy_seen": 180, "rimworld.enemy_down": 120, "rimworld.research_done": 600,
              "rimworld.resource_out": 600, "rimworld.goal": 600, "rimworld.run_ended": 1800, "rimworld.run_video": 3600, "rimworld.game_started": 300}
+# частые однотипные события одной серии: `event()` ставит им ключ слияния `rimworld:<вид>` (в `data.group_key`), внимание v2 сливает серию
+# в одно событие (виды объявляет манифест, `event_kinds`, с `coalesce`)
+COALESCE_KINDS = frozenset({"rimworld.pawn_downed", "rimworld.enemy_seen", "rimworld.enemy_down", "rimworld.pawn_hurt", "rimworld.pawn_mood",
+                            "rimworld.letter", "rimworld.resource_out", "rimworld.research_done", "rimworld.newcomer"})
 
 
 class CoreLink:
@@ -186,6 +190,8 @@ class CoreLink:
         full, default = EVENTS.get(kind) or (kind if kind.startswith("rimworld.") else f"rimworld.{kind}", 1)
         fields: dict = {"data": data, "urgency_hint": default if urgency is None else int(urgency),
                         "addressed_to_me": False}
+        if full in COALESCE_KINDS:
+            data.setdefault("group_key", f"rimworld:{full.split('.', 1)[1]}")      # ключ слияния серии для внимания v2 (в `data`, старое внимание его не читает)
         if full in EXPIRES_S:
             fields["expires_in_s"] = EXPIRES_S[full]
         try:

@@ -289,6 +289,11 @@ class Attention:
         """Событие модуля (тело `event`, ТЗ 01 раздел 7.1)."""
         await self.pipeline.submit(peer_id, event)
 
+    def run_kind_handlers(self, peer_id: str, event: dict) -> bool:
+        """Обработчики и хуки вида (`register_handler`, `register_hook`) для события, которое дальше ведёт внимание v2. True: событие
+        служебное, его забрал обработчик (оценка и очередь не нужны); хук только делает побочное действие и возвращает False."""
+        return self.pipeline.run_kind_handlers(peer_id, event)
+
     async def submit_speech(self, peer_id: str, say: dict) -> None:
         """Речь модуля (тело `say`, ТЗ 01 раздел 7.2): проходит ту же оценку важности, затем очередь речи."""
         await self.pipeline.submit_speech(peer_id, say)

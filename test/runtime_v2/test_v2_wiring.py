@@ -45,7 +45,7 @@ def _router(manifests=None):
 
 def test_flag_is_off_by_default_and_prefixes_are_configurable():
     assert v2_enabled({}) is False and v2_enabled({"GITS_ATTENTION": "v1"}) is False and v2_enabled({"GITS_ATTENTION": "V2"}) is True
-    assert kind_prefixes({}) == ("discord.", "telegram.", "voicechat.", "dashboard.", "core.timer")
+    assert kind_prefixes({}) == ("discord.", "telegram.", "voicechat.", "dashboard.", "rimworld.", "core.timer")
     assert kind_prefixes({"GITS_ATTENTION_V2_KINDS": " discord. , rimworld.alert "}) == ("discord.", "rimworld.alert")
 
 
@@ -66,12 +66,12 @@ async def test_sink_with_v2_routes_by_kind_prefix():
     sink = AttentionEventSink(legacy, recorder=lambda peer, ev: recorded.append(peer), v2=router)
     await sink.submit("discord", {"kind": "discord.message", "text": "привет", "urgency_hint": 3,
                                   "sender": {"id": "u1", "name": "Вася"}})
-    await sink.submit("rimworld", {"kind": "rimworld.raid", "text": "рейд", "urgency_hint": 5})
+    await sink.submit("montage", {"kind": "montage.done", "text": "готово", "urgency_hint": 3})       # префикса нет: старое внимание
     await sink.submit("telegram", {"kind": "telegram.dm", "text": "привет"})
     assert [e.kind for e in v2.events] == ["discord.message", "telegram.dm"]
     assert v2.events[0].workspace == "discord" and v2.events[0].priority == 50 and v2.events[0].sender.name == "Вася"
-    assert [(p, e["kind"]) for p, e in legacy.submitted] == [("rimworld", "rimworld.raid")]
-    assert recorded == ["discord", "rimworld", "telegram"]                    # журнал модулей ведётся как раньше
+    assert [(p, e["kind"]) for p, e in legacy.submitted] == [("montage", "montage.done")]
+    assert recorded == ["discord", "montage", "telegram"]                    # журнал модулей ведётся как раньше
 
 
 async def test_router_registers_event_kinds_from_manifest_and_clamps_by_registry():

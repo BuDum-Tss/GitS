@@ -405,9 +405,9 @@ async def _run(config: dict):
                                       emit=layer.v2.timer_emit if layer.v2 is not None else None)             # ТЗ 30: импульсы и размышление
     await impulses.timer.start()                         # восстановить сроки напоминаний себе
     work_loop = WorkLoop(env_of=lambda: layer.workspaces.current, manifest_of=layer.modules.manifest_of, agent=companion.resident,
-                         emit=layer.attention.submit_self, settings=layer.attention.settings_now,
-                         quiet=layer.attention.quiet_now, blocked=llm_gate.blocked,
-                         tasks=companion.tasks)
+                         emit=layer.v2.work_tick_emit if layer.v2 is not None else layer.attention.submit_self,     # при v2 тик это событие core.work_tick
+                         settings=layer.attention.settings_now, quiet=layer.attention.quiet_now, blocked=llm_gate.blocked,
+                         tasks=companion.tasks, busy=layer.v2.work_busy if layer.v2 is not None else (lambda: False))
     work_loop.start()                                    # ТЗ 33: автономная работа агента в среде игры или мира
     companion.router.auto_ok = lambda: bool((work_loop.spec() or ("", {}))[1].get("autonomous"))
     http_api.set_impulses(impulses)

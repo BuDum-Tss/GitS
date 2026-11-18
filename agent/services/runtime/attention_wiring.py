@@ -13,7 +13,8 @@ from services.attention_v2.eventlog import EventLog
 from services.attention_v2.kinds import KindRegistry
 from services.attention_v2.event import parse_priority
 from services.attention_v2.render import fmt_hms, one_line
-from services.attention_v2.routing import V2Router, kind_prefixes, register_core_kinds, timer_event
+from services.attention_v2.routing import (WORK_TICK_KIND, V2Router, kind_prefixes, register_core_kinds, timer_event,
+                                           work_tick_event)
 from services.reflection.timer import TEXT_PREFIX
 from services.runtime.turns import ResidentRuntime
 from services.tracing import events_log
@@ -46,7 +47,9 @@ def wire_attention_v2(companion, legacy_attention, modules, workspaces, sink, en
     runtime = ResidentRuntime(companion.resident, stop_speech=stop)
     v2 = AttentionV2(registry, log, runtime, focus_getter=lambda: workspaces.current)
     runtime.attention_v2 = v2
-    router = V2Router(v2, registry, kind_prefixes(environ), manifest_of=modules.manifest_of)
+    # служебные обработчики и хуки видов (`rimworld.colonists`, `rimworld.run_ended`) зовёт старое внимание через свой публичный метод до решения v2
+    side_effects = getattr(legacy_attention, "run_kind_handlers", None)
+    router = V2Router(v2, registry, kind_prefixes(environ), manifest_of=modules.manifest_of, side_effects=side_effects)
     sink.v2 = router
     companion.attention_v2 = v2
 
@@ -67,12 +70,21 @@ def wire_attention_v2(companion, legacy_attention, modules, workspaces, sink, en
             priority = None
         await v2.process_event(timer_event(text, priority=priority))
 
+    async def work_tick_emit(body: dict) -> None:
+        """Приёмник `WorkLoop`: рабочий цикл приходит событием `core.work_tick` (NORMAL, срок 90 с, один тик в очереди)."""
+        await v2.process_event(work_tick_event(str(body.get("text") or "")))
+
+    def work_busy() -> bool:
+        """Для `WorkLoop`: идёт ход по пачке событий или тик уже ждёт в очереди (новый не выдаётся)."""
+        return bool(runtime.current_batch()) or any(x.kind == WORK_TICK_KIND for x in v2.queue.items())
+
     async def close() -> None:
         v2.close()
         await runtime.close()
 
     return SimpleNamespace(attention=v2, runtime=runtime, router=router, registry=registry, log=log,
-                           submit_event=submit_event, timer_emit=timer_emit, close=close)
+                           submit_event=submit_event, timer_emit=timer_emit, work_tick_emit=work_tick_emit, work_busy=work_busy,
+                           close=close)
 
 
 EVENT_LOG_DEFAULT = 20

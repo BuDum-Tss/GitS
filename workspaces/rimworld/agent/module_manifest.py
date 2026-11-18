@@ -16,7 +16,7 @@ from gits_sdk import ToolError
 from pydantic import TypeAdapter, ValidationError
 
 import gamenet
-from core_link import EVENTS
+from core_link import COALESCE_KINDS, EVENTS, EXPIRES_S
 
 logger = logging.getLogger("module_manifest")
 
@@ -110,6 +110,36 @@ EMITS = [{"kind": kind, "description": _EMIT_TEXT[kind], "default_urgency": urge
          for kind, urgency in EVENTS.values()]
 
 
+# виды для внимания v2 (docs/RUNTIME_SPEC.md 3.3): срочность 0-5 модуля -> приоритет 0-100. Тревога (5) это 90, не 100: USER-ход (обращение
+# человека) не прерывается, а тревога от игры должна прерывать рабочий ход и не выглядеть обращением человека.
+_URGENCY_PRIORITY = {5: 90, 4: 70, 3: 50, 2: 30, 1: 10, 0: 10}
+ALERT_MAX_PRIORITY = 90
+TTL_DEFAULT_S = 120                  # срок вида, которому EXPIRES_S срок не задал
+_CRITICAL = {"rimworld.raid", "rimworld.death", "rimworld.fire", "rimworld.pawn_downed", "rimworld.pawn_lost", "rimworld.run_ended"}
+# чисто информационные виды: сами агента не будят (потолок ниже WAKE_MIN), попадают в ближайшую пачку, в сводку не идут
+_PASSIVE = {"rimworld.colonists", "rimworld.game_started", "rimworld.run_video", "rimworld.enemy_down", "rimworld.research_done"}
+PASSIVE_MAX_PRIORITY = 10
+
+
+def event_kinds() -> list[dict]:
+    """Виды событий RimWorld для внимания v2 (ключ манифеста `event_kinds`, формат `KindSpec.from_dict`): приоритет по срочности модуля
+    (`core_link.EVENTS`), срок из `core_link.EXPIRES_S`. Потолок 90 (тревога); у информационных видов 10 (`passive`)."""
+    out = []
+    for full, urgency in EVENTS.values():
+        passive = full in _PASSIVE
+        spec = {"kind": full, "default_priority": min(_URGENCY_PRIORITY[urgency], PASSIVE_MAX_PRIORITY) if passive else _URGENCY_PRIORITY[urgency],
+                "max_priority": PASSIVE_MAX_PRIORITY if passive else ALERT_MAX_PRIORITY,
+                "ttl_s": EXPIRES_S.get(full, TTL_DEFAULT_S)}
+        if full in _CRITICAL:
+            spec["critical"] = True
+        if full in COALESCE_KINDS:
+            spec["coalesce"] = True
+        if passive:
+            spec["passive"] = True
+        out.append(spec)
+    return out
+
+
 def schema_to_params(schema: dict, doc: str = "") -> dict:
     """JSON-схема параметров MCP -> упрощённые `params` контракта (ТЗ 01, 6.1). Для необязательных параметров с `anyOf`
     (`int | None`) берётся первый тип, кроме null."""
@@ -190,7 +220,7 @@ def build_manifest(tools: list[dict], nodes: list[dict] | None = None) -> dict:
     return {"id": PEER_ID, "role": "workspace", "ownership": "shared", "title": "RimWorld", "description": DESCRIPTION, "version": VERSION,
             "capabilities": ["game"], "subscribe": ["presence", "settings", "profile", "module"],
             "shared_settings": list(SHARED_SETTINGS), "settings_schema": json.loads(json.dumps(SETTINGS_SCHEMA)),
-            "tools": [launch_spec(), *tools], "emits": emits, "graph": True, "state": True,
+            "tools": [launch_spec(), *tools], "emits": emits, "event_kinds": event_kinds(), "graph": True, "state": True,
             "panel": panel_spec(),                       # пространство в дашборде (TZ 15, TAB-5, TAB-9)
             "workspace": dict(WORKSPACE), **({"nodes": nodes} if nodes else {})}
 

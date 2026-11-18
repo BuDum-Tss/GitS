@@ -266,7 +266,7 @@ window.ARCH_DATA = {
      "t": "Event и виды (KindRegistry)",
      "tag": "D",
      "new": true,
-     "do": "единая запись Event; виды событий окружений из манифеста (ключ event_kinds: приоритет, потолок, срок), старые события шины переводит from_legacy; маршрут по префиксам GITS_ATTENTION_V2_KINDS",
+     "do": "единая запись Event; виды событий окружений из манифеста (ключ event_kinds: приоритет, потолок, срок), старые события шины переводит from_legacy; маршрут по префиксам GITS_ATTENTION_V2_KINDS (в том числе rimworld.*); служебные обработчики и хуки видов (rimworld.colonists, rimworld.run_ended) V2Router зовёт через Attention.run_kind_handlers до решения; рабочий цикл при v2 это событие core.work_tick",
      "out": "Event",
      "now": "services/attention_v2/event.py, kinds.py, routing.py (V2Router); точка маршрута: AttentionEventSink.submit"
     },
@@ -1087,6 +1087,12 @@ window.ARCH_DATA = {
    "self.work_tick"
   ],
   [
+   "wloop",
+   "kinds2",
+   "flow",
+   "core.work_tick при v2"
+  ],
+  [
    "npanel",
    "ctx",
    "flow",
@@ -1222,7 +1228,7 @@ window.ARCH_DATA = {
    "hub",
    "kinds2",
    "flow",
-   "события discord.*, telegram.*, voicechat.* при GITS_ATTENTION=v2"
+   "события discord.*, telegram.*, voicechat.*, rimworld.* при GITS_ATTENTION=v2"
   ],
   [
    "conv",

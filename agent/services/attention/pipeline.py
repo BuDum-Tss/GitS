@@ -85,13 +85,8 @@ class EventPipeline:
             ctx.log.log_nowait("module_event", item.text[:TEXT_LOG], module=peer_id, event_kind=item.kind,
                                urgency_hint=item.urgency_hint, addressed_to_me=item.addressed_to_me,
                                sender=ctx.sender_name(item.sender))
-        handler = ctx.kind_handlers.get(item.kind)
-        if handler is not None:
-            ctx.spawn(self._run_kind_handler(handler, item))
+        if self._dispatch_kind(item):
             return
-        hook = ctx.kind_hooks.get(item.kind)
-        if hook is not None:
-            ctx.spawn(self._run_kind_handler(hook, item))                 # побочное действие; событие идёт дальше обычным путём
         if is_announce_event(item.kind, event):
             self.store.register(item)                                      # AN-2: мимо формулы, но с записью решения
             await self.announcer.announce(item)
@@ -116,6 +111,25 @@ class EventPipeline:
         elif stance == "wait":                                           # «только это», событие не из выбранного
             item.urgency = min(item.urgency, scoring.SAY_URGENCY - 1)
         await self.dispatcher.finish(item, cfg, att)
+
+    def _dispatch_kind(self, item: Item) -> bool:
+        """Служебные обработчики вида: `kind_handlers` забирают событие целиком (True: дальше его вести не нужно), `kind_hooks`
+        делают побочное действие, а событие идёт дальше обычным путём (False)."""
+        ctx = self.ctx
+        handler = ctx.kind_handlers.get(item.kind)
+        if handler is not None:
+            ctx.spawn(self._run_kind_handler(handler, item))
+            return True
+        hook = ctx.kind_hooks.get(item.kind)
+        if hook is not None:
+            ctx.spawn(self._run_kind_handler(hook, item))                 # побочное действие; событие идёт дальше обычным путём
+        return False
+
+    def run_kind_handlers(self, peer_id: str, event: dict) -> bool:
+        """Служебные обработчики и хуки вида события без оценки внимания: для событий, которые ведёт внимание v2 (хук `run_ended`,
+        обработчик `colonists` не должны пропасть при смене пути). True: событие забрал обработчик, в v2 его передавать не нужно."""
+        item = self.normalizer.make_item(peer_id, event, self.ctx.clock())
+        return self._dispatch_kind(item)
 
     @staticmethod
     async def _run_kind_handler(handler, item: Item) -> None:

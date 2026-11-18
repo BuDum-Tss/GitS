@@ -43,6 +43,7 @@ class KindSpec:
     reply_tool: str | None = None
     critical: bool = False                # не режется потолком `FOCUS_CAP` вне фокуса (4.3)
     passive: bool = False                 # фон: ждёт в очереди и уходит в пачку вместе с другими, но сам ход не запускает (ни по `ON_TURN_S`)
+    replace: bool = False                 # при слиянии новое событие заменяет текст ожидающего, а не склеивается с ним (рабочий цикл)
     legacy: bool = False                  # вид выведен из события старой шины, не объявлен манифестом
 
     @classmethod
@@ -57,7 +58,8 @@ class KindSpec:
             raise ValueError(f"{kind}: ttl_s должно быть положительным числом")
         return cls(kind=kind, default_priority=min(df, mx), max_priority=mx, ttl_s=float(ttl),
                    coalesce=bool(d.get("coalesce", False)), reply_tool=d.get("reply_tool"),
-                   critical=bool(d.get("critical", False)), passive=bool(d.get("passive", False)))
+                   critical=bool(d.get("critical", False)), passive=bool(d.get("passive", False)),
+                   replace=bool(d.get("replace", False)))
 
 
 @dataclass
@@ -82,7 +84,7 @@ class KindRegistry:
 
     def register_manifest(self, workspace: str, manifest) -> list[str]:
         """Объявленные манифестом виды: `{"event_kinds": [{kind, default_priority, max_priority, ttl_s, coalesce, reply_tool,
-        critical}, ...]}` (или сам список). Значения приоритета числом или именем уровня. Прежние виды окружения заменяются."""
+        critical, passive, replace}, ...]}` (или сам список). Значения приоритета числом или именем уровня. Прежние виды окружения заменяются."""
         items = manifest.get("event_kinds", []) if isinstance(manifest, dict) else manifest
         specs = [KindSpec.from_dict(d) for d in (items or [])]
         self.unregister_workspace(workspace)

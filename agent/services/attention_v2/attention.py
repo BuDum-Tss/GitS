@@ -109,8 +109,10 @@ class AttentionV2:
         top_busy = max(self.queue.max_priority(), max(x.prio for x in running))
         is_user = e.priority >= USER
         if is_user or e.priority > top_busy + self.interrupt_margin:
-            if is_user or self._budget_ok():
-                await self._interrupt(e, "user" if is_user else "margin")
+            spec = self.registry.get(e.kind)
+            critical = bool(spec and spec.critical)                # тревога окружения (рейд, гибель) проходит мимо бюджета: шторм мелких прерываний её не глушит
+            if is_user or critical or self._budget_ok():
+                await self._interrupt(e, "user" if is_user else ("critical" if critical else "margin"))
                 return
             self._m["interrupts_skipped_budget"] += 1
         self._enqueue(e)
@@ -124,7 +126,11 @@ class AttentionV2:
         if target is None:
             return False
         before = target.prio
-        target.text = render.one_line(f"{target.text} {e.text}", MAX_TEXT)
+        spec = self.registry.get(e.kind)
+        if spec is not None and spec.replace:                     # вид «последнее заменяет прежнее» (рабочий цикл): текст не копится
+            target.text = render.one_line(e.text, MAX_TEXT)
+        else:
+            target.text = render.one_line(f"{target.text} {e.text}", MAX_TEXT)
         target.priority = max(target.prio, e.prio)
         if e.expires_at is not None:
             target.expires_at = e.expires_at if target.expires_at is None else max(target.expires_at, e.expires_at)
