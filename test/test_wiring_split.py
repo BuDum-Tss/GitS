@@ -113,7 +113,7 @@ PUBLIC_ROUTES = {
     ("GET", "/api/chat"), ("GET", "/api/workspaces"), ("GET", "/api/services"),
     ("POST", "/api/peers/{id}/enabled"), ("POST", "/api/peers/{id}/restart"), ("POST", "/api/peers/{id}/settings"),
     ("GET", "/api/peers/{id}/panel"), ("POST", "/api/peers/{id}/panel/action"),
-    ("POST", "/api/peers/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"), ("GET", "/api/buffer"),
+    ("POST", "/api/peers/{id}/panel/link"), ("GET", "/api/artifact"), ("GET", "/api/attention"), ("GET", "/api/attention_v2"), ("GET", "/api/buffer"),
     ("POST", "/api/attention/rules/clear"), ("GET", "/api/workspace"), ("POST", "/api/workspace/enter"), ("POST", "/api/workspace/exit"),
     ("GET", "/api/reminders"), ("GET", "/api/episodes"), ("GET", "/api/episodes/{id}"), ("GET", "/api/diary"), ("GET", "/api/sleep"),
     ("POST", "/api/sleep/now"), ("POST", "/api/sleep/interrupt"), ("POST", "/api/notify"), ("GET", "/api/jobs"), ("POST", "/api/jobs/{module}/{job_id}/cancel"),

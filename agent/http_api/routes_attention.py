@@ -62,6 +62,22 @@ async def handle_api_attention(request: web.Request) -> web.Response:
     return web.json_response(ctx.attention.snapshot())
 
 
+ATTENTION_V2_LOG_LIMIT = 50
+
+
+async def handle_api_attention_v2(request: web.Request) -> web.Response:
+    """Внимание v2 (docs/RUNTIME_SPEC.md раздел 10): метрики `status()` и последние записи журнала событий (`?limit=N`, до 500).
+    Флаг `GITS_ATTENTION=v2` выключен: `{"enabled": false}`."""
+    v2 = ctx.attention_v2
+    if v2 is None:
+        return web.json_response({"enabled": False})
+    try:
+        limit = max(0, min(500, int(request.query.get("limit", ATTENTION_V2_LOG_LIMIT))))
+    except (TypeError, ValueError):
+        limit = ATTENTION_V2_LOG_LIMIT
+    return web.json_response({"enabled": True, "status": v2.status(), "log": [e.to_dict() for e in v2.log.query(limit=limit)]})
+
+
 async def handle_api_attention_clear(request: web.Request) -> web.Response:
     """{"id": "r-xxxxxx"} снять правило; без id снять все."""
     body, err = await json_body(request)
@@ -99,6 +115,7 @@ async def handle_api_notify(request: web.Request) -> web.Response:
 
 ROUTES = [
     ("GET", "/api/attention", handle_api_attention),
+    ("GET", "/api/attention_v2", handle_api_attention_v2),
     ("GET", "/api/buffer", handle_api_buffer),
     ("POST", "/api/attention/rules/clear", handle_api_attention_clear),
     ("GET", "/api/workspace", handle_api_workspace),

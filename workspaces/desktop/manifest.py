@@ -22,12 +22,12 @@ TOOLS = [
      "keywords": ["скриншот", "снимок", "сфотографируй", "скрин", "фото", "сними", "картинка"]},
     {"name": "describe_screen",
      "description": "Посмотреть на экран прямо сейчас и описать, что на нём (приложения, чем занят пользователь).",
-     "params": {}, "risk": "auto", "availability": "always", "informative": True,
+     "params": {}, "risk": "auto", "availability": "always", "informative": True, "read_only": True,
      "keywords": ["экран", "видишь", "посмотри", "окно", "делаю", "открыто"]},
     {"name": "read_screen",
      "description": _BACKUP_NOTE + "Прочитать надписи на экране (OCR) с координатами в активном окне. Для вопросов «что там "
                     "написано» и чтобы выбрать, на что нажать.",
-     "params": {}, "risk": "auto", "availability": "always", "informative": True,
+     "params": {}, "risk": "auto", "availability": "always", "informative": True, "read_only": True,
      "keywords": ["прочитай", "написано", "экран", "надпись", "текст на экране"]},
     {"name": "operate_screen",
      "description": "Запасной уровень (по экрану): выполнить цель в ЛЮБОЙ программе, нажимая мышью и клавиатурой "
@@ -39,7 +39,7 @@ TOOLS = [
      "keywords": ["открой", "нажми", "настрой", "включи", "выключи", "в программе", "в приложении", "кнопку", "меню"]},
     {"name": "list_windows",
      "description": "Перечислить открытые окна на компьютере (заголовки).",
-     "params": {}, "risk": "auto", "availability": "always", "informative": True,
+     "params": {}, "risk": "auto", "availability": "always", "informative": True, "read_only": True,
      "keywords": ["окна", "окно", "открыто", "программы", "приложения"]},
     {"name": "focus_window",
      "description": _BACKUP_NOTE + "Переключиться на окно по части заголовка.",
@@ -87,7 +87,7 @@ TOOLS = [
     {"name": "list_apps",
      "description": "Найти установленные приложения по части названия (или назвать несколько).",
      "params": {"query": {"type": "string", "required": False, "description": "часть названия"}},
-     "risk": "auto", "availability": "always", "informative": True,
+     "risk": "auto", "availability": "always", "informative": True, "read_only": True,
      "keywords": ["приложения", "программы", "что можешь запустить", "что установлено"]},
     {"name": "add_app",
      "description": "Добавить приложение в свой список для запуска: нужен путь к .exe, .lnk, .bat или .cmd (для программ "
@@ -114,7 +114,7 @@ TOOLS = [
      "keywords": ["римворлд", "меню", "быстрый запуск", "продолжить", "загрузить"]},
     {"name": "last_screenshot",
      "description": "Путь к последнему сохранённому снимку экрана или игры, чтобы приложить его к черновику поста.",
-     "params": {}, "risk": "auto", "availability": "always", "informative": True,
+     "params": {}, "risk": "auto", "availability": "always", "informative": True, "read_only": True,
      "keywords": ["снимок", "скриншот", "фото", "черновик", "последний"]},
 ]
 

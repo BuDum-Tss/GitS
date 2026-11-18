@@ -9,7 +9,7 @@ _GENERIC = ("телеграм", "телега", "тг", "канал", "пост"
 
 
 def _tool(name, description, params, *, risk="auto", keywords=(), informative=False,
-          danger_check=False, timeout_s=30, sends=False):
+          danger_check=False, timeout_s=30, sends=False, read_only=False):
     tool = {"name": name, "description": description, "params": params, "risk": risk, "availability": "always",
             "timeout_s": timeout_s, "keywords": list(dict.fromkeys([*keywords, *_GENERIC]))}
     if informative:
@@ -18,6 +18,8 @@ def _tool(name, description, params, *, risk="auto", keywords=(), informative=Fa
         tool["danger_check"] = True
     if sends:
         tool["sends"] = True              # отправляет текст людям: ядро пишет её исходящее событие module_out
+    if read_only:
+        tool["read_only"] = True          # явное чтение: журнал действий хода агента не считает его действием с эффектом
     return tool
 
 
@@ -53,7 +55,7 @@ TOOLS = [
           {"chat": {"type": "string", "required": False, "description": "название чата, @имя или id"},
            "unread": _bool("true: что писали в её аккаунт недавно", required=False),
            "limit": {"type": "integer", "required": False, "description": _LIMIT.format("записей", 15)}},
-          informative=True, timeout_s=60, keywords=("прочитай", "переписка", "сообщения", "чаты", "диалоги", "новые", "входящие")),
+          informative=True, read_only=True, timeout_s=60, keywords=("прочитай", "переписка", "сообщения", "чаты", "диалоги", "новые", "входящие")),
     _tool("announce", "Разослать объявление подписчикам бота-витрины (подписка: /subscribe): начался стрим, вышло видео. "
                       "text - текст объявления, url - необязательная ссылка (добавится в конец). Заблокировавшие бота "
                       "снимаются с подписки.",

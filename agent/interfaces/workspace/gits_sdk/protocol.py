@@ -433,7 +433,7 @@ def _check_tool(i: int, tool: Any, problems: list[str], seen: set[str]) -> None:
         problems.append(f"{where}.risk: одно из {list(RISKS)}")
     if tool.get("availability") not in AVAILABILITIES:
         problems.append(f"{where}.availability: одно из {list(AVAILABILITIES)}")
-    for flag in ("informative", "self_confirming", "danger_check", "job", "fallback", "announce", "sends"):
+    for flag in ("informative", "self_confirming", "danger_check", "job", "fallback", "announce", "sends", "read_only"):
         if flag in tool and not isinstance(tool[flag], bool):
             problems.append(f"{where}.{flag}: должно быть true или false")
     if "timeout_s" in tool:
@@ -998,6 +998,7 @@ class ToolSpec:
     announce: bool = False          # долгое или заметное действие на ПК: ядро объявляет запуск до вызова (AN-3)
     node: str | None = None         # ТЗ 33: узел рабочего места, в котором инструмент виден; None - виден всегда
     sends: bool = False             # контракт 3.4: инструмент отправляет текст людям (сообщение в чат): ядро пишет исходящее событие `module_out`
+    read_only: bool = False         # контракт 3.5: явное чтение без побочного эффекта; по умолчанию эффект есть (журнал действий хода)
 
     def full_id(self, peer_id: str) -> str:
         return f"{peer_id}.{self.name}"
@@ -1012,7 +1013,7 @@ class ToolSpec:
             danger_check=bool(d.get("danger_check", False)), job=bool(d.get("job", False)),
             fallback=bool(d.get("fallback", False)), core_fills=list(d.get("core_fills") or []),
             announce=bool(d.get("announce", False)), node=d.get("node"),
-            sends=bool(d.get("sends", False)))
+            sends=bool(d.get("sends", False)), read_only=bool(d.get("read_only", False)))
 
     def to_dict(self) -> dict:
         return {"name": self.name, "description": self.description, "params": self.params, "risk": self.risk,
@@ -1020,7 +1021,8 @@ class ToolSpec:
                 "self_confirming": self.self_confirming, "timeout_s": self.timeout_s, "keywords": self.keywords,
                 "danger_check": self.danger_check, "job": self.job, "fallback": self.fallback,
                 "core_fills": self.core_fills, "announce": self.announce,
-                **({"node": self.node} if self.node else {}), **({"sends": True} if self.sends else {})}
+                **({"node": self.node} if self.node else {}), **({"sends": True} if self.sends else {}),
+                **({"read_only": True} if self.read_only else {})}
 
 
 @dataclass

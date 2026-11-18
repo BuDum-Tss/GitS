@@ -6,18 +6,20 @@ PREFIX = "obs_"                       # имена инструментов по
 _GENERIC = ("obs", "обс", "стрим", "трансляция", "сцена", "эфир")
 
 
-def _tool(name, description, params, *, risk="auto", keywords=(), informative=False, timeout_s=30):
+def _tool(name, description, params, *, risk="auto", keywords=(), informative=False, timeout_s=30, read_only=False):
     tool = {"name": PREFIX + name, "description": description, "params": params, "risk": risk, "availability": "always",
             "timeout_s": timeout_s, "keywords": list(dict.fromkeys([*keywords, *_GENERIC]))}
     if informative:
         tool["informative"] = True
+    if read_only:
+        tool["read_only"] = True          # явное чтение: журнал действий хода агента не считает его действием с эффектом
     return tool
 
 
 TOOLS = [
-    _tool("status", "Состояние OBS: на связи ли, какая сцена, идёт ли трансляция и запись.", {}, informative=True,
+    _tool("status", "Состояние OBS: на связи ли, какая сцена, идёт ли трансляция и запись.", {}, informative=True, read_only=True,
           keywords=("идёт ли стрим", "что в obs")),
-    _tool("scenes", "Список сцен OBS и текущая сцена.", {}, informative=True, keywords=("какие сцены",)),
+    _tool("scenes", "Список сцен OBS и текущая сцена.", {}, informative=True, read_only=True, keywords=("какие сцены",)),
     _tool("switch_scene", "Переключить сцену OBS по названию (например кабинет, AFK, игра).",
           {"scene": {"type": "string", "description": "название сцены из списка obs_scenes"}}, keywords=("переключи", "включи сцену")),
     _tool("start_stream", "Начать трансляцию из OBS (идёт в эфир на площадку, которая настроена в OBS).", {}, risk="public",

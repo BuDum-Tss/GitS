@@ -158,7 +158,9 @@ def wire_voice(layer, registry, environ: Mapping[str, str] | None = None) -> Voi
 
     from host import settings
 
-    service = VoiceService.build(os.environ if environ is None else environ, submit=layer.attention.submit,
+    # при GITS_ATTENTION=v2 у слоя есть `submit_event`: часть видов идёт в внимание v2, иначе всё как раньше в `attention.submit`
+    submit = getattr(layer, "submit_event", None) or layer.attention.submit
+    service = VoiceService.build(os.environ if environ is None else environ, submit=submit,
                                  token=lambda: layer.hub.token, allow=lambda remote: remote_allowed(remote, layer.hub.allow),
                                  names=names, journal=lambda kind, text, data: events_log.log_nowait(kind, text, **data),
                                  ref_resolver=character_reference, leaks=leaks, memory_dir=settings.memory_dir())

@@ -26,10 +26,10 @@ MODULE_SETTINGS = ("autoplay",)       # настройки Telegram стали �
 
 
 def _tool(env, name, description, params, call, risk="auto", keywords=(), self_confirming=False,
-          informative=False, danger=None):
+          informative=False, danger=None, read_only=False):
     return Tool(id=f"{env}.{name}", env=env, name=name, description=description, params=params,
                 risk=risk, keywords=tuple(keywords), call=call, self_confirming=self_confirming,
-                informative=informative, danger=danger)
+                informative=informative, danger=danger, read_only=read_only)
 
 
 def register(registry, companion, memory):
@@ -312,7 +312,7 @@ def register(registry, companion, memory):
                   "осталось. Для вопросов «чем ты занята», «что в планах», «какие у тебя задачи».",
                   {"workspace": {"type": "string", "required": False, "description": "среда (assistant, rimworld, montage), по умолчанию текущая; * - все"},
                    "all": {"type": "boolean", "required": False, "description": "показать и закрытые"}},
-                  list_tasks, informative=True, keywords=("задачи", "задача", "планы", "дела", "чем занята", "список дел")),
+                  list_tasks, informative=True, read_only=True, keywords=("задачи", "задача", "планы", "дела", "чем занята", "список дел")),
             _tool("assistant", "create_task", "Завести задачу в текущей среде: цель, при желании срок. Если шагов нет, цель разобьётся на шаги "
                   "сама (планировщик). Для долгих дел из нескольких шагов; короткое одно действие делай сразу, без задачи.",
                   {"goal": {"type": "string", "description": "цель одной фразой"},
@@ -340,11 +340,11 @@ def register(registry, companion, memory):
                   close_task, keywords=("задача", "закрой", "отмени задачу", "выполнено", "готово")),
             _tool("assistant", "recall", "Вспомнить, что она помнит по теме или о ком-то (для вопросов «что ты помнишь про…»).",
                   {"query": {"type": "string", "description": "тема или слова для поиска в памяти"}},
-                  recall, informative=True, keywords=("помнишь", "вспомни", "вспомнить", "память", "знаешь")),
+                  recall, informative=True, read_only=True, keywords=("помнишь", "вспомни", "вспомнить", "память", "знаешь")),
             _tool("assistant", "recall_episode", "Развернуть эпизод из памяти по его id (из ответа recall «эпизод e12-30»): текст эпизода и "
                   "события-источники по порядку. Для просьб «расскажи подробнее, как это было», «что именно там было сказано».",
                   {"id": {"type": "string", "description": "id эпизода, например e120-135"}},
-                  recall_episode, informative=True, keywords=("подробнее", "как это было", "эпизод", "помнишь как", "вспомни как")),
+                  recall_episode, informative=True, read_only=True, keywords=("подробнее", "как это было", "эпизод", "помнишь как", "вспомни как")),
             _tool("assistant", "quiet_mode", "Не отвлекать пользователя заданное число минут (она сама не заговаривает).",
                   {"minutes": {"type": "integer", "description": "на сколько минут, до 240"}}, quiet_mode,
                   keywords=("отвлекай", "мешай", "занят", "смотрю", "работаю", "минут", "тишина")),
@@ -361,7 +361,7 @@ def register(registry, companion, memory):
         tools=[_tool("web", "search", "Найти в интернете ответ на вопрос и вернуть выжимку фактов со ссылками на источники. "
                      "Для просьб «поищи», «узнай, как», «что такое», справки по играм и программам. Читает только страницы, ничего не меняет.",
                      {"query": {"type": "string", "description": "что искать; для игр и программ лучше на английском"}},
-                     web_search_tool, informative=True,
+                     web_search_tool, informative=True, read_only=True,
                      keywords=("поищи", "найди", "интернет", "гугл", "google", "вики", "wiki", "узнай", "как работает", "что такое"))]))
 
 
@@ -606,7 +606,7 @@ def _workspace_tools(workspaces, modules=None) -> list[Tool]:
         Tool(id="workspace.status", env="core", name="status",
              description="В какой среде фокус агента, какие окружения закреплены за ней (в AFK), какие свободны и какие заняты другими. "
                          "Для вопросов «чем ты занята», «где ты сейчас».",
-             params={}, risk="auto", call=status, informative=True, availability="always",
+             params={}, risk="auto", call=status, informative=True, read_only=True, availability="always",
              keywords=("чем занята", "где ты", "в какой среде", "что делаешь", "среда")),
     ]
 
@@ -665,10 +665,10 @@ def register_core_tools(registry, modules, attention=None, workspaces=None):
     async def digest(a):
         return attention.take_digest(a.get("module"))
 
-    def attention_tool(name, description, params, call, informative=False, keywords=()):
+    def attention_tool(name, description, params, call, informative=False, keywords=(), read_only=False):
         # id attention.<имя>, а окружение core: Tool.id не обязан начинаться с id окружения
         return Tool(id=f"attention.{name}", env="core", name=name, description=description, params=params, risk="auto",
-                    keywords=tuple(keywords), call=call, informative=informative, availability="always")
+                    keywords=tuple(keywords), call=call, informative=informative, availability="always", read_only=read_only)
 
     attention_tools = [] if attention is None else [
         attention_tool(
@@ -684,7 +684,7 @@ def register_core_tools(registry, modules, attention=None, workspaces=None):
                                        "normal - снять прежние правила"},
              "minutes": {"type": "integer", "required": False, "description": "на сколько минут, 1-1440, по умолчанию 60"}},
             set_rule, keywords=("отвлекай", "не трогай", "заглуши", "выдели", "только", "на время", "час", "пока играю", "правило")),
-        attention_tool("rules", "Какие временные правила внимания действуют сейчас.", {}, rules, informative=True,
+        attention_tool("rules", "Какие временные правила внимания действуют сейчас.", {}, rules, informative=True, read_only=True,
                        keywords=("правила", "что заглушено", "не отвлекать")),
         attention_tool("clear_rules", "Снять временные правила внимания: одно по номеру или все сразу.",
                        {"id": {"type": "string", "required": False, "description": "номер правила вида r-xxxxxx; без него снимаются все"}},
@@ -734,20 +734,20 @@ def register_core_tools(registry, modules, attention=None, workspaces=None):
                   "Идентификатор MP4 можно передать в telegram.message (files) после перехода в Telegram.",
                   {"query": {"type": "string", "required": False, "description": "часть имени файла или папки"},
                    "offset": {"type": "integer", "required": False, "description": "позиция следующей страницы"}},
-                  resources, informative=True, keywords=("ресурсы", "файлы", "ролик", "видео", "экспорт")),
+                  resources, informative=True, read_only=True, keywords=("ресурсы", "файлы", "ролик", "видео", "экспорт")),
             _tool("core", "jobs", "Перечень задач всех окружений: окружение, название, состояние, стадия, прогресс. "
                   "Для вопросов «что сейчас делается», «как там рендер», «какие задачи идут».",
-                  {}, jobs, informative=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),
+                  {}, jobs, informative=True, read_only=True, keywords=("задачи", "задача", "рендер", "прогресс", "идёт", "готово")),
             _tool("core", "modules_status", "Состояние модулей: какие подключены, включены ли и что у каждого сейчас (игра, Telegram, "
                   "голос, питомец, компьютер, монтаж). В контекст состояние не кладётся: узнавай им, когда спрашивают или нужно знать. "
                   "Для вопросов «что с модулями», «запущена ли игра», «работает ли телеграм».",
-                  {}, modules_status, informative=True, keywords=("модули", "модуль", "статус", "состояние", "подключён", "работает")),
+                  {}, modules_status, informative=True, read_only=True, keywords=("модули", "модуль", "статус", "состояние", "подключён", "работает")),
             _tool("core", "module_events", "Недавние события модулей (что происходило в игре RimWorld, Telegram, на компьютере): "
                   "в контекст они не кладутся, читай их этим инструментом, когда спрашивают «что было в игре», «что нового» "
                   "или нужно знать, что произошло.",
                   {"module": {"type": "string", "required": False, "enum": _ModuleIds(modules), "description": "id модуля; без него все"},
                    "limit": {"type": "integer", "required": False, "description": "сколько событий, по умолчанию 15"}},
-                  module_events, informative=True, keywords=("события", "что было", "что произошло", "что нового", "в игре", "колония")),
+                  module_events, informative=True, read_only=True, keywords=("события", "что было", "что произошло", "что нового", "в игре", "колония")),
             _tool("core", "set_setting", "Включить или выключить общую настройку ядра: "
                   "autoplay (играть самой: рабочие циклы в среде игры; включай, когда пользователь просит начать стрим или играть сама, выключай, когда просит закончить).",
                   {"key": {"type": "string", "enum": list(MODULE_SETTINGS), "description": "какая настройка"},

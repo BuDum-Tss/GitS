@@ -8,7 +8,7 @@ _GENERIC = ("твич", "twitch", "стрим", "чат", "зрители", "т�
 
 
 def _tool(name, description, params, *, risk="auto", keywords=(), informative=False, self_confirming=False,
-          danger_check=False, timeout_s=30):
+          danger_check=False, timeout_s=30, read_only=False):
     tool = {"name": PREFIX + name, "description": description, "params": params, "risk": risk, "availability": "always",
             "timeout_s": timeout_s, "keywords": list(dict.fromkeys([*keywords, *_GENERIC]))}
     if informative:
@@ -17,6 +17,8 @@ def _tool(name, description, params, *, risk="auto", keywords=(), informative=Fa
         tool["self_confirming"] = True
     if danger_check:
         tool["danger_check"] = True
+    if read_only:
+        tool["read_only"] = True          # явное чтение: журнал действий хода агента не считает его действием с эффектом
     return tool
 
 
@@ -28,7 +30,7 @@ TOOLS = [
           {"text": {"type": "string", "description": "текст объявления"}},
           risk="public", danger_check=True, keywords=("объяви", "анонс")),
     _tool("stream_status", "Идёт ли трансляция на Twitch, название, игра, число зрителей.", {},
-          informative=True, keywords=("идёт ли стрим", "сколько зрителей", "онлайн")),
+          informative=True, read_only=True, keywords=("идёт ли стрим", "сколько зрителей", "онлайн")),
     _tool("set_stream", "Сменить название и/или игру трансляции на Twitch.",
           {"title": {"type": "string", "required": False, "description": "новое название"},
            "game": {"type": "string", "required": False, "description": "название игры или категории"}},
@@ -37,7 +39,7 @@ TOOLS = [
           keywords=("клип", "запиши момент")),
     _tool("recent_events", "Что происходило в канале недавно: подписки, фолловы, рейды, награды, чат.",
           {"limit": {"type": "integer", "required": False, "description": "сколько последних, по умолчанию 15"}},
-          informative=True, keywords=("что было", "последние события")),
+          informative=True, read_only=True, keywords=("что было", "последние события")),
     _tool("timeout_user", "Временно заглушить зрителя в чате Twitch (тайм-аут).",
           {"user": {"type": "string", "description": "ник зрителя"},
            "seconds": {"type": "integer", "required": False, "description": "на сколько секунд, по умолчанию 300"},

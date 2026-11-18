@@ -254,7 +254,8 @@ NAV_SPECS = {
 
 def navigation_specs() -> list[dict]:
     return [{"name": name, "description": text, "params": params, "risk": "auto", "availability": "profile",
-             "timeout_s": TOOL_TIMEOUT_S, "keywords": list(KEYWORDS)} for name, (text, params) in NAV_SPECS.items()]
+             "timeout_s": TOOL_TIMEOUT_S, "keywords": list(KEYWORDS), **({"read_only": True} if name == "where" else {})}
+            for name, (text, params) in NAV_SPECS.items()]            # `where` только читает; `open` и `back` меняют интерфейс игры
 
 
 async def tool_specs(mcp=None) -> list[dict]:
@@ -274,5 +275,7 @@ async def tool_specs(mcp=None) -> list[dict]:
                 "timeout_s": TOOL_TIMEOUT_S, "keywords": list(KEYWORDS)}
         if node:
             spec["node"] = node
+        if kind == "query":
+            spec["read_only"] = True          # запросы по дереву (colony_*, pawn_details) только читают состояние игры
         out.append(spec)
     return out

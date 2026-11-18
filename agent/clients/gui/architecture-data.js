@@ -244,6 +244,53 @@ window.ARCH_DATA = {
    ]
   },
   {
+   "id": "g_v2",
+   "row": 2,
+   "title": "Внимание v2",
+   "tag": "A",
+   "new": true,
+   "summary": "Новое внимание под флагом GITS_ATTENTION=v2 (по умолчанию выключено): единый Event с приоритетом и сроком, приоритетная очередь, process_event и on_turn, слияние, сводка пропущенного, прерывание хода. Живёт рядом со старым, пока не закончен переход.",
+   "out": "ход агента с пачкой событий",
+   "nodes": [
+    {
+     "id": "av2",
+     "t": "AttentionV2",
+     "tag": "A",
+     "new": true,
+     "do": "небольшой автомат: process_event (запустить простаивающего агента, прервать занятого, поставить в очередь или влить в USER-ход), on_turn, слияние по group_key, сводка «пропущено», бюджет прерываний; метрики GET /api/attention_v2",
+     "out": "запуск, прерывание или очередь",
+     "now": "services/attention_v2/attention.py, queue.py, render.py, clock.py; спецификация docs/RUNTIME_SPEC.md"
+    },
+    {
+     "id": "kinds2",
+     "t": "Event и виды (KindRegistry)",
+     "tag": "D",
+     "new": true,
+     "do": "единая запись Event; виды событий окружений из манифеста (ключ event_kinds: приоритет, потолок, срок), старые события шины переводит from_legacy; маршрут по префиксам GITS_ATTENTION_V2_KINDS",
+     "out": "Event",
+     "now": "services/attention_v2/event.py, kinds.py, routing.py (V2Router); точка маршрута: AttentionEventSink.submit"
+    },
+    {
+     "id": "log2",
+     "t": "EventLog v2",
+     "tag": "I",
+     "new": true,
+     "do": "дописываемый журнал: приём и каждый переход состояния события; записи идут в общий журнал видом attention_v2, поле data не пишется",
+     "out": "записи журнала",
+     "now": "services/attention_v2/eventlog.py, sink в services/runtime/attention_wiring.py"
+    },
+    {
+     "id": "rt2",
+     "t": "ResidentRuntime",
+     "tag": "A",
+     "new": true,
+     "do": "ход единого агента по пачке событий: текст пачки, журнал действий хода (инструмент, статус, признак эффекта; read_only из манифеста), прерывание (отмена хода, остановка речи, возврат событий или блок «прервано»), steer; конец хода зовёт on_turn",
+     "out": "ход агента",
+     "now": "services/runtime/turns.py, services/runtime/attention_wiring.py; ResidentAgent.run_batch, turn_actions, on_turn_end"
+    }
+   ]
+  },
+  {
    "id": "g_conv",
    "row": 3,
    "title": "Разговор",
@@ -1170,6 +1217,54 @@ window.ARCH_DATA = {
    "elog",
    "w",
    "Decision"
+  ],
+  [
+   "hub",
+   "kinds2",
+   "flow",
+   "события discord.*, telegram.*, voicechat.* при GITS_ATTENTION=v2"
+  ],
+  [
+   "conv",
+   "kinds2",
+   "flow",
+   "dashboard.message (USER)"
+  ],
+  [
+   "kinds2",
+   "av2",
+   "use",
+   "Event"
+  ],
+  [
+   "av2",
+   "rt2",
+   "ctl",
+   "trigger, interrupt, steer"
+  ],
+  [
+   "rt2",
+   "resident",
+   "flow",
+   "run_batch: пачка событий"
+  ],
+  [
+   "rt2",
+   "av2",
+   "use",
+   "on_turn_end, requeue_interrupted"
+  ],
+  [
+   "av2",
+   "log2",
+   "w",
+   "приём и переходы"
+  ],
+  [
+   "log2",
+   "elog",
+   "w",
+   "вид attention_v2"
   ],
   [
    "mw",

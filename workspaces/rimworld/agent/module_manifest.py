@@ -165,7 +165,8 @@ async def mcp_tool_specs(mcp=None) -> list[dict]:
             continue
         tools.append({"name": t.name, "description": first_line(t.description, t.name),
                       "params": schema_to_params(t.inputSchema, t.description), "risk": "auto", "availability": "profile",
-                      "timeout_s": TOOL_TIMEOUT_S, "keywords": list(KEYWORDS)})
+                      "timeout_s": TOOL_TIMEOUT_S, "keywords": list(KEYWORDS),
+                      **({"read_only": True} if t.name.startswith("get_") else {})})       # запросы состояния игры только читают
     return tools
 
 

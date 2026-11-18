@@ -9,7 +9,7 @@ _GENERIC = ("дискорд", "discord", "сервер", "канал", "ветк
 
 
 def _tool(name, description, params, *, risk="auto", keywords=(), informative=False,
-          danger_check=False, timeout_s=30, sends=False):
+          danger_check=False, timeout_s=30, sends=False, read_only=False):
     tool = {"name": name, "description": description, "params": params, "risk": risk, "availability": "always",
             "timeout_s": timeout_s, "keywords": list(dict.fromkeys([*keywords, *_GENERIC]))}
     if informative:
@@ -18,6 +18,8 @@ def _tool(name, description, params, *, risk="auto", keywords=(), informative=Fa
         tool["danger_check"] = True
     if sends:
         tool["sends"] = True              # отправляет текст людям: ядро пишет её исходящее событие module_out
+    if read_only:
+        tool["read_only"] = True          # явное чтение: журнал действий хода агента не считает его действием с эффектом
     return tool
 
 
@@ -47,7 +49,7 @@ TOOLS = [
           {"channel": {"type": "string", "required": False, "description": "название канала, «Сервер / канал», channel:<id>, dm:<id> или @имя"},
            "unread": {"type": "boolean", "required": False, "description": "true: что писали боту недавно"},
            "limit": {"type": "integer", "required": False, "description": "сколько записей, по умолчанию 15"}},
-          informative=True, timeout_s=60, keywords=("прочитай", "переписка", "сообщения", "чаты", "новые", "входящие")),
+          informative=True, read_only=True, timeout_s=60, keywords=("прочитай", "переписка", "сообщения", "чаты", "новые", "входящие")),
     _tool("voice_join", "Зайти в голосовой канал Discord и слушать его: речь участников идёт к ней фразами, отвечает она инструментом "
                         "voice.say. Без channel заходит туда, где сидит владелец. В незнакомый канал спрашивает разрешение; "
                         "режим «игнор» не пускает, «чтение» слушает молча.",

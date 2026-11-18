@@ -61,6 +61,13 @@ GROUPS = [
         N("disp", "Dispatcher", "A", "решение по срочности участника шины: 0 выбросить (D0); ниже 4 во входящую очередь (D1); 4 сказать (D3); 5 сказать и поставить реакцию (D4). «Не отвлекать» и «пользователь отошёл» уводят в очередь; обращение к ней поднимает до 4", "Decision", "services/attention/dispatcher.py (finish, act), kernel/scoring.py (decide: чистая функция), services/attention/decision_log.py; Normalizer.assign_urgency ставит срочность по подсказке участника шины; правила boost/only меняют её (RuleStore.stance)"),
         N("routes", "Routes", "D", "маршруты события и обращения: reflex (с already_done), chat, task, ignore, think; таблица D0-D4 и R1-R4 → маршруты; жёсткие правила из YAML", "RouteDecision", "есть (ТЗ 25): services/tools/routes.py, services/tools/hard_rules.yaml"),
     ]),
+    dict(id="g_v2", col="C", title="Внимание v2", tag="A", new=True,
+         summary="Новое внимание под флагом GITS_ATTENTION=v2 (по умолчанию выключено): единый Event с приоритетом и сроком, приоритетная очередь, process_event и on_turn, слияние, сводка пропущенного, прерывание хода. Живёт рядом со старым, пока не закончен переход.", out="ход агента с пачкой событий", nodes=[
+        N("av2", "AttentionV2", "A", "небольшой автомат: process_event (запустить простаивающего агента, прервать занятого, поставить в очередь или влить в USER-ход), on_turn, слияние по group_key, сводка «пропущено», бюджет прерываний; метрики GET /api/attention_v2", "запуск, прерывание или очередь", "services/attention_v2/attention.py, queue.py, render.py, clock.py; спецификация docs/RUNTIME_SPEC.md", True),
+        N("kinds2", "Event и виды (KindRegistry)", "D", "единая запись Event; виды событий окружений из манифеста (ключ event_kinds: приоритет, потолок, срок), старые события шины переводит from_legacy; маршрут по префиксам GITS_ATTENTION_V2_KINDS", "Event", "services/attention_v2/event.py, kinds.py, routing.py (V2Router); точка маршрута: AttentionEventSink.submit", True),
+        N("log2", "EventLog v2", "I", "дописываемый журнал: приём и каждый переход состояния события; записи идут в общий журнал видом attention_v2, поле data не пишется", "записи журнала", "services/attention_v2/eventlog.py, sink в services/runtime/attention_wiring.py", True),
+        N("rt2", "ResidentRuntime", "A", "ход единого агента по пачке событий: текст пачки, журнал действий хода (инструмент, статус, признак эффекта; read_only из манифеста), прерывание (отмена хода, остановка речи, возврат событий или блок «прервано»), steer; конец хода зовёт on_turn", "ход агента", "services/runtime/turns.py, services/runtime/attention_wiring.py; ResidentAgent.run_batch, turn_actions, on_turn_end", True),
+    ]),
     dict(id="g_conv", col="D", title="Разговор", tag="A",
          summary="Ведёт беседу: собирает контекст из памяти, пишет ответ быстрой моделью.", out="ReplyCandidate", nodes=[
         N("conv", "ConversationService", "A", "обращение владельца: жёсткие правила → запись реплики → ответ на вопрос о разрешении или передача единому агенту", "Обращение агенту", "services/conversation/service.py (фасад Companion); жёсткие правила до моделей, запись реплики в потоке (не задерживает ответ), затем ResidentAgent.handle_user"),
@@ -156,6 +163,9 @@ EDGES = [
     ("fmgr", "hubout", "ctl", "workspace.enter / exit / resume", None),
     ("queue", "out", "flow", "Utterance", 16), ("out", "aff", "use", None, None), ("out", "hubout", "flow", "speak", 17), ("digest", "reflect", "flow", "пачка событий, когда она свободна", 9),
     ("conv", "mw", "w", "после ответа", None), ("disp", "elog", "w", "Decision", None),
+    ("hub", "kinds2", "flow", "события discord.*, telegram.*, voicechat.* при GITS_ATTENTION=v2", None), ("conv", "kinds2", "flow", "dashboard.message (USER)", None),
+    ("kinds2", "av2", "use", "Event", None), ("av2", "rt2", "ctl", "trigger, interrupt, steer", None), ("rt2", "resident", "flow", "run_batch: пачка событий", None),
+    ("rt2", "av2", "use", "on_turn_end, requeue_interrupted", None), ("av2", "log2", "w", "приём и переходы", None), ("log2", "elog", "w", "вид attention_v2", None),
     ("mw", "epmem", "w", None, None), ("mw", "stores", "w", None, None),
     ("mr", "epmem", "r", None, None), ("mr", "stores", "r", None, None), ("ctx", "char", "r", "характер", None),
     ("sleep", "epi", "use", "нарезка и статусы", None), ("epi", "elog", "r", "события после отметки N", None),
@@ -166,6 +176,7 @@ EDGES = [
 # ссылки макроуровня (когда конец свёрнут): номер шага
 MACRO_STEPS = {
     ("g_src", "g_in"): 1, ("g_imp", "g_in"): 1, ("g_in", "g_dec"): 2,
+    ("g_in", "g_v2"): 2, ("g_v2", "g_conv"): 3,
     ("g_dec", "g_conv"): 3, ("g_dec", "g_act"): 3, ("g_dec", "g_foc"): 3, ("g_dec", "g_think"): 3, ("g_dec", "g_out"): 3,
     ("g_conv", "g_out"): 4, ("g_act", "g_out"): 4, ("g_think", "g_out"): 4, ("g_think", "g_act"): 4,
     ("g_out", "g_src"): 5,
@@ -173,11 +184,11 @@ MACRO_STEPS = {
 MACRO_ONLY = []
 PRESETS = [
     ("p1", "1. Основа", []),
-    ("p2", "2. + Приём и решение", ["g_in", "g_dec"]),
-    ("p3", "3. + Разговор и вывод", ["g_in", "g_dec", "g_conv", "g_out"]),
-    ("p4", "4. + Дела, среды, размышление", ["g_in", "g_dec", "g_conv", "g_out", "g_act", "g_foc", "g_think", "g_imp"]),
-    ("p5", "5. + Память", ["g_in", "g_dec", "g_conv", "g_out", "g_act", "g_foc", "g_think", "g_imp", "g_mem"]),
-    ("p6", "6. Всё вместе", ["g_in", "g_dec", "g_conv", "g_out", "g_act", "g_foc", "g_think", "g_imp", "g_mem", "g_ext", "g_src"]),
+    ("p2", "2. + Приём и решение", ["g_in", "g_dec", "g_v2"]),
+    ("p3", "3. + Разговор и вывод", ["g_in", "g_dec", "g_v2", "g_conv", "g_out"]),
+    ("p4", "4. + Дела, среды, размышление", ["g_in", "g_dec", "g_v2", "g_conv", "g_out", "g_act", "g_foc", "g_think", "g_imp"]),
+    ("p5", "5. + Память", ["g_in", "g_dec", "g_v2", "g_conv", "g_out", "g_act", "g_foc", "g_think", "g_imp", "g_mem"]),
+    ("p6", "6. Всё вместе", ["g_in", "g_dec", "g_v2", "g_conv", "g_out", "g_act", "g_foc", "g_think", "g_imp", "g_mem", "g_ext", "g_src"]),
 ]
 
 CW = 6.3
@@ -434,7 +445,7 @@ def board_html(pid, expand):
 
 
 # ── строки раскладки (сверху вниз) и подписи стрелок между свёрнутыми блоками ──
-ROW = {"g_src": 0, "g_imp": 0, "g_in": 1, "g_dec": 2, "g_conv": 3, "g_think": 3, "g_act": 3, "g_foc": 3, "g_out": 4, "g_mem": 5, "g_ext": 5}
+ROW = {"g_src": 0, "g_imp": 0, "g_in": 1, "g_dec": 2, "g_v2": 2, "g_conv": 3, "g_think": 3, "g_act": 3, "g_foc": 3, "g_out": 4, "g_mem": 5, "g_ext": 5}
 MACRO_LABELS = {
     ("g_dec", "g_conv"): "ответить", ("g_dec", "g_act"): "сделать", ("g_dec", "g_foc"): "сменить фокус", ("g_dec", "g_think"): "подумать",
     ("g_dec", "g_out"): "просто сказать", ("g_conv", "g_out"): "реплика", ("g_conv", "g_act"): "просьба", ("g_think", "g_out"): "хочет сказать",

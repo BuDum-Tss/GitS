@@ -35,6 +35,8 @@ from host import supervisor as supervisor_mod
 from services.tools import tool_search
 from services.spaces.manager import WorkspaceManager
 from services.attention import Attention, AttentionEventSink
+from services.attention_v2 import routing as attention_v2
+from services.runtime.attention_wiring import wire_attention_v2
 from services.spaces.link import WorkspaceLink
 from services.spaces.lease import LeaseAdapter
 from services.conversation.companion import Companion
@@ -125,7 +127,8 @@ def wire_modules(companion, registry, *, specs=None,
                             memory_writer=getattr(companion, "memory_writer", None))
     holder: dict = {}                                    # менеджер сред и фокус появятся ниже, а реестру и шине нужны уже при создании
     modules = PeerRegistry(registry, on_state=lambda: holder["workspaces"].check())
-    hub = PeerHub(modules, sink=AttentionEventSink(attention, presence, recorder=_module_event_recorder(modules, attention)), requests=requests,
+    sink = AttentionEventSink(attention, presence, recorder=_module_event_recorder(modules, attention))
+    hub = PeerHub(modules, sink=sink, requests=requests,
                     presence=presence, profile_source=lambda: holder["focus"].info())
     hub.attention = attention                            # только для диагностики и тестов: шина работает через sink (ARC-7)
     io.hub = hub
@@ -239,9 +242,14 @@ def wire_modules(companion, registry, *, specs=None,
     builtin.register_core_tools(registry, modules, attention,
                                 workspaces=workspaces)                                  # ТЗ 32: workspace.enter / exit / afk, workspace.status
 
+    v2 = None                                            # внимание v2 под флагом GITS_ATTENTION=v2 (RUNTIME_PLAN, этап 3): по умолчанию выключено
+    if attention_v2.v2_enabled():
+        v2 = wire_attention_v2(companion, attention, modules, workspaces, sink)
     layer = SimpleNamespace(io=io, attention=attention, requests=requests, modules=modules, hub=hub, focus=focus,
                             supervisor=sup, presence=presence, tasks=[], link=link,
-                            workspaces=workspaces)
+                            workspaces=workspaces, v2=v2, attention_v2=v2.attention if v2 else None)
+    if v2 is not None:
+        layer.submit_event = v2.submit_event             # движок голоса: voicechat.* идёт в v2
 
     async def start():
         await hub.start()                                # токен в файл и фоновая сверка настроек
@@ -253,6 +261,8 @@ def wire_modules(companion, registry, *, specs=None,
     async def stop():
         for task in layer.tasks:
             task.cancel()
+        if v2 is not None:
+            await v2.close()
         await attention.stop()
         await leases.release_all()                       # пространства возвращаются хозяину-семафору
         await sup.stop_all()                             # CORE-17: shutdown всем, через 10 с убить оставшихся
@@ -335,6 +345,7 @@ async def _run(config: dict):
     http_api.set_voice(voice)
     http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
     http_api.set_attention(layer.attention)
+    http_api.set_attention_v2(layer.attention_v2)         # None: GET /api/attention_v2 отвечает {"enabled": false}
     http_api.set_workspace(layer.workspaces)            # ТЗ 32: карточка «Сейчас», среда агента
     http_api.set_presence(presence)
     loop = asyncio.get_running_loop()

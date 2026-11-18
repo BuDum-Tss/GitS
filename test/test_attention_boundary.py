@@ -10,6 +10,7 @@ from services.attention import Attention
 AGENT = Path(__file__).resolve().parents[1] / "agent"
 SKIP_PARTS = {"tests", ".venv", "node_modules", "logs", "tools"}
 OWN = ("services", "attention")                                           # папка сервиса: внутри неё можно что угодно
+OWN_V2 = ("services", "attention_v2")                                     # внимание v2: свой пакет со своим интерфейсом (RUNTIME_SPEC)
 ALLOWED_ROOT_NAMES = {"Attention", "Question", "BATCH_KIND", "event_of", "AttentionEventSink"}              # имена, которые остальное ядро берёт из пакета
 ATT_NAMES = {"attention", "att"}
 
@@ -21,7 +22,7 @@ def _protocol_members() -> set[str]:
 def _production_files():
     for p in AGENT.rglob("*.py"):
         parts = p.relative_to(AGENT).parts
-        if SKIP_PARTS & set(parts) or parts[:2] == OWN:
+        if SKIP_PARTS & set(parts) or parts[:2] == OWN or parts[:2] == OWN_V2:
             continue
         yield p, ast.parse(p.read_text(encoding="utf-8"))
 

@@ -112,6 +112,13 @@ class ConversationService:
                 "approval", "pending_question", "владелец ответил на открытый вопрос о разрешении")))
             return
         await asyncio.wait({writes}, timeout=WRITE_WAIT_S)   # обычно запись уже готова и агент видит реплику в диалоге; медленный диск ответ не держит
+        v2 = getattr(h, "attention_v2", None)
+        if v2 is not None:                                   # GITS_ATTENTION=v2: сообщение владельца это событие USER, агент отвечает своим текстом
+            from services.attention_v2.routing import dashboard_event
+            await v2.process_event(dashboard_event(text))
+            self.log_route(text, "attention_v2")
+            h.arm_idle_consolidation()
+            return
         async with h._busy:
             await h.resident.handle_user(text, use_memory=hard is None)
         self.log_route(text, "resident")

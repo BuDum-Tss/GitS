@@ -19,7 +19,7 @@ from gits_sdk.envcompat import env
 from . import presenters, routes_attention, routes_memory, routes_peers, routes_system
 from .context import ctx
 from .routes_attention import (  # noqa: F401  (прежние имена пакета)
-    NOTIFY_TEXT_MAX, handle_api_attention, handle_api_attention_clear,
+    NOTIFY_TEXT_MAX, handle_api_attention, handle_api_attention_clear, handle_api_attention_v2,
     handle_api_buffer, handle_api_notify,
     handle_api_workspace, handle_api_workspace_enter, handle_api_workspace_exit,
     handle_api_reminders)
@@ -76,6 +76,11 @@ def set_presence(presence):
 
 def set_attention(attention):
     ctx.attention = attention
+
+
+def set_attention_v2(attention_v2):
+    """Внимание v2 (`GITS_ATTENTION=v2`) для `GET /api/attention_v2`; None: выключено."""
+    ctx.attention_v2 = attention_v2
 
 
 def set_voice(voice):

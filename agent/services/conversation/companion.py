@@ -71,6 +71,7 @@ class Companion:
         self.speech = speech or TextOnlySpeech(self.presence)  # вывод речи (CORE-27, VOICE-15): ядро ставит выбор голос/текст
         self.io: ConversationIO | None = None                                         # ConversationIO: доставка ответов в каналы модулей
         self.attention: Attention | None = None                                  # Attention: очередь речи и фокус (ТЗ 03); None - говорит сразу
+        self.attention_v2 = None                                                 # AttentionV2 (`GITS_ATTENTION=v2`): сообщения чата идут событиями; None - как раньше
         self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
         self.environment_note = lambda: ""                      # () -> строка о текущей среде модуля (ставит ядро)
         self.workspace_catalog = lambda: ""                   # () -> строки о средах, куда можно войти (ставит ядро)

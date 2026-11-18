@@ -418,7 +418,8 @@ class PeerRegistry:
                     params=params, risk=spec.risk, keywords=tuple(spec.keywords), call=call,
                     self_confirming=spec.self_confirming, informative=spec.informative, always=spec.fallback,
                     availability=spec.availability, node=spec.node, timeout_s=spec.timeout_s, job=spec.job,
-                    danger_check=spec.danger_check, check=check if spec.danger_check else None, sends=spec.sends)
+                    danger_check=spec.danger_check, check=check if spec.danger_check else None, sends=spec.sends,
+                    read_only=spec.read_only)
 
     def _build_environment(self, rec: PeerRecord, spec) -> None:
         """Окружение модуля (CORE-8): id окружения = id модуля, module = id модуля."""

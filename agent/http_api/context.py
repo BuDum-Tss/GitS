@@ -35,6 +35,7 @@ class DashboardContext:
     router: Any = None             # Router (POST /api/menu_click)
     tasks: Callable[[], Any] | None = None   # () -> TaskService (цели и планы во вкладке «Память»)
     attention: Any = None          # Attention
+    attention_v2: Any = None       # AttentionV2 (`GITS_ATTENTION=v2`); None: выключено
     workspace: Any = None          # WorkspaceManager (ТЗ 32)
     impulses: Any = None           # импульсы и размышление (ТЗ 30)
     voice: Any = None              # VoiceService: движок голоса (маршруты /voice/ws и /api/voice)

@@ -7,7 +7,7 @@ from common import ECHO_TAIL_DEFAULT_MS
 TOOLS = [
     {"name": "recent_audio",
      "description": "Пересказать, что недавно звучало в колонках (речь в фильме, видео), если слух включён.",
-     "params": {}, "risk": "auto", "availability": "always", "informative": True,
+     "params": {}, "risk": "auto", "availability": "always", "informative": True, "read_only": True,
      "keywords": ["слышишь", "услышала", "звучит", "говорят", "серия", "фильм", "видео"]},
 ]
 

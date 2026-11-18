@@ -6,10 +6,11 @@ from gits_sdk import protocol as P
 
 
 class AttentionEventSink:
-    def __init__(self, attention, presence=None, recorder=None):
+    def __init__(self, attention, presence=None, recorder=None, v2=None):
         self.attention = attention
         self.presence = presence
         self.recorder = recorder          # (peer_id, event) -> None: журнал событий для запроса и строки в чат
+        self.v2 = v2                      # внимание v2 (`GITS_ATTENTION=v2`, attention_v2.routing.V2Router); None: всё в старое внимание
 
     async def submit(self, peer_id: str, event: dict) -> None:
         if self.recorder is not None:
@@ -17,6 +18,9 @@ class AttentionEventSink:
                 self.recorder(peer_id, event)
             except Exception:
                 pass                      # журнал не должен мешать доставке события
+        if self.v2 is not None and self.v2.wants(event):      # виды из GITS_ATTENTION_V2_KINDS идут в v2, остальное как раньше
+            await self.v2.submit(peer_id, event)
+            return
         await self.attention.submit(peer_id, event)
 
     async def submit_speech(self, peer_id: str, say: dict) -> None:
