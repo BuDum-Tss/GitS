@@ -50,6 +50,10 @@ class BrowserCall:
         return process
 
     async def open(self, number):
+        origin = "https://telemost.yandex.ru"
+        await self.open_page(origin, f"{origin}/j/{number}")
+
+    async def open_page(self, origin, url, *, setup=None, extra_args=()):
         from playwright.async_api import async_playwright
 
         temp = self.resources.enter_context(TemporaryDirectory(prefix="gits-tm-"))
@@ -85,17 +89,18 @@ class BrowserCall:
         executable = os.environ.get("GITS_TELEMOST_CHROMIUM") or shutil.which("chromium")
         browser = await playwright.chromium.launch(
             channel="chromium" if not executable else None, executable_path=executable,
-            ignore_default_args=["--mute-audio"], args=["--disable-dev-shm-usage"],
+            ignore_default_args=["--mute-audio"], args=["--disable-dev-shm-usage", *extra_args],
             env=dict(self.audio_env, PULSE_SINK="meeting", PULSE_SOURCE="agent_mic"),
             timeout=10000,
         )
         self.resources.push_async_callback(browser.close)
         context = await browser.new_context(locale="ru-RU")
         self.resources.push_async_callback(context.close)
-        origin = "https://telemost.yandex.ru"
         await context.grant_permissions(["microphone"], origin=origin)
         self.page = await context.new_page()
-        await self.page.goto(f"{origin}/j/{number}", wait_until="domcontentloaded", timeout=12000)
+        if setup is not None:
+            await setup(self.page)
+        await self.page.goto(url, wait_until="domcontentloaded", timeout=12000)
 
     async def poll(self):
         page = self.page

@@ -47,9 +47,11 @@ COPY agent agent
 COPY workspaces/telegram workspaces/telegram
 COPY workspaces/discord workspaces/discord
 COPY workspaces/telemost workspaces/telemost
+COPY workspaces/ktalk workspaces/ktalk
 ADD --chmod=644 --checksum=sha256:5ef208a9da1453335308a6b6f4e6dfbd7e183a38b604de0a57664f45d257fe94 \
     https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34.onnx \
     /opt/gits-models/telemost-speaker.onnx
+RUN chmod 755 /opt/gits-models
 COPY workspaces/streamer workspaces/streamer
 
 RUN mkdir -p logs && chown -R gits:gits logs

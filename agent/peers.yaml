@@ -25,6 +25,15 @@ workspaces:
     autostart: true
     restart: on-failure       # секреты (TELEGRAM_*) модуль читает сам из .env; без них он работает и пишет «не настроен»
 
+  - id: ktalk
+    ownership: owned
+    title: Контур.Толк
+    cwd: "{GITS}/workspaces/ktalk"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
+
   - id: telemost
     ownership: owned
     title: Яндекс Телемост

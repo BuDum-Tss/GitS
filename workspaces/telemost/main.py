@@ -59,11 +59,18 @@ def meeting_id(link):
 
 
 class Telemost:
-    def __init__(self, client, browser_factory=BrowserCall, voice_factory=VoiceAdapterClient):
+    adapter = "telemost"
+    title = LABEL
+    placeholder = "https://telemost.yandex.ru/j/…"
+    parse_link = staticmethod(meeting_id)
+    speakers_labelled = False
+    browser_class = BrowserCall
+
+    def __init__(self, client, browser_factory=None, voice_factory=VoiceAdapterClient):
         self.client = client
-        self.browser_factory = browser_factory
+        self.browser_factory = browser_factory or self.browser_class
         self.voice_factory = voice_factory
-        self.available = browser_factory is not BrowserCall or browser_available()
+        self.available = self.browser_factory is not self.browser_class or browser_available()
         self.task = None
         self.stop_requested = asyncio.Event()
         self.status = "Нет активного звонка" if self.available else "Для браузерного входа нужны Chromium, Playwright и PulseAudio (Linux)"
@@ -84,7 +91,7 @@ class Telemost:
         return {"ok": True, "message": await self.leave(args)}
 
     def join(self, link):
-        number = meeting_id(link)
+        number = self.parse_link(link)
         if not self.available:
             raise ToolError(self.status, code="unavailable")
         if self.task is not None and not self.task.done():
@@ -117,7 +124,7 @@ class Telemost:
             await self.client.state(self.status, {"in_call": self.task is not None and not self.task.done()})
             await self.client.panel.set([
                 {"type": "text", "title": "Состояние", "text": self.status},
-                {"type": "input", "label": "Ссылка на встречу", "placeholder": "https://telemost.yandex.ru/j/…",
+                {"type": "input", "label": "Ссылка на встречу", "placeholder": self.placeholder,
                  "submit": "Подключиться", "action": "join"},
                 {"type": "buttons", "items": [{"label": "Отключиться", "action": "leave"}]},
             ])
@@ -143,7 +150,7 @@ class Telemost:
             self.stop_requested.set()
 
         voice = self.voice_factory(
-            adapter="telemost", session=f"telemost:{uuid4().hex}", title=LABEL, speakers_labelled=False,
+            adapter=self.adapter, session=f"{self.adapter}:{uuid4().hex}", title=self.title, speakers_labelled=self.speakers_labelled,
             echo_free=False, can_barge_in=False, on_play=play, on_stop=stop_playback, on_leave=request_leave,
         )
         result = "Нет активного звонка"
@@ -154,14 +161,14 @@ class Telemost:
                 return
             if self.stop_requested.is_set():
                 return
-            await voice.speaker_join(SPEAKER, "Участники Телемоста")
+            await self.register_speakers(voice)
             await browser.open(number)
             loop = asyncio.get_running_loop()
             deadline = loop.time() + JOIN_TIMEOUT
             while not self.stop_requested.is_set():
                 state = await browser.poll()
                 if state == "auth_required":
-                    result = "Телемост просит войти в аккаунт для этой встречи"
+                    result = f"{self.title} просит войти в аккаунт для этой встречи"
                     break
                 if state == "ended":
                     if not connected:
@@ -179,7 +186,7 @@ class Telemost:
                     self.set_status("Ожидает допуска организатором")
                 await asyncio.sleep(0.1 if connected else 0.5)
         except Exception as exc:
-            log.warning("Ошибка голосовой сессии Телемоста (%s)", type(exc).__name__)
+            log.warning("Ошибка голосовой сессии %s (%s)", self.adapter, type(exc).__name__)
             result = "Ошибка браузера, виртуального звука или голосового движка"
         finally:
             try:
@@ -193,6 +200,9 @@ class Telemost:
                     log.warning("Ошибка закрытия браузера (%s)", type(exc).__name__)
                 self.set_status(result)
 
+    async def register_speakers(self, voice):
+        await voice.speaker_join(SPEAKER, "Участники Телемоста")
+
     @staticmethod
     async def forward_audio(browser, voice):
         for _ in range(12):
@@ -204,9 +214,9 @@ class Telemost:
                 await voice.send_audio(SPEAKER, pcm)
 
 
-async def main():
-    client = WorkspaceClient(MANIFEST)
-    workspace = Telemost(client)
+async def main(manifest=MANIFEST, workspace_type=Telemost):
+    client = WorkspaceClient(manifest)
+    workspace = workspace_type(client)
     panel = asyncio.create_task(workspace.publish())
     try:
         return await client.run()
