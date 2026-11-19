@@ -22,6 +22,11 @@
     body.dragging-split { cursor: col-resize; user-select: none; }
   }
   .bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* карточка входа агента в чате: слева, цвета из тем daisyUI (светлая и тёмная); полоса слева warning для IMPORTANT и выше */
+  .evt-card { margin-right: auto; max-width: 85%; padding: .25rem .5rem; border: 1px solid oklch(var(--b3)); border-left: 4px solid oklch(var(--in));
+    border-radius: var(--rounded-box, 1rem); background: oklch(var(--b2) / .5); }
+  .evt-card.evt-hi { border-left-color: oklch(var(--wa)); }
+  .evt-card summary { cursor: pointer; }
   /* блоки панели окружений: split (две колонки) и cards (карточки диалогов) */
   .pn-split-wrap { container-type: inline-size; }
   .pn-split { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
@@ -707,13 +712,41 @@ function toolRow(e) {
     <code>${esc(e.tool)}</code>${e.summary ? `<span class="opacity-70 break-all">${esc(e.summary)}</span>` : ''}
     ${e.state === 'failed' && e.result ? `<span class="text-error">${esc(e.result)}</span>` : ''}<time class="opacity-50">${t}</time></div>`;
 }
-function renderChat(dialogue, waiting, tools) {
+// Вход агента (то, что попало в контекст модели): карточка слева, того же вида, что строка инструмента (инструменты остаются
+// как есть, они идут строкой без выравнивания). Детали (полный текст и способ доставки) раскрываются по клику, раскрытые помнятся.
+const EVT_ICON = {discord: '🎙', rimworld: '🎮', core: '⚙', desktop: '🖥', telegram: '✈', pet: '🐾', dashboard: '🖱'};
+const EVT_HOW = {batch: 'в пачке хода', steered: 'долито в идущий ход', interrupt_note: 'блок «прервано»', digest: 'сводка пропущенного'};
+const evtOpen = new Set();
+function evtPrio(p) {
+  if (p == null) return '';
+  return p >= 100 ? 'USER' : p >= 70 ? 'IMPORTANT' : p >= 50 ? 'NOTABLE' : p >= 30 ? 'NORMAL' : 'BACKGROUND';
+}
+function eventRow(e) {
+  const t = new Date(e.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  const prio = evtPrio(e.priority);
+  const hi = e.priority != null && e.priority >= 70;
+  return `<details class="text-xs opacity-80 evt-card${hi ? ' evt-hi' : ''}" data-evt="${e.id}"${evtOpen.has(e.id) ? ' open' : ''}>
+    <summary class="flex flex-wrap items-baseline gap-x-2">
+      <span title="${esc(e.source)}">${EVT_ICON[e.source] || '📥'}</span><code>${esc(e.source)}/${esc(e.kind)}</code>
+      ${prio ? `<span class="badge badge-ghost badge-sm ${hi ? 'text-warning' : ''}">${prio}</span>` : ''}
+      <span class="opacity-70 break-all">${esc(e.text.length > 90 ? e.text.slice(0, 89) + '…' : e.text)}</span><time class="opacity-50">${t}</time>
+    </summary>
+    <div class="mt-1 whitespace-pre-wrap break-words">${esc(e.text)}</div>
+    <div class="opacity-60 mt-1">${esc(EVT_HOW[e.how] || e.how)}${e.turn ? ` · ход ${e.turn}` : ''}${e.priority != null ? ` · приоритет ${e.priority}` : ''}</div></details>`;
+}
+document.addEventListener('toggle', ev => {
+  const d = ev.target; if (!d.dataset || !d.dataset.evt) return;
+  const id = +d.dataset.evt; if (d.open) evtOpen.add(id); else evtOpen.delete(id);
+}, true);
+function renderChat(dialogue, waiting, tools, eventsIn) {
   chatMsgs = dialogue;
   const from = dialogue.length ? dialogue[0].ts : 0;         // запуски старше видимого диалога не показываем
   const rows = dialogue.map((m, i) => ({ts: m.ts, m, i}))
-    .concat((tools || []).filter(e => e.ts >= from).map(e => ({ts: e.ts, e}))).sort((a, b) => a.ts - b.ts);
+    .concat((tools || []).filter(e => e.ts >= from).map(e => ({ts: e.ts, e})))
+    .concat((eventsIn || []).filter(e => e.ts >= from).map(e => ({ts: e.ts, ev: e}))).sort((a, b) => a.ts - b.ts);
   const html = rows.map(r => {
     if (r.e) return toolRow(r.e);
+    if (r.ev) return eventRow(r.ev);
     const m = r.m, i = r.i;
     const mine = m.role === 'user';
     const t = new Date(m.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
@@ -1634,7 +1667,7 @@ async function poll() {
     $('badge-auto').classList.toggle('hidden', !(st.settings && st.settings.auto_accept));
     $('badge-quiet').classList.toggle('hidden', !(st.settings && (st.settings.dnd || st.settings.quiet_until * 1000 > Date.now())));
     const last = core.dialogue[core.dialogue.length - 1];
-    renderChat(core.dialogue, last && last.role === 'user' && Date.now() / 1000 - last.ts < 90, core.tools);
+    renderChat(core.dialogue, last && last.role === 'user' && Date.now() / 1000 - last.ts < 90, core.tools, core.events_in);
     renderActivity(core.activity); renderScreen(core.screen); renderMemory(core); renderGame(st);
     $('approval').classList.toggle('hidden', !core.approval.pending);
     $('approval-text').textContent = core.approval.text;

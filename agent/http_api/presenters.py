@@ -38,9 +38,10 @@ def approval_view(pending: bool, text, info: dict | None) -> dict:
 
 
 def core_payload(*, dialogue: list, activity: list, screen, memories: list, relations: list, approval: dict,
-                 tools: list | None = None) -> dict:
-    """tools: запуски инструментов (кто, что, итог) для показа в чате между репликами."""
-    return {"dialogue": dialogue[-40:], "tools": tools or [], "activity": activity[-5:], "screen": screen,
+                 tools: list | None = None, events_in: list | None = None) -> dict:
+    """tools: запуски инструментов (кто, что, итог) для показа в чате между репликами; events_in: события, ушедшие в контекст модели
+    (журнал входа `event_trace`), карточки слева в той же ленте."""
+    return {"dialogue": dialogue[-40:], "tools": tools or [], "events_in": events_in or [], "activity": activity[-5:], "screen": screen,
             "memories": sorted(memories, key=lambda i: -i["ts"])[:150], "relations": relations, "approval": approval}
 
 

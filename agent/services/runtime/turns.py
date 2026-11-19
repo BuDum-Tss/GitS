@@ -15,6 +15,7 @@ from services.attention_v2 import render
 from services.attention_v2.event import IMPORTANT, USER, Event
 from services.attention_v2.routing import WORK_TICK_KIND
 from services.conversation.resident import EVENT_TAIL, URGENT_TAIL, WORK_TICK_TAIL
+from services.tracing import event_trace
 
 logger = logging.getLogger("runtime.turns")
 
@@ -58,6 +59,7 @@ class _Turn:
     started_at: float = field(default_factory=time.time)
     task: asyncio.Task | None = None
     interrupted: bool = False
+    no: int = 0                                  # порядковый номер хода (для журнала входа в чате)
 
 
 class ResidentRuntime:
@@ -73,6 +75,7 @@ class ResidentRuntime:
         self._interrupting = False
         self.notes: list[str] = []              # блоки «прервано», переданные в следующий ход (для диагностики и тестов)
         self._tasks: set[asyncio.Task] = set()
+        self._turn_no = 0
         resident.on_turn_end = self._on_resident_turn_end
 
     # ---- протокол Runtime -------------------------------------------------------------------------------------------
@@ -147,6 +150,8 @@ class ResidentRuntime:
         except Exception as e:
             logger.debug(f"steer: {e}")
             return False
+        if ok:
+            self._trace_event(event, "steered", turn.no)
         if ok and self._turn is turn:
             turn.events.append(event)
         return bool(ok)
@@ -158,7 +163,8 @@ class ResidentRuntime:
     # ---- ход -------------------------------------------------------------------------------------------------------------
 
     def _begin(self, events: list[Event]) -> _Turn:
-        turn = _Turn(events=list(events))
+        self._turn_no += 1
+        turn = _Turn(events=list(events), no=self._turn_no)
         self._turn = turn
         return turn
 
@@ -166,6 +172,7 @@ class ResidentRuntime:
         """Собрать текст пачки (забирает сводку пропущенного) и запустить ход фоновой задачей."""
         v2 = self.attention_v2
         text = v2.render_batch(turn.events, note) if v2 is not None else render.render_batch(turn.events, "", note)
+        self._trace_batch(turn, text, note)
         user = [e for e in render.sort_for_agent(turn.events) if e.prio >= USER]
         query = user[0].text if user else None                      # обращение человека: поиск в памяти по его словам
         source, tail, header = turn_kind(turn.events)
@@ -173,6 +180,34 @@ class ResidentRuntime:
         turn.task = asyncio.get_running_loop().create_task(self._run(turn, prompt, source, query, after_ms, header))
         self._tasks.add(turn.task)
         turn.task.add_done_callback(self._tasks.discard)
+
+    @staticmethod
+    def _trace_event(e: Event, how: str, turn_no: int) -> None:
+        """Строка события, ушедшая в контекст модели, в журнал входа (дашборд). Только то, что и так в промпте; `data` не пишется."""
+        try:
+            who = render.sender_label(e)
+            body = render.one_line(e.text)
+            kind = e.kind[len(e.workspace) + 1:] if e.kind.startswith(e.workspace + ".") else e.kind
+            event_trace.add(e.workspace, kind, f"{who}: {body}" if who else body, e.prio, how, turn=turn_no)
+        except Exception as ex:                                    # журнал не должен ломать ход
+            logger.debug(f"журнал входа: {ex}")
+
+    def _trace_batch(self, turn: _Turn, text: str, note: str) -> None:
+        """Каждое событие пачки, сводка пропущенного (первая строка текста, если это не событие и не блок «прервано») и блок «прервано»."""
+        try:
+            body = text
+            if note and note in body:
+                body = body.replace(note, "", 1)
+            first = body.split("\n", 1)[0].strip()
+            event_lines = {render.render_event(e) for e in turn.events}
+            if first and first not in event_lines:
+                event_trace.add("core", "digest", first, None, "digest", turn=turn.no)
+            if note:
+                event_trace.add("core", "interrupt", note, None, "interrupt_note", turn=turn.no)
+            for e in render.sort_for_agent(turn.events):
+                self._trace_event(e, "batch", turn.no)
+        except Exception as ex:
+            logger.debug(f"журнал входа: {ex}")
 
     async def _run(self, turn: _Turn, prompt: str, source: str, query: str | None, after_ms: float, header: str = HEADER) -> None:
         try:

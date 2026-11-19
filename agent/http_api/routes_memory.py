@@ -4,7 +4,7 @@ from datetime import datetime
 from services.conversation import approvals
 from services.memory_service import episode_routes
 from services.tracing import reply_trace
-from services.tracing import tool_trace
+from services.tracing import event_trace, tool_trace
 from aiohttp import web
 from services.tasks import model as task_dom
 
@@ -64,6 +64,7 @@ async def handle_api_core(request: web.Request) -> web.Response:
         dialogue=read_json("dialogue.json", []), activity=read_json("activity.json", []),
         screen=presenters.screen_state(ctx.modules), memories=await memories_view(),
         relations=presenters.relations_view(read_json("relationships.json", {})), tools=tool_trace.recent(40),
+        events_in=event_trace.recent(40),
         approval=presenters.approval_view(approvals.has_pending(), approvals.pending_text(), approvals.pending_info())))
 
 
