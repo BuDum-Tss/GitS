@@ -23,6 +23,7 @@ ON_TURN_S = 20
 FOCUS_CAP = 60
 INTERRUPT_BUDGET = 3
 INTERRUPT_WINDOW_S = 60
+FOCUS_STEER_GAP_S = 0.5             # критичные и важные события фокуса во время ответа человеку: не чаще (секунды)
 STEER_GAP_S = 4.0                  # важные события одного вида доливаются в идущий ход не чаще (секунды)
 _EPS = 1e-3
 
@@ -109,6 +110,12 @@ class AttentionV2:
                 self._m["steered"] += 1
                 self._mark_delivered(e, "доливается в идущий ход")
                 return
+            # окружение в фокусе: гибель, угроза и другие важные события игры не ждут конца ответа человеку, а доливаются сразу
+            if self._focus_priority(e) and self.runtime.can_steer and await self.runtime.steer(e):
+                self._m["steered"] += 1
+                self._steered_at[(e.workspace, e.kind)] = self.clock.monotonic()
+                self._mark_delivered(e, "доливается в идущий ход (важное в фокусе)")
+                return
             self._enqueue(e)
             return
         top_busy = max(self.queue.max_priority(), max(x.prio for x in running))
@@ -130,6 +137,19 @@ class AttentionV2:
             self._mark_delivered(e, "доливается в идущий ход (важное)")
             return
         self._enqueue(e)
+
+    def _focus_priority(self, e: Event) -> bool:
+        """Важное событие окружения, в котором агент сейчас работает (или критичный вид): доливается в идущий ход даже во время
+        ответа человеку. Пассивные не доливаются; события одного вида не чаще `FOCUS_STEER_GAP_S`."""
+        spec = self.registry.get(e.kind)
+        if (spec and spec.passive) or e.priority >= USER:         # реплики людей (даже других) ждут, как раньше
+            return False
+        critical = bool(spec and spec.critical)
+        in_focus = self.focus_getter is not None and e.workspace == self.focus_getter()
+        if not (critical or (in_focus and e.priority >= IMPORTANT)):
+            return False
+        last = self._steered_at.get((e.workspace, e.kind))
+        return last is None or self.clock.monotonic() - last >= FOCUS_STEER_GAP_S
 
     def _steer_gap_ok(self, e: Event) -> bool:
         last = self._steered_at.get((e.workspace, e.kind))
