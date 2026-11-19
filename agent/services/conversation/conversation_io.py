@@ -25,21 +25,29 @@ DELIVER_TIMEOUT_S = 15.0
 
 @dataclass(frozen=True)
 class Channel:
-    """Канал обращения: kind - voice | dashboard | module; для module заданы модуль и адресат (reply_channel события)."""
+    """Канал обращения: kind - voice | dashboard | module | calls; для module заданы модуль и адресат (reply_channel события).
+    `calls` это голосовые каналы движка голоса: без адресата во все открытые сессии, с адресатом (id сессии) в неё."""
 
     kind: str
     module: str | None = None
     target: str | None = None
+    auto: bool = False                           # только для calls: автономный ход (источник речи остаётся proactive)
 
     def to_dict(self) -> dict:
         return {"kind": self.kind, "module": self.module, "target": self.target}
 
     def label(self) -> str:
-        return f"{self.module}:{self.target}" if self.kind == "module" else self.kind
+        if self.kind == "module":
+            return f"{self.module}:{self.target}"
+        if self.kind == "calls":
+            return f"calls:{self.target}" if self.target else ("calls:auto" if self.auto else "calls")
+        return self.kind
 
 
 VOICE = Channel("voice")
 DASHBOARD = Channel("dashboard")
+CALLS = Channel("calls")                         # обычный текст хода во все открытые голосовые каналы
+CALLS_AUTO = Channel("calls", auto=True)         # то же на автономном ходе (нет обращения человека): не «разговор», речь проактивная
 
 
 @dataclass

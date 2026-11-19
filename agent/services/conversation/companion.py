@@ -72,6 +72,7 @@ class Companion:
         self.io: ConversationIO | None = None                                         # ConversationIO: доставка ответов в каналы модулей
         self.attention: Attention | None = None                                  # Attention: очередь речи и фокус (ТЗ 03); None - говорит сразу
         self.attention_v2 = None                                                 # AttentionV2 (`GITS_ATTENTION=v2`): сообщения чата идут событиями; None - как раньше
+        self.voice_out = None            # выход в голосовые каналы движка голоса: `open_sessions() -> list[str]`, `speak(session_id, text)`; ставит ядро, None - каналов нет
         self.last_utterance_id: str | None = None              # id последней реплики, ушедшей в вывод речи
         self.environment_note = lambda: ""                      # () -> строка о текущей среде модуля (ставит ядро)
         self.workspace_catalog = lambda: ""                   # () -> строки о средах, куда можно войти (ставит ядро)
@@ -184,13 +185,18 @@ class Companion:
         if not text:
             return
         channel = current_channel.get()
-        if channel is not None and channel.kind == "module":
+        if channel is not None and channel.kind == "calls" and self._say_to_calls(text, channel):
+            self._record_say(text, channel)
+            self._publish_sticker(sticker)
+        elif channel is not None and channel.kind == "module":
             # ответ на обращение из модуля-канала: вслух не произносится (CORE-25); не доставлен - остаётся в чате дашборда
             self._record_say(text, channel)
             if self.io is not None:
                 await self.io.deliver(channel, text)
             self._publish_sticker(sticker)
         else:
+            if channel is not None and channel.kind == "calls":
+                channel = None                    # голосовых каналов нет: обычный путь колонок ПК и чата, как без канала
             utterance = new_utterance_id()
             self.last_utterance_id = utterance
             # синхронизатор речи и действий: текст в чате, запись в диалог и жест появляются, когда реплика зазвучала,
@@ -198,6 +204,29 @@ class Companion:
             await self.speech.speak(utterance, text, sticker, priority or 50)      # реплика попадает среди звучащих до ожидания
             self._when_audible(utterance, lambda: (self._record_say(text, channel), self._publish_sticker(sticker)))
         logger.info(f"[{character.active().name}] {text}")
+
+    def _say_to_calls(self, text: str, channel) -> bool:
+        """Текст хода в голосовые каналы движка голоса (канал `calls`). Адресный канал: сперва его сессия, если она открыта, иначе
+        все открытые. Ошибка одной сессии не мешает остальным. False, если сказать некуда (нет выхода или открытых сессий, или
+        все сессии отказали): тогда реплика идёт обычным путём, на колонки ПК."""
+        out = self.voice_out
+        if out is None:
+            return False
+        try:
+            sessions = list(out.open_sessions())
+        except Exception as e:
+            logger.warning(f"голосовые каналы: список сессий: {e}")
+            return False
+        if channel.target and channel.target in sessions:
+            sessions = [channel.target]
+        spoken = 0
+        for sid in sessions:
+            try:
+                out.speak(sid, text)
+                spoken += 1
+            except Exception as e:
+                logger.warning(f"голосовой канал {sid}: {e}")
+        return spoken > 0
 
     def _when_audible(self, utterance: str, action) -> None:
         """Выполнить action, когда реплика зазвучала (`speech.when_audible`); у вывода речи без такого метода сразу."""

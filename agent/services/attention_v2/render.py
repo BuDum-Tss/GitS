@@ -2,12 +2,24 @@
 import re
 import time
 
-from .event import MAX_TEXT, Event
+from .event import MAX_TEXT, USER, Event
 from .runtime import ActionRecord
 
 NAME_MAX = 40                              # ник и название канала в строке
 TOOL_MAX = 60
 SUMMARY_MAX = 80
+VOICE_SAY_TOOLS = ("voice.say", "discord.say")      # инструменты ответа голосовых событий (текст хода сам уходит в канал)
+
+
+def is_text_reply(e: Event) -> bool:
+    """Ответ на событие идёт обычным текстом хода (ядро направляет его само): голосовая фраза, а также обращение человека (приоритет USER)
+    из чата модуля с адресом ответа (`Reply.target`: Telegram, Discord): текст уходит в тот же чат (`deliver`), не голосом."""
+    r = e.reply
+    if r is None or not r.tool:
+        return False
+    return r.tool in VOICE_SAY_TOOLS or bool(r.target and e.prio >= USER)
+
+
 _QUOTES = '"\'`«»“”„‟‘’‚‹›'
 _SPACES = re.compile(r"\s+")
 
@@ -61,7 +73,8 @@ def render_event(e: Event) -> str:
     body = f"{who}: {one_line(e.text)}" if who else one_line(e.text)
     line = f"{head} {body}".rstrip()
     if e.reply is not None and e.reply.tool:
-        line += f" {{ответ: {clean_name(e.reply.tool, TOOL_MAX)}}}"
+        answer = "текстом" if is_text_reply(e) else clean_name(e.reply.tool, TOOL_MAX)   # голос: текст хода звучит сам
+        line += f" {{ответ: {answer}}}"
     return f"⟲ {line}" if e.interrupted else line
 
 

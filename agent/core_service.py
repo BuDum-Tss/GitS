@@ -344,6 +344,7 @@ async def _run(config: dict):
     layer = wire_modules(companion, registry)
     voice = wire_voice(layer, registry)                  # движок голоса (docs/VOICE_ENGINE.md): выключен, пока не заданы адреса STT и TTS
     http_api.set_voice(voice)
+    companion.voice_out = voice.voice_out()               # обычный текст хода агента звучит в голосовых каналах (None: движок голоса выключен)
     http_api.set_modules(layer.modules, layer.hub, layer.supervisor)
     http_api.set_attention(layer.attention)
     http_api.set_attention_v2(layer.attention_v2)         # None: GET /api/attention_v2 отвечает {"enabled": false}

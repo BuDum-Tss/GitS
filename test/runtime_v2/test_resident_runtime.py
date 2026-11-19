@@ -305,4 +305,4 @@ async def test_steered_user_phrase_asks_to_answer_first():
     await wait_until(lambda: r.model.prompts)
     await r.send(USER, text="а теперь вот что", group_key="chan:u1")
     assert r.model.steered and "а теперь вот что" in r.model.steered[0]
-    assert "сначала ответь ему коротко инструментом ответа из строки" in r.model.steered[0]
+    assert "сначала ответь ему коротко обычным текстом" in r.model.steered[0]

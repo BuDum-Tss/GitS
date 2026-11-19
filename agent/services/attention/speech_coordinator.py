@@ -17,6 +17,11 @@ from .core import (
 )
 
 
+def _is_conversation(channel) -> bool:
+    """Есть ли обращение: любой канал, кроме автономного `CALLS_AUTO` (ход без обращения человека говорит как проактивная реплика)."""
+    return channel is not None and not (channel.kind == "calls" and channel.auto)
+
+
 class SpeechCoordinator:
     def __init__(self, ctx: AttentionContext, items, digest, focus):
         self.ctx = ctx
@@ -48,13 +53,14 @@ class SpeechCoordinator:
         if self.ctx.approver.formulating():
             cand = self.speech.new(source="question", mode="verbatim", text=text, sticker=sticker,
                                    priority=priority or QUESTION_ANNOUNCE_P)
-        elif current_channel.get() is not None:
+        elif _is_conversation(current_channel.get()):
             self.focus.touch_conversation()
             cand = self.speech.new(source="conversation", mode="verbatim", text=text, sticker=sticker,
                                    priority=CONVERSATION_P, channel=current_channel.get())
         else:
             cand = self.speech.new(source=source or "proactive", mode="verbatim", text=text, sticker=sticker,
-                                   priority=priority if priority is not None else PROACTIVE_P)
+                                   priority=priority if priority is not None else PROACTIVE_P,
+                                   channel=current_channel.get())     # автономный ход в голосовые каналы: канал нужен при воспроизведении
         self.bind_trace(cand)
         self.kick()
         return cand
@@ -64,13 +70,13 @@ class SpeechCoordinator:
         if question or self.ctx.approver.formulating():
             cand = self.speech.new(source="question", mode="fact", text=fact, priority=QUESTION_ANNOUNCE_P, must=must,
                                    question=True)
-        elif current_channel.get() is not None:
+        elif _is_conversation(current_channel.get()):
             self.focus.touch_conversation()
             cand = self.speech.new(source="conversation", mode="fact", text=fact, priority=CONVERSATION_P,
                                    user_text=user_text, must=must, question=question, channel=current_channel.get())
         else:
             cand = self.speech.new(source="proactive", mode="fact", text=fact, priority=PROACTIVE_P, user_text=user_text,
-                                   must=must)
+                                   must=must, channel=current_channel.get())
         self.bind_trace(cand)
         self.kick()
         return cand

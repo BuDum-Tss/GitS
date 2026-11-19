@@ -19,11 +19,29 @@ STATE_PATH = "/api/voice"
 PRIVACY_CACHE_S = 10.0                  # личные слова перечитываются не чаще раза в 10 с
 
 
+class EngineVoiceOut:
+    """Выход компаньона в голосовые каналы (`Companion.voice_out`): открытые сессии движка и постановка реплики в очередь сессии.
+    Реплика ставится без `replace`: она не обрывает звучащее."""
+
+    def __init__(self, engine: Any):
+        self.engine = engine
+
+    def open_sessions(self) -> list[str]:
+        return [s.id for s in self.engine.sessions_manager.all() if not getattr(s, "closed", False)]
+
+    def speak(self, session_id: str, text: str) -> None:
+        self.engine.speak(session_id, text)          # ValueError (пустой текст) и KeyError (сессия закрылась) решает вызывающий
+
+
 class VoiceService:
     """Движок и его вход в ядре (или выключенная заглушка с причиной)."""
 
     def __init__(self, config: EngineConfig, engine: Any = None, server: Any = None):
         self.config, self.engine, self.server = config, engine, server
+
+    def voice_out(self) -> "EngineVoiceOut | None":
+        """Выход для `Companion.voice_out`; None, пока движок выключен."""
+        return EngineVoiceOut(self.engine) if self.engine is not None else None
 
     @property
     def enabled(self) -> bool:
