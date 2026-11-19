@@ -7,6 +7,7 @@ FastMCP (`await mcp.list_tools()`), схема переводится в упр�
 """
 import asyncio
 import fnmatch
+import functools
 import inspect
 import json
 import logging
@@ -15,6 +16,7 @@ from typing import get_args, get_origin
 from gits_sdk import ToolError
 from pydantic import TypeAdapter, ValidationError
 
+import agent_activity
 import gamenet
 from core_link import COALESCE_KINDS, EVENTS, EXPIRES_S
 
@@ -62,8 +64,15 @@ SETTINGS_SCHEMA = {
                    "или бое снижать до обычной; off - скорость не трогать. Переменная GITS_RIMWORLD_AUTO_SPEED важнее настройки",
                    "default": "max", "enum": ["off", "max"]},
     "auto_unpause_s": {"type": "number", "title": "Автоскорость: снимать забытую паузу, если игра на паузе подряд дольше этого (секунд; "
-                       "0 - не снимать). Паузу планирования и паузу при угрозе не трогает. Переменная GITS_RIMWORLD_AUTO_UNPAUSE_S "
-                       "важнее настройки", "default": 40, "min": 0, "max": 600},
+                       "0 - не снимать). Не снимает паузу планирования, свежую паузу агента, пока агент вызывает инструменты и пока "
+                       "опасность (враги, бой, упавшие, раненые, кровотечение). Переменная GITS_RIMWORLD_AUTO_UNPAUSE_S "
+                       "важнее настройки", "default": 90, "min": 0, "max": 600},
+    "agent_pause_hold_s": {"type": "number", "title": "Пауза, которую поставил сам агент (pause_game, скорость 0), не считается "
+                           "забытой и не снимается автоматически столько секунд; потом снимается как обычная",
+                           "default": 600, "min": 60, "max": 3600},
+    "agent_active_s": {"type": "number", "title": "Агент считается активным столько секунд после последнего вызова инструмента: "
+                       "пока он активен, автоснятие паузы и автоповышение скорости не делаются (0 - не учитывать)",
+                       "default": 90, "min": 0, "max": 600},
     "focus_mode": {"type": "string", "title": "Фокус агента: core - только запросы ядра (среду включает импульс: сообщение или "
                    "решение агента); manual - только кнопки на панели RimWorld; auto - старый режим, модуль сам берёт "
                    "фокус, когда игра запущена (в среду это не входит)",
@@ -298,24 +307,40 @@ def tool_handler(name: str, module=None):
     return handler
 
 
+def _touching(handler):
+    """Обёртка обработчика инструмента: отмечает время вызова в начале и в конце (автоснятие паузы не вмешивается, пока агент активен)."""
+    @functools.wraps(handler)
+    async def wrapped(args):
+        agent_activity.touch_tool()
+        try:
+            return await handler(args)
+        finally:
+            agent_activity.touch_tool()
+    return wrapped
+
+
 def attach(client, tools: list[dict], graph, module=None, launch=None, focus=None, node_state=None) -> None:
     """Зарегистрировать у клиента обработчики всех инструментов манифеста, `launch_game`, `graph.get` и запросы фокуса.
     graph: () -> dict (game_api.graph_data);
     launch: async (reason) -> str (запуск игры с объявлением, ТЗ 11e POL-12); focus: объект с async activate(body) и
     release(body) для запросов ядра workspace.enter и workspace.exit (ТЗ 11e POL-14)."""
     import workspace_module as wm
+
+    def reg(name):                     # любой вызов инструмента ядром отмечает: агент сейчас работает (agent_activity)
+        return lambda fn: client.tool(name)(_touching(fn))
+
     state = node_state if node_state is not None else wm.NodeState()
     nav = wm.make_nav_handlers(state, module)
     for tool in tools:
         name = tool["name"]
         if name in nav:
-            client.tool(name)(nav[name])
+            reg(name)(nav[name])
         elif name in wm.OLD_BY_NAME:
-            client.tool(name)(wm.make_tool_handler(name, tool.get("node") or "", state, module))
+            reg(name)(wm.make_tool_handler(name, tool.get("node") or "", state, module))
         else:                                           # прежний плоский манифест (тесты, совместимость)
-            client.tool(name)(tool_handler(name, module))
+            reg(name)(tool_handler(name, module))
 
-    @client.tool("launch_game")
+    @reg("launch_game")
     async def _launch(args):                                             # POL-12: только по просьбе, с объявлением
         reason = str((args or {}).get("reason") or "").strip()
         if not reason:

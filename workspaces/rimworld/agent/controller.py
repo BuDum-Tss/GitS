@@ -39,6 +39,7 @@ import focus_checkpoint
 import focus_mode
 import game_brief
 import idle_watch
+import agent_activity
 import planning_pause
 import speed_plan
 import focus_status
@@ -50,6 +51,7 @@ import real_threats
 
 logger = logging.getLogger("controller")
 MEM_DIR = Path(__file__).parent / "memory"      # файлы модуля рядом с кодом (как memory/tasks.json в _tasks_block)
+DEFER_LOG_EVERY_S = 300         # «автоснятие паузы отложено» пишем в протокол не чаще раза в столько секунд
 AFK_SLEEP_S = 30                # ТЗ 11e POL-11: вне фокуса фоновые контуры спят, токены не тратятся
 
 
@@ -239,6 +241,7 @@ class Controller:
         self._speed_set_at        = 0.0                    # когда модуль последний раз сам менял скорость (автоскорость)
         self._danger_at: float | None = None               # когда в последний раз была угроза или бой (автоскорость)
         self._paused_since: float | None = None            # с какого момента игра подряд на паузе (автоснятие забытой паузы)
+        self._defer_logged_at     = 0.0                    # когда в последний раз писали «автоснятие паузы отложено» (не чаще раза в 5 мин)
         self._task_first_seen: dict[str, int] = {}
         self._stall_reported: set[str] = set()
         self._forced: dict[str, dict] = {}                 # задача -> {pawn, tick}: принудительная работа
@@ -306,25 +309,38 @@ class Controller:
             events_log.log("game", "простой: " + res["text"])
             asyncio.create_task(self.link.event("idle_colonists", {"colonists": res["colonists"]}, text=res["text"]))
 
+    def _num_setting(self, key: str, default: float, lo: float, hi: float, env_name: str = "") -> float:
+        """Числовая настройка модуля в пределах [lo, hi]; переменная окружения (если задана) важнее; мусор даёт значение по умолчанию."""
+        raw = env(env_name) if env_name else None
+        try:
+            return min(hi, max(lo, float(raw if raw not in (None, "") else self._module_setting(key, default))))
+        except (TypeError, ValueError):
+            return float(default)
+
     async def _auto_speed(self, state: dict) -> None:
-        """Автоскорость (настройка auto_speed, переменная GITS_RIMWORLD_AUTO_SPEED): см. speed_plan. Пишет в протокол при смене."""
+        """Автоскорость (настройка auto_speed, переменная GITS_RIMWORLD_AUTO_SPEED): см. speed_plan. Пишет в протокол при смене.
+        Паузу агента (agent_pause_hold_s) и время, пока агент активен (agent_active_s), не трогаем: см. agent_activity."""
         mode = speed_plan.normalize(env("GITS_RIMWORLD_AUTO_SPEED") or self._module_setting("auto_speed", speed_plan.DEFAULT_MODE))
         now = time.time()
         if not state.get("paused"):
             self._paused_since = None
+            if agent_activity.pause_at() is not None and now - agent_activity.pause_at() > agent_activity.CLEAR_GRACE_S:
+                agent_activity.clear_pause()               # игра идёт: пауза агента кончилась (сняли в игре руками)
         elif self._paused_since is None:
             self._paused_since = now
         if mode == "off" or not self.policies.in_focus:
             return
-        try:
-            unpause_s = min(600.0, max(0.0, float(env("GITS_RIMWORLD_AUTO_UNPAUSE_S")
-                                                  or self._module_setting("auto_unpause_s", speed_plan.AUTO_UNPAUSE_S))))
-        except (TypeError, ValueError):
-            unpause_s = float(speed_plan.AUTO_UNPAUSE_S)
+        unpause_s = self._num_setting("auto_unpause_s", speed_plan.AUTO_UNPAUSE_S, 0, 600, "GITS_RIMWORLD_AUTO_UNPAUSE_S")
+        hold_s = self._num_setting("agent_pause_hold_s", agent_activity.AGENT_PAUSE_HOLD_S, 60, 3600)
+        active_s = self._num_setting("agent_active_s", agent_activity.AGENT_ACTIVE_S, 0, 600)
         if speed_plan.is_danger(state):
             self._danger_at = now
-        target = speed_plan.plan_speed(state, mode, now, self._speed_set_at, planning_pause.active(), self._danger_at,
-                                      self._paused_since, unpause_s)
+        target, deferred = speed_plan.decide(state, mode, now, self._speed_set_at, planning_pause.active(), self._danger_at,
+                                             self._paused_since, unpause_s, agent_activity.pause_at(), hold_s,
+                                             agent_activity.tool_at(), active_s)
+        if deferred and now - self._defer_logged_at >= DEFER_LOG_EVERY_S:
+            self._defer_logged_at = now
+            events_log.log("game", f"автоснятие паузы отложено: {deferred}")
         if target is None:
             return
         before, was_paused, paused_for = state.get("time_speed"), bool(state.get("paused")), now - (self._paused_since or now)
@@ -332,9 +348,11 @@ class Controller:
             self._speed, self._speed_set_at = target, now
             if was_paused:
                 self._paused_since = None
-                events_log.log("game", f"пауза снята автоматически: простояла {round(paused_for)} с, скорость {target}")
+                events_log.log("game", f"пауза снята автоматически: простояла {round(paused_for)} с, скорость {target} "
+                                       f"(причина: пауза забыта, метки паузы агента нет или она старше {round(hold_s)} с, "
+                                       f"агент не вызывал инструменты {round(active_s)} с, опасности нет)")
             else:
-                events_log.log("game", f"автоскорость: {before} → {target}" + (" (угроза или бой)" if target == 1 else ""))
+                events_log.log("game", f"автоскорость: {before} → {target}" + (" (опасность: враги, бой или раненые)" if target == 1 else ""))
 
     def _launch_allowed(self) -> bool:
         """POL-12: сторож и автозапуск поднимают игру только при фокусе модуля (и настройке или после падения)."""

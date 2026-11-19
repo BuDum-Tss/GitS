@@ -1,6 +1,7 @@
 """MCP-сервер для RimWorld Agent Bridge (localhost:8765)."""
 import json
 import re
+import agent_activity
 import gamenet
 import knowledge
 import real_threats
@@ -98,6 +99,7 @@ def _post(command: dict) -> str:
             return _note_result(f"ERROR: {data.get('message', 'unknown error')}")
         if status == "queued_timeout":
             return _note_result("WARNING: команда не подтвердила выполнение вовремя (игра могла зависнуть)")
+        agent_activity.note_command(command)           # пауза и снятие паузы агентом: автоснятие паузы это учитывает
         return _recorded(command, _note_result(f"OK: {command['type']}"))
     except Exception as e:
         return _recorded(command, _note_result(f"ERROR: {e}"))
@@ -116,6 +118,7 @@ def _query(command: dict) -> str:
         if status == "queued_timeout":
             return _note_result("WARNING: команда не подтвердила выполнение вовремя (игра могла зависнуть)")
         _ERROR_STREAK[0] = 0
+        agent_activity.note_command(command)
         return _recorded(command, data.get("result", "{}"))
     except Exception as e:
         return _note_result(f"ERROR: {e}")

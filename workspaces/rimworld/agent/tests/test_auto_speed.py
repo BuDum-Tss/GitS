@@ -1,11 +1,19 @@
 """Автоскорость: чистая plan_speed (граничные случаи) и применение в controller на подделке."""
 import pytest
 
+import agent_activity
 import controller
 import events_log
 import planning_pause
 import speed_plan as sp
 from speed_plan import plan_speed
+
+
+@pytest.fixture(autouse=True)
+def _clean_activity():
+    agent_activity.reset()
+    yield
+    agent_activity.reset()
 
 
 def st(speed=1, paused=False, threats=(), pawns=()):
@@ -62,7 +70,7 @@ def make(monkeypatch, focus=True, mode=None):
     c = controller.Controller.__new__(controller.Controller)
     c.link = FakeLink()
     c.policies = Pol(focus)
-    c._speed, c._speed_set_at, c._danger_at = 1, 0.0, None
+    c._speed, c._speed_set_at, c._danger_at, c._defer_logged_at = 1, 0.0, None, 0.0
     sent = []
     monkeypatch.setattr(controller, "_game_command", lambda cmd: sent.append(cmd) or True)
     monkeypatch.setattr(planning_pause, "active", lambda *a, **k: False)
@@ -106,12 +114,13 @@ def paused_state(**kw):
 
 def test_forgotten_pause_is_released_only_after_threshold():
     s = paused_state()
-    assert plan_speed(s, "max", 139, 0, paused_since=100) is None                 # 39 с: ещё не забытая
-    assert plan_speed(s, "max", 140, 0, paused_since=100) == 4
+    assert sp.AUTO_UNPAUSE_S == 90                                               # по умолчанию 90 с
+    assert plan_speed(s, "max", 189, 0, paused_since=100) is None                 # 89 с: ещё не забытая
+    assert plan_speed(s, "max", 190, 0, paused_since=100) == 4
     assert plan_speed(s, "max", 1000, 0, paused_since=None) is None
     assert plan_speed(s, "max", 1000, 0, paused_since=100, unpause_after_s=0) is None      # 0: выключено
     assert plan_speed(s, "max", 150, 0, paused_since=100, unpause_after_s=10) == 4
-    assert plan_speed(s, "max", 140, 0, paused_since=100, danger_at=130) == 1              # недавняя угроза: обычная
+    assert plan_speed(s, "max", 190, 0, paused_since=100, danger_at=170) == 1              # недавняя угроза: обычная
 
 
 def test_pause_release_is_blocked_by_planning_threat_menu_off_and_cooldown():
@@ -133,12 +142,13 @@ async def test_controller_releases_forgotten_pause_and_logs(monkeypatch):
     monkeypatch.setattr(controller.time, "time", lambda: clock[0])
     s = paused_state()
     await c._auto_speed(s)
-    clock[0] += 39
+    clock[0] += 89
     await c._auto_speed(s)
     assert sent == []
     clock[0] += 2
     await c._auto_speed(s)
-    assert sent == [{"type": "set_time_speed", "speed": 4}] and "пауза снята автоматически: простояла 41 с" in logs[-1][1]
+    assert sent == [{"type": "set_time_speed", "speed": 4}] and "пауза снята автоматически: простояла 91 с" in logs[-1][1]
+    assert "причина" in logs[-1][1]
 
 
 async def test_controller_pause_release_can_be_disabled_by_env(monkeypatch):

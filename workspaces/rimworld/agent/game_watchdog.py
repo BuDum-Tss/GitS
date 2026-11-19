@@ -227,11 +227,22 @@ class GameWatchdog:
             "tick": tick, "stalled_s": stalled, "fresh_colony": fresh,
             "stall_limit_s": limit,
             "time_wanted": bool(recording_wanted_cfg),
-            "planner_paused": planning_pause.active(),
+            "planner_paused": planning_pause.active() or self._agent_holds_pause(),
             "user_idle_s": self._idle() if stalled >= limit else 0.0,
             "since_note_s": None if self._last_user_note is None else now - self._last_user_note,
             "announced": self._user_announced,
         }
+
+    def _agent_holds_pause(self) -> bool:
+        """Паузу агента (свежая метка, agent_pause_hold_s) или его активную работу (agent_active_s) сторож застоя не снимает."""
+        import agent_activity
+        try:
+            hold = min(3600.0, max(60.0, float(self._module_setting("agent_pause_hold_s", agent_activity.AGENT_PAUSE_HOLD_S))))
+            active = min(600.0, max(0.0, float(self._module_setting("agent_active_s", agent_activity.AGENT_ACTIVE_S))))
+        except (TypeError, ValueError):
+            hold, active = float(agent_activity.AGENT_PAUSE_HOLD_S), float(agent_activity.AGENT_ACTIVE_S)
+        wall = time.time()
+        return agent_activity.pause_is_fresh(wall, hold) or agent_activity.is_active(wall, active)
 
     def snapshot(self) -> dict:
         now = self._clock()
