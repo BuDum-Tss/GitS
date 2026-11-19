@@ -82,14 +82,16 @@ class WorkLoop:
 
     async def _task_facts(self, module: str, ws: dict) -> str:
         """Факты о задачах среды. Нет открытой задачи, а модуль объявил `default_goal`: ядро ставит её само (origin self) и
-        просит Planner разбить на шаги, чтобы у агента всегда была цель и следующий шаг."""
+        просит Planner разбить на шаги, чтобы у агента всегда была цель и следующий шаг. Исключение: среда с `self_goals: true`
+        (цели развития ставит сам агент по фактам среды): ядро задачу не создаёт, тик говорит только, есть ли открытая задача, а
+        после закрытия цели агент не получает механически ту же самую."""
         svc = self._tasks
         if svc is None:
             return ""
         try:
             task = await svc.active(module)
             goal = str(ws.get("default_goal") or "").strip()
-            if task is None and goal:
+            if task is None and goal and not ws.get("self_goals"):
                 from services.tasks import model as dom
                 task = await svc.create(goal, workspace=module, origin=dom.SELF, plan=True)
                 task = await svc.activate(task.id)

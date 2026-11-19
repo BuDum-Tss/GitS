@@ -86,7 +86,7 @@ async def build(url: str | None = None, token: str | None = None, config: dict |
     loop = asyncio.get_running_loop()
 
     manifest = await module_manifest.build()
-    tools = [t for t in manifest["tools"] if t["name"] != "launch_game"]
+    tools = [t for t in manifest["tools"] if t["name"] not in ("launch_game", "restart_game")]
     client = WorkspaceClient(manifest, url=url, token=token)
     link = CoreLink(client)
 
@@ -112,7 +112,7 @@ async def build(url: str | None = None, token: str | None = None, config: dict |
     ctrl.on_nodes_reset = node_state.forget_seen          # «виденные» узлы живут до выхода из среды, новой аренды или новой игры
 
     module_manifest.attach(client, tools, graph=game_api.graph_data,
-                           launch=ctrl.launch_game, focus=ctrl, node_state=node_state)   # ТЗ 11e, ТЗ 33
+                           launch=ctrl.launch_game, focus=ctrl, node_state=node_state, restart=ctrl.restart_game)   # ТЗ 11e, ТЗ 33
     ctx = types.SimpleNamespace(config=config, mem_dir=mem_dir, manifest=manifest, link=link, host=host, ctrl=ctrl,
                                 reporter=reporter)
     return client, ctx

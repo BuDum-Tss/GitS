@@ -33,13 +33,14 @@ EVENTS_MAX_WAIT_S = 25.0
 MOD_DEFAULT = "http://localhost:8765"
 MOD_FALLBACK = "http://[::1]:8765"
 LOCAL_NAMES = ("localhost", "127.0.0.1", "::1")
+STOP_GRACEFUL_MAX_S = 30             # сколько секунд помощник даёт игре закрыться мягко (дальше kill)
 COORD_MAX = 20000
 TEXT_MAX = 500
 FORBIDDEN_KEYS = {"win", "winleft", "winright", "apps", "sleep", "printscreen", "prtsc", "prtscr", "command", "option"}
 KEY_RE = re.compile(r"^[a-z0-9]{2,16}$")
 BUTTONS = ("left", "right", "middle")
 STATUS_BY_CODE = {"bad_request": 400, "unauthorized": 401, "unknown_record": 404, "window_not_found": 409,
-                  "launch_failed": 409, "no_recorder": 503}
+                  "launch_failed": 409, "stop_failed": 409, "stop_busy": 409, "no_recorder": 503}
 
 
 class EventJournal:
@@ -162,6 +163,7 @@ class HostApp:
         self._token = token.encode("utf-8")
         self.journal = journal or EventJournal()
         base = (rimworld_api or MOD_DEFAULT).rstrip("/")
+        self._stopping = False                             # закрытие игры уже идёт: второе не принимаем
         self.mod_targets = [base]
         if base == MOD_DEFAULT and MOD_FALLBACK not in self.mod_targets:
             self.mod_targets.append(MOD_FALLBACK)          # localhost мог резолвиться в 127.0.0.1, а мод слушает [::1]
@@ -195,6 +197,7 @@ class HostApp:
         r.add_get("/health", self.health)
         r.add_get("/game/status", self.game_status)
         r.add_post("/game/launch", self.game_launch)
+        r.add_post("/game/stop", self.game_stop)
         r.add_post("/game/quick_start", self.quick_start)
         r.add_post("/game/show_window", self.show_window)
         r.add_get("/ui/screenshot", self.ui_screenshot)
@@ -239,6 +242,21 @@ class HostApp:
         windowed = bool(body.get("windowed", True))
         result = await self.bridge.launch_game(reason, wait_seconds=float(wait), windowed=windowed)
         return web.json_response({"result": result})
+
+    async def game_stop(self, request):
+        """Закрыть игру: мягко (окно) в пределах graceful_s, иначе жёстко. Ответ {stopped, how: graceful|killed|not_running}."""
+        body = await _json_body(request)
+        graceful = body.get("graceful_s", 10)
+        if isinstance(graceful, bool) or not isinstance(graceful, (int, float)) or not 0 <= graceful <= STOP_GRACEFUL_MAX_S:
+            raise HostBridgeError(f"поле graceful_s: допустимо 0..{STOP_GRACEFUL_MAX_S}", code="bad_request", status=400)
+        if self._stopping:
+            raise HostBridgeError("закрытие игры уже идёт", code="stop_busy", status=409)
+        self._stopping = True
+        try:
+            result = await self.bridge.stop_game(float(graceful))
+        finally:
+            self._stopping = False
+        return web.json_response({"stopped": bool(result.get("stopped", True)), "how": str(result.get("how") or "")})
 
     async def quick_start(self, request):
         await _json_body(request)

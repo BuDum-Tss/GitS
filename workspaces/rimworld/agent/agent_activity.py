@@ -12,8 +12,13 @@ AGENT_PAUSE_HOLD_S = 600       # пауза агента считается со
 AGENT_ACTIVE_S = 90            # столько секунд после последнего вызова инструмента агент считается активным (agent_active_s)
 CLEAR_GRACE_S = 5              # свежую метку не сбрасываем по «игра не на паузе»: состояние могло быть прочитано до исполнения паузы
 
+COMBAT_COMMANDS = frozenset({"draft", "undraft", "attack", "move", "equip", "wear", "rescue", "tend", "cancel_job", "capture"})
+SCHEDULE_COMMANDS = frozenset({"set_schedule", "set_schedule_range"})
+
 _pause_at: float | None = None
 _tool_at: float | None = None
+_combat_at: float | None = None      # метка last_combat_order_ts: агент сам отдал боевой приказ (рефлекс обороны не мешает ему)
+_schedule_at: float | None = None    # агент сам правил расписание (рефлекс настроения его расписание не переписывает)
 
 
 def mark_pause(now: float | None = None) -> None:
@@ -42,9 +47,26 @@ def tool_at() -> float | None:
     return _tool_at
 
 
+def last_combat_order_ts() -> float | None:
+    """Когда агент в последний раз сам отдал боевой приказ (draft, attack, equip, rescue, tend...); None: не отдавал."""
+    return _combat_at
+
+
+def last_schedule_order_ts() -> float | None:
+    """Когда агент в последний раз сам менял расписание (set_schedule); None: не менял."""
+    return _schedule_at
+
+
 def note_command(command: dict, now: float | None = None) -> None:
-    """Команда агента игре исполнена: pause, resume и set_time_speed ведут метку паузы."""
+    """Команда агента игре исполнена: pause, resume и set_time_speed ведут метку паузы, боевые приказы и расписание свои метки.
+    Свои команды рефлексов (`reflex: true`) метку агента не двигают."""
+    global _combat_at, _schedule_at
     kind = (command or {}).get("type")
+    if not (command or {}).get("reflex"):
+        if kind in COMBAT_COMMANDS:
+            _combat_at = time.time() if now is None else now
+        elif kind in SCHEDULE_COMMANDS:
+            _schedule_at = time.time() if now is None else now
     if kind == "pause":
         mark_pause(now)
     elif kind == "resume":
@@ -74,6 +96,8 @@ def is_active(now: float, active_s: float = AGENT_ACTIVE_S, at: float | None = N
 
 def reset() -> None:
     """Сброс (тесты)."""
-    global _tool_at
+    global _tool_at, _combat_at, _schedule_at
     clear_pause()
     _tool_at = None
+    _combat_at = None
+    _schedule_at = None

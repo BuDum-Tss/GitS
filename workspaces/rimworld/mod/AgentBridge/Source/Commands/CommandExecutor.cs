@@ -50,7 +50,7 @@ namespace AgentBridge
                     {
                         var sent = JObject.Parse(json);
                         var t = sent["type"]?.Value<string>();
-                        if (t != null && StageTypes.Contains(t)) delay = AutoCameraFor(t, sent, compact);
+                        if (t != null && StageTypes.Contains(t) && !IsReflex(sent)) delay = AutoCameraFor(t, sent, compact);
                     }
                     catch (Exception camErr) { Log.Warning($"[AgentBridge] camera: {camErr.Message}"); }
                     if (delay > 0f) { _stagedJson = json; _stagedTcs = tcs; _notBefore = now + delay; return; }
@@ -72,6 +72,9 @@ namespace AgentBridge
             }
         }
 
+        /// Команда от детерминированных рефлексов модуля ("reflex": true): исполняется сразу, без камеры, показа и проверки открытого окна.
+        private static bool IsReflex(JObject cmd) => cmd["reflex"]?.Value<bool>() == true;
+
         /// Команды, которые двигают камеру (чтение камеры и сам переключатель не в счёт).
         private static bool MovesCamera(string type)
         {
@@ -84,7 +87,9 @@ namespace AgentBridge
         {
             try
             {
-                var type = JObject.Parse(json)["type"]?.Value<string>() ?? "";
+                var parsed = JObject.Parse(json);
+                if (IsReflex(parsed)) return 0f;                       // рефлекс модуля (оборона, настроение): бой не ждёт показа
+                var type = parsed["type"]?.Value<string>() ?? "";
                 float dwell = RequiredTab.ContainsKey(type) ? 0.35f     // правки в таблице идут по одной, цифры меняются на глазах
                     : StageTypes.Contains(type) ? 0.7f : 0f;
                 return compact ? Math.Min(dwell, 0.1f) : dwell;        // в пачке короткая пауза: зритель видит, но очередь не стоит
@@ -126,6 +131,7 @@ namespace AgentBridge
                 case "clear_work_queue":   ClearWorkQueue(cmd); break;
                 case "set_manual_priorities": SetManualPriorities(cmd); break;
                 case "capabilities":       return Capabilities();
+                case "save_game":          return SaveGame(cmd);
 
                 // ── Строительство ────────────────────────────────────────────
                 case "build":              PlaceBuild(cmd); break;
@@ -155,6 +161,7 @@ namespace AgentBridge
                 case "ui_cancel":          return UiCancel();
                 case "ui_assign":          return UiAssign(cmd);
                 case "dev_test_setup":     return DevTestSetup();
+                case "dev_trigger_incident": return DevTriggerIncident(cmd);
                 case "ui_policy":          return UiPolicy(cmd);
                 case "ui_bed":             return UiBed(cmd);
                 case "ui_area":            return UiArea(cmd);

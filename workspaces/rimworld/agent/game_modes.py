@@ -39,7 +39,7 @@ MODES: dict[str, GameMode] = {m.id: m for m in (
         "observe", "Наблюдение и управление",
         "Основной режим: следить за колонистами (здоровье, настроение, нужды), ресурсами и задачами; менять статусы задач, ставить новые, "
         "выбирать исследования.",
-        ("get_goals", "get_tasks", "get_pending_events", "set_time_speed", "set_goal", "update_goal", "set_task", "request_planning",
+        ("assess_colony", "get_goals", "get_tasks", "get_pending_events", "set_time_speed", "set_goal", "update_goal", "set_task", "request_planning",
          "set_research", "add_lesson", "get_research", "set_watch_rule", "clear_watch_rule"),
         "Ты наблюдаешь за колонией. Проверь колонистов (здоровье, настроение, нужды, чем заняты), ресурсы (что есть, чего не хватает, "
         "хватит ли еды), задачи (что выполнено, что застряло). Обнови статусы задач (set_task, update_goal), поставь недостающие. Нужна "

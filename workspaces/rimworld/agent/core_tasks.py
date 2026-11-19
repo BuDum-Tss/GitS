@@ -7,11 +7,50 @@ logger = logging.getLogger("core_tasks")
 
 INTERVAL_S = 10.0
 _snapshot: dict = {}
+_known = False             # снимок от ядра получен (ядро ответило): без него «цели нет» значило бы «ядро ещё не готово»
+_last_goal: dict | None = None     # {id, goal} последней виденной активной цели
+_closed_goal = ""          # название цели, которая пропала из открытых задач (выполнена, закрыта или отменена агентом)
 
 
 def set_snapshot(snap: dict | None) -> None:
-    global _snapshot
+    """Принять снимок задач ядра. Заодно запоминает закрытую цель: активная цель была, а теперь её нет среди открытых задач
+    (ядро отдаёт только открытые; агент закрывает цель `assistant.close_task`, и она исчезает из снимка)."""
+    global _snapshot, _known, _last_goal, _closed_goal
     _snapshot = snap if isinstance(snap, dict) else {}
+    _known = isinstance(snap, dict) and "tasks" in snap
+    if not _known:
+        _last_goal, _closed_goal = None, ""
+        return
+    act = _active()
+    if act and act.get("goal"):
+        _closed_goal = ""
+        _last_goal = {"id": act.get("id"), "goal": str(act["goal"])}
+        return
+    if _last_goal is not None:
+        still_open = any(t.get("id") == _last_goal["id"] for t in _snapshot.get("tasks") or [])
+        if not still_open:
+            _closed_goal = _last_goal["goal"]
+        _last_goal = None
+
+
+def known() -> bool:
+    """Ядро уже отдало снимок задач среды (иначе об активной цели ничего не известно)."""
+    return _known
+
+
+def closed_goal() -> str:
+    """Название цели, закрытой последней, пока новой активной нет; иначе пусто."""
+    return _closed_goal
+
+
+def active_progress() -> tuple[int, int]:
+    """Шаги активной цели: (выполнено, всего); цели нет: (0, 0)."""
+    act = _active()
+    if not act:
+        return 0, 0
+    mine = next((t for t in _snapshot.get("tasks") or [] if t.get("id") == act.get("id")), act)
+    done, total = (list(mine.get("progress") or [0, 0]) + [0, 0])[:2]
+    return int(done), int(total)
 
 
 def _active() -> dict | None:

@@ -1454,6 +1454,20 @@ const DATA = {
    ]
   },
   {
+   "desc": "Перезапустить RimWorld целиком (закрыть процесс и запустить заново): игра зависла, упала, ошибки текстур или памяти, мод не работает. Сохраняет игру, если save_first. Не…",
+   "group": "other",
+   "name": "restart_game",
+   "owner": "",
+   "params": [
+    "reason",
+    "save_first"
+   ],
+   "query_path": "",
+   "required": [
+    "reason"
+   ]
+  },
+  {
    "desc": "Открыть узел (как вкладку игры): open(\"architect/zone\"), open(\"pawn/orders\", id=колонист). Без path: дочерние узлы. Узел достаточно открыть один раз (увидеть его действи…",
    "group": "nav",
    "name": "open",
@@ -2340,6 +2354,15 @@ const DATA = {
    "owner": "",
    "params": [],
    "query_path": "colony/overview",
+   "required": []
+  },
+  {
+   "desc": "ОЦЕНКА КОЛОНИИ фактами: колонисты (работают, простаивают, лежат), еда, склад, постройки и помещение, кровати, настроение, оборона, исследования, приоритеты работ, gaps {…",
+   "group": "query",
+   "name": "colony_assess",
+   "owner": "",
+   "params": [],
+   "query_path": "colony/assess",
    "required": []
   },
   {

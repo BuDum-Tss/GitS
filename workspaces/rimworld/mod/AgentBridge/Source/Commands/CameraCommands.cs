@@ -59,6 +59,7 @@ namespace AgentBridge
         private static void CheckTabGate(string type, JObject cmd = null)
         {
             if (!StrictUi || !InGame || !RequiredTab.TryGetValue(type, out var need)) return;
+            if (cmd != null && IsReflex(cmd)) return;       // рефлекс модуля правит расписание без окна
             if (type == "ui_area" && cmd != null && GetPawnById(cmd["pawn_id"]?.Value<string>() ?? "")?.RaceProps.Animal == true) need = "Animals";
             var open = Find.MainTabsRoot.OpenTab;
             if (open != null && open.defName == need)

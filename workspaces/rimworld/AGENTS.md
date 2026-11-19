@@ -84,6 +84,11 @@ text=факт)` там, где событие происходит (`controller.
 запущена, поэтому не добавляй к `focus_mode` правил, которые ждут `workspace.enter`. Игру запускает только `game_launcher.launch`
 по явной просьбе или инструментом `launch_game`, не фокус и не сторож при старте (POL-12).
 
+`restart_game(reason, save_first=true)` (`Controller.restart_game`) закрывает игру и запускает заново: команда мода `save_game`
+(20 с), `HostBridge.stop_game` (WM_CLOSE окну до 10 с, затем kill; в контейнере `POST /game/stop`), проверка «процесса нет, порт
+закрыт», `launch` с окном. Не чаще раза в 120 с, при `GITS_NO_LAUNCH=1` не начинается. Пока идёт перезапуск, `_restart_busy`
+не даёт снять фокус и не пускает сторожа, а после закрытия начинается ожидание запуска как у `launch_game` (`done` false до `launch_wait_s`).
+
 ## Как добавить настройку
 Общая с ядром: ключ в `DEFAULTS` (`settings.py`) в обоих репозиториях, поле формы в дашборде ядра
 (`GitS/agent/clients/gui/index.html`), имя в `SHARED_SETTINGS` (`module_manifest.py`): так она доходит сюда темой `settings`.

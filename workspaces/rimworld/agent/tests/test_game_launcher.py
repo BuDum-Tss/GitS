@@ -213,3 +213,76 @@ def test_controller_always_launches_the_game_windowed(monkeypatch):
     monkeypatch.setattr(controller.settings, "load", lambda: {"record_runs": False})
     controller.Controller._launch_rimworld(object(), "тест")
     assert "-popupwindow" in seen["args"]
+
+
+# ── stop: закрытие игры для restart_game (процессы и окна подделаны, настоящая игра не трогается) ──
+
+class FakeProcess:
+    pid = 4242
+
+    def __init__(self):
+        self.killed = False
+
+    def kill(self):
+        self.killed = True
+
+
+@pytest.fixture
+def fake_game(monkeypatch):
+    """Подставной процесс игры: `closes_on` - что его закрывает (`window`: WM_CLOSE, `kill`: только kill, `never`)."""
+    proc = FakeProcess()
+    state = {"closes_on": "window", "windows": 1, "mod": True, "waits": []}
+    monkeypatch.setattr(gl.events_log, "log", lambda *a, **k: None)
+    monkeypatch.setattr(gl, "STOP_PORT_WAIT_S", 0.0)
+    monkeypatch.setattr(gl, "_game_processes", lambda: [] if state["closes_on"] == "gone" else [proc])
+    monkeypatch.setattr(gl, "_post_close_to_windows", lambda pids: state["windows"])
+
+    def wait_gone(procs, seconds):
+        state["waits"].append(seconds)
+        if state["closes_on"] == "never":
+            return False
+        if proc.killed:
+            return True
+        return state["closes_on"] == "window" and len(state["waits"]) == 1 and state["windows"] > 0
+    monkeypatch.setattr(gl, "_wait_gone", wait_gone)
+    monkeypatch.setattr(gl, "mod_ready", lambda: state["mod"] and not (proc.killed or state["closes_on"] == "window"))
+    return proc, state
+
+
+def test_stop_graceful_closes_the_window_without_kill(fake_game):
+    proc, state = fake_game
+    assert gl.stop(graceful_s=7) == "graceful"
+    assert not proc.killed and state["waits"] == [7]
+
+
+def test_stop_kills_when_the_window_does_not_close(fake_game):
+    proc, state = fake_game
+    state["closes_on"] = "kill"
+    assert gl.stop(graceful_s=2) == "killed"
+    assert proc.killed and state["waits"][0] == 2
+
+
+def test_stop_kills_when_there_is_no_window(fake_game):
+    proc, state = fake_game
+    state["closes_on"], state["windows"] = "kill", 0                  # окна нет (завис до отрисовки): сразу kill
+    assert gl.stop() == "killed" and proc.killed
+
+
+def test_stop_not_running(fake_game):
+    _, state = fake_game
+    state["closes_on"] = "gone"
+    assert gl.stop() == "not_running"
+
+
+def test_stop_fails_loudly_when_process_survives_kill(fake_game):
+    proc, state = fake_game
+    state["closes_on"] = "never"
+    with pytest.raises(RuntimeError, match="не закрылась"):
+        gl.stop(graceful_s=0)
+    assert proc.killed
+
+
+def test_stop_fails_when_mod_port_stays_open(fake_game, monkeypatch):
+    monkeypatch.setattr(gl, "mod_ready", lambda: True)
+    with pytest.raises(RuntimeError, match="порт мода"):
+        gl.stop(graceful_s=1)

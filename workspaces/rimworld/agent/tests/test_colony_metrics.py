@@ -295,7 +295,7 @@ def test_report_json_format_and_exit_codes():
     rep = m.report()
     json.dumps(rep, ensure_ascii=False)                    # сериализуется
     assert {"time", "criteria", "attacks", "work", "losses", "health", "extra", "config", "approximations"} <= set(rep)
-    assert [c["id"] for c in rep["criteria"]] == ["building", "attack", "work", "losses", "health"]
+    assert [c["id"] for c in rep["criteria"]] == ["building", "attack", "work", "losses", "stall", "health"]
     assert rep["reached"] and rep["passed"] and rep["exit_code"] == 0 and m.exit_code() == 0
     text = cm.format_report(rep)
     assert "ИТОГ: PASS" in text and "Приближения" in text

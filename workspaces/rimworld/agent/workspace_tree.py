@@ -134,6 +134,7 @@ TOOLS: dict[str, tuple[str, str, str]] = {
     "camera_view": ("query", "map/view", "view"),
     # Запросы
     "get_colony_state": ("query", "colony/overview", "overview"),
+    "assess_colony": ("query", "colony/assess", "assess"),               # оценка колонии фактами и пробелы (colony_assess.py): цель выбирает агент
     "get_colonists": ("query", "colony/colonists", "colonists"),
     "get_resources": ("query", "colony/resources", "resources"),
     "get_buildings": ("query", "colony/buildings", "buildings"),

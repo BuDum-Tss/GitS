@@ -73,6 +73,18 @@ SETTINGS_SCHEMA = {
     "agent_active_s": {"type": "number", "title": "Агент считается активным столько секунд после последнего вызова инструмента: "
                        "пока он активен, автоснятие паузы и автоповышение скорости не делаются (0 - не учитывать)",
                        "default": 90, "min": 0, "max": 600},
+    "goal_review_min_s": {"type": "number", "title": "Постановка целей: не чаще этого (секунд) агенту приходит событие rimworld.goal_review "
+                          "(нет активной цели развития, цель закрыта или давно нет действий)", "default": 240, "min": 60, "max": 3600},
+    "goal_review_idle_s": {"type": "number", "title": "Постановка целей: активная цель есть, а ни одного вызова инструмента агента не было "
+                           "столько секунд: событие rimworld.goal_review тоже приходит", "default": 600, "min": 120, "max": 3600},
+    "threat_responder": {"type": "boolean", "title": "Рефлекс обороны без модели: при настоящей угрозе рядом сам вооружает, мобилизует, ставит "
+                         "атаку, спасает упавших и после боя отпускает (приказы агента не перебивает). Переменная "
+                         "GITS_RIMWORLD_THREAT_RESPONDER (on/off) важнее настройки", "default": True},
+    "threat_response_dist": {"type": "number", "title": "Рефлекс обороны: угроза в пределах стольких клеток от любого колониста "
+                             "запускает реакцию", "default": 60, "min": 20, "max": 150},
+    "morale_keeper": {"type": "boolean", "title": "Рефлекс настроения без модели: в спокойное время проверяет расписание (сон, отдых), "
+                      "при низком настроении ставит колонисту отдых и предупреждает ядро. Переменная GITS_RIMWORLD_MORALE_KEEPER "
+                      "(on/off) важнее настройки", "default": True},
     "focus_mode": {"type": "string", "title": "Фокус агента: core - только запросы ядра (среду включает импульс: сообщение или "
                    "решение агента); manual - только кнопки на панели RimWorld; auto - старый режим, модуль сам берёт "
                    "фокус, когда игра запущена (в среду это не входит)",
@@ -85,7 +97,8 @@ WORKSPACE = {"id": PEER_ID, "title": "RimWorld",
              "safe_points": ["игра на паузе", "тихо: нет угрозы и боя"], "signals_in": ["telegram.*"],
              "done_when": "забег закончен или игра закрыта",
              "autonomous": True, "work_interval_s": 90,
-             "default_goal": "Развивать колонию: еда и жильё для колонистов, работы и режим дня, постройки, исследования, защита от угроз"}      # ТЗ 33: пока агент в среде и свободен, ядро раз в 90 с шлёт рабочий цикл
+             "default_goal": "Развивать колонию: еда и жильё для колонистов, работы и режим дня, постройки, исследования, защита от угроз",
+             "self_goals": True}      # ТЗ 33: пока агент в среде и свободен, ядро раз в 90 с шлёт рабочий цикл
 # что модуль шлёт ядру (RW-9): срочности берутся из core_link.EVENTS, чтобы не расходились
 _EMIT_TEXT = {
     "rimworld.colonists": "Обновился список колонистов (служебное: отношения и граф памяти)",
@@ -106,6 +119,9 @@ _EMIT_TEXT = {
     "rimworld.research_done": "Исследование завершено",
     "rimworld.resource_out": "Кончается запас (еда)",
     "rimworld.idle_colonists": "Колонисты простаивают: бродят или ждут без дела при идущей игре (в data список {id, name, job, idle_s})",
+    "rimworld.threat_response": "Рефлекс обороны сработал сам (без агента): колонисты мобилизованы, оружие выдано, упавшие спасены, бой окончен",
+    "rimworld.morale_warning": "У трети колонистов и больше настроение ниже 0,4 (в data причины по мыслям, самые частые)",
+    "rimworld.goal_review": "Нет активной цели развития, цель закрыта или давно нет действий: факты о главных пробелах колонии (оценка: инструмент colony_assess), решение о цели за агентом",
     "rimworld.game_started": "Игра запущена (сигнал; в среду RimWorld агент входит только по своему импульсу или просьбе)",
 }
 # контракт 1.8: темы события (по ним узел сдвигает срочность), срочность вне фокуса, какие запросы смотреть после события
@@ -125,6 +141,7 @@ _EMIT_EXTRA = {
     "rimworld.enemy_down": {"topics": ["threat"], "urgency_unfocused": 1},
     "rimworld.research_done": {"topics": ["economy"], "urgency_unfocused": 1},
     "rimworld.resource_out": {"topics": ["economy"], "follow_up": ["colony_resources"]},
+    "rimworld.goal_review": {"follow_up": ["colony_assess"]},
 }
 EMITS = [{"kind": kind, "description": _EMIT_TEXT[kind], "default_urgency": urgency, **_EMIT_EXTRA.get(kind, {})}
          for kind, urgency in EVENTS.values()]
@@ -137,9 +154,9 @@ ALERT_MAX_PRIORITY = 90
 TTL_DEFAULT_S = 120                  # срок вида, которому EXPIRES_S срок не задал
 _CRITICAL = {"rimworld.raid", "rimworld.death", "rimworld.fire", "rimworld.pawn_downed", "rimworld.pawn_lost", "rimworld.run_ended"}
 # чисто информационные виды: сами агента не будят (потолок ниже WAKE_MIN), попадают в ближайшую пачку, в сводку не идут
-_PASSIVE = {"rimworld.colonists", "rimworld.game_started", "rimworld.run_video", "rimworld.enemy_down", "rimworld.research_done"}
+_PASSIVE = {"rimworld.threat_response", "rimworld.colonists", "rimworld.game_started", "rimworld.run_video", "rimworld.enemy_down", "rimworld.research_done"}
 PASSIVE_MAX_PRIORITY = 10
-_REPLACE = {"rimworld.idle_colonists"}      # новое событие заменяет ожидающее: устаревший список простоя не копится
+_REPLACE = {"rimworld.idle_colonists", "rimworld.morale_warning", "rimworld.goal_review"}      # новое событие заменяет ожидающее: устаревший список простоя не копится
 
 
 def event_kinds() -> list[dict]:
@@ -232,6 +249,22 @@ def launch_spec() -> dict:
             "risk": "auto", "availability": "profile", "timeout_s": 120, "keywords": list(KEYWORDS)}
 
 
+RESTART_KEYWORDS = ["перезапусти", "рестарт", "перезапуск игры", "restart", "зависла игра", "игра зависла", "перезапустить игру"]
+
+
+def restart_spec() -> dict:
+    """Инструмент «перезапустить игру» (как `launch_game`: вне дерева узлов, обработчик в attach, не MCP): закрыть процесс RimWorld
+    и запустить заново, когда игра зависла, упала, ошибки текстур или памяти, мод не работает. Не чаще раза в 120 с."""
+    desc = ("Перезапустить RimWorld целиком (закрыть процесс и запустить заново): игра зависла, упала, ошибки текстур или памяти, "
+            "мод не работает. Сохраняет игру, если save_first. Не чаще раза в 120 с. reason обязателен; оставайся в среде.")
+    return {"name": "restart_game", "description": desc,
+            "params": {"reason": {"type": "string", "description": "зачем перезапускаем, одной фразой (что сломалось)", "required": True},
+                       "save_first": {"type": "boolean", "description": "сохранить игру перед закрытием (по умолчанию да; "
+                                      "зависшая игра не сохранится, перезапуск продолжится без сохранения)", "required": False,
+                                      "default": True}},
+            "risk": "auto", "availability": "profile", "timeout_s": 120, "keywords": [*KEYWORDS, *RESTART_KEYWORDS]}
+
+
 def build_manifest(tools: list[dict], nodes: list[dict] | None = None) -> dict:
     from game_panel import panel_spec
     names = {t["name"] for t in tools}
@@ -244,7 +277,7 @@ def build_manifest(tools: list[dict], nodes: list[dict] | None = None) -> dict:
     return {"id": PEER_ID, "role": "workspace", "ownership": "shared", "title": "RimWorld", "description": DESCRIPTION, "version": VERSION,
             "capabilities": ["game"], "subscribe": ["presence", "settings", "profile", "module"],
             "shared_settings": list(SHARED_SETTINGS), "settings_schema": json.loads(json.dumps(SETTINGS_SCHEMA)),
-            "tools": [launch_spec(), *tools], "emits": emits, "event_kinds": event_kinds(), "graph": True, "state": True,
+            "tools": [launch_spec(), restart_spec(), *tools], "emits": emits, "event_kinds": event_kinds(), "graph": True, "state": True,
             "panel": panel_spec(),                       # пространство в дашборде (TZ 15, TAB-5, TAB-9)
             "workspace": dict(WORKSPACE), **({"nodes": nodes} if nodes else {})}
 
@@ -319,10 +352,11 @@ def _touching(handler):
     return wrapped
 
 
-def attach(client, tools: list[dict], graph, module=None, launch=None, focus=None, node_state=None) -> None:
+def attach(client, tools: list[dict], graph, module=None, launch=None, focus=None, node_state=None, restart=None) -> None:
     """Зарегистрировать у клиента обработчики всех инструментов манифеста, `launch_game`, `graph.get` и запросы фокуса.
     graph: () -> dict (game_api.graph_data);
-    launch: async (reason) -> str (запуск игры с объявлением, ТЗ 11e POL-12); focus: объект с async activate(body) и
+    launch: async (reason) -> str (запуск игры с объявлением, ТЗ 11e POL-12); restart: async (reason, save_first) -> str
+    (перезапуск игры целиком, `restart_game`); focus: объект с async activate(body) и
     release(body) для запросов ядра workspace.enter и workspace.exit (ТЗ 11e POL-14)."""
     import workspace_module as wm
 
@@ -348,6 +382,21 @@ def attach(client, tools: list[dict], graph, module=None, launch=None, focus=Non
         if launch is None:
             raise ToolError("запуск игры в этом процессе не подключён", code="unavailable")
         return {"result": await launch(reason)}
+
+    @reg("restart_game")
+    async def _restart(args):                                            # перезапуск игры: объявление внутри, лимит частоты там же
+        args = args or {}
+        reason = str(args.get("reason") or "").strip()
+        if not reason:
+            raise ToolError("restart_game: нужна причина (reason): зачем перезапускаем игру", code="bad_request")
+        if restart is None:
+            raise ToolError("перезапуск игры в этом процессе не подключён", code="unavailable")
+        save = args.get("save_first", True)
+        save_first = save.strip().lower() not in ("false", "0", "нет", "no") if isinstance(save, str) else bool(save)
+        try:
+            return {"result": await restart(reason, save_first)}
+        except RuntimeError as e:                                        # отказ (лимит, GITS_NO_LAUNCH, не закрылась): текст агенту
+            raise ToolError(f"restart_game: {e}", code="unavailable") from e
 
     @client.on_request("graph.get")
     async def _graph(body):                                              # RW-14a

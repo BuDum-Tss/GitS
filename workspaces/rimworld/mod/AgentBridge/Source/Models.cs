@@ -13,6 +13,7 @@ namespace AgentBridge
         [JsonProperty("time_speed")]    public int TimeSpeed { get; set; }
         [JsonProperty("manual_priorities")] public bool ManualPriorities { get; set; }
         [JsonProperty("paused")]        public bool Paused { get; set; }
+        [JsonProperty("hour")]          public int Hour { get; set; }
         [JsonProperty("save_id")]       public string SaveId { get; set; }
         [JsonProperty("colony")]        public ColonyDto Colony { get; set; }
         [JsonProperty("minimap")]       public string Minimap { get; set; }
@@ -85,6 +86,7 @@ namespace AgentBridge
         [JsonProperty("conditions")]       public List<string> HealthConditions { get; set; }
         [JsonProperty("equipped")]         public string Equipped { get; set; }
         [JsonProperty("is_downed")]        public bool IsDowned { get; set; }
+        [JsonProperty("mental_state")]     public string MentalState { get; set; }
         [JsonProperty("bleeding")]         public float Bleeding { get; set; }
         [JsonProperty("wounds")]           public List<string> Wounds { get; set; }
         [JsonProperty("incapable_of")]     public List<string> IncapableOf { get; set; }

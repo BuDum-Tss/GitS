@@ -172,3 +172,68 @@ def launch(reason: str, wait_seconds: float = 120.0, args: tuple = ()) -> str:
         if not is_running():
             raise RuntimeError("игра запустилась и сразу закрылась: смотри журнал RimWorld")
     return "игра запущена, но мод пока не отвечает (загрузка может идти ещё; проверь через минуту)"
+
+
+STOP_KILL_WAIT_S = 8.0           # после жёсткого kill ждём исчезновения процесса не дольше этого
+STOP_PORT_WAIT_S = 6.0           # после выхода процесса ждём закрытия порта мода не дольше этого
+
+
+def _post_close_to_windows(pids: set[int]) -> int:
+    """Послать WM_CLOSE всем видимым окнам верхнего уровня процессов `pids` (штатное закрытие, как крестик окна).
+    Возвращает, сколько окон получили сообщение."""
+    import win32con
+    import win32gui
+    import win32process
+    sent = []
+
+    def visit(hwnd, _):
+        try:
+            if win32gui.IsWindowVisible(hwnd) and win32process.GetWindowThreadProcessId(hwnd)[1] in pids:
+                win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+                sent.append(hwnd)
+        except Exception:
+            pass
+        return True
+    win32gui.EnumWindows(visit, None)
+    return len(sent)
+
+
+def _game_processes() -> list:
+    import psutil               # ленивый импорт, как в is_running
+    return [p for p in psutil.process_iter(["name"]) if (p.info["name"] or "").lower() == PROCESS.lower()]
+
+
+def _wait_gone(procs: list, seconds: float) -> bool:
+    import psutil
+    gone, alive = psutil.wait_procs(procs, timeout=seconds)
+    return not alive
+
+
+def stop(graceful_s: float = 10.0) -> str:
+    """Закрыть игру: сначала мягко (WM_CLOSE окну, ждём до `graceful_s` с), если не вышло, то жёстко (kill процесса).
+    Потом убеждаемся, что процесса нет и порт мода закрыт. Возвращает "graceful", "killed" или "not_running";
+    бросает RuntimeError, если процесс не исчез и после kill."""
+    procs = _game_processes()
+    if not procs:
+        return "not_running"
+    how = "killed"
+    try:
+        if _post_close_to_windows({p.pid for p in procs}) and _wait_gone(procs, max(0.0, graceful_s)):
+            how = "graceful"
+    except Exception as e:                       # нет pywin32 или окно не отвечает: идём к жёсткому закрытию
+        logger.info(f"Мягкое закрытие игры не вышло: {e}")
+    if how != "graceful":
+        for p in procs:
+            try:
+                p.kill()
+            except Exception as e:               # процесс мог уже исчезнуть
+                logger.info(f"kill {p.pid}: {e}")
+        if not _wait_gone(procs, STOP_KILL_WAIT_S):
+            raise RuntimeError("игра не закрылась даже после принудительного завершения процесса")
+    deadline = time.time() + STOP_PORT_WAIT_S
+    while mod_ready() and time.time() < deadline:
+        time.sleep(0.3)
+    if mod_ready():
+        raise RuntimeError("процесс игры закрыт, но порт мода 8765 всё ещё отвечает")
+    events_log.log("game", f"игра закрыта ({'мягко' if how == 'graceful' else 'принудительно'})")
+    return how

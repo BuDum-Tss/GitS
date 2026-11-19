@@ -365,8 +365,8 @@ def test_attach_registers_handlers_and_checks(tools):
 # ---------------------------------------------------------------- версии 3.1 и 3.2
 
 def test_contract_version_is_3_2_and_history_ends_with_it():
-    assert versions.CONTRACT_VERSION == "3.5" and P.PROTOCOL == 3
-    assert [v for v, _ in versions.HISTORY][-5:] == ["3.1", "3.2", "3.3", "3.4", "3.5"]
+    assert versions.CONTRACT_VERSION == "3.6" and P.PROTOCOL == 3
+    assert [v for v, _ in versions.HISTORY][-6:] == ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6"]
 
 
 def test_workspace_afk_is_a_new_request_next_to_exit():

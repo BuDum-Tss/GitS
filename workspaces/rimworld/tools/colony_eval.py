@@ -131,7 +131,7 @@ def inject_raid(client, args, metrics: cm.ColonyMetrics, out) -> bool:
 
 
 def run(cfg: cm.Config, client, *, poll: float = 5.0, once: bool = False, watch: bool = False, raid_at: float | None = None,
-        raid_points: float | None = None, abort_after: float = 180.0, room_every: float = 30.0, max_real: float = 0.0,
+        raid_points: float | None = None, stop_on_fail: bool = False, abort_after: float = 180.0, room_every: float = 30.0, max_real: float = 0.0,
         now=time.monotonic, sleep=time.sleep, out=print) -> tuple[int, dict]:
     """Главный цикл. Возвращает (код возврата, отчёт). Часы, сон и вывод подменяются в тестах."""
     metrics = cm.ColonyMetrics(cfg)
@@ -140,6 +140,7 @@ def run(cfg: cm.Config, client, *, poll: float = 5.0, once: bool = False, watch:
     next_probe = 0.0
     next_watch = start + 60.0
     inject_done = raid_at is None
+    stall_told = False
     args = argparse.Namespace(raid_points=raid_points)
     aborted, reason = False, ""
     while True:
@@ -167,6 +168,14 @@ def run(cfg: cm.Config, client, *, poll: float = 5.0, once: bool = False, watch:
                 metrics.update(state, t)
                 if t - last_ok >= abort_after:
                     aborted, reason = True, f"игра не загружена (меню или нет колонии) {t - last_ok:.0f} с"
+        if metrics.stall["failed"] and not stall_told:
+            stall_told = True
+            sl = metrics.stall
+            out(f"ПРОВАЛ: игра на паузе {sl['paused_s']:.0f} с и ничего не менялось (на {sl['at_real_s']} с прогона; последнее изменение: {sl['last_change']}).")
+        if stall_told and stop_on_fail:
+            rep = metrics.report(aborted=False, abort_reason="остановлено по --stop-on-fail", wall_seconds=now() - start)
+            rep["exit_code"] = 1
+            return 1, rep
         if not inject_done and metrics.active_seconds >= raid_at:
             inject_done = inject_raid(client, args, metrics, out)
         if once:
@@ -208,6 +217,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--watch", action="store_true", help="раз в минуту печатать промежуточное состояние")
     ap.add_argument("--raid-at", type=float, default=None, help="через сколько активных секунд вызвать рейд командой dev_trigger_incident")
     ap.add_argument("--raid-points", type=float, default=0, help="сила рейда (0: по умолчанию игры)")
+    ap.add_argument("--stall-seconds", type=float, default=d.stall_seconds, help="пауза без изменений колонии дольше стольких секунд: провал (0: выключено)")
+    ap.add_argument("--stop-on-fail", action="store_true", help="при провале на зависании сразу завершить с кодом 1")
     ap.add_argument("--abort-after", type=float, default=180.0, help="прервать, если нет состояния столько секунд")
     ap.add_argument("--max-real", type=float, default=0.0, help="предел реального времени прогона, с (0: без предела)")
     ap.add_argument("--room-every", type=float, default=30.0, help="как часто опрашивать помещения командой room_info, с")
@@ -237,7 +248,7 @@ def config_from_args(a) -> cm.Config:
                      min_repelled=a.min_repelled, work_min_share=a.work_min_share, work_mean_min=a.work_mean_min,
                      work_samples_min=a.work_samples_min, strict_work=a.strict_work, max_losses=a.max_losses,
                      health_hp_min=a.hp_min, health_mood_min=a.mood_min, health_ok_share=a.ok_share,
-                     max_health_violations=a.max_health_violations, break_mood=a.break_mood)
+                     max_health_violations=a.max_health_violations, break_mood=a.break_mood, stall_seconds=a.stall_seconds)
 
 
 def main(argv=None) -> int:
@@ -246,7 +257,7 @@ def main(argv=None) -> int:
     client = make_client(a)
     print(f"Замер: {cfg.active_seconds:.0f} с активной игры, опрос раз в {a.poll:g} с, мод {client.base}" + (" (через прокси помощника)" if client.token else ""))
     try:
-        code, rep = run(cfg, client, poll=a.poll, once=a.once, watch=a.watch, raid_at=a.raid_at, raid_points=a.raid_points or None,
+        code, rep = run(cfg, client, poll=a.poll, once=a.once, watch=a.watch, raid_at=a.raid_at, raid_points=a.raid_points or None, stop_on_fail=a.stop_on_fail,
                         abort_after=a.abort_after, room_every=a.room_every, max_real=a.max_real)
     except KeyboardInterrupt:
         print("Прервано с клавиатуры.")

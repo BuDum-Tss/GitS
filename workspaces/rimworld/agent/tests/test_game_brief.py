@@ -14,6 +14,13 @@ def test_brief_is_short_and_names_existing_tools():
             "architect_zone_grow_zone", "pawn_orders_force_work", "work_set_priorities", "architect_orders_plan_room",
             "architect_structure_place_building"} <= mentioned
     assert mentioned <= tools, mentioned - tools
+    assert "colony_assess" in tools and "colony_assess" in game_brief.GAME_BRIEF       # оценка колонии: с неё агент выбирает цель
+
+
+def test_brief_makes_the_agent_set_and_close_goals_itself():
+    text = game_brief.GAME_BRIEF
+    assert "Цели ставишь сама" in text and "assistant.create_task" in text and "закрывай" in text
+    assert "больше двух чтений подряд" in text and "pawn_orders_force_work" in text      # прежние правила хода сохранены
 
 
 def test_with_entry_only_on_success():

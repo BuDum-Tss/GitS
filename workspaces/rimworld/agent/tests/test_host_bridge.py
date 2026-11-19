@@ -122,6 +122,20 @@ async def test_launch_passes_windowed_args_and_maps_errors(monkeypatch):
     assert e.value.code == "launch_failed"
 
 
+async def test_stop_game_delegates_and_maps_errors(monkeypatch):
+    seen = []
+    monkeypatch.setattr(game_launcher, "stop", lambda graceful_s=10.0: seen.append(graceful_s) or "killed")
+    assert await hb.LocalHostBridge().stop_game(3) == {"stopped": True, "how": "killed"}
+    assert seen == [3]
+
+    def boom(graceful_s=10.0):
+        raise RuntimeError("игра не закрылась")
+    monkeypatch.setattr(game_launcher, "stop", boom)
+    with pytest.raises(hb.HostBridgeError) as e:
+        await hb.LocalHostBridge().stop_game()
+    assert e.value.code == "stop_failed"
+
+
 async def test_quick_start_and_show_window_delegate(monkeypatch):
     shown = []
     monkeypatch.setattr(game_watchdog, "press_quick_start", lambda: True)

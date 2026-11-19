@@ -78,7 +78,7 @@ Windows-зависимостями (`pyautogui`, `win32*`, `psutil`, `ctypes.win
 ответ 401 `{"error", "code": "unauthorized"}`. Тела запросов и ответов JSON UTF-8 (кроме скриншота и прокси). Любая ошибка:
 `{"error": "<текст>", "code": "<код>"}`. Коды: `unauthorized` 401, `bad_request` 400 (неверное поле, точка вне окна, запрещённая клавиша),
 `too_large` 413, `unknown_record` 404, `window_not_found` 409 (окна RimWorld нет), `launch_failed` 409 (запуск не вышел или запрещён
-`GITS_NO_LAUNCH=1`), `no_recorder` 503, `internal` 500. Лимиты тела: 64 КБ (команды), 16 МБ (`/record/finish`), 1 МБ (прокси). Помощник слушает только
+`GITS_NO_LAUNCH=1`), `stop_failed` 409 и `stop_busy` 409 (закрытие игры, `/game/stop`), `no_recorder` 503, `internal` 500. Лимиты тела: 64 КБ (команды), 16 МБ (`/record/finish`), 1 МБ (прокси). Помощник слушает только
 `127.0.0.1:<GITS_RIMWORLD_HOST_PORT>` (по умолчанию 8796). Клиент при недоступности помощника бросает `HostUnavailable` (код `unavailable`), цикл опроса
 событий при этом живёт и повторяет попытки с ростом паузы до 30 с.
 
@@ -87,6 +87,7 @@ Windows-зависимостями (`pyautogui`, `win32*`, `psutil`, `ctypes.win
 | `GET /health` (без токена) | | `{"ok": true, "api": 1, "epoch": "<id запуска>", "events_last": N}` |
 | `GET /game/status` | | `{"running", "mod_ready", "window": "missing\|minimized\|background\|front", "user_idle_s", "launch_forbidden", "recording": <статус записи>\|null}` |
 | `POST /game/launch` | `{"reason": "<кто и зачем, обязателен>", "wait_seconds": 0..180 (0), "windowed": true}` | `{"result": "<описание итога>"}`; помощник сам объявляет запуск (событие `announce`); 409 `launch_failed`; ответ приходит после ожидания мода |
+| `POST /game/stop` | `{"graceful_s": 0..30 (10)}` | `{"stopped": true, "how": "graceful\|killed\|not_running"}`: окну RimWorld шлётся WM_CLOSE и до `graceful_s` с ждётся выход, иначе kill процесса; ответ после исчезновения процесса и закрытия порта мода 8765 (поэтому ждёт до `graceful_s` + ~15 с); 409 `stop_failed` (процесс не исчез), 409 `stop_busy` (закрытие уже идёт). Нужен инструменту `restart_game`: сохранение игры идёт отдельно командой мода `save_game` через прокси `/game-api/command` |
 | `POST /game/quick_start` | `{}` | `{"pressed": bool}` (кнопка «Быстрый запуск (Dev)» в главном меню, проверка цвета как в `press_quick_start`) |
 | `POST /game/show_window` | `{}` | `{"ok": true}`; 409 `window_not_found` |
 | `GET /ui/screenshot` | | PNG бинарно (`image/png`), только окно RimWorld; 409 `window_not_found` |

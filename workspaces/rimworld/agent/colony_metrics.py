@@ -66,6 +66,7 @@ class Config:
     health_ok_share: float = 0.5         # доля колонистов в норме в каждой выборке не ниже
     max_health_violations: int = 0       # выборок-нарушений не больше
     break_mood: float = 0.2              # ниже этого настроения считаем срывом (приближение)
+    stall_seconds: float = 60.0          # пауза без единого изменения колонии дольше этого (реальных секунд) проваливает прогон; 0: не проверять
     inject_window: float = 180.0         # атака в течение стольких активных секунд после инъекции считается инъекцией
 
 
@@ -210,6 +211,33 @@ def evaluate_building(buildings: list[dict], colonists: int, cfg: Config, rooms:
     return out
 
 
+SERVICE_EVENTS = ("game_loaded",)
+
+
+def fingerprint(state: dict, events_seen: int = 0) -> dict:
+    """Отпечаток колонии: то, что меняется от действий агента (даже на паузе). Тики, настроение и здоровье не входят.
+    Группы: работы колонистов (работа, призыв в бой, лежит, пленный), приоритеты работ, постройки и чертежи по видам, зоны,
+    ресурсы на складе, исследование, число врагов, число событий мода (без служебных)."""
+    colony = state.get("colony") or {}
+    pawns = {p["id"]: [p.get("current_job"), bool(p.get("is_drafted")), bool(p.get("is_downed")), bool(p.get("is_prisoner"))]
+             for p in _pawns(state)}
+    prios = {p["id"]: p.get("work_priorities") for p in _pawns(state) if p.get("work_priorities")}
+    blds: dict = {}
+    for b in colony.get("buildings") or []:
+        if isinstance(b, dict):
+            blds[b.get("def")] = blds.get(b.get("def"), 0) + 1
+    pend: dict = {}
+    for c in colony.get("pending_construction") or []:
+        if isinstance(c, dict):
+            k = f"{c.get('def')}:{c.get('status')}"
+            pend[k] = pend.get(k, 0) + 1
+    zones = sorted(str(z.get("id")) for z in colony.get("zones") or [] if isinstance(z, dict))
+    research = colony.get("research") if isinstance(colony.get("research"), dict) else {}
+    return {"jobs": pawns, "priorities": prios, "buildings": blds, "pending": pend, "zones": zones,
+            "resources": dict(colony.get("resources") or {}), "research": research.get("current"),
+            "threats": len(state.get("threats") or []), "events": events_seen}
+
+
 # ── Метрики ───────────────────────────────────────────────────────────────────────
 
 class ColonyMetrics:
@@ -272,6 +300,13 @@ class ColonyMetrics:
         self.last_resources: dict = {}
         self.last_buildings: dict[str, int] = {}
         self.instant: dict = {}
+        # зависание на паузе
+        self._events_seen = 0
+        self._still_fp: dict | None = None        # отпечаток текущей паузы
+        self._still_start: float | None = None
+        self._last_change: dict = {"at_real_s": None, "what": []}
+        self.longest_still = 0.0
+        self.stall: dict = {"failed": False, "at_real_s": None, "paused_s": 0.0, "last_change": None}
 
     # ── вход ──
 
@@ -344,6 +379,25 @@ class ColonyMetrics:
         if active:
             self._record_samples(colonists, tick, dt_sample, work_now)
         self._track_building(state, colonists, rooms)
+        self._track_stall(state, now, paused)
+
+    def _track_stall(self, state: dict, now: float, paused: bool):
+        """Пауза подряд >= stall_seconds и отпечаток колонии не менялся: провал (фиксируется сразу, один раз)."""
+        if not paused:
+            self._still_fp = self._still_start = None
+            return
+        fp = fingerprint(state, self._events_seen)
+        rel = now - (now if self.first_now is None else self.first_now)
+        if self._still_fp is None or fp != self._still_fp:
+            if self._still_fp is not None:
+                self._last_change = {"at_real_s": round(rel, 1), "what": sorted(k for k in fp if fp[k] != self._still_fp.get(k))}
+            self._still_fp, self._still_start = fp, now
+        still = now - self._still_start
+        self.longest_still = max(self.longest_still, still)
+        limit = self.cfg.stall_seconds
+        if limit > 0 and still >= limit and not self.stall["failed"]:
+            self.stall = {"failed": True, "at_real_s": round(rel, 1), "paused_s": round(still, 1),
+                          "last_change": self._last_change if self._last_change["at_real_s"] is not None else None}
 
     def _unloaded(self, now: float):
         if self._last_loaded_now is not None or self._prev is not None:
@@ -392,6 +446,8 @@ class ColonyMetrics:
                 continue
             self._seen_events.add(key)
             kind = str(e.get("type") or "")
+            if kind not in SERVICE_EVENTS:
+                self._events_seen += 1
             data = e.get("data") if isinstance(e.get("data"), dict) else {}
             if kind == "pawn_died":
                 pid = str(data.get("pawn_id") or data.get("name") or key)
@@ -582,6 +638,10 @@ class ColonyMetrics:
         lost = self._lost()
         add("losses", "Потери не больше допустимых", len(lost) <= cfg.max_losses,
             f"погибло {len(self.dead)}, пропало {len(self.missing)}", f"<= {cfg.max_losses}", ", ".join(lost))
+        add("stall", "Нет зависания на паузе", not self.stall["failed"],
+            f"самая долгая неподвижная пауза {self.longest_still:.0f} с" + (f", провал на {self.stall['at_real_s']} с прогона" if self.stall["failed"] else ""),
+            f"< {cfg.stall_seconds:g} с без изменений колонии" if cfg.stall_seconds > 0 else "проверка выключена",
+            "изменение отпечатка (работы, постройки и чертежи, зоны, ресурсы, исследование, враги, события) сбрасывает отсчёт")
         add("health", "Здоровье и срывы", self.health_violations <= cfg.max_health_violations,
             f"выборок-нарушений {self.health_violations} из {self.health_samples}, худшая доля в норме {self.health_worst:.2f}",
             f"нарушений <= {cfg.max_health_violations}, доля в норме >= {cfg.health_ok_share}",
@@ -613,7 +673,7 @@ class ColonyMetrics:
                 "speed_seconds": {str(k): round(v, 1) for k, v in sorted(self.speed_seconds.items())},
                 "speed_share": {str(k): round(v / speed_total, 3) for k, v in sorted(self.speed_seconds.items())},
             },
-            "criteria": crit,
+            "criteria": crit, "stall": {**self.stall, "threshold_s": self.cfg.stall_seconds, "longest_still_s": round(self.longest_still, 1)},
             "building": self.building, "building_done_at_s": self.building_done_at, "new_structures": self.new_structures,
             "attacks": {"started": len(self.attacks) + (1 if self._attack else 0),
                         "repelled": sum(1 for a in self.attacks if a["status"] == "repelled"),
@@ -639,7 +699,7 @@ class ColonyMetrics:
 
     def exit_code(self, aborted: bool = False) -> int:
         """0: все критерии PASS при набранном активном времени; 1: FAIL (или время не набрано); 2: прогон прерван."""
-        if aborted and not self.done:
+        if aborted and not self.done and not self.stall["failed"]:
             return 2
         crit = self._criteria(True)
         return 0 if self.done and all(c["status"] == "PASS" for c in crit) else 1

@@ -26,6 +26,8 @@ class FakeBridge(hb.HostBridge):
         self.size = (1920, 1080)
         self.fail_window = False
         self.record = None
+        self.stop_how = "graceful"
+        self.stop_fail = False
 
     def set_notifier(self, fn):
         self.notifier = fn
@@ -38,6 +40,12 @@ class FakeBridge(hb.HostBridge):
         if reason == "падает":
             raise hb.HostBridgeError("игра запустилась и сразу закрылась", code="launch_failed")
         return "игра запущена"
+
+    async def stop_game(self, graceful_s=10.0):
+        self.calls.append(("stop", graceful_s))
+        if self.stop_fail:
+            raise hb.HostBridgeError("игра не закрылась даже после принудительного завершения процесса", code="stop_failed")
+        return {"stopped": True, "how": self.stop_how}
 
     async def press_quick_start(self):
         self.calls.append(("quick_start",))
@@ -122,7 +130,7 @@ async def test_token_is_required_everywhere_but_health(helper):
     server, _, _ = helper
     assert (await http(server, "GET", "/health", headers={}))[0] == 200
     for headers in ({}, {"Authorization": "Bearer не-тот"}, {"Authorization": TOKEN}, {"Authorization": "Basic xxx"}):
-        for method, path in (("GET", "/game/status"), ("POST", "/game/launch"), ("GET", "/events"), ("GET", "/ui/screenshot"),
+        for method, path in (("GET", "/game/status"), ("POST", "/game/launch"), ("POST", "/game/stop"), ("GET", "/events"), ("GET", "/ui/screenshot"),
                              ("GET", "/game-api/ping")):
             status, body = await http(server, method, path, {} if method == "POST" else None, headers=headers)
             assert status == 401 and body["code"] == "unauthorized"
@@ -522,3 +530,91 @@ async def test_module_reaches_mod_through_helper_with_token(proxied, monkeypatch
     monkeypatch.setenv("GITS_RIMWORLD_HOST_TOKEN", "не тот")             # токен отклонён: модуль видит «игры нет», а не падает
     assert await asyncio.to_thread(gamenet.port_open) is False
     assert await asyncio.to_thread(controller._ping) is False
+
+
+# ── /game/stop (инструмент restart_game) ──
+
+async def test_game_stop_endpoint(helper):
+    server, bridge, _ = helper
+    assert (await http(server, "POST", "/game/stop", {}, headers={}))[0] == 401
+    status, body = await http(server, "POST", "/game/stop", {"graceful_s": 7})
+    assert status == 200 and body == {"stopped": True, "how": "graceful"} and bridge.calls[-1] == ("stop", 7.0)
+    bridge.stop_how = "killed"
+    assert (await http(server, "POST", "/game/stop"))[1] == {"stopped": True, "how": "killed"}
+    assert bridge.calls[-1] == ("stop", 10.0)                                  # по умолчанию 10 с
+    bridge.stop_how = "not_running"
+    assert (await http(server, "POST", "/game/stop", {}))[1] == {"stopped": True, "how": "not_running"}
+
+
+async def test_game_stop_limits_and_failure(helper):
+    server, bridge, _ = helper
+    for bad in (-1, 31, "10", True):
+        status, body = await http(server, "POST", "/game/stop", {"graceful_s": bad})
+        assert status == 400 and body["code"] == "bad_request", bad
+    assert not [c for c in bridge.calls if c[0] == "stop"]                      # до моста невалидные запросы не дошли
+    bridge.stop_fail = True
+    status, body = await http(server, "POST", "/game/stop", {"graceful_s": 1})
+    assert status == 409 and body["code"] == "stop_failed"
+
+
+async def test_game_stop_second_request_while_stopping_is_busy(helper):
+    server, bridge, _ = helper
+    gate = asyncio.Event()
+    original = bridge.stop_game
+
+    async def slow(graceful_s=10.0):
+        await gate.wait()
+        return await original(graceful_s)
+    bridge.stop_game = slow
+    first = asyncio.ensure_future(http(server, "POST", "/game/stop", {}))
+    await asyncio.sleep(0.2)
+    status, body = await http(server, "POST", "/game/stop", {})
+    assert status == 409 and body["code"] == "stop_busy"
+    gate.set()
+    assert (await first)[0] == 200
+
+
+async def test_remote_stop_game_through_the_helper(helper, remote_env):
+    """Контейнерный режим: RemoteHostBridge.stop_game идёт POST /game/stop настоящего сервера помощника."""
+    server, fake, _ = helper
+    bridge = hb.RemoteHostBridge(str(server.make_url("")), TOKEN)
+    assert await bridge.stop_game(4) == {"stopped": True, "how": "graceful"}
+    assert fake.calls[-1] == ("stop", 4)
+    fake.stop_how = "killed"
+    assert (await bridge.stop_game())["how"] == "killed"
+    fake.stop_fail = True
+    with pytest.raises(hb.HostBridgeError) as e:
+        await bridge.stop_game()
+    assert e.value.code == "stop_failed" and e.value.status == 409
+
+
+async def test_restart_game_through_remote_bridge_against_real_helper(helper, remote_env, tmp_path, monkeypatch):
+    """Контроллер с RemoteHostBridge против сервера помощника (мост помощника подставной): закрыть и запустить заново."""
+    import controller
+    server, fake, _ = helper
+    state = {"running": True}
+
+    async def status():
+        return {"running": state["running"], "mod_ready": state["running"], "window": "front", "user_idle_s": 0.0,
+                "launch_forbidden": False}
+
+    async def stop(graceful_s=10.0):
+        fake.calls.append(("stop", graceful_s))
+        state["running"] = False
+        return {"stopped": True, "how": "killed"}
+
+    async def launch(reason, wait_seconds=0.0, windowed=True):
+        fake.calls.append(("launch", reason, wait_seconds, windowed))
+        state["running"] = True
+        return "игра запущена"
+    fake.game_status, fake.stop_game, fake.launch_game = status, stop, launch
+    monkeypatch.setenv("MEMORY_DIR", str(tmp_path))
+    monkeypatch.setattr(controller, "MEM_DIR", tmp_path)
+    monkeypatch.setattr(controller, "_save_game", lambda name, timeout: (True, name))
+    monkeypatch.setattr(controller, "RESTART_GONE_WAIT_S", 2)
+    bridge = hb.RemoteHostBridge(str(server.make_url("")), TOKEN)
+    bridge.announce_self = lambda fact, kind="game": fact
+    ctrl = controller.Controller({"memory_dir": str(tmp_path), "host_bridge": bridge})
+    text = await ctrl.restart_game("зависла игра")
+    assert [c[0] for c in fake.calls] == ["stop", "launch"]
+    assert "закрыта: жёстко" in text and "запуск начат" in text and ctrl._restart_count == 1

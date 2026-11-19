@@ -283,6 +283,33 @@ def test_work_loop_sets_the_default_goal_once_and_puts_the_next_step_into_the_ev
     asyncio.run(scenario())
 
 
+def test_work_loop_with_self_goals_does_not_create_the_default_goal_again(tmp_path):
+    """`self_goals: true`: цели ставит агент; закрыл цель, а ядро не создаёт ту же самую по default_goal, тик только факт."""
+    manifest = {"workspace": {"id": "game", "title": "Игра", "autonomous": True, "work_interval_s": 100,
+                              "default_goal": "Развивать колонию", "self_goals": True}}
+    env, now, sent, agent = ["game"], [1000.0], [], _Agent()
+
+    async def scenario():
+        svc = await _sqlite_tasks(tmp_path)
+        loop = _loop(env, manifest, agent, now, sent)
+        loop._tasks = svc
+        assert await loop.tick() is False
+        now[0] = 1200.0
+        assert await loop.tick() is True
+        assert "Открытых задач у среды нет" in sent[-1]["text"] and "Развивать колонию" not in sent[-1]["text"]
+        assert await svc.list_tasks("game") == []                 # по default_goal задача не создана
+        mine = await svc.create("Построить спальню на 4 кровати", workspace="game", origin="self")
+        await svc.activate(mine.id)
+        now[0] = 1400.0
+        assert await loop.tick() is True
+        assert "Активная задача: «Построить спальню на 4 кровати»" in sent[-1]["text"]
+        await svc.close(mine.id)                                   # цель закрыта: та же самая не возвращается
+        now[0] = 1600.0
+        assert await loop.tick() is True
+        assert "Открытых задач у среды нет" in sent[-1]["text"] and await svc.list_tasks("game") == []
+    asyncio.run(scenario())
+
+
 def test_work_loop_without_default_goal_reports_that_there_are_no_open_tasks(tmp_path):
     env, now, sent, agent = ["game"], [1000.0], [], _Agent()
 

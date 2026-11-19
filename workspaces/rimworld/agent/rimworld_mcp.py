@@ -224,6 +224,59 @@ def get_colony_state() -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
+_ASSESS_ROOM_PROBES = 8          # у скольких кроватей спрашиваем мод, настоящее ли помещение (room_info)
+_ASSESS_HISTORY_S = 24 * 3600    # окно протокола событий для «атак было»
+
+
+def _assess_rooms(state: dict) -> dict | None:
+    """room_info в клетках кроватей: {"x,z": ответ мода}. Мод без команды или связи нет: None (помещения не проверены)."""
+    import colony_assess
+    beds = colony_assess.count_buildings((state.get("colony") or {}).get("buildings") or [])["_beds"]
+    rooms: dict = {}
+    for b in beds[:_ASSESS_ROOM_PROBES]:
+        pos = b.get("position") or {}
+        if "x" not in pos or "z" not in pos:
+            continue
+        key = f"{pos['x']},{pos['z']}"
+        if key in rooms:
+            continue
+        raw = _query({"type": "room_info", "x": pos["x"], "z": pos["z"]})
+        if str(raw).startswith(("ERROR", "WARNING")):
+            return None
+        try:
+            rooms[key] = json.loads(raw)
+        except ValueError:
+            return None
+    return rooms if beds else {}
+
+
+def _assess_history(threats_now: bool) -> dict | None:
+    """Атаки и потери колонистов по протоколу событий за сутки; отбитой считается каждая атака, кроме идущей сейчас (приблизительно)."""
+    try:
+        import events_log
+        rows = events_log.tail(limit=2000, kinds={"game"}, since=time.time() - _ASSESS_HISTORY_S)
+    except Exception:
+        return None
+    raids = sum(1 for r in rows if (r.get("data") or {}).get("type") == "incident")
+    deaths = sum(1 for r in rows if (r.get("data") or {}).get("type") == "pawn_died")
+    return {"raids": raids, "deaths": deaths, "repelled": max(0, raids - 1) if threats_now else raids}
+
+
+@mcp.tool()
+def assess_colony() -> str:
+    """ОЦЕНКА КОЛОНИИ фактами: колонисты (работают, простаивают, лежат), еда, склад, постройки и помещение, кровати, настроение, оборона, исследования, приоритеты работ, gaps {id, severity 1-5, fact} по серьёзности. Цель выбираешь ты.
+
+    Вызывай, когда нет активной цели или прежняя закрыта: из gaps выбери следующую цель развития и поставь её задачей (assistant.create_task).
+    Только чтение: игру не меняет (помещения проверяются запросом room_info у кроватей).
+    """
+    import colony_assess
+    state = _load_state()
+    if state is None:
+        return "ERROR: не удалось получить состояние игры"
+    result = colony_assess.assess(state, rooms=_assess_rooms(state), history=_assess_history(bool(state.get("threats"))))
+    return json.dumps(result, ensure_ascii=False)
+
+
 @mcp.tool()
 def get_pawn_details(pawn_id: str) -> str:
     """Подробности ОДНОЙ пешки: навыки, приоритеты работы, 24-часовое

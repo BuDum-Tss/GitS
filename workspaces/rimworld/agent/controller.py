@@ -15,6 +15,7 @@
 файлы памяти параллельно.
 """
 import asyncio
+import json
 import logging
 import os
 
@@ -39,6 +40,8 @@ import focus_checkpoint
 import focus_mode
 import game_brief
 import idle_watch
+import colony_assess
+import goal_watch
 import agent_activity
 import planning_pause
 import speed_plan
@@ -48,8 +51,10 @@ import policy_events
 import policy_manager
 import knowledge
 import real_threats
+import threat_responder
+import morale_keeper
 
-logger = logging.getLogger("controller")
+logger =logging.getLogger("controller")
 MEM_DIR = Path(__file__).parent / "memory"      # файлы модуля рядом с кодом (как memory/tasks.json в _tasks_block)
 DEFER_LOG_EVERY_S = 300         # «автоснятие паузы отложено» пишем в протокол не чаще раза в столько секунд
 AFK_SLEEP_S = 30                # ТЗ 11e POL-11: вне фокуса фоновые контуры спят, токены не тратятся
@@ -61,6 +66,11 @@ def _policy_log(kind: str, text: str) -> None:
 PROACTIVE_TICK_INTERVAL   = 2500  # 1 игровой час (GenDate.TicksPerHour)
 POLL_INTERVAL_SECS        = 2.0
 LAUNCH_WAIT_S             = 240             # ждать запуск игры в аренде ядра (настройка launch_wait_s, 60-900)
+RESTART_MIN_INTERVAL_S    = 120             # restart_game не чаще раза в это число секунд (защита от цикла перезапусков)
+RESTART_SAVE_TIMEOUT_S    = 20              # сколько ждать записи сохранения перед закрытием игры
+RESTART_STOP_GRACEFUL_S   = 10              # сколько ждать мягкого закрытия окна игры, потом kill
+RESTART_GONE_WAIT_S       = 20              # сколько ждать, пока помощник подтвердит: процесса нет, порт мода закрыт
+RESTART_SAVE_NAME         = "autosave_agent"  # имя сохранения перед перезапуском (команда мода save_game)
 TICKS_PER_HOUR            = 2500
 PLANNING_INTERVAL_SECS    = 8 * 60          # тактические задачи — раз в 8 минут
 LONG_TERM_INTERVAL_SECS   = 25 * 60         # стратегические цели — раз в 25 минут
@@ -117,6 +127,44 @@ def _game_command(cmd: dict) -> bool:
         return r.status_code == 200 and r.json().get("status") != "error"
     except Exception:
         return False
+
+
+def _game_request(cmd: dict) -> tuple[bool, str]:
+    """Команда игре с ответом: (успех, результат запроса или текст ошибки мода). Для рефлексов обороны и настроения: им нужны
+    ответ get_items и причина отказа (нет кровати, предмет занят). Блокирующая: вызывать через asyncio.to_thread."""
+    if not _game_port_open():
+        return False, "игра не отвечает"
+    try:
+        r = httpx.post(f"{_BASE}/command", json=cmd, headers=gamenet.auth_headers(), timeout=8)
+        data = r.json()
+    except Exception as e:
+        return False, str(e)
+    if r.status_code != 200 or data.get("status") == "error":
+        return False, str(data.get("message") or data.get("status") or r.status_code)
+    return True, str(data.get("result") or "")
+
+
+def _save_game(name: str, timeout: float) -> tuple[bool, str]:
+    """Команда мода save_game: записать игру и дождаться ответа (мод отвечает, когда файл записан). (успех, пояснение).
+    Мод без этой команды (старая сборка) даёт «мод без команды сохранения». Блокирующая: вызывать через asyncio.to_thread."""
+    if not _game_port_open():
+        return False, "игра не отвечает"
+    try:
+        r = httpx.post(f"{_BASE}/command", json={"type": "save_game", "name": name}, headers=gamenet.auth_headers(),
+                       timeout=timeout)
+        data = r.json()
+    except httpx.TimeoutException:
+        return False, f"не записано за {round(timeout)} с"
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+    if r.status_code == 202 or data.get("status") == "queued_timeout":
+        return False, "мод не успел записать сохранение (игра занята или завис)"
+    if r.status_code != 200 or data.get("status") == "error":
+        message = str(data.get("message") or data.get("error") or r.status_code)
+        if "unknown command" in message:
+            return False, "мод без команды сохранения: нужна пересборка мода"
+        return False, message[:200]
+    return True, name
 
 
 def _game_port_open() -> bool:
@@ -238,6 +286,10 @@ class Controller:
         self._speed               = 1                      # скорость игры, которую поставила политика наблюдения
         self._quiet_since         = time.time()
         self._idle                = idle_watch.IdleWatch()   # наблюдатель простоя колонистов (событие rimworld.idle_colonists)
+        self._threat_mem          = threat_responder.Memory()   # рефлекс обороны: кулдауны приказов и эпизод боя
+        self._morale_mem          = morale_keeper.Memory()      # рефлекс настроения: расписание и временный отдых
+        self._reflex_task         = None                     # идущий проход рефлексов (не запускать второй поверх)
+        self._weapons_cache: list = []                       # свободное оружие на карте (ответ get_items), обновляется при угрозе
         self._speed_set_at        = 0.0                    # когда модуль последний раз сам менял скорость (автоскорость)
         self._danger_at: float | None = None               # когда в последний раз была угроза или бой (автоскорость)
         self._paused_since: float | None = None            # с какого момента игра подряд на паузе (автоснятие забытой паузы)
@@ -258,6 +310,9 @@ class Controller:
         # ожидание запуска игры в аренде ядра: игра закрыта, а ядро среду уже выдало (агент вызывает launch_game и ждёт загрузку)
         self._lease_game_seen     = False                  # игра отвечала в этой аренде (потом закрытие = конец задачи)
         self._launch_wait_since: float | None = None       # с какого момента ждём запуск игры (вход или launch_game)
+        self._restart_busy        = False                  # идёт restart_game: игра закрыта намеренно, фокус не снимаем, сторож не запускает
+        self._last_restart_at: float | None = None         # когда начат прошлый restart_game (лимит частоты)
+        self._restart_count       = 0                      # сколько перезапусков сделано в этом процессе (счётчик в журнале событий)
 
     def run(self):
         asyncio.run(self._run_async())
@@ -309,6 +364,119 @@ class Controller:
             events_log.log("game", "простой: " + res["text"])
             asyncio.create_task(self.link.event("idle_colonists", {"colonists": res["colonists"]}, text=res["text"]))
 
+    def _watch_goals(self, snap: dict, state: dict) -> None:
+        """Цели развития: цели нет, она закрыта или давно нет действий агента: событие rimworld.goal_review с ФАКТАМИ о пробелах колонии
+        (colony_assess), без приказов. Признак «цели нет» это снимок открытых задач среды от ядра (core_tasks), у модуля другого нет.
+        Только в фокусе и при связи с ядром; не в бою и не при паузе агента (см. goal_watch)."""
+        watch = self.__dict__.setdefault("_goal_watch", goal_watch.GoalWatch())
+        if self.link is None or not self.policies.in_focus:
+            watch.reset()
+            return
+        now = time.time()
+        title = core_tasks.goal_title()
+        done, total = core_tasks.active_progress()
+        goal = {"id": title, "title": title, "done": done, "total": total} if title else None
+        pawns = (snap.get("pawns") or {}).values()
+        danger = bool(snap.get("threats")) or any(p["job"] in statediff._FIGHT_JOBS for p in pawns)
+        hold_s = self._num_setting("agent_pause_hold_s", agent_activity.AGENT_PAUSE_HOLD_S, 60, 3600)
+        paused = bool(snap.get("paused")) and (agent_activity.pause_is_fresh(now, hold_s) or planning_pause.active())
+        res = watch.update(now, known=core_tasks.known(), goal=goal, closed=core_tasks.closed_goal(), danger=danger, agent_paused=paused,
+                           last_tool_at=agent_activity.tool_at(),
+                           min_s=self._num_setting("goal_review_min_s", goal_watch.MIN_S, 60, 3600),
+                           idle_s=self._num_setting("goal_review_idle_s", goal_watch.IDLE_S, 120, 3600))
+        if res is None:
+            return
+        assessed = colony_assess.assess(state)             # помещения без room_info: полную оценку агент берёт инструментом colony_assess
+        text = goal_watch.review_text(res, colony_assess.top_gaps_text(assessed))
+        events_log.log("game", "цели: " + text)
+        asyncio.create_task(self.link.event("goal_review", {"reason": res["reason"], "goal": res["goal"], "closed": res["closed"],
+                                                            "gaps": [g["id"] for g in assessed.get("gaps", [])[:colony_assess.GAPS_TOP]]}, text=text))
+
+    # ── рефлексы без модели: оборона и настроение (threat_responder, morale_keeper) ────────────────
+
+    def _reflex_on(self, key: str, env_name: str) -> bool:
+        """Включён ли рефлекс: переменная окружения (on/off) важнее настройки модуля; по умолчанию включён."""
+        raw = env(env_name)
+        if raw not in (None, ""):
+            return str(raw).strip().lower() not in ("off", "0", "false", "no", "нет")
+        return self._module_setting(key, True) not in (False, 0, "off", "false", "0")
+
+    def _reflexes(self, state: dict) -> None:
+        """Один проход рефлексов в фоне: тик контроллера не ждёт HTTP к игре, второй проход поверх не запускается."""
+        task = getattr(self, "_reflex_task", None)
+        if task is not None and not task.done():
+            return
+        self._reflex_task = asyncio.create_task(self._reflexes_run(state))
+
+    async def _reflexes_run(self, state: dict) -> None:
+        try:
+            threat_now = await self._threat_response(state)
+            if not threat_now and self._reflex_on("morale_keeper", "GITS_RIMWORLD_MORALE_KEEPER"):
+                await self._morale_keep(state)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"рефлексы: {e}", exc_info=True)
+
+    async def _fetch_weapons(self, state: dict, mem: threat_responder.Memory, now: float) -> list[dict]:
+        """Свободное оружие на карте возле колонии (get_items): не чаще раза в 10 с, иначе прошлый ответ."""
+        if now - mem.weapons_at < 10.0:
+            return getattr(self, "_weapons_cache", [])
+        mem.weapons_at = now
+        spot = threat_responder._rally_point(state, [])
+        cmd = {"type": "get_items", "category": "weapon", "max_results": 40, "reflex": True}
+        if spot:
+            cmd.update(x=spot[0], z=spot[1])
+        ok, res = await asyncio.to_thread(_game_request, cmd)
+        try:
+            items = json.loads(res)["items"] if ok else []
+        except (ValueError, KeyError, TypeError):
+            items = []
+        self._weapons_cache = [i for i in items if isinstance(i, dict)]
+        return self._weapons_cache
+
+    async def _threat_response(self, state: dict) -> bool:
+        """Рефлекс обороны (настройка threat_responder): план из threat_responder.plan_threat_response и его применение. True, если
+        сейчас есть угроза (настроение тогда не трогаем)."""
+        mem = self.__dict__.setdefault("_threat_mem", threat_responder.Memory())
+        enabled = self._reflex_on("threat_responder", "GITS_RIMWORLD_THREAT_RESPONDER")
+        max_dist = self._num_setting("threat_response_dist", threat_responder.DEFAULT_MAX_DIST, 20, 150, "GITS_RIMWORLD_THREAT_DIST")
+        now = time.time()
+        weapons = None
+        if enabled and threat_responder.wants_weapons(state, mem, now, max_dist):
+            weapons = await self._fetch_weapons(state, mem, now)
+        plan = threat_responder.plan_threat_response(state, now, mem, weapons=weapons, max_dist=max_dist, enabled=enabled,
+                                                     agent_combat_at=agent_activity.last_combat_order_ts())
+        for act in plan.actions:
+            ok, msg = await asyncio.to_thread(_game_request, act.command())
+            threat_responder.note_result(mem, act, ok, msg, time.time())
+            events_log.log("game", f"оборона: {act.why or act.op}" + ("" if ok else f" (отказ: {msg[:120]})"))
+        if plan.notable and self.link is not None:
+            text = threat_responder.describe(plan)
+            events_log.log("game", "оборона: " + text)
+            asyncio.create_task(self.link.event("threat_response", {**plan.facts, "enemies": plan.enemies}, text=text))
+        return plan.threat or bool(threat_responder.active_threats(state, max_dist))
+
+    async def _morale_keep(self, state: dict) -> None:
+        """Рефлекс настроения (настройка morale_keeper): расписание, отдых при низком настроении, предупреждение ядру."""
+        plan = morale_keeper.plan_morale(state, time.time(), self.__dict__.setdefault("_morale_mem", morale_keeper.Memory()),
+                                         agent_schedule_at=agent_activity.last_schedule_order_ts())
+        for note in plan.notes:
+            events_log.log("game", "настроение: " + note)
+        failed = 0
+        for cmd in plan.actions:
+            ok, msg = await asyncio.to_thread(_game_request, cmd)
+            if not ok:
+                failed += 1
+                if failed == 1:
+                    events_log.log("game", f"настроение: расписание не принято ({msg[:120]})")
+                if failed >= 3:
+                    break                                       # игра не принимает: не засыпаем её командами
+        if plan.warning and self.link is not None:
+            events_log.log("game", "настроение: " + plan.warning["text"])
+            asyncio.create_task(self.link.event("morale_warning", plan.warning["data"], text=plan.warning["text"],
+                                                urgency=plan.warning["urgency"]))
+
     def _num_setting(self, key: str, default: float, lo: float, hi: float, env_name: str = "") -> float:
         """Числовая настройка модуля в пределах [lo, hi]; переменная окружения (если задана) важнее; мусор даёт значение по умолчанию."""
         raw = env(env_name) if env_name else None
@@ -355,7 +523,10 @@ class Controller:
                 events_log.log("game", f"автоскорость: {before} → {target}" + (" (опасность: враги, бой или раненые)" if target == 1 else ""))
 
     def _launch_allowed(self) -> bool:
-        """POL-12: сторож и автозапуск поднимают игру только при фокусе модуля (и настройке или после падения)."""
+        """POL-12: сторож и автозапуск поднимают игру только при фокусе модуля (и настройке или после падения).
+        Во время restart_game игру запускает сам инструмент: сторож ей не мешает."""
+        if self._restart_busy:
+            return False
         return pa.launch_allowed(in_focus=self.policies.in_focus,
                                  autostart=bool(self._module_setting("autostart_game", False)),
                                  seen_running_in_focus=self._game_seen_running)
@@ -368,6 +539,75 @@ class Controller:
         self._launch_wait_since = time.time()
         await asyncio.to_thread(self._launch_rimworld, reason)
         return f"запуск игры: {reason}"
+
+    async def restart_game(self, reason: str, save_first: bool = True, wait_seconds: float = 0.0) -> str:
+        """Инструмент restart_game: перезапустить игру целиком (зависание, краш, ошибки текстур или памяти, нерабочий мод).
+        Сохранение (если мод умеет и просили) -> мягкое закрытие (окно), затем kill -> проверка, что процесса нет и порт
+        закрыт -> запуск как обычный (окно, не полный экран). Не чаще раза в 120 с, при GITS_NO_LAUNCH=1 не начинается (игра
+        остаётся как была). Среда во время перезапуска не завершается: ожидание запуска как у launch_game (launch_wait_s).
+        Ошибки (отказ, не закрылась, запуск не вышел) бросает RuntimeError с понятным текстом."""
+        reason = (reason or "").strip()
+        if not reason:
+            raise ValueError("restart_game: нужна причина (reason): зачем перезапускаем игру")
+        if self._restart_busy:
+            raise RuntimeError("перезапуск игры уже идёт: подожди, пока игра загрузится")
+        now = time.time()
+        if self._last_restart_at is not None and now - self._last_restart_at < RESTART_MIN_INTERVAL_S:
+            ago = round(now - self._last_restart_at)
+            raise RuntimeError(f"перезапуск был {ago} с назад, не чаще раза в {RESTART_MIN_INTERVAL_S} с (защита от цикла "
+                               f"перезапусков): подожди ещё {RESTART_MIN_INTERVAL_S - ago} с и проверь, загрузилась ли игра (where)")
+        status = await self.host.game_status()
+        if status.get("launch_forbidden"):
+            raise RuntimeError("запуск игры запрещён (GITS_NO_LAUNCH=1): перезапуск не начат, игра не закрыта")
+        self._restart_busy = True
+        self._last_restart_at = now
+        self._restart_count += 1
+        number = self._restart_count
+        warnings: list[str] = []
+        try:
+            events_log.log("game", f"перезапуск игры №{number}: {reason}", restart=number, save_first=bool(save_first))
+            self.host.announce_self(f"перезапускаю RimWorld целиком: закрываю и запускаю заново ({reason})")
+            running = bool(status.get("running"))
+            saved = False
+            if save_first and running and status.get("mod_ready"):
+                ok, detail = await asyncio.to_thread(_save_game, RESTART_SAVE_NAME, RESTART_SAVE_TIMEOUT_S)
+                saved = ok
+                if not ok:
+                    warnings.append(f"сохранить не вышло ({detail}), перезапуск продолжен без сохранения")
+            elif save_first and running:
+                warnings.append("сохранения нет: мод не отвечает (игра зависла или ещё грузится)")
+            how = "not_running"
+            if running:
+                result = await self.host.stop_game(RESTART_STOP_GRACEFUL_S)
+                how = str(result.get("how") or "killed")
+                await self._wait_game_gone()
+            # игра закрыта намеренно: ждём запуск заново (done не ставится до launch_wait_s), см. launch_game
+            self._lease_game_seen = False
+            self._launch_wait_since = time.time()
+            try:
+                await self.host.launch_game(f"перезапуск игры после закрытия: {reason}", wait_seconds=wait_seconds, windowed=True)
+            except host_bridge.HostBridgeError as e:
+                events_log.log("game", f"перезапуск игры №{number}: игра закрыта, а запуск не вышел: {e}", restart=number)
+                raise RuntimeError(f"игра закрыта, но запуск не вышел: {e}") from e
+            events_log.log("game", f"перезапуск игры №{number}: запуск начат (сохранение: {'да' if saved else 'нет'}, "
+                                   f"закрытие: {how})", restart=number, saved=saved, how=how)
+        finally:
+            self._restart_busy = False
+        closed = {"graceful": "мягко", "killed": "жёстко", "not_running": "игра не была запущена"}.get(how, how)
+        text = (f"игра перезапущена (№{number}): сохранение {'да' if saved else 'нет'}, закрыта: {closed}, запуск начат; "
+                "загрузка идёт, оставайся в среде и через минуту-две проверь where")
+        return text + ("; " + "; ".join(warnings) if warnings else "")
+
+    async def _wait_game_gone(self) -> None:
+        """Помощник подтверждает: процесса RimWorld нет и мод не отвечает. Иначе RuntimeError (новую игру поверх не запускаем)."""
+        deadline = time.time() + RESTART_GONE_WAIT_S
+        while True:
+            status = await self.host.game_status()
+            if not status.get("running") and not status.get("mod_ready"):
+                return
+            if time.time() >= deadline:
+                raise RuntimeError("игра не закрылась (процесс или порт мода ещё живы): запуск заново не начат")
+            await asyncio.sleep(0.5)
 
     def policy_state(self) -> dict:
         """Политика, правила наблюдения, ручное управление, фокус и скорость для state (дашборд, панель RimWorld)."""
@@ -442,6 +682,8 @@ class Controller:
         (несколько опросов подряд без ответа): фокус снимается и модуль уходит в afk, в том числе когда среду дало ядро: иначе
         после вылета игры ядро считало бы, что она всё ещё играет (по возврату в фоновую политику оно само выйдет из среды)."""
         if not state:
+            if self._restart_busy:
+                return                                   # restart_game закрыл игру намеренно: фокус не снимаем
             self._game_gone_ticks += 1
             if self._game_gone_ticks < focus_mode.GAME_GONE_TICKS:
                 return
@@ -457,7 +699,7 @@ class Controller:
                 self.policies.enter_afk("игра закрыта: фокус модуля снят, модуль ждёт игру", source="auto")
             return
         self._game_gone_ticks = 0
-        if self.policies.in_focus:
+        if self.policies.in_focus and not self._restart_busy:
             self._lease_game_seen = True                 # игра ответила в этой аренде: дальше её закрытие снимает фокус
             self._launch_wait_since = None
         if not self._game_up:
@@ -736,6 +978,8 @@ class Controller:
                     self._send_change(line)
         self._prev_snap = snap
         self._watch_idle(snap)
+        self._watch_goals(snap, state)
+        self._reflexes(state)                    # оборона и настроение без модели: фоновый проход, тик не ждёт
         await self._auto_speed(state)
         self._rel.sync_colonists((state.get("colony") or {}).get("pawns") or [])
         if self.link is not None and time.time() - self._graph_sent >= 60:

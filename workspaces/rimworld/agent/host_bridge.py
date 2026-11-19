@@ -90,6 +90,10 @@ class HostBridge:
     async def launch_game(self, reason: str, wait_seconds: float = 0.0, windowed: bool = True) -> str:
         raise NotImplementedError
 
+    async def stop_game(self, graceful_s: float = 10.0) -> dict:
+        """Закрыть игру: мягко (окно, до `graceful_s` с), затем жёстко. {"stopped": True, "how": "graceful"|"killed"|"not_running"}."""
+        raise NotImplementedError
+
     async def press_quick_start(self) -> bool:
         raise NotImplementedError
 
@@ -190,6 +194,14 @@ class LocalHostBridge(HostBridge):
             raise HostBridgeError(str(e), code="bad_request") from e
         except RuntimeError as e:
             raise HostBridgeError(str(e), code="launch_failed") from e
+
+    async def stop_game(self, graceful_s: float = 10.0) -> dict:
+        import game_launcher
+        try:
+            how = await asyncio.to_thread(game_launcher.stop, graceful_s)
+        except RuntimeError as e:
+            raise HostBridgeError(str(e), code="stop_failed") from e
+        return {"stopped": True, "how": how}
 
     async def press_quick_start(self) -> bool:
         import game_watchdog
@@ -460,6 +472,9 @@ class RemoteHostBridge(HostBridge):
         data = await self._post("/game/launch", {"reason": reason, "wait_seconds": wait_seconds, "windowed": windowed},
                                 timeout=self.timeout + wait_seconds)
         return str(data.get("result") or "")
+
+    async def stop_game(self, graceful_s=10.0) -> dict:
+        return await self._post("/game/stop", {"graceful_s": graceful_s}, timeout=self.timeout + graceful_s + 20)
 
     async def press_quick_start(self) -> bool:
         return bool((await self._post("/game/quick_start", timeout=60)).get("pressed"))

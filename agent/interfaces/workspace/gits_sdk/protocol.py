@@ -753,10 +753,12 @@ def _check_workspace(manifest: dict, problems: list[str]) -> None:
         problems.append("workspace.default_goal: непустая строка не длиннее 300 символов")
     if "autonomous" in ws and not isinstance(ws["autonomous"], bool):
         problems.append("workspace.autonomous: должно быть true или false")
+    if "self_goals" in ws and not isinstance(ws["self_goals"], bool):
+        problems.append("workspace.self_goals: должно быть true или false")
     if "work_interval_s" in ws and (not _is_int(ws["work_interval_s"]) or not 30 <= ws["work_interval_s"] <= 3600):
         problems.append("workspace.work_interval_s: целое 30–3600 секунд")
     extra = set(ws) - {"id", "title", "purpose", "entry", "interruptible", "safe_points", "signals_in", "done_when",
-                       "autonomous", "work_interval_s", "default_goal", "when_to_use", "keywords",
+                       "autonomous", "work_interval_s", "default_goal", "self_goals", "when_to_use", "keywords",
                        "brief", "skills", "area", "commands", "site"}
     if extra:
         problems.append(f"workspace: неизвестные поля {sorted(extra)}")
