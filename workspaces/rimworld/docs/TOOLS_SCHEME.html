@@ -120,9 +120,23 @@ const DATA = {
   },
   {
    "context": [],
+   "path": "architect/gather",
+   "tab": "Architect",
+   "title": "Архитектор: охота, сбор урожая, перенос",
+   "watch": {}
+  },
+  {
+   "context": [],
    "path": "architect/zone",
    "tab": "Architect",
-   "title": "Архитектор: зоны",
+   "title": "Архитектор: зоны, крыша, разрешённые области",
+   "watch": {}
+  },
+  {
+   "context": [],
+   "path": "architect/floor",
+   "tab": "Architect",
+   "title": "Архитектор: пол (покрытие)",
    "watch": {}
   },
   {
@@ -1656,6 +1670,137 @@ const DATA = {
    ]
   },
   {
+   "desc": "Крыша (области «Строить крышу» и «Убрать крышу»): mode=build строит, remove убирает; прямоугольник x1,z1,x2,z2 или cells [{x,z}], до 900 клеток. Держится не дальше ~6 кл…",
+   "group": "action",
+   "name": "architect_zone_roof",
+   "owner": "architect/zone",
+   "params": [
+    "mode",
+    "x1",
+    "z1",
+    "x2",
+    "z2",
+    "cells"
+   ],
+   "query_path": "",
+   "required": []
+  },
+  {
+   "desc": "Создать разрешённую зону колонистов (меню «Области»): name и прямоугольник x1,z1,x2,z2 или cells [{x,z}], до 2500 клеток; зона с таким именем уже есть: клетки добавятся.…",
+   "group": "action",
+   "name": "architect_zone_allowed_area",
+   "owner": "architect/zone",
+   "params": [
+    "name",
+    "x1",
+    "z1",
+    "x2",
+    "z2",
+    "cells"
+   ],
+   "query_path": "",
+   "required": [
+    "name"
+   ]
+  },
+  {
+   "desc": "Удалить разрешённую зону колонистов по имени (list_allowed_areas покажет имена). У пешек, привязанных к ней, ограничение снимается. Пример: name=Огород.",
+   "group": "action",
+   "name": "architect_zone_delete_allowed_area",
+   "owner": "architect/zone",
+   "params": [
+    "name"
+   ],
+   "query_path": "",
+   "required": [
+    "name"
+   ]
+  },
+  {
+   "desc": "Ограничить колониста (или своё животное) разрешённой зоной: pawn_id (из get_colonists) и area_name; пустое area_name снимает ограничение. Зоны: list_allowed_areas. Приме…",
+   "group": "action",
+   "name": "pawn_orders_set_area",
+   "owner": "pawn/orders",
+   "params": [
+    "pawn_id",
+    "area_name"
+   ],
+   "query_path": "",
+   "required": [
+    "pawn_id"
+   ]
+  },
+  {
+   "desc": "Разрешённые зоны колонистов: имя, число клеток, границы (x1,z1,x2,z2), кто к ним привязан, можно ли создать ещё одну. Зови перед set_pawn_area и delete_allowed_area.",
+   "group": "query",
+   "name": "architect_areas",
+   "owner": "architect",
+   "params": [],
+   "query_path": "architect/areas",
+   "required": []
+  },
+  {
+   "desc": "Приказ охоты на диких животных (кнопка «Охота»): animal_id или animal_ids (ThingID из find_nearest), до 200. Приручённых и чужих не трогает. Нужен охотник с дальним оруж…",
+   "group": "action",
+   "name": "architect_gather_hunt",
+   "owner": "architect/gather",
+   "params": [
+    "animal_id",
+    "animal_ids"
+   ],
+   "query_path": "",
+   "required": []
+  },
+  {
+   "desc": "Сбор урожая и срезка растений: mode=harvest собирает спелые, cut срезает; цели: plant_ids или клетки (cells [{x,z}] либо прямоугольник x1,z1,x2,z2). Недозревшее при harv…",
+   "group": "action",
+   "name": "architect_gather_harvest",
+   "owner": "architect/gather",
+   "params": [
+    "mode",
+    "cells",
+    "plant_ids",
+    "x1",
+    "z1",
+    "x2",
+    "z2"
+   ],
+   "query_path": "",
+   "required": []
+  },
+  {
+   "desc": "Приказ перенести предметы на склад (кнопка «Перенести»): thing_ids (ThingID из get_items), до 200. Только то, что можно носить (не здания и растения); запрет сам не сним…",
+   "group": "action",
+   "name": "architect_gather_haul",
+   "owner": "architect/gather",
+   "params": [
+    "thing_ids"
+   ],
+   "query_path": "",
+   "required": [
+    "thing_ids"
+   ]
+  },
+  {
+   "desc": "Положить пол (меню «Покрытие»): чертежи на прямоугольнике x1,z1,x2,z2 (границы входят) или списке cells [{x,z}], до 400 клеток. def_name: WoodPlankFloor, TileSandstone, …",
+   "group": "action",
+   "name": "architect_floor_place",
+   "owner": "architect/floor",
+   "params": [
+    "def_name",
+    "x1",
+    "z1",
+    "x2",
+    "z2",
+    "cells",
+    "material"
+   ],
+   "query_path": "",
+   "required": [
+    "def_name"
+   ]
+  },
+  {
    "desc": "Разместить чертёж строения.",
    "group": "action",
    "name": "architect_structure_place_building",
@@ -1697,7 +1842,7 @@ const DATA = {
    ]
   },
   {
-   "desc": "Поставить чертежи стен и дверей помещения, которое ты проверила через plan_room (те же аргументы).",
+   "desc": "Поставить чертежи стен и дверей помещения, которое ты проверила через plan_room (те же аргументы). Крышу ставь отдельно: designate_roof.",
    "group": "action",
    "name": "architect_structure_build_room",
    "owner": "architect/structure",
@@ -2402,6 +2547,32 @@ const DATA = {
    ]
   },
   {
+   "desc": "Найти точное имя пола (меню «Покрытие») по части названия: WoodPlankFloor, TileSandstone, CarpetRed, Concrete. Пустой query покажет все. Ответ: def_name, label, made_fro…",
+   "group": "query",
+   "name": "architect_defs_search_terrain",
+   "owner": "architect",
+   "params": [
+    "query"
+   ],
+   "query_path": "architect/defs",
+   "required": []
+  },
+  {
+   "desc": "Что нужно для пола и сколько выйдет на count клеток: стоимость, работа, красота, исследование, хватит ли материалов на складе. Пример: def_name=WoodPlankFloor, count=64.…",
+   "group": "query",
+   "name": "architect_defs_describe_terrain",
+   "owner": "architect",
+   "params": [
+    "def_name",
+    "count",
+    "material"
+   ],
+   "query_path": "architect/defs",
+   "required": [
+    "def_name"
+   ]
+  },
+  {
    "desc": "СКОЛЬКО СТОИТ и сколько делать count штук постройки: материалы (нужно/есть на складе), часы работы строителей,",
    "group": "query",
    "name": "architect_estimate",
@@ -2450,7 +2621,7 @@ const DATA = {
    ]
   },
   {
-   "desc": "Что игра на самом деле считает помещением в клетке: is_proper_room, роль (спальня, кухня...), размер, под крышей ли.",
+   "desc": "Что игра считает помещением в клетке: is_proper_room, роль (спальня, кухня...), размер, под крышей ли (roofed=false: ставь крышу, designate_roof).",
    "group": "query",
    "name": "architect_check_room_info",
    "owner": "architect",

@@ -29,12 +29,26 @@ NAV = ("open", "back", "where")
 TOOL_TIMEOUT_S = 60
 KEYWORDS = ["игра", "колония", "колонист", "римворлд", "rimworld"]
 # дополнительные ключевые слова отдельных инструментов (старое имя функции -> слова)
-EXTRA_KEYWORDS = {"unforbid_area": ["разрешить", "область", "запрет", "forbid", "unforbid", "выделение"]}
+EXTRA_KEYWORDS = {
+    "unforbid_area": ["разрешить", "область", "запрет", "forbid", "unforbid", "выделение"],
+    "place_floor": ["пол", "плитка", "ковёр", "ковер", "покрытие", "паркет", "floor", "tile", "carpet", "terrain"],
+    "search_terrain_defs": ["пол", "плитка", "ковёр", "ковер", "покрытие", "floor", "tile", "carpet", "terrain"],
+    "describe_terrain_def": ["пол", "плитка", "ковёр", "ковер", "покрытие", "стоимость", "floor", "tile", "carpet", "terrain"],
+    "designate_roof": ["крыша", "крышу", "кровля", "перекрытие", "roof", "norf", "помещение"],
+    "create_allowed_area": ["зона", "область", "разрешённая", "разрешенная", "ограничить", "area", "allowed"],
+    "delete_allowed_area": ["зона", "область", "удалить зону", "area", "allowed"],
+    "set_pawn_area": ["зона", "область", "ограничить", "привязать", "area", "restriction", "allowed"],
+    "list_allowed_areas": ["зона", "область", "разрешённая", "разрешенная", "area", "allowed"],
+    "designate_hunt": ["охота", "охотиться", "дичь", "hunt", "animal"],
+    "designate_harvest": ["урожай", "собрать", "сбор", "срезать", "растения", "harvest", "cut", "plant"],
+    "designate_haul": ["перенести", "перенос", "носить", "склад", "haul"],
+}
 # вкладка игры (defName) -> имя для open_game_tab
 TAB_NAMES = {"Architect": "architect", "Work": "work", "Schedule": "schedule", "Assign": "assign", "Research": "research",
              "Animals": "animals"}
 # подузел Архитектора -> категория меню
-ARCHITECT_CATEGORIES = {"architect/orders": "Orders", "architect/zone": "Zone", "architect/structure": "Structure"}
+ARCHITECT_CATEGORIES = {"architect/orders": "Orders", "architect/gather": "Orders", "architect/zone": "Zone", "architect/floor": "Floors",
+                        "architect/structure": "Structure"}
 
 
 def tool_name(kind: str, path: str, new: str) -> str:

@@ -23,6 +23,7 @@ namespace AgentBridge
         {
             "build", "place_line", "cancel_construction", "deconstruct", "designate_mine", "designate_chop", "designate_smooth",
             "set_zone_home", "create_grow_zone", "create_stockpile", "delete_zone", "plan_room", "build_room",
+            "build_floor", "designate_roof", "create_allowed_area", "set_pawn_area", "designate_hunt", "designate_harvest", "designate_haul",
             "draft", "undraft", "move", "attack", "cancel_job", "equip", "wear", "rescue", "capture", "tend", "force_work",
             "clear_work_queue", "add_bill", "cancel_bill", "order_tame", "order_slaughter", "open_tab",
             "set_work_priority", "set_manual_priorities", "set_schedule", "set_schedule_range", "set_medical_care", "research",
@@ -176,6 +177,17 @@ namespace AgentBridge
                 case "room_info":          return RoomInfo(cmd);
                 case "find_nearest":       return FindNearest(cmd);
                 case "search_thing_defs":  return SearchThingDefs(cmd);
+                case "search_terrain_defs": return SearchTerrainDefs(cmd);
+                case "describe_terrain_def": return DescribeTerrainDef(cmd);
+                case "build_floor":        return BuildFloor(cmd);
+                case "designate_roof":     return DesignateRoof(cmd);
+                case "create_allowed_area": return CreateAllowedArea(cmd);
+                case "delete_allowed_area": return DeleteAllowedArea(cmd);
+                case "set_pawn_area":      return SetPawnArea(cmd);
+                case "list_allowed_areas": return ListAllowedAreas();
+                case "designate_hunt":     return DesignateHunt(cmd);
+                case "designate_harvest":  return DesignateHarvest(cmd);
+                case "designate_haul":     return DesignateHaul(cmd);
                 case "set_ai_cursor":
                     AgentBridgeMod.AiCursorActive = true;
                     AgentBridgeMod.AiCursorX = cmd["x"].Value<float>();

@@ -37,7 +37,9 @@ NODES: tuple[Node, ...] = (
     Node("architect", "Архитектор", tab="Architect", context=("colony/resources", "colony/buildings"),
          watch=(("resources", 1), ("threat", 1), ("social", -1))),
     Node("architect/orders", "Архитектор: приказы", tab="Architect"),
-    Node("architect/zone", "Архитектор: зоны", tab="Architect"),
+    Node("architect/gather", "Архитектор: охота, сбор урожая, перенос", tab="Architect"),
+    Node("architect/zone", "Архитектор: зоны, крыша, разрешённые области", tab="Architect"),
+    Node("architect/floor", "Архитектор: пол (покрытие)", tab="Architect"),
     Node("architect/structure", "Архитектор: постройки", tab="Architect"),
     Node("work", "Работа", tab="Work", context=("colony/colonists",)),
     Node("schedule", "Режим дня", tab="Schedule", context=("colony/colonists",)),
@@ -76,6 +78,15 @@ TOOLS: dict[str, tuple[str, str, str]] = {
     "create_stockpile": ("action", "architect/zone", "stockpile"),
     "delete_zone": ("action", "architect/zone", "delete_zone"),
     "set_home_area": ("action", "architect/zone", "home_area"),
+    "designate_roof": ("action", "architect/zone", "roof"),                      # область «Строить крышу» / «Убрать крышу»
+    "create_allowed_area": ("action", "architect/zone", "allowed_area"),         # разрешённая зона колонистов (меню «Области»)
+    "delete_allowed_area": ("action", "architect/zone", "delete_allowed_area"),
+    "set_pawn_area": ("action", "pawn/orders", "set_area"),                      # закрепить колониста за разрешённой зоной
+    "list_allowed_areas": ("query", "architect/areas", "areas"),
+    "designate_hunt": ("action", "architect/gather", "hunt"),                    # приказы меню «Приказы»: охота, сбор, перенос
+    "designate_harvest": ("action", "architect/gather", "harvest"),
+    "designate_haul": ("action", "architect/gather", "haul"),
+    "place_floor": ("action", "architect/floor", "place"),                       # меню «Покрытие» (TerrainDef)
     "place_building": ("skill", "architect/structure", "place_building"),
     "place_wall_line": ("skill", "architect/structure", "wall_line"),
     "build_room": ("skill", "architect/structure", "build_room"),
@@ -140,6 +151,8 @@ TOOLS: dict[str, tuple[str, str, str]] = {
     "analyze_area": ("query", "map/analyze", "analyze"),
     "search_thing_defs": ("query", "architect/defs", "search"),
     "describe_thing_def": ("query", "architect/defs", "describe"),
+    "search_terrain_defs": ("query", "architect/defs", "search_terrain"),
+    "describe_terrain_def": ("query", "architect/defs", "describe_terrain"),
     "estimate_build": ("query", "architect/estimate", "estimate"),
     "fit_room": ("query", "architect/fit", "room"),
     "check_enclosure": ("query", "architect/check", "enclosure"),

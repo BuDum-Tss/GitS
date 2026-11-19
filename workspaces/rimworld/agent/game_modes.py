@@ -49,30 +49,34 @@ MODES: dict[str, GameMode] = {m.id: m for m in (
         "people", "Колонисты: работы и режим дня",
         "Кто чем занимается: приоритеты работ цифрами по навыкам, режим дня (сон, работа, отдых), отношение.",
         ("get_work_table", "set_work_priorities", "set_work_priority", "set_manual_priorities", "get_schedule_table", "set_schedule_plan",
-         "set_schedule", "set_schedule_range", "set_opinion"),
+         "set_schedule", "set_schedule_range", "set_opinion",
+         "create_allowed_area", "delete_allowed_area", "set_pawn_area", "list_allowed_areas"),
         "Ты распределяешь работы и режим дня. get_work_table: кто в чём силён (навык, страсть). Лучшему в деле приоритет 1, остальным "
         "2-4 (set_work_priorities). Режим дня: сон около 8 часов подряд ночью, вечером отдых (get_schedule_table, set_schedule_plan). "
-        "Окно: open_game_tab(work или schedule), правки, open_game_tab(close)."
+        "Окно: open_game_tab(work или schedule), правки, open_game_tab(close). Ограничить ходьбу: create_allowed_area, set_pawn_area."
     ),
     GameMode(
         "build", "Строительство",
         "Планировать и строить: комнаты, стены, мебель; узнать, что нужно для объекта, какие у него характеристики и из чего строить.",
         ("look_at", "describe_thing_def", "search_thing_defs", "estimate_build", "find_buildable_spot", "fit_room", "plan_room", "build_room", "clear_plans",
          "room_info", "check_enclosure", "place_building", "place_wall_line", "cancel_construction", "deconstruct", "designate_smooth",
-         "set_home_area", "get_buildings", "unlock_for"),
+         "set_home_area", "get_buildings", "unlock_for",
+         "search_terrain_defs", "describe_terrain_def", "place_floor", "designate_roof"),
         "Ты строишь. Материалы или еда запрещены (forbidden в get_colony_state или get_items): разреши их сама, unforbid_item на нужных "
         "стопках (через интерфейс игры этого не делай), и только потом строй. Закрыто исследованием (ЗАКРЫТО ИССЛЕДОВАНИЕМ): unlock_for с queue=true и waiting_task. Порядок: 1) что нужно (describe_thing_def: стоимость, работа, материалы; estimate_build: хватит ли ресурсов и часов); "
         "2) место (fit_room; руины это готовые стены, их смотрит режим разведки); 3) проверка плана (plan_room: контур замкнут, всё "
         "строится, цена); 4) постройка (build_room, place_building). Стены вокруг существующего, не сквозь него. Одна комната за раз. "
+        "Пол: search_terrain_defs, place_floor (прямоугольником). Крыша: room_info показывает roofed=false, тогда designate_roof. "
         "Закончила: switch_mode(observe)."
     ),
     GameMode(
         "economy", "Хозяйство и ресурсы",
         "Производство и запасы: заказы на верстаках, склады, огороды, охота, приручение, запреты, добыча.",
         ("add_bill", "list_recipes", "cancel_bill", "create_stockpile", "create_grow_zone", "delete_zone", "forbid_item", "unforbid_area",
-         "order_tame", "order_slaughter", "designate_chop", "designate_mine", "force_work", "clear_work_queue"),
+         "order_tame", "order_slaughter", "designate_chop", "designate_mine", "force_work", "clear_work_queue",
+         "designate_hunt", "designate_harvest", "designate_haul"),
         "Ты ведёшь хозяйство: что производить (add_bill, list_recipes), где склад и огород, что запрещено лишнего (unforbid_item; всё в области сразу: unforbid_area), "
-        "что добывать (designate_chop, designate_mine). Еды меньше 10 дней: огород, охота, готовка."
+        "что добывать (designate_chop, designate_mine, designate_hunt на диких животных, designate_harvest урожай и срезка, designate_haul перенос). Еды меньше 10 дней: огород, охота, готовка."
     ),
     GameMode(
         "combat", "Бой и тревога",

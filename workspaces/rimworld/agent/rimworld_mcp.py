@@ -12,7 +12,10 @@ from pathlib import Path
 
 import httpx
 import functools
+from typing import Annotated
+
 from mcp.server.fastmcp import FastMCP, Image
+from pydantic import Field
 
 # Ленивый доступ к UI игры — не ломает MCP инициализацию если окна нет. На хосте это модуль game_ui, в контейнере
 # (GITS_RIMWORLD_HOST_URL) переходник к хостовому помощнику: Windows-пакеты здесь не импортируются.
@@ -796,6 +799,325 @@ def search_thing_defs(query: str) -> str:
     return _query({"type": "search_thing_defs", "query": query})
 
 
+# ── Остальное меню «Архитектор»: пол, крыша, разрешённые зоны, приказы охоты, сбора, переноса ─────────────────
+
+FLOOR_MAX_CELLS = 400            # клеток пола за вызов (как в моде: FloorMaxCells)
+ROOF_MAX_CELLS = 900             # клеток крыши за вызов (RoofMaxCells)
+ALLOWED_AREA_MAX_CELLS = 2500    # клеток разрешённой зоны за вызов (AreaMaxCells)
+HARVEST_MAX_CELLS = 1600         # клеток под сбор урожая за вызов
+ORDER_MAX_TARGETS = 200          # целей приказа (животные, растения, предметы) за вызов
+# описания параметров-списков попадают в манифест: по ним модель видит формат значения
+CellsParam = Annotated[list[dict] | None, Field(description='Клетки списком вместо прямоугольника: [{"x": 40, "z": 50}, {"x": 41, "z": 50}]')]
+ThingIdsParam = Annotated[list[str], Field(description='ThingID предметов из get_items: ["Steel101", "Steel102"]')]
+AnimalIdsParam = Annotated[list[str] | None, Field(description='ThingID диких животных (find_nearest): ["Deer123", "Deer130"]')]
+PlantIdsParam = Annotated[list[str] | None, Field(description='ThingID растений: ["Plant_Rice123"]; вместо клеток')]
+
+
+def _is_int(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _area_selection(x1, z1, x2, z2, cells, max_cells: int) -> tuple[dict | None, str]:
+    """Область из прямоугольника (x1,z1,x2,z2) или списка cells [{x,z}]: (поля команды, текст ошибки). Ровно один способ."""
+    rect = {"x1": x1, "z1": z1, "x2": x2, "z2": z2}
+    given = [k for k, v in rect.items() if v is not None]
+    if given and cells:
+        return None, "ERROR: задай либо прямоугольник x1,z1,x2,z2, либо cells, но не оба способа сразу"
+    if given:
+        if len(given) < 4:
+            return None, f"ERROR: прямоугольнику нужны все четыре угла x1,z1,x2,z2, не хватает: {', '.join(k for k in rect if k not in given)}"
+        for name, v in rect.items():
+            if not _is_int(v):
+                return None, f"ERROR: {name} должен быть целым числом (клетка карты), а не {v!r}"
+            if v < 0:
+                return None, f"ERROR: {name}={v}: координаты клеток не бывают отрицательными"
+        count = (abs(x2 - x1) + 1) * (abs(z2 - z1) + 1)
+        if count > max_cells:
+            return None, f"ERROR: область слишком большая: {count} клеток, за вызов не больше {max_cells}. Раздели на части."
+        return rect, ""
+    if not cells:
+        return None, "ERROR: задай прямоугольник x1,z1,x2,z2 или список cells=[{\"x\": 10, \"z\": 12}, ...]"
+    if not isinstance(cells, list):
+        return None, "ERROR: cells должен быть списком [{x, z}, ...]"
+    clean = []
+    for i, c in enumerate(cells):
+        if not isinstance(c, dict) or not _is_int(c.get("x")) or not _is_int(c.get("z")):
+            return None, f"ERROR: cells[{i}] должен быть вида {{\"x\": целое, \"z\": целое}}, а не {c!r}"
+        if c["x"] < 0 or c["z"] < 0:
+            return None, f"ERROR: cells[{i}]: координаты клеток не бывают отрицательными"
+        clean.append({"x": c["x"], "z": c["z"]})
+    if len(clean) > max_cells:
+        return None, f"ERROR: слишком много клеток: {len(clean)}, за вызов не больше {max_cells}. Раздели на части."
+    return {"cells": clean}, ""
+
+
+def _reasons_text(data: dict) -> str:
+    """Причины пропуска из ответа мода: «уже такой пол: 12, вне карты: 3»."""
+    return ", ".join(f"{r.get('reason')}: {r.get('count')}" for r in (data.get("skipped_reasons") or []))
+
+
+def _materials_text(cost) -> str:
+    """Стоимость из ответа мода: «нужно Steel 40 (на складе 12)»; пусто, если стоимости нет."""
+    if not isinstance(cost, dict):
+        return ""
+    parts = [f"{m.get('def')} {m.get('need')} (на складе {m.get('have')})" for m in (cost.get("materials") or [])]
+    return "нужно " + ", ".join(parts) if parts else ""
+
+
+@mcp.tool()
+def search_terrain_defs(query: str = "") -> str:
+    """Найти точное имя пола (меню «Покрытие») по части названия: WoodPlankFloor, TileSandstone, CarpetRed, Concrete. Пустой query покажет все. Ответ: def_name, label, made_from_stuff, cost, requires_research (что ещё исследовать), available. Пример: query=tile."""
+    missing = _need_mod("search_terrain_defs")
+    if missing:
+        return missing
+    return _query({"type": "search_terrain_defs", "query": query})
+
+
+@mcp.tool()
+def describe_terrain_def(def_name: str, count: int = 1, material: str = "") -> str:
+    """Что нужно для пола и сколько выйдет на count клеток: стоимость, работа, красота, исследование, хватит ли материалов на складе. Пример: def_name=WoodPlankFloor, count=64. material нужен, только если пол делается из материала (made_from_stuff в search_terrain_defs)."""
+    missing = _need_mod("describe_terrain_def")
+    if missing:
+        return missing
+    if not _is_int(count) or count < 1:
+        return f"ERROR: count должен быть целым числом не меньше 1, а не {count!r}"
+    cmd: dict = {"type": "describe_terrain_def", "def_name": def_name, "count": count}
+    if material:
+        cmd["material"] = material
+    return _query(cmd)
+
+
+@mcp.tool()
+def place_floor(def_name: str, x1: int | None = None, z1: int | None = None, x2: int | None = None, z2: int | None = None,
+                cells: CellsParam = None, material: str = "") -> str:
+    """Положить пол (меню «Покрытие»): чертежи на прямоугольнике x1,z1,x2,z2 (границы входят) или списке cells [{x,z}], до 400 клеток. def_name: WoodPlankFloor, TileSandstone, CarpetRed (имя: search_terrain_defs). Пример: def_name=WoodPlankFloor, x1=40,z1=50,x2=47,z2=57.
+    cells: [{"x": 40, "z": 50}, ...] вместо прямоугольника. material нужен, только если пол делается из материала.
+    Ответ: сколько поставлено и сколько пропущено с причинами (уже такой пол, занято, нельзя строить). Закрытый исследованием пол отвергается целиком (unlock_for)."""
+    selection, err = _area_selection(x1, z1, x2, z2, cells, FLOOR_MAX_CELLS)
+    if err:
+        return err
+    missing = _need_mod("build_floor")
+    if missing:
+        return missing
+    import research_unlock as ru
+    locked = _unfinished_research(def_name)
+    if locked:
+        return ru.locked_error(def_name, locked, "пол")
+    cmd: dict = {"type": "build_floor", "def_name": def_name, **selection}
+    if material:
+        cmd["material"] = material
+    raw = _query(cmd)
+    data = _json_or_none(raw)
+    if not isinstance(data, dict) or "placed" not in data:
+        return raw
+    text = f"Пол {data.get('def', def_name)}: поставлено {data['placed']}, пропущено {data.get('skipped', 0)}"
+    if data.get("skipped"):
+        text += f" ({_reasons_text(data)})"
+    mats = _materials_text(data.get("cost"))
+    if mats:
+        text += f". Материалы: {mats}"
+    problems = data.get("problems") or []
+    if problems:
+        text += ". Внимание: " + " ".join(problems)
+    return text + "."
+
+
+@mcp.tool()
+def designate_roof(mode: str = "build", x1: int | None = None, z1: int | None = None, x2: int | None = None, z2: int | None = None,
+                   cells: CellsParam = None) -> str:
+    """Крыша (области «Строить крышу» и «Убрать крышу»): mode=build строит, remove убирает; прямоугольник x1,z1,x2,z2 или cells [{x,z}], до 900 клеток. Держится не дальше ~6 клеток от стены или колонны. Пример: mode=build, x1=10,z1=10,x2=18,z2=16.
+    cells: [{"x": 10, "z": 10}, ...] вместо прямоугольника. Нужна, если room_info показывает roofed=false. Ответ: сколько клеток помечено и почему пропущены (нет опоры, уже под крышей, туман)."""
+    mode = (mode or "").strip().lower()
+    if mode not in ("build", "remove"):
+        return f"ERROR: mode «{mode}» неизвестен: build (строить крышу) или remove (убрать крышу)"
+    selection, err = _area_selection(x1, z1, x2, z2, cells, ROOF_MAX_CELLS)
+    if err:
+        return err
+    missing = _need_mod("designate_roof")
+    if missing:
+        return missing
+    raw = _query({"type": "designate_roof", "mode": mode, **selection})
+    data = _json_or_none(raw)
+    if not isinstance(data, dict) or "designated" not in data:
+        return raw
+    word = "строить" if mode == "build" else "убрать"
+    text = f"Крыша ({word}): помечено {data['designated']}, пропущено {data.get('skipped', 0)}"
+    if data.get("skipped"):
+        text += f" ({_reasons_text(data)})"
+    return text + ("." if not data.get("note") else f". {data['note']}")
+
+
+@mcp.tool()
+def create_allowed_area(name: str, x1: int | None = None, z1: int | None = None, x2: int | None = None, z2: int | None = None,
+                        cells: CellsParam = None) -> str:
+    """Создать разрешённую зону колонистов (меню «Области»): name и прямоугольник x1,z1,x2,z2 или cells [{x,z}], до 2500 клеток; зона с таким именем уже есть: клетки добавятся. Закрепи её за колонистом: set_pawn_area. Пример: name=Огород, x1=30,z1=30,x2=45,z2=40.
+    cells: [{"x": 30, "z": 30}, ...] вместо прямоугольника."""
+    name = (name or "").strip()
+    if not name:
+        return "ERROR: name не должно быть пустым"
+    selection, err = _area_selection(x1, z1, x2, z2, cells, ALLOWED_AREA_MAX_CELLS)
+    if err:
+        return err
+    missing = _need_mod("create_allowed_area")
+    if missing:
+        return missing
+    raw = _query({"type": "create_allowed_area", "name": name, **selection})
+    data = _json_or_none(raw)
+    if not isinstance(data, dict) or "added" not in data:
+        return raw
+    head = "Создана зона" if data.get("created") else "Зона уже была, клетки добавлены:"
+    text = f"{head} «{data.get('name', name)}»: добавлено {data['added']} клеток, всего {data.get('total_cells')}"
+    if data.get("already_in_area"):
+        text += f", уже входили {data['already_in_area']}"
+    if data.get("outside_map"):
+        text += f", вне карты {data['outside_map']}"
+    return text + "."
+
+
+@mcp.tool()
+def delete_allowed_area(name: str) -> str:
+    """Удалить разрешённую зону колонистов по имени (list_allowed_areas покажет имена). У пешек, привязанных к ней, ограничение снимается. Пример: name=Огород."""
+    name = (name or "").strip()
+    if not name:
+        return "ERROR: name не должно быть пустым"
+    missing = _need_mod("delete_allowed_area")
+    if missing:
+        return missing
+    raw = _query({"type": "delete_allowed_area", "name": name})
+    data = _json_or_none(raw)
+    if not isinstance(data, dict) or "deleted" not in data:
+        return raw
+    return f"Зона «{data['deleted']}» удалена ({data.get('cells')} клеток)."
+
+
+@mcp.tool()
+def set_pawn_area(pawn_id: str, area_name: str = "") -> str:
+    """Ограничить колониста (или своё животное) разрешённой зоной: pawn_id (из get_colonists) и area_name; пустое area_name снимает ограничение. Зоны: list_allowed_areas. Пример: pawn_id=Human12, area_name=Огород."""
+    pawn_id = (pawn_id or "").strip()
+    if not pawn_id:
+        return "ERROR: pawn_id не должно быть пустым"
+    missing = _need_mod("set_pawn_area")
+    if missing:
+        return missing
+    raw = _query({"type": "set_pawn_area", "pawn_id": pawn_id, "area_name": (area_name or "").strip()})
+    data = _json_or_none(raw)
+    if not isinstance(data, dict) or "restricted" not in data:
+        return raw
+    if data["restricted"]:
+        return f"{data.get('pawn')} ходит только по зоне «{data.get('area')}»."
+    return f"{data.get('pawn')}: ограничения зоной нет, ходит где угодно."
+
+
+@mcp.tool()
+def list_allowed_areas() -> str:
+    """Разрешённые зоны колонистов: имя, число клеток, границы (x1,z1,x2,z2), кто к ним привязан, можно ли создать ещё одну. Зови перед set_pawn_area и delete_allowed_area."""
+    missing = _need_mod("list_allowed_areas")
+    if missing:
+        return missing
+    return _query({"type": "list_allowed_areas"})
+
+
+def _targets_text(data: dict) -> str:
+    """Пропущенные цели приказа: «id: причина; ...» (первые шесть)."""
+    skipped = data.get("skipped") or []
+    if isinstance(skipped, list) and skipped:
+        return "; ".join(f"{s.get('id') or s.get('target')}: {s.get('reason')}" for s in skipped[:6])
+    return ""
+
+
+def _id_targets(single: str, many, what: str) -> tuple[list[str] | None, str]:
+    """Список id из одного id (допустимы несколько через запятую) и списка: (id без повторов, текст ошибки)."""
+    ids: list[str] = []
+    if many is not None and not isinstance(many, list):
+        return None, f"ERROR: {what}s должен быть списком id"
+    for raw in list(many or []) + str(single or "").split(","):
+        item = str(raw).strip()
+        if item and item not in ids:
+            ids.append(item)
+    if not ids:
+        return None, f"ERROR: задай {what} или список {what}s"
+    if len(ids) > ORDER_MAX_TARGETS:
+        return None, f"ERROR: слишком много целей: {len(ids)}, за вызов не больше {ORDER_MAX_TARGETS}"
+    return ids, ""
+
+
+@mcp.tool()
+def designate_hunt(animal_id: str = "", animal_ids: AnimalIdsParam = None) -> str:
+    """Приказ охоты на диких животных (кнопка «Охота»): animal_id или animal_ids (ThingID из find_nearest), до 200. Приручённых и чужих не трогает. Нужен охотник с дальним оружием. Пример: animal_ids=[\"Deer123\", \"Deer130\"]."""
+    ids, err = _id_targets(animal_id, animal_ids, "animal_id")
+    if err:
+        return err
+    missing = _need_mod("designate_hunt")
+    if missing:
+        return missing
+    raw = _query({"type": "designate_hunt", "animal_ids": ids})
+    data = _json_or_none(raw)
+    if not isinstance(data, dict) or "designated" not in data:
+        return raw
+    text = f"Охота назначена на {data['designated']}, пропущено {data.get('skipped_count', 0)}"
+    why = _targets_text(data)
+    if why:
+        text += f" ({why})"
+    if data.get("warning"):
+        text += f". Внимание: {data['warning']}"
+    return text + "."
+
+
+@mcp.tool()
+def designate_harvest(mode: str = "harvest", cells: CellsParam = None, plant_ids: PlantIdsParam = None,
+                      x1: int | None = None, z1: int | None = None, x2: int | None = None, z2: int | None = None) -> str:
+    """Сбор урожая и срезка растений: mode=harvest собирает спелые, cut срезает; цели: plant_ids или клетки (cells [{x,z}] либо прямоугольник x1,z1,x2,z2). Недозревшее при harvest пропускается. Пример: mode=harvest, x1=30,z1=30,x2=40,z2=38.
+    cells: [{"x": 30, "z": 30}, ...]; plant_ids: [\"Plant_Rice123\"]."""
+    mode = (mode or "").strip().lower()
+    if mode not in ("harvest", "cut"):
+        return f"ERROR: mode «{mode}» неизвестен: harvest (собрать урожай) или cut (срезать растение)"
+    cmd: dict = {"type": "designate_harvest", "mode": mode}
+    if plant_ids:
+        if cells or any(v is not None for v in (x1, z1, x2, z2)):
+            return "ERROR: задай либо plant_ids, либо клетки (cells или прямоугольник), но не всё сразу"
+        ids, err = _id_targets("", plant_ids, "plant_id")
+        if err:
+            return err
+        cmd["plant_ids"] = ids
+    else:
+        selection, err = _area_selection(x1, z1, x2, z2, cells, HARVEST_MAX_CELLS)
+        if err:
+            return err.replace("ERROR: задай прямоугольник", "ERROR: задай plant_ids, прямоугольник", 1)
+        cmd.update(selection)
+    missing = _need_mod("designate_harvest")
+    if missing:
+        return missing
+    raw = _query(cmd)
+    data = _json_or_none(raw)
+    if not isinstance(data, dict) or "designated" not in data:
+        return raw
+    word = "Сбор урожая" if mode == "harvest" else "Срезка"
+    text = f"{word}: назначено {data['designated']}, пропущено {data.get('skipped', 0)}"
+    if data.get("skipped"):
+        text += f" ({_reasons_text(data)})"
+    return text + "."
+
+
+@mcp.tool()
+def designate_haul(thing_ids: ThingIdsParam) -> str:
+    """Приказ перенести предметы на склад (кнопка «Перенести»): thing_ids (ThingID из get_items), до 200. Только то, что можно носить (не здания и растения); запрет сам не снимается: unforbid_item. Пример: thing_ids=[\"Steel101\", \"Steel102\"]."""
+    ids, err = _id_targets("", thing_ids, "thing_id")
+    if err:
+        return err
+    missing = _need_mod("designate_haul")
+    if missing:
+        return missing
+    raw = _query({"type": "designate_haul", "thing_ids": ids})
+    data = _json_or_none(raw)
+    if not isinstance(data, dict) or "designated" not in data:
+        return raw
+    text = f"Перенос назначен на {data['designated']}, пропущено {data.get('skipped_count', 0)}"
+    why = _targets_text(data)
+    if why:
+        text += f" ({why})"
+    return text + "."
+
+
 @mcp.tool()
 def cancel_construction(x: int, z: int) -> str:
     """Отменить чертёж/строительство на позиции (x, z)."""
@@ -1209,7 +1531,7 @@ def build_room(x1: int | None = None, z1: int | None = None, x2: int | None = No
                walls: list[dict] | None = None, doors: list[dict] | None = None, inside: dict | None = None,
                wall_def: str = "Wall", material: str = "", door_def: str = "Door", door_material: str = "",
                resume: bool = True) -> str:
-    """Поставить чертежи стен и дверей помещения, которое ты проверила через plan_room (те же аргументы).
+    """Поставить чертежи стен и дверей помещения, которое ты проверила через plan_room (те же аргументы). Крышу ставь отдельно: designate_roof.
 
     Проверка повторяется; если хоть одна проблема, НИЧЕГО не строится и возвращается список problems.
     После успеха пауза снимается (resume=true), если её поставила ты; план с карты убирается.
@@ -1247,8 +1569,8 @@ def clear_plans() -> str:
 
 @mcp.tool()
 def room_info(x: int, z: int) -> str:
-    """Что игра на самом деле считает помещением в клетке: is_proper_room, роль (спальня, кухня...), размер, под крышей ли.
-    Вызывай после постройки стен: если is_proper_room=false или roofed=false, контур не замкнут или крыши нет."""
+    """Что игра считает помещением в клетке: is_proper_room, роль (спальня, кухня...), размер, под крышей ли (roofed=false: ставь крышу, designate_roof).
+    Вызывай после постройки стен: is_proper_room=false значит контур не замкнут; roofed=false значит нет крыши: designate_roof(mode="build", x1,z1,x2,z2) по клеткам внутри."""
     missing = _need_mod("room_info")
     if missing:
         return missing

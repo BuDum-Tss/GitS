@@ -20,7 +20,7 @@ async def test_manifest_is_valid_and_built_from_the_workspace_tree():
     for gone in ("game_screenshot", "get_pending_events", "ui_steps", "pc_read_screen", "switch_mode", "set_work_priority",
                  "set_schedule_range", "set_goal", "web_search", "get_colony_state"):
         assert gone not in tools, gone
-    assert len(tools) < 90
+    assert len(tools) < 100       # было < 90; меню архитектора добавило 11 инструментов (пол, крыша, зоны, охота, сбор, перенос)
     for t in tools.values():
         assert t["risk"] == "auto" and t["availability"] == "profile"
         assert 0 < len(t["description"]) <= 300 and "keywords" in t

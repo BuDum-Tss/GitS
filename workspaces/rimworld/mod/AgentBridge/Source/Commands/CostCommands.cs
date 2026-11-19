@@ -14,7 +14,7 @@ namespace AgentBridge
     {
         private const float TicksPerHour = 2500f;
 
-        private class CostLine { public ThingDef Def; public ThingDef Stuff; public int Count; }
+        private class CostLine { public BuildableDef Def; public ThingDef Stuff; public int Count; }
 
         /// Нужные материалы и работа для списка (постройка, материал, сколько штук).
         private static (Dictionary<ThingDef, int> need, float work) CostOf(IEnumerable<CostLine> lines)
@@ -96,6 +96,10 @@ namespace AgentBridge
         private static string DescribeDef(JObject cmd)
         {
             var map = Find.CurrentMap;
+            // пол (TerrainDef) описывает отдельная команда: так по одному describe_def работает и unlock_for для полов
+            if (DefDatabase<ThingDef>.GetNamed(cmd["def_name"].Value<string>(), false) == null
+                && DefDatabase<TerrainDef>.GetNamed(cmd["def_name"].Value<string>(), false) != null)
+                return DescribeTerrainDef(cmd);
             var def = GetThingDefOrThrow(cmd["def_name"].Value<string>());
             var stuffs = def.MadeFromStuff
                 ? GenStuff.AllowedStuffsFor(def).Take(14).Select(st => new
