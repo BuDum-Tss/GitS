@@ -260,3 +260,79 @@ def test_focus_buttons_pass_the_panel_validation():
     assert P.validate_panel_set({"blocks": blocks}, {"take_focus", "release_focus"}) == []
     stats = blocks[0]["items"]
     assert any(i["label"] == "Почему вне фокуса" and "не запущена" in i["value"] for i in stats)
+
+
+# ── аренда ядра при закрытой игре: ждём запуск, а не выходим из среды (баг 19.11.2026) ────────────
+
+async def _ticks(ctrl, n=None):
+    for _ in range(n or focus_mode.GAME_GONE_TICKS + 2):
+        await ctrl._tick()
+
+
+async def test_core_lease_with_closed_game_waits_for_launch_and_is_not_done(ctrl, monkeypatch):
+    use_mode(ctrl, monkeypatch, "core")
+    game_closed(monkeypatch)
+    assert (await ctrl.activate({"goal": "играть"}))["ok"]
+    await _ticks(ctrl)
+    st = ctrl.policy_state()["status"]
+    assert ctrl.policies.in_focus and ctrl._focus_source == "core"
+    assert st["done"] is False and st["blocked"] is None and "ждём запуск игры" in st["active_goal"]
+
+
+async def test_launch_game_then_loading_keeps_waiting_and_game_closing_after_play_is_done(ctrl, monkeypatch):
+    use_mode(ctrl, monkeypatch, "core")
+    monkeypatch.setattr(controller, "_ping", lambda: False)
+    monkeypatch.setattr(controller.Controller, "_launch_rimworld", lambda self, reason="": None)
+    game_closed(monkeypatch)
+    await ctrl.activate({})
+    assert "запуск игры" in await ctrl.launch_game("играть")
+    await _ticks(ctrl)                                   # игра грузится: мод ещё не отвечает
+    assert ctrl.policy_state()["status"]["done"] is False
+    game_up(ctrl, monkeypatch)
+    await _ticks(ctrl, 2)
+    assert ctrl._lease_game_seen and ctrl.policy_state()["status"]["done"] is False
+    game_closed(monkeypatch)                             # игра была запущена в аренде и закрылась
+    await _ticks(ctrl)
+    assert ctrl.policy_state()["status"]["done"] is True and ctrl.policies.reason.startswith("игра закрыта")
+
+
+async def test_launch_wait_timeout_makes_done_with_a_reason(ctrl, monkeypatch):
+    use_mode(ctrl, monkeypatch, "core")
+    game_closed(monkeypatch)
+    logged: list[str] = []
+    monkeypatch.setattr(controller.events_log, "log", lambda kind, text, **k: logged.append(text))
+    monkeypatch.setattr(ctrl, "_module_setting", lambda key, default: 60 if key == "launch_wait_s" else default)
+    await ctrl.activate({})
+    await _ticks(ctrl)
+    assert ctrl.policy_state()["status"]["done"] is False
+    ctrl._launch_wait_since -= 61                        # срок ожидания вышел
+    await _ticks(ctrl, 1)
+    assert ctrl.policy_state()["status"]["done"] is True and "launch_wait_s" in ctrl.policies.reason
+    assert any("игра не запустилась за 60 с" in t for t in logged)
+
+
+async def test_launch_wait_setting_is_clamped(ctrl, monkeypatch):
+    for raw, want in ((5, 60.0), (5000, 900.0), ("мусор", 240.0), (300, 300.0)):
+        monkeypatch.setattr(ctrl, "_module_setting", lambda key, default, raw=raw: raw)
+        assert ctrl._launch_wait_s() == want
+
+
+async def test_core_release_during_wait_resets_and_is_done(ctrl, monkeypatch):
+    use_mode(ctrl, monkeypatch, "core")
+    game_closed(monkeypatch)
+    await ctrl.activate({})
+    await _ticks(ctrl)
+    await ctrl.release({"reason": "ядро забрало"})
+    assert ctrl.policy_state()["status"]["done"] is True and ctrl._launch_wait_since is None
+    assert ctrl._focus_source == "none"
+
+
+async def test_entering_with_running_game_is_not_waiting(ctrl, monkeypatch):
+    use_mode(ctrl, monkeypatch, "core")
+    game_up(ctrl, monkeypatch)
+    await ctrl._tick()
+    await ctrl.activate({})
+    assert ctrl._core_waiting_for_game() is False and ctrl._lease_game_seen is True
+    game_closed(monkeypatch)
+    await _ticks(ctrl)
+    assert ctrl.policy_state()["status"]["done"] is True      # игра была запущена в аренде и закрылась

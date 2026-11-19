@@ -58,6 +58,7 @@ def _policy_log(kind: str, text: str) -> None:
 
 PROACTIVE_TICK_INTERVAL   = 2500  # 1 игровой час (GenDate.TicksPerHour)
 POLL_INTERVAL_SECS        = 2.0
+LAUNCH_WAIT_S             = 240             # ждать запуск игры в аренде ядра (настройка launch_wait_s, 60-900)
 TICKS_PER_HOUR            = 2500
 PLANNING_INTERVAL_SECS    = 8 * 60          # тактические задачи — раз в 8 минут
 LONG_TERM_INTERVAL_SECS   = 25 * 60         # стратегические цели — раз в 25 минут
@@ -251,6 +252,9 @@ class Controller:
         self._held_off            = False                  # фокус отпущен кнопкой: сам не берём, пока игра не закроется
         self._game_up             = False                  # мод отвечает (игра запущена) по последнему опросу
         self._game_gone_ticks     = 0                      # сколько опросов подряд игра не отвечает
+        # ожидание запуска игры в аренде ядра: игра закрыта, а ядро среду уже выдало (агент вызывает launch_game и ждёт загрузку)
+        self._lease_game_seen     = False                  # игра отвечала в этой аренде (потом закрытие = конец задачи)
+        self._launch_wait_since: float | None = None       # с какого момента ждём запуск игры (вход или launch_game)
 
     def run(self):
         asyncio.run(self._run_async())
@@ -342,6 +346,8 @@ class Controller:
         """Инструмент launch_game (явная просьба, POL-12(в)): запуск с объявлением (game_launcher.launch говорит заранее)."""
         if _ping():
             return "игра уже запущена"
+        self._lease_game_seen = False                # новый запуск: ждём игру заново, срок launch_wait_s считается с этого момента
+        self._launch_wait_since = time.time()
         await asyncio.to_thread(self._launch_rimworld, reason)
         return f"запуск игры: {reason}"
 
@@ -355,7 +361,50 @@ class Controller:
         """Блок `status` для ядра (ТЗ 18, FOC-1, MOD-33): политика, срочность, прерываемость, блокировка, ресурсы."""
         buildings = (self._tick_state.get("colony") or {}).get("buildings") or []
         return focus_status.build(self.policies.policy, goal=self._active_ambition_title(), tasks=self._load_tasks(),
-                                  buildings=buildings)
+                                  buildings=buildings, waiting=self._launch_wait_text())
+
+    def _launch_wait_s(self) -> float:
+        """Настройка launch_wait_s: сколько секунд ждать запуск игры в аренде ядра (60-900, по умолчанию 240)."""
+        try:
+            return min(900.0, max(60.0, float(self._module_setting("launch_wait_s", LAUNCH_WAIT_S))))
+        except (TypeError, ValueError):
+            return float(LAUNCH_WAIT_S)
+
+    def _core_waiting_for_game(self) -> bool:
+        """Ядро держит среду (workspace.enter/resume получены, exit/release ещё нет: фокус в политике, источник `core`), а игра
+        в этой аренде ещё не отвечала: её запускают или ещё не запустили. Ожидание не `blocked` и не `done`: ядро не выкинет агента."""
+        return (self.policies.in_focus and self._focus_source == "core"
+                and not self._lease_game_seen and not self._game_up)
+
+    def _launch_wait_text(self) -> str | None:
+        """Текст ожидания запуска игры для `active_goal` статуса (None, если не ждём)."""
+        if not self._core_waiting_for_game():
+            return None
+        left = max(0, round(self._launch_wait_s() - (time.time() - (self._launch_wait_since or time.time()))))
+        return f"ждём запуск игры RimWorld (осталось до {left} с)"
+
+    def _begin_lease(self) -> None:
+        """Новая аренда ядра: игра уже отвечает (ждать нечего) или начинаем ждать её запуск."""
+        self._lease_game_seen = bool(self._game_up)
+        self._launch_wait_since = None if self._lease_game_seen else time.time()
+
+    def _end_lease_wait(self) -> None:
+        self._lease_game_seen = False
+        self._launch_wait_since = None
+
+    def _check_launch_wait(self) -> None:
+        """Срок ожидания запуска игры вышел: фокус снимается (done=true), причина идёт в протокол событий, среда не висит вечно."""
+        if self._launch_wait_since is None:
+            self._launch_wait_since = time.time()
+            return
+        limit = self._launch_wait_s()
+        if time.time() - self._launch_wait_since < limit:
+            return
+        reason = f"игра не запустилась за {round(limit)} с (launch_wait_s): ожидание закончено, фокус модуля снят"
+        events_log.log("game", reason)
+        self._focus_source = "none"
+        self._end_lease_wait()
+        self.policies.enter_afk(reason, source="auto")
 
     # ── фокус: режим focus_mode (правка fix/focus-bootstrap) ─────────────────────────────────
 
@@ -380,12 +429,19 @@ class Controller:
                 return
             self._game_up = False
             self._held_off = False                       # игру закрыли: отпущенный фокус снова доступен после запуска
+            if self._core_waiting_for_game():
+                self._check_launch_wait()                # игру ещё не видели в этой аренде: ждём запуск, а не снимаем фокус
+                return
             if self.policies.in_focus and self._focus_source in ("auto", "button", "core"):
+                self._end_lease_wait()
                 self._focus_source = "none"
                 self._game_seen_running = False          # игру закрыли сами: сторож её не поднимает вне фокуса (POL-12)
                 self.policies.enter_afk("игра закрыта: фокус модуля снят, модуль ждёт игру", source="auto")
             return
         self._game_gone_ticks = 0
+        if self.policies.in_focus:
+            self._lease_game_seen = True                 # игра ответила в этой аренде: дальше её закрытие снимает фокус
+            self._launch_wait_since = None
         if not self._game_up:
             self._emit_game_started()                    # ТЗ 32, WS-5: игра запущена - только сигнал, среду он не включает
         self._game_up = True
@@ -415,6 +471,8 @@ class Controller:
             return {"ok": False, "error": f"нельзя перейти из «{self.policies.current}» в «{target}»"}
         self._focus_source = source
         self._held_off = False
+        if source == "core":
+            self._begin_lease()
         if cp:
             self._recent_changes.extend(str(c) for c in _as_list(cp.get("changes")))
             self._pending_events.extend(str(p) for p in _as_list(cp.get("pending")))
@@ -430,6 +488,7 @@ class Controller:
     async def _drop_focus(self, reason: str, source: str) -> dict:
         """Забрать фокус (POL-14): checkpoint, пауза, если игра идёт, уход в afk. Общая часть workspace.exit и кнопки."""
         self._reset_nodes()                       # выход из среды
+        self._end_lease_wait()
         if not self.policies.in_focus:
             return {"ok": True, "already": True}
         st = await asyncio.to_thread(_get_state)
@@ -445,6 +504,7 @@ class Controller:
         saved = await asyncio.to_thread(focus_checkpoint.save, cp)
         self.policies.enter_afk(reason, source=source)
         self._focus_source = "none"
+        self._end_lease_wait()
         self._fight.reset()
         self._pending_events.clear()
         # ТЗ 18, MOD-32: ответ workspace.exit несёт сам checkpoint (ядро хранит его и вернёт в workspace.resume)
@@ -460,6 +520,8 @@ class Controller:
             return {"ok": False, "error": reason + "; фокус даёт кнопка «Взять фокус» на панели RimWorld"}
         if self.policies.in_focus:
             self._focus_source = "core"
+            if not self._lease_game_seen:
+                self._begin_lease()
             return _with_entry({"ok": True, "already": True})
         return _with_entry(await self._take_focus("observe", f"фокус возвращён: {goal[:100]}".strip(), source="core"))
 
@@ -473,6 +535,8 @@ class Controller:
             return {"ok": False, "error": reason + "; фокус даёт кнопка «Взять фокус» на панели RimWorld"}
         if self.policies.in_focus:
             self._focus_source = "core"
+            if not self._lease_game_seen:
+                self._begin_lease()
             return _with_entry({"ok": True, "already": True})
         goal = str(body.get("goal") or "")
         cp = body.get("checkpoint") if isinstance(body.get("checkpoint"), dict) else None

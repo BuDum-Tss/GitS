@@ -59,11 +59,12 @@ def blocked_reason(policy, tasks: list) -> str | None:
     return None
 
 
-def build(policy, *, goal: str, tasks: list, buildings: list) -> dict:
-    """Блок `status` для сообщения `state` (ТЗ 18, MOD-33)."""
+def build(policy, *, goal: str, tasks: list, buildings: list, waiting: str | None = None) -> dict:
+    """Блок `status` для сообщения `state` (ТЗ 18, MOD-33). `waiting`: ядро держит среду, а игра ещё не запущена (её запускают):
+    текст ожидания идёт в `active_goal`; `done` остаётся false, пока фокус у модуля, и `blocked` не ставится (он выкинул бы из среды)."""
     return {
         "done": policy.focus != "active",
-        "active_goal": goal or "",
+        "active_goal": waiting or goal or "",
         "urgency": round(float(policy.urgency), 2),
         "interruptible": interruptible(policy, buildings),
         "estimated_remaining_s": None,
