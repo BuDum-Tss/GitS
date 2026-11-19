@@ -43,6 +43,7 @@ class VoiceService:
             logger.info("Движок голоса выключен: %s", config.disabled_reason)
             return cls(config)
         from . import events
+        from .diarization import load_embedder
         from .engine import VoiceEngine
         from .server import VoiceServer
         from .stt import HttpSttClient
@@ -60,7 +61,8 @@ class VoiceService:
         tts = _with_cloud(local, config, environ, ref_resolver, leaks, memory_dir)
         vad_factory = load_silero_factory(config.silero_model, config.silero_threshold) if config.vad == "silero" else None
         engine = VoiceEngine(stt=stt, tts=tts, config=config, emit_event=emit, journal=journal, names=names,
-                             vad_factory=vad_factory, emit_spoken=emit_spoken)
+                             vad_factory=vad_factory, emit_spoken=emit_spoken,
+                             speaker_embedder=load_embedder(environ.get("GITS_TELEMOST_DIARIZATION_MODEL", "")))
         logger.info("Движок голоса включён: распознавание %s, синтез %s", config.stt_url, config.tts_url)
         return cls(config, engine, VoiceServer(engine, token, allow))
 

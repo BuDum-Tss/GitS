@@ -19,13 +19,15 @@ ENV PYTHONUNBUFFERED=1 \
     CHARACTER_HOME=/data \
     MEMORY_DIR=/data/memory \
     GITS_DASHBOARD_HOST=0.0.0.0 \
-    GITS_PEERS_FILE=agent/peers.container.yaml
+    GITS_PEERS_FILE=agent/peers.container.yaml \
+    GITS_TELEMOST_DIARIZATION_MODEL=/opt/gits-models/telemost-speaker.onnx
 
 # Node 22 для среды pi: бинарник из образа node (npm в рантайме не нужен)
 COPY --from=agent-runtime /usr/local/bin/node /usr/local/bin/node
 
 # libopus0: кодек Opus для голоса Discord (discord.py грузит его через ctypes; в python:slim его нет)
-RUN apt-get update && apt-get install -y --no-install-recommends libopus0     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libopus0 chromium pulseaudio pulseaudio-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin gits \
     && mkdir -p /app /data/memory \
@@ -44,6 +46,10 @@ COPY services/agent-runtime services/agent-runtime
 COPY agent agent
 COPY workspaces/telegram workspaces/telegram
 COPY workspaces/discord workspaces/discord
+COPY workspaces/telemost workspaces/telemost
+ADD --chmod=644 --checksum=sha256:5ef208a9da1453335308a6b6f4e6dfbd7e183a38b604de0a57664f45d257fe94 \
+    https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34.onnx \
+    /opt/gits-models/telemost-speaker.onnx
 COPY workspaces/streamer workspaces/streamer
 
 RUN mkdir -p logs && chown -R gits:gits logs

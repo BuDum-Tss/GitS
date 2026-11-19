@@ -29,6 +29,15 @@ window.ARCH_DATA = {
      "now": "workspaces/desktop"
     },
     {
+     "id": "tm",
+     "t": "telemost",
+     "tag": "I",
+     "new": false,
+     "do": "вход по ссылке через Chromium из диалога или панели, звук через PulseAudio и /voice/ws, диаризация фраз в ядре",
+     "out": "voicechat.utterance",
+     "now": "workspaces/telemost"
+    },
+    {
      "id": "tg",
      "t": "telegram",
      "tag": "I",
@@ -761,6 +770,12 @@ window.ARCH_DATA = {
    "sharedfiles",
    "flow",
    "готовое видео"
+  ],
+  [
+   "tm",
+   "hub",
+   "flow",
+   "инструменты, панель и аудио через /voice/ws"
   ],
   [
    "tg",

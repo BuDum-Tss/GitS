@@ -11,6 +11,7 @@ from typing import Protocol
 
 from collections import deque
 
+from .diarization import SpeakerLabels
 from .playback import Playback
 from .vad import UtteranceSegmenter
 
@@ -120,6 +121,8 @@ class VoiceSession:
         self.speakers: dict[str, Speaker] = {}
         self.by_idx: dict[int, Speaker] = {}
         self.playback: Playback | None = None
+        self.mixed_meeting = adapter == "telemost" and not caps.speakers_labelled
+        self.speaker_labels: SpeakerLabels | None = None
         self.stats = SessionStats()
         self.created = time.time()
         self.closed = False
@@ -134,7 +137,7 @@ class VoiceSession:
     def one_to_one(self) -> bool:
         """Канал «один на один»: адаптер так сказал или в канале один живой собеседник."""
         humans = [s for s in self.speakers.values() if not s.is_bot]
-        return self.caps.direct or len(humans) == 1
+        return self.caps.direct or (not self.mixed_meeting and len(humans) == 1)
 
     def public(self) -> dict:
         pb = self.playback

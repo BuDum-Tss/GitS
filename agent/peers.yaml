@@ -25,6 +25,15 @@ workspaces:
     autostart: true
     restart: on-failure       # секреты (TELEGRAM_*) модуль читает сам из .env; без них он работает и пишет «не настроен»
 
+  - id: telemost
+    ownership: owned
+    title: Яндекс Телемост
+    cwd: "{GITS}/workspaces/telemost"
+    command: "{PYTHON}"
+    args: ["-u", "main.py"]
+    autostart: true
+    restart: on-failure
+
   # Discord: бот на серверах (каналы, ветки, посты форумов, личка), текст; голос позже. Секрет DISCORD_BOT_TOKEN модуль читает сам
   # из .env; без него он работает и пишет «не настроен». Библиотека discord.py (docker/core/requirements.txt, >=2.4).
   - id: discord

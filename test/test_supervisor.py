@@ -418,11 +418,11 @@ def test_real_peers_yaml_roles_and_ownership():
     specs = {s.id: s for s in load_specs(supervisor.PEERS_YAML)}
     assert supervisor.PEERS_YAML.name == "peers.yaml"
     assert {i for i, s in specs.items() if s.role == "workspace"} == {
-        "telegram", "discord", "streamer", "desktop", "rimworld", "montage", "echo"}
+        "telegram", "discord", "telemost", "streamer", "desktop", "rimworld", "montage", "echo"}
     assert {i for i, s in specs.items() if s.role == "service"} == {"voice", "pet", "decider", "espeech"}
     assert {i for i, s in specs.items() if s.external} == {"decider", "espeech"}
     assert {i: s.ownership for i, s in specs.items() if s.ownership} == {
-        "telegram": "owned", "discord": "owned", "streamer": "owned", "echo": "owned",
+        "telegram": "owned", "discord": "owned", "telemost": "owned", "streamer": "owned", "echo": "owned",
         "desktop": "shared", "rimworld": "shared", "montage": "shared"}
     assert specs["rimworld"].cwd == "{GITS}/workspaces/rimworld/agent"                  # пути прежние: папки переносит фаза 3
     assert "twitch" not in specs and "obs" not in specs                                 # фаза 3b: слиты в одно окружение

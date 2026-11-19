@@ -458,3 +458,22 @@ async def test_sessions_are_independent():
     await r.engine.settle()
     assert sorted(e["data"]["session"] for e in r.events) == ["s1", "s2"] and s2.adapter == "other"
     await r.engine.aclose()
+
+async def test_telemost_diarization_labels_reach_voice_events_and_context():
+    import numpy as np
+
+    vectors = iter(([1, 0], [0, 1], [1, 0]))
+    rig = Rig(["первая реплика", "другая длинная реплика", "ещё одна реплика", "краткая"],
+              caps=PC, speaker_embedder=lambda _: np.array(next(vectors)))
+    session = await rig.open(adapter="telemost")
+    rig.join("meeting", "Участники Телемоста", 1)
+    try:
+        for length in (1600, 1600, 1600, 600):
+            await say(rig, "meeting", length)
+        names = ["Спикер 1", "Спикер 2", "Спикер 1", "Участники Телемоста"]
+        assert [event["sender"]["name"] for event in rig.events] == names
+        assert [phrase.name for phrase in session.recent] == names
+        assert not any(event["addressed_to_me"] for event in rig.events)
+        assert session.speakers["meeting"].name == "Участники Телемоста"
+    finally:
+        await rig.engine.aclose()

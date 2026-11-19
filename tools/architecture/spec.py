@@ -31,6 +31,7 @@ GROUPS = [
          summary="Участники шины: окружения workspace (Telegram, Стример (Twitch и OBS), экран, игра, монтаж), сервисы service (голос, питомец) и чат дашборда. Присылают события и выполняют команды.", out="Event", nodes=[
         N("voice", "voice", "I", "микрофон, VAD, локальное распознавание речи (GigaAM, запасной faster-whisper; говорящих не различает, реплика от владельца); озвучка (ESpeech, запасные Fish Speech и edge-tts)", "Event voice.utterance", "services/voice"),
         N("desk", "desktop", "I", "экран, активность, мышь и клавиатура, Модуль кода", "Event desktop.*, job.update", "workspaces/desktop"),
+        N("tm", "telemost", "I", "вход по ссылке через Chromium из диалога или панели, звук через PulseAudio и /voice/ws, диаризация фраз в ядре", "voicechat.utterance", "workspaces/telemost"),
         N("tg", "telegram", "I", "бот, её аккаунт, посты канала; публикация MP4 из каталога core.resources", "Event telegram.*", "workspaces/telegram"),
         N("strm", "streamer", "I", "ведение трансляции: чат и события Twitch, ответы, модерация; сцены, запись и субтитры OBS (obs-websocket)", "Event twitch.*, obs.*", "workspaces/streamer: подсистемы twitch/ и obs/"),
         N("rim", "rimworld", "I", "игровой агент: ходы, комментатор, запись забега", "Event raid, death, colonists", "workspaces/rimworld"),
@@ -139,6 +140,7 @@ BYID = {g["id"]: g for g in GROUPS}
 
 EDGES = [
     ("mont", "sharedfiles", "flow", "готовое видео", None),
+    ("tm", "hub", "flow", "инструменты, панель и аудио через /voice/ws", None),
     ("tg", "sharedfiles", "r", "MP4 для публикации", None),
     ("exec", "repair", "flow", "core.bug_report", None),
     ("voice", "hub", "flow", "Event", None), ("desk", "hub", "flow", None, None), ("tg", "hub", "flow", None, None), ("strm", "hub", "flow", None, None),

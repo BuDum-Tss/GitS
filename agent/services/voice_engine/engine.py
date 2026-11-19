@@ -22,6 +22,7 @@ from .session import (
     Capabilities, LatencyMetrics, Phrase, SessionLimitError, SessionManager, SessionTransport, Speaker, VoiceSession)
 from .stt import SttClient, SttError
 from .tts import TtsClient, clean_text
+from .diarization import SpeakerLabels
 from .vad import EnergyVad, Segment, SegmenterConfig, UtteranceSegmenter, VadDetector
 
 logger = logging.getLogger("voice_engine")
@@ -43,11 +44,13 @@ class VoiceEngine:
                  journal: Callable[[str, str, dict], None] | None = None,
                  on_speech: Callable[[dict], None] | None = None,
                  names: Callable[[], Iterable[str]] | None = None,
-                 vad_factory: Callable[[], VadDetector] | None = None, emit_spoken: bool = False):
+                 vad_factory: Callable[[], VadDetector] | None = None, emit_spoken: bool = False,
+                 speaker_embedder: Callable | None = None):
         """`emit_spoken`: итог её речи уходит ядру ещё и событием `voicechat.spoken` (для внимания v2, где это фон); по умолчанию нет:
         старое внимание его не ждёт, итог остаётся только записью журнала."""
         self.config = config or EngineConfig()
         self._emit_spoken = emit_spoken
+        self._speaker_embedder = speaker_embedder
         self.stt, self.tts = stt, tts
         self.clock = clock or SystemClock()
         self._emit_event, self._journal, self._on_speech = emit_event, journal, on_speech
@@ -81,6 +84,8 @@ class VoiceEngine:
                            caps: Capabilities | None = None, *, barge_in: str | None = None, title: str = "") -> VoiceSession:
         caps = caps or Capabilities()
         sess = VoiceSession(session_id, adapter, caps, transport, self.resolve_barge_in(caps, barge_in), self.config.barge_in_ms, title)
+        if sess.mixed_meeting and self._speaker_embedder is not None:
+            sess.speaker_labels = SpeakerLabels(self._speaker_embedder)
         sess.playback = Playback(transport, self.tts, self.clock, lambda ev: self._on_playback(sess, ev),
                                  PlaybackConfig(max_waiting=self.config.max_waiting, lead_ms=self.config.lead_ms,
                                                 voice=self.config.tts_voice, emotion=self.config.tts_emotion,
@@ -207,17 +212,21 @@ class VoiceEngine:
 
     async def _transcribe(self, sess: VoiceSession, sp: Speaker, seg: Segment, closed_at: float) -> None:
         try:
-            async with sp.stt_lock:                     # фразы одного говорящего идут по порядку
-                async with self._stt_sem:
-                    started = self.clock.monotonic()
-                    result = await self.stt.transcribe(seg.pcm, lang=self.config.lang)
-                    self._timing(sess, "stt", (self.clock.monotonic() - started) * 1000)
+            async with sp.stt_lock:
+                await self._process_utterance(sess, sp, seg, closed_at)
+        finally:
+            sess.stt_pending -= 1
+
+    async def _process_utterance(self, sess: VoiceSession, sp: Speaker, seg: Segment, closed_at: float) -> None:
+        try:
+            async with self._stt_sem:
+                started = self.clock.monotonic()
+                result = await self.stt.transcribe(seg.pcm, lang=self.config.lang)
+                self._timing(sess, "stt", (self.clock.monotonic() - started) * 1000)
         except SttError as e:
             sess.stats.stt_errors += 1
             logger.warning("Распознавание не удалось (%s): %s", type(e).__name__, e)
             return
-        finally:
-            sess.stt_pending -= 1
         text = result.text.strip()
         if sess.closed or len(text.strip(" .,!?-—…")) < NOISE_MIN_CHARS:
             return
@@ -227,10 +236,18 @@ class VoiceEngine:
             logger.info("эхо её речи отброшено (сессия %s, говорящий %s)", sess.id, sp.id)
             return
         speaker = sp.public()
+        reply_speaker = None if sess.mixed_meeting else sp.id
+        if sess.speaker_labels is not None:
+            label = await sess.speaker_labels.identify(seg.pcm, seg.speech_ms)
+            if sess.closed:
+                return
+            if label is not None:
+                reply_speaker = f"{sp.id}-{label}"
+                speaker.update(id=reply_speaker, name=f"Спикер {label}")
         now = self.clock.time()
-        addressed, reason = self._addressed(sess, sp, text, now)
+        addressed, reason = self._addressed(sess, sp, text, now, reply_speaker)
         context = events.recent_tail(list(sess.recent), now) if addressed else ""
-        sess.recent.append(Phrase(now, sp.name, text))
+        sess.recent.append(Phrase(now, speaker["name"], text))
         speech_end = closed_at - seg.endpoint_ms / 1000.0
         self._timing(sess, "endpoint", seg.endpoint_ms)
         interrupted = sp.barged_ts > 0 and self.clock.time() - sp.barged_ts < INTERRUPT_MEMORY_S
@@ -240,7 +257,7 @@ class VoiceEngine:
                                        urgency_hint=self.config.ambient_urgency)
         sess.stats.utterances += 1
         if addressed:                                    # разговор пошёл дальше: устаревшие ожидающие реплики не нужны
-            sess.last_addressed_speaker = sp.id
+            sess.last_addressed_speaker = reply_speaker
             sess.react_since = speech_end
             if sess.playback is not None:
                 sess.playback.drop_waiting("replaced")
@@ -262,7 +279,8 @@ class VoiceEngine:
         rec = pb.spoken_log[-1]
         return rec.active or now - rec.end <= self.config.convo_window_s
 
-    def _addressed(self, sess: VoiceSession, sp: Speaker, text: str, now: float) -> tuple[bool, str]:
+    def _addressed(self, sess: VoiceSession, sp: Speaker, text: str, now: float,
+                   reply_speaker: str | None) -> tuple[bool, str]:
         """Обращена ли фраза к ней, от сильного признака к слабому: имя; владелец (он зовёт её, даже не называя по имени);
         продолжение разговора (она только что говорила, отвечает тот, с кем она говорила); канал «один на один».
         Боты-говорящие не считаются владельцем, собеседником и живым человеком."""
@@ -275,7 +293,8 @@ class VoiceEngine:
             return False, ""
         if self.config.owner_addressed and sp.is_owner:
             return True, "owner"
-        if self._she_spoke_recently(sess, now) and (sess.last_addressed_speaker == sp.id or sess.one_to_one):
+        continuing = reply_speaker is not None and sess.last_addressed_speaker == reply_speaker
+        if self._she_spoke_recently(sess, now) and (continuing or sess.one_to_one):
             return True, "continuation"
         if sess.one_to_one:
             return True, "one_to_one"
