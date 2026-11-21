@@ -6,9 +6,11 @@
 environments/manifests/.
 """
 import asyncio
+import math
 import os
 import re
 import time
+from datetime import date, timedelta
 
 from services.tracing import events_log
 from host import settings
@@ -136,34 +138,76 @@ def register(registry, companion, memory):
         stored = await companion.remember_text(a["text"], a.get("kind"))
         return "запомнила: " + "; ".join(stored) if stored else "это она уже помнила (запись обновлена)"
 
-    async def remind_self(a):
+    def _reminder_timer():
         impulses = getattr(companion, "impulses", None)
         if impulses is None:
             raise ToolError("напоминания себе ещё не подключены")
-        text = str(a.get("text") or "").strip()
+        return impulses.timer
+
+    def _reminder_due(value, now):
         try:
-            minutes = float(a.get("in_minutes"))
+            minutes = float(value)
         except (TypeError, ValueError):
             raise ToolError("не указано, через сколько минут напомнить")
-        if not text or minutes <= 0:
-            raise ToolError("нужен текст и срок больше нуля минут")
-        if minutes > 60 * 24 * 30:
-            raise ToolError("напоминание можно назначить не дальше чем на 30 суток")
-        source = {"kind": "conversation"}
-        if a.get("priority") not in (None, ""):                      # важность для внимания v2 (core.timer); зажимается потолком вида
-            from services.attention_v2.event import parse_priority
+        if not 0 < minutes <= 60 * 24 * 30:
+            raise ToolError("срок напоминания должен быть больше нуля и не дальше 30 суток")
+        return now + minutes * 60
+
+    def _reminder_priority(value):
+        from services.attention_v2.event import parse_priority
+
+        if isinstance(value, str):
             try:
-                raw = a["priority"]
-                if isinstance(raw, str):
-                    try:
-                        raw = float(raw.replace(",", "."))
-                    except ValueError:
-                        pass
-                source["priority"] = parse_priority(raw)
-            except ValueError as e:
-                raise ToolError(str(e), "bad_request")
-        await impulses.timer.add(time.time() + minutes * 60, text, source=source)
-        return f"напомнит себе через {int(minutes)} мин: она сама решит, сказать ли об этом, когда срок придёт"
+                value = float(value.replace(",", "."))
+            except ValueError:
+                value = value.strip()
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ToolError("приоритет должен быть конечным числом", "bad_request")
+        try:
+            return parse_priority(value)
+        except ValueError as e:
+            raise ToolError(str(e), "bad_request")
+
+    def _reminder_text(value):
+        text = str(value or "").strip()
+        if not text:
+            raise ToolError("нужен текст напоминания")
+        return text
+
+    def _format_reminder(rec):
+        due = time.strftime("%d.%m.%Y %H:%M:%S %Z", time.localtime(rec["due"]))
+        priority = (rec.get("source") or {}).get("priority")
+        return f'{rec["id"]} · {due} · {priority if priority is not None else "NOTABLE"} · {rec["text"]}'
+
+    async def remind_self(a):
+        timer = _reminder_timer()
+        text = _reminder_text(a.get("text"))
+        due = _reminder_due(a.get("in_minutes"), timer.clock())
+        source = {"kind": "conversation"}
+        if a.get("priority") not in (None, ""):
+            source["priority"] = _reminder_priority(a["priority"])
+        rec = await timer.add(due, text, source=source)
+        return "Напоминание создано. " + _format_reminder(rec)
+
+    async def list_reminders(a):
+        found = await _reminder_timer().pending()
+        return "\n".join(_format_reminder(rec) for rec in found) if found else "Ожидающих напоминаний нет."
+
+    async def update_reminder(a):
+        timer = _reminder_timer()
+        changes = {}
+        if a.get("text") is not None:
+            changes["text"] = _reminder_text(a["text"])
+        if a.get("in_minutes") is not None:
+            changes["due"] = _reminder_due(a["in_minutes"], timer.clock())
+        if a.get("priority") is not None:
+            changes["priority"] = _reminder_priority(a["priority"])
+        if not changes:
+            raise ToolError("укажи новый текст, срок или приоритет")
+        rec = await timer.update(a["id"], **changes)
+        if rec is None:
+            raise ToolError("ожидающее напоминание с таким ID не найдено")
+        return "Напоминание обновлено. " + _format_reminder(rec)
 
     def _tasks():
         svc = getattr(companion, "tasks", None)
@@ -248,7 +292,17 @@ def register(registry, companion, memory):
     async def recall(a):
         parts = []
         episodes = getattr(companion, "episodes", None)
-        if episodes is not None:                                   # единая память: эпизоды (жизнь, канон, заметки) и дневник; id разворачивает recall_episode
+        if episodes is not None and a.get("days_ago") is not None:
+            try:
+                day = (date.today() - timedelta(days=a["days_ago"])).isoformat()
+            except (OverflowError, TypeError):
+                raise ToolError("укажи, сколько дней назад искать")
+            rows = await episodes.recall.for_day(day)
+            for row in rows:
+                parts.append(f"эпизод {row['id']} ({row['when']}): {row['title']}. {row['text'][:400]}")
+            if not parts:
+                return f"За {day} в памяти пока нет записанных эпизодов."
+        elif episodes is not None:                                 # единая память: эпизоды (жизнь, канон, заметки) и дневник; id разворачивает recall_episode
             for h in await episodes.recall.find(a["query"], k=6):
                 label = {"episode": "эпизод " + h["id"], "note": "заметка", "canon": "о себе"}.get(h["kind"], h["kind"])
                 parts.append(f"{label} ({h['when']}): {h['text'][:300]}")
@@ -323,6 +377,15 @@ def register(registry, companion, memory):
                    "priority": {"type": "string", "required": False,
                                 "description": "важность: BACKGROUND, NORMAL, NOTABLE (по умолчанию), IMPORTANT или число 0-100"}},
                   remind_self, keywords=("напомни", "напоминание", "вернись", "позже", "через", "проверь", "не забудь")),
+            _tool("assistant", "reminders", "Посмотреть ожидающие напоминания, их ID, сроки и приоритеты.",
+                  {}, list_reminders, informative=True, read_only=True, keywords=("напоминания", "напоминалки", "список напоминаний")),
+            _tool("assistant", "update_reminder", "Изменить текст, срок или приоритет ожидающего напоминания. ID можно узнать через assistant.reminders.",
+                  {"id": {"type": "string", "description": "ID напоминания"},
+                   "text": {"type": "string", "required": False, "description": "новый текст"},
+                   "in_minutes": {"type": "number", "required": False, "description": "новый срок в минутах от текущего момента"},
+                   "priority": {"type": "string", "required": False,
+                                "description": "новый приоритет: BACKGROUND, NORMAL, NOTABLE, IMPORTANT или число 0-100"}},
+                  update_reminder, keywords=("напоминание", "напоминалка", "перенеси", "измени напоминание")),
             _tool("assistant", "tasks", "Показать открытые задачи текущей среды (цель, статус, шаги, срок): что она сейчас делает и что "
                   "осталось. Для вопросов «чем ты занята», «что в планах», «какие у тебя задачи».",
                   {"workspace": {"type": "string", "required": False, "description": "среда (assistant, rimworld, montage), по умолчанию текущая; * - все"},
@@ -353,8 +416,9 @@ def register(registry, companion, memory):
                    "status": {"type": "string", "enum": ["done", "failed", "cancelled"], "required": False, "description": "по умолчанию done"},
                    "note": {"type": "string", "required": False, "description": "коротко почему"}},
                   close_task, keywords=("задача", "закрой", "отмени задачу", "выполнено", "готово")),
-            _tool("assistant", "recall", "Вспомнить, что она помнит по теме или о ком-то (для вопросов «что ты помнишь про…»).",
-                  {"query": {"type": "string", "description": "тема или слова для поиска в памяти"}},
+            _tool("assistant", "recall", "Поиск в памяти по теме или за конкретный день. Для «чем мы занимались вчера?» используй days_ago=1.",
+                  {"query": {"type": "string", "description": "тема поиска или краткое описание запроса за день"},
+                   "days_ago": {"type": "integer", "required": False, "description": "день поиска: 0 — сегодня, 1 — вчера"}},
                   recall, informative=True, read_only=True, keywords=("помнишь", "вспомни", "вспомнить", "память", "знаешь")),
             _tool("assistant", "recall_episode", "Развернуть эпизод из памяти по его id (из ответа recall «эпизод e12-30»): текст эпизода и "
                   "события-источники по порядку. Для просьб «расскажи подробнее, как это было», «что именно там было сказано».",
@@ -653,7 +717,7 @@ def register_core_tools(registry, modules, attention=None, workspaces=None):
         return report
 
     async def module_events(a):
-        return modules.events_report(a.get("module"), a.get("limit") or 15)
+        return modules.events_report(a.get("module"), a.get("limit") or 40)
 
     async def job_cancel(a):
         return await modules.cancel_job(a["module"], a["job_id"])
@@ -761,7 +825,7 @@ def register_core_tools(registry, modules, attention=None, workspaces=None):
                   "в контекст они не кладутся, читай их этим инструментом, когда спрашивают «что было в игре», «что нового» "
                   "или нужно знать, что произошло.",
                   {"module": {"type": "string", "required": False, "enum": _ModuleIds(modules), "description": "id модуля; без него все"},
-                   "limit": {"type": "integer", "required": False, "description": "сколько событий, по умолчанию 15"}},
+                   "limit": {"type": "integer", "required": False, "description": "сколько последних событий, по умолчанию 40, не больше 200"}},
                   module_events, informative=True, read_only=True, keywords=("события", "что было", "что произошло", "что нового", "в игре", "колония")),
             _tool("core", "set_setting", "Включить или выключить общую настройку ядра: "
                   "autoplay (играть самой: рабочие циклы в среде игры; включай, когда пользователь просит начать стрим или играть сама, выключай, когда просит закончить).",

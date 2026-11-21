@@ -141,6 +141,16 @@ class TaskService:
         await self._refresh_parents(t.id)
         return t
 
+    async def cancel_obsolete(self, snapshot: dom.Task, reason: str) -> None:
+        """Применить фоновое решение лишь к неизменившейся собственной задаче без открытых подзадач."""
+        if snapshot.origin != dom.SELF or snapshot.kind != dom.KIND_TASK or not snapshot.is_open:
+            return
+        task = dom.with_status(snapshot, dom.CANCELLED, self.clock())
+        if not await asyncio.to_thread(self.repo.save_review, snapshot.to_dict(), task.to_dict(), dom.OPEN):
+            return
+        self._emit("status", task, note=reason[:200], via="memory_review")
+        await self._refresh_parents(task.id)
+
     async def activate(self, task_id: str) -> dom.Task:
         return await self.set_status(task_id, dom.ACTIVE)
 

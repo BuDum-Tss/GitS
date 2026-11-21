@@ -54,6 +54,21 @@ class JsonReminders:
     def get(self, reminder_id: str) -> dict | None:
         return next((r for r in self._all() if r.get("id") == reminder_id), None)
 
+    def update(self, reminder_id: str, *, due: float | None = None, text: str | None = None,
+               priority: float | None = None) -> dict | None:
+        items = self._all()
+        rec = next((r for r in items if r.get("id") == reminder_id and r.get("status") == "pending"), None)
+        if rec is None:
+            return None
+        if due is not None:
+            rec["due"] = due
+        if text is not None:
+            rec["text"] = text[:500]
+        if priority is not None:
+            rec["source"] = {**(rec.get("source") or {}), "priority": priority}
+        self._save(items)
+        return rec
+
     def pending(self) -> list[dict]:
         return sorted((r for r in self._all() if r.get("status") == "pending"), key=lambda r: r["due"])
 

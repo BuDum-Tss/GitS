@@ -24,6 +24,7 @@ class ImpulseTimer:
         """emit(event) принимает тело события (`Attention.submit("self", event)`)."""
         self.store, self.emit, self.clock, self.late_s = store, emit, clock, late_s
         self._wake = asyncio.Event()
+        self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -42,15 +43,27 @@ class ImpulseTimer:
         self._wake.set()
 
     async def add(self, due: float, text: str, **kw) -> dict:
-        rec = await asyncio.to_thread(self.store.add, due, text, **kw)
-        self.poke()
-        return rec
+        async with self._lock:
+            rec = await asyncio.to_thread(self.store.add, due, text, **kw)
+            self.poke()
+            return rec
+
+    async def pending(self) -> list[dict]:
+        async with self._lock:
+            return await asyncio.to_thread(self.store.pending)
+
+    async def update(self, reminder_id: str, **changes) -> dict | None:
+        async with self._lock:
+            rec = await asyncio.to_thread(self.store.update, reminder_id, **changes)
+            if rec is not None:
+                self.poke()
+            return rec
 
     async def _run(self) -> None:
         while True:
             try:
-                pending = await asyncio.to_thread(self.store.pending)
                 self._wake.clear()
+                pending = await self.pending()
                 wait = max(0.0, pending[0]["due"] - self.clock()) if pending else None
                 if wait is None or wait > 0:
                     try:
@@ -67,6 +80,16 @@ class ImpulseTimer:
 
     async def fire_due(self) -> int:
         """Выдать события по наступившим срокам. Возвращает число выданных событий."""
+        async with self._lock:
+            events = await self._collect_due()
+        for ev in events:
+            try:
+                await self.emit(ev)
+            except Exception as e:
+                logger.warning(f"Напоминание себе не доставлено: {e}")
+        return len(events)
+
+    async def _collect_due(self) -> list[dict]:
         now = self.clock()
         pending = await asyncio.to_thread(self.store.pending)
         due: list[dict] = []
@@ -79,20 +102,19 @@ class ImpulseTimer:
                 continue
             due.append(rec)
         if not due:
-            return 0
+            return []
         by_id = {r["id"]: r for r in due}
         on_time, late = impulses.split_due([(r["id"], r["due"]) for r in due], now, self.late_s)
         events = [self._event([by_id[i]], now, late=False) for i in on_time]
-        if late:
-            events.append(self._event([by_id[i] for i in late], now, late=True))
+        late_by_priority: dict[float | None, list[dict]] = {}
+        for reminder_id in late:
+            rec = by_id[reminder_id]
+            priority = (rec.get("source") or {}).get("priority")
+            late_by_priority.setdefault(priority, []).append(rec)
+        events.extend(self._event(group, now, late=True) for group in late_by_priority.values())
         for rec in due:
             await asyncio.to_thread(self.store.set_status, rec["id"], "fired")
-        for ev in events:
-            try:
-                await self.emit(ev)
-            except Exception as e:
-                logger.warning(f"Напоминание себе не доставлено: {e}")
-        return len(events)
+        return events
 
     @staticmethod
     def _event(recs: list[dict], now: float, *, late: bool) -> dict:

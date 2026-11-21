@@ -305,7 +305,7 @@
           <!-- Подвкладки (TZ 15): «Обзор» и по одной на участника с пространством; основной ряд вкладок не меняется -->
           <div id="mod-subtabs" role="tablist" aria-label="Вкладки окружений и сервисов" class="tabs tabs-bordered flex-nowrap overflow-x-auto whitespace-nowrap w-full"></div>
           <div id="mod-overview" class="space-y-4">
-            <section><h3 id="mod-list-title" class="font-semibold mb-2">Окружения</h3><div id="mod-list" class="space-y-3"></div></section>
+            <section><div class="flex items-center justify-between mb-2"><h3 id="mod-list-title" class="font-semibold">Окружения</h3><button id="mod-refresh" type="button" class="btn btn-xs btn-ghost text-base" title="Обновить список (сам он не обновляется)" aria-label="Обновить список">↻</button></div><div id="mod-list" class="space-y-3"></div></section>
             <section><h3 class="font-semibold mb-2">Задачи</h3><ul id="job-list" class="space-y-2 text-sm"></ul></section>
           </div>
           <div id="mod-page" class="hidden"></div>
@@ -1205,7 +1205,7 @@ const MOD_STATUS = {connected: ['подключён', 'badge-success'], disabled
 const JOB_STATE = {queued: ['в очереди', 'badge-ghost'], running: ['идёт', 'badge-info'], waiting_user: ['ждёт ответа', 'badge-warning'],
   done: ['готово', 'badge-success'], failed: ['сбой', 'badge-error'], cancelled: ['отменена', 'badge-ghost']};
 const JOB_FINISHED = ['done', 'failed', 'cancelled'];
-const MD2 = {sig: '', jobSig: ''};
+const MD2 = {sig: '', jobSig: '', busy: null};
 // Вкладки «Окружения» и «Сервисы» показывают один и тот же набор карточек, разделённый по роли участника шины (role)
 const PEERS = {role: 'workspace'};
 function setPeerRole(role) {
@@ -1507,7 +1507,13 @@ async function renderModPage(mods, jobs) {
 async function loadModules() {
   if ($('tab-peers').classList.contains('hidden')) return;
   const svc = PEERS.role === 'service';
-  const [mods, alljobs] = await Promise.all([fetch(svc ? '/api/services' : '/api/workspaces').then(r => r.json()), fetch('/api/jobs').then(r => r.json())]);
+  if (MD2.busy === svc) return;                      // запрос этого списка ещё идёт: не плодим новые (ответ ядра может занимать секунды)
+  MD2.busy = svc;
+  let mods, alljobs;
+  try {
+    [mods, alljobs] = await Promise.all([fetch(svc ? '/api/services' : '/api/workspaces').then(r => r.json()), fetch('/api/jobs').then(r => r.json())]);
+  } finally { if (MD2.busy === svc) MD2.busy = null; }
+  if (svc !== (PEERS.role === 'service')) return;    // вкладку сменили, пока ждали ответ: чужой список не рисуем
   const ids = new Set(mods.map(m => m.id)), jobs = alljobs.filter(j => ids.has(j.module));
   const typing = $('tab-peers').contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
   const real = mods.filter(m => m.kind !== 'planned'), planned = mods.filter(m => m.kind === 'planned');
@@ -1629,7 +1635,13 @@ $('tab-peers').addEventListener('click', async e => {
   } else return;
   MD2.sig = MD2.jobSig = ''; setTimeout(() => loadModules().catch(() => {}), 300);
 });
-setInterval(() => loadModules().catch(() => {}), 2000);
+// Список сам не опрашивает ядро (ответ может занимать секунды): грузится при открытии вкладки, после действий и по кнопке.
+$('mod-refresh').addEventListener('click', async () => {
+  const b = $('mod-refresh'); b.disabled = true; b.classList.add('animate-spin');
+  MD2.sig = MD2.jobSig = ''; MD2.busy = null;
+  try { await loadModules(); } catch (_) { /* ядро не ответило: список остаётся прежним */ }
+  b.disabled = false; b.classList.remove('animate-spin');
+});
 
 // ── вопросы с вариантами и свободным ответом (core.ask): кнопки в плашке разрешения ──
 function renderApprovalExtra(ap) {

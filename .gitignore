@@ -55,3 +55,6 @@ resources/*/tg_login_qr.*
 
 # данные хостового помощника RimWorld (создаются при запуске из папки host)
 workspaces/rimworld/host/memory/
+
+# сырые видео для монтажа (гигабайты), хранятся локально
+resources/*/raw_videos/

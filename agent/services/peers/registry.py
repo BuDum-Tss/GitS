@@ -23,9 +23,12 @@ if TYPE_CHECKING:
     from services.peers.hub import PeerHub
     from host.supervisor import Supervisor
 
+LEASE_REFRESH_MIN_S = 5.0
 logger = logging.getLogger("modules")
 
-EVENTS_KEPT = 100               # недавних событий модулей для `core.module_events`
+EVENTS_KEPT = 1000              # недавних событий модулей для `core.module_events`
+EVENTS_DEFAULT = 40             # сколько отдаёт `core.module_events` без limit
+EVENTS_MAX_PER_CALL = 200       # и не больше за один вызов (иначе отчёт раздувает контекст)
 FINISHED_JOBS_KEPT = 20          # завершённых задач модуля в реестре (ТЗ 01: job.list)
 CHECK_TIMEOUT_S = 2.0            # tool.check: ответ не позже чем за 2 с (CORE-35)
 ENABLED_CACHE_S = 0.5            # как долго помнится чтение настроек (is_enabled зовут часто)
@@ -103,6 +106,7 @@ class PeerRegistry:
         self.hub: PeerHub | None = None                    # PeerHub, ставит ядро
         self.supervisor: Supervisor | None = None             # Supervisor, ставит ядро
         self.leases = None                 # LeaseAdapter (аренда общих пространств), ставит ядро
+        self._leases_at = -1e9             # когда в последний раз опрашивали сервисы аренды (страница опрашивает список часто)
         self.records: dict[str, PeerRecord] = {}
         self.planned: dict[str, PlannedRecord] = {}
         self._settings_source = settings_source
@@ -267,12 +271,12 @@ class PeerRegistry:
         self.events.append({"ts": time.time(), "module": peer_id, "kind": str(event.get("kind") or ""),
                             "text": " ".join(str(event.get("text") or "").split())[:200]})
 
-    def events_report(self, module: str | None = None, limit: int = 15) -> str:
+    def events_report(self, module: str | None = None, limit: int = EVENTS_DEFAULT) -> str:
         """Недавние события модулей (инструмент `core.module_events`): свежие снизу."""
         # что видит на своём экране пользователь (описания вкладок и окон) не относится к тому, чем она занята сейчас: пока она играет,
         # такие события в отчёт не попадают (раньше она читала там нашу переписку и «вспоминала» чужие слова как свои)
         rows = [e for e in self.events if (not module or e["module"] == module) and not self.is_noise(e["module"], e["kind"])]
-        rows = rows[-max(1, min(int(limit or 15), EVENTS_KEPT)):]
+        rows = rows[-max(1, min(int(limit or EVENTS_DEFAULT), EVENTS_MAX_PER_CALL)):]
         if not rows:
             return "событий модулей нет" + (f" ({module})" if module else "")
         now = time.time()
@@ -468,6 +472,10 @@ class PeerRegistry:
     async def refresh_leases(self) -> None:
         """Обновить сведения об арендуемых пространствах (по запросу: открытие вкладки, `workspace.status`)."""
         if self.leases is not None:
+            now = time.monotonic()
+            if now - self._leases_at < LEASE_REFRESH_MIN_S:      # дашборд просит список каждые 2 с: сервисы недоступных контейнеров не опрашиваем так часто
+                return
+            self._leases_at = now
             await self.leases.refresh()
 
     def _describe(self, rec: PeerRecord, m: dict, sup: dict, code: str, text: str, tools: list, service: bool) -> dict:

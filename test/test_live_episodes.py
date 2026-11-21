@@ -114,6 +114,37 @@ async def test_fork_writes_into_a_copy_and_leaves_the_live_file_untouched(tmp_pa
     assert r.llm.calls == []                                          # запасной путь не понадобился
 
 
+async def test_fork_retires_only_its_own_unchanged_tasks(tmp_path):
+    from services.tasks import model as tasks_dom
+    from services.tasks.service import TaskService
+    from services.tasks.store import TaskStore
+
+    clock = Clock(T0 + 5000)
+    r = make_runner(tmp_path, one_peak_journal(), LLM(good_summary), clock)
+    tasks = TaskService(TaskStore(":memory:"), clock=clock)
+    obsolete = await tasks.create("Достроить склад в потерянной колонии", workspace="rimworld", origin=tasks_dom.SELF)
+    user = await tasks.create("Сохранить чертёж пользователя", workspace="rimworld")
+    active = await tasks.create("Развить новую колонию", workspace="rimworld", origin=tasks_dom.SELF)
+
+    def reply(prompt):
+        assert obsolete.id in prompt and user.id not in prompt
+        return json.dumps([story(ids_of(prompt)[0]),
+                           {"cancel_task": obsolete.id, "reason": "Сохранение удалено"},
+                           {"cancel_task": user.id, "reason": "Сохранение удалено"}])
+
+    f = Fork(tmp_path, r, reply=reply)
+    f.writer.tasks = tasks
+    (ep,) = await pending_of(r)
+    res = await f.writer.summarize(ep, r.store.events_of(ep["id"]))
+    assert res.ok
+    assert (await tasks.get(obsolete.id)).status == tasks_dom.CANCELLED
+    assert (await tasks.get(user.id)).is_open
+    await tasks.activate(active.id)
+    await tasks.cancel_obsolete(active, "Устаревшее решение")
+    assert (await tasks.get(active.id)).status == tasks_dom.ACTIVE
+    assert await f.writer._review_candidates() == []
+
+
 async def test_fork_with_real_pi_runtime_on_fake_bridge(tmp_path):
     auth = tmp_path / "auth.json"
     auth.write_text("{}", encoding="utf-8")

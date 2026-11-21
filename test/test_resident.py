@@ -112,3 +112,21 @@ def test_actions_block_names_the_agents_own_calls_as_hers():
     tool_trace.note("external", "rimworld.colony_overview")
     block = ContextBuilder.actions_block()
     assert "ты сама" in block and "colony_overview" in block and "вне планировщика" not in block
+
+
+def test_montage_mode_speaks_only_the_final_text_of_the_turn():
+    """В режиме монтажа реплика перед вызовом инструмента (комментарий к работе) не звучит, пустая реплика тоже."""
+    from interfaces.contracts import ToolEvent
+    agent, host, _ = _agent([TextEvent("Запускаю приём."), ToolEvent("call_tool", {"tool_id": "montage.run"}),
+                             TextEvent("Жду."), ToolEvent("call_tool", {"tool_id": "montage.work"}), TextEvent("Ролик готов.")])
+    host.workspace_of = lambda: "montage"
+    asyncio.run(agent.handle_user("сделай ролик"))
+    assert host.said == ["Ролик готов."]
+    agent, host, _ = _agent([TextEvent("Запускаю."), ToolEvent("call_tool", {"tool_id": "montage.run"}), TextEvent("…")])
+    host.workspace_of = lambda: "montage"
+    asyncio.run(agent.handle_user("сделай ролик"))
+    assert host.said == []
+    agent, host, _ = _agent([TextEvent("Запускаю."), ToolEvent("call_tool", {"tool_id": "x"}), TextEvent("Готово.")])
+    host.workspace_of = lambda: "rimworld"
+    asyncio.run(agent.handle_user("привет"))
+    assert host.said == ["Запускаю.", "Готово."]                             # вне монтажа поведение прежнее

@@ -231,6 +231,8 @@ def wire_modules(companion, registry, *, specs=None,
 
     async def announce_launch(peer_id: str, text: str) -> None:
         """Запуск процесса модуля супервизором (правило 14): объявление идёт через очередь внимания, как у инструментов."""
+        if settings.load().get("streamer"):      # в эфире она не говорит о своём устройстве: запуск не объявляется
+            return
         await attention.submit_announce(peer_id, text, data={"source": "supervisor"})
 
     sup = supervisor_mod.Supervisor(specs, token=hub.token, core_url=f"ws://127.0.0.1:{port}{P.WS_PATH}",

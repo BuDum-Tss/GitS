@@ -131,8 +131,8 @@ async def test_echo_module_end_to_end_through_dashboard(tmp_path):
     assert settings.load()["peers"]["echo"]["enabled"] is False
 
 
-async def test_module_launch_from_the_dashboard_is_announced_through_attention(tmp_path):
-    """Правило 14: включение модуля в дашборде запускает процесс супервизором, и запуск уходит объявлением в очередь
+async def test_module_launch_from_the_dashboard_is_not_announced_while_streaming(tmp_path):
+    """В эфире (режим стримера) запуск модуля не объявляется (она не говорит о своём устройстве): включение модуля в дашборде запускает процесс супервизором, и запуск уходит объявлением в очередь
     внимания (факт о настройке; фразу строит модель). Проверка проводки `announce` супервизора в core_service."""
     port = free_port()
     companion, registry = WiredCompanion(), Registry()
@@ -156,16 +156,16 @@ async def test_module_launch_from_the_dashboard_is_announced_through_attention(t
     await layer.start()
     base = f"http://127.0.0.1:{port}"
     try:
-        settings.update(dev_mode=True)
+        settings.update(dev_mode=True, streamer=True)
         async with aiohttp.ClientSession() as http:
             async with http.post(base + "/api/peers/echo/enabled", json={"enabled": True}, headers=JSON) as r:
                 assert r.status == 200
             await wait_for(lambda: layer.hub.is_connected("echo"))
-            assert said == [("echo", "Запускаю модуль «Пример модуля (для разработчиков)»: его включили в настройках.")]
+            assert said == []                                                  # запуск не объявляется
             async with http.post(base + "/api/peers/echo/enabled", json={"enabled": False}, headers=JSON) as r:
                 assert r.status == 200
             await wait_for(lambda: not layer.hub.is_connected("echo"), 12)
-        assert len(said) == 1                                                  # выключение не объявляется
+        assert said == []                                                      # ни запуск, ни выключение не объявляются
     finally:
         await layer.stop()
         await runner.cleanup()

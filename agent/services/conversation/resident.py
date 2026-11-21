@@ -93,7 +93,8 @@ RULES = (
     "ТИШИНА НА РАБОТЕ: пока идёт долгое дело из нескольких вызовов, молчи; не озвучивай пробы и исправления формата. Говори "
     "один раз в начале (если дело долгое) и один раз в конце, с итогом.\n"
     "ПАМЯТЬ: важное о пользователе, о себе и о людях запоминай сама инструментом памяти (find_tools «запомнить»), а когда нужно "
-    "вспомнить, ищи инструментом памяти; отдельной модели, которая запоминает за тебя, нет.\n"
+    "вспомнить, вызови assistant.recall перед ответом, в том числе на вопрос из голосового события. Для вопроса про вчера "
+    "передай days_ago=1. Отсутствие эпизодов означает, что за этот день пока нет записей.\n"
     "СОБЫТИЯ: вход может быть пачкой строк `[ЧЧ:ММ:СС] окружение/вид Отправитель: текст {ответ: инструмент}`; в конце строки указано, чем "
     "отвечать: вызови этот инструмент (call_tool), если ответ нужен; `dashboard.text` и `текстом` значат обычный текст хода без вызова (для голосовых событий он прозвучит в голосовых каналах, для сообщений Telegram и Discord уйдёт текстом в тот же чат, голосом не звучит; пиши тогда как в переписке). Метка ⟲ "
     "в начале строки: событие уже попадало в прерванный ход и вернулось. Строка `(пропущено: …)` это сводка того, что случилось, пока "
@@ -407,17 +408,31 @@ class ResidentAgent:
         if self._note:
             prompt, self._note = f"=== ЗАМЕТКА ===\n{self._note}\n\n{prompt}", ""
         latency_trace.mark("route")                        # запрос собран, ход ушёл в среду (трасса задержки, ТЗ 24)
+        # режим монтажа: реплика между вызовами инструментов это комментарий к работе, его не озвучиваем; говорит только
+        # заключительный текст хода (и не на рабочий тик)
+        terse = self._terse_mode(source)
+        pending: TextEvent | None = None
+
+        async def speak(ev: TextEvent) -> None:
+            spoken = h._declutter(strip_tags(ev.text))
+            if terse and not spoken.strip(" .…-—"):
+                return                                     # пустая реплика («…», «.»): сказать нечего
+            await h.say(spoken, first_sticker(ev.text))    # тег реакции -> стикер питомца
+            if spoken:                                     # сказанное это действие с эффектом: прерванный ход его не повторяет
+                self._record_action("say", True, _one_line(spoken), "done")
+
         async for event in runtime.run(prompt):
             if isinstance(event, TextEvent):
                 latency_trace.mark("llm_first_token")      # среда отдаёт сообщение целиком: первый текст и есть первое предложение
                 latency_trace.mark("first_sentence_ready")
                 if self._source == "event" and self._quiet():
                     continue                               # «не отвлекать»: событие не повод говорить
-                spoken = h._declutter(strip_tags(event.text))
-                await h.say(spoken, first_sticker(event.text))   # тег реакции -> стикер питомца
-                if spoken:                                 # сказанное это действие с эффектом: прерванный ход его не повторяет
-                    self._record_action("say", True, _one_line(spoken), "done")
+                if terse:
+                    pending = event                        # скажем в конце хода, если дальше не пойдут вызовы инструментов
+                    continue
+                await speak(event)
             elif isinstance(event, ToolEvent):
+                pending = None                             # за репликой пошла работа: это был комментарий (в режиме монтажа не звучит)
                 tool_id = str(event.args.get("tool_id") or event.args.get("query") or "")[:120]   # для find_tools в журнале виден запрос
                 logger.info(f"[агент] {event.name} {tool_id}".rstrip())
             elif isinstance(event, EndEvent):
@@ -427,6 +442,15 @@ class ResidentAgent:
                     logger.warning("Лимит подписки на pi: агент отдыхает")
                 else:
                     logger.error(f"Резидентный агент: {event.error}")
+        if pending is not None:
+            await speak(pending)
+
+    def _terse_mode(self, source: str) -> bool:
+        """Режим монтажа: говорить только заключительным текстом хода, реплики-комментарии между вызовами инструментов не звучат."""
+        try:
+            return getattr(self._h, "workspace_of", lambda: "assistant")() == "montage"
+        except Exception:
+            return False
 
     @staticmethod
     def _quiet() -> bool:

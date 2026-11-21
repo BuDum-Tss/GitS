@@ -99,6 +99,10 @@ class EpisodeRecall:
         eps = await asyncio.to_thread(self.store.select, limit=limit, offset=offset, status=status, day=day, kind=kind)
         return [brief(e) for e in eps]
 
+    async def for_day(self, day: str, limit: int = 12) -> list[dict]:
+        episodes = await asyncio.to_thread(self.store.episodes_of_day, day)
+        return [brief(ep) for ep in episodes if ep["kind"] == LIFE][-limit:]
+
     async def recent_tail(self, n: int = 20) -> list[dict]:
         """Хвост журнала после последней нарезки: события, которые ещё не стали эпизодом (рабочая память)."""
         if self.source is None:

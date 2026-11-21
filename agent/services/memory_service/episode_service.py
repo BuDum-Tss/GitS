@@ -100,7 +100,7 @@ class EpisodeService:
         base = EpisodeSummarizer(llm=llm, prompt=prompts.episode, allow=allow, settings=self.settings, heavy=self._heavy)
         summarizer = ForkedEpisodeWriter(                         # пишет форк её сессии; запасной путь: heavy или fast, строгая проверка
             fallback=base, session_path=lambda: Path(self.companion._dir) / SESSION_FILE, system=self._system_prompt,
-            busy=self._live_busy, settings=self.settings, allow=allow)
+            busy=self._live_busy, settings=self.settings, allow=allow, tasks=getattr(self.companion, "tasks", None))
         days = DayWriter(llm=llm, store=store, search=search, digest_prompt=prompts.digest, diary_prompt=prompts.diary,
                          allow=allow, character=lambda: character.active().id)
         runner = SleepRunner(selector=selector, summarizer=summarizer, store=store, search=search,

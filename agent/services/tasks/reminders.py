@@ -45,6 +45,23 @@ class TaskReminders:
         t = self.repo.get(reminder_id)
         return to_reminder(t) if t is not None and t.get("kind") == dom.KIND_REMINDER else None
 
+    def update(self, reminder_id: str, *, due: float | None = None, text: str | None = None,
+               priority: float | None = None) -> dict | None:
+        task = self.repo.get(reminder_id)
+        if task is None or task["kind"] != dom.KIND_REMINDER or task["status"] != dom.PENDING:
+            return None
+        if due is not None:
+            task["due"] = due
+        if text is not None:
+            task["goal"] = text[:500]
+        if priority is not None:
+            meta = task.get("meta") or {}
+            task["meta"] = {**meta, "source": {**(meta.get("source") or {}), "priority": priority}}
+        task["updated"] = self._clock()
+        self.repo.save(task)
+        self._emit("updated", task, due=task["due"])
+        return to_reminder(task)
+
     def pending(self) -> list[dict]:
         rows = self.repo.list(kind=dom.KIND_REMINDER, statuses=(dom.PENDING,))
         return sorted((to_reminder(r) for r in rows if r.get("due") is not None), key=lambda r: r["due"])

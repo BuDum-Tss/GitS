@@ -375,21 +375,60 @@ def test_event_of_item_keeps_origin_and_data(tmp_path):
     assert e.origin == "self" and e.depth == 2 and e.is_self
 
 
-async def test_remind_self_tool_sets_a_reminder(tmp_path):
+@pytest.mark.parametrize("backend", ["json", "sqlite"])
+async def test_agent_can_schedule_list_and_edit_reminder(tmp_path, backend):
     from services.memory_service.user import UserMemory
-    added = []
+    from services.tasks.reminders import TaskReminders
+    from services.tasks.store import TaskStore
 
-    class Timer:
-        async def add(self, due, text, **kw):
-            added.append((due, text))
-
-    companion = SimpleNamespace(impulses=SimpleNamespace(timer=Timer()))
+    clock, sink = Clock(), Sink()
+    reminders = store(tmp_path, clock) if backend == "json" else TaskReminders(TaskStore(":memory:"), clock=clock)
+    timer = ImpulseTimer(reminders, sink, clock=clock)
+    companion = SimpleNamespace(impulses=SimpleNamespace(timer=timer))
     reg = Registry()
     builtin.register(reg, companion, UserMemory(str(tmp_path)))
-    tool = reg.get("assistant.remind_self")
-    assert "через 30 мин" in await tool.call({"text": "проверить почту", "in_minutes": 30})
-    assert added[0][1] == "проверить почту"
+    create = reg.get("assistant.remind_self").call
+    list_pending = reg.get("assistant.reminders").call
+    update = reg.get("assistant.update_reminder").call
+
+    result = await create({"text": "проверить почту", "in_minutes": 30})
+    reminder_id = (await timer.pending())[0]["id"]
+    assert reminder_id in result and "проверить почту" in await list_pending({})
+    await update({"id": reminder_id, "text": "проверить сборку", "in_minutes": 60, "priority": "IMPORTANT"})
+    assert reminder_id in await list_pending({}) and "проверить сборку" in await list_pending({})
+    clock.t += 30 * 60
+    assert await timer.fire_due() == 0
+    clock.t += 30 * 60
+    assert await timer.fire_due() == 1
+    assert sink.events[0]["kind"] == "self.reminder"
+    assert "проверить сборку" in sink.events[0]["text"]
+    from services.attention_v2.event import IMPORTANT
+    assert sink.events[0]["data"]["priority"] == IMPORTANT
+
     with pytest.raises(ToolError):
-        await tool.call({"text": "", "in_minutes": 5})
+        await update({"id": reminder_id, "text": "уже поздно"})
     with pytest.raises(ToolError):
-        await tool.call({"text": "x", "in_minutes": 0})
+        await create({"text": "", "in_minutes": 5})
+    with pytest.raises(ToolError):
+        await create({"text": "x", "in_minutes": 0})
+
+
+async def test_agent_recall_lists_episodes_for_requested_day(tmp_path):
+    from datetime import date, timedelta
+
+    from services.memory_service.episode_recall import EpisodeRecall
+    from services.memory_service.episode_store import EpisodeStore
+    from services.memory_service.user import UserMemory
+
+    memory = EpisodeStore(tmp_path / "episodes.db")
+    yesterday = date.today() - timedelta(days=1)
+    entry = {"t_start": NOW, "t_end": NOW + 1, "first_id": 1, "last_id": 1}
+    memory.add_episode({**entry, "id": "yesterday", "day": yesterday.isoformat()}, [])
+    memory.update("yesterday", title="Колония", text="Мы строили склад", status="embedded")
+    memory.add_episode({**entry, "id": "today", "day": date.today().isoformat()}, [])
+    memory.update("today", title="Другое дело", text="Мы красили стены", status="embedded")
+    companion = SimpleNamespace(episodes=SimpleNamespace(recall=EpisodeRecall(store=memory, search=None)))
+    reg = Registry()
+    builtin.register(reg, companion, UserMemory(str(tmp_path)))
+    result = await reg.get("assistant.recall").call({"query": "чем мы занимались вчера", "days_ago": 1})
+    assert "строили склад" in result and "красили стены" not in result

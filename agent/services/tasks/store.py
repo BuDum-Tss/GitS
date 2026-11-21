@@ -101,6 +101,13 @@ class TaskStore:
         db.execute("DELETE FROM tasks WHERE status IN ('done','failed','cancelled') AND id NOT IN "
                    "(SELECT id FROM tasks WHERE status IN ('done','failed','cancelled') ORDER BY updated DESC LIMIT ?)", (KEEP_CLOSED,))
 
+    def save_review(self, snapshot: dict, task: dict, open_statuses: tuple[str, ...]) -> bool:
+        with self._lock:
+            if self.get(snapshot["id"]) != snapshot or self.list(parent=snapshot["id"], statuses=open_statuses):
+                return False
+            self.save(task)
+            return True
+
     def get(self, task_id: str) -> dict | None:
         with self._lock:
             r = self._conn().execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()

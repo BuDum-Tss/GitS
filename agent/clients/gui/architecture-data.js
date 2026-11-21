@@ -29,6 +29,15 @@ window.ARCH_DATA = {
      "now": "workspaces/desktop"
     },
     {
+     "id": "kt",
+     "t": "ktalk",
+     "tag": "I",
+     "new": false,
+     "do": "гостевой вход через Chromium, отдельные входящие дорожки WebRTC и ответы через виртуальный микрофон",
+     "out": "voicechat.utterance",
+     "now": "workspaces/ktalk"
+    },
+    {
      "id": "tm",
      "t": "telemost",
      "tag": "I",
@@ -772,6 +781,12 @@ window.ARCH_DATA = {
    "готовое видео"
   ],
   [
+   "kt",
+   "hub",
+   "flow",
+   "инструменты, панель и отдельные потоки говорящих через /voice/ws"
+  ],
+  [
    "tm",
    "hub",
    "flow",
@@ -1340,6 +1355,12 @@ window.ARCH_DATA = {
    "norm",
    "flow",
    "episode.summary"
+  ],
+  [
+   "sleep",
+   "tsvc",
+   "flow",
+   "ревизия своих задач"
   ],
   [
    "erecall",
