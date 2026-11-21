@@ -267,6 +267,22 @@ namespace AgentBridge
             var target = CellOfCommand(cmd);
             if (target.HasValue && target.Value.InBounds(map))
             {
+                // пачка предметов: один показ на всю команду, кадр по центру прямоугольника (приближение/отдаление под его размер)
+                var listId = cmd["thing_id"]?.Value<string>();
+                CellRect? box = null;
+                if (listId != null && listId.IndexOf(',') >= 0 && ThingsBounds(listId, out var tb)) box = tb;
+                if (box.HasValue)
+                {
+                    var view = Find.CameraDriver.CurrentViewRect.ContractedBy(4);
+                    bool fits = view.Contains(new IntVec3(box.Value.minX, 0, box.Value.minZ)) && view.Contains(new IntVec3(box.Value.maxX, 0, box.Value.maxZ));
+                    if (!CameraDirector.Active && !fits)
+                    {
+                        var waitBox = PanTime(target.Value);
+                        FocusCell(target.Value, SizeFor(box.Value), true);
+                        return Mathf.Max(waitBox, CursorGlide(new Vector2(UI.screenWidth / 2f, UI.screenHeight / 2f)));
+                    }
+                    return CursorGlide(UiOfWorld(target.Value.ToVector3Shifted())) + 0.1f;
+                }
                 if (!CameraDirector.Active && !Find.CameraDriver.CurrentViewRect.ContractedBy(4).Contains(target.Value))
                 {
                     var wait = PanTime(target.Value);
@@ -332,6 +348,35 @@ namespace AgentBridge
             });
         }
 
+        /// Ограничивающий прямоугольник найденных предметов из списка id через запятую; неизвестные id пропускаются.
+        private static bool ThingsBounds(string idList, out CellRect rect)
+        {
+            rect = default(CellRect);
+            var map = Find.CurrentMap;
+            if (map == null) return false;
+            var ids = new HashSet<string>(idList.Split(',').Select(s => s.Trim()).Where(s => s.Length > 0));
+            int minX = int.MaxValue, minZ = int.MaxValue, maxX = int.MinValue, maxZ = int.MinValue;
+            foreach (var t in map.listerThings.AllThings)
+            {
+                if (!ids.Contains(t.ThingID) || !t.Spawned) continue;
+                var p = t.Position;
+                if (p.x < minX) minX = p.x;
+                if (p.x > maxX) maxX = p.x;
+                if (p.z < minZ) minZ = p.z;
+                if (p.z > maxZ) maxZ = p.z;
+            }
+            if (minX == int.MaxValue) return false;
+            rect = CellRect.FromLimits(minX, minZ, maxX, maxZ);
+            return true;
+        }
+
+        /// Размер кадра (RootSize), в который помещается прямоугольник: не меньше обычных 16, не больше 60.
+        private static float SizeFor(CellRect r)
+        {
+            float extent = Mathf.Max(r.Height, r.Width / 1.6f);     // кадр шире, чем выше
+            return Mathf.Clamp(extent / 2f + 4f, 16f, 60f);
+        }
+
         private static IntVec3? CellOfCommand(JObject cmd)
         {
             if (cmd["x"] != null && cmd["z"] != null) return new IntVec3(cmd["x"].Value<int>(), 0, cmd["z"].Value<int>());
@@ -343,6 +388,8 @@ namespace AgentBridge
             var thingId = cmd["thing_id"]?.Value<string>() ?? cmd["workbench_id"]?.Value<string>();
             if (thingId != null && Find.CurrentMap != null)
             {
+                if (thingId.IndexOf(',') >= 0)       // список id (forbid/unforbid пачкой): центр прямоугольника найденных
+                    return ThingsBounds(thingId, out var bb) ? (IntVec3?)bb.CenterCell : null;
                 var thing = Find.CurrentMap.listerThings.AllThings.FirstOrDefault(t => t.ThingID == thingId);
                 if (thing != null) return thing.Position;
             }

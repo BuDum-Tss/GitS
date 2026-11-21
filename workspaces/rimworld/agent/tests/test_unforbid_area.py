@@ -7,7 +7,7 @@ import rimworld_mcp as m
 
 
 class FakeMod:
-    """Поддельный мод: предметы на карте, get_items (80 ближайших к точке) и unforbid (список id, обрыв на неизвестном)."""
+    """Поддельный мод: предметы на карте, get_items (80 ближайших к точке) и unforbid (список id: находит все, на неизвестных в конце ошибка)."""
 
     def __init__(self, items):
         self.items = {it["id"]: dict(it) for it in items}
@@ -26,11 +26,13 @@ class FakeMod:
     def post(self, cmd):
         assert cmd["type"] == "unforbid"
         self.posts.append(cmd["thing_id"])
+        missing = []
         for tid in cmd["thing_id"].split(","):
             if tid not in self.items:
-                return f"ERROR: Thing not found: {tid}"
+                missing.append(tid)
+                continue
             self.items[tid]["forbidden"] = False
-        return "OK: unforbid"
+        return f"ERROR: Thing not found: {', '.join(missing)}" if missing else "OK: unforbid"
 
 
 def item(i, x, z, label="wood", kind="material", forbidden=True, count=10):
@@ -65,10 +67,10 @@ def test_category_filters(mod):
     assert m.unforbid_area(0, 0, 30, 30, category="Material").startswith("Разрешено 1")     # регистр не важен
 
 
-def test_batches_of_forty(mod):
+def test_batches_of_eighty(mod):
     fake = mod([item(i, i % 30, i // 30) for i in range(100)])
     out = m.unforbid_area(0, 0, 40, 40)
-    assert [len(p.split(",")) for p in fake.posts] == [40, 40, 20] and "Разрешено 100" in out
+    assert [len(p.split(",")) for p in fake.posts] == [80, 20] and "Разрешено 100" in out
     assert "возможно" not in out                                # первая выдача упёрлась в 80, но второй раунд добрал остальное
 
 

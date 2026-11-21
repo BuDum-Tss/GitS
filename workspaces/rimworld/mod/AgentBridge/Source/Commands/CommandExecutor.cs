@@ -746,13 +746,16 @@ namespace AgentBridge
         private static void SetForbidden(JObject cmd, bool forbidden)
         {
             // thing_id: один id или несколько через запятую (брёвен и камней на карте много, по одному разрешать долго)
+            // Пачка не обрывается на неизвестном id: обрабатываем все найденные, ненайденные перечисляем в конце одной ошибкой.
+            var missing = new List<string>();
             foreach (var thingId in cmd["thing_id"].Value<string>().Split(',').Select(s => s.Trim()).Where(s => s.Length > 0))
             {
-                var thing = Find.CurrentMap.spawnedThings
-                    .FirstOrDefault(t => t.ThingID == thingId)
-                    ?? throw new Exception($"Thing not found: {thingId}");
+                var thing = Find.CurrentMap.spawnedThings.FirstOrDefault(t => t.ThingID == thingId);
+                if (thing == null) { missing.Add(thingId); continue; }
                 thing.SetForbidden(forbidden);
             }
+            if (missing.Count == 1) throw new Exception($"Thing not found: {missing[0]}");
+            if (missing.Count > 1) throw new Exception($"Thing not found: {string.Join(", ", missing)}");
         }
 
         // ── Исследования ───────────────────────────────────────────────────────

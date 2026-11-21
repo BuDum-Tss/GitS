@@ -1294,14 +1294,13 @@ def forbid_item(thing_id: str) -> str:
 
 @mcp.tool()
 def unforbid_item(thing_id: str) -> str:
-    """Разрешить предмет: колонисты начнут им пользоваться (брёвна и камень для стройки, еду, оружие). thing_id: один id или
-    несколько через запятую (ids берутся из get_items, category=forbidden или material)."""
+    """Разрешить предмет: колонисты начнут им пользоваться (брёвна и камень для стройки, еду, оружие). Один предмет: его id. Несколько: все id одним вызовом через запятую (или unforbid_area для области), не по одному: игра снимает запрет со всех разом, одним показом. ids берутся из get_items (category=forbidden или material)."""
     return _post({"type": "unforbid", "thing_id": thing_id})
 
 
 AREA_MAX_SIDE = 300              # сторона области в клетках: больше карта почти не бывает, а запрос тяжелее пользы
 ITEMS_LIMIT = 80                 # мод отдаёт в get_items не больше 80 предметов (Math.Min(max_results, 80) в CombatCommands.cs)
-UNFORBID_BATCH = 40              # id в одной команде unforbid: мод обрабатывает их по очереди, но на неизвестном id обрывается
+UNFORBID_BATCH = ITEMS_LIMIT     # id в одной команде unforbid: раунд (до 80 предметов) снимается разом, одним показом; мод обрабатывает все найденные id и в конце сообщает о ненайденных
 AREA_ROUNDS = 8                  # сколько раз перезапрашивать список, если ответ упёрся в лимит (разрешённые из выдачи уходят)
 AREA_CATEGORIES = ("material", "food", "weapon", "apparel", "medicine")
 
@@ -1323,7 +1322,7 @@ def _area_summary(groups: dict[str, int], limit: int = 8) -> str:
 
 @mcp.tool()
 def unforbid_area(x1: int, z1: int, x2: int, z2: int, category: str = "") -> str:
-    """Разрешить всё запрещённое в прямоугольнике (как выделение мышью): x1,z1 и x2,z2 углы в клетках карты (как x,z у предметов), порядок любой, границы входят, не больше 300x300. category (необязательно): material/food/weapon/apparel/medicine. Пример: x1=40,z1=50,x2=70,z2=80."""
+    """Разрешить всё запрещённое в прямоугольнике (как выделение мышью, все предметы разом одной анимацией): x1,z1 и x2,z2 углы в клетках карты (как x,z у предметов), порядок любой, границы входят, не больше 300x300. category (необязательно): material/food/weapon/apparel/medicine. Пример: x1=40,z1=50,x2=70,z2=80."""
     corners = {"x1": x1, "z1": z1, "x2": x2, "z2": z2}
     for name, v in corners.items():
         if isinstance(v, bool) or not isinstance(v, int):
@@ -1373,7 +1372,7 @@ def unforbid_area(x1: int, z1: int, x2: int, z2: int, category: str = "") -> str
             batch = pool[i:i + UNFORBID_BATCH]
             if _post({"type": "unforbid", "thing_id": ",".join(it["id"] for it in batch)}).startswith("OK"):
                 results = [(it, "") for it in batch]
-            else:                    # неизвестный id обрывает всю пачку: добиваем по одному, чтобы найти виновника
+            else:                    # мод разрешил найденные, но сообщил о ненайденных: добиваем по одному, чтобы найти виновников
                 results = []
                 for it in batch:
                     r = _post({"type": "unforbid", "thing_id": it["id"]})
