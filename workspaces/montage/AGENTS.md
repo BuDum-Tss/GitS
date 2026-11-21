@@ -48,12 +48,13 @@ Python-часть (`agent/`) ведёт рабочие единицы (роли�
 | `agent/manifest.py` | манифест: инструменты `skills`, `files`, `run`, `work`, `site`, `resources`, блок `workspace` (brief, навыки, область, команды, сайт), настройки | готов |
 | `agent/area.py` | песочница области (SDK `Sandbox` с точками монтирования `template`, `resources`, `skills`), `MontageTools`, поиск навыков | готов |
 | `agent/manager.py` | рабочие единицы (`work`), запуск команд и фоновые операции (`job.update`, `montage.done`/`failed`), `workspace.enter`/`afk`/`exit`, сайт, `state` (MON-33) | готов |
-| `agent/commands.py` | команды `intake`, `transcribe`, `voiceover`, `render`, `still`, `compositions`, `check`, `final` (финал отказывает без свежей успешной `check`) | готов |
+| `agent/commands.py` | команды `intake`, `scan`, `moments`, `speech`, `find`, `peek`, `clip`, `transcribe`, `voiceover`, `render`, `still`, `compositions`, `check`, `final` (финал отказывает без свежей успешной `check`) | готов |
 | `agent/jobs.py`, `agent/layout.py`, `agent/workspace.py` | `jobs/<id>/` (job.json, log.jsonl, уборка; состояния new, working, waiting_user, done, failed, cancelled), пути репозитория, рабочая копия шаблона | готовы |
 | `agent/intake.py`, `agent/media.py`, `agent/render.py` | проверка и перекодирование файлов, ffmpeg/ffprobe, Remotion (tsc, проверка плана, still, compositions, render) | готовы |
 | `agent/plan_tools.py` | озвучка реплик (`core.tts`), подгонка закадра, текстовый вид истории и плана для сайта | готов |
 | `agent/plan_schema.py` | проверка `plan.json` и `story.json`; виды вставок берутся из `template/plan.schema.json` | готов |
 | `agent/transcribe.py`, `agent/srt.py` | слова из журнала речи (MON-26a), файл .srt для роликов без вжигаемых субтитров; живая речь (распознавание слов) отложена | готовы |
+| `agent/moments.py`, `agent/speech.py`, `agent/stt_client.py` | поиск моментов в длинных исходниках: ранжирование по звуку, смене кадра и речи, нарезка речи, поиск по расшифровке, клиент контейнера stt (чистые функции отдельно от ffmpeg) | готовы |
 | `agent/qa.py` | технические проверки и проверки ремесла, отчёт `qa/report.md` (вызывает `check`) | готов |
 | `agent/studio.py`, `agent/montage_site.py` | Remotion Studio по единице (ТЗ 15, TAB-4; кнопка на сайте) и сайт монтажа: ролики, сценарий, монтажный лист, файлы; поднимается при входе, работает в AFK |
 | `agent/core_api.py` | всё, что команды берут у ядра (`core.tts`, ...), интерфейс для заглушек | готов |

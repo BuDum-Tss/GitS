@@ -52,6 +52,16 @@ BRIEF = ("Сначала montage.skills(name=montage-regulation, file=START.md).
 # разрешённые команды (`run`): исчерпывающий список, оболочки нет; первый аргумент каждой это id единицы (ролика)
 COMMANDS = [
     WorkspaceCommand("intake", "Приём исходников единицы: копирование, проверка, перекодирование", background=True, timeout_s=3600),
+    WorkspaceCommand("scan", "Анализ длинных видео: громкость, смены кадра, тишина, речь (stt); кэш analysis/, моменты analysis/moments.json "
+                             "(аргумент: имя видео, без него все)", background=True, timeout_s=7200),
+    WorkspaceCommand("moments", "Лучшие моменты исходников списком (аргументы: источник, сколько, от_мс, до_мс; сначала run scan)",
+                     timeout_s=60),
+    WorkspaceCommand("speech", "Расшифровка речи по времени (аргументы: источник, от_мс, до_мс; сначала run scan)", timeout_s=60),
+    WorkspaceCommand("find", "Поиск слова или фразы в расшифровке: время, строка, in/out (аргументы: фраза, источник)", timeout_s=60),
+    WorkspaceCommand("peek", "Три кадра вокруг момента и текст на них, громкость, речь рядом (аргументы: источник, время_мс)",
+                     timeout_s=180),
+    WorkspaceCommand("clip", "Клип 1–120 с из исходника для просмотра на сайте: clips/ (аргументы: источник, in_ms, out_ms)",
+                     timeout_s=600),
     WorkspaceCommand("transcribe", "Слова для субтитров (журнал речи забега)", timeout_s=600),
     WorkspaceCommand("compose", "Монтажный лист из сцен (work op=scenes): озвучка фраз и раскладка по времени, пишет plan.json",
                      background=True, timeout_s=1800),
@@ -64,7 +74,7 @@ COMMANDS = [
                      irreversible=True),
 ]
 
-_RUN_NOTE = " Первый аргумент: id единицы (инструмент work); у still вторым номер кадра."
+_RUN_NOTE = " Первый аргумент: id единицы (work); дальше по команде (still: кадр; scan, moments, speech, find, peek, clip: источник и числа)."
 
 
 def _standard_tools() -> list[dict]:
@@ -73,7 +83,9 @@ def _standard_tools() -> list[dict]:
     for t in tools:
         if t["name"] == "run":
             t["description"] += _RUN_NOTE
-            t["params"]["args"]["description"] = "аргументы: id единицы, затем (для still) номер кадра"
+            t["params"]["args"]["description"] = ("аргументы: id единицы, затем: still кадр; scan [источник]; moments [источник сколько от_мс до_мс]; speech [источник от_мс до_мс]; "
+            "find фраза [источник]; peek источник время_мс; clip источник in_ms out_ms. Источник это имя видео из sources/info.json; "
+            "«-» вместо необязательного аргумента значит «по умолчанию»")
         if t["name"] == "files":
             t["description"] = ("Чтение файлов и запись идеи, сценария и plan.json. В плане время в миллисекундах: "
                                 "20 секунд = duration_ms: 20000. Перед записью прочитай пример из template/demo: "

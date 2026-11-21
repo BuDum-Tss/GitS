@@ -1,0 +1,14 @@
+{
+  "id": "i4", "at_ms": 41698, "dur_ms": 4750, "beat": "act1", "kind": "custom",
+  "props": {
+    "component": "TitleSplit",
+    "lines": [
+      {"text": "Этап", "size": 130, "weight": 300},
+      {"text": "Кровать", "size": 200, "weight": 700},
+      {"text": "как концепция", "size": 118, "weight": 300}
+    ],
+    "start_ms": 350, "cps": 16, "gap_ms": 650, "sign_at_ms": 2750,
+    "typing_src": "typing/stage1.wav",
+    "sign": {"big": "01", "small": "Начало наблюдения", "done": 1, "total": 5, "active": ["build", "sleep"], "title": " "}
+  }
+}

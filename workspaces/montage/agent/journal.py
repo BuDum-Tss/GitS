@@ -26,8 +26,10 @@ PLAN_TIMEOUT_S = 5.0
 DEFAULT_STAGE = "подготовка"
 WAITING_TEXT = "ждёт ответа пользователя"
 STAGE_OF_COMMAND = {"intake": "приём исходников", "transcribe": "расшифровка", "voiceover": "озвучка", "render": "сборка",
-                    "still": "сборка", "compositions": "сборка", "check": "проверка", "final": "финал"}
-STEP_PREFIX = {"intake": "Приём", "voiceover": "Озвучка", "check": "Проверка"}     # у остальных тексты шагов уже полные
+                    "still": "сборка", "compositions": "сборка", "check": "проверка", "final": "финал",
+                    "scan": "поиск моментов", "moments": "подбор кусков", "speech": "подбор кусков", "find": "подбор кусков",
+                    "peek": "подбор кусков", "clip": "подбор кусков"}
+STEP_PREFIX = {"intake": "Приём", "scan": "Поиск моментов", "voiceover": "Озвучка", "check": "Проверка"}     # у остальных тексты шагов уже полные
 DONE_WORDS = ("done", "completed", "complete", "finished")
 ACTIVE_WORDS = ("active", "in_progress", "doing", "running", "current")
 
@@ -294,7 +296,9 @@ class Journal:
         """Итог операции: запись «готово» или «не удалось», строка единицы в списке задач обновляется сразу."""
         self._seen.pop(run.run_id, None)
         title = {"intake": "Приём исходников", "transcribe": "Расшифровка", "voiceover": "Озвучка", "render": "Рендер черновика",
-                 "still": "Кадр", "compositions": "Композиции", "check": "Проверка", "final": "Финал"}.get(run.command, run.command)
+                 "still": "Кадр", "compositions": "Композиции", "check": "Проверка", "final": "Финал",
+                 "scan": "Поиск моментов", "moments": "Список моментов", "speech": "Расшифровка речи", "find": "Поиск по речи",
+                 "peek": "Кадры момента", "clip": "Клип"}.get(run.command, run.command)
         word = {"done": "готово", "failed": "не удалось", "cancelled": "отменено"}.get(status, status)
         detail = text or (error or {}).get("message") or ""
         rec = action_record("run", run.command, f"{run.command} {job.job_id}", status == "done",

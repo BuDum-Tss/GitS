@@ -245,7 +245,7 @@ def list_files(root: Path, limit: int = 2000, *, technical: bool = False) -> lis
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
         folder = Path(base).relative_to(root)
         if not technical and folder == Path("."):
-            dirs[:] = [d for d in dirs if d in {"plan", "sources", "renders", "transcript", "qa", "work"}]
+            dirs[:] = [d for d in dirs if d in {"plan", "sources", "renders", "clips", "transcript", "qa", "work"}]
             continue
         if not technical and folder == Path("work"):
             dirs[:] = [d for d in dirs if d == "public"]

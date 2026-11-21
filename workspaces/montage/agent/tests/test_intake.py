@@ -86,3 +86,8 @@ def test_audio_timeline_filter_pads_gaps_and_trims_overlaps():
     assert label == "[a]" and "anullsrc" in text and "apad=whole_dur=30.000" in text and "atrim=end=30.000" in text
     assert "atrim=start=1.000" in text                                           # третий кусок начинается внахлёст на 1 секунду
     assert text.count("concat=n=") == 1 and "concat=n=5" in text                 # тишина, кусок, тишина, кусок, кусок
+
+
+def test_parse_ffmpeg_time():
+    assert media.parse_ffmpeg_time("frame= 90 fps=30 q=28.0 size=1024kB time=00:01:02.50 bitrate=1x speed=2x") == 62.5
+    assert media.parse_ffmpeg_time("Stream mapping:") is None

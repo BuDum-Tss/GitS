@@ -121,7 +121,16 @@ async def run_intake(job_dir: Path, request: dict, progress: Progress | None = N
                     if use_audio:
                         track = await _assemble_track(job_dir, f, info, audio_files, recording)
                     tmp = dst.with_suffix(".part.mp4")
-                    await media.transcode_h264(f, tmp, fps=30 if kind == "rimworld_run" else None, audio=track)
+                    loop = asyncio.get_running_loop()
+                    last = [-1.0]
+
+                    def on_pct(frac: float, k=k, name=f.name, last=last, loop=loop) -> None:        # не чаще раза на 2% (статус видит и агент, и пользователь)
+                        if progress and frac - last[0] >= 0.02:
+                            last[0] = frac
+                            loop.create_task(progress((k + frac) / max(1, n), f"перекодирую {name} в H.264: {int(frac * 100)}%"))
+
+                    await media.transcode_h264(f, tmp, fps=30 if kind == "rimworld_run" else None, audio=track,
+                                               total_s=info.duration_s, on_progress=on_pct)
                     tmp.replace(dst)
                     if track is not None:
                         track.unlink(missing_ok=True)

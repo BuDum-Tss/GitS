@@ -514,13 +514,16 @@ class QAService:
             return None
         import asyncio
 
+        engines: list = []                                  # движок открывается один раз: загрузка модели дороже самого кадра
+
         def run(path: Path) -> str:
-            try:
-                from rapidocr_onnxruntime import RapidOCR
-            except ImportError:
-                from rapidocr import RapidOCR
-            engine = RapidOCR()
-            result = engine(str(path))
+            if not engines:
+                try:
+                    from rapidocr_onnxruntime import RapidOCR
+                except ImportError:
+                    from rapidocr import RapidOCR
+                engines.append(RapidOCR())
+            result = engines[0](str(path))
             rows = result[0] if isinstance(result, tuple) else getattr(result, "txts", None)
             if rows and isinstance(rows, (list, tuple)) and rows and isinstance(rows[0], (list, tuple)):
                 return " ".join(str(r[1]) for r in rows)

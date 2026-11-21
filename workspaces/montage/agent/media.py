@@ -217,9 +217,20 @@ def needs_transcode(info: MediaInfo) -> bool:
     return info.vcodec != "h264" or info.pix_fmt not in ("yuv420p", "yuvj420p", "")
 
 
-async def transcode_h264(src: Path, dst: Path, *, fps: int | None = None, audio: Path | None = None) -> None:
+_TIME = re.compile(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)")
+
+
+def parse_ffmpeg_time(line: str) -> float | None:
+    """Секунды из строки прогресса ffmpeg (`... time=00:01:02.50 ...`); None, если в строке прогресса нет."""
+    m = _TIME.search(line)
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else None
+
+
+async def transcode_h264(src: Path, dst: Path, *, fps: int | None = None, audio: Path | None = None,
+                         total_s: float = 0.0, on_progress=None) -> None:
     """`ffmpeg -c:v libx264 -crf 18 -c:a aac` (команда intake). `fps` приводит запись с переменной частотой кадров (захват
-    окна пишет кадр только при изменении картинки) к постоянной; `audio` подмешивает готовую дорожку."""
+    окна пишет кадр только при изменении картинки) к постоянной; `audio` подмешивает готовую дорожку. `on_progress(доля)`
+    вызывается по строкам прогресса ffmpeg, если известна длительность `total_s`."""
     args = ["-i", str(src)]
     if audio is not None:
         args += ["-i", str(audio), "-map", "0:v:0", "-map", "1:a:0"]
@@ -227,7 +238,13 @@ async def transcode_h264(src: Path, dst: Path, *, fps: int | None = None, audio:
         args += ["-vf", f"fps={fps}"]
     args += ["-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
              "-movflags", "+faststart", str(dst)]
-    res = await ffmpeg(args)
+    on_line = None
+    if on_progress is not None and total_s > 0:
+        def on_line(line: str) -> None:
+            t = parse_ffmpeg_time(line)
+            if t is not None:
+                on_progress(min(1.0, t / total_s))
+    res = await ffmpeg(args, on_line=on_line)
     if not res.ok or not dst.is_file():
         raise MediaError(f"не удалось перекодировать {src.name} в H.264: {_tail(res.err)}")
 
@@ -326,3 +343,107 @@ async def assemble_audio(parts: list[tuple[Path, float]], total_s: float, dst: P
     res = await ffmpeg([*inputs, "-filter_complex", ";".join(chains), "-map", label, "-c:a", "pcm_s16le", str(dst)])
     if not res.ok or not dst.is_file():
         raise MediaError(f"не удалось собрать звук записи: {_tail(res.err)}")
+
+
+# ---------------------------------------------------------------------------------------------------- поиск моментов
+
+_PTS = re.compile(r"pts_time:(-?[\d.]+)")
+_SIL_START = re.compile(r"silence_start: (-?[\d.]+)")
+_SIL_END = re.compile(r"silence_end: (-?[\d.]+)")
+SCAN_FPS, SCAN_WIDTH, SCAN_AUDIO_HZ = 2, 160, 8000      # анализ идёт по уменьшенной копии: 31 минута 1080p считается за один проход
+
+
+def parse_scan_output(out: str, err: str, duration_s: float) -> dict:
+    """Разбор вывода одного прохода ffmpeg (`metadata=print` в stdout, `silencedetect` в stderr) в посекундные ряды:
+    `rms_db` (громкость, дБ), `motion` (средняя сила смены кадра 0..1), `cuts` (число резких смен кадра в секунду) и `silences`.
+    Чистая функция: тесты кормят её готовым текстом."""
+    n = max(1, int(duration_s + 0.999))
+    rms = [None] * n
+    motion_sum = [0.0] * n
+    motion_n = [0] * n
+    cuts = [0] * n
+    last_t = 0.0
+    for line in out.splitlines():
+        m = _PTS.search(line)
+        if m:
+            last_t = float(m.group(1))
+            continue
+        key, _, val = line.strip().partition("=")
+        sec = min(n - 1, max(0, int(last_t)))
+        if key == "lavfi.astats.Overall.RMS_level":
+            try:
+                rms[sec] = max(-90.0, float(val))                       # "-inf" (цифровая тишина) float() читает, обрезаем снизу
+            except ValueError:
+                pass
+        elif key == "lavfi.scene_score":
+            try:
+                score = float(val)
+            except ValueError:
+                continue
+            motion_sum[sec] += score
+            motion_n[sec] += 1
+            if score >= 0.35:
+                cuts[sec] += 1
+    silences: list[list[float]] = []
+    start = None
+    for line in err.splitlines():
+        s, e = _SIL_START.search(line), _SIL_END.search(line)
+        if s:
+            start = max(0.0, float(s.group(1)))
+        elif e and start is not None:
+            silences.append([round(start, 2), round(float(e.group(1)), 2)])
+            start = None
+    if start is not None:
+        silences.append([round(start, 2), round(duration_s, 2)])     # тишина до конца файла: silence_end не печатается
+    return {"rms_db": [None if v is None else round(v, 1) for v in rms],
+            "motion": [round(motion_sum[i] / motion_n[i], 3) if motion_n[i] else 0.0 for i in range(n)],
+            "cuts": cuts, "silences": silences}
+
+
+async def analyze_video(path: Path, duration_s: float, has_audio: bool, on_progress=None) -> dict:
+    """Один проход ffmpeg по файлу: громкость по секундам (astats), смены кадра (`scene` на кадрах fps=2, ширина 160) и границы
+    тишины (silencedetect). Ничего не пишет на диск, метаданные идут в stdout."""
+    vchain = (f"[0:v:0]fps={SCAN_FPS},scale={SCAN_WIDTH}:-2,select='gte(scene,0)',"
+              "metadata=print:key=lavfi.scene_score:file=-[v]")
+    chains = [vchain]
+    args = ["-nostats", "-i", str(path)]
+    outs = ["-map", "[v]", "-f", "null", "-"]
+    if has_audio:
+        chains.append(f"[0:a:0]aresample={SCAN_AUDIO_HZ},silencedetect=n=-45dB:d=0.7,asetnsamples=n={SCAN_AUDIO_HZ}:p=0,"
+                      "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-[a]")
+        outs += ["-map", "[a]", "-f", "null", "-"]
+    on_line = None
+    if on_progress is not None and duration_s > 0:
+        def on_line(line: str) -> None:
+            m = _PTS.search(line)
+            if m:
+                on_progress(min(1.0, float(m.group(1)) / duration_s))
+    res = await ffmpeg([*args, "-filter_complex", ";".join(chains), *outs], on_line=on_line)
+    if not res.ok:
+        raise MediaError(f"не удалось проанализировать {Path(path).name}: {_tail(res.err)}")
+    data = await asyncio.to_thread(parse_scan_output, res.out, res.err, duration_s)
+    data["has_audio"] = has_audio
+    return data
+
+
+async def extract_frame(src: Path, t_s: float, dst: Path) -> None:
+    """Один кадр в PNG на момент `t_s` (быстрый поиск до входа, затем точный кадр)."""
+    res = await ffmpeg(["-ss", f"{max(0.0, t_s):.3f}", "-i", str(src), "-frames:v", "1", "-an", str(dst)], timeout=120)
+    if not res.ok or not dst.is_file():
+        raise MediaError(f"не удалось вырезать кадр из {Path(src).name}: {_tail(res.err)}")
+
+
+async def cut_clip(src: Path, in_s: float, dur_s: float, dst: Path) -> None:
+    """Клип для просмотра на сайте: H.264 (veryfast) не выше 720 строк и AAC; звука в исходнике может не быть."""
+    res = await ffmpeg(["-ss", f"{in_s:.3f}", "-i", str(src), "-t", f"{dur_s:.3f}", "-vf", "scale=-2:min(720\\,ih)",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                        "-b:a", "128k", "-movflags", "+faststart", str(dst)], timeout=600)
+    if not res.ok or not dst.is_file():
+        raise MediaError(f"не удалось вырезать клип из {Path(src).name}: {_tail(res.err)}")
+
+
+async def extract_pcm_file(src: Path, dst: Path) -> None:
+    """Вся звуковая дорожка в сырой PCM s16le 16 кГц моно (формат stt): куски режутся из файла по смещению, ffmpeg один раз."""
+    res = await ffmpeg(["-i", str(src), "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", str(dst)])
+    if not res.ok or not dst.is_file():
+        raise MediaError(f"не удалось выделить звук из {Path(src).name}: {_tail(res.err)}")

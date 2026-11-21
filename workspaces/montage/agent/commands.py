@@ -1,6 +1,8 @@
 """Команды окружения «Монтаж» (`run`, docs/WORKSPACE_CONTRACT.md раздел 3): `intake`, `transcribe`, `voiceover`, `render`, `still`,
 `compositions`, `check`, `final`.
 
+Для длинных исходников есть ещё `scan`, `moments`, `peek`, `clip` (поиск и нарезка моментов по сигналам и тексту на кадрах).
+
 Каждая команда работает над одной рабочей единицей (роликом) и получает только аргументы из списка разрешённых: произвольной
 оболочки и путей от агента нет, пути строятся здесь из папки единицы. Очередь, фон и события ведёт `Manager`; здесь сама работа.
 Зависимости (ядро, Remotion, контроль качества) приходят в конструктор: тесты подставляют заглушки.
@@ -19,9 +21,12 @@ from pathlib import Path
 
 import intake as intake_mod
 import media
+import moments as moments_mod
 import qa as qa_mod
 import scenes as scenes_mod
+import speech as speech_mod
 import srt as srt_mod
+import stt_client
 import transcribe
 from core_api import CoreAPI
 from gits_sdk import ToolError
@@ -37,9 +42,22 @@ log = logging.getLogger("montage.commands")
 
 Progress = Callable[[float, str], Awaitable[None]]
 FORMAT_OF_PLATFORM = {"shorts": "vertical", "reels": "vertical", "youtube": "horizontal"}
-EXTRA_ARGS = {"still": ("frame",)}               # необязательные аргументы после id единицы; у остальных команд их нет
+# необязательные аргументы после id единицы; у остальных команд их нет. Имена аргументов задают и порядок, и проверку в parse_args
+EXTRA_ARGS = {"still": ("frame",), "scan": ("source",), "moments": ("source", "limit", "from_ms", "to_ms"),
+              "peek": ("source", "t_ms"), "clip": ("source", "in_ms", "out_ms"), "speech": ("source", "from_ms", "to_ms"),
+              "find": ("query", "source")}
+REQUIRED_ARGS = {"peek": 2, "clip": 3}           # сколько первых аргументов обязательны
+INT_ARGS = ("frame", "limit", "from_ms", "to_ms", "t_ms", "in_ms", "out_ms")
+SKIP_DEFAULT = ("moments", "speech")             # у них «-» вместо числа значит «по умолчанию»
+QUERY_MIN, QUERY_MAX = 2, 60
+ANY_SOURCE = ("-", "*", "all")                    # «любой источник» / «по умолчанию»: чтобы дойти до следующего аргумента по порядку
 FRAME_RE = re.compile(r"^\d{1,7}$")
+INT_RE = re.compile(r"^\d{1,10}$")
 PREVIEW_SCALE, PREVIEW_CRF, FINAL_CRF = 0.5, 28, 16
+CLIP_MIN_MS, CLIP_MAX_MS = 1000, 120_000
+ANALYSIS_DIR, CLIPS_DIR = "analysis", "clips"
+MOMENTS_FILE = "moments.json"
+AUDIO_SHARE = 0.6                                # доля прогресса scan на звук и кадры, остальное речь
 
 
 def read_json(path: Path):
@@ -49,27 +67,76 @@ def read_json(path: Path):
         return None
 
 
-def parse_args(command: str, args: list[str]) -> dict:
-    """Аргументы команды после id единицы (список разрешённых): лишнего нет, `frame` целое."""
+def video_names(info: dict) -> list[str]:
+    return [str(f["name"]) for f in info.get("files", []) if f.get("kind") == "video" and f.get("name")]
+
+
+def parse_args(command: str, args: list[str], videos: list[str] | None = None) -> dict:
+    """Аргументы команды после id единицы (список разрешённых): лишнего нет, числа целые неотрицательные, источник это имя видео
+    из `sources/info.json` (`videos`; допустим и вид `sources/<имя>`), произвольных путей нет."""
     allowed = EXTRA_ARGS.get(command, ())
+    if command == "find":                                   # фраза может прийти несколькими словами, источник (если есть) последним
+        return _parse_find(args, videos)
     if len(args) > len(allowed):
         raise ToolError(f"команда «{command}»: после id единицы " + (f"допустимо: {', '.join(allowed)}" if allowed else "аргументов нет"),
                         code="invalid")
-    out = dict(zip(allowed, args))
-    if "frame" in out and not FRAME_RE.match(out["frame"]):
-        raise ToolError("frame: номер кадра, целое неотрицательное", code="invalid")
+    if len(args) < REQUIRED_ARGS.get(command, 0):
+        raise ToolError(f"команда «{command}»: после id единицы нужно: {', '.join(allowed[:REQUIRED_ARGS[command]])}", code="invalid")
+    out: dict = {}
+    for key, value in zip(allowed, args):
+        if key == "frame":
+            if not FRAME_RE.match(value):
+                raise ToolError("frame: номер кадра, целое неотрицательное", code="invalid")
+            out[key] = value
+        elif key == "source":
+            if command in ("scan", "moments", "speech") and value in ANY_SOURCE:
+                continue
+            name = value[len("sources/"):] if value.startswith("sources/") else value
+            if videos is None or name not in videos:
+                have = ", ".join(videos or []) or "видео нет, сначала run intake"
+                raise ToolError(f"source: имя видео из sources/info.json ({have})", code="invalid")
+            out[key] = name
+        elif key in INT_ARGS:
+            if command in SKIP_DEFAULT and value in ANY_SOURCE:
+                continue
+            if not INT_RE.match(value):
+                raise ToolError(f"{key}: целое неотрицательное число", code="invalid")
+            out[key] = int(value)
+    if command == "clip" and out["out_ms"] <= out["in_ms"]:
+        raise ToolError("out_ms должен быть больше in_ms", code="invalid")
+    if command == "moments" and "limit" in out and out["limit"] < 1:
+        raise ToolError("limit: от 1 до %d" % moments_mod.MAX_LIMIT, code="invalid")
+    if command in SKIP_DEFAULT and out.get("from_ms") is not None and out.get("to_ms") is not None and out["to_ms"] < out["from_ms"]:
+        raise ToolError("to_ms не может быть меньше from_ms", code="invalid")
+    return out
+
+
+def _parse_find(args: list[str], videos: list[str] | None) -> dict:
+    """`find фраза [источник]`: последний аргумент, если он имя видео из info.json, это источник, остальное фраза."""
+    words = list(args)
+    out: dict = {}
+    if len(words) > 1:
+        last = words[-1][len("sources/"):] if words[-1].startswith("sources/") else words[-1]
+        if videos is not None and last in videos:
+            out["source"] = last
+            words.pop()
+    query = " ".join(w for w in words if w).strip()
+    if not QUERY_MIN <= len(query) <= QUERY_MAX or any(ord(ch) < 32 or ord(ch) == 127 for ch in query):
+        raise ToolError(f"query: слово или фраза, {QUERY_MIN}–{QUERY_MAX} символов без управляющих знаков", code="invalid")
+    out["query"] = query
     return out
 
 
 class Commands:
     def __init__(self, store: JobStore, core: CoreAPI, layout: Layout, renderer: Renderer, qa: object | None = None,
-                 setting: Callable[[str], object] = lambda name: None):
+                 setting: Callable[[str], object] = lambda name: None, stt_factory: Callable[[], object] | None = None):
         self.store = store
         self.core = core
         self.layout = layout
         self.renderer = renderer
         self.qa = qa if qa is not None else qa_mod.QAService(layout, renderer)
         self.setting = setting
+        self.stt_factory = stt_factory or stt_client.HttpStt     # клиент stt на время `scan`; тесты подставляют заглушку
 
     async def run(self, command: str, job: Job, args: dict, progress: Progress) -> dict:
         """Выполнить команду над единицей. Результат: словарь с полем `text` (одна строка итога) и деталями."""
@@ -152,6 +219,285 @@ class Commands:
         return {"files": n, "source_kind": kind, "platform": r.get("platform") or "none", "format": r["format"],
                 "voiceover": r["voiceover"], "info": "sources/info.json",
                 "text": f"исходники проверены: файлов {n}, вид «{kind}», площадка {r.get('platform') or 'none'}"}
+
+    # ================================================================================================ моменты: scan / moments / peek / clip / speech / find
+
+    def _video_entry(self, job: Job, name: str) -> dict:
+        entry = next((f for f in self._info(job).get("files", []) if f.get("kind") == "video" and f.get("name") == name), None)
+        if entry is None or not (job.sources / name).is_file():
+            raise ToolError(f"видео {name} нет в sources: сначала run intake", code="unavailable")
+        return entry
+
+    @staticmethod
+    def _stem(name: str) -> str:
+        return Path(name).stem
+
+    @staticmethod
+    def _signature(path: Path) -> dict:
+        st = path.stat()                                   # для ссылки это размер и время настоящего файла
+        return {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+    @staticmethod
+    def _write_json(path: Path, data) -> None:
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+
+    def _read_analysis(self, job: Job, name: str) -> dict | None:
+        """Кэш анализа видео, если он есть и сделан для этого же файла (размер и время изменения)."""
+        data = read_json(job.folder / ANALYSIS_DIR / f"{name}.json")
+        path = job.sources / name
+        if not isinstance(data, dict) or data.get("version") != moments_mod.CACHE_VERSION or not path.is_file():
+            return None
+        sig = self._signature(path)
+        return data if data.get("size") == sig["size"] and data.get("mtime_ns") == sig["mtime_ns"] else None
+
+    async def _cmd_scan(self, job: Job, args: dict, progress: Progress) -> dict:
+        """Анализ длинных видео: за один проход ffmpeg громкость по секундам, смены кадра и тишина; затем речь (stt) по участкам
+        между тишинами. Всё в кэше `analysis/<имя>.json` (не пересчитывается, пока файл не изменился) и ранжированные моменты
+        всех видео единицы в `analysis/moments.json`. Недоступный stt не роняет команду: речь просто не распознана."""
+        for finder, label in ((media.find_ffmpeg, "ffmpeg"), (media.find_ffprobe, "ffprobe")):
+            try:
+                finder()
+            except FileNotFoundError:
+                raise ToolError(f"не найден {label}: анализ видео невозможен", code="unavailable") from None
+        names = video_names(self._info(job))
+        if not names:
+            raise ToolError("в sources нет видео: сначала run intake", code="unavailable")
+        chosen = [args["source"]] if args.get("source") else names
+        folder = job.folder / ANALYSIS_DIR
+        await asyncio.to_thread(folder.mkdir, parents=True, exist_ok=True)
+        loop = asyncio.get_running_loop()
+        cached: list[str] = []
+        stt_down = False
+        stt = None
+        n = len(chosen)
+
+        def reporter(k: int, name: str, base: float, share: float, label: str):
+            last = [-1.0]
+
+            def on_pct(frac: float) -> None:                      # не чаще раза на 2%: статус видит и агент, и пользователь
+                if frac - last[0] >= 0.02:
+                    last[0] = frac
+                    loop.create_task(progress((k + base + share * frac) / n, f"{label} {name}: {int((base + share * frac) * 100)} %"))
+            return on_pct
+
+        try:
+            for k, name in enumerate(chosen):
+                entry = self._video_entry(job, name)
+                path = job.sources / name
+                data = await asyncio.to_thread(self._read_analysis, job, name)
+                if data is None:
+                    await progress(k / n, f"Анализ {name}: 0 %")
+                    sig = await asyncio.to_thread(self._signature, path)
+                    dur = (entry.get("duration_ms") or 0) / 1000
+                    data = await media.analyze_video(path, dur, bool(entry.get("has_audio")),
+                                                     reporter(k, name, 0.0, AUDIO_SHARE, "Анализ"))
+                    data.update(version=moments_mod.CACHE_VERSION, source=name, duration_s=round(dur, 2), speech=[],
+                                speech_done=False, **sig)
+                    await asyncio.to_thread(self._write_json, folder / f"{name}.json", data)
+                elif data.get("speech_done") or not data.get("has_audio"):
+                    cached.append(name)
+                if data.get("speech_done") or not data.get("has_audio") or stt_down:
+                    continue
+                if stt is None:
+                    stt = self.stt_factory()
+                data["speech"], down = await self._recognize(path, data, stt, reporter(k, name, AUDIO_SHARE, 1 - AUDIO_SHARE, "Речь"),
+                                                              folder)
+                if down:
+                    stt_down = True
+                    if not data["speech"]:
+                        continue                                  # ничего не распознано: повторим при следующем scan
+                else:
+                    data["speech_done"] = True
+                await asyncio.to_thread(self._write_json, folder / f"{name}.json", data)
+        finally:
+            close = getattr(stt, "aclose", None)
+            if close is not None:
+                await close()
+        counts = await asyncio.to_thread(self._rebuild_moments, job)
+        shown = ", ".join(f"{name}: {counts.get(name, 0)}" for name in chosen)
+        words = 0
+        for name in chosen:
+            data = await asyncio.to_thread(self._read_analysis, job, name)
+            words += sum(len(s["text"].split()) for s in (data or {}).get("speech") or [])
+        text = f"моментов найдено: {shown}" + (f" (звук из кэша: {', '.join(cached)})" if cached else "")
+        text += f"; речь: слов {words}" if words else ""
+        if stt_down:
+            text += "; речь не распознана: stt недоступен (повтори run scan позже)"
+        return {"moments": counts, "from_cache": cached, "speech_words": words, "stt_available": not stt_down,
+                "path": f"{ANALYSIS_DIR}/{MOMENTS_FILE}", "text": text}
+
+    async def _recognize(self, path: Path, data: dict, stt, on_pct, folder: Path) -> tuple[list[dict], bool]:
+        """Речь видео: участки между тишинами, куски до 25 с, звук одним проходом ffmpeg в PCM-файл и куски в stt (2 разом).
+        Возвращает (речь, stt недоступен)."""
+        dur = float(data.get("duration_s") or 0)
+        spans = speech_mod.speech_spans(data.get("silences") or [], dur)
+        chunks = speech_mod.split_chunks(spans, dur, data.get("rms_db"))
+        if not chunks:
+            return [], False
+        pcm_path = folder / f"{path.name}.pcm.tmp"
+        try:
+            await media.extract_pcm_file(path, pcm_path)
+
+            def read_pcm(start_ms: int, end_ms: int) -> bytes:
+                offset, length = speech_mod.pcm_slice_bounds(start_ms, end_ms)
+                with open(pcm_path, "rb") as f:
+                    f.seek(offset)
+                    return f.read(length)
+            return await speech_mod.transcribe_chunks(chunks, read_pcm, stt.transcribe, on_progress=on_pct)
+        finally:
+            await asyncio.to_thread(pcm_path.unlink, missing_ok=True)
+
+    def _rebuild_moments(self, job: Job) -> dict[str, int]:
+        """`analysis/moments.json` из кэшей всех видео единицы (дёшево: ffmpeg не нужен); возвращает число моментов по видео."""
+        per_source, counts = [], {}
+        for f in self._info(job).get("files", []):
+            if f.get("kind") != "video" or not f.get("name"):
+                continue
+            data = self._read_analysis(job, f["name"])
+            if data is None:
+                continue
+            items = moments_mod.rank_moments(data, float(data.get("duration_s") or 0))
+            per_source.append((f["name"], items))
+            counts[f["name"]] = len(items)
+        self._write_json(job.folder / ANALYSIS_DIR / MOMENTS_FILE, {"version": moments_mod.CACHE_VERSION,
+                                                                   "moments": moments_mod.assign_ids(per_source)})
+        return counts
+
+    async def _cmd_moments(self, job: Job, args: dict, progress: Progress) -> dict:
+        """Лучшие моменты из `analysis/moments.json` текстом (ffmpeg не нужен)."""
+        data = read_json(job.folder / ANALYSIS_DIR / MOMENTS_FILE)
+        if not isinstance(data, dict) or not isinstance(data.get("moments"), list):
+            raise ToolError("моментов ещё нет: сначала run scan", code="unavailable")
+        found = moments_mod.select_moments(data["moments"], source=args.get("source"),
+                                           limit=args.get("limit") or moments_mod.DEFAULT_LIMIT,
+                                           from_ms=args.get("from_ms"), to_ms=args.get("to_ms"))
+        if not found:
+            return {"moments": [], "text": "подходящих моментов нет (проверь источник и диапазон времени)"}
+        head = f"моментов: показано {len(found)} из {len(data['moments'])}, по убыванию оценки; in/out и at в мс исходника"
+        return {"moments": found, "text": head + "\n" + "\n".join(moments_mod.moment_line(m) for m in found)}
+
+    def _speech_of(self, job: Job, source: str | None) -> list[tuple[str, float, list[dict]]]:
+        """Распознанная речь видео единицы (по одному или по всем): [(имя, длительность с, речь)]."""
+        out = []
+        for name in video_names(self._info(job)):
+            if source and name != source:
+                continue
+            data = self._read_analysis(job, name)
+            if data is not None and data.get("speech"):
+                out.append((name, float(data.get("duration_s") or 0), data["speech"]))
+        return out
+
+    def _no_speech(self, job: Job, source: str | None) -> ToolError:
+        scanned = [n for n in video_names(self._info(job)) if (not source or n == source) and self._read_analysis(job, n)]
+        if not scanned:
+            return ToolError("сначала run scan: расшифровки ещё нет", code="unavailable")
+        return ToolError("речи в расшифровке нет: в видео нет слов или stt был недоступен при run scan (повтори run scan позже)",
+                         code="unavailable")
+
+    async def _cmd_speech(self, job: Job, args: dict, progress: Progress) -> dict:
+        """Расшифровка речи по времени текстом: `[12:05–12:11] текст` (время куска, слов-времён нет)."""
+        found = await asyncio.to_thread(self._speech_of, job, args.get("source"))
+        if not found:
+            raise self._no_speech(job, args.get("source"))
+        lines: list[str] = []
+        more = 0
+        for name, _, speech in found:
+            rows, rest = speech_mod.speech_lines(speech, args.get("from_ms"), args.get("to_ms"),
+                                                 max_lines=speech_mod.SPEECH_LINES - len(lines))
+            more += rest
+            lines += [f"{name} {r}" if len(found) > 1 else r for r in rows]
+        if not lines:
+            return {"lines": [], "text": "в этом диапазоне речи нет"}
+        head = f"расшифровка ({found[0][0] if len(found) == 1 else 'все видео'}): куски речи с временем куска, слов-времён нет"
+        tail = f"\nещё строк: {more}; сузь диапазон (от_мс до_мс)" if more else ""
+        return {"lines": lines, "more": more, "text": head + "\n" + "\n".join(lines) + tail}
+
+    async def _cmd_find(self, job: Job, args: dict, progress: Progress) -> dict:
+        """Поиск слова или фразы по расшифровке (без регистра и окончаний): время, источник, строка и готовые in/out."""
+        found = await asyncio.to_thread(self._speech_of, job, args.get("source"))
+        if not found:
+            raise self._no_speech(job, args.get("source"))
+        hits = []
+        for name, dur, speech in found:
+            hits += [{"source": name, **h} for h in speech_mod.find_in_speech(speech, args["query"], dur)]
+        hits = hits[:speech_mod.FIND_LIMIT]
+        if not hits:
+            return {"matches": [], "text": f"«{args['query']}» в расшифровке не найдено"}
+        head = (f"найдено {len(hits)}: время внутри куска речи оценено по положению слова в тексте (слов-времён нет), "
+                "окно in/out ±4 с вокруг оценки; проверь через peek")
+        return {"matches": hits, "text": head + "\n" + "\n".join(speech_mod.find_line(h) for h in hits)}
+
+    def _ocr_fn(self):
+        ocr = getattr(self.qa, "ocr", None)
+        if ocr is None and qa_mod.ocr_available():
+            ocr = qa_mod.QAService._default_ocr()
+        return ocr
+
+    async def _cmd_peek(self, job: Job, args: dict, progress: Progress) -> dict:
+        """Три кадра вокруг времени (t-1 с, t, t+1 с) в `renders/peek_*.png`; текст на кадрах (OCR), громкость вокруг и речь рядом."""
+        name, t_ms = args["source"], args["t_ms"]
+        entry = self._video_entry(job, name)
+        dur_ms = int(entry.get("duration_ms") or 0)
+        if t_ms > dur_ms:
+            raise ToolError(f"t_ms: в видео {name} время 0–{dur_ms} мс", code="invalid")
+        job.renders.mkdir(parents=True, exist_ok=True)
+        last_s = max(0.0, dur_ms / 1000 - 0.1)                    # кадр ровно на конце файла ffmpeg не отдаёт
+        frames: list[tuple[str, Path]] = []
+        for k, (label, shift) in enumerate((("t-1с", -1000), ("t", 0), ("t+1с", 1000))):
+            out = job.renders / f"peek_{self._stem(name)}_{t_ms}_{k}.png"
+            await media.extract_frame(job.sources / name, min(last_s, max(0.0, (t_ms + shift) / 1000)), out)
+            frames.append((label, out))
+        rels = [f"renders/{p.name}" for _, p in frames]
+        ocr = self._ocr_fn()
+        parts = [f"кадры {name} около {moments_mod.clock(t_ms)} ({t_ms} мс): " + ", ".join(rels)]
+        texts: list[str] = []
+        if ocr is not None:
+            seen = []
+            for _, path in frames:
+                try:
+                    seen.append(await ocr(path))
+                except Exception as e:                           # сбой распознавания одного кадра не роняет команду
+                    log.info("OCR кадра %s: %s", path.name, e)
+            texts = moments_mod.merge_texts(seen)
+            parts.append("на экране написано: " + "; ".join(f"«{t}»" for t in texts) if texts else "на экране текста не распознано")
+        else:
+            parts.append("OCR не установлен: что на экране, сказать не могу (картинок я не вижу)")
+        analysis = await asyncio.to_thread(self._read_analysis, job, name)
+        levels = moments_mod.loudness_around(analysis, t_ms) if analysis else []
+        if levels:
+            parts.append("громкость по секундам, дБ: " + ", ".join(
+                f"{moments_mod.clock(s * 1000)} {'тишина' if v is None else v}" for s, v in levels))
+            near = [s for s in (analysis.get("speech") or []) if s["end_ms"] >= t_ms - 3000 and s["start_ms"] <= t_ms + 3000]
+            if near:
+                parts.append("рядом говорят: " + "; ".join(f"[{moments_mod.clock(s['start_ms'])}–{moments_mod.clock(s['end_ms'])}] "
+                                                           f"«{moments_mod.short_text(s['text'], 120)}»" for s in near[:3]))
+        elif ocr is None:
+            parts.append("уровней громкости тоже нет: сделай run scan")
+        return {"frames": rels, "ocr": ocr is not None, "texts": texts, "levels": levels, "text": ". ".join(parts)}
+
+    async def _cmd_clip(self, job: Job, args: dict, progress: Progress) -> dict:
+        """Короткий клип исходника для просмотра пользователем на сайте: `clips/<имя>_<in>_<out>.mp4`."""
+        name, in_ms, out_ms = args["source"], args["in_ms"], args["out_ms"]
+        entry = self._video_entry(job, name)
+        dur_ms = int(entry.get("duration_ms") or 0)
+        length = out_ms - in_ms
+        if not CLIP_MIN_MS <= length <= CLIP_MAX_MS:
+            raise ToolError(f"клип длиной {length / 1000:.1f} с: нужно от {CLIP_MIN_MS // 1000} до {CLIP_MAX_MS // 1000} с", code="invalid")
+        if out_ms > dur_ms:
+            raise ToolError(f"out_ms: в видео {name} время 0–{dur_ms} мс", code="invalid")
+        folder = job.folder / CLIPS_DIR
+        await asyncio.to_thread(folder.mkdir, parents=True, exist_ok=True)
+        out = folder / f"{self._stem(name)}_{in_ms}_{out_ms}.mp4"
+        tmp = out.with_name(out.stem + ".part.mp4")                 # ffmpeg выбирает формат по расширению, поэтому оно последнее
+        try:
+            await media.cut_clip(job.sources / name, in_ms / 1000, length / 1000, tmp)
+            tmp.replace(out)
+        finally:
+            tmp.unlink(missing_ok=True)
+        rel = f"{CLIPS_DIR}/{out.name}"
+        return {"path": rel, "duration_ms": length, "text": f"клип {length / 1000:.1f} с: {rel}"}
 
     # ================================================================================================ transcribe
 

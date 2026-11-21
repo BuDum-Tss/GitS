@@ -31,7 +31,7 @@ def test_workspace_block_has_brief_skills_area_commands_site():
     assert area.writable == ["*/plan", "*/work/src/custom", "*/work/public/design"]
     assert {"template/demo/plan.*.json", "resources", "*/sources", "*/renders", "*/qa"} <= set(area.readonly)
     assert {"node_modules", ".git", ".claude"} == set(area.hidden)
-    assert [c.id for c in spec.commands] == ["intake", "transcribe", "compose", "voiceover", "render", "still", "compositions", "check", "final"]
+    assert [c.id for c in spec.commands] == ["intake", "scan", "moments", "speech", "find", "peek", "clip", "transcribe", "compose", "voiceover", "render", "still", "compositions", "check", "final"]
     assert spec.command("render").background and spec.command("final").background and spec.command("final").irreversible
     assert not spec.command("still").background and not spec.command("check").irreversible
     assert spec.site_url.startswith("http://127.0.0.1:")

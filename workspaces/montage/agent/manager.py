@@ -20,7 +20,7 @@ from pathlib import Path
 
 import media
 from area import MontageTools, discover_skills, make_sandbox
-from commands import EXTRA_ARGS, Commands, parse_args
+from commands import EXTRA_ARGS, Commands, parse_args, video_names
 from core_api import CoreAPI
 from env_state import WorkspaceState
 from gits_sdk import ToolError
@@ -41,10 +41,12 @@ DISK_FACTOR = 5                 # свободного места не мень�
 PANEL_EVERY_S = 2               # как часто пересчитывать пространство (SDK шлёт не чаще раза в секунду)
 UNITS_SHOWN = 20                # сколько единиц в сводке и в списке
 DEFAULTS = {k: v["default"] for k, v in MANIFEST["settings_schema"].items()}
-EXCLUSIVE = ("intake", "transcribe", "voiceover", "render", "check", "final")     # у единицы одна такая операция за раз
+EXCLUSIVE = ("intake", "scan", "transcribe", "voiceover", "render", "check", "final")     # у единицы одна такая операция за раз
 HEAVY = ("render", "final")                                                      # рендеры идут по одному на весь контейнер
 RUN_TITLES = {"intake": "Приём исходников", "transcribe": "Расшифровка", "compose": "Сборка листа", "voiceover": "Озвучка", "render": "Черновик",
-              "still": "Кадр", "compositions": "Композиции", "check": "Проверка", "final": "Финальный рендер"}
+              "still": "Кадр", "compositions": "Композиции", "check": "Проверка", "final": "Финальный рендер",
+              "scan": "Поиск моментов", "moments": "Список моментов", "speech": "Расшифровка речи", "find": "Поиск по речи",
+              "peek": "Кадры момента", "clip": "Клип"}
 WORK_OPS = ("create", "list", "status", "update", "scenes", "cancel")
 
 
@@ -368,6 +370,14 @@ class Manager:
         if job.state in ("done", "cancelled") or self._unit_runs(job.job_id):
             raise ToolError("Сцены меняются у незакрытой единицы без идущих операций.", code="unavailable")
         from commands import read_json
+        info = read_json(job.sources / "info.json") or {}
+        videos = [f.get("name") for f in info.get("files", []) if f.get("kind") == "video" and f.get("name")]
+        if videos:
+            raise ToolError(
+                "сцены (work scenes) собирают ролик БЕЗ исходного видео, а у этого ролика видео есть: "
+                + ", ".join(videos[:6]) + ". Видео пользователя должно лечь в ролик: запиши plan/plan.json сама с segments[] "
+                "(source строго sources/<имя>, in_ms/out_ms по исходнику, at_ms на шкале ролика) и voiceover[], как в "
+                "template/demo/plan.horizontal.json; не собирай ролик из одних сцен комнаты", code="invalid")
         story = read_json(job.plan_dir / "story.json")
         story = story if isinstance(story, dict) else None
         ctx = self.cmds._plan_context(job, story)
@@ -455,12 +465,13 @@ class Manager:
         job = self._find(args[0])
         if job.state == "cancelled":
             raise ToolError(f"единица {job.job_id} отменена", code="unavailable")
-        parsed = parse_args(command.id, [str(a) for a in args[1:]])
+        parsed = parse_args(command.id, [str(a) for a in args[1:]], video_names(self.cmds._info(job)))
         if command.id in EXCLUSIVE:
             busy = [r for r in self._unit_runs(job.job_id) if r.command in EXCLUSIVE]
             if busy:
-                raise ToolError(f"у единицы уже идёт «{busy[0].command}» ({busy[0].run_id}): дождись итога или отмени (job.cancel)",
-                                code="busy")
+                raise ToolError(f"у единицы уже идёт «{busy[0].command}» ({busy[0].run_id}) и работает нормально: НЕ отменяй и не запускай заново "
+                                "(отмена сбросит перекодирование и другую работу с нуля). Займись другим делом (сценарий, план) "
+                                "и позже посмотри work status; итог придёт сам", code="busy")
         run = Run(run_id=self._new_run_id(), job_id=job.job_id, command=command.id, background=background)
         self._runs[run.run_id] = run
         if background:
