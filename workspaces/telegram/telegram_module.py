@@ -81,6 +81,8 @@ class TelegramModule:
         self.panel = TelegramPanel(self)
         self.user.on_change = self.panel.wake.set          # вход, выход и сбой связи обновляют панель сразу
         self._aliases: list = []                            # алиасы персонажа от ядра (нужны и при смене класса её аккаунта)
+        self._inbox_task: asyncio.Task | None = None
+        self._account_task: asyncio.Task | None = None
         self._mode_ready = False                            # режим разговоров (user | bot) уже выбран
         if account_mode(None) == "bot":                     # GITS_TG_ACCOUNT_MODE=bot известна сразу; настройка приходит от ядра позже
             self._use_bot()
@@ -93,6 +95,50 @@ class TelegramModule:
     async def _privacy_loop(self) -> None:
         await self.client.wait_connected()
         await self.privacy.run()
+
+    def _use_user(self) -> None:
+        """Разговоры ведёт её аккаунт (Telethon): обратная замена `_use_bot` при переключении тоглом."""
+        old = self.user
+        self.user = TelegramUser(self.memory_dir, self.client, self.privacy)
+        self.user.typing_scale = old.typing_scale
+        self.user.set_aliases(self._aliases or getattr(old, "_aliases", ()))
+        self.user.on_change = self.panel.wake.set
+        self.panel.user = self.user
+        self.channel.bot_polls = False
+        self._mode_ready = True
+
+    async def switch_mode(self, mode: str) -> bool:
+        """Переключить, кто ведёт разговоры (user | bot), на лету: остановить поллеры, заменить `self.user`, запустить заново.
+        True, если режим изменился."""
+        if mode not in ("user", "bot") or (mode == "bot") == bool(self.user.is_bot_mode):
+            return False
+        running = [t for t in (self._inbox_task, self._account_task) if t is not None]
+        for t in running:
+            t.cancel()
+        await asyncio.gather(*running, return_exceptions=True)
+        await self.user.close()
+        (self._use_bot if mode == "bot" else self._use_user)()
+        self.panel.chat, self.panel.topic, self.panel.reply_to = None, None, None
+        self.panel._dialogs, self.panel._history = [], []
+        loop = asyncio.get_running_loop()
+        self._inbox_task = loop.create_task(self._inbox_loop())
+        self._account_task = loop.create_task(self._account_loop())
+        self.tasks.extend((self._inbox_task, self._account_task))
+        self.panel.wake.set()
+        log.info("режим разговоров: %s", mode)
+        return True
+
+    async def _mode_watch_loop(self) -> None:
+        """Настройка `account_mode` меняется из дашборда или тоглом панели: подхватываем без перезапуска окружения."""
+        await self.client.wait_connected()
+        while True:
+            await asyncio.sleep(3)
+            try:
+                await self.switch_mode(account_mode(self.client.module_settings))
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning("переключение режима разговоров не удалось: %s", type(e).__name__)
 
     def _use_bot(self) -> None:
         """Разговоры ведёт бот (Bot API) вместо её аккаунта: подменяет `self.user` на TelegramBotUser. Telethon не нужен.
@@ -129,8 +175,11 @@ class TelegramModule:
 
     def start(self) -> list[asyncio.Task]:
         loop = asyncio.get_running_loop()
-        for coro in (self._privacy_loop(), self._inbox_loop(), self.channel.run(), self.channel.run_verify(),
-                     self._account_loop(), self.run_state(), self._persona_loop()):
+        self._inbox_task = loop.create_task(self._inbox_loop())
+        self._account_task = loop.create_task(self._account_loop())
+        self.tasks.extend((self._inbox_task, self._account_task))
+        for coro in (self._privacy_loop(), self.channel.run(), self.channel.run_verify(), self.run_state(),
+                     self._persona_loop(), self._mode_watch_loop()):
             self.tasks.append(loop.create_task(coro))
         return self.tasks
 
@@ -222,7 +271,7 @@ class TelegramModule:
             return explicit.rstrip("/")
         return "http://" + self.client.url.split("://", 1)[-1].split("/", 1)[0]
 
-    async def _set_setting(self, key: str, value: bool) -> None:
+    async def _set_setting(self, key: str, value) -> None:
         """Собственная настройка окружения (settings_schema, peers.telegram) меняется через дашборд ядра: как у питомца."""
         try:
             async with httpx.AsyncClient(timeout=10) as http:

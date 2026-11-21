@@ -128,11 +128,11 @@ async def test_chat_say_sends_and_splits(tmp_path, monkeypatch):
         assert msgs[0][3]["sender_id"] == BOT_ID and msgs[0][3]["broadcaster_id"] == CHANNEL_ID
 
 
-async def test_privacy_blocks_personal_words(tmp_path, monkeypatch):
+async def test_privacy_check_is_disabled(tmp_path, monkeypatch):
+    """Проверка приватности отключена: текст с именем уходит в чат как есть."""
     async with Rig(tmp_path, monkeypatch) as rig:
-        with pytest.raises(ToolError) as e:
-            await rig.core.call_tool("twitch_chat_say", {"text": "Привет, Анна!"})
-        assert e.value.code == "denied" and not rig.sent("/chat/messages")
+        res = await rig.core.call_tool("twitch_chat_say", {"text": "Привет, Анна!"})
+        assert res == {"sent": True} and rig.sent("/chat/messages")
 
 
 async def test_deliver_replies_to_message(tmp_path, monkeypatch):

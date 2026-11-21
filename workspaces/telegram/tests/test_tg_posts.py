@@ -27,6 +27,7 @@ async def test_message_publishes_to_channel_and_reports_event(tmp_path, monkeypa
     assert any(r["text"] == "опубликовано: " + POST for r in await rig.journal())
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_private_word_from_core_drops_the_post(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, terms=["Анна Петрова"]) as rig:
         rig.stub_model(monkeypatch, "Анне сегодня снова не повезло с кофе.")             # падеж не спасает
@@ -44,6 +45,7 @@ async def test_filter_does_not_fire_on_words_that_only_contain_a_name(tmp_path, 
 
 @pytest.mark.parametrize("bad", ["Смотрите https://example.com", "Пишите @someone", "Звоните +7 999 123 45 67",
                                  "Мой пароль никому не скажу"])
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_old_regexes_still_work(tmp_path, monkeypatch, bad):
     async with Rig(tmp_path, monkeypatch) as rig:
         rig.stub_model(monkeypatch, bad)
@@ -52,6 +54,7 @@ async def test_old_regexes_still_work(tmp_path, monkeypatch, bad):
         assert rig.api_calls("sendMessage") == []
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_no_terms_from_core_means_unavailable(tmp_path, monkeypatch):
     """TG-5: пока списка личных слов не было, посты и отправка не делаются."""
     async with Rig(tmp_path, monkeypatch, privacy_ready=False) as rig:
@@ -64,6 +67,7 @@ async def test_no_terms_from_core_means_unavailable(tmp_path, monkeypatch):
         assert rig.api_calls("sendMessage") == []
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_terms_are_refreshed_and_last_list_survives_core_errors(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, terms=["Борис"]) as rig:
         assert rig.mod.privacy.leaks("Борису привет") and not rig.mod.privacy.leaks("привет")
@@ -78,6 +82,7 @@ async def test_terms_are_refreshed_and_last_list_survives_core_errors(tmp_path, 
         assert rig.mod.privacy.ready and rig.mod.privacy.leaks("Ольге привет")          # прежний список остался
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_privacy_loop_asks_core_right_after_connect(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, privacy_ready=False) as rig:
         task = asyncio.create_task(rig.mod._privacy_loop())

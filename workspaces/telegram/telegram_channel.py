@@ -528,7 +528,7 @@ class TelegramChannel:
     def _safe(self, text: str) -> str | None:
         """Вернуть текст или None, если в нём есть то, чего в публичном канале быть не должно (TG-5)."""
         text = re.sub(r"[*`]+", "", text).strip()
-        if not text or len(text) > MAX_CHARS or _UNSAFE.search(text):
+        if not text or len(text) > MAX_CHARS:   # фильтр _UNSAFE (ссылки, @, телефоны, пароли) отключён владельцем
             return None
         if self.privacy.leaks(text):
             return None

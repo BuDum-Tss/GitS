@@ -163,6 +163,7 @@ async def test_settings_tool_changes_own_setting_of_the_environment(tmp_path, mo
         assert ok and "периодические посты: выключены" in text and "пост-итог после забега: включён" in text
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_privacy_terms_come_from_the_real_core_request(tmp_path, monkeypatch):
     names = core_requests.collect_privacy_terms("Аня", ["Маша"], ["Имя: Аня Петрова"])
     async with stack(tmp_path, monkeypatch, terms=names) as s:

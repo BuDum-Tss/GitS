@@ -32,7 +32,7 @@ logger = logging.getLogger("tg_panel")
 # все действия панели (кроме них в manifest.panel.actions ничего нет)
 ACTIONS = ("login_start", "login_cancel", "login_password", "logout",
            "open_chat", "close_chat", "set_mode", "send_message", "reply_to", "cancel_reply", "history_more",
-           "mark_read", "delete_message", "refresh", "more_chats", "filter_chats", "toggle_topics")
+           "mark_read", "delete_message", "refresh", "more_chats", "filter_chats", "toggle_topics", "set_account_mode")
 
 DIALOGS_TTL_S = 20.0             # список диалогов обновляется у Telegram не чаще
 HISTORY_TTL_S = 6.0              # история открытого чата
@@ -176,6 +176,7 @@ class TelegramPanel:
 
     async def blocks(self) -> list[dict]:
         out = self.account_blocks()
+        out.append(self.mode_toggle_block())
         user = self.user
         if user.panel_ready():
             await self._load_dialogs()
@@ -191,6 +192,21 @@ class TelegramPanel:
         last = m.channel.last_post_ts()
         return {"type": "text", "title": "Канал и бот-витрина", "collapsed": True,
                 "text": f"Канал: {m._channel_word()}. Последний пост: {_stamp(last) or 'ещё не было'}."}
+
+    def mode_toggle_block(self) -> dict:
+        """Тогл «кто ведёт разговоры»: бот (Bot API) или её аккаунт (Telethon). Действует сразу, без перезапуска."""
+        to_user = bool(self.user.is_bot_mode)
+        label = "Вернуть её аккаунт (Telethon)" if to_user else "Перейти на бота (Bot API)"
+        return {"type": "buttons", "items": [{"label": label, "action": "set_account_mode",
+                                              "args": {"mode": "user" if to_user else "bot"}}]}
+
+    async def act_set_account_mode(self, args: dict) -> str:
+        mode = args.get("mode")
+        if mode not in ("user", "bot"):
+            raise ValueError("режим: user или bot")
+        await self.module._set_setting("account_mode", mode)
+        await self.module.switch_mode(mode)
+        return "Разговоры ведёт бот." if mode == "bot" else "Разговоры ведёт её аккаунт."
 
     def bot_account_blocks(self) -> list[dict]:
         """Режим бота (account_mode: bot): состояние бота и его ограничения вместо входа по QR."""

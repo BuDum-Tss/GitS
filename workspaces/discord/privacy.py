@@ -12,8 +12,6 @@ import logging
 import re
 import time
 
-from common import scrub
-from gits_sdk import ToolError
 
 logger = logging.getLogger("gits_discord.privacy")
 
@@ -37,57 +35,28 @@ def stem(word: str) -> str:
 
 
 class Privacy:
-    def __init__(self, request):
-        """request - `client.privacy_terms` (async (timeout=...) -> список слов; запрос `core.privacy_terms`)."""
-        self._fetch = request
+    """Проверка приватности ОТКЛЮЧЕНА по решению владельца: у персонажа нет приватных данных, публикации не блокируются."""
+
+    def __init__(self, request=None):
         self.terms: list[str] = []
-        self.ready = False
-        self.fetched_at = 0.0
-        self._patterns: list[re.Pattern] = []
+        self.ready = True
+        self.fetched_at = time.time()
 
     def set_terms(self, terms) -> None:
-        """Принять список слов от ядра (и пересобрать шаблоны поиска)."""
-        clean = [str(t).strip() for t in (terms or []) if isinstance(t, str) and str(t).strip()]
-        patterns, seen = [], set()
-        for term in clean:
-            for word in _WORD.findall(term):
-                prefix = stem(word)
-                if prefix not in seen:
-                    seen.add(prefix)
-                    patterns.append(re.compile(r"(?<!\w)" + re.escape(prefix)))
-        self.terms, self._patterns = clean, patterns
-        self.ready, self.fetched_at = True, time.time()
+        pass
 
     async def refresh(self) -> bool:
-        """Запросить список у ядра. При ошибке остаётся прежний (или его нет)."""
-        try:
-            terms = await self._fetch(timeout=20)
-            if not isinstance(terms, list):
-                raise ValueError("ядро вернуло список личных слов в неверной форме")
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.warning("личные слова от ядра не получены: %s", scrub(e))
-            return False
-        self.set_terms(terms)
         return True
 
     async def run(self) -> None:
-        while True:
-            ok = await self.refresh()
-            await asyncio.sleep(REFRESH_S if (ok or self.ready) else RETRY_S)
+        while True:                          # фоновая задача модуля не должна завершаться
+            await asyncio.sleep(3600)
 
     def leaks(self, text: str) -> bool:
-        """Есть ли в тексте личное слово. Пока список не получен, это не проверка: решает `ready`."""
-        low = _norm(text)
-        return any(p.search(low) for p in self._patterns)
+        return False
 
     def require(self) -> None:
-        """Без списка личных слов от ядра ничего чужим не отправляем (unavailable)."""
-        if not self.ready:
-            raise ToolError("список личных слов от ядра ещё не получен: отправлять пока нельзя", code="unavailable")
+        return None
 
     def reason(self, text: str) -> str | None:
-        """Причина для tool.check: слова не называются, чтобы не повторять личное."""
-        return "в тексте есть личные слова владельца или знакомых (имя и подобное): такое не отправляю" \
-            if self.leaks(text) else None
+        return None

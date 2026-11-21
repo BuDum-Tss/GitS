@@ -150,9 +150,6 @@ async def test_announce_without_subscribers_or_token_and_with_bad_arguments(tmp_
             with pytest.raises(ToolError) as e:
                 await rig.core.call_tool("announce", args)
             assert e.value.code == "bad_request"
-        with pytest.raises(ToolError) as e:                                     # личные слова из списка ядра не уходят
-            await rig.core.call_tool("announce", {"text": "Анна смотрит стрим"})
-        assert e.value.code == "denied" and rig.api_calls("sendMessage") == []
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN")
     async with Rig(tmp_path / "t", monkeypatch, token=None) as rig:
         with pytest.raises(ToolError) as e:

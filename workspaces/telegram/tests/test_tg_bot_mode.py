@@ -53,17 +53,17 @@ async def events(rig, n):
 def test_manifest_has_account_mode_setting_default_user():
     spec = MANIFEST["settings_schema"]["account_mode"]
     assert spec["default"] == "user" and spec["enum"] == list(ACCOUNT_MODES) == ["user", "bot"]
-    assert "перезапусти" in spec["title"] and "GITS_TG_ACCOUNT_MODE" in spec["title"]
+    assert "тоглом" in spec["title"] and "GITS_TG_ACCOUNT_MODE" in spec["title"]
     from manifest import build_manifest
     assert P.validate_manifest(build_manifest()) == []
 
 
-def test_account_mode_env_bot_overrides_the_setting(monkeypatch):
+def test_account_mode_setting_wins_env_is_fallback(monkeypatch):
     monkeypatch.delenv("GITS_TG_ACCOUNT_MODE", raising=False)
     assert account_mode(None) == "user" and account_mode({}) == "user" and account_mode({"account_mode": "ерунда"}) == "user"
     assert account_mode({"account_mode": "bot"}) == "bot"
     monkeypatch.setenv("GITS_TG_ACCOUNT_MODE", "bot")
-    assert account_mode({"account_mode": "user"}) == "bot" and account_mode(None) == "bot"
+    assert account_mode({"account_mode": "user"}) == "user" and account_mode(None) == "bot" and account_mode({}) == "bot"
     monkeypatch.setenv("GITS_TG_ACCOUNT_MODE", "user")                      # «user» из окружения настройку не перекрывает
     assert account_mode({"account_mode": "bot"}) == "bot"
 
@@ -321,6 +321,7 @@ async def test_typing_and_voice_and_files_go_through_the_bot(tmp_path, monkeypat
         assert method == "sendPhoto" and data["caption"] == "подпись" and files["photo"] == ("a.png", b"png")
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_leaks_are_refused_but_the_owner_panel_may_send(tmp_path, monkeypatch):
     async with bot_rig(tmp_path, monkeypatch) as rig:
         user = await ready(rig)
@@ -432,3 +433,14 @@ async def test_bot_mode_does_not_import_or_need_telethon(tmp_path, monkeypatch):
         await user.send(str(OWNER), "ответ")
         assert user.state()[0] is True and user.state_word().endswith("работает")
         assert (await rig.core.call_tool("inbox", {})) and rig.api_calls("sendMessage")
+
+
+async def test_switch_mode_hot_swaps_user_and_back(tmp_path, monkeypatch):
+    monkeypatch.delenv("GITS_TG_ACCOUNT_MODE", raising=False)
+    async with Rig(tmp_path, monkeypatch, module_settings={}) as rig:
+        await rig.mod._ensure_mode()
+        assert not rig.mod.user.is_bot_mode
+        assert await rig.mod.switch_mode("bot") and rig.mod.user.is_bot_mode and rig.mod.channel.bot_polls
+        assert rig.mod.panel.user is rig.mod.user
+        assert not await rig.mod.switch_mode("bot")
+        assert await rig.mod.switch_mode("user") and not rig.mod.user.is_bot_mode and not rig.mod.channel.bot_polls

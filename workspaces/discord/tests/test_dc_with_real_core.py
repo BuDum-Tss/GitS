@@ -3,6 +3,7 @@
 Проверяет стык целиком: манифест принят, инструменты в реестре планировщика, обращение в канале идёт по R6 разговором, режим
 «чтение» R6 не включает, личка чужого берётся единым агентом через внимание, ответ ядра доходит до канала (deliver).
 """
+import pytest
 import asyncio
 import contextlib
 import copy
@@ -148,6 +149,7 @@ async def test_reply_from_the_core_is_delivered_to_the_channel_and_owner_questio
         assert len(s.general.sent) == 1
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_message_through_the_router_asks_only_for_unknown_channels(tmp_path, monkeypatch):
     async with stack(tmp_path, monkeypatch) as s:
         tool = s.core.envs.get("discord.message")

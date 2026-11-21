@@ -87,6 +87,7 @@ async def test_long_text_is_split_into_messages_up_to_2000(tmp_path, monkeypatch
         assert len(general.typing_log) == 3
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_message_check_asks_only_for_unknown_targets_and_private_words(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, module_settings={"owner": str(OWNER_ID)}, terms=["Анна"]) as rig:
         await server(rig, known=False)
@@ -100,6 +101,7 @@ async def test_message_check_asks_only_for_unknown_targets_and_private_words(tmp
         assert "личные слова" in await check("message", {"to": "#общий", "text": "Анна просила привет"})
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_message_privacy_filter_and_unavailable_without_terms(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, terms=["Анна"]) as rig:
         g, general, _ = await server(rig)

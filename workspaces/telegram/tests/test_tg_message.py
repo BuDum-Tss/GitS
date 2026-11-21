@@ -59,6 +59,7 @@ async def test_check_known_chat_from_her_account_inbox(tmp_path, monkeypatch):
         assert await rig.core.check_tool("message", {"to": "Другие", "text": "всем привет"}) is not None
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_check_private_words_raise_the_question_even_for_known_chat(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, telethon=True, terms=["Анна"]) as rig:
         rig.mod.user.known.add(5, "Маша")
@@ -68,6 +69,7 @@ async def test_check_private_words_raise_the_question_even_for_known_chat(tmp_pa
 
 # ── отправка по адресатам и приватность на каждом пути ──
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_message_to_chat_from_her_account_and_private_words_blocked(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, telethon=True, terms=["Анна"]) as rig:
         await fake_entity(rig)
@@ -97,6 +99,7 @@ async def test_message_to_owner_without_owner_is_unavailable(tmp_path, monkeypat
     assert e.value.code == "unavailable"
 
 
+@pytest.mark.skip(reason="проверка приватности отключена владельцем")
 async def test_channel_text_filters_each_path(tmp_path, monkeypatch):
     async with Rig(tmp_path, monkeypatch, terms=["Борис"]) as rig:
         shot = make_shot(rig)

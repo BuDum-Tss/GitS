@@ -297,11 +297,12 @@ ACCOUNT_MODES = ("user", "bot")                  # кто ведёт разго�
 
 
 def account_mode(module_settings: dict | None) -> str:
-    """Режим разговоров: переменная GITS_TG_ACCOUNT_MODE=bot перекрывает настройку `account_mode`; иначе настройка; по
-    умолчанию и при любом незнакомом значении user (всё как раньше)."""
-    if str(env("GITS_TG_ACCOUNT_MODE") or "").strip().lower() == "bot":
-        return "bot"
-    return "bot" if (module_settings or {}).get("account_mode") == "bot" else "user"
+    """Режим разговоров: явная настройка `account_mode` (тогл в панели) главнее; не задана - переменная
+    GITS_TG_ACCOUNT_MODE=bot (запасной вариант для контейнера); иначе и при любом незнакомом значении user."""
+    chosen = (module_settings or {}).get("account_mode")
+    if chosen in ACCOUNT_MODES:
+        return chosen
+    return "bot" if str(env("GITS_TG_ACCOUNT_MODE") or "").strip().lower() == "bot" else "user"
 
 
 def valid_mode(value, default: str = MODE_REPLY) -> str:
