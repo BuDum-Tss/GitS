@@ -41,10 +41,6 @@ def is_addressed(text: str, patterns: list[re.Pattern]) -> bool:
     return any(p.search(low) for p in patterns)
 
 
-TAIL_PHRASES = 6                         # сколько недавних фраз попадает в хвост «до этого в канале»
-TAIL_WINDOW_S = 60.0
-TAIL_CHARS = 600
-TAIL_PHRASE_CHARS = 150
 EVENT_MAX = 1000          # всё событие целиком (предел текста внимания)
 NAME_MAX = 40
 TITLE_MAX = 60
@@ -58,27 +54,13 @@ def clean_name(name: str, limit: int = NAME_MAX) -> str:
     return re.sub(r"\s+", " ", text).strip()[:limit]
 
 
-def event_text(*, text: str, name: str, is_owner: bool, title: str, context: str = "") -> str:
+def event_text(*, text: str, name: str, is_owner: bool, title: str) -> str:
     """Текст события для агента: кто сказал и где. «Маша в голосовом канале «Игры»: «текст»», у владельца «Маша (владелец) ...»."""
     who = clean_name(name) or "кто-то"
     where = f"в голосовом канале «{clean_name(title, TITLE_MAX)}»" if clean_name(title, TITLE_MAX) else "в голосовом канале"
     head = f"{who}{' (владелец)' if is_owner else ''} {where}: «"
-    tail = f"\n({context})" if context else ""
-    room = max(80, EVENT_MAX - len(head) - len(tail) - 1)
-    return f"{head}{text[:room]}»{tail}"
-
-
-def recent_tail(phrases, now: float) -> str:
-    """Хвост «до этого в канале: Имя: текст; ты: текст»: последние фразы за минуту, старые первыми, не больше ~600 символов.
-    Свои реплики подписаны «ты». Текущую фразу вызывающий в `phrases` не включает."""
-    picked, used = [], 0
-    for ph in reversed([p for p in phrases if now - p.ts <= TAIL_WINDOW_S][-TAIL_PHRASES:]):
-        item = f"{'ты' if ph.own else (clean_name(ph.name) or 'кто-то')}: {ph.text[:TAIL_PHRASE_CHARS]}"
-        if used + len(item) + 2 > TAIL_CHARS:
-            break
-        picked.append(item)
-        used += len(item) + 2
-    return "до этого в канале: " + "; ".join(reversed(picked)) if picked else ""
+    room = max(80, EVENT_MAX - len(head) - 1)
+    return f"{head}{text[:room]}»"
 
 
 # Реплики-поддакивания («угу», «отлично», «хороший план»): человек слушает и кивает, ответа не ждёт. Все слова фразы из этого
@@ -116,11 +98,10 @@ def v2_fields(*, session: str, speaker_id: str, adapter: str, addressed: bool, r
 
 
 def utterance_event(*, text: str, speaker: dict, session: str, adapter: str, duration_ms: int, language: str,
-                    addressed: bool, reason: str, interrupted: bool = False, context: str = "",
+                    addressed: bool, reason: str, interrupted: bool = False,
                     urgency_hint: int | None = None, title: str = "") -> dict:
     """Тело события для `Attention.submit(PEER_ID, event)`: поля те же, что у событий модулей (ТЗ 01, раздел 7.1)."""
-    body = event_text(text=text, name=speaker.get("name") or speaker["id"], is_owner=bool(speaker.get("is_owner")), title=title,
-                      context=context)
+    body = event_text(text=text, name=speaker.get("name") or speaker["id"], is_owner=bool(speaker.get("is_owner")), title=title)
     event = {
         "kind": KIND_UTTERANCE,
         "text": body,

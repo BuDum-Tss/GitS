@@ -246,14 +246,13 @@ class VoiceEngine:
                 speaker.update(id=reply_speaker, name=f"Спикер {label}")
         now = self.clock.time()
         addressed, reason = self._addressed(sess, sp, text, now, reply_speaker)
-        context = events.recent_tail(list(sess.recent), now) if addressed else ""
         sess.recent.append(Phrase(now, speaker["name"], text))
         speech_end = closed_at - seg.endpoint_ms / 1000.0
         self._timing(sess, "endpoint", seg.endpoint_ms)
         interrupted = sp.barged_ts > 0 and self.clock.time() - sp.barged_ts < INTERRUPT_MEMORY_S
         event = events.utterance_event(text=text, speaker=speaker, session=sess.id, adapter=sess.adapter,
                                        duration_ms=result.duration_ms or seg.duration_ms, title=sess.title, language=result.language or self.config.lang,
-                                       addressed=addressed, reason=reason, interrupted=interrupted, context=context,
+                                       addressed=addressed, reason=reason, interrupted=interrupted,
                                        urgency_hint=self.config.ambient_urgency)
         sess.stats.utterances += 1
         if addressed:                                    # разговор пошёл дальше: устаревшие ожидающие реплики не нужны

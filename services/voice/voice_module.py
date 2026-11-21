@@ -101,7 +101,7 @@ class VoiceModule:
         self.hearing = Hearing(self._effective, on_gist=self._on_gist)
         self.speaker = Speaker(synth=self._synth, player=self.player, emit=self._speech_event, on_trace=self._trace_event,
                                volume=lambda: max(0, min(100, int(self.client.settings.get("volume", 100)))) / 100.0,
-                               muted=lambda: bool(self.client.settings.get("voice_muted")),
+                               muted=self._muted,
                                on_segment=self.hearing.note_own_speech)
         self.mic = MicListener(
             self.stt, self._on_voice, lambda: self.speaker.audible,
@@ -117,6 +117,11 @@ class VoiceModule:
         self._register()
 
     # ── настройки ────────────────────────────────────────────────────────────
+
+    def _muted(self) -> bool:
+        """Заглушка колонок ПК действует только вне эфира: в режиме стримера (`streamer`) она не мешает, чтобы её слышал стрим."""
+        st = self.client.settings
+        return bool(st.get("voice_muted")) and not st.get("streamer")
 
     def _effective(self) -> dict:
         """Общие настройки ядра; выключенный модуль (`enabled: false`) не слушает ни микрофон, ни колонки."""
@@ -383,7 +388,7 @@ class VoiceModule:
 
         @c.on_topic("settings")
         async def on_settings(data):
-            if c.settings.get("voice_muted"):
+            if self._muted():
                 self.speaker.mute_now()
             await self.report_state()
 

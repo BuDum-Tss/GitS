@@ -62,7 +62,7 @@ class Speaker:
 
 @dataclass
 class Phrase:
-    """Недавняя фраза канала (чья-то или её собственная): для хвоста «до этого в канале» и `voice.transcript`."""
+    """Недавняя фраза канала (чья-то или её собственная): для `voice.transcript`."""
     ts: float
     name: str
     text: str

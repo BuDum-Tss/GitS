@@ -477,3 +477,22 @@ async def test_telemost_diarization_labels_reach_voice_events_and_context():
         assert session.speakers["meeting"].name == "Участники Телемоста"
     finally:
         await rig.engine.aclose()
+
+async def test_ktalk_repeat_remains_a_normal_utterance():
+    rig = Rig(["Отлично. Расскажи о себе.", "Расскажи о себе.", "Расскажи про космос.", "Расскажи про космос."])
+    session = await rig.open(adapter="ktalk")
+    rig.join("remote", "Участник 1", 1)
+    try:
+        await say(rig, "remote")
+        await rig.clock.advance(4.7)
+        await say(rig, "remote")
+        await say(rig, "remote")
+        await rig.clock.advance(7)
+        await say(rig, "remote")
+        assert [item["data"]["phrase"] for item in rig.events] == [
+            "Отлично. Расскажи о себе.", "Расскажи о себе.", "Расскажи про космос.", "Расскажи про космос.",
+        ]
+        assert len(session.recent) == 4
+        assert all("до этого в канале" not in item["text"] for item in rig.events)
+    finally:
+        await rig.engine.aclose()

@@ -140,41 +140,8 @@ async def test_event_text_without_title_and_with_dirty_nick():
 
 
 async def test_event_text_total_is_bounded():
-    text = events.event_text(text="а" * 5000, name="н" * 500, is_owner=True, title="т" * 500, context="до этого в канале: " + "x" * 600)
+    text = events.event_text(text="а" * 5000, name="н" * 500, is_owner=True, title="т" * 500)
     assert len(text) <= events.EVENT_MAX
-
-
-async def test_tail_of_recent_phrases_in_order_with_her_replies():
-    r = await Rig(["фоновая раз", "фоновая два", "Расскажи анекдот."]).open()
-    await r.say("u2")
-    await r.say("u3")
-    r.engine.speak("s1", "Это моя реплика из канала.")
-    await r.clock.advance(2.0)
-    r.engine.ack("s1", r.sess.playback.current_uid or "", 1000, "completed")
-    await r.clock.advance(5.0)
-    await r.say("owner")
-    ev = r.last()
-    assert ev["data"]["addressed_reason"] == "owner"
-    body = ev["text"]
-    tail = body.split("\n", 1)[1]
-    assert tail.startswith("(до этого в канале: Петя: фоновая раз; Вася: фоновая два; ты: Это моя реплика")
-    assert "Расскажи анекдот." not in tail and len(body) <= 1000
-    await r.engine.aclose()
-
-
-async def test_tail_limits_count_age_and_ambient_has_none():
-    r = await Rig([f"фраза номер {i}" for i in range(8)] + ["Расскажи анекдот.", "фоновая", "Расскажи ещё анекдот."]).open()
-    for _ in range(8):
-        await r.say("u2")
-    assert all("до этого" not in e["text"] for e in r.events)           # у фоновых хвоста нет
-    await r.say("owner")
-    tail = r.last()["text"].split("\n", 1)[1]
-    assert tail.count("Петя:") == 6 and "фраза номер 7" in tail and "фраза номер 1;" not in tail
-    await r.clock.advance(120.0)                                         # всё старше минуты
-    await r.say("u2")
-    await r.say("owner")
-    assert r.last()["text"].count("Петя:") == 1
-    await r.engine.aclose()
 
 
 async def test_transcript_tool_and_titles_in_sessions_tool():
