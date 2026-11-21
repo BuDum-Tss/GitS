@@ -58,3 +58,6 @@ workspaces/rimworld/host/memory/
 
 # сырые видео для монтажа (гигабайты), хранятся локально
 resources/*/raw_videos/
+
+# Blender-сцены и модели (сотни МБ), хранятся локально
+resources/*/blender/
