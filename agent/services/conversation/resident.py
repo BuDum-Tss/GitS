@@ -20,6 +20,7 @@ from services.runtime import llm_gate
 from services.character import prompts
 from interfaces.contracts import AgentRuntime, EndEvent, TextEvent, ToolEvent, ToolSpec
 from services.attention_v2.runtime import ActionRecord
+from services.conversation.conversation_io import current_channel
 from services.conversation.stickers import first_sticker, plain as strip_tags
 
 if TYPE_CHECKING:
@@ -133,6 +134,7 @@ class ResidentAgent:
         self.last_end = 0.0                 # когда закончился последний ход (рабочий цикл не торопит свободного агента)
         self._actions: list[ActionRecord] = []   # журнал действий текущего хода (сбрасывается в начале хода)
         self._call_memo: dict[str, list[int]] = {}   # одинаковые вызовы хода: ключ (инструмент+параметры) -> хэши ответов
+        self._sent_modules: set[str] = set()         # модули, куда инструмент отправки уже доставил сообщение в этом ходе
         self.on_turn_end = None             # колбэк или список колбэков (обычные или async) без аргументов: ход закончился
 
     # ── состояние ──────────────────────────────────────────────────
@@ -214,6 +216,8 @@ class ResidentAgent:
                 action.status = "failed"
                 raise
             action.status = "done" if ok else "failed"
+            if ok and tool is not None and getattr(tool, "sends", False):
+                agent._sent_modules.add(tool_id.split(".", 1)[0])   # ответ в чат модуля уже ушёл инструментом: текст хода его не дублирует
             if ok and not action.summary:
                 action.summary = _one_line(result)
             if ok and file_read:
@@ -355,6 +359,7 @@ class ResidentAgent:
             self._busy = True
             self._actions = []                         # журнал действий нового хода
             self._call_memo = {}
+            self._sent_modules = set()
             try:
                 await asyncio.wait_for(self._run(prompt, source), TURN_TIMEOUT_S)
             except asyncio.TimeoutError:
@@ -414,6 +419,10 @@ class ResidentAgent:
         pending: TextEvent | None = None
 
         async def speak(ev: TextEvent) -> None:
+            channel = current_channel.get()
+            if channel is not None and channel.kind == "module" and channel.module in self._sent_modules:
+                logger.info(f"[агент] текст хода не отправлен в {channel.label()}: ответ уже ушёл инструментом модуля")
+                return                                     # иначе в чат придёт то же сообщение второй раз
             spoken = h._declutter(strip_tags(ev.text))
             if terse and not spoken.strip(" .…-—"):
                 return                                     # пустая реплика («…», «.»): сказать нечего

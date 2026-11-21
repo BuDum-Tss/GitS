@@ -165,3 +165,52 @@ async def test_identical_call_with_identical_answer_is_not_repeated_a_third_time
     assert text == "ровно один и тот же ответ" and len(calls) == 3
     agent._call_memo = {}                                         # новый ход: счёт сброшен
     assert (await call(same))[1] == "ровно один и тот же ответ" and len(calls) == 4
+
+
+async def _turn_with_send(sent_tool: str | None, tool_sends: bool = True) -> list[str]:
+    """Ход на обращение из Telegram: агент (по желанию) отправляет сообщение инструментом, потом пишет текст хода."""
+    from interfaces.contracts import EndEvent, TextEvent
+    from services.conversation.conversation_io import Channel, current_channel
+    host = FakeHost()
+
+    async def run_tool_ex(tool_id, params):
+        return True, "отправлено в «Флудилка»", None
+
+    async def wait_speech(limit):
+        return None
+    host.router.run_tool_ex = run_tool_ex
+    host.wait_speech = wait_speech
+    host.router.registry.get = lambda tid: type("T", (), {"sends": tool_sends, "read_only": False})()
+
+    class SendingRuntime(FakeRuntime):
+        async def run(self, prompt):
+            self.prompts.append(prompt)
+            if sent_tool:
+                await agent._tool_specs()[1].handler({"tool_id": sent_tool, "args": {"to": "Флудилка", "text": "Я здесь"}})
+            yield TextEvent("Ответила в Флудилке.")
+            yield EndEvent("ok")
+
+    agent = resident.ResidentAgent(host, runtime=SendingRuntime())
+    token = current_channel.set(Channel("module", module="telegram", target="-100"))
+    try:
+        await agent.handle_user("привет")
+    finally:
+        current_channel.reset(token)
+    return host.said
+
+
+async def test_turn_text_is_not_duplicated_when_the_module_tool_already_replied_in_the_chat():
+    """Живой баг: агент отвечает `telegram.text`, а потом итоговый текст хода уходит в тот же чат второй раз."""
+    assert await _turn_with_send("telegram.text") == []
+
+
+async def test_turn_text_still_goes_to_the_chat_without_a_send_tool_call():
+    assert await _turn_with_send(None) == ["Ответила в Флудилке."]
+
+
+async def test_send_through_another_module_does_not_swallow_the_reply_to_the_chat():
+    assert await _turn_with_send("discord.message") == ["Ответила в Флудилке."]
+
+
+async def test_a_tool_that_does_not_send_does_not_swallow_the_reply():
+    assert await _turn_with_send("telegram.inbox", tool_sends=False) == ["Ответила в Флудилке."]
